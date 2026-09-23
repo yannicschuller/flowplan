@@ -1,0 +1,184 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import type { Editor } from "@tiptap/core";
+import { MermaidBlock } from "@/lib/mermaid-node";
+import { mountDiagram } from "@/lib/mermaid-render";
+import { MAX_DIAGRAM_LENGTH } from "@/lib/mermaid-source";
+import { Modal } from "./ui";
+export type DiagramTarget = {
+  source: string;
+  getPos?: () => number | undefined;
+};
+export function mermaidNodeView(onEdit: (target: DiagramTarget) => void) {
+  return MermaidBlock.extend({
+    addNodeView() {
+      return ({ node, editor, getPos }) => {
+        let current = node;
+        const dom = document.createElement("div");
+        dom.className = "mermaid-block";
+        dom.contentEditable = "false";
+        let cancel = () => {};
+        const render = () => {
+          cancel();
+          dom.dataset.mermaid = current.attrs.source;
+          dom.setAttribute("role", editor.isEditable ? "button" : "figure");
+          dom.setAttribute(
+            "aria-label",
+            editor.isEditable ? "Diagramm bearbeiten" : "Mermaid-Diagramm",
+          );
+          dom.tabIndex = editor.isEditable ? 0 : -1;
+          cancel = mountDiagram(dom, current.attrs.source);
+        };
+        const edit = (event: Event) => {
+          if (!editor.isEditable) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onEdit({ source: current.attrs.source, getPos });
+        };
+        dom.addEventListener("click", edit);
+        dom.addEventListener("keydown", (event) => {
+          if (["Enter", " "].includes(event.key)) edit(event);
+        });
+        render();
+        return {
+          dom,
+          update(next) {
+            if (next.type !== current.type) return false;
+            const changed = next.attrs.source !== current.attrs.source;
+            current = next;
+            if (changed) render();
+            return true;
+          },
+          destroy: () => cancel(),
+          ignoreMutation: () => true,
+          stopEvent: (event) =>
+            event.type === "click" ||
+            (event.type === "keydown" &&
+              ["Enter", " "].includes((event as KeyboardEvent).key)),
+        };
+      };
+    },
+  });
+}
+export function DiagramEditorDialog({
+  editor,
+  target,
+  onClose,
+}: {
+  editor: Editor | null;
+  target: DiagramTarget;
+  onClose: () => void;
+}) {
+  const [source, setSource] = useState(target.source);
+  const [validated, setValidated] = useState<string | null>(null);
+  const [conflict, setConflict] = useState("");
+  const preview = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setValidated(null);
+    let cancel = () => {};
+    const timer = setTimeout(() => {
+      if (preview.current)
+        cancel = mountDiagram(preview.current, source, (error) =>
+          setValidated(error ? null : source),
+        );
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      cancel();
+    };
+  }, [source]);
+  function apply(remove = false) {
+    if (!editor?.isEditable) {
+      setConflict("Das Dokument kann nicht bearbeitet werden.");
+      return;
+    }
+    if (target.getPos) {
+      const pos = target.getPos();
+      const current =
+        typeof pos === "number" ? editor.state.doc.nodeAt(pos) : null;
+      if (
+        typeof pos !== "number" ||
+        current?.type.name !== "mermaidBlock" ||
+        current.attrs.source !== target.source
+      ) {
+        setConflict(
+          "Dieses Diagramm wurde inzwischen geändert oder gelöscht. Dein Entwurf bleibt hier erhalten. Öffne das aktuelle Diagramm erneut, um es zu bearbeiten.",
+        );
+        return;
+      }
+      editor.view.dispatch(
+        remove
+          ? editor.state.tr.delete(pos, pos + current.nodeSize)
+          : editor.state.tr.setNodeMarkup(pos, undefined, {
+              ...current.attrs,
+              source,
+            }),
+      );
+    } else
+      editor
+        .chain()
+        .focus()
+        .insertContent({ type: "mermaidBlock", attrs: { source } })
+        .run();
+    onClose();
+  }
+  return (
+    <Modal
+      open
+      title="Mermaid-Diagramm"
+      onClose={onClose}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        editor?.commands.focus();
+      }}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (validated === source) apply();
+        }}
+      >
+        <label>
+          Mermaid-Quelltext
+          <textarea
+            aria-label="Mermaid-Quelltext"
+            autoFocus
+            spellCheck={false}
+            rows={7}
+            maxLength={MAX_DIAGRAM_LENGTH}
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+          />
+        </label>
+        <div
+          ref={preview}
+          className="mermaid-preview"
+          aria-label="Diagrammvorschau"
+          role="status"
+        />
+        {conflict && (
+          <p className="math-validation" role="alert">
+            {conflict}
+          </p>
+        )}
+        <div className="modal-actions">
+          {target.getPos && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => apply(true)}
+            >
+              Diagramm löschen
+            </button>
+          )}
+          <button type="button" className="button" onClick={onClose}>
+            Abbrechen
+          </button>
+          <button className="button primary" disabled={validated !== source}>
+            {target.getPos ? "Speichern" : "Einfügen"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

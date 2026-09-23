@@ -1,0 +1,3065 @@
+"use client";
+import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
+import DatabaseTimeline from "./database-timeline";
+import DatabaseCalendar from "./database-calendar";
+import FormulaEditor from "./formula-editor";
+import {
+  validateFormula,
+  rewriteFormulaReferences,
+  FORMULA_MAX_LENGTH,
+  hasClockFormulas,
+} from "@/lib/formula";
+import {
+  columnSummary,
+  calculationFor,
+  summaryText,
+  type CalculationChoice,
+} from "@/lib/database-summary";
+import CalculationEditor from "./calculation-editor";
+import { formatDateValue } from "@/lib/date-values";
+import { defaultGallery, galleryImage } from "@/lib/database-gallery";
+import { GalleryCover } from "./gallery-cover";
+import type { PageImage } from "@/lib/page-appearance";
+import { useMemo, useState, useRef, useEffect, type DragEvent } from "react";
+import DatabaseFeed from "./database-feed";
+import { defaultFeed } from "@/lib/database-feed";
+import DatabaseChart from "./database-chart";
+import { useFilterClock } from "./use-filter-clock";
+import DatabaseFilterEditor from "./database-filter-editor";
+import {
+  effectiveFilterGroup,
+  filterCount,
+  hasRelativeFilters,
+} from "@/lib/database-filters";
+import RowDocument from "./row-document";
+import { RollupValue } from "./rollup-value";
+import {
+  allowedAggregates,
+  aggregateNames,
+  percentAggregate,
+} from "@/lib/rollups";
+import {
+  databaseGroups,
+  groupCellValue,
+  groupingField,
+  configuredGroups,
+  canGroupField,
+  type DatabaseGroup,
+} from "@/lib/database-groups";
+import { CellInput } from "./cell-input";
+export { CellInput } from "./cell-input";
+import DatabaseForm from "./database-form";
+import type { FormConfig } from "@/lib/form-settings";
+import {
+  Plus,
+  MagnifyingGlass,
+  Funnel,
+  SortAscending,
+  DotsThree,
+  ArrowSquareOut,
+  Trash,
+  CalendarBlank,
+  CaretLeft,
+  CaretRight,
+  Check,
+  DownloadSimple,
+  UploadSimple,
+  SlidersHorizontal,
+  Link as LinkIcon,
+  Copy,
+  DotsSixVertical,
+} from "@phosphor-icons/react";
+import Papa from "papaparse";
+import { Modal, viewIcons, download, Avatar, api } from "./ui";
+import { cellText, computedCells, queryRows } from "@/lib/database";
+import type {
+  Database,
+  Row,
+  Field,
+  FieldType,
+  View,
+  Page,
+  User,
+  Comment,
+} from "@/lib/types";
+import type { RelationPair } from "@/lib/relation-sync";
+export type DatabaseData = {
+  images?: PageImage[];
+  relationPairs?: RelationPair[];
+  database: Database;
+  rows: Row[];
+  rowTemplates: { id: string; name: string; is_default: number }[];
+  related: Record<string, Row[]>;
+  relatedSchemas?: Record<string, Field[]>;
+  form: {
+    token: string;
+    enabled: number;
+    internal: number;
+    anonymous: number;
+    config: FormConfig;
+  } | null;
+  comments: Comment[];
+};
+const fieldNames: Record<FieldType, string> = {
+  text: "Text",
+  number: "Zahl",
+  date: "Datum",
+  select: "Auswahl",
+  multiselect: "Mehrfachauswahl",
+  checkbox: "Checkbox",
+  url: "URL",
+  email: "E-Mail",
+  phone: "Telefon",
+  checklist: "Checkliste",
+  person: "Person",
+  relation: "Relation",
+  rollup: "Rollup",
+  formula: "Formel",
+  created_at: "Erstellt am",
+  updated_at: "Bearbeitet am",
+  created_by: "Erstellt von",
+  updated_by: "Bearbeitet von",
+  files: "Dateien",
+};
+type RowMove = {
+  viewId: string;
+  version: number;
+  rowId: string;
+  rowVersion: number;
+  targetId?: string;
+  placement: "before" | "after" | "start" | "end";
+  group?: { from: string; to: string };
+};
+const rowDragType = "application/x-flowplan-row-order";
+const computedTypes = [
+  "formula",
+  "rollup",
+  "created_at",
+  "updated_at",
+  "created_by",
+  "updated_by",
+];
+export default function DatabaseView({
+  data,
+  page,
+  userId,
+  onRefresh,
+  members,
+  pages,
+  editable,
+  viewEditable = editable,
+  allowFieldChanges = true,
+  routeNavigation = false,
+  mutate,
+  onError,
+}: {
+  data: DatabaseData;
+  page: Page;
+  userId: string;
+  onRefresh: () => Promise<unknown>;
+  members: User[];
+  pages: Page[];
+  editable: boolean;
+  viewEditable?: boolean;
+  allowFieldChanges?: boolean;
+  routeNavigation?: boolean;
+  mutate: (b: Record<string, unknown>) => Promise<unknown>;
+  onError: (s: string) => void;
+}) {
+  const [viewId, setViewId] = useState(data.database.views[0].id),
+    [query, setQuery] = useState(""),
+    [config, setConfig] = useState(false),
+    [filterOpen, setFilterOpen] = useState(false),
+    [newField, setNewField] = useState(false),
+    [newView, setNewView] = useState(false),
+    [rowId, setLocalRowId] = useState<string | null>(null),
+    [fieldDraft, setFieldDraft] = useState<
+      Field & { bidirectional?: boolean; inverseName?: string }
+    >({
+      id: "",
+      name: "",
+      type: "text",
+    }),
+    [viewName, setViewName] = useState(""),
+    [viewType, setViewType] = useState<View["type"]>("table"),
+    [comment, setComment] = useState("");
+  function setRowId(id: string | null) {
+    setLocalRowId(id);
+    if (routeNavigation)
+      location.hash = pageLocationHash({
+        pageId: page.id,
+        rowId: id || undefined,
+      });
+  }
+  useEffect(() => {
+    if (!routeNavigation) return;
+    const navigate = () => {
+      const target = parsePageLocation(location.hash);
+      setLocalRowId(target?.pageId === page.id ? target.rowId || null : null);
+    };
+    navigate();
+    window.addEventListener("hashchange", navigate);
+    return () => window.removeEventListener("hashchange", navigate);
+  }, [routeNavigation, page.id]);
+  const [editingCell, setEditingCell] = useState<{
+    rowId: string;
+    fieldId: string;
+    groupKey?: string;
+  } | null>(null);
+  const [selection, setSelection] = useState<Map<string, number>>(new Map());
+  const [bulk, setBulk] = useState<"update" | "delete" | null>(null),
+    [bulkField, setBulkField] = useState(""),
+    [bulkValue, setBulkValue] = useState<unknown>(undefined),
+    [bulkBusy, setBulkBusy] = useState(false);
+  const [resize, setResize] = useState<{
+    id: string;
+    startX: number;
+    startWidth: number;
+    width: number;
+  } | null>(null);
+  const [manageTemplates, setManageTemplates] = useState(false);
+  const [readerCollapsed, setReaderCollapsed] = useState<
+    Record<string, boolean>
+  >({});
+  const [schemaBusy, setSchemaBusy] = useState(false);
+  const [calculationEdit, setCalculationEdit] = useState<{
+    field: Field;
+    viewId: string;
+    version: number;
+    choice?: CalculationChoice;
+  } | null>(null);
+  const [fieldVersion, setFieldVersion] = useState(data.database.version),
+    [fieldError, setFieldError] = useState("");
+  const [relationTarget, setRelationTarget] = useState<{
+    id: string;
+    version?: number;
+    error?: string;
+  }>();
+  const [orderBusy, setOrderBusy] = useState(false),
+    orderPending = useRef(false);
+  const [moveDialog, setMoveDialog] = useState<{
+    id: string;
+    groupKey?: string;
+  } | null>(null);
+  const [moveTarget, setMoveTarget] = useState(""),
+    [movePlacement, setMovePlacement] = useState<"before" | "after">("before");
+  const [sortMove, setSortMove] = useState<RowMove | null>(null);
+  const [dropHint, setDropHint] = useState<{
+    id: string;
+    groupKey?: string;
+    placement: "before" | "after";
+  } | null>(null);
+  const [orderStatus, setOrderStatus] = useState("");
+  const importRef = useRef<HTMLInputElement>(null);
+  const view =
+      data.database.views.find((v) => v.id === viewId) ||
+      data.database.views[0],
+    fields = data.database.fields,
+    orderedFields = [...fields].sort((a, b) => {
+      const order = view.fieldOrder || fields.map((f) => f.id);
+      return (
+        (order.includes(a.id) ? order.indexOf(a.id) : 999) -
+        (order.includes(b.id) ? order.indexOf(b.id) : 999)
+      );
+    }),
+    visibleFields = orderedFields.filter(
+      (f) => !view.hiddenFields?.includes(f.id),
+    );
+  const formulaFields = fields.some((f) => f.id === fieldDraft.id)
+    ? fields.map((f) => (f.id === fieldDraft.id ? fieldDraft : f))
+    : [...fields, fieldDraft];
+  const formulaProblem =
+    fieldDraft.type === "formula"
+      ? validateFormula(
+          fieldDraft.formula || "",
+          formulaFields.flatMap((f) => [f.id, f.name]),
+        )
+      : null;
+  const formulaTooLong =
+    fieldDraft.type === "formula" &&
+    rewriteFormulaReferences(fieldDraft.formula || "", formulaFields, "store")
+      .length > FORMULA_MAX_LENGTH;
+  useEffect(
+    () => setSelection(new Map()),
+    [view.id, query, JSON.stringify(effectiveFilterGroup(view))],
+  );
+  const activeFilterCount = filterCount(effectiveFilterGroup(view));
+  const selectionRows = data.rows.filter((r) => selection.has(r.id));
+  function selectRow(row: Row, enabled: boolean) {
+    setSelection((previous) => {
+      const next = new Map(previous);
+      if (enabled) next.set(row.id, row.version);
+      else next.delete(row.id);
+      return next;
+    });
+  }
+  function columnWidth(field: Field) {
+    return resize?.id === field.id
+      ? resize.width
+      : view.columnWidths?.[field.id] ||
+          (field.id === fields[0].id ? 280 : 180);
+  }
+  async function moveColumn(source: string, target: string) {
+    const order = orderedFields.map((f) => f.id).filter((id) => id !== source);
+    order.splice(order.indexOf(target), 0, source);
+    await updateView({ fieldOrder: order });
+  }
+  async function bulkAction(operation: "update" | "duplicate" | "delete") {
+    setBulkBusy(true);
+    const result = await act({
+      action: "rows.bulk",
+      operation,
+      rows: selectionRows.map((r) => ({
+        id: r.id,
+        version: selection.get(r.id),
+      })),
+      ...(operation === "update" ? { cells: { [bulkField]: bulkValue } } : {}),
+    });
+    setBulkBusy(false);
+    if (result) {
+      setSelection(new Map());
+      setBulk(null);
+      onError(
+        `${selectionRows.length} Einträge ${operation === "update" ? "aktualisiert" : operation === "duplicate" ? "dupliziert" : "gelöscht"}. Vorheriger Stand im Versionsverlauf gesichert.`,
+      );
+    }
+  }
+  const filterNow = useFilterClock(
+    hasRelativeFilters(effectiveFilterGroup(view)) ||
+      hasClockFormulas(fields, data.relatedSchemas),
+  );
+  const shown = useMemo(
+    () =>
+      queryRows(
+        data.rows,
+        fields,
+        view,
+        query,
+        data.related,
+        data.relatedSchemas,
+        new Date(filterNow),
+      ),
+    [data, fields, view, query, filterNow],
+  );
+  const selected = data.rows.find((r) => r.id === rowId);
+  useEffect(() => {
+    if (rowId && !selected)
+      onError("Dieser Datensatz ist nicht mehr verfügbar.");
+  }, [rowId, selected, onError]);
+  const groupField = groupingField(fields, view);
+  const dateField =
+    fields.find((f) => f.id === view.dateField) ||
+    fields.find((f) => f.type === "date");
+  const allGroups = databaseGroups(shown, groupField, data.related, members);
+  const groups = configuredGroups(allGroups, view);
+  const grouped = !!groupField && ["table", "list"].includes(view.type);
+  const groupSettings = view.groupSettings || {
+    hideEmpty: view.type !== "board",
+    sort: "manual" as const,
+    collapsed: [],
+  };
+  const collapsed = (key: string) =>
+    !viewEditable &&
+    readerCollapsed[JSON.stringify([view.id, view.groupBy, key])] !== undefined
+      ? readerCollapsed[JSON.stringify([view.id, view.groupBy, key])]
+      : groupSettings.collapsed.includes(key);
+  const selectableRows = grouped
+    ? [
+        ...new Map(
+          groups
+            .filter((g) => !collapsed(g.key))
+            .flatMap((g) => g.rows)
+            .map((r) => [r.id, r]),
+        ).values(),
+      ]
+    : shown;
+  const canGroupEdit =
+    editable && !!groupField && !computedTypes.includes(groupField.type);
+  const rollupRelation = fields.find(
+    (f) => f.id === fieldDraft.relationField && f.type === "relation",
+  );
+  const rollupFields = rollupRelation?.relationPage
+    ? data.relatedSchemas?.[rollupRelation.relationPage] || []
+    : [];
+  const rollupProperty = rollupFields.find(
+    (f) => f.id === fieldDraft.rollupField,
+  );
+  const relationPair = data.relationPairs?.find(
+    (p) =>
+      (p.left_page === page.id && p.left_field === fieldDraft.id) ||
+      (p.right_page === page.id && p.right_field === fieldDraft.id),
+  );
+  const bidirectional = fieldDraft.bidirectional ?? !!relationPair;
+  const relationChanged =
+    fieldDraft.type === "relation" && bidirectional !== !!relationPair;
+  const inverseField =
+    relationPair &&
+    (relationPair.left_page === page.id &&
+    relationPair.left_field === fieldDraft.id
+      ? relationPair.right_field
+      : relationPair.left_field);
+  const inverseName =
+    fieldDraft.relationPage &&
+    data.relatedSchemas?.[fieldDraft.relationPage]?.find(
+      (f) => f.id === inverseField,
+    )?.name;
+  useEffect(() => {
+    if (
+      !newField ||
+      fieldDraft.type !== "relation" ||
+      !fieldDraft.relationPage
+    ) {
+      setRelationTarget(undefined);
+      return;
+    }
+    let active = true;
+    const targetId = fieldDraft.relationPage;
+    setRelationTarget({ id: targetId });
+    api<{ database: Database; page: Page; role: string }>(
+      `/api/pages/${targetId}`,
+    )
+      .then((target) => {
+        if (active)
+          setRelationTarget({
+            id: targetId,
+            version: target.database.version,
+            error:
+              target.role === "viewer"
+                ? "Für Rückrelationen brauchst du Bearbeitungsrechte auf beide Datenbanken."
+                : target.page.locked
+                  ? "Die verknüpfte Datenbank ist gesperrt."
+                  : undefined,
+          });
+      })
+      .catch((error) => {
+        if (active)
+          setRelationTarget({ id: targetId, error: (error as Error).message });
+      });
+    return () => {
+      active = false;
+    };
+  }, [newField, fieldDraft.type, fieldDraft.relationPage]);
+  const relationReady =
+    relationTarget?.id === fieldDraft.relationPage &&
+    !!relationTarget?.version &&
+    !relationTarget?.error;
+  const act = async (b: Record<string, unknown>) => {
+    try {
+      return await mutate({ pageId: page.id, ...b });
+    } catch (e) {
+      onError((e as Error).message);
+      return null;
+    }
+  };
+  async function updateSchema(
+    nextFields: Field[] = fields,
+    nextViews: View[] = data.database.views,
+    relation?: {
+      fieldId: string;
+      enabled: boolean;
+      name?: string;
+      targetVersion?: number;
+    },
+    version = data.database.version,
+  ) {
+    setSchemaBusy(true);
+    try {
+      return await act({
+        action: "database.update",
+        version,
+        fields: nextFields,
+        views: nextViews,
+        relation,
+      });
+    } finally {
+      setSchemaBusy(false);
+    }
+  }
+  async function updateView(patch: Partial<View>) {
+    return updateSchema(
+      fields,
+      data.database.views.map((v) =>
+        v.id === view.id ? { ...v, ...patch } : v,
+      ),
+    );
+  }
+  const moveRow = data.rows.find((r) => r.id === moveDialog?.id);
+  const moveSiblings =
+    moveDialog?.groupKey !== undefined
+      ? groups.find((g) => g.key === moveDialog.groupKey)?.rows || []
+      : shown;
+  const moveIndex = moveSiblings.findIndex((r) => r.id === moveDialog?.id);
+  function openMove(row: Row, groupKey?: string) {
+    setMoveDialog({ id: row.id, groupKey });
+    setMoveTarget("");
+    setMovePlacement("before");
+  }
+  async function submitMove(move: RowMove, clearSorts = false) {
+    if (orderPending.current) return;
+    if (view.sorts.length && !clearSorts) {
+      setMoveDialog(null);
+      setSortMove(move);
+      return;
+    }
+    orderPending.current = true;
+    setOrderBusy(true);
+    setDropHint(null);
+    try {
+      const result = await act({ action: "row.move", ...move, clearSorts });
+      if (result) {
+        setMoveDialog(null);
+        setSortMove(null);
+        setOrderStatus(`Reihenfolge in „${view.name}“ gespeichert.`);
+      }
+    } finally {
+      orderPending.current = false;
+      setOrderBusy(false);
+    }
+  }
+  function moveTo(
+    row: Row,
+    targetId: string | undefined,
+    placement: RowMove["placement"],
+    groupKey?: string,
+  ) {
+    return submitMove({
+      viewId: view.id,
+      version: data.database.version,
+      rowId: row.id,
+      rowVersion: row.version,
+      targetId,
+      placement,
+      ...(groupKey !== undefined && canGroupEdit
+        ? { group: { from: groupKey, to: groupKey } }
+        : {}),
+    });
+  }
+  function dragStart(e: DragEvent, row: Row, groupKey?: string) {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData(
+      rowDragType,
+      JSON.stringify({
+        pageId: page.id,
+        viewId: view.id,
+        version: data.database.version,
+        rowId: row.id,
+        rowVersion: row.version,
+        groupKey,
+      }),
+    );
+  }
+  function dragMove(
+    e: DragEvent,
+    target: Row | undefined,
+    groupKey?: string,
+    bottom = false,
+  ) {
+    if (
+      !editable ||
+      !viewEditable ||
+      orderBusy ||
+      !e.dataTransfer.types.includes(rowDragType)
+    )
+      return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const source = JSON.parse(e.dataTransfer.getData(rowDragType));
+      if (
+        source.pageId !== page.id ||
+        source.viewId !== view.id ||
+        source.rowId === target?.id
+      ) {
+        setDropHint(null);
+        return;
+      }
+      if (
+        groupKey !== undefined &&
+        source.groupKey !== groupKey &&
+        !canGroupEdit
+      ) {
+        onError("Diese Gruppierung kann nicht bearbeitet werden.");
+        return;
+      }
+      const bounds = e.currentTarget.getBoundingClientRect();
+      const placement = bottom
+        ? "after"
+        : e.clientY < bounds.top + bounds.height / 2
+          ? "before"
+          : "after";
+      void submitMove({
+        viewId: view.id,
+        version: source.version,
+        rowId: source.rowId,
+        rowVersion: source.rowVersion,
+        targetId: target?.id,
+        placement: target ? placement : "end",
+        ...(groupKey !== undefined && canGroupEdit
+          ? { group: { from: source.groupKey, to: groupKey } }
+          : {}),
+      });
+    } catch {
+      setDropHint(null);
+    }
+  }
+  function dragOver(e: DragEvent, row: Row, groupKey?: string) {
+    if (
+      !editable ||
+      !viewEditable ||
+      orderBusy ||
+      !e.dataTransfer.types.includes(rowDragType)
+    )
+      return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    const bounds = e.currentTarget.getBoundingClientRect();
+    setDropHint({
+      id: row.id,
+      groupKey,
+      placement:
+        e.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+    });
+  }
+  function dropClass(row: Row, groupKey?: string) {
+    return dropHint?.id === row.id && dropHint.groupKey === groupKey
+      ? `order-drop-${dropHint.placement}`
+      : "";
+  }
+  function orderHandle(row: Row, groupKey?: string) {
+    if (!viewEditable) return null;
+    const siblings =
+      groupKey !== undefined
+        ? allGroups.find((g) => g.key === groupKey)?.rows || []
+        : shown;
+    const index = siblings.findIndex((r) => r.id === row.id);
+    return (
+      <button
+        type="button"
+        className="row-order-handle"
+        aria-label={`Eintrag verschieben: ${cellText(row.cells[fields[0].id]) || "Ohne Titel"}`}
+        title="Ziehen oder Position wählen · Alt + Pfeil hoch/runter"
+        disabled={orderBusy}
+        draggable={!orderBusy}
+        onDragStart={(e) => {
+          e.stopPropagation();
+          dragStart(e, row, groupKey);
+        }}
+        onDragEnd={() => setDropHint(null)}
+        onClick={(e) => {
+          e.stopPropagation();
+          openMove(row, groupKey);
+        }}
+        onKeyDown={(e) => {
+          if (e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const target = siblings[index + (e.key === "ArrowUp" ? -1 : 1)];
+            if (target)
+              void moveTo(
+                row,
+                target.id,
+                e.key === "ArrowUp" ? "before" : "after",
+                groupKey,
+              );
+          }
+        }}
+      >
+        <DotsSixVertical size={17} />
+      </button>
+    );
+  }
+  async function updateCell(row: Row, field: Field, value: unknown) {
+    if (JSON.stringify(row.cells[field.id]) === JSON.stringify(value)) return;
+    const result = await act({
+      action: "row.update",
+      rowId: row.id,
+      version: row.version,
+      cells: { [field.id]: value },
+    });
+    if (result) setEditingCell(null);
+    return result;
+  }
+  async function createRow(
+    cells: Record<string, unknown> = {},
+    open = true,
+    templateId?: string | null,
+  ) {
+    const r = (await act({
+      action: "row.create",
+      cells:
+        templateId ||
+        (templateId !== null && data.rowTemplates?.some((t) => t.is_default))
+          ? cells
+          : { [fields[0].id]: "Neue Aufgabe", ...cells },
+      templateId,
+    })) as { id: string } | null;
+    if (r && open) setRowId(r.id);
+  }
+  function display(r: Row, f: Field) {
+    const v = r.cells[f.id];
+    if (
+      f.type === "files" &&
+      typeof v === "string" &&
+      v.startsWith("/api/files/")
+    ) {
+      return (
+        <span className="file-cell">
+          {data.images?.find((image) => image.url === v)?.name || "Datei"}
+        </span>
+      );
+    }
+    if (f.type === "rollup") return <RollupValue field={f} value={v} />;
+    if (["person", "created_by", "updated_by"].includes(f.type)) {
+      const u = members.find((m) => m.id === v);
+      return u ? (
+        <span className="person-cell">
+          <Avatar name={u.name} small />
+          {u.name}
+        </span>
+      ) : (
+        <span className="muted">—</span>
+      );
+    }
+    if (f.type === "select" || f.type === "multiselect") {
+      const values = Array.isArray(v) ? v : v ? [v] : [];
+      return (
+        <span className="tags">
+          {values.map((s, i) => (
+            <span
+              key={String(s) + i}
+              className={`tag tag-${tagColor(String(s))}`}
+            >
+              {String(s)}
+            </span>
+          ))}
+        </span>
+      );
+    }
+    if (f.type === "checkbox")
+      return (
+        <span className={`check-display ${v ? "checked" : ""}`}>
+          {!!v && <Check size={12} />}
+        </span>
+      );
+    if (f.type === "relation") {
+      const ids = Array.isArray(v) ? v : [];
+      return ids
+        .map(
+          (rid) =>
+            cellText(
+              data.related[f.relationPage || ""]?.find((x) => x.id === rid)
+                ?.cells.title,
+            ) || "Datensatz",
+        )
+        .join(", ");
+    }
+    if (f.type === "date" && v) {
+      return (
+        <span className="date-cell">
+          <CalendarBlank size={14} />
+          {formatDateValue(v)}
+        </span>
+      );
+    }
+    if (f.type === "number" && v !== undefined) {
+      const num = Number(v);
+      return f.format === "percent"
+        ? new Intl.NumberFormat("de-DE", { style: "percent" }).format(num)
+        : f.format === "eur"
+          ? new Intl.NumberFormat("de-DE", {
+              style: "currency",
+              currency: "EUR",
+            }).format(num)
+          : new Intl.NumberFormat("de-DE").format(num);
+    }
+    return cellText(v) || <span className="muted">—</span>;
+  }
+  const galleryConfig = view.gallery || defaultGallery;
+  const galleryImages = new Set((data.images || []).map((image) => image.url));
+  function card(r: Row, groupKey?: string) {
+    return (
+      <div
+        key={r.id}
+        className={`record-card-wrap ${dropClass(r, groupKey)}`}
+        data-row-id={r.id}
+        onDragOver={(e) => dragOver(e, r, groupKey)}
+        onDrop={(e) => dragMove(e, r, groupKey)}
+      >
+        <button
+          className="record-card"
+          draggable={editable && viewEditable && !orderBusy}
+          onDragStart={(e) => dragStart(e, r, groupKey)}
+          onDragEnd={() => setDropHint(null)}
+          onClick={() => setRowId(r.id)}
+        >
+          {view.type === "gallery" && galleryConfig.cover !== "none" && (
+            <GalleryCover
+              key={
+                galleryImage(r, galleryConfig, fields, galleryImages) || "empty"
+              }
+              url={galleryImage(r, galleryConfig, fields, galleryImages)}
+              fit={galleryConfig.fit}
+            />
+          )}
+          <strong>{cellText(r.cells[fields[0].id]) || "Ohne Titel"}</strong>
+          <div className="card-properties">
+            {visibleFields
+              .slice(1, 4)
+              .filter((f) => r.cells[f.id])
+              .map((f) => (
+                <span key={f.id}>{display(r, f)}</span>
+              ))}
+          </div>
+          <span className="card-bottom">
+            {dateField && display(r, dateField)}
+            <span className="card-open">
+              <ArrowSquareOut size={14} />
+            </span>
+          </span>
+        </button>
+        {editable && orderHandle(r, groupKey)}
+      </div>
+    );
+  }
+
+  async function setGroupsCollapsed(keys: string[], value: boolean) {
+    if (!viewEditable) {
+      setReaderCollapsed((previous) => ({
+        ...previous,
+        ...Object.fromEntries(
+          keys.map((key) => [
+            JSON.stringify([view.id, view.groupBy, key]),
+            value,
+          ]),
+        ),
+      }));
+      return;
+    }
+    const next = new Set(groupSettings.collapsed);
+    for (const key of keys) {
+      if (value) next.add(key);
+      else next.delete(key);
+    }
+    if (next.size > 1000) {
+      onError("Maximal 1.000 eingeklappte Gruppen je Ansicht.");
+      return;
+    }
+    await updateView({
+      groupSettings: { ...groupSettings, collapsed: [...next] },
+    });
+  }
+  function dropIntoGroup(e: DragEvent, group: DatabaseGroup) {
+    if (
+      !editable ||
+      !viewEditable ||
+      orderBusy ||
+      !e.dataTransfer.types.includes(rowDragType)
+    )
+      return;
+    try {
+      const source = JSON.parse(e.dataTransfer.getData(rowDragType)).rowId;
+      dragMove(
+        e,
+        group.rows.filter((r) => r.id !== source).at(-1),
+        group.key,
+        true,
+      );
+    } catch {
+      setDropHint(null);
+    }
+  }
+  function groupHeader(group: DatabaseGroup) {
+    return (
+      <div
+        className="database-group-header"
+        onDragOver={(e) => {
+          if (
+            editable &&
+            !orderBusy &&
+            e.dataTransfer.types.includes(rowDragType)
+          )
+            e.preventDefault();
+        }}
+        onDrop={(e) => dropIntoGroup(e, group)}
+      >
+        <button
+          className="group-toggle"
+          aria-expanded={!collapsed(group.key)}
+          aria-label={`Gruppe ${group.label} ${collapsed(group.key) ? "ausklappen" : "einklappen"}`}
+          disabled={schemaBusy}
+          onClick={() =>
+            void setGroupsCollapsed([group.key], !collapsed(group.key))
+          }
+        >
+          <CaretRight
+            size={16}
+            style={{
+              transform: collapsed(group.key) ? undefined : "rotate(90deg)",
+            }}
+          />
+          <span>{group.label}</span>
+          <span className="muted">{group.rows.length}</span>
+        </button>
+        {editable && view.type === "table" && (
+          <input
+            type="checkbox"
+            aria-label={`Gruppe ${group.label} auswählen`}
+            disabled={bulkBusy || !group.rows.length}
+            checked={
+              group.rows.length > 0 &&
+              group.rows.every((r) => selection.has(r.id))
+            }
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setSelection((previous) => {
+                const next = new Map(previous);
+                for (const r of group.rows) {
+                  if (checked) next.set(r.id, r.version);
+                  else next.delete(r.id);
+                }
+                return next;
+              });
+            }}
+          />
+        )}
+        <span className="group-summary">
+          {visibleFields.map((f) => {
+            const summary = columnSummary(
+              f,
+              group.rows,
+              calculationFor(view.calculations, f.id),
+            );
+            return (
+              summary && (
+                <span key={f.id}>
+                  {f.name}: {summaryText(summary)}
+                </span>
+              )
+            );
+          })}
+        </span>
+        {editable && canGroupEdit && (
+          <button
+            className="icon-button"
+            title={`Eintrag in ${group.label} hinzufügen`}
+            onClick={() =>
+              createRow({
+                [groupField!.id]: groupCellValue(groupField!, group.value),
+              })
+            }
+          >
+            <Plus size={16} />
+          </button>
+        )}
+      </div>
+    );
+  }
+  function tableRow(r: Row, groupKey?: string) {
+    return (
+      <tr
+        key={r.id}
+        className={`${selection.has(r.id) ? "row-selected" : ""} ${dropClass(r, groupKey)}`}
+        data-row-id={r.id}
+        onDragOver={(e) => dragOver(e, r, groupKey)}
+        onDrop={(e) => dragMove(e, r, groupKey)}
+      >
+        {editable && (
+          <td className="selection-cell">
+            <div className="row-selection-controls">
+              {orderHandle(r, groupKey)}
+              <input
+                type="checkbox"
+                aria-label={`${cellText(r.cells[fields[0].id]) || "Ohne Titel"} auswählen`}
+                disabled={bulkBusy}
+                checked={selection.has(r.id)}
+                onChange={(e) => selectRow(r, e.target.checked)}
+              />
+            </div>
+          </td>
+        )}
+        {visibleFields.map((f, i) => (
+          <td
+            key={f.id}
+            onClick={() => {
+              if (
+                !editable ||
+                f.id === fields[0].id ||
+                computedTypes.includes(f.type)
+              )
+                setRowId(r.id);
+              else if (f.type === "checkbox")
+                void updateCell(r, f, !r.cells[f.id]);
+              else setEditingCell({ rowId: r.id, fieldId: f.id, groupKey });
+            }}
+          >
+            {editingCell?.rowId === r.id &&
+            editingCell?.fieldId === f.id &&
+            editingCell?.groupKey === groupKey ? (
+              <span
+                className="inline-cell"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <CellInput
+                  field={f}
+                  value={r.cells[f.id]}
+                  members={members}
+                  related={data.related}
+                  onChange={(v) => updateCell(r, f, v)}
+                />
+              </span>
+            ) : (
+              <span className={f.id === fields[0].id ? "title-cell" : ""}>
+                {display(r, f)}
+                {f.id === fields[0].id && (
+                  <ArrowSquareOut className="row-open" size={14} />
+                )}
+              </span>
+            )}
+          </td>
+        ))}
+        {editable && <td />}
+      </tr>
+    );
+  }
+  function listRow(r: Row, groupKey?: string) {
+    return (
+      <div
+        key={r.id}
+        className={`record-list-item ${dropClass(r, groupKey)}`}
+        data-row-id={r.id}
+        onDragOver={(e) => dragOver(e, r, groupKey)}
+        onDrop={(e) => dragMove(e, r, groupKey)}
+      >
+        {editable && orderHandle(r, groupKey)}
+        <button onClick={() => setRowId(r.id)}>
+          <span>{cellText(r.cells[fields[0].id]) || "Ohne Titel"}</span>
+          <span>
+            {visibleFields.slice(1, 4).map((f) => (
+              <span key={f.id}>{display(r, f)}</span>
+            ))}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="database">
+      <div className="database-tabs">
+        {data.database.views.map((v) => {
+          const Icon = viewIcons[v.type];
+          return (
+            <button
+              className={v.id === view.id ? "selected" : ""}
+              onClick={() => setViewId(v.id)}
+              key={v.id}
+            >
+              <Icon size={17} />
+              {v.name}
+            </button>
+          );
+        })}
+        {viewEditable && (
+          <button
+            className="icon-button"
+            title="Ansicht hinzufügen"
+            onClick={() => setNewView(true)}
+          >
+            <Plus />
+          </button>
+        )}
+      </div>
+      <div className="database-toolbar">
+        <div className="toolbar-left">
+          <button
+            className={activeFilterCount ? "active" : ""}
+            onClick={() => setFilterOpen(true)}
+          >
+            <Funnel size={16} />
+            Filtern
+            {activeFilterCount > 0 && (
+              <span className="count">{activeFilterCount}</span>
+            )}
+          </button>
+          <button onClick={() => setConfig(true)}>
+            <SortAscending size={17} />
+            Sortieren
+          </button>
+          <button
+            title="Ansicht und Eigenschaften"
+            onClick={() => setConfig(true)}
+          >
+            <SlidersHorizontal size={17} />
+          </button>
+        </div>
+        <div className="toolbar-right">
+          <div className="table-search">
+            <MagnifyingGlass size={16} />
+            <input
+              aria-label="Datenbank durchsuchen"
+              placeholder="Suchen …"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <button
+            title="CSV exportieren"
+            onClick={() =>
+              download(
+                `${page.title}.csv`,
+                Papa.unparse({
+                  fields: fields.map((f) => f.name),
+                  data: shown.map((r) =>
+                    fields.map((f) => cellText(r.cells[f.id])),
+                  ),
+                }),
+                "text/csv",
+              )
+            }
+          >
+            <DownloadSimple size={17} />
+          </button>
+          {editable && (
+            <>
+              <button
+                title="CSV importieren"
+                onClick={() => importRef.current?.click()}
+              >
+                <UploadSimple size={17} />
+              </button>
+              <button
+                className="button primary compact"
+                onClick={() => createRow()}
+              >
+                <Plus size={16} />
+                Neu
+              </button>{" "}
+              <button
+                title="Datensatzvorlagen"
+                onClick={() => setManageTemplates(true)}
+              >
+                <DotsThree size={20} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {editable && view.type === "table" && selectionRows.length > 0 && (
+        <div
+          className="bulk-toolbar"
+          role="toolbar"
+          aria-label="Ausgewählte Einträge"
+        >
+          <strong>{selectionRows.length} ausgewählt</strong>
+          <button
+            className="button compact"
+            disabled={bulkBusy}
+            onClick={() => {
+              setBulkField(
+                fields.find((f) => !computedTypes.includes(f.type))?.id || "",
+              );
+              setBulkValue(undefined);
+              setBulk("update");
+            }}
+          >
+            Gemeinsam bearbeiten
+          </button>
+          <button
+            className="button compact"
+            disabled={bulkBusy}
+            onClick={() => bulkAction("duplicate")}
+          >
+            Duplizieren
+          </button>
+          <button
+            className="button compact danger"
+            disabled={bulkBusy}
+            onClick={() => setBulk("delete")}
+          >
+            Löschen
+          </button>
+          <button
+            className="button compact"
+            onClick={() => setSelection(new Map())}
+          >
+            Auswahl aufheben
+          </button>
+        </div>
+      )}
+      {grouped && (
+        <div className="group-view-toolbar">
+          <span>
+            {groups.length} Gruppen · {shown.length} Einträge
+          </span>
+          <button
+            className="button compact"
+            disabled={schemaBusy}
+            onClick={() =>
+              void setGroupsCollapsed(
+                groups.map((g) => g.key),
+                true,
+              )
+            }
+          >
+            Alle einklappen
+          </button>
+          <button
+            className="button compact"
+            disabled={schemaBusy}
+            onClick={() =>
+              void setGroupsCollapsed(
+                groups.map((g) => g.key),
+                false,
+              )
+            }
+          >
+            Alle ausklappen
+          </button>
+        </div>
+      )}
+      {view.type === "table" && (
+        <div className="data-table-scroll">
+          <table
+            className="data-table configurable-table"
+            style={{
+              width: visibleFields.reduce(
+                (sum, f) => sum + columnWidth(f),
+                editable ? 118 : 0,
+              ),
+            }}
+          >
+            <colgroup>
+              {editable && <col style={{ width: 76 }} />}
+              {visibleFields.map((f) => (
+                <col key={f.id} style={{ width: columnWidth(f) }} />
+              ))}
+              {editable && <col style={{ width: 42 }} />}
+            </colgroup>
+            <thead>
+              <tr>
+                {editable && (
+                  <th className="selection-cell">
+                    <input
+                      type="checkbox"
+                      aria-label="Alle sichtbaren Einträge auswählen"
+                      disabled={bulkBusy}
+                      checked={
+                        selectableRows.length > 0 &&
+                        selectableRows.every((r) => selection.has(r.id))
+                      }
+                      onChange={(e) =>
+                        setSelection(
+                          e.target.checked
+                            ? new Map(
+                                selectableRows.map((r) => [r.id, r.version]),
+                              )
+                            : new Map(),
+                        )
+                      }
+                    />
+                  </th>
+                )}
+                {visibleFields.map((f) => (
+                  <th
+                    key={f.id}
+                    data-field-id={f.id}
+                    draggable={viewEditable}
+                    onDragStart={(e) =>
+                      e.dataTransfer.setData(
+                        "application/x-flowplan-field",
+                        f.id,
+                      )
+                    }
+                    onDragOver={(e) => {
+                      if (
+                        viewEditable &&
+                        e.dataTransfer.types.includes(
+                          "application/x-flowplan-field",
+                        )
+                      )
+                        e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const source = e.dataTransfer.getData(
+                        "application/x-flowplan-field",
+                      );
+                      if (source && source !== f.id)
+                        void moveColumn(source, f.id);
+                    }}
+                  >
+                    <button
+                      disabled={!allowFieldChanges}
+                      className={
+                        !allowFieldChanges ? "source-property-label" : undefined
+                      }
+                      title={
+                        !allowFieldChanges
+                          ? "Eigenschaften in der Quelldatenbank bearbeiten"
+                          : undefined
+                      }
+                      onClick={() => {
+                        setFieldDraft({
+                          ...f,
+                          ...(f.formula
+                            ? {
+                                formula: rewriteFormulaReferences(
+                                  f.formula,
+                                  fields,
+                                  "display",
+                                ),
+                              }
+                            : {}),
+                        });
+                        setFieldVersion(data.database.version);
+                        setFieldError("");
+                        setNewField(true);
+                      }}
+                    >
+                      <span className="property-type">
+                        {f.type === "number"
+                          ? "#"
+                          : f.type === "date"
+                            ? "◷"
+                            : f.type === "text"
+                              ? "Aa"
+                              : f.type === "formula"
+                                ? "ƒ"
+                                : "≡"}
+                      </span>
+                      {f.name}
+                    </button>
+                    {viewEditable && (
+                      <span
+                        className="column-resizer"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label={`${f.name}: Spaltenbreite`}
+                        aria-valuenow={columnWidth(f)}
+                        aria-valuemin={80}
+                        aria-valuemax={800}
+                        tabIndex={0}
+                        draggable={false}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          setResize({
+                            id: f.id,
+                            startX: e.clientX,
+                            startWidth: columnWidth(f),
+                            width: columnWidth(f),
+                          });
+                        }}
+                        onPointerMove={(e) => {
+                          if (resize?.id === f.id)
+                            setResize({
+                              ...resize,
+                              width: Math.max(
+                                80,
+                                Math.min(
+                                  800,
+                                  Math.round(
+                                    resize.startWidth +
+                                      e.clientX -
+                                      resize.startX,
+                                  ),
+                                ),
+                              ),
+                            });
+                        }}
+                        onPointerUp={(e) => {
+                          if (resize?.id === f.id) {
+                            void updateView({
+                              columnWidths: {
+                                ...view.columnWidths,
+                                [f.id]: Math.max(
+                                  80,
+                                  Math.min(
+                                    800,
+                                    Math.round(
+                                      resize.startWidth +
+                                        e.clientX -
+                                        resize.startX,
+                                    ),
+                                  ),
+                                ),
+                              },
+                            });
+                            setResize(null);
+                          }
+                        }}
+                        onPointerCancel={() => setResize(null)}
+                        onKeyDown={(e) => {
+                          if (["ArrowLeft", "ArrowRight"].includes(e.key)) {
+                            e.preventDefault();
+                            void updateView({
+                              columnWidths: {
+                                ...view.columnWidths,
+                                [f.id]: Math.max(
+                                  80,
+                                  Math.min(
+                                    800,
+                                    columnWidth(f) +
+                                      (e.key === "ArrowRight" ? 20 : -20),
+                                  ),
+                                ),
+                              },
+                            });
+                          }
+                        }}
+                      />
+                    )}
+                  </th>
+                ))}
+                {editable && (
+                  <th className="add-property">
+                    <button
+                      aria-label="Eigenschaft hinzufügen"
+                      disabled={!allowFieldChanges}
+                      onClick={() => {
+                        setFieldVersion(data.database.version);
+                        setFieldError("");
+                        setFieldDraft({
+                          id: crypto.randomUUID(),
+                          name: "",
+                          type: "text",
+                        });
+                        setNewField(true);
+                      }}
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            {grouped ? (
+              groups.map((g) => (
+                <tbody key={g.key} aria-label={`Gruppe ${g.label}`}>
+                  <tr className="database-group-row">
+                    <th
+                      colSpan={Math.max(
+                        1,
+                        visibleFields.length + (editable ? 2 : 0),
+                      )}
+                    >
+                      {groupHeader(g)}
+                    </th>
+                  </tr>
+                  {!collapsed(g.key) && g.rows.map((r) => tableRow(r, g.key))}
+                </tbody>
+              ))
+            ) : (
+              <tbody>{shown.map((r) => tableRow(r))}</tbody>
+            )}
+
+            <tfoot>
+              <tr>
+                <td colSpan={visibleFields.length + (editable ? 2 : 0)}>
+                  {editable && (
+                    <button className="new-record" onClick={() => createRow()}>
+                      <Plus size={15} />
+                      Neue Zeile
+                    </button>
+                  )}
+                  <span className="record-count">{shown.length} Einträge</span>
+                </td>
+              </tr>
+              <tr className="table-count column-calculations">
+                {editable && <td />}
+                {visibleFields.map((f) => {
+                  const summary = columnSummary(
+                    f,
+                    shown,
+                    calculationFor(view.calculations, f.id),
+                  );
+                  return (
+                    <td key={f.id}>
+                      <button
+                        className="column-calculation"
+                        aria-label={`Berechnung für ${f.name}`}
+                        disabled={schemaBusy}
+                        onClick={() =>
+                          setCalculationEdit({
+                            field: f,
+                            viewId: view.id,
+                            version: data.database.version,
+                            choice: calculationFor(view.calculations, f.id),
+                          })
+                        }
+                      >
+                        {summary ? (
+                          <>
+                            <span>{f.name}: </span>
+                            <strong>{summaryText(summary)}</strong>
+                          </>
+                        ) : (
+                          <span>Berechnen</span>
+                        )}
+                      </button>
+                    </td>
+                  );
+                })}
+                {editable && <td />}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      {view.type === "board" && (
+        <div className="board">
+          {groups.map((g) => (
+            <section
+              className="board-column"
+              key={g.key}
+              aria-label={`Gruppe ${g.label}`}
+              onDragOver={(e) => {
+                if (
+                  editable &&
+                  !orderBusy &&
+                  e.dataTransfer.types.includes(rowDragType)
+                )
+                  e.preventDefault();
+              }}
+              onDrop={(e) => {
+                let source: string | undefined;
+                try {
+                  source = JSON.parse(
+                    e.dataTransfer.getData(rowDragType),
+                  ).rowId;
+                } catch {
+                  return;
+                }
+                dragMove(
+                  e,
+                  g.rows.filter((r) => r.id !== source).at(-1),
+                  g.key,
+                  true,
+                );
+              }}
+            >
+              <header>
+                <span className={`tag tag-${tagColor(g.label)}`}>
+                  {g.label}
+                </span>
+                <span className="muted">{g.rows.length}</span>
+                {editable && (
+                  <button
+                    className="icon-button"
+                    title={`Eintrag in ${g.label} hinzufügen`}
+                    onClick={() =>
+                      createRow(
+                        groupField && canGroupEdit
+                          ? {
+                              [groupField.id]: groupCellValue(
+                                groupField,
+                                g.value,
+                              ),
+                            }
+                          : {},
+                      )
+                    }
+                  >
+                    <Plus size={16} />
+                  </button>
+                )}
+              </header>
+              {g.rows.map((r) => card(r, g.key))}
+              {editable && (
+                <button
+                  className="new-record"
+                  onClick={() =>
+                    createRow(
+                      groupField && canGroupEdit
+                        ? {
+                            [groupField.id]: groupCellValue(
+                              groupField,
+                              g.value,
+                            ),
+                          }
+                        : {},
+                    )
+                  }
+                >
+                  <Plus size={16} />
+                  Neue Aufgabe
+                </button>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
+      {view.type === "feed" && (
+        <DatabaseFeed
+          key={view.id}
+          rows={shown}
+          fields={fields}
+          visibleFields={visibleFields}
+          view={view}
+          members={members}
+          comments={data.comments}
+          display={display}
+          onOpen={setRowId}
+          orderHandle={(r) => (editable ? orderHandle(r) : null)}
+          query={query}
+          rowEvents={(r) => ({
+            className: dropClass(r),
+            onDragOver: (e) => dragOver(e, r),
+            onDrop: (e) => dragMove(e, r),
+          })}
+        />
+      )}
+      {view.type === "gallery" && (
+        <div className={`gallery gallery-size-${galleryConfig.size}`}>
+          {shown.map((r) => card(r))}
+        </div>
+      )}
+      {view.type === "list" && (
+        <div className="record-list">
+          {grouped
+            ? groups.map((g) => (
+                <section
+                  key={g.key}
+                  aria-label={`Gruppe ${g.label}`}
+                  className="database-list-group"
+                >
+                  {groupHeader(g)}
+                  {!collapsed(g.key) && g.rows.map((r) => listRow(r, g.key))}
+                </section>
+              ))
+            : shown.map((r) => listRow(r))}
+        </div>
+      )}
+      {view.type === "calendar" && (
+        <DatabaseCalendar
+          key={view.id}
+          pageId={page.id}
+          rows={shown}
+          fields={fields}
+          view={view}
+          version={data.database.version}
+          editable={editable}
+          viewEditable={viewEditable}
+          onOpen={setRowId}
+          onCreate={createRow}
+          onView={updateView}
+          onSchedule={(input) => mutate({ pageId: page.id, ...input })}
+        />
+      )}
+      {view.type === "timeline" && (
+        <DatabaseTimeline
+          key={view.id}
+          rows={shown}
+          fields={fields}
+          view={view}
+          version={data.database.version}
+          editable={editable}
+          viewEditable={viewEditable}
+          onOpen={setRowId}
+          onView={updateView}
+          onSchedule={(input) => mutate({ pageId: page.id, ...input })}
+        />
+      )}
+      {view.type === "chart" && (
+        <DatabaseChart
+          key={view.id}
+          view={view}
+          version={data.database.version}
+          fields={fields}
+          rows={shown}
+          related={data.related}
+          members={members}
+          editable={viewEditable}
+          onOpenRow={setRowId}
+          onSave={(chart, version) =>
+            updateSchema(
+              fields,
+              data.database.views.map((v) =>
+                v.id === view.id ? { ...v, chart } : v,
+              ),
+              undefined,
+              version,
+            )
+          }
+        />
+      )}
+      {view.type === "form" && (
+        <DatabaseForm
+          page={page}
+          fields={fields}
+          form={data.form}
+          editable={editable}
+          act={act}
+        />
+      )}
+      {shown.length === 0 && view.type !== "form" && view.type !== "chart" && (
+        <div className="empty-state">
+          <Funnel size={30} />
+          <h3>Keine Einträge</h3>
+          <p>
+            {query || activeFilterCount
+              ? "Passe deine Suche oder Filter an."
+              : "Füge deinen ersten Eintrag hinzu."}
+          </p>
+        </div>
+      )}
+      <input
+        type="file"
+        accept=".csv"
+        hidden
+        ref={importRef}
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          const result = Papa.parse<Record<string, string>>(await f.text(), {
+            header: true,
+            skipEmptyLines: true,
+          });
+          if (result.errors.length) {
+            onError("CSV konnte nicht gelesen werden.");
+            return;
+          }
+          const imported = result.data.map((row) =>
+            Object.fromEntries(
+              fields
+                .filter((f) => !computedTypes.includes(f.type))
+                .map((f) => [
+                  f.id,
+                  f.type === "number"
+                    ? Number(row[f.name] || 0)
+                    : f.type === "checkbox"
+                      ? ["true", "1", "ja"].includes(
+                          (row[f.name] || "").toLowerCase(),
+                        )
+                      : f.type === "multiselect"
+                        ? (row[f.name] || "")
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean)
+                        : row[f.name] || "",
+                ]),
+            ),
+          );
+          await act({ action: "rows.import", rows: imported });
+          e.target.value = "";
+        }}
+      />
+      {filterOpen && (
+        <Modal
+          open
+          onClose={() => setFilterOpen(false)}
+          title="Filter bearbeiten"
+          wide
+        >
+          <DatabaseFilterEditor
+            key={view.id}
+            view={view}
+            version={data.database.version}
+            fields={fields}
+            rows={data.rows}
+            related={data.related}
+            relatedSchemas={data.relatedSchemas}
+            members={members}
+            editable={viewEditable}
+            onClose={() => setFilterOpen(false)}
+            onSave={(filterGroup, version) =>
+              updateSchema(
+                fields,
+                data.database.views.map((v) =>
+                  v.id === view.id ? { ...v, filters: [], filterGroup } : v,
+                ),
+                undefined,
+                version,
+              )
+            }
+          />
+        </Modal>
+      )}
+      <Modal
+        open={config}
+        onClose={() => setConfig(false)}
+        title="Ansicht konfigurieren"
+      >
+        <fieldset
+          className="schema-settings"
+          disabled={schemaBusy}
+          aria-busy={schemaBusy}
+        >
+          <label>
+            Name
+            <input
+              defaultValue={view.name}
+              disabled={!viewEditable}
+              onBlur={(e) =>
+                e.target.value &&
+                e.target.value !== view.name &&
+                updateView({ name: e.target.value })
+              }
+            />
+          </label>
+          {view.type === "feed" && (
+            <div className="settings-section">
+              <h3>Feed-Darstellung</h3>
+              <label>
+                Dokumentinhalt
+                <select
+                  aria-label="Feed-Dokumentinhalt"
+                  disabled={!viewEditable}
+                  value={(view.feed || defaultFeed).content}
+                  onChange={(e) =>
+                    updateView({
+                      feed: {
+                        ...(view.feed || defaultFeed),
+                        content: e.target.value as
+                          "full" | "compact" | "hidden",
+                      },
+                    })
+                  }
+                >
+                  <option value="full">Vollständig anzeigen</option>
+                  <option value="compact">Kompakte Textvorschau</option>
+                  <option value="hidden">Ausblenden</option>
+                </select>
+              </label>
+              {(
+                [
+                  ["showAuthor", "Verfasser anzeigen"],
+                  ["showDate", "Erstellungsdatum anzeigen"],
+                  ["showComments", "Kommentaranzahl anzeigen"],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    disabled={!viewEditable}
+                    checked={(view.feed || defaultFeed)[key]}
+                    onChange={(e) =>
+                      updateView({
+                        feed: {
+                          ...(view.feed || defaultFeed),
+                          [key]: e.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="settings-section">
+            <h3>Filter</h3>
+            <p className="muted">
+              {activeFilterCount
+                ? `${activeFilterCount} Bedingungen aktiv`
+                : "Keine Filter aktiv"}
+            </p>
+            <button
+              className="button compact"
+              onClick={() => {
+                setConfig(false);
+                setFilterOpen(true);
+              }}
+            >
+              Filter bearbeiten
+            </button>
+          </div>
+          <div className="settings-section">
+            <h3>Sortierung</h3>
+            {view.sorts.map((s, i) => (
+              <div className="filter-line" key={i}>
+                <select
+                  value={s.field}
+                  aria-label="Sortier-Eigenschaft"
+                  onChange={(e) =>
+                    updateView({
+                      sorts: view.sorts.map((x, j) =>
+                        j === i ? { ...x, field: e.target.value } : x,
+                      ),
+                    })
+                  }
+                >
+                  {fields.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={s.direction}
+                  aria-label="Sortierrichtung"
+                  onChange={(e) =>
+                    updateView({
+                      sorts: view.sorts.map((x, j) =>
+                        j === i
+                          ? {
+                              ...x,
+                              direction: e.target.value as "asc" | "desc",
+                            }
+                          : x,
+                      ),
+                    })
+                  }
+                >
+                  <option value="asc">Aufsteigend</option>
+                  <option value="desc">Absteigend</option>
+                </select>
+                <button
+                  className="icon-button"
+                  aria-label="Sortierung entfernen"
+                  onClick={() =>
+                    updateView({ sorts: view.sorts.filter((_, j) => i !== j) })
+                  }
+                >
+                  <Trash />
+                </button>
+              </div>
+            ))}
+            <button
+              className="button compact"
+              onClick={() =>
+                updateView({
+                  sorts: [
+                    ...view.sorts,
+                    { field: fields[0].id, direction: "asc" },
+                  ],
+                })
+              }
+            >
+              <Plus />
+              Sortierung hinzufügen
+            </button>
+          </div>
+          {view.type === "gallery" && (
+            <fieldset
+              disabled={!viewEditable || schemaBusy}
+              className="gallery-settings"
+            >
+              <legend>Galerie-Cover</legend>
+              <label>
+                Bildquelle
+                <select
+                  aria-label="Galerie-Bildquelle"
+                  value={
+                    galleryConfig.cover === "field"
+                      ? `field:${galleryConfig.fieldId}`
+                      : galleryConfig.cover
+                  }
+                  onChange={(event) =>
+                    updateView({
+                      gallery: {
+                        ...galleryConfig,
+                        cover: ["none", "document"].includes(event.target.value)
+                          ? (event.target.value as "none" | "document")
+                          : "field",
+                        fieldId: ["none", "document"].includes(
+                          event.target.value,
+                        )
+                          ? undefined
+                          : event.target.value.slice(6),
+                      },
+                    })
+                  }
+                >
+                  <option value="none">Keine Bilder</option>
+                  <option value="document">
+                    Erstes Bild im Eintragsinhalt
+                  </option>
+                  {fields
+                    .filter((field) => field.type === "files")
+                    .map((field) => (
+                      <option key={field.id} value={`field:${field.id}`}>
+                        {field.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Bilddarstellung
+                <select
+                  aria-label="Galerie-Bilddarstellung"
+                  value={galleryConfig.fit}
+                  onChange={(event) =>
+                    updateView({
+                      gallery: {
+                        ...galleryConfig,
+                        fit: event.target.value as "cover" | "contain",
+                      },
+                    })
+                  }
+                >
+                  <option value="cover">Fläche ausfüllen</option>
+                  <option value="contain">Ganzes Bild anzeigen</option>
+                </select>
+              </label>
+              <label>
+                Kartengröße
+                <select
+                  aria-label="Galerie-Kartengröße"
+                  value={galleryConfig.size}
+                  onChange={(event) =>
+                    updateView({
+                      gallery: {
+                        ...galleryConfig,
+                        size: event.target.value as
+                          "small" | "medium" | "large",
+                      },
+                    })
+                  }
+                >
+                  <option value="small">Klein</option>
+                  <option value="medium">Mittel</option>
+                  <option value="large">Groß</option>
+                </select>
+              </label>
+            </fieldset>
+          )}
+          <label>
+            Gruppieren nach
+            <select
+              aria-label="Gruppieren nach"
+              disabled={!viewEditable}
+              value={view.groupBy || ""}
+              onChange={(e) =>
+                updateView({
+                  groupBy: e.target.value,
+                  groupSettings: { ...groupSettings, collapsed: [] },
+                })
+              }
+            >
+              <option value="">
+                {view.type === "board" ? "Automatisch" : "Keine Gruppierung"}
+              </option>
+              {fields.filter(canGroupField).map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {groupField && ["table", "list", "board"].includes(view.type) && (
+            <div className="settings-section">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  disabled={!viewEditable}
+                  checked={groupSettings.hideEmpty}
+                  onChange={(e) =>
+                    updateView({
+                      groupSettings: {
+                        ...groupSettings,
+                        hideEmpty: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                Leere Gruppen ausblenden
+              </label>
+              <label>
+                Gruppen sortieren
+                <select
+                  aria-label="Gruppen sortieren"
+                  disabled={!viewEditable}
+                  value={groupSettings.sort}
+                  onChange={(e) =>
+                    updateView({
+                      groupSettings: {
+                        ...groupSettings,
+                        sort: e.target.value as "manual" | "asc" | "desc",
+                      },
+                    })
+                  }
+                >
+                  <option value="manual">Eigenschaftsreihenfolge</option>
+                  <option value="asc">Bezeichnung aufsteigend</option>
+                  <option value="desc">Bezeichnung absteigend</option>
+                </select>
+              </label>
+            </div>
+          )}
+          <label>
+            Datumsfeld
+            <select
+              value={view.dateField || ""}
+              onChange={(e) => updateView({ dateField: e.target.value })}
+            >
+              <option value="">Automatisch</option>
+              {fields
+                .filter((f) => f.type === "date")
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Enddatum
+            <select
+              value={view.endDateField || ""}
+              onChange={(e) => updateView({ endDateField: e.target.value })}
+            >
+              <option value="">Kein Enddatum</option>
+              {fields
+                .filter((f) => f.type === "date")
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <div className="settings-section">
+            <h3>Eigenschaften und Spalten</h3>
+            {orderedFields.map((f, index) => (
+              <div className="property-order" key={f.id}>
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    disabled={!viewEditable}
+                    checked={!view.hiddenFields?.includes(f.id)}
+                    onChange={(e) =>
+                      updateView({
+                        hiddenFields: e.target.checked
+                          ? (view.hiddenFields || []).filter((x) => x !== f.id)
+                          : [...(view.hiddenFields || []), f.id],
+                      })
+                    }
+                  />
+                  {f.name}
+                </label>
+                <button
+                  className="icon-button"
+                  aria-label={`${f.name} nach oben`}
+                  disabled={!viewEditable || index === 0}
+                  onClick={() => moveColumn(f.id, orderedFields[index - 1].id)}
+                >
+                  ↑
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label={`${f.name} nach unten`}
+                  disabled={!viewEditable || index === orderedFields.length - 1}
+                  onClick={() => moveColumn(orderedFields[index + 1].id, f.id)}
+                >
+                  ↓
+                </button>
+                {view.type === "table" && (
+                  <input
+                    type="number"
+                    className="column-width-input"
+                    aria-label={`${f.name} Breite in Pixeln`}
+                    min={80}
+                    max={800}
+                    disabled={!viewEditable}
+                    key={`${f.id}-${view.columnWidths?.[f.id]}`}
+                    defaultValue={columnWidth(f)}
+                    onBlur={(e) => {
+                      const width = Number(e.target.value);
+                      if (
+                        width >= 80 &&
+                        width <= 800 &&
+                        width !== columnWidth(f)
+                      )
+                        void updateView({
+                          columnWidths: {
+                            ...view.columnWidths,
+                            [f.id]: Math.round(width),
+                          },
+                        });
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          {viewEditable && data.database.views.length > 1 && (
+            <button
+              className="button danger"
+              onClick={async () => {
+                await updateSchema(
+                  fields,
+                  data.database.views.filter((v) => v.id !== view.id),
+                );
+                setConfig(false);
+              }}
+            >
+              Ansicht löschen
+            </button>
+          )}
+        </fieldset>
+      </Modal>
+      <Modal
+        open={bulk !== null}
+        onClose={() => {
+          if (!bulkBusy) setBulk(null);
+        }}
+        title={
+          bulk === "delete"
+            ? "Einträge löschen"
+            : "Einträge gemeinsam bearbeiten"
+        }
+      >
+        <p>
+          {selectionRows.length} ausgewählte Einträge. Vor der Änderung wird
+          eine Datenbankversion gesichert.
+        </p>
+        {bulk === "update" && (
+          <>
+            <label>
+              Eigenschaft
+              <select
+                aria-label="Eigenschaft"
+                value={bulkField}
+                onChange={(e) => {
+                  setBulkField(e.target.value);
+                  setBulkValue(undefined);
+                }}
+              >
+                {fields
+                  .filter((f) => !computedTypes.includes(f.type))
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            {fields.find((f) => f.id === bulkField) && (
+              <label>
+                Neuer Wert
+                <CellInput
+                  key={bulkField}
+                  field={fields.find((f) => f.id === bulkField)!}
+                  value={bulkValue}
+                  members={members}
+                  related={data.related}
+                  onChange={setBulkValue}
+                />
+              </label>
+            )}
+          </>
+        )}
+        <button
+          className={`button ${bulk === "delete" ? "danger" : "primary"}`}
+          disabled={bulkBusy || (bulk === "update" && bulkValue === undefined)}
+          onClick={(e) => {
+            const invalid = e.currentTarget
+              .closest('[role="dialog"]')
+              ?.querySelector<HTMLInputElement>("input:invalid");
+            if (invalid) {
+              invalid.reportValidity();
+              return;
+            }
+            void bulkAction(bulk === "delete" ? "delete" : "update");
+          }}
+        >
+          {bulkBusy
+            ? "Wird gespeichert …"
+            : bulk === "delete"
+              ? "Einträge löschen"
+              : "Änderung anwenden"}
+        </button>
+      </Modal>
+      <p role="status" className="sr-only">
+        {orderStatus}
+      </p>
+      <Modal
+        open={!!moveDialog}
+        onClose={() => setMoveDialog(null)}
+        title="Eintrag verschieben"
+      >
+        <p>
+          „
+          {moveRow
+            ? cellText(moveRow.cells[fields[0].id]) || "Ohne Titel"
+            : "Eintrag"}
+          “ in Ansicht „{view.name}“ anordnen.
+        </p>
+        <p className="muted">
+          Die Reihenfolge gilt für diese Ansicht. Ausgeblendete Einträge
+          behalten ihre relative Reihenfolge.
+        </p>
+        <div className="row-move-actions">
+          <button
+            className="button"
+            disabled={orderBusy || !moveRow || moveIndex <= 0}
+            onClick={() =>
+              moveRow &&
+              moveTo(
+                moveRow,
+                moveSiblings[0]?.id,
+                "before",
+                moveDialog?.groupKey,
+              )
+            }
+          >
+            An den Anfang
+          </button>
+          <button
+            className="button"
+            disabled={orderBusy || !moveRow || moveIndex <= 0}
+            onClick={() =>
+              moveRow &&
+              moveTo(
+                moveRow,
+                moveSiblings[moveIndex - 1]?.id,
+                "before",
+                moveDialog?.groupKey,
+              )
+            }
+          >
+            Nach oben
+          </button>
+          <button
+            className="button"
+            disabled={
+              orderBusy ||
+              !moveRow ||
+              moveIndex < 0 ||
+              moveIndex === moveSiblings.length - 1
+            }
+            onClick={() =>
+              moveRow &&
+              moveTo(
+                moveRow,
+                moveSiblings[moveIndex + 1]?.id,
+                "after",
+                moveDialog?.groupKey,
+              )
+            }
+          >
+            Nach unten
+          </button>
+          <button
+            className="button"
+            disabled={
+              orderBusy ||
+              !moveRow ||
+              moveIndex < 0 ||
+              moveIndex === moveSiblings.length - 1
+            }
+            onClick={() =>
+              moveRow &&
+              moveTo(
+                moveRow,
+                moveSiblings.at(-1)?.id,
+                "after",
+                moveDialog?.groupKey,
+              )
+            }
+          >
+            Ans Ende
+          </button>
+        </div>
+        <label>
+          Position
+          <select
+            aria-label="Verschiebeposition"
+            value={movePlacement}
+            onChange={(e) =>
+              setMovePlacement(e.target.value as "before" | "after")
+            }
+          >
+            <option value="before">Vor dem Eintrag</option>
+            <option value="after">Nach dem Eintrag</option>
+          </select>
+        </label>
+        <label>
+          Bezugseintrag
+          <select
+            aria-label="Bezugseintrag"
+            value={moveTarget}
+            onChange={(e) => setMoveTarget(e.target.value)}
+          >
+            <option value="">Eintrag auswählen …</option>
+            {moveSiblings
+              .filter((r) => r.id !== moveRow?.id)
+              .map((r) => (
+                <option key={r.id} value={r.id}>
+                  {cellText(r.cells[fields[0].id]) || "Ohne Titel"}
+                </option>
+              ))}
+          </select>
+        </label>
+        <div className="modal-actions">
+          <button
+            className="button primary"
+            disabled={orderBusy || !moveRow || !moveTarget}
+            onClick={() =>
+              moveRow &&
+              moveTo(moveRow, moveTarget, movePlacement, moveDialog?.groupKey)
+            }
+          >
+            Hierhin verschieben
+          </button>
+        </div>
+      </Modal>
+      <Modal
+        open={!!sortMove}
+        onClose={() => setSortMove(null)}
+        title="Sortierung aufheben?"
+      >
+        <p>
+          Diese Ansicht wird automatisch sortiert. Zum manuellen Verschieben
+          werden ihre Sortierregeln aufgehoben. Die bisherige Sortierung wird
+          als Ausgangsreihenfolge gespeichert.
+        </p>
+        <div className="modal-actions">
+          <button
+            className="button"
+            disabled={orderBusy}
+            onClick={() => setSortMove(null)}
+          >
+            Abbrechen
+          </button>
+          <button
+            className="button primary"
+            disabled={orderBusy}
+            onClick={() => sortMove && submitMove(sortMove, true)}
+          >
+            Sortierung aufheben und verschieben
+          </button>
+        </div>
+      </Modal>
+      <Modal
+        open={newField}
+        onClose={() => setNewField(false)}
+        title={
+          fields.some((f) => f.id === fieldDraft.id)
+            ? "Eigenschaft bearbeiten"
+            : "Eigenschaft hinzufügen"
+        }
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (
+              !editable ||
+              !allowFieldChanges ||
+              schemaBusy ||
+              (relationChanged && !relationReady)
+            )
+              return;
+            if (formulaProblem || formulaTooLong) {
+              setFieldError(
+                formulaProblem?.message ||
+                  "Die Formel enthält zu viele Eigenschaftsbezüge.",
+              );
+              return;
+            }
+            setFieldError("");
+            const {
+              bidirectional: _bidirectional,
+              inverseName: _inverseName,
+              ...draft
+            } = fieldDraft;
+            if (draft.type === "formula")
+              draft.formula = rewriteFormulaReferences(
+                draft.formula || "",
+                formulaFields,
+                "store",
+              );
+            const next = fields.some((f) => f.id === fieldDraft.id)
+              ? fields.map((f) => (f.id === fieldDraft.id ? draft : f))
+              : [...fields, draft];
+            const r = await updateSchema(
+              next,
+              undefined,
+              relationChanged
+                ? {
+                    fieldId: draft.id,
+                    enabled: bidirectional,
+                    name:
+                      fieldDraft.inverseName?.trim() ||
+                      page.title.slice(0, 100),
+                    targetVersion: relationTarget?.version,
+                  }
+                : undefined,
+              fieldVersion,
+            );
+            if (r) setNewField(false);
+            else
+              setFieldError(
+                "Die Eigenschaft konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.",
+              );
+          }}
+        >
+          <label>
+            Name
+            <input
+              required
+              autoFocus
+              aria-label="Eigenschaftsname"
+              value={fieldDraft.name}
+              disabled={!editable || !allowFieldChanges || schemaBusy}
+              onChange={(e) =>
+                setFieldDraft((f) => ({ ...f, name: e.target.value }))
+              }
+            />
+          </label>
+          <label>
+            Typ
+            <select
+              aria-label="Eigenschaftstyp"
+              value={fieldDraft.type}
+              disabled={
+                !editable || !allowFieldChanges || schemaBusy || !!relationPair
+              }
+              onChange={(e) =>
+                setFieldDraft((f) => ({
+                  ...f,
+                  type: e.target.value as FieldType,
+                }))
+              }
+            >
+              {Object.entries(fieldNames).map(([k, n]) => (
+                <option key={k} value={k}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          {["select", "multiselect"].includes(fieldDraft.type) && (
+            <label>
+              Optionen, durch Komma getrennt
+              <input
+                value={fieldDraft.options?.join(", ") || ""}
+                onChange={(e) =>
+                  setFieldDraft((f) => ({
+                    ...f,
+                    options: e.target.value.split(",").map((s) => s.trim()),
+                  }))
+                }
+              />
+            </label>
+          )}
+          {fieldDraft.type === "number" && (
+            <label>
+              Format
+              <select
+                value={fieldDraft.format || ""}
+                onChange={(e) =>
+                  setFieldDraft((f) => ({ ...f, format: e.target.value }))
+                }
+              >
+                <option value="">Zahl</option>
+                <option value="percent">Prozent</option>
+                <option value="eur">Euro</option>
+              </select>
+            </label>
+          )}
+          {fieldDraft.type === "formula" && (
+            <FormulaEditor
+              field={fieldDraft}
+              fields={fields}
+              rows={data.rows}
+              related={data.related}
+              schemas={data.relatedSchemas || {}}
+              disabled={!editable || !allowFieldChanges || schemaBusy}
+              onChange={(formula) => setFieldDraft((f) => ({ ...f, formula }))}
+            />
+          )}
+          {fieldDraft.type === "relation" && (
+            <>
+              <label>
+                Verknüpfte Datenbank
+                <select
+                  aria-label="Verknüpfte Datenbank"
+                  required
+                  value={fieldDraft.relationPage || ""}
+                  disabled={!editable || !allowFieldChanges || !!relationPair}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      relationPage: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Auswählen …</option>
+                  {pages
+                    .filter((p) => p.kind === "database" && !p.deleted_at)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={bidirectional}
+                  disabled={
+                    !editable || !allowFieldChanges || !fieldDraft.relationPage
+                  }
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      bidirectional: e.target.checked,
+                    }))
+                  }
+                />
+                Bidirektional verknüpfen
+              </label>
+              {bidirectional && !relationPair && (
+                <label>
+                  Name der Rückrelation
+                  <input
+                    aria-label="Name der Rückrelation"
+                    maxLength={100}
+                    value={fieldDraft.inverseName ?? page.title.slice(0, 100)}
+                    onChange={(e) =>
+                      setFieldDraft((f) => ({
+                        ...f,
+                        inverseName: e.target.value,
+                      }))
+                    }
+                  />
+                  <small>
+                    Eine neue Eigenschaft in der Zieldatenbank zeigt die
+                    zugehörigen Einträge. Änderungen werden in beide Richtungen
+                    übernommen.
+                  </small>
+                </label>
+              )}
+              {relationPair && (
+                <p className="muted">
+                  Verknüpft mit „{inverseName || "Rückrelation"}“. Beim
+                  Deaktivieren oder Löschen bleiben die andere Eigenschaft und
+                  ihre Werte erhalten. Zum Ändern des Typs oder Ziels zuerst
+                  deaktivieren und speichern.
+                </p>
+              )}
+              {relationChanged && (
+                <p role="status" className="muted">
+                  {relationTarget?.error ||
+                    (!relationReady
+                      ? "Berechtigungen werden geprüft …"
+                      : "Bearbeitungsrechte für beide Datenbanken vorhanden.")}
+                </p>
+              )}
+            </>
+          )}
+          {fieldDraft.type === "rollup" && (
+            <>
+              <label>
+                Relation
+                <select
+                  aria-label="Rollup-Relation"
+                  required
+                  value={fieldDraft.relationField || ""}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      relationField: e.target.value,
+                      rollupField: "",
+                      aggregate: "count",
+                    }))
+                  }
+                >
+                  <option value="">Auswählen …</option>
+                  {fields
+                    .filter((f) => f.type === "relation")
+                    .map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Eigenschaft
+                <select
+                  aria-label="Rollup-Eigenschaft"
+                  value={fieldDraft.rollupField || ""}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      rollupField: e.target.value,
+                      aggregate: "count",
+                    }))
+                  }
+                >
+                  <option value="">Nur verknüpfte Einträge zählen</option>
+                  {rollupFields.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} · {fieldNames[f.type]}
+                    </option>
+                  ))}
+                </select>
+                {rollupRelation && !rollupFields.length && (
+                  <small>Die verknüpfte Datenbank ist nicht zugänglich.</small>
+                )}
+              </label>
+              <label>
+                Berechnung
+                <select
+                  aria-label="Rollup-Berechnung"
+                  value={fieldDraft.aggregate || "count"}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      aggregate: e.target.value as Field["aggregate"],
+                      rollupDisplay: "number",
+                    }))
+                  }
+                >
+                  {allowedAggregates(rollupProperty).map((a) => (
+                    <option key={a} value={a}>
+                      {aggregateNames[a]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {![
+                "show_original",
+                "show_unique",
+                "earliest_date",
+                "latest_date",
+              ].includes(fieldDraft.aggregate || "count") && (
+                <>
+                  <label>
+                    Darstellung
+                    <select
+                      aria-label="Rollup-Darstellung"
+                      value={fieldDraft.rollupDisplay || "number"}
+                      onChange={(e) =>
+                        setFieldDraft((f) => ({
+                          ...f,
+                          rollupDisplay: e.target
+                            .value as Field["rollupDisplay"],
+                        }))
+                      }
+                    >
+                      <option value="number">Zahl</option>
+                      <option value="bar">Fortschrittsbalken</option>
+                      <option value="ring">Fortschrittsring</option>
+                    </select>
+                  </label>
+                  {fieldDraft.rollupDisplay &&
+                    fieldDraft.rollupDisplay !== "number" &&
+                    !percentAggregate(fieldDraft.aggregate) && (
+                      <label>
+                        Zielwert
+                        <input
+                          aria-label="Rollup-Zielwert"
+                          type="number"
+                          min="0.000001"
+                          step="any"
+                          required
+                          value={fieldDraft.rollupMax || 100}
+                          onChange={(e) =>
+                            setFieldDraft((f) => ({
+                              ...f,
+                              rollupMax: Number(e.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                    )}
+                </>
+              )}
+            </>
+          )}
+          {(fieldError || fieldVersion !== data.database.version) && (
+            <p role="alert" className="error">
+              {fieldVersion !== data.database.version
+                ? "Die Datenbank wurde zwischenzeitlich geändert. Dein Entwurf bleibt erhalten. Schließe den Dialog und öffne die Eigenschaft erneut, um den aktuellen Stand zu bearbeiten."
+                : fieldError}
+            </p>
+          )}
+          {editable && allowFieldChanges && (
+            <div className="modal-actions">
+              {fields.some((f) => f.id === fieldDraft.id) &&
+                fields[0].id !== fieldDraft.id && (
+                  <button
+                    type="button"
+                    className="button danger"
+                    disabled={schemaBusy}
+                    onClick={async () => {
+                      const result = await updateSchema(
+                        fields.filter((f) => f.id !== fieldDraft.id),
+                        undefined,
+                        undefined,
+                        fieldVersion,
+                      );
+                      if (result) setNewField(false);
+                      else
+                        setFieldError(
+                          "Die Eigenschaft konnte nicht gelöscht werden. Dein Entwurf bleibt erhalten.",
+                        );
+                    }}
+                  >
+                    Löschen
+                  </button>
+                )}
+              <button
+                className="button primary"
+                disabled={
+                  schemaBusy ||
+                  (relationChanged && !relationReady) ||
+                  !!formulaProblem ||
+                  formulaTooLong
+                }
+              >
+                Speichern
+              </button>
+            </div>
+          )}
+        </form>
+      </Modal>
+      {calculationEdit && (
+        <CalculationEditor
+          field={calculationEdit.field}
+          initial={calculationEdit.choice}
+          rows={shown}
+          version={calculationEdit.version}
+          currentVersion={data.database.version}
+          editable={viewEditable}
+          onClose={() => setCalculationEdit(null)}
+          onSave={async (choice) => {
+            if (!viewEditable || schemaBusy) return null;
+            const target = data.database.views.find(
+              (v) => v.id === calculationEdit.viewId,
+            );
+            if (!target)
+              throw new Error("Diese Ansicht ist nicht mehr verfügbar.");
+            const calculations = {
+              ...target.calculations,
+              ...(choice === undefined
+                ? {}
+                : { [calculationEdit.field.id]: choice }),
+            };
+            if (choice === undefined)
+              delete calculations[calculationEdit.field.id];
+            return updateSchema(
+              fields,
+              data.database.views.map((v) =>
+                v.id === target.id ? { ...v, calculations } : v,
+              ),
+              undefined,
+              calculationEdit.version,
+            );
+          }}
+        />
+      )}
+      <Modal
+        open={newView}
+        onClose={() => setNewView(false)}
+        title="Ansicht hinzufügen"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const vid = crypto.randomUUID();
+            const r = await updateSchema(fields, [
+              ...data.database.views,
+              {
+                id: vid,
+                name: viewName,
+                type: viewType,
+                filters: [],
+                sorts: [],
+              },
+            ]);
+            if (r) {
+              setViewId(vid);
+              setNewView(false);
+            }
+          }}
+        >
+          <label>
+            Name
+            <input
+              required
+              autoFocus
+              value={viewName}
+              onChange={(e) => setViewName(e.target.value)}
+            />
+          </label>
+          <label>
+            Darstellung
+            <select
+              value={viewType}
+              onChange={(e) => setViewType(e.target.value as View["type"])}
+            >
+              {Object.keys(viewIcons).map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="button primary">Ansicht erstellen</button>
+        </form>
+      </Modal>
+      <Modal
+        open={manageTemplates}
+        onClose={() => setManageTemplates(false)}
+        title="Datensatzvorlagen"
+      >
+        <p className="muted">
+          Speichere einen Eintrag mit seinen Eigenschaften und Inhalten als
+          Vorlage.
+        </p>
+        <button
+          className="button"
+          onClick={() => {
+            setManageTemplates(false);
+            void createRow({}, true, null);
+          }}
+        >
+          Leeren Eintrag erstellen
+        </button>
+        {data.rowTemplates?.map((t) => (
+          <div className="row-template-item" key={t.id}>
+            <strong>{t.name}</strong>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={!!t.is_default}
+                onChange={(e) =>
+                  act({
+                    action: "row.template.default",
+                    templateId: t.id,
+                    enabled: e.target.checked,
+                  })
+                }
+              />
+              Standardvorlage
+            </label>
+            <div>
+              <button
+                className="button compact"
+                onClick={() => {
+                  setManageTemplates(false);
+                  void createRow({}, true, t.id);
+                }}
+              >
+                Verwenden
+              </button>
+              <button
+                className="icon-button danger"
+                title={`Vorlage ${t.name} löschen`}
+                onClick={() =>
+                  act({ action: "row.template.delete", templateId: t.id })
+                }
+              >
+                <Trash />
+              </button>
+            </div>
+          </div>
+        ))}
+      </Modal>
+      <Modal
+        open={!!selected}
+        onClose={() => setRowId(null)}
+        title="Eintrag"
+        wide
+      >
+        {selected && (
+          <div className="row-detail">
+            <h2>{cellText(selected.cells[fields[0].id]) || "Ohne Titel"}</h2>
+            {fields.map((f) => (
+              <label className="row-property" key={`${selected.id}-${f.id}`}>
+                <span>{f.name}</span>
+                {computedTypes.includes(f.type) ? (
+                  <span>
+                    {display(
+                      {
+                        ...selected,
+                        cells: computedCells(
+                          selected,
+                          fields,
+                          data.related,
+                          data.relatedSchemas,
+                        ),
+                      },
+                      f,
+                    )}
+                  </span>
+                ) : (
+                  <CellInput
+                    field={f}
+                    value={selected.cells[f.id]}
+                    members={members}
+                    related={data.related}
+                    disabled={!editable}
+                    onChange={(v) => updateCell(selected, f, v)}
+                  />
+                )}
+              </label>
+            ))}
+            <RowDocument
+              key={selected.id}
+              pageId={page.id}
+              rowId={selected.id}
+              userId={userId}
+              pages={pages}
+              members={members}
+              editable={editable}
+              onError={onError}
+              onChanged={onRefresh}
+            />
+            <div className="settings-section">
+              <h3>Kommentare</h3>
+              {data.comments
+                .filter((c) => c.row_id === selected.id)
+                .map((c) => (
+                  <div className="comment" key={c.id}>
+                    <Avatar name={c.name} small />
+                    <div>
+                      <strong>{c.name}</strong>
+                      <p>{c.body}</p>
+                    </div>
+                  </div>
+                ))}
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (comment.trim()) {
+                    await act({
+                      action: "comment.create",
+                      rowId: selected.id,
+                      body: comment,
+                    });
+                    setComment("");
+                  }
+                }}
+              >
+                <input
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Kommentar schreiben …"
+                />
+                <button className="button compact">Senden</button>
+              </form>
+            </div>
+            {editable && (
+              <button
+                className="button danger"
+                onClick={async () => {
+                  await act({ action: "row.delete", rowId: selected.id });
+                  setRowId(null);
+                }}
+              >
+                <Trash />
+                Eintrag löschen
+              </button>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+function tagColor(s: string) {
+  if (["Erledigt", "Niedrig"].includes(s)) return "green";
+  if (["In Arbeit", "Design"].includes(s)) return "blue";
+  if (["Hoch"].includes(s)) return "red";
+  if (["Mittel", "Produkt"].includes(s)) return "yellow";
+  return "gray";
+}

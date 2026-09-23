@@ -1,0 +1,648 @@
+"use client";
+import { SpaceIcon } from "./space-appearance";
+import PushSettings from "./push-settings";
+import { WorkspaceLifecycle } from "./workspace-lifecycle";
+import { SpaceManager } from "./space-manager";
+import { useEffect, useState } from "react";
+import {
+  GearSix,
+  Users,
+  DownloadSimple,
+  ShieldCheck,
+  Plus,
+  Sun,
+  Moon,
+  Globe,
+  Lock,
+  UploadSimple,
+} from "@phosphor-icons/react";
+import { api, Avatar, download, Modal } from "./ui";
+import type { Bootstrap, Space } from "@/lib/types";
+type SettingsData = {
+  invites: { id: string; email: string; role: string }[];
+  groups: { id: string; name: string }[];
+  groupMembers: { group_id: string; user_id: string }[];
+  grants: {
+    resource_id: string;
+    user_id: string;
+    group_id: string;
+    role: string;
+  }[];
+};
+export default function Settings({
+  boot,
+  mutate,
+  onError,
+  dark,
+  setDark,
+  onRefresh,
+  onWorkspaceExit,
+}: {
+  boot: Bootstrap;
+  mutate: (b: Record<string, unknown>) => Promise<unknown>;
+  onError: (s: string) => void;
+  onRefresh: () => Promise<unknown>;
+  onWorkspaceExit: (id: string | null) => Promise<unknown> | void;
+  dark: boolean;
+  setDark: (b: boolean) => void;
+}) {
+  const [tab, setTab] = useState("general"),
+    [email, setEmail] = useState(""),
+    [role, setRole] = useState("editor"),
+    [name, setName] = useState(boot.workspace.name),
+    [groupName, setGroupName] = useState(""),
+    [settings, setSettings] = useState<SettingsData | null>(null),
+    [groupId, setGroupId] = useState<string | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [editingSpace, setEditingSpace] = useState<Space | null>(null);
+  const owner = boot.workspace.role === "owner";
+  async function load() {
+    if (owner)
+      setSettings(await api(`/api/settings?workspace=${boot.workspace.id}`));
+  }
+  useEffect(() => {
+    void load().catch((e) => onError(e.message));
+  }, [boot.workspace.id]);
+  async function act(b: Record<string, unknown>) {
+    try {
+      await mutate({ workspaceId: boot.workspace.id, ...b });
+      await load();
+      return true;
+    } catch (e) {
+      onError((e as Error).message);
+      return false;
+    }
+  }
+  return (
+    <div className="utility-content settings-page">
+      <div className="utility-title">
+        <GearSix size={30} />
+        <h1>Einstellungen</h1>
+        <p>Dein Arbeitsbereich, so wie du ihn brauchst.</p>
+      </div>
+      <div className="settings-tabs">
+        {[
+          ["general", "Allgemein"],
+          ["spaces", "Bereiche"],
+          ["members", "Mitglieder"],
+          ["groups", "Gruppen & Rechte"],
+          ["data", "Daten"],
+          ["notifications", "Benachrichtigungen"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            className={tab === id ? "selected" : ""}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "notifications" && <PushSettings />}
+      {tab === "spaces" && (
+        <section className="settings-section">
+          <h2>Bereiche verwalten</h2>
+          <p>
+            Bereichseigentümer verwalten ihre eigenen Bereiche.
+            Arbeitsbereichseigentümer können alle Bereiche verwalten; private
+            Seiten bleiben an ihre Leserechte gebunden.
+          </p>
+          {(boot.managedSpaces || []).map((space) => (
+            <div className="utility-row" key={space.id}>
+              <SpaceIcon icon={space.icon} color={space.icon_color} />
+              {space.visibility === "private" && (
+                <Lock aria-label="Privater Bereich" />
+              )}
+              <strong>{space.name}</strong>
+              <button
+                className="button compact"
+                onClick={() => setEditingSpace(space)}
+              >
+                Verwalten
+              </button>
+            </div>
+          ))}
+          {!boot.managedSpaces?.length && (
+            <p className="muted">
+              Keine Bereiche mit Verwaltungsrechten vorhanden.
+            </p>
+          )}
+        </section>
+      )}
+      {editingSpace && (
+        <SpaceManager
+          space={editingSpace}
+          onClose={() => setEditingSpace(null)}
+          onDone={async () => {
+            await onRefresh();
+            await load();
+          }}
+        />
+      )}
+      {tab === "general" && (
+        <>
+          <section className="settings-section">
+            <h2>Arbeitsbereich</h2>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (await act({ action: "workspace.update", name }))
+                  onError("Arbeitsbereich gespeichert");
+              }}
+            >
+              <label>
+                Name
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={!owner}
+                />
+              </label>
+              {owner && (
+                <button className="button primary compact">
+                  Änderungen speichern
+                </button>
+              )}
+            </form>
+          </section>
+          <WorkspaceLifecycle
+            key={boot.workspace.id}
+            boot={boot}
+            onExit={onWorkspaceExit}
+          />
+          <section className="settings-section">
+            <h2>Erscheinungsbild</h2>
+            <div className="theme-options">
+              <button
+                className={!dark ? "selected" : ""}
+                onClick={() => setDark(false)}
+              >
+                <Sun size={25} />
+                Hell
+              </button>
+              <button
+                className={dark ? "selected" : ""}
+                onClick={() => setDark(true)}
+              >
+                <Moon size={25} />
+                Dunkel
+              </button>
+            </div>
+          </section>
+          <section className="settings-section">
+            <h2>Dein Profil</h2>
+            <div className="member-row">
+              <Avatar name={boot.user.name} />
+              <span>
+                {boot.user.name}
+                <small>{boot.user.email}</small>
+              </span>
+              <span className="tag tag-blue">SSO</span>
+            </div>
+            <p className="muted">
+              Name und E-Mail werden von deinem Identitätsanbieter übernommen.
+            </p>
+          </section>
+          <section className="settings-section">
+            <h2>Tastenkürzel</h2>
+            <div className="shortcut">
+              <span>Seiten suchen</span>
+              <kbd>⌘ / Ctrl + K</kbd>
+            </div>
+            <div className="shortcut">
+              <span>Neue Seite</span>
+              <kbd>⌘ / Ctrl + N</kbd>
+            </div>
+            <div className="shortcut">
+              <span>Editor-Befehle</span>
+              <kbd>/</kbd>
+            </div>
+            <div className="shortcut">
+              <span>Fett / Kursiv</span>
+              <kbd>⌘ / Ctrl + B / I</kbd>
+            </div>
+          </section>
+        </>
+      )}
+      {tab === "members" && (
+        <>
+          <section className="settings-section">
+            <h2>Mitglieder · {boot.members.length}</h2>
+            {boot.members.map((m) => (
+              <div className="member-row" key={m.id}>
+                <Avatar name={m.name} />
+                <span>
+                  {m.name}
+                  <small>{m.email}</small>
+                </span>
+                {owner ? (
+                  <select
+                    aria-label={`Rolle für ${m.name}`}
+                    value={m.role}
+                    onChange={(e) =>
+                      act({
+                        action: "member.role",
+                        userId: m.id,
+                        role: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="owner">Eigentümer</option>
+                    <option value="editor">Bearbeiten</option>
+                    <option value="viewer">Ansehen</option>
+                    <option value="remove">Entfernen</option>
+                  </select>
+                ) : (
+                  <span className="tag">{m.role}</span>
+                )}
+              </div>
+            ))}
+          </section>
+          {owner && (
+            <section className="settings-section">
+              <h2>Mitglied einladen</h2>
+              <p className="muted">
+                Die Freigabe wird bei der nächsten SSO-Anmeldung mit bestätigter
+                E-Mail automatisch zugeordnet.
+              </p>
+              <form
+                className="invite-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (await act({ action: "member.invite", email, role }))
+                    setEmail("");
+                }}
+              >
+                <input
+                  required
+                  type="email"
+                  placeholder="name@unternehmen.de"
+                  aria-label="E-Mail des neuen Mitglieds"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <select
+                  value={role}
+                  aria-label="Rolle"
+                  onChange={(e) => setRole(e.target.value)}
+                >
+                  <option value="editor">Bearbeiten</option>
+                  <option value="viewer">Ansehen</option>
+                </select>
+                <button className="button primary">
+                  <Plus />
+                  Freigeben
+                </button>
+              </form>
+              {settings?.invites.map((i) => (
+                <div className="utility-row" key={i.id}>
+                  <span>{i.email}</span>
+                  <span className="tag tag-yellow">Ausstehend</span>
+                </div>
+              ))}
+            </section>
+          )}
+        </>
+      )}
+      {tab === "groups" &&
+        (owner ? (
+          <>
+            <section className="settings-section">
+              <h2>Gruppen</h2>
+              <p className="muted">
+                Fasse Mitglieder zusammen und vergebe gemeinsame Rechte für
+                Bereiche.
+              </p>
+              <form
+                className="invite-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (await act({ action: "group.create", name: groupName }))
+                    setGroupName("");
+                }}
+              >
+                <input
+                  required
+                  value={groupName}
+                  aria-label="Gruppenname"
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Neue Gruppe"
+                />
+                <button className="button primary">
+                  <Plus />
+                  Erstellen
+                </button>
+              </form>
+              {settings?.groups.map((g) => (
+                <div className="utility-row" key={g.id}>
+                  <Users />
+                  <strong>{g.name}</strong>
+                  <span>
+                    {
+                      settings.groupMembers.filter((m) => m.group_id === g.id)
+                        .length
+                    }{" "}
+                    Mitglieder
+                  </span>
+                  <button
+                    className="button compact"
+                    onClick={() => setGroupId(g.id)}
+                  >
+                    Verwalten
+                  </button>
+                </div>
+              ))}
+            </section>
+            <section className="settings-section">
+              <h2>Bereiche & Zugriffsrechte</h2>
+              {(boot.managedSpaces || boot.spaces).map((s) => (
+                <div className="space-settings" key={s.id}>
+                  <div className="utility-row">
+                    {s.visibility === "private" ? <Lock /> : <Globe />}
+                    <strong>{s.name}</strong>
+                    <select
+                      aria-label={`Sichtbarkeit ${s.name}`}
+                      value={s.visibility}
+                      onChange={(e) =>
+                        act({
+                          action: "space.update",
+                          spaceId: s.id,
+                          name: s.name,
+                          version: s.version,
+                          private: e.target.value === "private",
+                        })
+                      }
+                    >
+                      <option value="team">Gesamtes Team</option>
+                      <option value="private">Nur Berechtigte</option>
+                    </select>
+                  </div>
+                  {settings?.groups.map((g) => (
+                    <div className="permission-row" key={g.id}>
+                      <Users size={16} />
+                      <span>{g.name}</span>
+                      <select
+                        aria-label={`Rechte ${g.name} in ${s.name}`}
+                        value={
+                          settings.grants.find(
+                            (x) =>
+                              x.resource_id === s.id && x.group_id === g.id,
+                          )?.role || "remove"
+                        }
+                        onChange={(e) =>
+                          act({
+                            action: "grant.set",
+                            resourceId: s.id,
+                            groupId: g.id,
+                            role: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="remove">
+                          Keine zusätzlichen Rechte
+                        </option>
+                        <option value="viewer">Ansehen</option>
+                        <option value="editor">Bearbeiten</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </section>
+          </>
+        ) : (
+          <div className="empty-state">
+            <ShieldCheck size={36} />
+            <h3>Nur für Eigentümer</h3>
+            <p>
+              Gruppen und Berechtigungen verwaltet ein Eigentümer des
+              Arbeitsbereichs.
+            </p>
+          </div>
+        ))}
+      {tab === "data" && (
+        <>
+          <section className="settings-section">
+            <h2>Arbeitsbereich exportieren</h2>
+            <p>
+              Das ZIP-Inhaltsarchiv enthält zugängliche Seiten einschließlich
+              Papierkorb, Datenbanken, interne Verknüpfungen, Seiten- und
+              Datensatzvorlagen, Kommentare, Versionen, Favoriten und
+              hochgeladene Dateien.
+            </p>
+            <div className="archive-actions">
+              <button
+                className="button primary"
+                disabled={archiveBusy}
+                onClick={async () => {
+                  setArchiveBusy(true);
+                  try {
+                    const response = await fetch(
+                      `/api/backup?workspace=${boot.workspace.id}`,
+                    );
+                    if (!response.ok)
+                      throw new Error((await response.json()).error);
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob),
+                      link = document.createElement("a");
+                    link.href = url;
+                    link.download = `flowplan-${new Date().toISOString().slice(0, 10)}.zip`;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 10000);
+                  } catch (e) {
+                    onError((e as Error).message);
+                  } finally {
+                    setArchiveBusy(false);
+                  }
+                }}
+              >
+                <DownloadSimple />
+                {archiveBusy
+                  ? "Archiv wird verarbeitet …"
+                  : "ZIP mit Dateien exportieren"}
+              </button>
+              <button
+                className="button"
+                onClick={async () => {
+                  try {
+                    const data = await api(
+                      `/api/export?workspace=${boot.workspace.id}`,
+                    );
+                    download(
+                      "flowplan-export.json",
+                      JSON.stringify(data, null, 2),
+                      "application/json",
+                    );
+                  } catch (e) {
+                    onError((e as Error).message);
+                  }
+                }}
+              >
+                <DownloadSimple />
+                JSON ohne Dateien exportieren
+              </button>
+            </div>
+          </section>
+          <section className="settings-section">
+            <h2>Markdown oder Text importieren</h2>
+            <p>
+              Jede Datei wird als neue Seite in deinem Arbeitsbereich angelegt.
+            </p>
+            <label className="button file-label">
+              <UploadSimple />
+              Dateien auswählen
+              <input
+                type="file"
+                accept=".md,.txt,.html"
+                multiple
+                hidden
+                disabled={boot.workspace.role === "viewer"}
+                onChange={async (e) => {
+                  for (const file of Array.from(e.target.files || [])) {
+                    if (file.size > 2_000_000) {
+                      onError("Datei zu groß (max. 2 MB)");
+                      continue;
+                    }
+                    try {
+                      await mutate({
+                        action: "page.import",
+                        workspaceId: boot.workspace.id,
+                        spaceId: boot.spaces[0].id,
+                        title: file.name.replace(/\.[^.]+$/, ""),
+                        content: await file.text(),
+                        format: file.name.endsWith(".html")
+                          ? "html"
+                          : file.name.endsWith(".md")
+                            ? "markdown"
+                            : "text",
+                      });
+                    } catch (err) {
+                      onError((err as Error).message);
+                    }
+                  }
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </section>
+          <section className="settings-section">
+            <h2>Flowplan-Backup importieren</h2>
+            <p>
+              ZIP-Archive werden als Kopien in neuen privaten Bereichen
+              wiederhergestellt. Alte Freigaben und Anmeldedaten werden nicht
+              aktiviert. Maximal 100 MB ZIP / 250 MB entpackt. JSON-Dateien
+              bleiben als älteres Importformat verfügbar.
+            </p>
+            <label className="button file-label">
+              <UploadSimple />
+              {archiveBusy
+                ? "Archiv wird verarbeitet …"
+                : "ZIP-Archiv auswählen"}
+              <input
+                type="file"
+                accept=".zip"
+                hidden
+                disabled={archiveBusy || boot.workspace.role === "viewer"}
+                onChange={async (e) => {
+                  const input = e.currentTarget,
+                    file = input.files?.[0];
+                  if (!file) return;
+                  setArchiveBusy(true);
+                  try {
+                    if (file.size > 100 * 1024 * 1024)
+                      throw new Error("ZIP darf maximal 100 MB groß sein.");
+                    const r = await fetch(
+                      `/api/backup?workspace=${boot.workspace.id}`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/zip" },
+                        body: file,
+                      },
+                    );
+                    const result = await r.json();
+                    if (!r.ok) throw new Error(result.error);
+                    await onRefresh();
+                    onError(
+                      `${result.pages} ${result.pages === 1 ? "Seite" : "Seiten"} und ${result.files} ${result.files === 1 ? "Datei" : "Dateien"} importiert.${result.omittedRelations ? ` ${result.omittedRelations} Verknüpfungen zu nicht enthaltenen Einträgen konnten nicht übernommen werden.` : ""}`,
+                    );
+                  } catch (e) {
+                    onError((e as Error).message);
+                  } finally {
+                    setArchiveBusy(false);
+                    input.value = "";
+                  }
+                }}
+              />
+            </label>
+            <label className="button file-label">
+              <UploadSimple />
+              JSON-Backup auswählen
+              <input
+                type="file"
+                accept=".json"
+                hidden
+                disabled={boot.workspace.role === "viewer"}
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    try {
+                      await mutate({
+                        action: "workspace.import",
+                        workspaceId: boot.workspace.id,
+                        spaceId: boot.spaces[0].id,
+                        backup: JSON.parse(await f.text()),
+                      });
+                      onError("Backup importiert");
+                    } catch (err) {
+                      onError((err as Error).message);
+                    }
+                  }
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </section>
+          <section className="settings-section">
+            <h2>Offline & Synchronisierung</h2>
+            <p>
+              Dokumente werden zusätzlich auf diesem Gerät gespeichert.
+              Textänderungen werden nach Wiederherstellung der Verbindung
+              zusammengeführt. Datenbankänderungen benötigen derzeit eine
+              Verbindung.
+            </p>
+          </section>
+        </>
+      )}
+      <Modal
+        open={!!groupId}
+        onClose={() => setGroupId(null)}
+        title={settings?.groups.find((g) => g.id === groupId)?.name || "Gruppe"}
+      >
+        {boot.members.map((m) => (
+          <label className="member-row checkbox-label" key={m.id}>
+            <input
+              type="checkbox"
+              checked={
+                !!settings?.groupMembers.some(
+                  (g) => g.group_id === groupId && g.user_id === m.id,
+                )
+              }
+              onChange={(e) =>
+                act({
+                  action: "group.member",
+                  groupId,
+                  userId: m.id,
+                  enabled: e.target.checked,
+                })
+              }
+            />
+            <Avatar name={m.name} />
+            <span>{m.name}</span>
+          </label>
+        ))}
+      </Modal>
+    </div>
+  );
+}

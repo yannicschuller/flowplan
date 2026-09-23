@@ -1,0 +1,237 @@
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+import { CellInput } from "./cell-input";
+import type { SharedComment } from "@/lib/shared-content";
+import type { Field } from "@/lib/types";
+const SharedEditor = dynamic(() => import("./shared-editor"), { ssr: false });
+type Content = {
+  pageId: string;
+  rowId?: string;
+  role: "viewer" | "commenter" | "editor";
+  locked: boolean;
+  title: string;
+  html: string;
+  version: string;
+  canEditContent: boolean;
+  fields: Field[];
+  cells: Record<string, unknown>;
+  comments: SharedComment[];
+};
+export function SharedInteractions({
+  token,
+  initial,
+}: {
+  token: string;
+  initial: Content;
+}) {
+  const router = useRouter();
+  const [data, setData] = useState(initial),
+    [editing, setEditing] = useState(false),
+    [title, setTitle] = useState(initial.title),
+    [html, setHtml] = useState(initial.html),
+    [cells, setCells] = useState(initial.cells),
+    [name, setName] = useState(""),
+    [body, setBody] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [status, setStatus] = useState("");
+  async function send(payload: Record<string, unknown>) {
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const response = await fetch(`/api/share/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          pageId: data.pageId,
+          rowId: data.rowId,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      setData(result);
+      return result as Content;
+    } catch (e) {
+      setError((e as Error).message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function startEdit() {
+    setBusy(true);
+    setError("");
+    try {
+      const query = new URLSearchParams({
+        pageId: data.pageId,
+        ...(data.rowId ? { rowId: data.rowId } : {}),
+      });
+      const response = await fetch(`/api/share/${token}?${query}`, {
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      setData(result);
+      setTitle(result.title);
+      setHtml(result.html);
+      setCells(result.cells);
+      setEditing(true);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="shared-interactions">
+      <p className="shared-permission">
+        Dein Link:{" "}
+        {data.role === "viewer"
+          ? "Lesen"
+          : data.role === "commenter"
+            ? "Lesen und kommentieren"
+            : "Lesen, kommentieren und bearbeiten"}
+        {data.locked && " · Seite gesperrt"}
+      </p>
+      {data.role === "editor" && !data.locked && !editing && (
+        <button className="button" disabled={busy} onClick={startEdit}>
+          Inhalt bearbeiten
+        </button>
+      )}
+      {editing && (
+        <div className="shared-edit-form">
+          {!data.rowId && (
+            <label>
+              Seitentitel
+              <input
+                aria-label="Seitentitel"
+                maxLength={500}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+          )}
+          {data.fields
+            .filter((f) => !["created_at", "updated_at"].includes(f.type))
+            .map((f) => (
+              <label key={f.id}>
+                {f.name}
+                <CellInput
+                  field={f}
+                  value={cells[f.id]}
+                  members={[]}
+                  related={{}}
+                  disabled={busy}
+                  commit="change"
+                  onChange={(value) => setCells({ ...cells, [f.id]: value })}
+                />
+              </label>
+            ))}
+          {data.canEditContent && (
+            <SharedEditor html={html} onChange={setHtml} disabled={busy} />
+          )}
+          <div className="shared-actions">
+            <button
+              className="button primary"
+              disabled={busy || !title.trim()}
+              onClick={async () => {
+                const result = await send({
+                  action: "save",
+                  version: data.version,
+                  title,
+                  html,
+                  cells: Object.fromEntries(
+                    data.fields
+                      .filter(
+                        (f) =>
+                          !["created_at", "updated_at"].includes(f.type) &&
+                          JSON.stringify(cells[f.id]) !==
+                            JSON.stringify(data.cells[f.id]),
+                      )
+                      .map((f) => [f.id, cells[f.id]]),
+                  ),
+                });
+                if (result) {
+                  setEditing(false);
+                  setStatus("Änderungen gespeichert");
+                  router.refresh();
+                }
+              }}
+            >
+              Änderungen speichern
+            </button>
+            <button
+              className="button"
+              disabled={busy}
+              onClick={() => setEditing(false)}
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+      <h2>Kommentare zur Freigabe</h2>
+      {data.comments.length === 0 && (
+        <p className="muted">Noch keine Gastkommentare.</p>
+      )}
+      {data.comments.map((c) => (
+        <article className="shared-comment" key={c.id}>
+          <strong>
+            {c.name} <small>(Gast)</small>
+          </strong>
+          {!!c.resolved && <span> · Erledigt</span>}
+          <p>{c.body}</p>
+        </article>
+      ))}
+      {data.role !== "viewer" && !data.locked && (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const result = await send({ action: "comment", name, body });
+            if (result) {
+              setBody("");
+              setStatus("Kommentar veröffentlicht");
+            }
+          }}
+        >
+          <label>
+            Dein Name
+            <input
+              aria-label="Dein Name"
+              required
+              maxLength={80}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label>
+            Kommentar
+            <textarea
+              aria-label="Kommentar"
+              required
+              maxLength={5000}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+          </label>
+          <button
+            className="button primary"
+            disabled={busy || !body.trim() || !name.trim()}
+          >
+            Kommentar veröffentlichen
+          </button>
+        </form>
+      )}
+      {error && (
+        <p role="alert" className="field-error">
+          {error}
+        </p>
+      )}
+      {status && <p role="status">{status}</p>}
+    </section>
+  );
+}

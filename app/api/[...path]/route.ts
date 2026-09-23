@@ -1,0 +1,357 @@
+import { linkedDatabaseData } from "@/lib/linked-databases";
+import { editorPresence } from "@/lib/editor-presence";
+import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
+import { imageMimes } from "@/lib/page-appearance";
+import { after } from "next/server";
+import { cookies } from "next/headers";
+import {
+  pushKeys,
+  subscribePush,
+  unsubscribePush,
+  testPush,
+  dispatchPush,
+} from "@/lib/push";
+import { listPageTemplates } from "@/lib/page-templates";
+import { fileResponse } from "@/lib/file-response";
+import { publicFile } from "@/lib/publication";
+import { rowDocumentData } from "@/lib/row-documents";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import {
+  requireUser,
+  currentUser,
+  checkOrigin,
+  HttpError,
+  adminGroup,
+  cookieName,
+  hash,
+} from "@/lib/auth";
+import { bootstrap, pageData, command, rows, database } from "@/lib/api";
+import {
+  requirePage,
+  requireMember,
+  requireAdmin,
+  pageRole,
+} from "@/lib/permissions";
+import { one, all, run, id, audit } from "@/lib/db";
+import type { Page } from "@/lib/types";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+function error(e: unknown) {
+  if (e instanceof z.ZodError)
+    return NextResponse.json(
+      { error: "Ungültige Eingabe.", details: e.issues.map((i) => i.message) },
+      { status: 400 },
+    );
+  if (!(e instanceof HttpError)) console.error(e);
+  return NextResponse.json(
+    {
+      error:
+        e instanceof HttpError
+          ? e.message
+          : "Die Anfrage konnte nicht verarbeitet werden.",
+    },
+    { status: e instanceof HttpError ? e.status : 500 },
+  );
+}
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  try {
+    const { path } = await params;
+    const url = new URL(req.url);
+    // Keep public asset authorization identical when the catch-all handles the URL.
+    if (path.length === 4 && path[0] === "share" && path[2] === "files")
+      return await fileResponse(req, publicFile(path[1], path[3]));
+    const user = await requireUser();
+    if (path.length === 2 && path[0] === "threads" && path[1] === "mentions")
+      return NextResponse.json(
+        inlineMentionCandidates(
+          user,
+          z.uuid().parse(url.searchParams.get("page")),
+          url.searchParams.get("row")
+            ? z.uuid().parse(url.searchParams.get("row"))
+            : undefined,
+          url.searchParams.get("q") || "",
+        ),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    if (path.length === 1 && path[0] === "threads")
+      return NextResponse.json(
+        inlineThreads(
+          user,
+          z.uuid().parse(url.searchParams.get("page")),
+          url.searchParams.get("row")
+            ? z.uuid().parse(url.searchParams.get("row"))
+            : undefined,
+          true,
+          url.searchParams.get("thread")
+            ? z.uuid().parse(url.searchParams.get("thread"))
+            : undefined,
+        ),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    if (path[0] === "bootstrap")
+      return NextResponse.json(
+        bootstrap(user, url.searchParams.get("workspace") || undefined),
+      );
+    if (path[0] === "pages" && path[2] === "linked" && path[3])
+      return NextResponse.json(linkedDatabaseData(user, path[1], path[3]));
+    if (path[0] === "pages" && path[2] === "rows" && path[3])
+      return NextResponse.json(rowDocumentData(user, path[1], path[3]));
+    if (path[0] === "pages" && path[1])
+      return NextResponse.json(pageData(user, path[1]));
+    if (path[0] === "settings") {
+      const wid = url.searchParams.get("workspace") || "";
+      requireMember(user, wid, "owner");
+      return NextResponse.json({
+        invites: all("SELECT * FROM invites WHERE workspace_id=?", wid),
+        groups: all("SELECT * FROM groups WHERE workspace_id=?", wid),
+        groupMembers: all(
+          "SELECT gm.* FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE g.workspace_id=?",
+          wid,
+        ),
+        grants: all(
+          "SELECT g.* FROM grants g WHERE resource_id IN (SELECT id FROM pages WHERE workspace_id=? UNION SELECT id FROM spaces WHERE workspace_id=?)",
+          wid,
+          wid,
+        ),
+      });
+    }
+    if (path[0] === "search") {
+      const wid = url.searchParams.get("workspace") || "";
+      requireMember(user, wid);
+      const query = (url.searchParams.get("q") || "")
+        .trim()
+        .toLowerCase()
+        .slice(0, 200);
+      const candidates = all<Page & { html: string }>(
+        "SELECT p.*,COALESCE(d.html,'') html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL ORDER BY p.updated_at DESC",
+        wid,
+      ).filter((p) => pageRole(user, p));
+      const results = [];
+      for (const p of candidates) {
+        const text = p.html.replace(/<[^>]*>/g, " ");
+        const rowText =
+          p.kind === "database"
+            ? rows(p.id)
+                .map((r) => JSON.stringify(r.cells))
+                .join(" ")
+            : "";
+        const haystack = [p.title, text, rowText].join(" ").toLowerCase();
+        if (haystack.includes(query)) {
+          const index = text.toLowerCase().indexOf(query);
+          results.push({
+            id: p.id,
+            title: p.title,
+            icon: p.icon,
+            space_id: p.space_id,
+            snippet:
+              index >= 0
+                ? text.slice(Math.max(0, index - 40), index + 120)
+                : p.kind === "database"
+                  ? "Treffer in einer Datenbank"
+                  : "",
+          });
+        }
+        if (results.length >= 50) break;
+      }
+      return NextResponse.json(results);
+    }
+    if (path[0] === "push") {
+      const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
+      return NextResponse.json({
+        publicKey: pushKeys().publicKey,
+        subscribed: !!one(
+          "SELECT id FROM push_subscriptions WHERE session_token=? AND user_id=?",
+          sessionToken,
+          user.id,
+        ),
+      });
+    }
+    if (path[0] === "templates") {
+      const wid = url.searchParams.get("workspace") || "";
+      return NextResponse.json(listPageTemplates(user, wid));
+    }
+    if (path[0] === "admin") {
+      requireAdmin(user);
+      return NextResponse.json({
+        users: all(
+          "SELECT id,name,email,disabled,created_at FROM users ORDER BY created_at DESC",
+        ),
+        workspaces: all(
+          "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages FROM workspaces w",
+        ),
+        sessions: one(
+          "SELECT count(*) count FROM sessions WHERE expires>?",
+          Date.now(),
+        )?.count,
+        audit: all(
+          "SELECT a.*,u.name FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100",
+        ),
+        adminGroup: adminGroup(),
+        oidcConfigured: !!process.env.OIDC_ISSUER,
+      });
+    }
+    if (path[0] === "files" && path[1]) {
+      const file = one<{
+        id: string;
+        page_id: string;
+        name: string;
+        mime: string;
+      }>("SELECT * FROM files WHERE id=?", path[1]);
+      if (!file) throw new HttpError(404, "Datei fehlt.");
+      requirePage(user, file.page_id);
+      return await fileResponse(req, file);
+    }
+    if (path[0] === "export") {
+      const wid = url.searchParams.get("workspace") || "";
+      requireMember(user, wid);
+      const pages = all<Page>(
+        "SELECT * FROM pages WHERE workspace_id=?",
+        wid,
+      ).filter((p) => pageRole(user, p));
+      return NextResponse.json(
+        {
+          format: "flowplan-1",
+          exportedAt: new Date().toISOString(),
+          workspace: one("SELECT name,icon FROM workspaces WHERE id=?", wid),
+          pages: pages.map((p) => ({
+            ...p,
+            data:
+              p.kind === "database"
+                ? { database: database(p.id), rows: rows(p.id) }
+                : one("SELECT html FROM documents WHERE page_id=?", p.id),
+          })),
+        },
+        {
+          headers: {
+            "Content-Disposition":
+              'attachment; filename="flowplan-export.json"',
+          },
+        },
+      );
+    }
+    throw new HttpError(404, "Nicht gefunden.");
+  } catch (e) {
+    return error(e);
+  }
+}
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  try {
+    checkOrigin(req);
+    const { path } = await params;
+    if (Number(req.headers.get("content-length") || 0) > 12_000_000)
+      throw new HttpError(413, "Anfrage zu groß.");
+    const user = await requireUser();
+    if (path.length === 1 && path[0] === "presence") {
+      if (Number(req.headers.get("content-length") || 0) > 4096)
+        throw new HttpError(413, "Cursoranfrage zu groß.");
+      const reader = req.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      if (reader)
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 4096) {
+            await reader.cancel();
+            throw new HttpError(413, "Cursoranfrage zu groß.");
+          }
+          chunks.push(value);
+        }
+      let data: unknown;
+      try {
+        data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        throw new HttpError(400, "Ungültige Cursoranfrage.");
+      }
+      return NextResponse.json(
+        editorPresence(
+          user,
+          hash((await cookies()).get(cookieName)?.value || ""),
+          data,
+        ),
+        {
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+    if (path[0] === "command") {
+      const text = await req.text();
+      if (text.length > 10_000_000)
+        throw new HttpError(413, "Anfrage zu groß.");
+      const result = command(user, JSON.parse(text));
+      after(dispatchPush);
+      return NextResponse.json(result);
+    }
+    if (path[0] === "push") {
+      const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
+      const text = await req.text();
+      if (text.length > 10000) throw new HttpError(413, "Anfrage zu groß.");
+      const body = JSON.parse(text);
+      const result =
+        body.action === "unsubscribe"
+          ? unsubscribePush(user, body.endpoint)
+          : body.action === "test"
+            ? testPush(user, sessionToken)
+            : body.action === "subscribe"
+              ? subscribePush(user, sessionToken, body.subscription)
+              : (() => {
+                  throw new HttpError(400, "Unbekannte Push-Aktion.");
+                })();
+      after(dispatchPush);
+      return NextResponse.json(result);
+    }
+    if (path[0] === "upload") {
+      const data = await req.formData();
+      const pageId = z.string().uuid().parse(data.get("pageId"));
+      const p = requirePage(user, pageId, true);
+      if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > 10 * 1024 * 1024)
+        throw new HttpError(413, "Maximal 10 MB pro Datei.");
+      if (
+        data.get("purpose") === "cover" &&
+        !imageMimes.includes(file.type as (typeof imageMimes)[number])
+      )
+        throw new HttpError(
+          400,
+          "Bitte PNG, JPEG, GIF, WebP oder AVIF verwenden.",
+        );
+      const fid = id(),
+        dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+      await mkdir(dir, { recursive: true });
+      await writeFile(resolve(dir, fid), Buffer.from(await file.arrayBuffer()));
+      run(
+        "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
+        fid,
+        pageId,
+        file.name,
+        file.type,
+        file.size,
+        user.id,
+      );
+      audit(user.id, "file.upload", pageId, file.name);
+      return NextResponse.json({
+        id: fid,
+        url: `/api/files/${fid}`,
+        name: file.name,
+        mime: file.type,
+      });
+    }
+    throw new HttpError(404, "Nicht gefunden.");
+  } catch (e) {
+    return error(e);
+  }
+}
+
+export const HEAD = GET;

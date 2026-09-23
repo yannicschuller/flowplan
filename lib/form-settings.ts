@@ -1,0 +1,106 @@
+import { z } from "zod";
+import { validDateValue } from "./date-values";
+import type { Field } from "./types";
+export const formConfigSchema = z.object({
+  title: z.string().max(200).default(""),
+  description: z.string().max(3000).default(""),
+  submitLabel: z.string().min(1).max(80).default("Antwort senden"),
+  successTitle: z.string().min(1).max(200).default("Vielen Dank!"),
+  successMessage: z
+    .string()
+    .max(3000)
+    .default("Deine Antwort wurde gespeichert."),
+  fieldOrder: z.array(z.string()).max(80).default([]),
+  hiddenFields: z.array(z.string()).max(80).default([]),
+  requiredFields: z.array(z.string()).max(80).default([]),
+  descriptions: z.record(z.string(), z.string().max(1000)).default({}),
+});
+export type FormConfig = z.infer<typeof formConfigSchema>;
+export function publicFormFields(fields: Field[]) {
+  return fields.filter(
+    (f) =>
+      ![
+        "formula",
+        "rollup",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "person",
+        "relation",
+        "files",
+      ].includes(f.type),
+  );
+}
+export function orderedFormFields(fields: Field[], config: FormConfig) {
+  const order = config.fieldOrder;
+  return publicFormFields(fields)
+    .filter((f) => !config.hiddenFields.includes(f.id))
+    .sort(
+      (a, b) =>
+        (order.includes(a.id) ? order.indexOf(a.id) : 999) -
+        (order.includes(b.id) ? order.indexOf(b.id) : 999),
+    );
+}
+export function validateFormValues(
+  fields: Field[],
+  config: FormConfig,
+  values: Record<string, unknown>,
+) {
+  const cells: Record<string, unknown> = {},
+    errors: Record<string, string> = {};
+  for (const f of orderedFormFields(fields, config)) {
+    const value = values[f.id],
+      required = config.requiredFields.includes(f.id),
+      empty =
+        value === undefined ||
+        value === null ||
+        value === "" ||
+        (typeof value === "string" && !value.trim()) ||
+        (Array.isArray(value) && !value.length) ||
+        (f.type === "checkbox" && value === false);
+    if (required && empty) {
+      errors[f.id] = `${f.name}: Bitte ausfüllen.`;
+      continue;
+    }
+    if (value === undefined) continue;
+    if (value === null) {
+      if (f.type === "number") cells[f.id] = null;
+      continue;
+    }
+    try {
+      if (f.type === "checkbox") cells[f.id] = z.boolean().parse(value);
+      else if (f.type === "number")
+        cells[f.id] = z.number().finite().parse(value);
+      else if (f.type === "multiselect") {
+        const selected = z.array(z.string()).max(100).parse(value);
+        if (selected.some((v) => !f.options?.includes(v))) throw new Error();
+        cells[f.id] = [...new Set(selected)];
+      } else if (f.type === "checklist")
+        cells[f.id] = z
+          .array(
+            z.object({
+              text: z.string().trim().min(1).max(500),
+              done: z.boolean(),
+            }),
+          )
+          .max(100)
+          .parse(value);
+      else {
+        const text = z.string().max(10000).parse(value);
+        if (f.type === "select" && text && !f.options?.includes(text))
+          throw new Error();
+        if (f.type === "email" && text) z.email().parse(text);
+        if (f.type === "url" && text)
+          z.url({ protocol: /^https?$/ }).parse(text);
+        if (f.type === "date" && text) {
+          if (!validDateValue(text)) throw new Error();
+        }
+        cells[f.id] = text;
+      }
+    } catch {
+      errors[f.id] = `${f.name}: Bitte eine gültige Eingabe verwenden.`;
+    }
+  }
+  return { cells, errors };
+}
