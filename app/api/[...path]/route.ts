@@ -40,6 +40,7 @@ import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
+import { relationBacklinks } from "@/lib/relation-backlinks";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import {
   enforceQuota,
@@ -117,6 +118,19 @@ export async function GET(
     )
       return NextResponse.json(
         snapshotChanges(user, z.uuid().parse(path[1]), z.uuid().parse(path[3])),
+      );
+    if (
+      path[0] === "pages" &&
+      path[2] === "rows" &&
+      path[3] &&
+      path[4] === "backlinks"
+    )
+      return NextResponse.json(
+        relationBacklinks(
+          user,
+          z.uuid().parse(path[1]),
+          z.uuid().parse(path[3]),
+        ),
       );
     if (path[0] === "pages" && path[2] === "rows" && path[3])
       return NextResponse.json(rowDocumentData(user, path[1], path[3]));

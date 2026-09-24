@@ -94,6 +94,7 @@ import Papa from "papaparse";
 import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
+import type { Backlink } from "@/lib/relation-backlinks";
 import {
   parseRecurrence,
   recurrenceLabels,
@@ -874,16 +875,33 @@ export default function DatabaseView({
         </span>
       );
     if (f.type === "relation") {
-      const ids = Array.isArray(v) ? v : [];
-      return ids
-        .map(
-          (rid) =>
-            cellText(
-              data.related[f.relationPage || ""]?.find((x) => x.id === rid)
-                ?.cells.title,
-            ) || "Datensatz",
-        )
-        .join(", ");
+      const ids = Array.isArray(v) ? (v as string[]) : [];
+      // Each related record links to its own entry.
+      return (
+        <span className="relation-links">
+          {ids.map((rid) => {
+            const target = data.related[f.relationPage || ""]?.find(
+              (x) => x.id === rid,
+            );
+            return target && f.relationPage ? (
+              <a
+                key={rid}
+                href={pageLocationHash({
+                  pageId: f.relationPage,
+                  rowId: rid,
+                })}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {cellText(target.cells.title) || "Ohne Titel"}
+              </a>
+            ) : (
+              <span key={rid} className="muted">
+                Nicht verfügbar
+              </span>
+            );
+          })}
+        </span>
+      );
     }
     if (f.type === "date" && v) {
       return (
@@ -3767,6 +3785,11 @@ export default function DatabaseView({
                   recurrenceControl(selected)}
               </Fragment>
             ))}
+            <RelationBacklinks
+              key={`backlinks-${selected.id}-${selected.version}`}
+              pageId={page.id}
+              rowId={selected.id}
+            />
             <RowDocument
               key={selected.id}
               pageId={page.id}
@@ -3947,5 +3970,47 @@ function PropertyRow({
     <div className="row-property">{children}</div>
   ) : (
     <label className="row-property">{children}</label>
+  );
+}
+// Incoming relations of a record ("Verknüpft von").
+function RelationBacklinks({
+  pageId,
+  rowId,
+}: {
+  pageId: string;
+  rowId: string;
+}) {
+  const [links, setLinks] = useState<Backlink[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    api<Backlink[]>(`/api/pages/${pageId}/rows/${rowId}/backlinks`)
+      .then((result) => active && setLinks(result))
+      .catch(() => active && setLinks([]));
+    return () => {
+      active = false;
+    };
+  }, [pageId, rowId]);
+  if (!links?.length) return null;
+  return (
+    <section className="row-backlinks" aria-label="Verknüpft von">
+      <h3>Verknüpft von</h3>
+      <ul>
+        {links.map((link) => (
+          <li key={`${link.rowId}-${link.field}`}>
+            <a
+              href={pageLocationHash({
+                pageId: link.pageId,
+                rowId: link.rowId,
+              })}
+            >
+              {link.title}
+            </a>
+            <small className="muted">
+              {link.pageTitle} · {link.field}
+            </small>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

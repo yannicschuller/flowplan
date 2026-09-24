@@ -2748,6 +2748,38 @@ tr:hover .row-open {
   opacity: 0.75;
   border-style: dashed;
 }
+.relation-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.relation-links a {
+  color: var(--blue);
+  text-decoration: none;
+}
+.relation-links a:hover {
+  text-decoration: underline;
+}
+.row-backlinks {
+  margin: 12px 0;
+}
+.row-backlinks h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+.row-backlinks ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.row-backlinks li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
 .version-diff {
   display: grid;
   gap: 6px;
