@@ -149,13 +149,14 @@ function boundedKey(raw: string) {
   return `long:${raw.length}:${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}`;
 }
 
-// Second grouping level for tables and lists.
+// Second grouping level: nested groups in tables/lists, swimlanes on boards.
 export function subgroupingField(
   fields: Field[],
   view: View,
   primary: Field | undefined,
 ) {
-  if (!primary || !["table", "list"].includes(view.type)) return undefined;
+  if (!primary || !["table", "list", "board"].includes(view.type))
+    return undefined;
   return fields.find(
     (f) => f.id === view.subGroupBy && f.id !== primary.id && canGroupField(f),
   );

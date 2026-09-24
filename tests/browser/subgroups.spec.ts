@@ -216,3 +216,141 @@ test("tables and lists nest subgroups that collapse, create and move entries on 
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });
+
+test("board swimlanes group cards by a second property and move them across both levels", async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const command = async (data: Record<string, unknown>) => {
+    const response = await page.request.post("/api/command", {
+      headers: { origin },
+      data,
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  const p = await command({
+    action: "page.create",
+    workspaceId: boot.workspace.id,
+    spaceId: boot.spaces[0].id,
+    title: `Swimlanes ${testInfo.project.name} ${Date.now()}`,
+    kind: "database",
+  });
+  const read = async () =>
+    (await page.request.get(`/api/pages/${p.id}`)).json();
+  const initial = await read();
+  await command({
+    action: "database.update",
+    pageId: p.id,
+    version: initial.database.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      {
+        id: "status",
+        name: "Status",
+        type: "select",
+        options: ["Open", "Done"],
+      },
+      { id: "team", name: "Team", type: "select", options: ["Web", "App"] },
+    ],
+    views: [
+      {
+        id: "board",
+        name: "Board",
+        type: "board",
+        filters: [],
+        sorts: [],
+        groupBy: "status",
+      },
+    ],
+  });
+  const ids: string[] = [];
+  for (const cells of [
+    { title: "Login", status: "Open", team: "Web" },
+    { title: "Push", status: "Open", team: "App" },
+    { title: "Export", status: "Done", team: "Web" },
+  ])
+    ids.push((await command({ action: "row.create", pageId: p.id, cells })).id);
+  await page.goto(`/#page=${p.id}`);
+  await expect(page.locator(".board")).toBeVisible();
+  await expect(page.locator(".board-lane")).toHaveCount(0);
+  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  const settings = page.getByRole("dialog", {
+    name: "Ansicht konfigurieren",
+    exact: true,
+  });
+  await settings
+    .getByLabel("Swimlanes nach", { exact: true })
+    .selectOption("team");
+  await expect
+    .poll(async () => (await read()).database.views[0].subGroupBy)
+    .toBe("team");
+  await settings
+    .getByRole("button", { name: "Schließen", exact: true })
+    .click();
+  const web = page.getByRole("region", { name: "Swimlane Web", exact: true }),
+    app = page.getByRole("region", { name: "Swimlane App", exact: true });
+  await expect(web).toBeVisible();
+  await expect(app).toBeVisible();
+  const cell = (group: string, lane: string) =>
+    page.getByRole("group", { name: `${group} · ${lane}`, exact: true });
+  await expect(cell("Open", "Web").locator(".record-card strong")).toHaveText([
+    "Login",
+  ]);
+  await expect(cell("Done", "App").locator(".record-card")).toHaveCount(0);
+  await page.screenshot({
+    path: `test-results/subgroups-verification/${testInfo.project.name}-swimlanes.png`,
+    fullPage: true,
+  });
+
+  if (testInfo.project.name === "desktop") {
+    await cell("Open", "App")
+      .locator(".record-card")
+      .dragTo(cell("Done", "Web"));
+    await expect
+      .poll(async () => {
+        const row = (await read()).rows.find(
+          (r: { id: string }) => r.id === ids[1],
+        );
+        return [row.cells.status, row.cells.team];
+      })
+      .toEqual(["Done", "Web"]);
+    // The App lane has no cards left and disappears.
+    await expect(app).toHaveCount(0);
+  }
+  await cell("Done", "Web")
+    .getByTitle("Eintrag in Done / Web hinzufügen", { exact: true })
+    .click();
+  const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
+  await expect(entry).toBeVisible();
+  await entry.getByRole("button", { name: "Schließen", exact: true }).click();
+  await expect
+    .poll(async () =>
+      (await read()).rows
+        .filter((r: { id: string }) => !ids.includes(r.id))
+        .map((r: { cells: Record<string, unknown> }) => [
+          r.cells.status,
+          r.cells.team,
+        ]),
+    )
+    .toEqual([["Done", "Web"]]);
+
+  await web
+    .getByRole("button", { name: "Swimlane Web einklappen", exact: true })
+    .click();
+  await expect(web.locator(".record-card")).toHaveCount(0);
+  await page.reload();
+  await expect(
+    web.getByRole("button", { name: "Swimlane Web ausklappen", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Gruppe Done einklappen", exact: true })
+    .click();
+  await expect(page.locator(".board-lane-column.collapsed")).toHaveCount(1);
+  expect(errors).toEqual([]);
+  await command({ action: "page.delete", pageId: p.id });
+});

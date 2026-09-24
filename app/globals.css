@@ -1494,6 +1494,71 @@ tr:hover .row-open {
     opacity: 1;
   }
 }
+.board-swimlanes {
+  flex-direction: column;
+  gap: 0;
+}
+.board-lane-head,
+.board-lane-cells {
+  display: flex;
+  gap: 20px;
+  width: max-content;
+}
+.board-lane-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.board-lane-column,
+.board-cell {
+  width: 270px;
+  flex-shrink: 0;
+}
+.board-lane-column {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.board-lane-column .group-move {
+  margin-left: auto;
+}
+.board-lane-column.collapsed,
+.board-cell.collapsed {
+  width: 56px;
+}
+.board-lane-column.collapsed .tag {
+  max-width: 24px;
+  overflow: hidden;
+}
+.board-lane {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0 12px;
+}
+.board-lane-title {
+  position: sticky;
+  left: 0;
+  width: fit-content;
+  margin-bottom: 8px;
+}
+.board-lane-title .group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.board-cell {
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.board-cell.collapsed {
+  align-items: center;
+}
 .record-card {
   width: 100%;
   display: flex;

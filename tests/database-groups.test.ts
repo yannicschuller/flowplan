@@ -497,13 +497,18 @@ test("subgroups nest a second property, move across both levels atomically and r
   const { remapViewReferences } = await import("../lib/view-references");
   const sub: View = { ...view, subGroupBy: "tags" };
   assert.equal(subgroupingField(fields, sub, fields[1])?.id, "tags");
-  // Same field, boards and missing primaries have no second level.
+  // Same field and missing primaries have no second level.
   assert.equal(
     subgroupingField(fields, { ...sub, subGroupBy: "status" }, fields[1]),
     undefined,
   );
+  // Boards use the second level as swimlanes; other layouts have none.
   assert.equal(
-    subgroupingField(fields, { ...sub, type: "board" }, fields[1]),
+    subgroupingField(fields, { ...sub, type: "board" }, fields[1])?.id,
+    "tags",
+  );
+  assert.equal(
+    subgroupingField(fields, { ...sub, type: "gallery" }, fields[1]),
     undefined,
   );
   assert.equal(subgroupingField(fields, sub, undefined), undefined);

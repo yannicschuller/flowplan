@@ -396,9 +396,16 @@ export default function DatabaseView({
     readerCollapsed[JSON.stringify([view.id, view.groupBy, key])] !== undefined
       ? readerCollapsed[JSON.stringify([view.id, view.groupBy, key])]
       : groupSettings.collapsed.includes(key);
-  const subField = grouped
-    ? subgroupingField(fields, view, groupField)
-    : undefined;
+  const subField =
+    grouped || view.type === "board"
+      ? subgroupingField(fields, view, groupField)
+      : undefined;
+  const lanes =
+    view.type === "board" && subField
+      ? databaseGroups(shown, subField, data.related, members).filter(
+          (lane) => lane.rows.length,
+        )
+      : null;
   const subgroups = new Map<string, DatabaseGroup[]>(
     subField
       ? groups.map((g) => [
@@ -1787,7 +1794,130 @@ export default function DatabaseView({
           </table>
         </div>
       )}
-      {view.type === "board" && (
+      {lanes && (
+        <div className="board board-swimlanes">
+          <div className="board-lane-head">
+            {groups.map((g) => (
+              <header
+                key={g.key}
+                className={`board-lane-column${collapsed(g.key) ? " collapsed" : ""}`}
+                aria-label={`Spalte ${g.label}`}
+              >
+                <button
+                  className="icon-button group-toggle"
+                  aria-expanded={!collapsed(g.key)}
+                  aria-label={`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`}
+                  disabled={schemaBusy}
+                  onClick={() =>
+                    void setGroupsCollapsed([g.key], !collapsed(g.key))
+                  }
+                >
+                  <CaretRight
+                    size={14}
+                    style={{
+                      transform: collapsed(g.key) ? undefined : "rotate(90deg)",
+                    }}
+                  />
+                </button>
+                <span className={`tag tag-${tagColor(g.label)}`}>
+                  {g.label}
+                </span>
+                <span className="muted">{g.rows.length}</span>
+                {!collapsed(g.key) && groupMoveButtons(g, true)}
+              </header>
+            ))}
+          </div>
+          {lanes.map((lane) => {
+            const laneKey = subgroupCollapseKey("lane", lane.key),
+              closed = collapsed(laneKey);
+            return (
+              <section
+                key={lane.key}
+                className="board-lane"
+                aria-label={`Swimlane ${lane.label}`}
+              >
+                <div className="board-lane-title">
+                  <button
+                    className="group-toggle"
+                    aria-expanded={!closed}
+                    aria-label={`Swimlane ${lane.label} ${closed ? "ausklappen" : "einklappen"}`}
+                    disabled={schemaBusy}
+                    onClick={() => void setGroupsCollapsed([laneKey], !closed)}
+                  >
+                    <CaretRight
+                      size={14}
+                      style={{
+                        transform: closed ? undefined : "rotate(90deg)",
+                      }}
+                    />
+                    <span>{lane.label}</span>
+                    <span className="muted">{lane.rows.length}</span>
+                  </button>
+                </div>
+                {!closed && (
+                  <div className="board-lane-cells">
+                    {groups.map((g) => {
+                      const key = nestedKey(g.key, lane.key),
+                        cellRows =
+                          subgroups
+                            .get(g.key)
+                            ?.find((sg) => sg.key === lane.key)?.rows || [],
+                        target = { ...g, key, rows: cellRows };
+                      return (
+                        <div
+                          key={g.key}
+                          role="group"
+                          aria-label={`${g.label} · ${lane.label}`}
+                          className={`board-cell${collapsed(g.key) ? " collapsed" : ""}`}
+                          onDragOver={(e) => {
+                            if (
+                              editable &&
+                              !orderBusy &&
+                              e.dataTransfer.types.includes(rowDragType)
+                            )
+                              e.preventDefault();
+                          }}
+                          onDrop={(e) => dropIntoGroup(e, target)}
+                        >
+                          {collapsed(g.key) ? (
+                            <span className="muted">{cellRows.length}</span>
+                          ) : (
+                            <>
+                              {cellRows.map((r) => card(r, key))}
+                              {canSubEdit && (
+                                <button
+                                  className="new-record"
+                                  title={`Eintrag in ${g.label} / ${lane.label} hinzufügen`}
+                                  onClick={() =>
+                                    createRow({
+                                      [groupField!.id]: groupCellValue(
+                                        groupField!,
+                                        g.value,
+                                      ),
+                                      [subField!.id]: groupCellValue(
+                                        subField!,
+                                        lane.value,
+                                      ),
+                                    })
+                                  }
+                                >
+                                  <Plus size={16} />
+                                  Neu
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
+      {view.type === "board" && !lanes && (
         <div className="board">
           {groups.map((g) => (
             <section
@@ -2368,11 +2498,13 @@ export default function DatabaseView({
               ))}
             </select>
           </label>
-          {grouped && (
+          {groupField && ["table", "list", "board"].includes(view.type) && (
             <label>
-              Untergruppen nach
+              {view.type === "board" ? "Swimlanes nach" : "Untergruppen nach"}
               <select
-                aria-label="Untergruppen nach"
+                aria-label={
+                  view.type === "board" ? "Swimlanes nach" : "Untergruppen nach"
+                }
                 disabled={!viewEditable}
                 value={subField?.id || ""}
                 onChange={(e) =>
@@ -2388,7 +2520,11 @@ export default function DatabaseView({
                   })
                 }
               >
-                <option value="">Keine Untergruppen</option>
+                <option value="">
+                  {view.type === "board"
+                    ? "Keine Swimlanes"
+                    : "Keine Untergruppen"}
+                </option>
                 {fields
                   .filter((f) => canGroupField(f) && f.id !== groupField!.id)
                   .map((f) => (
