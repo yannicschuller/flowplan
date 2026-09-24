@@ -102,3 +102,24 @@ test("summaries use the property format for value calculations only", () => {
     false,
   );
 });
+
+test("fixed decimals apply to plain numbers, currencies and summaries", () => {
+  assert.equal(nbsp(formatNumber(2, "", 1)), "2,0");
+  assert.equal(nbsp(formatNumber(1234.567, "eur", 0)), "1.235 €");
+  assert.equal(nbsp(formatNumber(0.5, "percent", 0)), "50 %");
+  assert.equal(nbsp(formatNumber(3.14159, "plain", 3)), "3,142");
+  assert.equal(
+    nbsp(
+      summaryText(
+        { calculation: "average", value: 1.23456, errors: 0, overflow: false },
+        { type: "number", decimals: 1 },
+      ),
+    ),
+    "Ø 1,2",
+  );
+  assert.equal(
+    fieldSchema.safeParse({ id: "n", name: "N", type: "number", decimals: 11 })
+      .success,
+    false,
+  );
+});

@@ -77,6 +77,17 @@ test("number and date properties show chosen currency, date and time formats", a
     .poll(async () => nbsp(await table.locator("tfoot").textContent()))
     .toContain("Σ 1.234,50 €");
 
+  // Fixed decimals and a progress bar towards a target value.
+  dialog = await edit("Betrag");
+  await dialog.getByLabel("Nachkommastellen").selectOption("0");
+  await dialog.getByLabel("Zahlendarstellung").selectOption("bar");
+  await dialog.getByLabel("Zielwert").fill("2000");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  const bar = table
+    .locator("tbody")
+    .getByRole("progressbar", { name: "Betrag" });
+  await expect(bar).toHaveAttribute("aria-valuetext", /1\.235\s€/);
+  await expect(bar).toHaveAttribute("aria-valuemax", "2000");
   dialog = await edit("Fällig");
   await dialog.getByLabel("Datumsformat").selectOption("iso");
   await dialog.getByLabel("Zeitformat").selectOption("12");

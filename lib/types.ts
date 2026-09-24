@@ -72,6 +72,7 @@ export type Field = {
   rollupMax?: number;
   format?: string;
   timeFormat?: "24" | "12";
+  decimals?: number;
 };
 export type Row = {
   id: string;

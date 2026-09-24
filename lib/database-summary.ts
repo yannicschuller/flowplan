@@ -202,7 +202,7 @@ export function columnSummary(
 }
 export function summaryText(
   result: ColumnSummary,
-  field?: Pick<Field, "type" | "format" | "timeFormat">,
+  field?: Pick<Field, "type" | "format" | "timeFormat" | "decimals">,
 ) {
   const label =
     result.calculation === "sum"
@@ -216,11 +216,11 @@ export function summaryText(
       ? "Keine Werte"
       : typeof result.value === "number" &&
           field?.type === "number" &&
-          field.format &&
+          (field.format || field.decimals !== undefined) &&
           ["sum", "average", "median", "min", "max", "range"].includes(
             result.calculation,
           )
-        ? formatNumber(result.value, field.format)
+        ? formatNumber(result.value, field.format, field.decimals)
         : typeof result.value === "number"
           ? new Intl.NumberFormat("de-DE", {
               maximumFractionDigits: 4,

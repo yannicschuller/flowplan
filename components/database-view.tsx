@@ -922,7 +922,9 @@ export default function DatabaseView({
     }
     if (f.type === "number" && v !== undefined) {
       if (v === null || v === "") return <span className="muted">—</span>;
-      return formatNumber(Number(v), f.format);
+      if (f.rollupDisplay && f.rollupDisplay !== "number")
+        return <RollupValue field={f} value={Number(v)} />;
+      return formatNumber(Number(v), f.format, f.decimals);
     }
     return cellText(v) || <span className="muted">—</span>;
   }
@@ -3270,6 +3272,70 @@ export default function DatabaseView({
                 ))}
               </select>
             </label>
+          )}
+          {fieldDraft.type === "number" && (
+            <>
+              <label>
+                Nachkommastellen
+                <select
+                  aria-label="Nachkommastellen"
+                  value={fieldDraft.decimals ?? ""}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      decimals:
+                        e.target.value === ""
+                          ? undefined
+                          : Number(e.target.value),
+                    }))
+                  }
+                >
+                  <option value="">Automatisch</option>
+                  {[0, 1, 2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Darstellung
+                <select
+                  aria-label="Zahlendarstellung"
+                  value={fieldDraft.rollupDisplay || "number"}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      rollupDisplay: e.target.value as Field["rollupDisplay"],
+                    }))
+                  }
+                >
+                  <option value="number">Zahl</option>
+                  <option value="bar">Fortschrittsbalken</option>
+                  <option value="ring">Fortschrittsring</option>
+                </select>
+              </label>
+              {fieldDraft.rollupDisplay &&
+                fieldDraft.rollupDisplay !== "number" && (
+                  <label>
+                    Zielwert
+                    <input
+                      aria-label="Zielwert"
+                      type="number"
+                      min="0.000001"
+                      step="any"
+                      required
+                      value={fieldDraft.rollupMax || 100}
+                      onChange={(e) =>
+                        setFieldDraft((f) => ({
+                          ...f,
+                          rollupMax: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                )}
+            </>
           )}
           {fieldDraft.type === "date" && (
             <>

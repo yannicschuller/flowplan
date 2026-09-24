@@ -43,6 +43,7 @@ export const field = z.object({
   rollupMax: z.number().positive().finite().max(1e15).optional(),
   format: z.string().max(40).optional(),
   timeFormat: z.enum(["24", "12"]).optional(),
+  decimals: z.number().int().min(0).max(10).optional(),
 });
 export const view = z
   .object({

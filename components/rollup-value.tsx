@@ -1,6 +1,7 @@
 import type { Field } from "@/lib/types";
 import { cellText } from "@/lib/database";
 import { percentAggregate } from "@/lib/rollups";
+import { formatNumber } from "@/lib/field-format";
 const errors: Record<string, string> = {
   "#ACCESS": "Kein Zugriff auf die verknüpfte Datenbank",
   "#PROPERTY": "Verknüpfte Eigenschaft fehlt",
@@ -24,11 +25,15 @@ export function RollupValue({
   if (value === null || value === undefined)
     return <span className="muted">—</span>;
   if (typeof value !== "number") return <span>{cellText(value) || "—"}</span>;
-  const percent = percentAggregate(field.aggregate);
-  const label = new Intl.NumberFormat("de-DE", {
-    maximumFractionDigits: 2,
-    ...(percent ? { style: "percent" as const } : {}),
-  }).format(value);
+  // Number properties use the same bar/ring display with their own format.
+  const percent = field.type === "rollup" && percentAggregate(field.aggregate);
+  const label =
+    field.type === "number"
+      ? formatNumber(value, field.format, field.decimals)
+      : new Intl.NumberFormat("de-DE", {
+          maximumFractionDigits: 2,
+          ...(percent ? { style: "percent" as const } : {}),
+        }).format(value);
   if (!field.rollupDisplay || field.rollupDisplay === "number")
     return <span>{label}</span>;
   const max = percent ? 1 : field.rollupMax || 100,
