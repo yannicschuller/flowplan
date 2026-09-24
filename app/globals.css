@@ -2874,6 +2874,19 @@ tr:hover .row-open {
   padding: 1px 8px;
   font-size: 12px;
 }
+.template-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.template-filters input[type="search"] {
+  flex: 1;
+  min-width: 160px;
+}
+.template-filters select {
+  width: auto;
+}
 .version-diff {
   display: grid;
   gap: 6px;

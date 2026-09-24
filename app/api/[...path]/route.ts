@@ -44,6 +44,7 @@ import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
+import { exportTemplate, importTemplate } from "@/lib/template-exchange";
 import {
   enforceQuota,
   instanceMetrics,
@@ -216,6 +217,22 @@ export async function GET(
         ),
       });
     }
+    if (path[0] === "templates" && path[1] && path[2] === "export") {
+      const exported = await exportTemplate(
+        user,
+        z.uuid().parse(url.searchParams.get("workspace")),
+        z.uuid().parse(path[1]),
+      );
+      return new NextResponse(new Uint8Array(exported.zip), {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(
+            exported.name.replace(/[\\/:*?"<>|]/g, "_"),
+          )}.flowplan-template.zip`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
     if (path[0] === "templates") {
       const wid = url.searchParams.get("workspace") || "";
       return NextResponse.json(listPageTemplates(user, wid));
@@ -296,7 +313,9 @@ export async function POST(
     // ZIP imports may be as large as content archives.
     if (
       Number(req.headers.get("content-length") || 0) >
-      (path[0] === "import" ? ARCHIVE_LIMIT + 1_000_000 : 12_000_000)
+      (path[0] === "import" || path[1] === "import"
+        ? ARCHIVE_LIMIT + 1_000_000
+        : 12_000_000)
     )
       throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
@@ -359,6 +378,21 @@ export async function POST(
                 })();
       after(dispatchPush);
       return NextResponse.json(result);
+    }
+    if (path[0] === "templates" && path[1] === "import") {
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > ARCHIVE_LIMIT)
+        throw new HttpError(413, "Vorlage darf maximal 100 MB groß sein.");
+      return NextResponse.json(
+        await importTemplate(
+          user,
+          z.uuid().parse(data.get("workspaceId")),
+          Buffer.from(await file.arrayBuffer()),
+          data.get("private") === "true" ? "private" : "workspace",
+        ),
+      );
     }
     if (path[0] === "import" && path[1] === "zip") {
       const data = await req.formData();

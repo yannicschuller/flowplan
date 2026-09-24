@@ -58,10 +58,72 @@ export default function SavedTemplates({
       setBusy(false);
     }
   }
-  const shown = items.filter((t) => !!t.deleted_at === deleted);
+  const [search, setSearch] = useState(""),
+    [kind, setKind] = useState<"all" | "document" | "database">("all");
+  const shown = items.filter(
+    (t) =>
+      !!t.deleted_at === deleted &&
+      (kind === "all" || t.kind === kind) &&
+      t.name.toLocaleLowerCase("de").includes(search.toLocaleLowerCase("de")),
+  );
+  async function importFile(file: File) {
+    setBusy(true);
+    try {
+      const body = new FormData();
+      body.set("workspaceId", workspaceId);
+      body.set("file", file);
+      const response = await fetch("/api/templates/import", {
+        method: "POST",
+        body,
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "Import fehlgeschlagen.");
+      await refresh();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="saved-templates">
       <h3>Deine Vorlagen</h3>
+      <div className="template-filters">
+        <input
+          type="search"
+          aria-label="Vorlagen durchsuchen"
+          placeholder="Vorlagen suchen …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          aria-label="Vorlagentyp"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as typeof kind)}
+        >
+          <option value="all">Alle</option>
+          <option value="document">Dokumente</option>
+          <option value="database">Datenbanken</option>
+        </select>
+        {canCreate && (
+          <label className="button compact">
+            Vorlage importieren
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              hidden
+              aria-label="Vorlagendatei importieren"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void importFile(file);
+              }}
+            />
+          </label>
+        )}
+      </div>
       <label className="checkbox-label">
         <input
           type="checkbox"
@@ -104,6 +166,16 @@ export default function SavedTemplates({
                 >
                   Verwenden
                 </button>
+              )}
+              {!deleted && (
+                <a
+                  className="button compact"
+                  aria-label={`${t.name} exportieren`}
+                  href={`/api/templates/${t.id}/export?workspace=${workspaceId}`}
+                  download
+                >
+                  Exportieren
+                </a>
               )}
               {t.can_manage &&
                 (deleted ? (
