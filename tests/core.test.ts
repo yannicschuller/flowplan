@@ -1460,3 +1460,30 @@ test("document template replacement snapshots content and rotates collaboration 
     /Keep my old content/,
   );
 });
+
+test("form file questions accept only server-attached uploads and enforce required answers", async () => {
+  const { formConfigSchema, validateFormValues, publicFormFields } =
+    await import("../lib/form-settings");
+  const fields: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "cv", name: "Lebenslauf", type: "files" },
+  ];
+  assert.ok(publicFormFields(fields).some((f) => f.id === "cv"));
+  const config = formConfigSchema.parse({ requiredFields: ["cv"] });
+  const upload = "/api/files/0f0e3b9e-2f59-4c55-9d7a-0d1c3c3c1a11";
+  assert.deepEqual(
+    validateFormValues(fields, config, { cv: [upload] }).cells.cv,
+    [upload],
+  );
+  assert.match(
+    validateFormValues(fields, config, { cv: [] }).errors.cv,
+    /ausfüllen/,
+  );
+  for (const bad of [
+    ["https://evil.example/x"],
+    upload,
+    Array.from({ length: 6 }, () => upload),
+    [{ url: upload }],
+  ])
+    assert.ok(validateFormValues(fields, config, { cv: bad }).errors.cv);
+});

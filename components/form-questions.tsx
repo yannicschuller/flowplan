@@ -1,6 +1,12 @@
 "use client";
+import { useState } from "react";
 import { CellInput } from "./cell-input";
-import { orderedFormFields, type FormConfig } from "@/lib/form-settings";
+import {
+  FORM_FILE_BYTES,
+  FORM_FILES_PER_QUESTION,
+  orderedFormFields,
+  type FormConfig,
+} from "@/lib/form-settings";
 import type { Field } from "@/lib/types";
 export default function FormQuestions({
   fields,
@@ -30,15 +36,24 @@ export default function FormQuestions({
           {config.descriptions[f.id] && (
             <p className="question-description">{config.descriptions[f.id]}</p>
           )}
-          <CellInput
-            field={f}
-            value={values[f.id]}
-            members={[]}
-            related={{}}
-            disabled={disabled}
-            commit="change"
-            onChange={(v) => onChange(f.id, v)}
-          />
+          {f.type === "files" ? (
+            <FormFiles
+              name={f.name}
+              value={values[f.id]}
+              disabled={disabled}
+              onChange={(v) => onChange(f.id, v)}
+            />
+          ) : (
+            <CellInput
+              field={f}
+              value={values[f.id]}
+              members={[]}
+              related={{}}
+              disabled={disabled}
+              commit="change"
+              onChange={(v) => onChange(f.id, v)}
+            />
+          )}
           {errors[f.id] && (
             <p className="error field-error" role="alert">
               {errors[f.id]}
@@ -47,5 +62,84 @@ export default function FormQuestions({
         </fieldset>
       ))}
     </>
+  );
+}
+const fileSize = (bytes: number) =>
+  bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("de-DE")} KB`
+    : `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
+// Files stay in the browser until the answer is submitted.
+function FormFiles({
+  name,
+  value,
+  disabled,
+  onChange,
+}: {
+  name: string;
+  value: unknown;
+  disabled: boolean;
+  onChange: (files: File[]) => void;
+}) {
+  const files = Array.isArray(value)
+    ? value.filter((v): v is File => v instanceof File)
+    : [];
+  const [error, setError] = useState("");
+  return (
+    <div className="files-input" role="group" aria-label={name}>
+      {files.length > 0 && (
+        <ul>
+          {files.map((file, i) => (
+            <li key={`${file.name}-${i}`}>
+              <span>{file.name}</span>
+              <small className="muted">{fileSize(file.size)}</small>
+              {!disabled && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`${file.name} entfernen`}
+                  onClick={() => onChange(files.filter((_, j) => j !== i))}
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {files.length < FORM_FILES_PER_QUESTION && (
+        <label className="button compact">
+          Dateien auswählen
+          <input
+            type="file"
+            multiple
+            hidden
+            disabled={disabled}
+            aria-label={`${name}: Dateien auswählen`}
+            onChange={(event) => {
+              const chosen = [...(event.target.files || [])];
+              event.target.value = "";
+              const tooLarge = chosen.find((f) => f.size > FORM_FILE_BYTES);
+              setError(
+                tooLarge ? `${tooLarge.name}: maximal 10 MB pro Datei.` : "",
+              );
+              onChange(
+                [
+                  ...files,
+                  ...chosen.filter((f) => f.size <= FORM_FILE_BYTES),
+                ].slice(0, FORM_FILES_PER_QUESTION),
+              );
+            }}
+          />
+        </label>
+      )}
+      <small className="muted">
+        Bis zu {FORM_FILES_PER_QUESTION} Dateien, je maximal 10 MB.
+      </small>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

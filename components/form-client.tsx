@@ -56,7 +56,37 @@ export default function FormClient({
               if (Object.keys(result.errors).length) return;
               setBusy(true);
               try {
-                await api(`/api/forms/${token}`, { cells: values });
+                const files = Object.entries(values).filter(
+                  ([, v]) =>
+                    Array.isArray(v) && v.some((x) => x instanceof File),
+                );
+                if (!files.length)
+                  await api(`/api/forms/${token}`, { cells: values });
+                else {
+                  const body = new FormData();
+                  body.set(
+                    "payload",
+                    JSON.stringify({
+                      cells: Object.fromEntries(
+                        Object.entries(values).filter(
+                          ([key]) => !files.some(([id]) => id === key),
+                        ),
+                      ),
+                    }),
+                  );
+                  for (const [key, list] of files)
+                    for (const file of list as File[])
+                      body.append(`file:${key}`, file);
+                  const response = await fetch(`/api/forms/${token}`, {
+                    method: "POST",
+                    body,
+                  });
+                  if (!response.ok)
+                    throw new Error(
+                      (await response.json().catch(() => ({}))).error ||
+                        "Antwort konnte nicht gespeichert werden.",
+                    );
+                }
                 setDone(true);
               } catch (e) {
                 setError((e as Error).message);

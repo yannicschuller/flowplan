@@ -16,6 +16,9 @@ export const formConfigSchema = z.object({
   descriptions: z.record(z.string(), z.string().max(1000)).default({}),
 });
 export type FormConfig = z.infer<typeof formConfigSchema>;
+export const FORM_FILES_PER_QUESTION = 5;
+export const FORM_FILE_BYTES = 10 * 1024 * 1024;
+export const FORM_TOTAL_BYTES = 25 * 1024 * 1024;
 export function publicFormFields(fields: Field[]) {
   return fields.filter(
     (f) =>
@@ -28,7 +31,6 @@ export function publicFormFields(fields: Field[]) {
         "updated_by",
         "person",
         "relation",
-        "files",
       ].includes(f.type),
   );
 }
@@ -76,6 +78,18 @@ export function validateFormValues(
         const selected = z.array(z.string()).max(100).parse(value);
         if (selected.some((v) => !f.options?.includes(v))) throw new Error();
         cells[f.id] = [...new Set(selected)];
+      } else if (f.type === "files") {
+        // Files are attached by the server from the submitted uploads.
+        if (!Array.isArray(value)) throw new Error();
+        if (value.length > FORM_FILES_PER_QUESTION) throw new Error();
+        if (value.every((v) => typeof v === "string"))
+          cells[f.id] = z
+            .array(z.string().regex(/^\/api\/files\/[0-9a-f-]{36}$/i))
+            .parse(value);
+        else if (
+          !value.every((v) => typeof File !== "undefined" && v instanceof File)
+        )
+          throw new Error();
       } else if (f.type === "checklist")
         cells[f.id] = z
           .array(
