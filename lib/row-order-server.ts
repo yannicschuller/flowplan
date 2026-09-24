@@ -8,6 +8,8 @@ import {
   databaseGroups,
   groupCellValue,
   groupingField,
+  subgroupingField,
+  databaseSubgroups,
 } from "./database-groups";
 import { validateCellPatch } from "./database-operations";
 import { MAX_ORDERED_ROWS, orderedRowIds } from "./row-order";
@@ -99,6 +101,9 @@ export function moveRow(
       group: z
         .object({ from: z.string().max(2000), to: z.string().max(2000) })
         .optional(),
+      subgroup: z
+        .object({ from: z.string().max(2000), to: z.string().max(2000) })
+        .optional(),
     })
     .parse(input);
   const page = requirePage(user, pageId, true);
@@ -138,15 +143,20 @@ export function moveRow(
         related.relatedSchemas,
       ).map((r) => r.id)
     : orderedRowIds(rows, view);
+  if (b.subgroup && !b.group)
+    throw new HttpError(400, "Untergruppe benötigt eine Gruppe.");
   if (b.group) {
     if (!["board", "table", "list"].includes(view.type))
       throw new HttpError(
         400,
         "Gruppenwechsel benötigt eine gruppierte Ansicht.",
       );
-    const field = groupingField(d.fields, view);
-    if (
-      !field ||
+    const field = groupingField(d.fields, view),
+      subfield = b.subgroup
+        ? subgroupingField(d.fields, view, field)
+        : undefined;
+    const locked = (f?: Field) =>
+      !f ||
       [
         "formula",
         "rollup",
@@ -154,8 +164,8 @@ export function moveRow(
         "updated_at",
         "created_by",
         "updated_by",
-      ].includes(field.type)
-    )
+      ].includes(f.type);
+    if (locked(field) || (b.subgroup && locked(subfield)))
       throw new HttpError(400, "Gruppe kann nicht bearbeitet werden.");
     const groups = databaseGroups(
         queryRows(
@@ -171,26 +181,49 @@ export function moveRow(
       ),
       from = groups.find((g) => g.key === b.group!.from),
       to = groups.find((g) => g.key === b.group!.to);
+    const subFrom =
+        from && subfield && b.subgroup
+          ? databaseSubgroups(from, subfield, related.related).find(
+              (g) => g.key === b.subgroup!.from,
+            )
+          : undefined,
+      subTargets =
+        to && subfield && b.subgroup
+          ? databaseGroups(to.rows, subfield, related.related)
+          : [],
+      subTo = subTargets.find((g) => g.key === b.subgroup?.to);
     if (
       !from?.rows.some((r) => r.id === row.id) ||
       !to ||
-      (b.targetId && !to.rows.some((r) => r.id === b.targetId))
+      (b.targetId && !to.rows.some((r) => r.id === b.targetId)) ||
+      (b.subgroup &&
+        (!subFrom?.rows.some((r) => r.id === row.id) ||
+          !subTo ||
+          (b.targetId && !subTo.rows.some((r) => r.id === b.targetId))))
     )
       throw new HttpError(
         409,
         "Die Gruppenzuordnung wurde geändert. Bitte neu laden.",
       );
-    if (from.key !== to.key) {
+    const patch: Record<string, unknown> = {};
+    if (from.key !== to.key)
+      patch[field!.id] = groupCellValue(
+        field!,
+        to.value,
+        row.cells[field!.id],
+        from.key,
+      );
+    if (subfield && subFrom && subTo && subFrom.key !== subTo.key)
+      patch[subfield.id] = groupCellValue(
+        subfield,
+        subTo.value,
+        row.cells[subfield.id],
+        subFrom.key,
+      );
+    if (Object.keys(patch).length) {
       const cells = {
         ...row.cells,
-        ...validateCellPatch(user, page, d.fields, {
-          [field.id]: groupCellValue(
-            field,
-            to.value,
-            row.cells[field.id],
-            from.key,
-          ),
-        }),
+        ...validateCellPatch(user, page, d.fields, patch),
       };
       if (JSON.stringify(cells).length > 200000)
         throw new HttpError(413, "Datensatz zu groß.");

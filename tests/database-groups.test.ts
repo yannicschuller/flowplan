@@ -485,3 +485,127 @@ test("manual group order keeps unlisted groups in their natural slot and survive
   ]);
   assert.deepEqual(remapped.groupSettings?.collapsed, ['"new-1"']);
 });
+
+test("subgroups nest a second property, move across both levels atomically and remap collapsed keys", async () => {
+  const {
+    subgroupingField,
+    databaseSubgroups,
+    nestedKey,
+    splitNestedKey,
+    subgroupCollapseKey,
+  } = await import("../lib/database-groups");
+  const { remapViewReferences } = await import("../lib/view-references");
+  const sub: View = { ...view, subGroupBy: "tags" };
+  assert.equal(subgroupingField(fields, sub, fields[1])?.id, "tags");
+  // Same field, boards and missing primaries have no second level.
+  assert.equal(
+    subgroupingField(fields, { ...sub, subGroupBy: "status" }, fields[1]),
+    undefined,
+  );
+  assert.equal(
+    subgroupingField(fields, { ...sub, type: "board" }, fields[1]),
+    undefined,
+  );
+  assert.equal(subgroupingField(fields, sub, undefined), undefined);
+  const key = nestedKey('"Open"', "empty");
+  assert.deepEqual(splitNestedKey(key), { group: '"Open"', subgroup: "empty" });
+  assert.deepEqual(splitNestedKey('"Open"'), {
+    group: '"Open"',
+    subgroup: undefined,
+  });
+  // Values containing the control character are escaped by JSON keys.
+  assert.equal(
+    splitNestedKey(nestedKey(groupKey("a\u001fb"), '"x"')).subgroup,
+    '"x"',
+  );
+  assert.ok(subgroupCollapseKey("x".repeat(1900), "y").startsWith("long:"));
+
+  const [group] = databaseGroups(
+    [
+      sample("a", { status: "Open", tags: ["A", "B"] }),
+      sample("b", { status: "Open", tags: [] }),
+    ],
+    fields[1],
+    {},
+  );
+  assert.deepEqual(
+    databaseSubgroups(group, fields[2], {}).map((g) => [
+      g.label,
+      g.rows.map((r) => r.id),
+    ]),
+    [
+      ["A", ["a"]],
+      ["B", ["a"]],
+      ["Ohne Gruppe", ["b"]],
+    ],
+  );
+
+  const { page, a, b } = fixture();
+  schema(page, [sub, { ...view, id: "list", type: "list", groupBy: "tags" }]);
+  const move = {
+    action: "row.move",
+    pageId: page,
+    viewId: "table",
+    version: database(page).version,
+    rowId: a,
+    rowVersion: 1,
+    targetId: b,
+    placement: "after",
+    group: { from: '"Open"', to: '"Done"' },
+    subgroup: { from: '"B"', to: '"C"' },
+  };
+  // Stale subgroup memberships are rejected without partial changes.
+  const before = rows(page);
+  assert.throws(
+    () => act({ ...move, subgroup: { from: '"C"', to: '"C"' } }),
+    /Gruppenzuordnung/,
+  );
+  assert.throws(
+    () => act({ ...move, subgroup: { from: '"B"', to: '"A"' } }),
+    /Gruppenzuordnung/,
+  );
+  assert.throws(() => act({ ...move, group: undefined }), /Untergruppe/);
+  assert.throws(() => act(move, viewer), /Berechtigung/);
+  assert.deepEqual(rows(page), before);
+  act(move);
+  const moved = rows(page).find((r) => r.id === a)!;
+  assert.equal(moved.cells.status, "Done");
+  assert.deepEqual(moved.cells.tags, ["A", "C"]);
+  assert.equal(moved.version, 2);
+  assert.deepEqual(database(page).views[0].rowOrder, [b, a]);
+
+  const relationFields: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "status", name: "Status", type: "select", options: ["Open"] },
+    { id: "rel", name: "Projekt", type: "relation", relationPage: "p2" },
+  ];
+  const [remapped] = remapViewReferences(
+    [
+      {
+        ...view,
+        groupBy: "status",
+        subGroupBy: "rel",
+        groupSettings: {
+          hideEmpty: true,
+          sort: "manual",
+          collapsed: [
+            subgroupCollapseKey('"Open"', '"old"'),
+            '"Open"',
+            "not json",
+          ],
+        },
+      },
+    ],
+    relationFields,
+    new Map([["old", "new"]]),
+  );
+  assert.deepEqual(remapped.groupSettings?.collapsed, [
+    subgroupCollapseKey('"Open"', '"new"'),
+    '"Open"',
+    "not json",
+  ]);
+  assert.equal(
+    viewSchema.safeParse({ ...sub, subGroupBy: "x".repeat(201) }).success,
+    false,
+  );
+});

@@ -135,7 +135,9 @@ export function moveGroupOrder(
 }
 export function groupKey(value: unknown): string {
   if (value == null || value === "") return "empty";
-  const raw = JSON.stringify(value);
+  return boundedKey(JSON.stringify(value));
+}
+function boundedKey(raw: string) {
   if (raw.length <= 1800) return raw;
   // Bounded identifiers also allow grouping long text cells and saving collapsed state.
   let a = 2166136261,
@@ -146,3 +148,37 @@ export function groupKey(value: unknown): string {
   }
   return `long:${raw.length}:${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}`;
 }
+
+// Second grouping level for tables and lists.
+export function subgroupingField(
+  fields: Field[],
+  view: View,
+  primary: Field | undefined,
+) {
+  if (!primary || !["table", "list"].includes(view.type)) return undefined;
+  return fields.find(
+    (f) => f.id === view.subGroupBy && f.id !== primary.id && canGroupField(f),
+  );
+}
+export function databaseSubgroups(
+  group: DatabaseGroup,
+  field: Field,
+  related: Record<string, Row[]>,
+  members: Pick<User, "id" | "name">[] = [],
+) {
+  return databaseGroups(group.rows, field, related, members).filter(
+    (g) => g.rows.length,
+  );
+}
+// Client-side address of a subgroup. Group keys are JSON or plain ASCII
+// identifiers, so they never contain the raw separator.
+const SEPARATOR = "\u001f";
+export const nestedKey = (group: string, subgroup: string) =>
+  `${group}${SEPARATOR}${subgroup}`;
+export function splitNestedKey(key: string) {
+  const [group, subgroup] = key.split(SEPARATOR);
+  return { group, subgroup: subgroup as string | undefined };
+}
+// Persisted collapsed state of a subgroup; bounded like group keys.
+export const subgroupCollapseKey = (group: string, subgroup: string) =>
+  boundedKey(JSON.stringify(["sub", group, subgroup]));

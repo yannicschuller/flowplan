@@ -27,6 +27,7 @@ import { GalleryCover } from "./gallery-cover";
 import type { PageImage } from "@/lib/page-appearance";
 import {
   Fragment,
+  type ReactNode,
   useMemo,
   useState,
   useRef,
@@ -57,6 +58,11 @@ import {
   configuredGroups,
   canGroupField,
   moveGroupOrder,
+  subgroupingField,
+  databaseSubgroups,
+  nestedKey,
+  splitNestedKey,
+  subgroupCollapseKey,
   type DatabaseGroup,
 } from "@/lib/database-groups";
 import { CellInput } from "./cell-input";
@@ -152,6 +158,7 @@ type RowMove = {
   targetId?: string;
   placement: "before" | "after" | "start" | "end";
   group?: { from: string; to: string };
+  subgroup?: { from: string; to: string };
 };
 const rowDragType = "application/x-flowplan-row-order";
 const groupDragType = "application/x-flowplan-group-order";
@@ -389,18 +396,57 @@ export default function DatabaseView({
     readerCollapsed[JSON.stringify([view.id, view.groupBy, key])] !== undefined
       ? readerCollapsed[JSON.stringify([view.id, view.groupBy, key])]
       : groupSettings.collapsed.includes(key);
+  const subField = grouped
+    ? subgroupingField(fields, view, groupField)
+    : undefined;
+  const subgroups = new Map<string, DatabaseGroup[]>(
+    subField
+      ? groups.map((g) => [
+          g.key,
+          databaseSubgroups(g, subField, data.related, members),
+        ])
+      : [],
+  );
+  const subCollapsed = (group: string, subgroup: string) =>
+    collapsed(subgroupCollapseKey(group, subgroup));
   const selectableRows = grouped
     ? [
         ...new Map(
           groups
             .filter((g) => !collapsed(g.key))
-            .flatMap((g) => g.rows)
+            .flatMap((g) =>
+              subgroups.has(g.key)
+                ? subgroups
+                    .get(g.key)!
+                    .filter((sg) => !subCollapsed(g.key, sg.key))
+                    .flatMap((sg) => sg.rows)
+                : g.rows,
+            )
             .map((r) => [r.id, r]),
         ).values(),
       ]
     : shown;
   const canGroupEdit =
     editable && !!groupField && !computedTypes.includes(groupField.type);
+  const canSubEdit =
+    canGroupEdit && !!subField && !computedTypes.includes(subField.type);
+  // Row moves address subgroups with a nested key; the server receives both levels.
+  function groupChange(from: string, to: string) {
+    const a = splitNestedKey(from),
+      b = splitNestedKey(to);
+    return {
+      group: { from: a.group, to: b.group },
+      ...(a.subgroup !== undefined && b.subgroup !== undefined
+        ? { subgroup: { from: a.subgroup, to: b.subgroup } }
+        : {}),
+    };
+  }
+  function rowsOfGroup(key: string) {
+    const { group, subgroup } = splitNestedKey(key);
+    return subgroup === undefined
+      ? groups.find((g) => g.key === group)?.rows
+      : subgroups.get(group)?.find((sg) => sg.key === subgroup)?.rows;
+  }
   const rollupRelation = fields.find(
     (f) => f.id === fieldDraft.relationField && f.type === "relation",
   );
@@ -512,7 +558,7 @@ export default function DatabaseView({
   const moveRow = data.rows.find((r) => r.id === moveDialog?.id);
   const moveSiblings =
     moveDialog?.groupKey !== undefined
-      ? groups.find((g) => g.key === moveDialog.groupKey)?.rows || []
+      ? rowsOfGroup(moveDialog.groupKey) || []
       : shown;
   const moveIndex = moveSiblings.findIndex((r) => r.id === moveDialog?.id);
   function openMove(row: Row, groupKey?: string) {
@@ -556,7 +602,7 @@ export default function DatabaseView({
       targetId,
       placement,
       ...(groupKey !== undefined && canGroupEdit
-        ? { group: { from: groupKey, to: groupKey } }
+        ? groupChange(groupKey, groupKey)
         : {}),
     });
   }
@@ -599,10 +645,16 @@ export default function DatabaseView({
         setDropHint(null);
         return;
       }
+      const change =
+        groupKey !== undefined && source.groupKey !== undefined
+          ? groupChange(source.groupKey, groupKey)
+          : undefined;
       if (
-        groupKey !== undefined &&
-        source.groupKey !== groupKey &&
-        !canGroupEdit
+        change &&
+        ((change.group.from !== change.group.to && !canGroupEdit) ||
+          (change.subgroup &&
+            change.subgroup.from !== change.subgroup.to &&
+            !canSubEdit))
       ) {
         onError("Diese Gruppierung kann nicht bearbeitet werden.");
         return;
@@ -621,7 +673,7 @@ export default function DatabaseView({
         targetId: target?.id,
         placement: target ? placement : "end",
         ...(groupKey !== undefined && canGroupEdit
-          ? { group: { from: source.groupKey, to: groupKey } }
+          ? groupChange(source.groupKey, groupKey)
           : {}),
       });
     } catch {
@@ -1009,6 +1061,106 @@ export default function DatabaseView({
       setDropHint(null);
     }
   }
+  function summaries(rows: Row[]) {
+    return visibleFields.map((f) => {
+      const summary = columnSummary(
+        f,
+        rows,
+        calculationFor(view.calculations, f.id),
+      );
+      return (
+        summary && (
+          <span key={f.id}>
+            {f.name}: {summaryText(summary)}
+          </span>
+        )
+      );
+    });
+  }
+  function nestedRows(
+    group: DatabaseGroup,
+    render: (r: Row, key: string) => ReactNode,
+    table: boolean,
+  ) {
+    const list = subgroups.get(group.key);
+    if (!list) return group.rows.map((r) => render(r, group.key));
+    return list.map((sg) => {
+      const key = nestedKey(group.key, sg.key),
+        header = subgroupHeader(group, sg);
+      return (
+        <Fragment key={key}>
+          {table ? (
+            <tr className="database-group-row database-subgroup-row">
+              <th
+                colSpan={Math.max(1, visibleFields.length + (editable ? 2 : 0))}
+              >
+                {header}
+              </th>
+            </tr>
+          ) : (
+            header
+          )}
+          {!subCollapsed(group.key, sg.key) &&
+            sg.rows.map((r) => render(r, key))}
+        </Fragment>
+      );
+    });
+  }
+  function subgroupHeader(group: DatabaseGroup, sub: DatabaseGroup) {
+    const closed = subCollapsed(group.key, sub.key),
+      target = { ...sub, key: nestedKey(group.key, sub.key) };
+    return (
+      <div
+        className="database-group-header database-subgroup-header"
+        role="group"
+        aria-label={`Untergruppe ${sub.label} in ${group.label}`}
+        onDragOver={(e) => {
+          if (
+            editable &&
+            !orderBusy &&
+            e.dataTransfer.types.includes(rowDragType)
+          )
+            e.preventDefault();
+        }}
+        onDrop={(e) => dropIntoGroup(e, target)}
+      >
+        <button
+          className="group-toggle"
+          aria-expanded={!closed}
+          aria-label={`Untergruppe ${sub.label} in ${group.label} ${closed ? "ausklappen" : "einklappen"}`}
+          disabled={schemaBusy}
+          onClick={() =>
+            void setGroupsCollapsed(
+              [subgroupCollapseKey(group.key, sub.key)],
+              !closed,
+            )
+          }
+        >
+          <CaretRight
+            size={14}
+            style={{ transform: closed ? undefined : "rotate(90deg)" }}
+          />
+          <span>{sub.label}</span>
+          <span className="muted">{sub.rows.length}</span>
+        </button>
+        <span className="group-summary">{summaries(sub.rows)}</span>
+        {canSubEdit && (
+          <button
+            className="icon-button"
+            title={`Eintrag in ${group.label} / ${sub.label} hinzufügen`}
+            onClick={() =>
+              createRow({
+                [groupField!.id]: groupCellValue(groupField!, group.value),
+                [subField!.id]: groupCellValue(subField!, sub.value),
+              })
+            }
+          >
+            <Plus size={16} />
+          </button>
+        )}
+      </div>
+    );
+  }
   function groupHeader(group: DatabaseGroup) {
     return (
       <div
@@ -1063,22 +1215,7 @@ export default function DatabaseView({
             }}
           />
         )}
-        <span className="group-summary">
-          {visibleFields.map((f) => {
-            const summary = columnSummary(
-              f,
-              group.rows,
-              calculationFor(view.calculations, f.id),
-            );
-            return (
-              summary && (
-                <span key={f.id}>
-                  {f.name}: {summaryText(summary)}
-                </span>
-              )
-            );
-          })}
-        </span>
+        <span className="group-summary">{summaries(group.rows)}</span>
         {groupMoveButtons(group)}
         {editable && canGroupEdit && (
           <button
@@ -1589,7 +1726,8 @@ export default function DatabaseView({
                       {groupHeader(g)}
                     </th>
                   </tr>
-                  {!collapsed(g.key) && g.rows.map((r) => tableRow(r, g.key))}
+                  {!collapsed(g.key) &&
+                    nestedRows(g, (r, key) => tableRow(r, key), true)}
                 </tbody>
               ))
             ) : (
@@ -1808,7 +1946,8 @@ export default function DatabaseView({
                   className="database-list-group"
                 >
                   {groupHeader(g)}
-                  {!collapsed(g.key) && g.rows.map((r) => listRow(r, g.key))}
+                  {!collapsed(g.key) &&
+                    nestedRows(g, (r, key) => listRow(r, key), false)}
                 </section>
               ))
             : shown.map((r) => listRow(r))}
@@ -2208,6 +2347,9 @@ export default function DatabaseView({
               onChange={(e) =>
                 updateView({
                   groupBy: e.target.value,
+                  ...(view.subGroupBy === e.target.value || !e.target.value
+                    ? { subGroupBy: undefined }
+                    : {}),
                   groupSettings: {
                     ...groupSettings,
                     collapsed: [],
@@ -2226,6 +2368,37 @@ export default function DatabaseView({
               ))}
             </select>
           </label>
+          {grouped && (
+            <label>
+              Untergruppen nach
+              <select
+                aria-label="Untergruppen nach"
+                disabled={!viewEditable}
+                value={subField?.id || ""}
+                onChange={(e) =>
+                  updateView({
+                    subGroupBy: e.target.value || undefined,
+                    groupSettings: {
+                      ...groupSettings,
+                      // Subgroup collapse keys are only meaningful per field.
+                      collapsed: groupSettings.collapsed.filter(
+                        (key) => !key.startsWith('["sub"'),
+                      ),
+                    },
+                  })
+                }
+              >
+                <option value="">Keine Untergruppen</option>
+                {fields
+                  .filter((f) => canGroupField(f) && f.id !== groupField!.id)
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           {groupField && ["table", "list", "board"].includes(view.type) && (
             <div className="settings-section">
               <label className="checkbox-label">

@@ -4708,6 +4708,16 @@ tr.order-drop-after > td {
 .database-list-group {
   border-bottom: 1px solid var(--border);
 }
+.database-subgroup-header {
+  padding-left: 22px;
+  font-size: 12px;
+}
+.database-subgroup-header .group-toggle {
+  font-weight: 500;
+}
+.database-subgroup-row > th {
+  background: color-mix(in srgb, var(--surface) 55%, var(--bg));
+}
 .database-list-group .database-group-header {
   background: var(--surface);
 }

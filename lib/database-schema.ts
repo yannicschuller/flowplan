@@ -69,6 +69,7 @@ export const view = z
       .array(z.object({ field: str, direction: z.enum(["asc", "desc"]) }))
       .max(20),
     groupBy: z.string().optional(),
+    subGroupBy: z.string().max(200).optional(),
     groupSettings: z
       .object({
         hideEmpty: z.boolean(),

@@ -120,6 +120,7 @@ export type View = {
   filterGroup?: FilterGroup;
   sorts: { field: string; direction: "asc" | "desc" }[];
   groupBy?: string;
+  subGroupBy?: string;
   groupSettings?: {
     hideEmpty: boolean;
     sort: "manual" | "asc" | "desc";
