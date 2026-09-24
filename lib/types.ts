@@ -124,6 +124,7 @@ export type View = {
     hideEmpty: boolean;
     sort: "manual" | "asc" | "desc";
     collapsed: string[];
+    order?: string[];
   };
   dateField?: string;
   endDateField?: string;

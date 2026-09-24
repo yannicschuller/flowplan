@@ -14,6 +14,16 @@ export function remapViewReferences(
     relations.has(f.field) && mapping.has(f.value)
       ? { ...f, value: mapping.get(f.value)! }
       : f;
+  const remapKey = (key: string) => {
+    try {
+      const value = JSON.parse(key);
+      return typeof value === "string" && mapping.has(value)
+        ? JSON.stringify(mapping.get(value))
+        : key;
+    } catch {
+      return key;
+    }
+  };
   return remapViewRows(views, mapping, scope).map((v) => ({
     ...v,
     filters: v.filters.map(remap),
@@ -21,16 +31,10 @@ export function remapViewReferences(
       ? {
           groupSettings: {
             ...v.groupSettings,
-            collapsed: v.groupSettings.collapsed.map((key) => {
-              try {
-                const value = JSON.parse(key);
-                return typeof value === "string" && mapping.has(value)
-                  ? JSON.stringify(mapping.get(value))
-                  : key;
-              } catch {
-                return key;
-              }
-            }),
+            collapsed: v.groupSettings.collapsed.map(remapKey),
+            ...(v.groupSettings.order
+              ? { order: v.groupSettings.order.map(remapKey) }
+              : {}),
           },
         }
       : {}),

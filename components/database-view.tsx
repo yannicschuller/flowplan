@@ -44,6 +44,7 @@ import {
   groupingField,
   configuredGroups,
   canGroupField,
+  moveGroupOrder,
   type DatabaseGroup,
 } from "@/lib/database-groups";
 import { CellInput } from "./cell-input";
@@ -68,6 +69,8 @@ import {
   Link as LinkIcon,
   Copy,
   DotsSixVertical,
+  CaretUp,
+  CaretDown,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
 import { Modal, viewIcons, download, Avatar, api } from "./ui";
@@ -131,6 +134,7 @@ type RowMove = {
   group?: { from: string; to: string };
 };
 const rowDragType = "application/x-flowplan-row-order";
+const groupDragType = "application/x-flowplan-group-order";
 const computedTypes = [
   "formula",
   "rollup",
@@ -244,6 +248,7 @@ export default function DatabaseView({
   const [moveTarget, setMoveTarget] = useState(""),
     [movePlacement, setMovePlacement] = useState<"before" | "after">("before");
   const [sortMove, setSortMove] = useState<RowMove | null>(null);
+  const [groupDrop, setGroupDrop] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<{
     id: string;
     groupKey?: string;
@@ -849,6 +854,57 @@ export default function DatabaseView({
       groupSettings: { ...groupSettings, collapsed: [...next] },
     });
   }
+  async function moveGroup(key: string, target: number) {
+    if (!viewEditable) return;
+    const order = moveGroupOrder(
+      groups.map((g) => g.key),
+      groupSettings.order,
+      key,
+      target,
+    );
+    if (!order) return;
+    await updateView({
+      groupSettings: { ...groupSettings, sort: "manual", order },
+    });
+  }
+  function groupMoveButtons(group: DatabaseGroup, horizontal = false) {
+    if (!viewEditable) return null;
+    const index = groups.findIndex((g) => g.key === group.key);
+    const Before = horizontal ? CaretLeft : CaretUp;
+    const After = horizontal ? CaretRight : CaretDown;
+    const before = horizontal ? "nach links" : "nach oben";
+    const after = horizontal ? "nach rechts" : "nach unten";
+    return (
+      <span className="group-move">
+        <button
+          className="icon-button"
+          aria-label={`Gruppe ${group.label} ${before} verschieben`}
+          title={`Gruppe ${before} verschieben`}
+          disabled={schemaBusy || index <= 0}
+          onClick={() => void moveGroup(group.key, index - 1)}
+        >
+          <Before size={14} />
+        </button>
+        <button
+          className="icon-button"
+          aria-label={`Gruppe ${group.label} ${after} verschieben`}
+          title={`Gruppe ${after} verschieben`}
+          disabled={schemaBusy || index >= groups.length - 1}
+          onClick={() => void moveGroup(group.key, index + 1)}
+        >
+          <After size={14} />
+        </button>
+      </span>
+    );
+  }
+  function dropGroup(e: DragEvent, target: DatabaseGroup) {
+    if (!viewEditable || !e.dataTransfer.types.includes(groupDragType)) return;
+    e.preventDefault();
+    setGroupDrop(null);
+    const source = e.dataTransfer.getData(groupDragType);
+    const index = groups.findIndex((g) => g.key === target.key);
+    if (source && index >= 0) void moveGroup(source, index);
+  }
   function dropIntoGroup(e: DragEvent, group: DatabaseGroup) {
     if (
       !editable ||
@@ -939,6 +995,7 @@ export default function DatabaseView({
             );
           })}
         </span>
+        {groupMoveButtons(group)}
         {editable && canGroupEdit && (
           <button
             className="icon-button"
@@ -1512,10 +1569,19 @@ export default function DatabaseView({
         <div className="board">
           {groups.map((g) => (
             <section
-              className="board-column"
+              className={`board-column${collapsed(g.key) ? " collapsed" : ""}${groupDrop === g.key ? " group-drop" : ""}`}
               key={g.key}
               aria-label={`Gruppe ${g.label}`}
               onDragOver={(e) => {
+                if (
+                  viewEditable &&
+                  !schemaBusy &&
+                  e.dataTransfer.types.includes(groupDragType)
+                ) {
+                  e.preventDefault();
+                  setGroupDrop(g.key);
+                  return;
+                }
                 if (
                   editable &&
                   !orderBusy &&
@@ -1523,7 +1589,15 @@ export default function DatabaseView({
                 )
                   e.preventDefault();
               }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+                  setGroupDrop((k) => (k === g.key ? null : k));
+              }}
               onDrop={(e) => {
+                if (e.dataTransfer.types.includes(groupDragType)) {
+                  dropGroup(e, g);
+                  return;
+                }
                 let source: string | undefined;
                 try {
                   source = JSON.parse(
@@ -1540,12 +1614,36 @@ export default function DatabaseView({
                 );
               }}
             >
-              <header>
+              <header
+                draggable={viewEditable && !schemaBusy}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(groupDragType, g.key);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragEnd={() => setGroupDrop(null)}
+              >
+                <button
+                  className="icon-button group-toggle"
+                  aria-expanded={!collapsed(g.key)}
+                  aria-label={`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`}
+                  disabled={schemaBusy}
+                  onClick={() =>
+                    void setGroupsCollapsed([g.key], !collapsed(g.key))
+                  }
+                >
+                  <CaretRight
+                    size={14}
+                    style={{
+                      transform: collapsed(g.key) ? undefined : "rotate(90deg)",
+                    }}
+                  />
+                </button>
                 <span className={`tag tag-${tagColor(g.label)}`}>
                   {g.label}
                 </span>
                 <span className="muted">{g.rows.length}</span>
-                {editable && (
+                {!collapsed(g.key) && groupMoveButtons(g, true)}
+                {editable && !collapsed(g.key) && (
                   <button
                     className="icon-button"
                     title={`Eintrag in ${g.label} hinzufügen`}
@@ -1566,8 +1664,8 @@ export default function DatabaseView({
                   </button>
                 )}
               </header>
-              {g.rows.map((r) => card(r, g.key))}
-              {editable && (
+              {!collapsed(g.key) && g.rows.map((r) => card(r, g.key))}
+              {editable && !collapsed(g.key) && (
                 <button
                   className="new-record"
                   onClick={() =>
@@ -2025,7 +2123,11 @@ export default function DatabaseView({
               onChange={(e) =>
                 updateView({
                   groupBy: e.target.value,
-                  groupSettings: { ...groupSettings, collapsed: [] },
+                  groupSettings: {
+                    ...groupSettings,
+                    collapsed: [],
+                    order: [],
+                  },
                 })
               }
             >
@@ -2072,11 +2174,28 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  <option value="manual">Eigenschaftsreihenfolge</option>
+                  <option value="manual">
+                    {groupSettings.order?.length
+                      ? "Eigene Reihenfolge"
+                      : "Eigenschaftsreihenfolge"}
+                  </option>
                   <option value="asc">Bezeichnung aufsteigend</option>
                   <option value="desc">Bezeichnung absteigend</option>
                 </select>
               </label>
+              {!!groupSettings.order?.length && (
+                <button
+                  className="button compact"
+                  disabled={!viewEditable || schemaBusy}
+                  onClick={() =>
+                    updateView({
+                      groupSettings: { ...groupSettings, order: [] },
+                    })
+                  }
+                >
+                  Gruppenreihenfolge zurücksetzen
+                </button>
+              )}
             </div>
           )}
           <label>

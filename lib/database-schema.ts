@@ -77,6 +77,11 @@ export const view = z
           .array(z.string().max(2000))
           .max(1000)
           .refine((keys) => new Set(keys).size === keys.length),
+        order: z
+          .array(z.string().max(2000))
+          .max(1000)
+          .refine((keys) => new Set(keys).size === keys.length)
+          .optional(),
       })
       .optional(),
     dateField: z.string().optional(),

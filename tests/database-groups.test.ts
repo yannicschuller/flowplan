@@ -378,3 +378,110 @@ test("collapsed relation groups remap through page copies, templates, JSON/ZIP a
   act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
   check(restored);
 });
+
+test("manual group order keeps unlisted groups in their natural slot and survives relation remaps", async () => {
+  const { orderedGroups, moveGroupOrder } =
+    await import("../lib/database-groups");
+  const { remapViewReferences } = await import("../lib/view-references");
+  const groups = databaseGroups(
+    [sample("a", { status: "Open" }), sample("b", { status: "Done" })],
+    fields[1],
+    {},
+  );
+  const keys = groups.map((g) => g.key);
+  assert.deepEqual(keys, ['"Open"', '"Done"', '"Empty"', "empty"]);
+  const ordered = (order: string[]) =>
+    configuredGroups(groups, {
+      ...view,
+      type: "board",
+      groupSettings: { hideEmpty: false, sort: "manual", collapsed: [], order },
+    }).map((g) => g.key);
+  assert.deepEqual(ordered(['"Done"', '"Open"']), [
+    '"Done"',
+    '"Open"',
+    '"Empty"',
+    "empty",
+  ]);
+  // A new option inserted between saved keys keeps its property slot.
+  assert.deepEqual(ordered(['"Empty"', '"Open"']), [
+    '"Empty"',
+    '"Done"',
+    '"Open"',
+    "empty",
+  ]);
+  // Stale keys of removed options are ignored.
+  assert.deepEqual(ordered(['"Gone"', "empty", '"Open"']), [
+    "empty",
+    '"Done"',
+    '"Empty"',
+    '"Open"',
+  ]);
+  // Alphabetical sort still overrides the saved order.
+  assert.deepEqual(
+    configuredGroups(groups, {
+      ...view,
+      type: "board",
+      groupSettings: {
+        hideEmpty: false,
+        sort: "asc",
+        collapsed: [],
+        order: ["empty"],
+      },
+    }).map((g) => g.label),
+    ["Done", "Empty", "Ohne Gruppe", "Open"],
+  );
+  assert.deepEqual(orderedGroups([{ key: "x" }], []), [{ key: "x" }]);
+
+  // Moving within displayed groups retains saved keys of hidden groups.
+  assert.deepEqual(
+    moveGroupOrder(['"Open"', '"Done"'], ['"Hidden"', '"Done"'], '"Done"', 0),
+    ['"Done"', '"Open"', '"Hidden"'],
+  );
+  assert.equal(moveGroupOrder(['"Open"'], [], '"Open"', 1), null);
+  assert.equal(moveGroupOrder(['"Open"'], [], '"Missing"', 0), null);
+
+  assert.equal(
+    viewSchema.safeParse({
+      ...view,
+      groupSettings: { ...view.groupSettings, order: ["a", "a"] },
+    }).success,
+    false,
+  );
+  assert.equal(
+    viewSchema.safeParse({
+      ...view,
+      groupSettings: { ...view.groupSettings, order: ['"Done"'] },
+    }).success,
+    true,
+  );
+
+  const relationFields: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "rel", name: "Projekt", type: "relation", relationPage: "p2" },
+  ];
+  const [remapped] = remapViewReferences(
+    [
+      {
+        ...view,
+        groupBy: "rel",
+        groupSettings: {
+          hideEmpty: false,
+          sort: "manual",
+          collapsed: ['"old-1"'],
+          order: ['"old-2"', '"old-1"', "empty"],
+        },
+      },
+    ],
+    relationFields,
+    new Map([
+      ["old-1", "new-1"],
+      ["old-2", "new-2"],
+    ]),
+  );
+  assert.deepEqual(remapped.groupSettings?.order, [
+    '"new-2"',
+    '"new-1"',
+    "empty",
+  ]);
+  assert.deepEqual(remapped.groupSettings?.collapsed, ['"new-1"']);
+});

@@ -95,13 +95,43 @@ export function configuredGroups(groups: DatabaseGroup[], view: View) {
       ) || g.rows.length,
   );
   if (!view.groupSettings || view.groupSettings.sort === "manual")
-    return visible;
+    return orderedGroups(visible, view.groupSettings?.order);
   const direction = view.groupSettings.sort === "asc" ? 1 : -1;
   return visible.sort(
     (a, b) =>
       a.label.localeCompare(b.label, "de", { numeric: true }) * direction ||
       a.key.localeCompare(b.key),
   );
+}
+// Listed groups take the saved order; unlisted groups (new options, new values)
+// keep their natural slot so a saved order never hides or jumbles them.
+export function orderedGroups<T extends { key: string }>(
+  groups: T[],
+  order: string[] = [],
+) {
+  if (!order.length) return groups;
+  const rank = new Map(order.map((key, i) => [key, i]));
+  const listed = groups
+    .filter((g) => rank.has(g.key))
+    .sort((a, b) => rank.get(a.key)! - rank.get(b.key)!);
+  let next = 0;
+  return groups.map((g) => (rank.has(g.key) ? listed[next++] : g));
+}
+// Moves a group one step within the displayed groups and returns the full
+// saved order, retaining entries of currently hidden or filtered groups.
+export function moveGroupOrder(
+  displayed: string[],
+  saved: string[] = [],
+  key: string,
+  target: number,
+) {
+  const from = displayed.indexOf(key);
+  if (from < 0 || target < 0 || target >= displayed.length || from === target)
+    return null;
+  const moved = displayed.filter((k) => k !== key);
+  moved.splice(target, 0, key);
+  const shownKeys = new Set(displayed);
+  return [...moved, ...saved.filter((k) => !shownKeys.has(k))].slice(0, 1000);
 }
 export function groupKey(value: unknown): string {
   if (value == null || value === "") return "empty";
