@@ -39,6 +39,8 @@ import { one, all, run, id, audit } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { snapshotChanges } from "@/lib/version-history";
+import { importZip } from "@/lib/zip-import";
+import { ARCHIVE_LIMIT } from "@/lib/archive";
 import {
   enforceQuota,
   instanceMetrics,
@@ -241,7 +243,11 @@ export async function POST(
   try {
     checkOrigin(req);
     const { path } = await params;
-    if (Number(req.headers.get("content-length") || 0) > 12_000_000)
+    // ZIP imports may be as large as content archives.
+    if (
+      Number(req.headers.get("content-length") || 0) >
+      (path[0] === "import" ? ARCHIVE_LIMIT + 1_000_000 : 12_000_000)
+    )
       throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
     if (path.length === 1 && path[0] === "presence") {
@@ -303,6 +309,21 @@ export async function POST(
                 })();
       after(dispatchPush);
       return NextResponse.json(result);
+    }
+    if (path[0] === "import" && path[1] === "zip") {
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > ARCHIVE_LIMIT)
+        throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
+      return NextResponse.json(
+        await importZip(
+          user,
+          z.uuid().parse(data.get("workspaceId")),
+          z.uuid().parse(data.get("spaceId")),
+          Buffer.from(await file.arrayBuffer()),
+        ),
+      );
     }
     if (path[0] === "upload") {
       const data = await req.formData();

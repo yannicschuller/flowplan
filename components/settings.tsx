@@ -54,6 +54,9 @@ export default function Settings({
     [settings, setSettings] = useState<SettingsData | null>(null),
     [groupId, setGroupId] = useState<string | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [zipBusy, setZipBusy] = useState(false),
+    [zipResult, setZipResult] = useState(""),
+    [importSpace, setImportSpace] = useState("");
   const [editingSpace, setEditingSpace] = useState<Space | null>(null);
   const owner = boot.workspace.role === "owner";
   async function load() {
@@ -526,6 +529,73 @@ export default function Settings({
                 }}
               />
             </label>
+          </section>
+          <section className="settings-section">
+            <h2>Notion-, AppFlowy- oder Markdown-Export importieren</h2>
+            <p>
+              ZIP mit Markdown- und CSV-Dateien: Markdown wird zu Seiten, CSV zu
+              Datenbanken, Ordner zu Unterseiten. Bilder und Dateien, auf die
+              Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion
+              werden den Einträgen zugeordnet. Maximal 100 MB, 500 Seiten und
+              5.000 Einträge je Tabelle.
+            </p>
+            <label>
+              Zielbereich
+              <select
+                aria-label="Zielbereich für den Import"
+                value={importSpace || boot.spaces[0]?.id || ""}
+                onChange={(e) => setImportSpace(e.target.value)}
+              >
+                {boot.spaces.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="button file-label">
+              <UploadSimple />
+              {zipBusy ? "Import läuft …" : "ZIP auswählen"}
+              <input
+                type="file"
+                accept=".zip,application/zip"
+                hidden
+                aria-label="Export-ZIP importieren"
+                disabled={boot.workspace.role === "viewer" || zipBusy}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  setZipBusy(true);
+                  setZipResult("");
+                  try {
+                    const body = new FormData();
+                    body.set("workspaceId", boot.workspace.id);
+                    body.set(
+                      "spaceId",
+                      importSpace || boot.spaces[0]?.id || "",
+                    );
+                    body.set("file", file);
+                    const response = await fetch("/api/import/zip", {
+                      method: "POST",
+                      body,
+                    });
+                    const result = await response.json();
+                    if (!response.ok)
+                      throw new Error(result.error || "Import fehlgeschlagen.");
+                    setZipResult(
+                      `${result.pages} Seiten, ${result.rows} Einträge und ${result.files} Dateien importiert.`,
+                    );
+                    await onRefresh();
+                  } catch (err) {
+                    onError((err as Error).message);
+                  } finally {
+                    setZipBusy(false);
+                  }
+                }}
+              />
+            </label>
+            {zipResult && <p role="status">{zipResult}</p>}
           </section>
           <section className="settings-section">
             <h2>Flowplan-Backup importieren</h2>

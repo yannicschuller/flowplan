@@ -429,7 +429,13 @@ export async function exportArchive(user: Identity, wid: string) {
   audit(user.id, "workspace.archive.export", wid);
   return bytes;
 }
-export async function readZip(bytes: Buffer): Promise<Map<string, Buffer>> {
+// Foreign exports (Notion, AppFlowy, Markdown) use arbitrary names; they only
+// skip folders and macOS metadata instead of rejecting unknown entries.
+export type ZipOptions = { foreign?: boolean; maxEntries?: number };
+export async function readZip(
+  bytes: Buffer,
+  options: ZipOptions = {},
+): Promise<Map<string, Buffer>> {
   if (bytes.length > ARCHIVE_LIMIT)
     throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
   return new Promise((resolve, reject) =>
@@ -461,14 +467,23 @@ export async function readZip(bytes: Buffer): Promise<Map<string, Buffer>> {
         });
         zip.on("entry", (entry: Entry) => {
           if (failed) return;
+          if (
+            options.foreign &&
+            (entry.fileName.endsWith("/") ||
+              /(^|\/)(__MACOSX|\.DS_Store)(\/|$)/.test(entry.fileName))
+          ) {
+            zip.readEntry();
+            return;
+          }
           count++;
           if (
-            count > 2001 ||
+            count > (options.maxEntries ?? 2001) ||
             entry.isEncrypted() ||
             result.has(entry.fileName) ||
-            !/^flowplan\.json$|^(?:files|template-files)\/[a-f0-9-]{36}$/.test(
-              entry.fileName,
-            )
+            (!options.foreign &&
+              !/^flowplan\.json$|^(?:files|template-files)\/[a-f0-9-]{36}$/.test(
+                entry.fileName,
+              ))
           ) {
             fail(
               new HttpError(
