@@ -83,7 +83,12 @@ const DocumentEditor = dynamic(() => import("./editor"), {
 });
 type PageData = DatabaseData & {
   shareLinks?: ShareLink[];
-  publication?: { includeChildren: boolean; count: number };
+  publication?: {
+    includeChildren: boolean;
+    count: number;
+    allowCopy?: boolean;
+    publishedAt?: string | null;
+  };
   page: Page;
   role: Role;
   html: string;
@@ -2053,10 +2058,29 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                           pageId,
                           enabled: true,
                           includeChildren: e.target.checked,
+                          allowCopy: data.publication?.allowCopy !== false,
                         })
                       }
                     />
                     Aktuell vorhandene Unterseiten mit veröffentlichen
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      disabled={!editable}
+                      checked={data.publication?.allowCopy !== false}
+                      onChange={(e) =>
+                        act({
+                          action: "page.publish",
+                          pageId,
+                          enabled: true,
+                          includeChildren: !!data.publication?.includeChildren,
+                          allowCopy: e.target.checked,
+                        })
+                      }
+                    />
+                    Besucher dürfen eine Kopie in ihren Arbeitsbereich
+                    übernehmen
                   </label>
                   <p className="muted">
                     Veröffentlichte Seiten: {data.publication?.count || 1}.
@@ -2072,6 +2096,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                           pageId,
                           enabled: true,
                           includeChildren: true,
+                          allowCopy: data.publication?.allowCopy !== false,
                         })
                       }
                     >

@@ -8,6 +8,7 @@ import { database, rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
 import { cellText, computedCells } from "@/lib/database";
 import { displayText } from "@/lib/field-format";
+import { PublicationCopy } from "./publication-copy";
 import { HttpError } from "@/lib/auth";
 import type { Row } from "@/lib/types";
 import { sharedContent, publicField } from "@/lib/shared-content";
@@ -69,6 +70,23 @@ export function PublishedPage({
       coverUrl = `/api/share/${token}/files/${coverId}`;
     } catch {}
   }
+  // Only real publications (not private share links) show metadata and copying.
+  const publication =
+    root.public_token === token
+      ? one<{ published_at: string | null; allow_copy: number }>(
+          "SELECT published_at,allow_copy FROM publications WHERE page_id=?",
+          root.id,
+        )
+      : undefined;
+  const date = (value: string | null | undefined) =>
+    value
+      ? new Date(value.replace(" ", "T") + "Z").toLocaleDateString("de-DE", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        })
+      : "";
   const href = (id: string) =>
     `/share/${token}${id === root.id ? "" : "/" + id}`;
   const children = pages.filter((p) => p.parent_id === page.id);
@@ -77,6 +95,16 @@ export function PublishedPage({
       <a href="/" className="public-brand">
         flowplan <span className="muted">/ Geteilte Seite</span>
       </a>
+      {publication && (
+        <div className="publication-meta">
+          <span className="muted">
+            {publication.published_at &&
+              `Veröffentlicht am ${date(publication.published_at)} · `}
+            Zuletzt geändert am {date(page.updated_at)}
+          </span>
+          {!!publication.allow_copy && <PublicationCopy token={token} />}
+        </div>
+      )}
       {(page.id !== root.id || record) && (
         <nav className="public-breadcrumb">
           <a href={href(root.id)}>{root.title}</a>

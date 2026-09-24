@@ -2624,6 +2624,24 @@ tr:hover .row-open {
   border-radius: 4px;
   vertical-align: middle;
 }
+.publication-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 18px;
+  font-size: 13px;
+}
+.publication-copy form {
+  display: grid;
+  gap: 8px;
+  max-width: 360px;
+}
+.publication-copy p {
+  font-size: 12px;
+  margin: 0;
+}
 .version-diff {
   display: grid;
   gap: 6px;

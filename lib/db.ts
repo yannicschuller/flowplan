@@ -155,6 +155,17 @@ function migrate(d: DatabaseSync) {
     observed_value TEXT,armed_at INTEGER NOT NULL,fired_value TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,row_id,field_id));
     CREATE INDEX IF NOT EXISTS date_reminders_page ON date_reminders(page_id,user_id);`);
+  // Publication metadata and whether visitors may copy the publication.
+  const publicationColumns = d
+    .prepare("PRAGMA table_info(publications)")
+    .all() as { name: string }[];
+  for (const [column, type] of [
+    ["published_at", "TEXT"],
+    ["published_by", "TEXT"],
+    ["allow_copy", "INTEGER NOT NULL DEFAULT 1"],
+  ])
+    if (!publicationColumns.some((c) => c.name === column))
+      d.exec(`ALTER TABLE publications ADD COLUMN ${column} ${type}`);
   // Manual versions are kept; automatic ones follow the retention rules.
   if (
     !(

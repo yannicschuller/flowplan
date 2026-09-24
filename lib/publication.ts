@@ -6,11 +6,18 @@ import { cleanHtml } from "./document-server";
 import type { Identity, Page } from "./types";
 
 export function publicationSettings(pageId: string) {
+  const row = one<{
+    include_children: number;
+    allow_copy: number;
+    published_at: string | null;
+  }>(
+    "SELECT include_children,allow_copy,published_at FROM publications WHERE page_id=?",
+    pageId,
+  );
   return {
-    includeChildren: !!one<{ include_children: number }>(
-      "SELECT include_children FROM publications WHERE page_id=?",
-      pageId,
-    )?.include_children,
+    includeChildren: !!row?.include_children,
+    allowCopy: row ? !!row.allow_copy : true,
+    publishedAt: row?.published_at || null,
     count:
       one<{ count: number }>(
         "SELECT count(*) count FROM publication_pages WHERE root_id=?",
@@ -23,6 +30,7 @@ export function publishPage(
   page: Page,
   enabled: boolean,
   includeChildren: boolean,
+  allowCopy = true,
 ) {
   const pages = includeChildren
     ? all<Page>(
@@ -40,9 +48,11 @@ export function publishPage(
   );
   if (enabled) {
     run(
-      "INSERT INTO publications(page_id,include_children) VALUES(?,?)",
+      "INSERT INTO publications(page_id,include_children,published_at,published_by,allow_copy) VALUES(?,?,CURRENT_TIMESTAMP,?,?)",
       page.id,
       includeChildren ? 1 : 0,
+      user.id,
+      allowCopy ? 1 : 0,
     );
     for (const p of pages)
       run(

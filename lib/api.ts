@@ -1353,9 +1353,13 @@ export function command(
           p,
           z.boolean().parse(b.enabled),
           z.boolean().optional().parse(b.includeChildren) ?? false,
+          z.boolean().optional().parse(b.allowCopy) ?? true,
         );
         break;
       }
+      case "publication.copy":
+        result = copyPublication(user, b);
+        break;
       case "form.update": {
         write();
         database(pid());
@@ -1633,3 +1637,4 @@ import {
 import { ensureRowDocument } from "./row-documents";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance } from "./row-appearance";
+import { copyPublication } from "./publication-copy";
