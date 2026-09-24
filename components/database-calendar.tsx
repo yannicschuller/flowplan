@@ -7,9 +7,20 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import {
+  CalendarBlank,
+  CaretLeft,
+  CaretRight,
+  DotsSixVertical,
+} from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import DateInput from "./date-input";
+import {
+  OCCURRENCE_SEPARATOR,
+  occurrenceDates,
+  parseRecurrence,
+  shiftDateValue,
+} from "@/lib/recurrence";
 import { cellText } from "@/lib/database";
 import {
   calendarDays,
@@ -49,7 +60,7 @@ type Drag = {
   moved: boolean;
 };
 export default function DatabaseCalendar({
-  rows,
+  rows: baseRows,
   fields,
   view,
   version,
@@ -99,6 +110,50 @@ export default function DatabaseCalendar({
       () => calendarDays(anchor, config.mode, zone),
       [anchor, config.mode, zone],
     );
+  // Repeating entries appear as read-only occurrences within the shown days.
+  const rows = useMemo(() => {
+    if (!start || !days.length) return baseRows;
+    const from = days[0].date,
+      to = days[days.length - 1].date;
+    return baseRows.flatMap((row) => {
+      const rule = parseRecurrence(row.recurrence);
+      const first = row.cells[start.id];
+      if (!rule || typeof first !== "string" || !first) return [row];
+      const last = end ? row.cells[end.id] : undefined;
+      const span =
+        typeof last === "string" && last
+          ? Temporal.PlainDate.from(first.slice(0, 10)).until(
+              Temporal.PlainDate.from(last.slice(0, 10)),
+            ).days
+          : 0;
+      return [
+        row,
+        ...occurrenceDates(
+          first,
+          rule,
+          Temporal.PlainDate.from(from).subtract({ days: span }).toString(),
+          to,
+        ).map((date) => {
+          const shift = Temporal.PlainDate.from(first.slice(0, 10)).until(
+            Temporal.PlainDate.from(date),
+          ).days;
+          return {
+            ...row,
+            id: `${row.id}${OCCURRENCE_SEPARATOR}${date}`,
+            cells: {
+              ...row.cells,
+              [start.id]: shiftDateValue(first, shift),
+              ...(end && typeof last === "string" && last
+                ? { [end.id]: shiftDateValue(last, shift) }
+                : {}),
+            },
+          };
+        }),
+      ];
+    });
+  }, [baseRows, start, end, days]);
+  const occurrence = (id: string) => id.includes(OCCURRENCE_SEPARATOR);
+  const openRow = (id: string) => onOpen(id.split(OCCURRENCE_SEPARATOR)[0]);
   const ranges = useMemo(
     () =>
       new Map(
@@ -106,6 +161,18 @@ export default function DatabaseCalendar({
       ),
     [rows, fields, view, zone],
   );
+  // Touch devices move whole-day entries with a handle; the day under the
+  // finger is the target (month cells and all-day rows carry data-day).
+  const [touchTarget, setTouchTarget] = useState<string | null>(null);
+  const touchMove = useRef<{
+    row: Row;
+    version: number;
+    from: string;
+    pointer: number;
+  } | null>(null);
+  const dayAt = (x: number, y: number) =>
+    document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-day]")?.dataset
+      .day || null;
   const pending = useRef(false),
     dragging = useRef<Drag | null>(null),
     suppressed = useRef(false),
@@ -165,7 +232,7 @@ export default function DatabaseCalendar({
     change: CalendarChange,
     close = false,
   ) {
-    if (pending.current || !canEdit) return;
+    if (pending.current || !canEdit || occurrence(row.id)) return;
     pending.current = true;
     setBusy(true);
     setError("");
@@ -202,7 +269,13 @@ export default function DatabaseCalendar({
     day: CalendarDay,
     operation: Drag["operation"],
   ) {
-    if (!canEdit || pending.current || event.button !== 0) return;
+    if (
+      !canEdit ||
+      pending.current ||
+      event.button !== 0 ||
+      occurrence(segment.row.id)
+    )
+      return;
     const column = event.currentTarget.closest(".calendar-hours-day")!;
     event.currentTarget.setPointerCapture(event.pointerId);
     suppressed.current = false;
@@ -334,10 +407,13 @@ export default function DatabaseCalendar({
   function eventChip(row: Row, day: CalendarDay) {
     const range = ranges.get(row.id);
     return (
-      <div className="calendar-chip" key={row.id}>
+      <div
+        className={`calendar-chip ${occurrence(row.id) ? "occurrence" : ""}`}
+        key={row.id}
+      >
         <button
           className="calendar-event"
-          draggable={canEdit && !busy}
+          draggable={canEdit && !busy && !occurrence(row.id)}
           title={
             range
               ? `${formatDateValue(range.start, zone)} – ${formatDateValue(range.end, zone)}`
@@ -356,7 +432,7 @@ export default function DatabaseCalendar({
               }),
             )
           }
-          onClick={() => onOpen(row.id)}
+          onClick={() => openRow(row.id)}
         >
           {range?.timed && (
             <span>
@@ -366,9 +442,54 @@ export default function DatabaseCalendar({
                 .toString({ smallestUnit: "minute" })}{" "}
             </span>
           )}
+          {parseRecurrence(row.recurrence) && (
+            <span aria-label="Wiederholung" title="Wiederkehrender Eintrag">
+              ↻{" "}
+            </span>
+          )}
           {title(row)}
         </button>
-        {canEdit && (
+        {canEdit && !occurrence(row.id) && (
+          <button
+            className="calendar-drag"
+            aria-label={`${title(row)} verschieben`}
+            disabled={busy}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              touchMove.current = {
+                row,
+                version,
+                from: day.date,
+                pointer: e.pointerId,
+              };
+            }}
+            onPointerMove={(e) => {
+              if (touchMove.current?.pointer !== e.pointerId) return;
+              setTouchTarget(dayAt(e.clientX, e.clientY));
+            }}
+            onPointerUp={(e) => {
+              const moving = touchMove.current;
+              touchMove.current = null;
+              setTouchTarget(null);
+              if (moving?.pointer !== e.pointerId) return;
+              const target = dayAt(e.clientX, e.clientY);
+              if (!target || target === moving.from) return;
+              void apply(moving.row, moving.version, {
+                operation: "move-calendar",
+                days: dateDay(target)! - dateDay(moving.from)!,
+                timeZone: zone,
+              });
+            }}
+            onPointerCancel={() => {
+              touchMove.current = null;
+              setTouchTarget(null);
+            }}
+          >
+            <DotsSixVertical size={13} />
+          </button>
+        )}
+        {canEdit && !occurrence(row.id) && (
           <button
             className="calendar-edit"
             aria-label={`Termin für ${title(row)} bearbeiten`}
@@ -510,7 +631,7 @@ export default function DatabaseCalendar({
                   <div
                     key={day.date}
                     data-day={day.date}
-                    className={`calendar-day ${day.date.slice(0, 7) !== anchor.slice(0, 7) ? "other-month" : ""}`}
+                    className={`calendar-day ${day.date.slice(0, 7) !== anchor.slice(0, 7) ? "other-month" : ""} ${touchTarget === day.date ? "touch-target" : ""}`}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => drop(e, day)}
                   >
@@ -574,7 +695,8 @@ export default function DatabaseCalendar({
                         </strong>
                         <span>{day.minutes / 60} Stunden</span>
                         <div
-                          className="calendar-all-day"
+                          className={`calendar-all-day ${touchTarget === day.date ? "touch-target" : ""}`}
+                          data-day={day.date}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => drop(e, day)}
                         >
@@ -718,7 +840,7 @@ export default function DatabaseCalendar({
                                       !busy &&
                                       (e.detail === 0 || !suppressed.current)
                                     )
-                                      onOpen(actual.id);
+                                      openRow(actual.id);
                                     suppressed.current = false;
                                   }}
                                   onKeyDown={(e) => {
@@ -844,7 +966,7 @@ export default function DatabaseCalendar({
                 .filter((r) => !ranges.get(r.id))
                 .map((r) => (
                   <div className="calendar-unscheduled" key={r.id}>
-                    <button onClick={() => onOpen(r.id)}>{title(r)}</button>
+                    <button onClick={() => openRow(r.id)}>{title(r)}</button>
                     {canEdit && (
                       <button
                         className="button compact"

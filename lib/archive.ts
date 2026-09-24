@@ -1,3 +1,4 @@
+import { parseRecurrence } from "./recurrence";
 import { mapFileCell } from "./file-cells";
 import { spaceColorSchema } from "./space-appearance";
 import {
@@ -58,6 +59,11 @@ const rowSchema = z.object({
   position: z.number().finite().default(0),
   icon: pageIconSchema.default(""),
   cover: coverSchema.default(""),
+  recurrence: z
+    .string()
+    .max(500)
+    .default("")
+    .refine((v) => !v || !!parseRecurrence(v), "Ungültige Wiederholung."),
   created_at: str,
   updated_at: str,
   snapshots: z
@@ -312,7 +318,7 @@ function snapshotFor(user: Identity, wid: string) {
                   created_at: string;
                   updated_at: string;
                 }>(
-                  "SELECT id,cells,content,position,icon,cover,created_at,updated_at FROM rows WHERE page_id=? ORDER BY position",
+                  "SELECT id,cells,content,position,icon,cover,recurrence,created_at,updated_at FROM rows WHERE page_id=? ORDER BY position",
                   p.id,
                 ).map((r) => ({
                   ...r,
@@ -839,7 +845,7 @@ export async function importArchive(
             const rid = rowMap.get(r.id)!,
               content = rewriteHtml(r.content);
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
               rid,
               pid,
               JSON.stringify(rewriteCells(r.cells, d.fields)),
@@ -851,6 +857,7 @@ export async function importArchive(
               content,
               rewriteUrl(r.icon),
               rewriteUrl(r.cover),
+              r.recurrence,
             );
             run(
               "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",

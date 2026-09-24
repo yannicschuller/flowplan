@@ -981,7 +981,7 @@ export function command(
           run("DELETE FROM rows WHERE page_id=?", p.id);
           for (const r of data.rows)
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover) VALUES(?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?,?)",
               r.id,
               p.id,
               JSON.stringify(r.cells),
@@ -991,6 +991,7 @@ export function command(
               r.content || "",
               restorableImage(p.id, r.icon, validateIcon),
               restorableImage(p.id, r.cover, validateCover),
+              typeof r.recurrence === "string" ? r.recurrence : "",
             );
           if (Array.isArray(data.rowTemplates)) {
             run("DELETE FROM row_templates WHERE page_id=?", p.id);
@@ -1333,6 +1334,9 @@ export function command(
       case "row.appearance":
         result = setRowAppearance(user, b);
         break;
+      case "row.recurrence":
+        result = setRowRecurrence(user, b);
+        break;
       case "reminder.set":
         result = setDateReminder(user, b);
         break;
@@ -1648,6 +1652,6 @@ import {
 } from "./inline-comment-archive";
 import { ensureRowDocument } from "./row-documents";
 import { listDateReminders, setDateReminder } from "./date-reminders";
-import { setRowAppearance } from "./row-appearance";
+import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { copyPublication } from "./publication-copy";
 import { setWorkspaceQuota } from "./instance-ops";

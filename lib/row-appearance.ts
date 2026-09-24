@@ -4,6 +4,7 @@ import { HttpError } from "./auth";
 import { coverSchema, pageIconSchema } from "./page-appearance";
 import { validateCover, validateIcon } from "./page-covers";
 import { requireRow } from "./row-documents";
+import { recurrenceSchema } from "./recurrence";
 import type { Identity } from "./types";
 
 const schema = z.object({
@@ -29,6 +30,29 @@ export function setRowAppearance(user: Identity, input: unknown) {
     "UPDATE rows SET icon=COALESCE(?,icon),cover=COALESCE(?,cover),version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
     b.icon ?? null,
     b.cover ?? null,
+    user.id,
+    row.id,
+  );
+  return { ok: true };
+}
+
+const recurrenceInput = z.object({
+  pageId: z.string().uuid(),
+  rowId: z.string().uuid(),
+  version: z.number().int().positive(),
+  recurrence: recurrenceSchema.nullable(),
+});
+export function setRowRecurrence(user: Identity, input: unknown) {
+  const b = recurrenceInput.parse(input);
+  const { row } = requireRow(user, b.pageId, b.rowId, true);
+  if (row.version !== b.version)
+    throw new HttpError(
+      409,
+      "Der Eintrag wurde inzwischen geändert. Bitte erneut versuchen.",
+    );
+  run(
+    "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+    b.recurrence ? JSON.stringify(b.recurrence) : "",
     user.id,
     row.id,
   );

@@ -228,7 +228,7 @@ export function bulkRows(
           );
       const rid = mapping.get(row.id)!;
       run(
-        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover) VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?)",
         rid,
         pageId,
         JSON.stringify(cells),
@@ -237,6 +237,7 @@ export function bulkRows(
         user.id,
         row.icon || "",
         row.cover || "",
+        row.recurrence || "",
       );
       const html = String(
         one("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ||

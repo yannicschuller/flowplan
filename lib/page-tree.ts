@@ -196,7 +196,7 @@ export function duplicatePages(
         );
         for (const r of sourceRows.get(p.id) || []) {
           run(
-            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover) VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?,?)",
             rowIds.get(r.id)!,
             target,
             rewriteCells(r.cells, fields),
@@ -206,6 +206,7 @@ export function duplicatePages(
             rewriteHtml(r.content || ""),
             rewrite(r.icon || ""),
             rewrite(r.cover || ""),
+            r.recurrence || "",
           );
         }
         for (const t of all<{

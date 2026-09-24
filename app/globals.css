@@ -2704,6 +2704,50 @@ tr:hover .row-open {
     gap: 4px;
   }
 }
+/* Touch devices move whole-day calendar entries with this handle. */
+.calendar-drag {
+  display: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  flex-shrink: 0;
+  color: var(--muted);
+  touch-action: none;
+}
+@media (pointer: coarse) {
+  .calendar-drag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+.calendar-day.touch-target,
+.calendar-all-day.touch-target {
+  outline: 2px dashed var(--blue);
+  outline-offset: -2px;
+}
+.recurrence-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.recurrence-choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.recurrence-choice input[type="number"] {
+  width: 64px;
+}
+.recurrence-choice small {
+  flex-basis: 100%;
+}
+.calendar-chip.occurrence .calendar-event {
+  opacity: 0.75;
+  border-style: dashed;
+}
 .version-diff {
   display: grid;
   gap: 6px;

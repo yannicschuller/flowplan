@@ -193,7 +193,7 @@ function migrate(d: DatabaseSync) {
     name: string;
   }[];
   // Record pages have their own icon and cover (image of the database page or color).
-  for (const column of ["icon", "cover"])
+  for (const column of ["icon", "cover", "recurrence"])
     if (!rowColumns.some((c) => c.name === column))
       d.exec(`ALTER TABLE rows ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
   const notificationColumns = d

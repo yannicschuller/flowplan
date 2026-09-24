@@ -86,6 +86,7 @@ export type Row = {
   content?: string;
   icon?: string;
   cover?: string;
+  recurrence?: string;
   preview?: import("./document-preview").DocumentPreview;
 };
 export type Filter = {

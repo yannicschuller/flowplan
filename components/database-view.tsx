@@ -95,6 +95,12 @@ import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
 import {
+  parseRecurrence,
+  recurrenceLabels,
+  recurrenceText,
+  type Recurrence,
+} from "@/lib/recurrence";
+import {
   dateFormats,
   formatFieldDate,
   formatNumber,
@@ -945,6 +951,82 @@ export default function DatabaseView({
     );
   }
 
+  function recurrenceControl(row: Row) {
+    const rule = parseRecurrence(row.recurrence);
+    const save = (next: Recurrence | null) =>
+      act({
+        action: "row.recurrence",
+        rowId: row.id,
+        version: row.version,
+        recurrence: next,
+      });
+    const base: Recurrence = rule || { freq: "weekly", interval: 1 };
+    return (
+      <div className="row-property recurrence-property">
+        <span>Wiederholung</span>
+        <span className="recurrence-choice">
+          <select
+            aria-label="Wiederholung"
+            disabled={!editable}
+            value={rule?.freq || ""}
+            onChange={(e) =>
+              void save(
+                e.target.value
+                  ? { ...base, freq: e.target.value as Recurrence["freq"] }
+                  : null,
+              )
+            }
+          >
+            <option value="">Keine</option>
+            {Object.entries(recurrenceLabels).map(([key, [label]]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {rule && (
+            <>
+              <label>
+                Alle
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  aria-label="Wiederholungsintervall"
+                  disabled={!editable}
+                  defaultValue={rule.interval}
+                  onBlur={(e) => {
+                    const interval = Math.min(
+                      99,
+                      Math.max(1, Math.round(Number(e.target.value) || 1)),
+                    );
+                    if (interval !== rule.interval)
+                      void save({ ...rule, interval });
+                  }}
+                />
+                {recurrenceLabels[rule.freq][1]}
+              </label>
+              <label>
+                Endet
+                <input
+                  type="date"
+                  aria-label="Wiederholung endet am"
+                  disabled={!editable}
+                  defaultValue={rule.until || ""}
+                  onBlur={(e) => {
+                    const until = e.target.value || undefined;
+                    if (until !== rule.until)
+                      void save({ ...rule, count: undefined, until });
+                  }}
+                />
+              </label>
+              <small className="muted">{recurrenceText(rule)}</small>
+            </>
+          )}
+        </span>
+      </div>
+    );
+  }
   function reminderControl(row: Row, field: Field) {
     const value = row.cells[field.id];
     const reminder = data.reminders?.find(
@@ -3680,6 +3762,9 @@ export default function DatabaseView({
                   )}
                 </PropertyRow>
                 {f.type === "date" && reminderControl(selected, f)}
+                {f.type === "date" &&
+                  f.id === fields.find((x) => x.type === "date")?.id &&
+                  recurrenceControl(selected)}
               </Fragment>
             ))}
             <RowDocument
