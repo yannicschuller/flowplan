@@ -118,7 +118,13 @@ export function cascadeTimeline(
     cells: JSON.parse(r.cells) as Record<string, unknown>,
   }));
   const { start, end } = scheduleFields(fields, view);
-  const shifts = cascadeShifts(rows, field, start, end);
+  const shifts = cascadeShifts(
+    rows,
+    field,
+    start,
+    end,
+    view.timeline?.dependencyType,
+  );
   if (!shifts)
     throw new HttpError(
       409,

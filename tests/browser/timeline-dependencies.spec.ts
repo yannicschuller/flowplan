@@ -133,6 +133,39 @@ test("timeline dependencies draw arrows, flag conflicts and move successors", as
   await expect(
     page.locator(".timeline-dependencies > path.conflict"),
   ).toHaveCount(0);
+  // End-to-end links: successors must not end before their predecessor.
+  const longer = (await read()).rows.find((r: { id: string }) => r.id === a.id);
+  await command({
+    action: "row.update",
+    pageId: p.id,
+    rowId: a.id,
+    version: longer.version,
+    cells: { end: day(25) },
+  });
+  await page.reload();
+  await page
+    .getByLabel("Timeline: Art der Abhängigkeit", { exact: true })
+    .selectOption({ label: "Ende → Ende" });
+  await expect
+    .poll(
+      async () => (await read()).database.views[0].timeline?.dependencyType,
+    )
+    .toBe("ff");
+  await expect(
+    page.getByRole("img", {
+      name: "Umsetzung endet vor dem Ende von Konzept",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Alle Konflikte nachziehen" }).click();
+  await expect
+    .poll(async () =>
+      (await read()).rows
+        .filter((r: { id: string }) => r.id !== a.id)
+        .map((r: { cells: { end: string } }) => r.cells.end),
+    )
+    .toEqual([day(25), day(25)]);
+  await expect(page.locator(".timeline-conflict")).toHaveCount(0);
   // A cycle is flagged and offers no automatic move.
   const rowA = (await read()).rows.find((r: { id: string }) => r.id === a.id);
   await command({

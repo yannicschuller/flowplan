@@ -26,6 +26,9 @@ import {
   timelinePeriod,
   timelineDependencies,
   dependencyFields,
+  dependencyConflict,
+  dependencyTypes,
+  type DependencyType,
   todayKey,
   DAY,
   type ScheduleChange,
@@ -90,7 +93,14 @@ export default function DatabaseTimeline({
     canEdit = editable && !!start && !invalidEnd;
   const relations = dependencyFields(fields, pageId),
     dependencyField = relations.find((f) => f.id === config.dependencyField),
-    { links, cyclic } = timelineDependencies(rows, dependencyField, start, end);
+    dependencyType = config.dependencyType || "fs",
+    { links, cyclic } = timelineDependencies(
+      rows,
+      dependencyField,
+      start,
+      end,
+      dependencyType,
+    );
   // Arrows follow the rendered bars, including clipping and active drags.
   useLayoutEffect(() => {
     const root = grid.current;
@@ -105,14 +115,19 @@ export default function DatabaseTimeline({
         const a = bar(link.from),
           b = bar(link.to);
         if (!a || !b) continue;
-        const x1 = a.right - origin.left,
+        // Arrows leave and enter the linked ends of both bars.
+        const fromEnd = dependencyType === "fs" || dependencyType === "ff",
+          toStart = dependencyType === "fs" || dependencyType === "ss";
+        const x1 = (fromEnd ? a.right : a.left) - origin.left,
           y1 = a.top + a.height / 2 - origin.top,
-          x2 = b.left - origin.left,
+          x2 = (toStart ? b.left : b.right) - origin.left,
           y2 = b.top + b.height / 2 - origin.top,
-          bend = Math.max(12, Math.min(40, Math.abs(x2 - x1) / 2));
+          bend = Math.max(12, Math.min(40, Math.abs(x2 - x1) / 2)),
+          out = fromEnd ? bend : -bend,
+          into = toStart ? -bend : bend;
         next.push({
           key: `${link.from}>${link.to}`,
-          d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2 - 6} ${y2}`,
+          d: `M ${x1} ${y1} C ${x1 + out} ${y1}, ${x2 + into} ${y2}, ${x2 + (toStart ? -6 : 6)} ${y2}`,
           conflict: link.shift > 0 || cyclic.has(link.to),
         });
       }
@@ -369,6 +384,27 @@ export default function DatabaseTimeline({
             ))}
           </select>
         </label>
+        {dependencyField && (
+          <label>
+            Verknüpfung
+            <select
+              aria-label="Timeline: Art der Abhängigkeit"
+              value={dependencyType}
+              disabled={busy || !viewEditable}
+              onChange={(event) =>
+                void configure({
+                  dependencyType: event.target.value as DependencyType,
+                })
+              }
+            >
+              {dependencyTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {canEdit && !cyclic.size && links.some((l) => l.shift > 0) && (
           <button
             className="button compact"
@@ -541,12 +577,12 @@ export default function DatabaseTimeline({
                           aria-label={
                             loop
                               ? `${name}: zyklische Abhängigkeit`
-                              : `${name} beginnt vor dem Ende von ${blockers.join(", ")}`
+                              : `${name} ${dependencyConflict(dependencyType)} ${blockers.join(", ")}`
                           }
                           title={
                             loop
                               ? "Zyklische Abhängigkeit"
-                              : `Beginnt vor dem Ende von ${blockers.join(", ")}`
+                              : `${dependencyConflict(dependencyType).replace(/^./, (c) => c.toUpperCase())} ${blockers.join(", ")}`
                           }
                         >
                           <Warning size={15} weight="fill" />
@@ -556,7 +592,7 @@ export default function DatabaseTimeline({
                         <button
                           className="icon-button"
                           aria-label={`${name} hinter Vorgänger verschieben`}
-                          title={`Um ${shift} ${shift === 1 ? "Tag" : "Tage"} hinter den Vorgänger verschieben`}
+                          title={`Um ${shift} ${shift === 1 ? "Tag" : "Tage"} verschieben, damit die Abhängigkeit erfüllt ist`}
                           disabled={busy}
                           onClick={() =>
                             void apply(row, version, {

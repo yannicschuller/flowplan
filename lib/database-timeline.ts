@@ -5,7 +5,42 @@ export const timelineSchema = z.object({
   showWeekends: z.boolean(),
   // Self-relation whose values are the predecessors of a row.
   dependencyField: z.string().max(200).optional(),
+  // Which ends of predecessor and successor are linked (default finish-start).
+  dependencyType: z.enum(["fs", "ss", "ff", "sf"]).optional(),
 });
+export type DependencyType = NonNullable<TimelineConfig["dependencyType"]>;
+export const dependencyTypes: { id: DependencyType; label: string }[] = [
+  { id: "fs", label: "Ende → Anfang" },
+  { id: "ss", label: "Anfang → Anfang" },
+  { id: "ff", label: "Ende → Ende" },
+  { id: "sf", label: "Anfang → Ende" },
+];
+type Range = { start: number; end: number };
+// Days the successor must move (keeping its length) to satisfy the link.
+export function requiredShift(
+  type: DependencyType,
+  before: Range,
+  after: Range,
+) {
+  const needed =
+    type === "fs"
+      ? before.end + 1 - after.start
+      : type === "ss"
+        ? before.start - after.start
+        : type === "ff"
+          ? before.end - after.end
+          : before.start - after.end;
+  return Math.max(0, needed);
+}
+// Wording for conflict hints, e.g. "beginnt vor dem Ende von".
+export function dependencyConflict(type: DependencyType) {
+  return {
+    fs: "beginnt vor dem Ende von",
+    ss: "beginnt vor dem Anfang von",
+    ff: "endet vor dem Ende von",
+    sf: "endet vor dem Anfang von",
+  }[type];
+}
 export type TimelineConfig = z.infer<typeof timelineSchema>;
 export const defaultTimeline: TimelineConfig = {
   scale: "month",
@@ -177,16 +212,17 @@ export function dependencyFields(fields: Field[], pageId: string) {
 export type TimelineDependency = {
   from: string;
   to: string;
-  // Days the successor must move so it starts after the predecessor ends.
+  // Days the successor must move to satisfy the dependency type.
   shift: number;
 };
-// Finish-to-start dependencies between the given rows. Links to rows that are
-// not given (filtered, deleted) or without a valid range carry no shift.
+// Dependencies between the given rows. Links to rows that are not given
+// (filtered, deleted) or without a valid range carry no shift.
 export function timelineDependencies(
   rows: Pick<Row, "id" | "cells">[],
   field: Field | undefined,
   start?: Field,
   end?: Field,
+  type: DependencyType = "fs",
 ) {
   const links: TimelineDependency[] = [],
     cyclic = new Set<string>();
@@ -210,7 +246,7 @@ export function timelineDependencies(
       links.push({
         from,
         to: row.id,
-        shift: range && before ? Math.max(0, before.end + 1 - range.start) : 0,
+        shift: range && before ? requiredShift(type, before, range) : 0,
       });
     }
   }
@@ -243,18 +279,19 @@ export function timelineDependencies(
   return { links, cyclic };
 }
 
-// Days each record must move so that every successor starts after all of its
-// predecessors end (finish-to-start). Moved predecessors push their chains.
-// Returns null for cyclic dependencies.
+// Days each record must move so that every successor satisfies all links to
+// its predecessors. Moved predecessors push their chains. Returns null for
+// cyclic dependencies.
 export function cascadeShifts(
   rows: Pick<Row, "id" | "cells">[],
   field: Field | undefined,
   start?: Field,
   end?: Field,
+  type: DependencyType = "fs",
 ): Map<string, number> | null {
   const shifts = new Map<string, number>();
   if (!field) return shifts;
-  const { links, cyclic } = timelineDependencies(rows, field, start, end);
+  const { links, cyclic } = timelineDependencies(rows, field, start, end, type);
   if (cyclic.size) return null;
   const byId = new Map(rows.map((r) => [r.id, r]));
   const incoming = new Map<string, string[]>(),
@@ -278,14 +315,13 @@ export function cascadeShifts(
     const own = range(rid);
     if (own) {
       const required = Math.max(
-        -Infinity,
+        0,
         ...(incoming.get(rid) || [])
           .map((p) => range(p))
           .filter(Boolean)
-          .map((r) => r!.end + 1),
+          .map((r) => requiredShift(type, r!, own)),
       );
-      if (required > own.start)
-        shifts.set(rid, (shifts.get(rid) || 0) + required - own.start);
+      if (required) shifts.set(rid, (shifts.get(rid) || 0) + required);
     }
     for (const next of outgoing.get(rid) || []) {
       pending.set(next, pending.get(next)! - 1);

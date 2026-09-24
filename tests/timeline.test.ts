@@ -691,3 +691,55 @@ test("cascading shifts push whole dependency chains after their predecessors", a
     /geändert/,
   );
 });
+
+test("dependency types link start or end of predecessor and successor", async () => {
+  const { cascadeShifts, requiredShift, timelineDependencies } =
+    await import("../lib/database-timeline");
+  const pred = { start: 10, end: 14 },
+    succ = { start: 11, end: 12 };
+  assert.equal(requiredShift("fs", pred, succ), 4);
+  assert.equal(requiredShift("ss", pred, succ), 0);
+  assert.equal(requiredShift("ss", pred, { start: 8, end: 9 }), 2);
+  assert.equal(requiredShift("ff", pred, succ), 2);
+  assert.equal(requiredShift("sf", pred, succ), 0);
+  assert.equal(requiredShift("sf", pred, { start: 5, end: 7 }), 3);
+  const fields: Field[] = [
+    { id: "start", name: "Beginn", type: "date" },
+    { id: "end", name: "Ende", type: "date" },
+    { id: "after", name: "Nach", type: "relation", relationPage: "self" },
+  ];
+  const r = (id: string, start: string, end: string, after: string[] = []) => ({
+    id,
+    cells: { start, end, after },
+  });
+  const rowsIn = [
+    r("a", "2026-01-05", "2026-01-10"),
+    r("b", "2026-01-01", "2026-01-03", ["a"]),
+    r("c", "2026-01-02", "2026-01-12", ["b"]),
+  ];
+  const run = (type: "fs" | "ss" | "ff" | "sf") =>
+    Object.fromEntries(
+      cascadeShifts(rowsIn, fields[2], fields[0], fields[1], type)!,
+    );
+  // Start-start: b starts with a (5th, +4); c then starts with b (5th, +3).
+  assert.deepEqual(run("ss"), { b: 4, c: 3 });
+  // End-end: b ends with a (10th, +7); c already ends later.
+  assert.deepEqual(run("ff"), { b: 7 });
+  // Start-end: b ends no earlier than a starts (5th, +2).
+  assert.deepEqual(run("sf"), { b: 2 });
+  assert.deepEqual(run("fs"), { b: 10, c: 12 });
+  const { links } = timelineDependencies(
+    rowsIn,
+    fields[2],
+    fields[0],
+    fields[1],
+    "ss",
+  );
+  assert.deepEqual(
+    links.map((l) => [l.from, l.to, l.shift]),
+    [
+      ["a", "b", 4],
+      ["b", "c", 0],
+    ],
+  );
+});
