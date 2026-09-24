@@ -2,6 +2,7 @@ import { all, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { ensureRowDocument, requireRow } from "./row-documents";
+import { expireRowTrash } from "./row-trash";
 import { compareParagraphs, type TextChange } from "./text-diff";
 import { cellText } from "./cell-text";
 import type { Field, Identity } from "./types";
@@ -213,6 +214,7 @@ export function startRetentionWorker() {
   const tick = () => {
     try {
       pruneSnapshots();
+      expireRowTrash();
     } catch (error) {
       console.error("Snapshot retention failed", error);
     }

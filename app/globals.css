@@ -2821,6 +2821,22 @@ tr:hover .row-open {
 .version-compare select {
   width: auto;
 }
+.modal.modal-full {
+  width: min(1100px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  top: 0;
+  transform: translateX(-50%);
+  border-radius: 0;
+}
+.row-trash {
+  margin-top: 24px;
+}
+.row-trash h2 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
 .version-diff {
   display: grid;
   gap: 6px;

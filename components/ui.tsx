@@ -93,7 +93,9 @@ export function Modal({
   children,
   wide = false,
   onCloseAutoFocus,
+  className = "",
 }: {
+  className?: string;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -106,7 +108,7 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
         <Dialog.Content
-          className={`modal ${wide ? "modal-wide" : ""}`}
+          className={`modal ${wide ? "modal-wide" : ""} ${className}`}
           aria-describedby={undefined}
           aria-labelledby={undefined}
           aria-label={title}

@@ -5,6 +5,7 @@ import {
   MAX_CELL_FILES,
 } from "./file-cells";
 import { maintainRowOrders } from "./row-order-server";
+import { trashRow } from "./row-trash";
 import { validDateValue } from "./date-values";
 import { z } from "zod";
 import { all, one, run, id } from "./db";
@@ -217,8 +218,7 @@ export function bulkRows(
         row.id,
       );
     } else if (operation === "delete") {
-      run("DELETE FROM comments WHERE row_id=? AND page_id=?", row.id, pageId);
-      run("DELETE FROM rows WHERE id=? AND page_id=?", row.id, pageId);
+      trashRow(user, page, row.id);
     } else {
       const cells = JSON.parse(row.cells);
       for (const f of fields)

@@ -164,6 +164,7 @@ export type Bootstrap = {
   managedSpaces?: Space[];
   pages: Page[];
   favorites: string[];
+  favoriteRows?: { pageId: string; rowId: string; title: string }[];
   members: (User & { role: Role })[];
   notifications: {
     row_id: string | null;

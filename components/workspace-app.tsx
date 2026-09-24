@@ -823,7 +823,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
           </button>
         </nav>
         <div className="sidebar-scroll">
-          {favorites.length > 0 && (
+          {(favorites.length > 0 || !!boot.favoriteRows?.length) && (
             <section className="nav-section">
               <div className="nav-section-title">
                 Favoriten
@@ -837,6 +837,19 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                 >
                   <PageIcon name={p.icon} />
                   <span>{p.title}</span>
+                </button>
+              ))}
+              {boot.favoriteRows?.map((f) => (
+                <button
+                  className="favorite-nav"
+                  key={f.rowId}
+                  aria-label={`Eintrag ${f.title}`}
+                  onClick={() =>
+                    openPage(f.pageId, { pageId: f.pageId, rowId: f.rowId })
+                  }
+                >
+                  <PageIcon name="file" />
+                  <span>{f.title}</span>
                 </button>
               ))}
             </section>
@@ -1458,6 +1471,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                       members={boot.members}
                       pages={activePages}
                       editable={editable}
+                      favoriteRows={boot.favoriteRows}
                       mutate={mutate}
                       onError={notify}
                     />
@@ -1647,6 +1661,13 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                     </button>
                   </div>
                 ))}
+              <RowTrash
+                workspaceId={boot.workspace.id}
+                act={act}
+                onOpen={(pageId, rowId) =>
+                  void openPage(pageId, { pageId, rowId })
+                }
+              />
               {!boot.pages.some((p) => p.deleted_at) &&
                 !boot.trashedSpaces?.length && (
                   <div className="empty-state">
@@ -2592,5 +2613,73 @@ function SearchSnippet({ text }: { text: string }) {
         );
       })}
     </>
+  );
+}
+// Deleted records of the workspace with restore and purge actions.
+function RowTrash({
+  workspaceId,
+  act,
+  onOpen,
+}: {
+  workspaceId: string;
+  act: (b: Record<string, unknown>) => Promise<unknown>;
+  onOpen: (pageId: string, rowId: string) => void;
+}) {
+  const [entries, setEntries] = useState<
+    {
+      id: string;
+      title: string;
+      pageId: string;
+      pageTitle: string;
+      deletedAt: string;
+    }[]
+  >([]);
+  const load = useCallback(() => {
+    api<typeof entries>(`/api/trash/rows?workspace=${workspaceId}`)
+      .then(setEntries)
+      .catch(() => setEntries([]));
+  }, [workspaceId]);
+  useEffect(load, [load]);
+  if (!entries.length) return null;
+  return (
+    <section className="row-trash" aria-label="Gelöschte Einträge">
+      <h2>Gelöschte Einträge</h2>
+      <p className="muted">
+        Einträge bleiben 30 Tage im Papierkorb und werden danach endgültig
+        gelöscht.
+      </p>
+      {entries.map((e) => (
+        <div className="utility-row" key={e.id}>
+          <PageIcon name="file" />
+          <strong>
+            {e.title}
+            <small>aus {e.pageTitle}</small>
+          </strong>
+          <div className="lifecycle-buttons">
+            <button
+              className="button compact"
+              onClick={async () => {
+                if (await act({ action: "row.trash.restore", trashId: e.id })) {
+                  load();
+                  onOpen(e.pageId, e.id);
+                }
+              }}
+            >
+              <ArrowCounterClockwise />
+              Wiederherstellen
+            </button>
+            <button
+              className="button danger compact"
+              onClick={async () => {
+                if (await act({ action: "row.trash.purge", trashId: e.id }))
+                  load();
+              }}
+            >
+              Endgültig löschen
+            </button>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }

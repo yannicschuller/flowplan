@@ -1,3 +1,4 @@
+import { cellText } from "./cell-text";
 import { scheduleRow } from "./row-schedule";
 import { rewriteFormulaReferences } from "./formula";
 import { validateCalculations } from "./database-summary";
@@ -161,6 +162,26 @@ export function bootstrap(user: Identity, wid?: string) {
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
     ).map((f) => f.page_id),
+    // Favourite records of readable databases in this workspace.
+    favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(
+      `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
+       JOIN rows r ON r.id=f.row_id JOIN pages p ON p.id=f.page_id
+       JOIN databases d ON d.page_id=p.id
+       WHERE f.user_id=? AND p.workspace_id=? AND p.deleted_at IS NULL`,
+      user.id,
+      workspace.id,
+    )
+      .filter((p) => pageRole(user, p))
+      .map((p) => ({
+        pageId: p.id,
+        rowId: p.row_id,
+        title:
+          cellText(
+            JSON.parse(p.cells)[
+              (JSON.parse(p.fields) as Field[])[0]?.id || "title"
+            ],
+          ) || "Ohne Titel",
+      })),
     members: all(
       "SELECT u.id,u.name,u.email,u.disabled,m.role FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
       workspace.id,
@@ -1264,20 +1285,36 @@ export function command(
         );
         break;
       }
-      case "row.delete":
-        autoDatabaseSnapshot(user, write());
-        run(
-          "DELETE FROM comments WHERE page_id=? AND row_id=?",
-          pid(),
-          uuid.parse(b.rowId),
-        );
-        run(
-          "DELETE FROM rows WHERE id=? AND page_id=?",
-          uuid.parse(b.rowId),
-          pid(),
-        );
+      case "row.delete": {
+        const p = write();
+        autoDatabaseSnapshot(user, p);
+        trashRow(user, p, uuid.parse(b.rowId));
         maintainRowOrders(pid());
         break;
+      }
+      case "row.trash.restore":
+        result = restoreTrashedRow(user, b);
+        break;
+      case "row.trash.purge":
+        result = purgeTrashedRow(user, b);
+        break;
+      case "favorite.row": {
+        const { row } = requireRow(user, pid(), uuid.parse(b.rowId));
+        if (b.value)
+          run(
+            "INSERT OR IGNORE INTO row_favorites(user_id,row_id,page_id) VALUES(?,?,?)",
+            user.id,
+            row.id,
+            pid(),
+          );
+        else
+          run(
+            "DELETE FROM row_favorites WHERE user_id=? AND row_id=?",
+            user.id,
+            row.id,
+          );
+        break;
+      }
       case "thread.create":
       case "thread.reply":
       case "thread.resolve":
@@ -1655,4 +1692,5 @@ import { ensureRowDocument } from "./row-documents";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { copyPublication } from "./publication-copy";
+import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
 import { setWorkspaceQuota } from "./instance-ops";

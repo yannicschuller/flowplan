@@ -199,6 +199,7 @@ export default function DatabaseView({
   pages,
   editable,
   viewEditable = editable,
+  favoriteRows = [],
   allowFieldChanges = true,
   routeNavigation = false,
   mutate,
@@ -212,6 +213,7 @@ export default function DatabaseView({
   pages: Page[];
   editable: boolean;
   viewEditable?: boolean;
+  favoriteRows?: { pageId: string; rowId: string; title: string }[];
   allowFieldChanges?: boolean;
   routeNavigation?: boolean;
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
@@ -297,6 +299,13 @@ export default function DatabaseView({
   const [sortMove, setSortMove] = useState<RowMove | null>(null);
   const [groupDrop, setGroupDrop] = useState<string | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
+  // Record pages open as a dialog or full page (remembered per browser).
+  const [fullRecord, setFullRecord] = useState(false);
+  useEffect(() => {
+    try {
+      setFullRecord(localStorage.getItem("flowplan-record-full") === "1");
+    } catch {}
+  }, []);
   const [rowIconPicker, setRowIconPicker] = useState(false),
     [rowIconTab, setRowIconTab] = useState<"emoji" | "image">("emoji"),
     [rowCoverPicker, setRowCoverPicker] = useState(false);
@@ -3709,6 +3718,7 @@ export default function DatabaseView({
         onClose={() => setRowId(null)}
         title="Eintrag"
         wide
+        className={fullRecord ? "modal-full" : ""}
       >
         {selected && (
           <div className="row-detail">
@@ -3728,6 +3738,38 @@ export default function DatabaseView({
               </div>
             )}
             <div className="row-appearance-actions">
+              <button
+                className="text-button"
+                aria-pressed={favoriteRows.some((f) => f.rowId === selected.id)}
+                onClick={() =>
+                  act({
+                    action: "favorite.row",
+                    rowId: selected.id,
+                    value: !favoriteRows.some((f) => f.rowId === selected.id),
+                  })
+                }
+              >
+                {favoriteRows.some((f) => f.rowId === selected.id)
+                  ? "Aus Favoriten entfernen"
+                  : "Zu Favoriten"}
+              </button>
+              <button
+                className="text-button"
+                aria-pressed={fullRecord}
+                onClick={() => {
+                  setFullRecord((v) => !v);
+                  try {
+                    localStorage.setItem(
+                      "flowplan-record-full",
+                      fullRecord ? "0" : "1",
+                    );
+                  } catch {}
+                }}
+              >
+                {fullRecord
+                  ? "Als Dialog anzeigen"
+                  : "Als ganze Seite anzeigen"}
+              </button>
               {editable && (
                 <>
                   <button

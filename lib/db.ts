@@ -169,6 +169,16 @@ function migrate(d: DatabaseSync) {
     ).some((c) => c.name === "quota_mb")
   )
     d.exec("ALTER TABLE workspaces ADD COLUMN quota_mb INTEGER");
+  d.exec(`CREATE TABLE IF NOT EXISTS row_trash(
+    id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL,title TEXT NOT NULL,payload TEXT NOT NULL,deleted_by TEXT,
+    deleted_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE INDEX IF NOT EXISTS row_trash_workspace ON row_trash(workspace_id,deleted_at);
+    CREATE TABLE IF NOT EXISTS row_favorites(
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,
+    page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    PRIMARY KEY(user_id,row_id));`);
   // Publication metadata and whether visitors may copy the publication.
   const publicationColumns = d
     .prepare("PRAGMA table_info(publications)")

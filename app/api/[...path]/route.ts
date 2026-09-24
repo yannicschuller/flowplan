@@ -42,6 +42,7 @@ import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
+import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import {
   enforceQuota,
@@ -105,6 +106,11 @@ export async function GET(
         ),
         { headers: { "Cache-Control": "no-store" } },
       );
+    if (path[0] === "trash" && path[1] === "rows") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      requireMember(user, wid);
+      return NextResponse.json(listRowTrash(user, wid));
+    }
     if (path[0] === "bootstrap")
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
