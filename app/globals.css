@@ -2670,6 +2670,40 @@ tr:hover .row-open {
   width: 100px;
   margin-top: 4px;
 }
+.feed-editor {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+}
+.feed-edit-property {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.feed-edit-property > span {
+  color: var(--secondary);
+}
+.feed-edit-document {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.feed-comment {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.feed-comment input {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .feed-edit-property {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
 .version-diff {
   display: grid;
   gap: 6px;

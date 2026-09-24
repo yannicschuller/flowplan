@@ -5,7 +5,11 @@ import {
   type ReactNode,
   type HTMLAttributes,
 } from "react";
-import { ArrowSquareOut, ChatCircle } from "@phosphor-icons/react";
+import {
+  ArrowSquareOut,
+  ChatCircle,
+  PencilSimple,
+} from "@phosphor-icons/react";
 import { ReadOnlyDocument } from "./read-only-document";
 import { defaultFeed } from "@/lib/database-feed";
 import { cellText } from "@/lib/cell-text";
@@ -22,7 +26,16 @@ function FeedEntry({
   open,
   orderHandle,
   rowEvents,
+  editing,
+  onEdit,
+  editor,
+  onComment,
 }: {
+  editing: boolean;
+  onEdit?: (editing: boolean) => void;
+  // Inline editors provided by the database view (properties and document).
+  editor?: { property: (field: Field) => ReactNode; document: ReactNode };
+  onComment?: (body: string) => Promise<unknown>;
   row: Row;
   titleField: Field;
   properties: Field[];
@@ -35,7 +48,9 @@ function FeedEntry({
   rowEvents: HTMLAttributes<HTMLElement>;
 }) {
   const config = view.feed || defaultFeed;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false),
+    [comment, setComment] = useState(""),
+    [sending, setSending] = useState(false);
   const name =
     members.find((m) => m.id === row.created_by)?.name || "Unbekannte Person";
   const title = cellText(row.cells[titleField.id]) || "Ohne Titel";
@@ -70,10 +85,22 @@ function FeedEntry({
         </div>
         {orderHandle}
       </header>
-      <h3 className="feed-entry-title">
-        <button onClick={open}>{title}</button>
-      </h3>
-      {properties.length > 0 && (
+      {editing && editor ? (
+        <div className="feed-editor" aria-label={`${title} bearbeiten`}>
+          {[titleField, ...properties].map((field) => (
+            <div className="feed-edit-property" key={field.id}>
+              <span>{field.name}</span>
+              {editor.property(field)}
+            </div>
+          ))}
+          <div className="feed-edit-document">{editor.document}</div>
+        </div>
+      ) : (
+        <h3 className="feed-entry-title">
+          <button onClick={open}>{title}</button>
+        </h3>
+      )}
+      {!editing && properties.length > 0 && (
         <dl className="feed-properties">
           {properties.map((field) => (
             <div key={field.id}>
@@ -83,7 +110,8 @@ function FeedEntry({
           ))}
         </dl>
       )}
-      {config.content !== "hidden" &&
+      {!editing &&
+        config.content !== "hidden" &&
         (preview?.hasContent ? (
           <>
             {config.content === "full" || expanded ? (
@@ -121,11 +149,46 @@ function FeedEntry({
             {comments} {comments === 1 ? "Kommentar" : "Kommentare"}
           </button>
         )}
+        {onEdit && (
+          <button onClick={() => onEdit(!editing)} aria-pressed={editing}>
+            <PencilSimple size={16} />
+            {editing ? "Fertig" : "Bearbeiten"}
+          </button>
+        )}
         <button onClick={open}>
           <ArrowSquareOut size={16} />
           Eintrag öffnen
         </button>
       </footer>
+      {config.showComments && onComment && (
+        <form
+          className="feed-comment"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!comment.trim() || sending) return;
+            setSending(true);
+            try {
+              if (await onComment(comment.trim())) setComment("");
+            } finally {
+              setSending(false);
+            }
+          }}
+        >
+          <input
+            aria-label={`Kommentar zu ${title}`}
+            placeholder="Kommentar schreiben …"
+            value={comment}
+            maxLength={5000}
+            onChange={(e) => setComment(e.target.value)}
+          />
+          <button
+            className="button compact"
+            disabled={!comment.trim() || sending}
+          >
+            Senden
+          </button>
+        </form>
+      )}
     </article>
   );
 }
@@ -141,7 +204,14 @@ export default function DatabaseFeed({
   orderHandle,
   query,
   rowEvents,
+  editor,
+  onComment,
 }: {
+  editor?: (row: Row) => {
+    property: (field: Field) => ReactNode;
+    document: ReactNode;
+  };
+  onComment?: (row: Row, body: string) => Promise<unknown>;
   rows: Row[];
   fields: Field[];
   visibleFields: Field[];
@@ -154,7 +224,8 @@ export default function DatabaseFeed({
   query: string;
   rowEvents: (row: Row) => HTMLAttributes<HTMLElement>;
 }) {
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(20),
+    [editingRow, setEditingRow] = useState<string | null>(null);
   const selection = JSON.stringify([
     view.filters,
     view.filterGroup,
@@ -185,6 +256,12 @@ export default function DatabaseFeed({
           display={display}
           open={() => onOpen(row.id)}
           orderHandle={orderHandle(row)}
+          editing={editingRow === row.id}
+          onEdit={
+            editor ? (on) => setEditingRow(on ? row.id : null) : undefined
+          }
+          editor={editingRow === row.id ? editor?.(row) : undefined}
+          onComment={onComment ? (body) => onComment(row, body) : undefined}
         />
       ))}
       {rows.length > limit && (

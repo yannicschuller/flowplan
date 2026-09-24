@@ -2104,6 +2104,42 @@ export default function DatabaseView({
             onDragOver: (e) => dragOver(e, r),
             onDrop: (e) => dragMove(e, r),
           })}
+          editor={
+            editable
+              ? (r) => ({
+                  property: (f) =>
+                    computedTypes.includes(f.type) ? (
+                      display(r, f)
+                    ) : (
+                      <CellInput
+                        field={f}
+                        value={r.cells[f.id]}
+                        members={members}
+                        related={data.related}
+                        onChange={(v) => updateCell(r, f, v)}
+                        upload={uploadFile}
+                        files={data.files}
+                      />
+                    ),
+                  document: (
+                    <RowDocument
+                      key={r.id}
+                      pageId={page.id}
+                      rowId={r.id}
+                      userId={userId}
+                      pages={pages}
+                      members={members}
+                      editable={editable}
+                      onError={onError}
+                      onChanged={onRefresh}
+                    />
+                  ),
+                })
+              : undefined
+          }
+          onComment={(r, body) =>
+            act({ action: "comment.create", rowId: r.id, body })
+          }
         />
       )}
       {view.type === "gallery" && (
