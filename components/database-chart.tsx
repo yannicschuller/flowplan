@@ -9,6 +9,8 @@ import {
   chartGroupField,
   chartKinds,
   chartNumberField,
+  chartPaletteNames,
+  chartPalettes,
   chartPoints,
   chartSeries,
   canStack,
@@ -21,16 +23,8 @@ import {
 import { cellText } from "@/lib/cell-text";
 import type { Field, Row, User, View } from "@/lib/types";
 import { Modal, download } from "./ui";
-const colors = [
-  "#4f70d5",
-  "#299287",
-  "#b07826",
-  "#8d62bb",
-  "#c26373",
-  "#51849b",
-  "#8c853b",
-  "#9c6d56",
-];
+const paletteOf = (config: ChartConfig) =>
+  chartPalettes[config.palette || "default"];
 const format = (n: number | null) =>
   n === null
     ? "–"
@@ -45,6 +39,7 @@ function ChartGraphic({
   config: ChartConfig;
   onSelect: (key: string) => void;
 }) {
+  const colors = paletteOf(config);
   const available = points.slice(0, 100),
     values = available.map((p) => p.value ?? 0);
   const max = Math.max(0, ...values),
@@ -318,6 +313,7 @@ function SeriesGraphic({
   config: ChartConfig;
   onSelect: (key: string) => void;
 }) {
+  const colors = paletteOf(config);
   const available = points.slice(0, 100);
   const stacked =
     config.kind !== "line" &&
@@ -727,6 +723,30 @@ function ChartSettings({
           </label>
         )}
         <label>
+          Farben
+          <select
+            aria-label="Farbpalette"
+            value={draft.palette || "default"}
+            onChange={(e) =>
+              patch({ palette: e.target.value as ChartConfig["palette"] })
+            }
+          >
+            {Object.entries(chartPaletteNames).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={draft.showGrid !== false}
+            onChange={(e) => patch({ showGrid: e.target.checked })}
+          />
+          Gitterlinien anzeigen
+        </label>
+        <label>
           Gruppen sortieren
           <select
             value={draft.order}
@@ -820,7 +840,8 @@ export default function DatabaseChart({
     [tablePage, setTablePage] = useState(0),
     [entryPage, setEntryPage] = useState(0);
   const config = view.chart || defaultChart(fields),
-    invalid = chartConfigError(config, fields);
+    invalid = chartConfigError(config, fields),
+    colors = paletteOf(config);
   const points = useMemo(
     () => chartPoints(rows, fields, config, related, members),
     [rows, fields, config, related, members],
@@ -916,7 +937,7 @@ export default function DatabaseChart({
             </p>
           )}
           <div
-            className="chart-scroll"
+            className={`chart-scroll ${config.showGrid === false ? "no-grid" : ""}`}
             tabIndex={0}
             role="region"
             aria-label="Diagramm, bei Bedarf horizontal scrollen"

@@ -15,7 +15,68 @@ export const chartSchema = z.object({
   seriesField: z.string().min(1).max(500).optional(),
   seriesMode: z.enum(["grouped", "stacked"]).optional(),
   showLegend: z.boolean().optional(),
+  palette: z.enum(["default", "warm", "cool", "pastel", "mono"]).optional(),
+  showGrid: z.boolean().optional(),
 });
+export const chartPalettes = {
+  default: [
+    "#4f70d5",
+    "#299287",
+    "#b07826",
+    "#8d62bb",
+    "#c26373",
+    "#51849b",
+    "#8c853b",
+    "#9c6d56",
+  ],
+  warm: [
+    "#c2553a",
+    "#d98a2b",
+    "#b8862f",
+    "#a34d6a",
+    "#d1683f",
+    "#8f5a3c",
+    "#c47a5a",
+    "#9b3d3d",
+  ],
+  cool: [
+    "#2f6fb0",
+    "#2a8f8f",
+    "#4d5fbf",
+    "#3b9c6d",
+    "#5b7fa6",
+    "#6a58b0",
+    "#2d7f9e",
+    "#4a8a57",
+  ],
+  pastel: [
+    "#7d9be0",
+    "#6cc0b3",
+    "#e0b36f",
+    "#b79ae0",
+    "#e39aa6",
+    "#8fc0d6",
+    "#c4c27a",
+    "#d1a88f",
+  ],
+  mono: [
+    "#1f3b73",
+    "#2e5596",
+    "#4570b4",
+    "#5f8acc",
+    "#7ea3dc",
+    "#9dbbe8",
+    "#bcd2f1",
+    "#d7e4f7",
+  ],
+} as const;
+export const chartPaletteNames: Record<keyof typeof chartPalettes, string> = {
+  default: "Standard",
+  warm: "Warm",
+  cool: "Kühl",
+  pastel: "Pastell",
+  mono: "Einfarbig (Blau)",
+};
 export type ChartConfig = z.infer<typeof chartSchema>;
 export const chartKinds = {
   bar: "Säulen",

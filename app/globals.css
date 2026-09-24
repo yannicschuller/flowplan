@@ -2859,6 +2859,9 @@ tr:hover .row-open {
   color: inherit;
   text-decoration: none;
 }
+.chart-scroll.no-grid .chart-grid {
+  display: none;
+}
 .version-diff {
   display: grid;
   gap: 6px;

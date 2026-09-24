@@ -475,3 +475,15 @@ test("data series split groups, merge long tails, keep multi-values per series a
     false,
   );
 });
+
+test("chart style options validate palettes and grid visibility", () => {
+  assert.equal(
+    chartSchema.safeParse({ ...config, palette: "cool", showGrid: false })
+      .success,
+    true,
+  );
+  assert.equal(
+    chartSchema.safeParse({ ...config, palette: "neon" }).success,
+    false,
+  );
+});

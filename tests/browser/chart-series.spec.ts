@@ -129,6 +129,21 @@ test("charts split groups into data series with legend, stacking, drill-down and
   expect(text.replace(/^﻿/, "").split(/\r?\n/)[0]).toBe(
     "Gruppe,App,Web,Gesamt,Einträge",
   );
+  // Palettes and grid lines are view options.
+  await page.getByRole("button", { name: "Diagramm konfigurieren" }).click();
+  await dialog.getByLabel("Farbpalette").selectOption("warm");
+  await dialog.getByLabel("Gitterlinien anzeigen").uncheck();
+  await dialog.getByRole("button", { name: "Anwenden", exact: true }).click();
+  await expect
+    .poll(async () => (await read()).database.views[0].chart)
+    .toMatchObject({ palette: "warm", showGrid: false });
+  await expect(
+    page
+      .getByRole("list", { name: "Legende" })
+      .locator(".chart-swatch")
+      .first(),
+  ).toHaveCSS("background-color", "rgb(194, 85, 58)");
+  await expect(page.locator(".chart-scroll .chart-grid").first()).toBeHidden();
   // Line charts draw one line per series.
   await page.getByRole("button", { name: "Diagramm konfigurieren" }).click();
   await dialog.getByLabel("Diagrammtyp").selectOption("line");
