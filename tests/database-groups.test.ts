@@ -614,3 +614,54 @@ test("subgroups nest a second property, move across both levels atomically and r
     false,
   );
 });
+test("board columns keep their own card order for rows listed in several columns", () => {
+  const page = create();
+  schema(page, [{ ...view, id: "board", type: "board", groupBy: "tags" }]);
+  const cell = (title: string, tags: string[]) =>
+    act({ action: "row.create", pageId: page, cells: { title, tags } }).id;
+  const a = cell("Alpha", ["A", "B"]),
+    b = cell("Beta", ["A", "B"]),
+    c = cell("Gamma", ["B"]);
+  const move = (
+    rowId: string,
+    targetId: string,
+    placement: string,
+    key: string,
+  ) =>
+    act({
+      action: "row.move",
+      pageId: page,
+      viewId: "board",
+      version: database(page).version,
+      rowId,
+      rowVersion: rows(page).find((r) => r.id === rowId)!.version,
+      targetId,
+      placement,
+      group: { from: key, to: key },
+    });
+  const columns = () =>
+    Object.fromEntries(
+      configuredGroups(
+        databaseGroups(
+          queryRows(rows(page), fields, database(page).views[0]),
+          fields[2],
+          {},
+        ),
+        database(page).views[0],
+      ).map((g) => [g.label, g.rows.map((r) => r.cells.title)]),
+    );
+  // Column A: Beta above Alpha; column B: Alpha after Gamma.
+  move(b, a, "before", '"A"');
+  move(a, c, "after", '"B"');
+  const shown = columns();
+  assert.deepEqual(shown.A, ["Beta", "Alpha"]);
+  assert.deepEqual(shown.B, ["Beta", "Gamma", "Alpha"]);
+  // A new card keeps its natural slot without disturbing saved orders.
+  cell("Delta", ["A"]);
+  assert.deepEqual(columns().A, ["Beta", "Alpha", "Delta"]);
+  // Deleted rows leave the saved column orders.
+  act({ action: "row.delete", pageId: page, rowId: b });
+  const saved = database(page).views[0].groupRowOrder!;
+  assert.ok(Object.values(saved).every((ids) => !ids.includes(b)));
+  assert.deepEqual(columns().A, ["Alpha", "Delta"]);
+});

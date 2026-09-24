@@ -1,4 +1,5 @@
 import { cellText } from "./database";
+import { orderedGroupRows } from "./row-order";
 import type { Field, Row, View, User } from "./types";
 export type DatabaseGroup = {
   key: string;
@@ -86,6 +87,19 @@ export function groupingField(fields: Field[], view: View) {
       : undefined)
   );
 }
+// Board columns keep their own card order unless a sort is active.
+export function boardCardOrder<T extends { key: string; rows: Row[] }>(
+  groups: T[],
+  view: Pick<View, "type" | "sorts" | "groupRowOrder">,
+) {
+  if (view.type !== "board" || view.sorts.length || !view.groupRowOrder)
+    return groups;
+  return groups.map((g) =>
+    view.groupRowOrder![g.key]
+      ? { ...g, rows: orderedGroupRows(g.rows, view.groupRowOrder![g.key]) }
+      : g,
+  );
+}
 export function configuredGroups(groups: DatabaseGroup[], view: View) {
   const visible = groups.filter(
     (g) =>
@@ -94,10 +108,11 @@ export function configuredGroups(groups: DatabaseGroup[], view: View) {
         (view.type === "table" || view.type === "list")
       ) || g.rows.length,
   );
+  const withCards = boardCardOrder(visible, view);
   if (!view.groupSettings || view.groupSettings.sort === "manual")
-    return orderedGroups(visible, view.groupSettings?.order);
+    return orderedGroups(withCards, view.groupSettings?.order);
   const direction = view.groupSettings.sort === "asc" ? 1 : -1;
-  return visible.sort(
+  return withCards.sort(
     (a, b) =>
       a.label.localeCompare(b.label, "de", { numeric: true }) * direction ||
       a.key.localeCompare(b.key),

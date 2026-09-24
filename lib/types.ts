@@ -137,6 +137,8 @@ export type View = {
   hiddenFields?: string[];
   fieldOrder?: string[];
   rowOrder?: string[];
+  // Board only: card order per column (group key → row ids).
+  groupRowOrder?: Record<string, string[]>;
   columnWidths?: Record<string, number>;
   calculations?: Record<string, import("./database-summary").CalculationChoice>;
 };

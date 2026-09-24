@@ -12,7 +12,12 @@ import {
   databaseSubgroups,
 } from "./database-groups";
 import { validateCellPatch } from "./database-operations";
-import { MAX_ORDERED_ROWS, orderedRowIds } from "./row-order";
+import {
+  MAX_ORDERED_ROWS,
+  mapGroupRowOrder,
+  orderedGroupRows,
+  orderedRowIds,
+} from "./row-order";
 import type { Identity, Row, View, Field } from "./types";
 function records(pageId: string) {
   return all<Omit<Row, "cells"> & { cells: string }>(
@@ -65,6 +70,15 @@ export function maintainRowOrders(
     ids = new Set(rows.map((r) => r.id)),
     copied = new Set(copies?.values());
   const views = d.views.map((v) => {
+    if (v.groupRowOrder)
+      v = {
+        ...v,
+        groupRowOrder: mapGroupRowOrder(v.groupRowOrder, (order) =>
+          copies
+            ? order.flatMap((r) => (copies.has(r) ? [r, copies.get(r)!] : [r]))
+            : order.filter((r) => ids.has(r)),
+        ),
+      };
     if (!v.rowOrder) return v;
     return {
       ...v,
@@ -143,6 +157,9 @@ export function moveRow(
         related.relatedSchemas,
       ).map((r) => r.id)
     : orderedRowIds(rows, view);
+  let columns: { key: string; ids: string[] }[] | undefined,
+    source: string | undefined,
+    column: string | undefined;
   if (b.subgroup && !b.group)
     throw new HttpError(400, "Untergruppe benötigt eine Gruppe.");
   if (b.group) {
@@ -205,6 +222,16 @@ export function moveRow(
         409,
         "Die Gruppenzuordnung wurde geändert. Bitte neu laden.",
       );
+    if (view.type === "board" && !b.clearSorts) {
+      columns = groups.map((g) => ({
+        key: g.key,
+        ids: orderedGroupRows(g.rows, view.groupRowOrder?.[g.key]).map(
+          (r) => r.id,
+        ),
+      }));
+      source = from.key;
+      column = to.key;
+    }
     const patch: Record<string, unknown> = {};
     if (from.key !== to.key)
       patch[field!.id] = groupCellValue(
@@ -243,9 +270,44 @@ export function moveRow(
         ? order.length
         : order.indexOf(b.targetId!) + (b.placement === "after" ? 1 : 0);
   order.splice(index, 0, row.id);
+  // A board column keeps its own card order, so a card listed in several
+  // columns (multi-select) can sit at a different place in each.
+  let groupRowOrder = view.groupRowOrder;
+  if (columns && column !== undefined) {
+    const known = new Set(columns.map((c) => c.key));
+    groupRowOrder = Object.fromEntries(
+      Object.entries(view.groupRowOrder || {}).filter(([key]) =>
+        known.has(key),
+      ),
+    );
+    // The view order changes below; other columns keep what they showed.
+    for (const c of columns)
+      if (!groupRowOrder[c.key] && c.ids.length) groupRowOrder[c.key] = c.ids;
+    let ids = columns
+      .find((c) => c.key === column)!
+      .ids.filter((r) => r !== row.id);
+    const at =
+      b.placement === "start"
+        ? 0
+        : b.placement === "end"
+          ? ids.length
+          : ids.indexOf(b.targetId!) + (b.placement === "after" ? 1 : 0);
+    ids.splice(at, 0, row.id);
+    groupRowOrder[column] = ids;
+    if (source !== column && groupRowOrder[source!]) {
+      ids = groupRowOrder[source!].filter((r) => r !== row.id);
+      if (ids.length) groupRowOrder[source!] = ids;
+      else delete groupRowOrder[source!];
+    }
+  } else if (b.clearSorts) groupRowOrder = undefined;
   const views = d.views.map((v) =>
     v.id === view.id
-      ? { ...v, rowOrder: order, sorts: b.clearSorts ? [] : v.sorts }
+      ? {
+          ...v,
+          rowOrder: order,
+          sorts: b.clearSorts ? [] : v.sorts,
+          groupRowOrder,
+        }
       : v,
   );
   if (JSON.stringify(views) !== JSON.stringify(d.views)) {

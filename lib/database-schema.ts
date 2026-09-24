@@ -100,6 +100,16 @@ export const view = z
       .max(MAX_ORDERED_ROWS)
       .refine((values) => new Set(values).size === values.length)
       .optional(),
+    groupRowOrder: z
+      .record(
+        z.string().max(2000),
+        z
+          .array(z.string().uuid())
+          .max(MAX_ORDERED_ROWS)
+          .refine((values) => new Set(values).size === values.length),
+      )
+      .refine((order) => Object.keys(order).length <= 1000)
+      .optional(),
     columnWidths: z
       .record(z.string(), z.number().int().min(80).max(800))
       .optional(),

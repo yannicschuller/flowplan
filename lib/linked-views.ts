@@ -2,6 +2,7 @@ import { z } from "zod";
 import { view } from "./database-schema";
 import { transformFilterGroup } from "./database-filters";
 import type { Field, View, Filter } from "./types";
+import { mapGroupRowOrder } from "./row-order";
 import { availableCalculations } from "./database-summary";
 export function availableLinkedViews(
   views: View[],
@@ -23,6 +24,13 @@ export function availableLinkedViews(
       : {}),
     ...(v.rowOrder
       ? { rowOrder: v.rowOrder.filter((r) => rowIds.has(r)) }
+      : {}),
+    ...(v.groupRowOrder
+      ? {
+          groupRowOrder: mapGroupRowOrder(v.groupRowOrder, (ids) =>
+            ids.filter((r) => rowIds.has(r)),
+          ),
+        }
       : {}),
     ...(v.gallery?.cover === "field" &&
     !fields.some((f) => f.id === v.gallery!.fieldId && f.type === "files")
