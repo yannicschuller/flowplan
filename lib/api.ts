@@ -1,5 +1,5 @@
 import { cellText } from "./cell-text";
-import { scheduleRow } from "./row-schedule";
+import { scheduleRow, cascadeTimeline } from "./row-schedule";
 import { rewriteFormulaReferences } from "./formula";
 import { validateCalculations } from "./database-summary";
 import { spaceColorSchema, spaceIconSchema } from "./space-appearance";
@@ -1169,6 +1169,9 @@ export function command(
       }
       case "row.schedule":
         result = scheduleRow(user, pid(), b);
+        break;
+      case "timeline.cascade":
+        result = cascadeTimeline(user, pid(), b);
         break;
       case "row.move":
         result = moveRow(user, pid(), b);

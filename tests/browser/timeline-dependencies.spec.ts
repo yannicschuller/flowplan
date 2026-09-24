@@ -111,6 +111,28 @@ test("timeline dependencies draw arrows, flag conflicts and move successors", as
   await page.reload();
   await expect(paths).toHaveCount(2);
 
+  // Extending the first entry pushes the whole chain in one step.
+  const first = (await read()).rows.find((r: { id: string }) => r.id === a.id);
+  await command({
+    action: "row.update",
+    pageId: p.id,
+    rowId: a.id,
+    version: first.version,
+    cells: { end: day(12) },
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Alle Konflikte nachziehen" }).click();
+  await expect
+    .poll(async () =>
+      (await read()).rows
+        .filter((r: { id: string }) => r.id !== a.id)
+        .map((r: { cells: { start: string } }) => r.cells.start)
+        .sort(),
+    )
+    .toEqual([day(13), day(18)]);
+  await expect(
+    page.locator(".timeline-dependencies > path.conflict"),
+  ).toHaveCount(0);
   // A cycle is flagged and offers no automatic move.
   const rowA = (await read()).rows.find((r: { id: string }) => r.id === a.id);
   await command({

@@ -581,3 +581,113 @@ test("timeline dependencies compute finish-to-start shifts, cycles and survive p
   assert.ok(copiedRows.some((row) => row.id === deps.links[0].from));
   assert.ok(!copiedRows.some((row) => row.id === first));
 });
+
+test("cascading shifts push whole dependency chains after their predecessors", async () => {
+  const { cascadeShifts } = await import("../lib/database-timeline");
+  const fields: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "start", name: "Beginn", type: "date" },
+    { id: "end", name: "Ende", type: "date" },
+    { id: "after", name: "Nach", type: "relation", relationPage: "self" },
+  ];
+  const r = (id: string, start: string, end: string, after: string[] = []) => ({
+    id,
+    cells: { start, end, after },
+  });
+  const rowsIn = [
+    r("a", "2026-01-01", "2026-01-05"),
+    r("b", "2026-01-03", "2026-01-04", ["a"]),
+    r("c", "2026-01-05", "2026-01-06", ["b"]),
+    r("d", "2026-01-20", "2026-01-21", ["b"]),
+    r("e", "2026-01-02", "2026-01-02", ["a", "c"]),
+  ];
+  const shifts = cascadeShifts(rowsIn, fields[3], fields[1], fields[2])!;
+  // b: 3 days to start on the 6th (ends 7th); c then starts on the 8th;
+  // d is already late enough; e waits for c (ends 9th) → 10th.
+  assert.deepEqual(Object.fromEntries(shifts), { b: 3, c: 3, e: 8 });
+  assert.equal(
+    cascadeShifts(
+      [
+        r("x", "2026-01-01", "2026-01-02", ["y"]),
+        r("y", "2026-01-01", "2026-01-02", ["x"]),
+      ],
+      fields[3],
+      fields[1],
+      fields[2],
+    ),
+    null,
+  );
+
+  const owner = user();
+  const wid = createWorkspace(owner.id, "Kaskade");
+  const act = (input: Record<string, unknown>) =>
+    command(owner, input) as { id: string };
+  const pid = act({
+    action: "page.create",
+    workspaceId: wid,
+    spaceId: bootstrap(owner, wid).spaces[0].id,
+    title: "Plan",
+    kind: "database",
+  }).id;
+  command(owner, {
+    action: "database.update",
+    pageId: pid,
+    version: database(pid).version,
+    fields: fields.map((f) =>
+      f.id === "after" ? { ...f, relationPage: pid } : f,
+    ),
+    views: [
+      {
+        id: "t",
+        name: "Timeline",
+        type: "timeline",
+        filters: [],
+        sorts: [],
+        dateField: "start",
+        endDateField: "end",
+        timeline: {
+          scale: "month",
+          showWeekends: true,
+          dependencyField: "after",
+        },
+      },
+    ],
+  });
+  const a = act({
+    action: "row.create",
+    pageId: pid,
+    cells: { title: "A", start: "2026-03-01", end: "2026-03-04" },
+  }).id;
+  const b = act({
+    action: "row.create",
+    pageId: pid,
+    cells: {
+      title: "B",
+      start: "2026-03-02T09:00",
+      end: "2026-03-03T17:00",
+      after: [a],
+    },
+  }).id;
+  command(owner, {
+    action: "timeline.cascade",
+    pageId: pid,
+    viewId: "t",
+    version: database(pid).version,
+  });
+  const moved = rows(pid).find((x) => x.id === b)!;
+  // Times of day are kept.
+  assert.deepEqual(
+    [moved.cells.start, moved.cells.end],
+    ["2026-03-05T09:00", "2026-03-06T17:00"],
+  );
+  assert.throws(
+    () =>
+      command(owner, {
+        action: "timeline.cascade",
+        pageId: pid,
+        viewId: "t",
+        version: 0,
+      }),
+    /geändert/,
+  );
+});

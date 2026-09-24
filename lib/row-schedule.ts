@@ -1,8 +1,13 @@
 import { z } from "zod";
-import { one, run } from "./db";
+import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
-import { schedulePatch } from "./database-timeline";
+import {
+  cascadeShifts,
+  dependencyFields,
+  scheduleFields,
+  schedulePatch,
+} from "./database-timeline";
 import { calendarChangeSchema, calendarPatch } from "./database-calendar";
 import type { Field, Identity, View } from "./types";
 const changeSchema = z.discriminatedUnion("operation", [
@@ -75,4 +80,59 @@ export function scheduleRow(
     rid,
   );
   return { ok: true };
+}
+
+// Resolves every dependency conflict of a timeline view in one transaction.
+export function cascadeTimeline(
+  user: Identity,
+  pageId: string,
+  input: Record<string, unknown>,
+) {
+  const page = requirePage(user, pageId, true);
+  if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+  const stored = one<{ fields: string; views: string; version: number }>(
+    "SELECT * FROM databases WHERE page_id=?",
+    pageId,
+  );
+  if (!stored) throw new HttpError(400, "Datenbank fehlt.");
+  if (input.version !== stored.version)
+    throw new HttpError(
+      409,
+      "Die Ansicht wurde inzwischen geändert. Bitte neu laden.",
+    );
+  const fields = JSON.parse(stored.fields) as Field[],
+    view = (JSON.parse(stored.views) as View[]).find(
+      (v) => v.id === input.viewId,
+    );
+  if (!view || view.type !== "timeline")
+    throw new HttpError(400, "Timeline-Ansicht fehlt.");
+  const field = dependencyFields(fields, pageId).find(
+    (f) => f.id === view.timeline?.dependencyField,
+  );
+  if (!field) throw new HttpError(400, "Keine Abhängigkeiten eingerichtet.");
+  const rows = all<{ id: string; cells: string }>(
+    "SELECT id,cells FROM rows WHERE page_id=?",
+    pageId,
+  ).map((r) => ({
+    id: r.id,
+    cells: JSON.parse(r.cells) as Record<string, unknown>,
+  }));
+  const { start, end } = scheduleFields(fields, view);
+  const shifts = cascadeShifts(rows, field, start, end);
+  if (!shifts)
+    throw new HttpError(
+      409,
+      "Zyklische Abhängigkeiten lassen sich nicht auflösen.",
+    );
+  for (const [rid, days] of shifts) {
+    const row = rows.find((r) => r.id === rid)!;
+    const patch = schedulePatch(row, fields, view, { operation: "move", days });
+    run(
+      "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
+      JSON.stringify({ ...row.cells, ...patch }),
+      user.id,
+      rid,
+    );
+  }
+  return { ok: true, moved: shifts.size };
 }

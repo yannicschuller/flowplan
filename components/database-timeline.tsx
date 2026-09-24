@@ -369,6 +369,29 @@ export default function DatabaseTimeline({
             ))}
           </select>
         </label>
+        {canEdit && !cyclic.size && links.some((l) => l.shift > 0) && (
+          <button
+            className="button compact"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await onSchedule({
+                  action: "timeline.cascade",
+                  viewId: view.id,
+                  version,
+                });
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Alle Konflikte nachziehen
+          </button>
+        )}
       </div>
       {!start || invalidEnd ? (
         <p className="timeline-notice">

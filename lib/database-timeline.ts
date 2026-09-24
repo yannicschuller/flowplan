@@ -242,3 +242,55 @@ export function timelineDependencies(
   }
   return { links, cyclic };
 }
+
+// Days each record must move so that every successor starts after all of its
+// predecessors end (finish-to-start). Moved predecessors push their chains.
+// Returns null for cyclic dependencies.
+export function cascadeShifts(
+  rows: Pick<Row, "id" | "cells">[],
+  field: Field | undefined,
+  start?: Field,
+  end?: Field,
+): Map<string, number> | null {
+  const shifts = new Map<string, number>();
+  if (!field) return shifts;
+  const { links, cyclic } = timelineDependencies(rows, field, start, end);
+  if (cyclic.size) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const incoming = new Map<string, string[]>(),
+    outgoing = new Map<string, string[]>();
+  for (const l of links) {
+    incoming.set(l.to, [...(incoming.get(l.to) || []), l.from]);
+    outgoing.set(l.from, [...(outgoing.get(l.from) || []), l.to]);
+  }
+  // Kahn's algorithm keeps predecessors before successors.
+  const pending = new Map(
+    rows.map((r) => [r.id, incoming.get(r.id)?.length || 0]),
+  );
+  const queue = rows.filter((r) => !pending.get(r.id)).map((r) => r.id);
+  const range = (rid: string) => {
+    const base = rowRange(byId.get(rid)!, start, end);
+    const moved = shifts.get(rid) || 0;
+    return base && { start: base.start + moved, end: base.end + moved };
+  };
+  while (queue.length) {
+    const rid = queue.shift()!;
+    const own = range(rid);
+    if (own) {
+      const required = Math.max(
+        -Infinity,
+        ...(incoming.get(rid) || [])
+          .map((p) => range(p))
+          .filter(Boolean)
+          .map((r) => r!.end + 1),
+      );
+      if (required > own.start)
+        shifts.set(rid, (shifts.get(rid) || 0) + required - own.start);
+    }
+    for (const next of outgoing.get(rid) || []) {
+      pending.set(next, pending.get(next)! - 1);
+      if (!pending.get(next)) queue.push(next);
+    }
+  }
+  return shifts;
+}
