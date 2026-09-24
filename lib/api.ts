@@ -678,6 +678,71 @@ export function command(
           );
         break;
       }
+      case "pages.bulk": {
+        // Runs the single-page actions inside this transaction: all or nothing.
+        const operation = z
+          .enum(["delete", "duplicate", "move"])
+          .parse(b.operation);
+        const ids = [
+          ...new Set(z.array(uuid).min(1).max(100).parse(b.pageIds)),
+        ];
+        const pages = ids.map((pid) => {
+          const p = requirePage(user, pid, true);
+          if (p.workspace_id !== wid())
+            throw new HttpError(
+              400,
+              "Seiten aus einem anderen Arbeitsbereich.",
+            );
+          return p;
+        });
+        // Pages inside another selected page travel with their ancestor.
+        const covered = new Set<string>();
+        for (const p of pages)
+          for (const child of descendants(p.id))
+            if (child !== p.id) covered.add(child);
+        const roots = pages.filter((p) => !covered.has(p.id));
+        const created: string[] = [];
+        let previous: string | undefined;
+        for (const p of roots) {
+          if (operation === "delete")
+            command(user, { action: "page.delete", pageId: p.id }, true);
+          else if (operation === "duplicate")
+            created.push(
+              (
+                command(
+                  user,
+                  { action: "page.duplicate", pageId: p.id },
+                  true,
+                ) as { id: string }
+              ).id,
+            );
+          else {
+            // Keep the selection order: the first root goes to the target,
+            // every further root directly after the previous one.
+            command(
+              user,
+              previous
+                ? {
+                    action: "page.move",
+                    pageId: p.id,
+                    targetId: previous,
+                    placement: "after",
+                  }
+                : {
+                    action: "page.move",
+                    pageId: p.id,
+                    ...(b.parentId
+                      ? { targetId: b.parentId, placement: "inside" }
+                      : { spaceId: b.spaceId, parentId: null }),
+                  },
+              true,
+            );
+            previous = p.id;
+          }
+        }
+        result = { ok: true, count: roots.length, created };
+        break;
+      }
       case "page.move": {
         const p = write(),
           subtree = descendants(p.id);

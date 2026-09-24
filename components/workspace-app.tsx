@@ -23,6 +23,8 @@ import {
   Stack,
   CaretDown,
   CaretRight,
+  CheckSquare,
+  DotsSixVertical,
   Plus,
   MagnifyingGlass,
   House,
@@ -151,6 +153,14 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
     placement: "before" | "after" | "inside";
   } | null>(null);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  // Sidebar multi-selection (Ctrl/⌘/Shift-click or selection mode on touch).
+  const [selectedPages, setSelectedPages] = useState<string[]>([]),
+    [selecting, setSelecting] = useState(false),
+    [bulkDialog, setBulkDialog] = useState<"move" | "delete" | null>(null),
+    [bulkTarget, setBulkTarget] = useState(""),
+    [bulkBusy, setBulkBusy] = useState(false);
+  const lastSelected = useRef<string | null>(null),
+    touchDrag = useRef<{ source: string; pointer: number } | null>(null);
   const [privateTemplate, setPrivateTemplate] = useState(false);
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -417,6 +427,108 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
       notify((e as Error).message);
     }
   }
+  // Pages in sidebar order, e.g. for range selection and move targets.
+  function flatPages(
+    parentId: string | null,
+    sid: string,
+    level = 0,
+  ): { page: Page; level: number }[] {
+    if (level > 20) return [];
+    return activePages
+      .filter(
+        (p) =>
+          p.space_id === sid &&
+          (parentId
+            ? p.parent_id === parentId
+            : !p.parent_id || !activePages.some((x) => x.id === p.parent_id)),
+      )
+      .flatMap((p) => [{ page: p, level }, ...flatPages(p.id, sid, level + 1)]);
+  }
+  function ancestorsOf(pid: string) {
+    const result: string[] = [];
+    let current = activePages.find((p) => p.id === pid);
+    while (current?.parent_id && result.length < 50) {
+      result.push(current.parent_id);
+      current = activePages.find((p) => p.id === current!.parent_id);
+    }
+    return result;
+  }
+  function toggleSelected(pid: string, range: boolean) {
+    setSelectedPages((previous) => {
+      if (range && lastSelected.current) {
+        const order = boot.spaces.flatMap((sp) =>
+          flatPages(null, sp.id).map((x) => x.page.id),
+        );
+        const a = order.indexOf(lastSelected.current),
+          b = order.indexOf(pid);
+        if (a >= 0 && b >= 0)
+          return [
+            ...new Set([
+              ...previous,
+              ...order.slice(Math.min(a, b), Math.max(a, b) + 1),
+            ]),
+          ];
+      }
+      lastSelected.current = pid;
+      return previous.includes(pid)
+        ? previous.filter((x) => x !== pid)
+        : [...previous, pid];
+    });
+  }
+  function clearSelection() {
+    setSelectedPages([]);
+    setSelecting(false);
+    lastSelected.current = null;
+  }
+  async function bulkPages(
+    operation: "delete" | "duplicate" | "move",
+    destination?: string,
+  ) {
+    setBulkBusy(true);
+    try {
+      const result = await act({
+        action: "pages.bulk",
+        workspaceId: boot.workspace.id,
+        operation,
+        pageIds: selectedPages,
+        ...(destination?.startsWith("page:")
+          ? { parentId: destination.slice(5) }
+          : destination?.startsWith("space:")
+            ? { spaceId: destination.slice(6) }
+            : {}),
+      });
+      if (result) {
+        setBulkDialog(null);
+        clearSelection();
+        notify(
+          operation === "delete"
+            ? "Seiten in den Papierkorb verschoben."
+            : operation === "duplicate"
+              ? "Seiten dupliziert."
+              : "Seiten verschoben.",
+        );
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+  // Touch devices drag pages with a handle; the drop target is found under the finger.
+  function touchTarget(x: number, y: number) {
+    const row = document
+      .elementFromPoint(x, y)
+      ?.closest<HTMLElement>(".page-nav[data-page-id]");
+    if (!row) return null;
+    const rect = row.getBoundingClientRect(),
+      ratio = (y - rect.top) / rect.height;
+    return {
+      id: row.dataset.pageId!,
+      placement: (ratio < 0.25
+        ? "before"
+        : ratio > 0.75
+          ? "after"
+          : "inside") as "before" | "after" | "inside",
+    };
+  }
   function tree(
     parentId: string | null,
     sid: string,
@@ -437,10 +549,14 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
         return (
           <div key={p.id}>
             <div
-              className={`page-nav ${screen === "page" && pageId === p.id ? "selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
+              className={`page-nav ${screen === "page" && pageId === p.id ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
               data-page-id={p.id}
               draggable={canCreate}
               onDragStart={(e) => {
+                if ((e.target as HTMLElement).closest(".nav-drag")) {
+                  e.preventDefault();
+                  return;
+                }
                 e.dataTransfer.setData("application/x-flowplan-page", p.id);
                 e.dataTransfer.effectAllowed = "move";
               }}
@@ -504,7 +620,31 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                   <span />
                 )}
               </button>
-              <button className="page-nav-title" onClick={() => openPage(p.id)}>
+              {selecting && (
+                <input
+                  type="checkbox"
+                  className="page-select"
+                  aria-label={`${p.title} auswählen`}
+                  checked={selectedPages.includes(p.id)}
+                  onChange={() => toggleSelected(p.id, false)}
+                />
+              )}
+              <button
+                className="page-nav-title"
+                aria-pressed={
+                  selecting || selectedPages.length
+                    ? selectedPages.includes(p.id)
+                    : undefined
+                }
+                onClick={(e) => {
+                  if (selecting || e.metaKey || e.ctrlKey || e.shiftKey) {
+                    e.preventDefault();
+                    toggleSelected(p.id, e.shiftKey);
+                    return;
+                  }
+                  void openPage(p.id);
+                }}
+              >
                 <PageIcon
                   name={p.kind === "database" ? "table" : p.icon}
                   size={17}
@@ -512,6 +652,47 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                 <span>{p.title}</span>
                 {p.locked === 1 && <Lock size={12} />}
               </button>
+              {canCreate && (
+                <button
+                  className="nav-drag"
+                  aria-label={`${p.title} ziehen`}
+                  onPointerDown={(e) => {
+                    // No native drag of the row: the handle drives the gesture.
+                    e.preventDefault();
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    touchDrag.current = { source: p.id, pointer: e.pointerId };
+                  }}
+                  onPointerMove={(e) => {
+                    if (touchDrag.current?.pointer !== e.pointerId) return;
+                    const target = touchTarget(e.clientX, e.clientY);
+                    setTreeDrop(
+                      target && target.id !== touchDrag.current.source
+                        ? target
+                        : null,
+                    );
+                  }}
+                  onPointerUp={(e) => {
+                    const drag = touchDrag.current;
+                    touchDrag.current = null;
+                    if (drag?.pointer !== e.pointerId) return;
+                    const target = touchTarget(e.clientX, e.clientY);
+                    setTreeDrop(null);
+                    if (target && target.id !== drag.source)
+                      void act({
+                        action: "page.move",
+                        pageId: drag.source,
+                        targetId: target.id,
+                        placement: target.placement,
+                      });
+                  }}
+                  onPointerCancel={() => {
+                    touchDrag.current = null;
+                    setTreeDrop(null);
+                  }}
+                >
+                  <DotsSixVertical size={14} />
+                </button>
+              )}
               {canCreate && (
                 <button
                   className="nav-add"
@@ -644,6 +825,42 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
               ))}
             </section>
           )}
+          {(selecting || selectedPages.length > 0) && (
+            <div
+              className="page-selection-bar"
+              role="toolbar"
+              aria-label="Seitenauswahl"
+            >
+              <span>{selectedPages.length} ausgewählt</span>
+              <button
+                className="text-button"
+                disabled={!selectedPages.length || bulkBusy}
+                onClick={() => {
+                  setBulkTarget("");
+                  setBulkDialog("move");
+                }}
+              >
+                Verschieben
+              </button>
+              <button
+                className="text-button"
+                disabled={!selectedPages.length || bulkBusy}
+                onClick={() => void bulkPages("duplicate")}
+              >
+                Duplizieren
+              </button>
+              <button
+                className="text-button danger"
+                disabled={!selectedPages.length || bulkBusy}
+                onClick={() => setBulkDialog("delete")}
+              >
+                Papierkorb
+              </button>
+              <button className="text-button" onClick={clearSelection}>
+                Fertig
+              </button>
+            </div>
+          )}
           {boot.spaces.map((space) => (
             <section className="nav-section" key={space.id}>
               <div className="nav-section-title">
@@ -664,6 +881,18 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                     onClick={() => setSpaceManager({ space })}
                   >
                     <DotsThree size={16} />
+                  </button>
+                )}
+                {canCreate && (
+                  <button
+                    className={`icon-button ${selecting ? "active" : ""}`}
+                    title="Seiten auswählen"
+                    aria-pressed={selecting}
+                    onClick={() =>
+                      selecting ? clearSelection() : setSelecting(true)
+                    }
+                  >
+                    <CheckSquare size={14} />
                   </button>
                 )}
                 {canCreate && (
@@ -1479,6 +1708,91 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
           onDone={refresh}
         />
       )}
+      <Modal
+        open={bulkDialog === "move"}
+        onClose={() => setBulkDialog(null)}
+        title="Seiten verschieben"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (bulkTarget) void bulkPages("move", bulkTarget);
+          }}
+        >
+          <label>
+            Ziel
+            <select
+              aria-label="Ziel"
+              value={bulkTarget}
+              onChange={(e) => setBulkTarget(e.target.value)}
+            >
+              <option value="">Ziel wählen …</option>
+              {boot.spaces.map((sp) => (
+                <optgroup key={sp.id} label={sp.name}>
+                  <option value={`space:${sp.id}`}>
+                    {sp.name} (oberste Ebene)
+                  </option>
+                  {flatPages(null, sp.id)
+                    .filter(
+                      ({ page }) =>
+                        !selectedPages.some(
+                          (sel) =>
+                            sel === page.id ||
+                            ancestorsOf(page.id).includes(sel),
+                        ),
+                    )
+                    .map(({ page, level }) => (
+                      <option key={page.id} value={`page:${page.id}`}>
+                        {"\u00a0\u00a0".repeat(level + 1)}
+                        {page.title}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <p className="muted">
+            {selectedPages.length} Seiten mit ihren Unterseiten verschieben.
+          </p>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="button"
+              onClick={() => setBulkDialog(null)}
+            >
+              Abbrechen
+            </button>
+            <button
+              className="button primary"
+              disabled={!bulkTarget || bulkBusy}
+            >
+              Verschieben
+            </button>
+          </div>
+        </form>
+      </Modal>
+      <Modal
+        open={bulkDialog === "delete"}
+        onClose={() => setBulkDialog(null)}
+        title="Seiten in den Papierkorb"
+      >
+        <p>
+          {selectedPages.length} Seiten samt Unterseiten in den Papierkorb
+          verschieben? Freigaben und Veröffentlichungen werden beendet.
+        </p>
+        <div className="modal-actions">
+          <button className="button" onClick={() => setBulkDialog(null)}>
+            Abbrechen
+          </button>
+          <button
+            className="button danger"
+            disabled={bulkBusy}
+            onClick={() => void bulkPages("delete")}
+          >
+            In den Papierkorb
+          </button>
+        </div>
+      </Modal>
       <Modal
         open={search}
         onClose={() => {

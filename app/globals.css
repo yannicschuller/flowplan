@@ -392,6 +392,50 @@ kbd,
 .page-nav:hover .nav-add {
   opacity: 1;
 }
+/* Touch devices drag pages with this handle; mouse users drag the row. */
+.nav-drag {
+  display: none;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--muted);
+  touch-action: none;
+}
+@media (pointer: coarse) {
+  .nav-drag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+.page-nav.multi-selected {
+  background: var(--blue-light);
+}
+.page-select {
+  width: 14px;
+  height: 14px;
+  margin: 0 2px 0 0;
+  flex-shrink: 0;
+}
+.page-selection-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  box-shadow: 0 2px 8px #14244414;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 4px 12px 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+}
+.page-selection-bar > span {
+  font-weight: 600;
+  margin-right: auto;
+}
 .favorite-nav {
   display: flex;
   width: calc(100% - 24px);

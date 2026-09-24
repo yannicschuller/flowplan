@@ -1487,3 +1487,70 @@ test("form file questions accept only server-attached uploads and enforce requir
   ])
     assert.ok(validateFormValues(fields, config, { cv: bad }).errors.cv);
 });
+
+test("bulk page actions move, duplicate and trash several pages atomically", () => {
+  const space = boot.spaces[0].id;
+  const create = (title: string, parentId?: string) =>
+    (
+      command(owner, {
+        action: "page.create",
+        workspaceId: wid,
+        spaceId: space,
+        title,
+        parentId,
+      }) as { id: string }
+    ).id;
+  const target = create("Bulk Ziel"),
+    a = create("Bulk A"),
+    b = create("Bulk B"),
+    child = create("Bulk Kind", a);
+  const pageOf = (pid: string) =>
+    one<{
+      parent_id: string | null;
+      deleted_at: string | null;
+      position: number;
+    }>("SELECT parent_id,deleted_at,position FROM pages WHERE id=?", pid)!;
+  const bulk = (input: Record<string, unknown>, as = owner) =>
+    command(as, { action: "pages.bulk", workspaceId: wid, ...input }) as {
+      count: number;
+      created: string[];
+    };
+  // A selected child travels with its selected parent.
+  assert.equal(
+    bulk({ operation: "move", pageIds: [b, a, child], parentId: target }).count,
+    2,
+  );
+  assert.equal(pageOf(a).parent_id, target);
+  assert.equal(pageOf(b).parent_id, target);
+  assert.equal(pageOf(child).parent_id, a);
+  assert.ok(pageOf(b).position < pageOf(a).position);
+  // Moving into one of the moved pages fails without partial changes.
+  assert.throws(
+    () => bulk({ operation: "move", pageIds: [target, b], parentId: a }),
+    /Ungültiges Verschieben/,
+  );
+  assert.equal(pageOf(target).parent_id, null);
+  assert.equal(pageOf(b).parent_id, target);
+  const { created } = bulk({ operation: "duplicate", pageIds: [a, b] });
+  assert.equal(created.length, 2);
+  assert.ok(created.every((pid) => pageOf(pid).deleted_at === null));
+  bulk({ operation: "delete", pageIds: [a, b] });
+  assert.ok(
+    pageOf(a).deleted_at && pageOf(child).deleted_at && pageOf(b).deleted_at,
+  );
+  assert.throws(() => bulk({ operation: "delete", pageIds: [] }));
+  const other = createWorkspace(owner.id, "Bulk fremd");
+  const foreign = (
+    command(owner, {
+      action: "page.create",
+      workspaceId: other,
+      spaceId: bootstrap(owner, other).spaces[0].id,
+      title: "Fremd",
+    }) as { id: string }
+  ).id;
+  assert.throws(
+    () => bulk({ operation: "delete", pageIds: [target, foreign] }),
+    /anderen Arbeitsbereich/,
+  );
+  assert.equal(pageOf(target).deleted_at, null);
+});
