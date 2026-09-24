@@ -83,6 +83,8 @@ export type Row = {
   updated_by: string;
   version: number;
   content?: string;
+  icon?: string;
+  cover?: string;
   preview?: import("./document-preview").DocumentPreview;
 };
 export type Filter = {

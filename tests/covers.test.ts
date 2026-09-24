@@ -492,3 +492,114 @@ test("page image icons require own raster images and survive copies, publication
     imported.pageIds[p],
   );
 });
+test("record icons and covers are versioned, use database images and survive duplication, copies, snapshots and ZIP", async () => {
+  const { galleryImage } = await import("../lib/database-gallery");
+  const p = create("database"),
+    other = create(),
+    image = file(p),
+    foreign = file(other),
+    row = act({
+      action: "row.create",
+      pageId: p,
+      cells: { title: "Eintrag" },
+    }).id;
+  const version = () =>
+    one<{ version: number }>("SELECT version FROM rows WHERE id=?", row)!
+      .version;
+  const setLook = (patch: Record<string, unknown>, as = owner) =>
+    act(
+      {
+        action: "row.appearance",
+        pageId: p,
+        rowId: row,
+        version: version(),
+        ...patch,
+      },
+      as,
+    );
+  assert.throws(() => setLook({ cover: foreign }), /Cover/);
+  assert.throws(() => setLook({ icon: foreign }), /Seitensymbol/);
+  assert.throws(() => setLook({ icon: "🚀" }, viewer), /Berechtigung/);
+  assert.throws(
+    () =>
+      act({
+        action: "row.appearance",
+        pageId: p,
+        rowId: row,
+        version: version() + 1,
+        icon: "🚀",
+      }),
+    /geändert/,
+  );
+  const before = version();
+  setLook({ icon: "🚀", cover: image });
+  assert.equal(version(), before + 1);
+  setLook({ icon: image });
+  const stored = data(p).rows[0];
+  assert.equal(stored.icon, image);
+  assert.equal(stored.cover, image);
+  assert.equal(
+    galleryImage(
+      stored,
+      { cover: "record", fit: "cover", size: "medium" },
+      [],
+      new Set([image]),
+    ),
+    image,
+  );
+  setLook({ cover: "#dce7f5" });
+  assert.equal(data(p).rows[0].cover, "#dce7f5");
+  setLook({ cover: image });
+
+  // Duplicating a record keeps its look.
+  act({
+    action: "rows.bulk",
+    pageId: p,
+    operation: "duplicate",
+    rows: [{ id: row, version: version() }],
+  });
+  assert.equal(
+    data(p).rows.filter((r: { cover: string }) => r.cover === image).length,
+    2,
+  );
+
+  // Page copies point to their own image copies.
+  const copy = act({ action: "page.duplicate", pageId: p }).id;
+  const copied = data(copy).rows[0];
+  assert.notEqual(copied.cover, image);
+  assert.equal(copied.cover, copied.icon);
+  assert.equal(
+    one<{ page_id: string }>(
+      "SELECT page_id FROM files WHERE id=?",
+      copied.cover.split("/").at(-1)!,
+    )?.page_id,
+    copy,
+  );
+
+  // Snapshots restore the look.
+  act({ action: "page.snapshot", pageId: p });
+  const snapshot = one<{ id: string }>(
+    "SELECT id FROM snapshots WHERE page_id=? ORDER BY created_at DESC LIMIT 1",
+    p,
+  )!.id;
+  setLook({ icon: "", cover: "" });
+  act({ action: "snapshot.restore", pageId: p, snapshotId: snapshot });
+  assert.equal(
+    data(p).rows.find((r: { id: string }) => r.id === row).cover,
+    image,
+  );
+
+  const archive = await exportArchive(owner, wid),
+    destination = createWorkspace(owner.id, "Record look restore");
+  const imported = await importArchive(owner, destination, archive);
+  const restored = data(imported.pageIds[p]).rows[0];
+  assert.match(restored.cover, /^\/api\/files\//);
+  assert.notEqual(restored.cover, image);
+  assert.equal(
+    one<{ page_id: string }>(
+      "SELECT page_id FROM files WHERE id=?",
+      restored.cover.split("/").at(-1)!,
+    )?.page_id,
+    imported.pageIds[p],
+  );
+});

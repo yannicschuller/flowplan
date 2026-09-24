@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Field, Row } from "./types";
 export const gallerySchema = z
   .object({
-    cover: z.enum(["none", "document", "field"]),
+    cover: z.enum(["none", "document", "field", "record"]),
     fieldId: z.string().max(500).optional(),
     fit: z.enum(["cover", "contain"]),
     size: z.enum(["small", "medium", "large"]),
@@ -24,14 +24,16 @@ export function galleryImage(
   authorizedImages: ReadonlySet<string>,
 ): string | undefined {
   const value =
-    config.cover === "document"
-      ? row.preview?.image
-      : config.cover === "field" &&
-          fields.some(
-            (field) => field.id === config.fieldId && field.type === "files",
-          )
-        ? row.cells[config.fieldId!]
-        : undefined;
+    config.cover === "record"
+      ? row.cover
+      : config.cover === "document"
+        ? row.preview?.image
+        : config.cover === "field" &&
+            fields.some(
+              (field) => field.id === config.fieldId && field.type === "files",
+            )
+          ? row.cells[config.fieldId!]
+          : undefined;
   return typeof value === "string" && authorizedImages.has(value)
     ? value
     : undefined;

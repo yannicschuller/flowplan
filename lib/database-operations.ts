@@ -191,13 +191,15 @@ export function bulkRows(
           );
       const rid = mapping.get(row.id)!;
       run(
-        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover) VALUES(?,?,?,?,?,?,?,?)",
         rid,
         pageId,
         JSON.stringify(cells),
         row.position + 0.5,
         user.id,
         user.id,
+        row.icon || "",
+        row.cover || "",
       );
       const html = String(
         one("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ||

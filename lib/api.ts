@@ -268,6 +268,21 @@ function descendants(pid: string): string[] {
     pid,
   ).map((p) => p.id);
 }
+// Snapshot images whose file was removed meanwhile are dropped, not restored.
+function restorableImage(
+  pageId: string,
+  value: unknown,
+  validate: (pageId: string, value: string) => void,
+) {
+  const parsed = pageIconSchema.safeParse(value);
+  if (!parsed.success || !parsed.data) return "";
+  try {
+    validate(pageId, parsed.data);
+    return parsed.data;
+  } catch {
+    return "";
+  }
+}
 export function command(
   user: Identity,
   input: unknown,
@@ -894,7 +909,7 @@ export function command(
           run("DELETE FROM rows WHERE page_id=?", p.id);
           for (const r of data.rows)
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover) VALUES(?,?,?,?,?,?,?,?,?)",
               r.id,
               p.id,
               JSON.stringify(r.cells),
@@ -902,6 +917,8 @@ export function command(
               user.id,
               user.id,
               r.content || "",
+              restorableImage(p.id, r.icon, validateIcon),
+              restorableImage(p.id, r.cover, validateCover),
             );
           if (Array.isArray(data.rowTemplates)) {
             run("DELETE FROM row_templates WHERE page_id=?", p.id);
@@ -1240,6 +1257,9 @@ export function command(
           pid(),
         );
         break;
+      case "row.appearance":
+        result = setRowAppearance(user, b);
+        break;
       case "reminder.set":
         result = setDateReminder(user, b);
         break;
@@ -1539,3 +1559,4 @@ import {
 } from "./inline-comment-archive";
 import { ensureRowDocument } from "./row-documents";
 import { listDateReminders, setDateReminder } from "./date-reminders";
+import { setRowAppearance } from "./row-appearance";

@@ -55,6 +55,8 @@ const rowSchema = z.object({
   cells,
   content: html.default(""),
   position: z.number().finite().default(0),
+  icon: pageIconSchema.default(""),
+  cover: coverSchema.default(""),
   created_at: str,
   updated_at: str,
   snapshots: z
@@ -309,7 +311,7 @@ function snapshotFor(user: Identity, wid: string) {
                   created_at: string;
                   updated_at: string;
                 }>(
-                  "SELECT id,cells,content,position,created_at,updated_at FROM rows WHERE page_id=? ORDER BY position",
+                  "SELECT id,cells,content,position,icon,cover,created_at,updated_at FROM rows WHERE page_id=? ORDER BY position",
                   p.id,
                 ).map((r) => ({
                   ...r,
@@ -821,7 +823,7 @@ export async function importArchive(
             const rid = rowMap.get(r.id)!,
               content = rewriteHtml(r.content);
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
               rid,
               pid,
               JSON.stringify(rewriteCells(r.cells, d.fields)),
@@ -831,6 +833,8 @@ export async function importArchive(
               user.id,
               user.id,
               content,
+              rewriteUrl(r.icon),
+              rewriteUrl(r.cover),
             );
             run(
               "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
@@ -1003,6 +1007,11 @@ export async function importArchive(
       for (const p of data.pages) {
         validateCover(pageMap.get(p.id)!, rewriteUrl(p.cover));
         validateIcon(pageMap.get(p.id)!, rewriteUrl(p.icon));
+        // Record images must be files of their own database page.
+        for (const r of p.database?.rows || []) {
+          validateIcon(pageMap.get(p.id)!, rewriteUrl(r.icon));
+          validateCover(pageMap.get(p.id)!, rewriteUrl(r.cover));
+        }
         for (const snap of p.snapshots)
           if (snap.appearance)
             validateCover(

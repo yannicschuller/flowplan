@@ -137,6 +137,14 @@ export function publicFile(token: string, fileId: string) {
     pages.find((p) => p.id === file.page_id)?.icon || "",
   );
   if (iconId) referenced.add(iconId);
+  for (const row of all<{ icon: string; cover: string }>(
+    "SELECT icon,cover FROM rows WHERE page_id=? AND (icon LIKE '/api/files/%' OR cover LIKE '/api/files/%')",
+    file.page_id,
+  ))
+    for (const value of [row.icon, row.cover]) {
+      const fid = imageFileId(value);
+      if (fid) referenced.add(fid);
+    }
   cleanHtml(html, (tagName, attribs) => {
     for (const attr of ["src", "href"]) {
       const m = /^\/api\/files\/([\w-]+)$/.exec(attribs[attr] || "");

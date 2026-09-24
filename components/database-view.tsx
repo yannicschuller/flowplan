@@ -91,7 +91,11 @@ import {
   CaretDown,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
-import { Modal, viewIcons, download, Avatar, api } from "./ui";
+import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
+import { CoverPicker } from "./cover-picker";
+import { IconImagePicker } from "./icon-image-picker";
+import dynamic from "next/dynamic";
+const EmojiPicker = dynamic(() => import("./emoji-picker"), { ssr: false });
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import type {
   Database,
@@ -277,6 +281,9 @@ export default function DatabaseView({
   const [sortMove, setSortMove] = useState<RowMove | null>(null);
   const [groupDrop, setGroupDrop] = useState<string | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
+  const [rowIconPicker, setRowIconPicker] = useState(false),
+    [rowIconTab, setRowIconTab] = useState<"emoji" | "image">("emoji"),
+    [rowCoverPicker, setRowCoverPicker] = useState(false);
   const [dropHint, setDropHint] = useState<{
     id: string;
     groupKey?: string;
@@ -885,9 +892,13 @@ export default function DatabaseView({
               }
               url={galleryImage(r, galleryConfig, fields, galleryImages)}
               fit={galleryConfig.fit}
+              color={galleryConfig.cover === "record" ? r.cover : undefined}
             />
           )}
-          <strong>{cellText(r.cells[fields[0].id]) || "Ohne Titel"}</strong>
+          <strong>
+            {r.icon && <PageIcon name={r.icon} size={16} />}
+            {cellText(r.cells[fields[0].id]) || "Ohne Titel"}
+          </strong>
           <div className="card-properties">
             {visibleFields
               .slice(1, 4)
@@ -1295,6 +1306,9 @@ export default function DatabaseView({
               </span>
             ) : (
               <span className={f.id === fields[0].id ? "title-cell" : ""}>
+                {f.id === fields[0].id && r.icon && (
+                  <PageIcon name={r.icon} size={15} className="row-icon" />
+                )}
                 {display(r, f)}
                 {f.id === fields[0].id && (
                   <ArrowSquareOut className="row-open" size={14} />
@@ -1318,7 +1332,10 @@ export default function DatabaseView({
       >
         {editable && orderHandle(r, groupKey)}
         <button onClick={() => setRowId(r.id)}>
-          <span>{cellText(r.cells[fields[0].id]) || "Ohne Titel"}</span>
+          <span>
+            {r.icon && <PageIcon name={r.icon} size={16} />}
+            {cellText(r.cells[fields[0].id]) || "Ohne Titel"}
+          </span>
           <span>
             {visibleFields.slice(1, 4).map((f) => (
               <span key={f.id}>{display(r, f)}</span>
@@ -2403,10 +2420,13 @@ export default function DatabaseView({
                     updateView({
                       gallery: {
                         ...galleryConfig,
-                        cover: ["none", "document"].includes(event.target.value)
-                          ? (event.target.value as "none" | "document")
+                        cover: ["none", "document", "record"].includes(
+                          event.target.value,
+                        )
+                          ? (event.target.value as
+                              "none" | "document" | "record")
                           : "field",
-                        fieldId: ["none", "document"].includes(
+                        fieldId: ["none", "document", "record"].includes(
                           event.target.value,
                         )
                           ? undefined
@@ -2416,6 +2436,7 @@ export default function DatabaseView({
                   }
                 >
                   <option value="none">Keine Bilder</option>
+                  <option value="record">Datensatz-Cover</option>
                   <option value="document">
                     Erstes Bild im Eintragsinhalt
                   </option>
@@ -3475,7 +3496,49 @@ export default function DatabaseView({
       >
         {selected && (
           <div className="row-detail">
-            <h2>{cellText(selected.cells[fields[0].id]) || "Ohne Titel"}</h2>
+            {selected.cover && (
+              <div
+                className="row-cover"
+                style={
+                  /^#[0-9a-f]{6}$/i.test(selected.cover)
+                    ? { background: selected.cover }
+                    : undefined
+                }
+              >
+                {!selected.cover.startsWith("#") && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={selected.cover} alt="" />
+                )}
+              </div>
+            )}
+            <div className="row-appearance-actions">
+              {editable && (
+                <>
+                  <button
+                    className="text-button"
+                    onClick={() => setRowIconPicker(true)}
+                  >
+                    {selected.icon ? "Symbol ändern" : "Symbol hinzufügen"}
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() => setRowCoverPicker(true)}
+                  >
+                    {selected.cover ? "Cover ändern" : "Cover hinzufügen"}
+                  </button>
+                </>
+              )}
+            </div>
+            <h2>
+              {selected.icon && (
+                <PageIcon
+                  name={selected.icon}
+                  size={30}
+                  className="row-title-icon"
+                />
+              )}
+              {cellText(selected.cells[fields[0].id]) || "Ohne Titel"}
+            </h2>
             {fields.map((f) => (
               <Fragment key={`${selected.id}-${f.id}`}>
                 <label className="row-property">
@@ -3569,6 +3632,103 @@ export default function DatabaseView({
           </div>
         )}
       </Modal>
+      {selected && rowIconPicker && (
+        <Modal
+          open
+          title="Symbol des Eintrags"
+          onClose={() => setRowIconPicker(false)}
+        >
+          <div
+            className="icon-tabs"
+            role="tablist"
+            aria-label="Art des Symbols"
+          >
+            {(
+              [
+                ["emoji", "Emoji"],
+                ["image", "Bild"],
+              ] as const
+            ).map(([tab, label]) => (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={rowIconTab === tab}
+                className={`chip${rowIconTab === tab ? " active" : ""}`}
+                onClick={() => setRowIconTab(tab)}
+              >
+                {label}
+              </button>
+            ))}
+            {selected.icon && (
+              <button
+                className="text-button"
+                onClick={async () => {
+                  if (
+                    await act({
+                      action: "row.appearance",
+                      rowId: selected.id,
+                      version: selected.version,
+                      icon: "",
+                    })
+                  )
+                    setRowIconPicker(false);
+                }}
+              >
+                Symbol entfernen
+              </button>
+            )}
+          </div>
+          {rowIconTab === "emoji" ? (
+            <EmojiPicker
+              selected={selected.icon}
+              onSelect={async (icon) => {
+                if (
+                  await act({
+                    action: "row.appearance",
+                    rowId: selected.id,
+                    version: selected.version,
+                    icon,
+                  })
+                )
+                  setRowIconPicker(false);
+              }}
+            />
+          ) : (
+            <IconImagePicker
+              pageId={page.id}
+              current={selected.icon || ""}
+              images={data.images || []}
+              onSelect={async (icon) => {
+                if (
+                  await act({
+                    action: "row.appearance",
+                    rowId: selected.id,
+                    version: selected.version,
+                    icon,
+                  })
+                )
+                  setRowIconPicker(false);
+              }}
+            />
+          )}
+        </Modal>
+      )}
+      {selected && rowCoverPicker && (
+        <CoverPicker
+          page={{ ...page, cover: selected.cover || "", cover_position: 50 }}
+          images={data.images || []}
+          positioned={false}
+          onClose={() => setRowCoverPicker(false)}
+          onSave={async (appearance) =>
+            !!(await act({
+              action: "row.appearance",
+              rowId: selected.id,
+              version: selected.version,
+              cover: appearance.cover,
+            }))
+          }
+        />
+      )}
     </div>
   );
 }

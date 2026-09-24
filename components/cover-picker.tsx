@@ -14,7 +14,9 @@ export function CoverPicker({
   images,
   onSave,
   onClose,
+  positioned = true,
 }: {
+  positioned?: boolean;
   page: Page;
   images: PageImage[];
   onSave: (
@@ -148,7 +150,7 @@ export function CoverPicker({
             </select>
           </label>
         )}
-        {image && (
+        {image && positioned && (
           <label>
             Bildausschnitt · {Math.round(position)} %
             <input

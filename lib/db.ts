@@ -155,6 +155,13 @@ function migrate(d: DatabaseSync) {
     observed_value TEXT,armed_at INTEGER NOT NULL,fired_value TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,row_id,field_id));
     CREATE INDEX IF NOT EXISTS date_reminders_page ON date_reminders(page_id,user_id);`);
+  const rowColumns = d.prepare("PRAGMA table_info(rows)").all() as {
+    name: string;
+  }[];
+  // Record pages have their own icon and cover (image of the database page or color).
+  for (const column of ["icon", "cover"])
+    if (!rowColumns.some((c) => c.name === column))
+      d.exec(`ALTER TABLE rows ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
   const notificationColumns = d
     .prepare("PRAGMA table_info(notifications)")
     .all() as { name: string }[];
