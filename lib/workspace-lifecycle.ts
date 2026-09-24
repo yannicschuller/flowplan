@@ -248,6 +248,11 @@ export function manageWorkspace(
       wid,
     );
     run(
+      "DELETE FROM date_reminders WHERE user_id=? AND page_id IN (SELECT id FROM pages WHERE workspace_id=?)",
+      user.id,
+      wid,
+    );
+    run(
       "DELETE FROM notifications WHERE user_id=? AND page_id IN (SELECT id FROM pages WHERE workspace_id=?)",
       user.id,
       wid,

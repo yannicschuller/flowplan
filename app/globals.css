@@ -2607,6 +2607,15 @@ tr:hover .row-open {
   font-size: 27px;
   margin-bottom: 27px;
 }
+.reminder-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.reminder-choice small {
+  font-size: 12px;
+}
 .row-property {
   display: grid;
   grid-template-columns: 150px 1fr;

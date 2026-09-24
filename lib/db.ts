@@ -130,6 +130,16 @@ function migrate(d: DatabaseSync) {
     d.exec(
       "ALTER TABLE inline_messages ADD COLUMN imported_reactions TEXT NOT NULL DEFAULT '[]'",
     );
+  // Personal reminders on date cells. The cell value stays untouched; the
+  // worker re-arms a reminder whenever the observed date value changes.
+  d.exec(`CREATE TABLE IF NOT EXISTS date_reminders(
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,
+    field_id TEXT NOT NULL,offset_minutes INTEGER NOT NULL,time_zone TEXT NOT NULL,
+    observed_value TEXT,armed_at INTEGER NOT NULL,fired_value TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,row_id,field_id));
+    CREATE INDEX IF NOT EXISTS date_reminders_page ON date_reminders(page_id,user_id);`);
   const notificationColumns = d
     .prepare("PRAGMA table_info(notifications)")
     .all() as { name: string }[];

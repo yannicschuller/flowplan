@@ -224,6 +224,7 @@ export function pageData(user: Identity, pid: string) {
         preview: documentPreview(documentHtml.get(r.id) ?? r.content ?? ""),
       })),
       rowTemplates: rowTemplates(pid),
+      reminders: listDateReminders(user, pid),
       ...relations,
       form: formSettings(pid),
     };
@@ -1236,6 +1237,9 @@ export function command(
           pid(),
         );
         break;
+      case "reminder.set":
+        result = setDateReminder(user, b);
+        break;
       case "notification.read":
         run(
           "UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=?",
@@ -1531,3 +1535,4 @@ import {
   importInlineComments,
 } from "./inline-comment-archive";
 import { ensureRowDocument } from "./row-documents";
+import { listDateReminders, setDateReminder } from "./date-reminders";

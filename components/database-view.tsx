@@ -16,11 +16,23 @@ import {
   type CalculationChoice,
 } from "@/lib/database-summary";
 import CalculationEditor from "./calculation-editor";
-import { formatDateValue } from "@/lib/date-values";
+import {
+  browserZone,
+  formatDateValue,
+  isTimed,
+  validDateValue,
+} from "@/lib/date-values";
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
 import { GalleryCover } from "./gallery-cover";
 import type { PageImage } from "@/lib/page-appearance";
-import { useMemo, useState, useRef, useEffect, type DragEvent } from "react";
+import {
+  Fragment,
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  type DragEvent,
+} from "react";
 import DatabaseFeed from "./database-feed";
 import { defaultFeed } from "@/lib/database-feed";
 import DatabaseChart from "./database-chart";
@@ -86,12 +98,20 @@ import type {
   Comment,
 } from "@/lib/types";
 import type { RelationPair } from "@/lib/relation-sync";
+import {
+  ARM_GRACE_MS,
+  reminderLabel,
+  reminderOffsets,
+  reminderTarget,
+  type DateReminder,
+} from "@/lib/date-reminder-options";
 export type DatabaseData = {
   images?: PageImage[];
   relationPairs?: RelationPair[];
   database: Database;
   rows: Row[];
   rowTemplates: { id: string; name: string; is_default: number }[];
+  reminders?: DateReminder[];
   related: Record<string, Row[]>;
   relatedSchemas?: Record<string, Field[]>;
   form: {
@@ -249,6 +269,7 @@ export default function DatabaseView({
     [movePlacement, setMovePlacement] = useState<"before" | "after">("before");
   const [sortMove, setSortMove] = useState<RowMove | null>(null);
   const [groupDrop, setGroupDrop] = useState<string | null>(null);
+  const [reminderBusy, setReminderBusy] = useState(false);
   const [dropHint, setDropHint] = useState<{
     id: string;
     groupKey?: string;
@@ -828,6 +849,69 @@ export default function DatabaseView({
     );
   }
 
+  function reminderControl(row: Row, field: Field) {
+    const value = row.cells[field.id];
+    const reminder = data.reminders?.find(
+      (r) => r.rowId === row.id && r.fieldId === field.id,
+    );
+    if (!validDateValue(value) && !reminder) return null;
+    const offsets = reminderOffsets(value);
+    const target =
+      reminder && reminderTarget(value, reminder.offset, reminder.timeZone);
+    const hint = !reminder
+      ? ""
+      : !target
+        ? "Diese Erinnerung passt nicht zum aktuellen Datum und ist inaktiv."
+        : target.epochMilliseconds < Date.now() - ARM_GRACE_MS
+          ? "Der Erinnerungszeitpunkt liegt in der Vergangenheit."
+          : `Erinnerung am ${new Date(target.epochMilliseconds).toLocaleString(
+              "de-DE",
+              {
+                timeZone: reminder.timeZone,
+                dateStyle: "medium",
+                timeStyle: "short",
+              },
+            )}`;
+    return (
+      <label className="row-property reminder-property">
+        <span>Erinnerung</span>
+        <span className="reminder-choice">
+          <select
+            aria-label={`Erinnerung für ${field.name}`}
+            disabled={reminderBusy || !validDateValue(value)}
+            value={reminder ? String(reminder.offset) : ""}
+            onChange={async (e) => {
+              setReminderBusy(true);
+              try {
+                await act({
+                  action: "reminder.set",
+                  rowId: row.id,
+                  fieldId: field.id,
+                  offset: e.target.value === "" ? null : Number(e.target.value),
+                  timeZone: reminder?.timeZone || browserZone(),
+                });
+              } finally {
+                setReminderBusy(false);
+              }
+            }}
+          >
+            <option value="">Keine Erinnerung</option>
+            {reminder && !offsets.includes(reminder.offset) && (
+              <option value={reminder.offset} disabled>
+                {reminderLabel(reminder.offset, !isTimed(value))}
+              </option>
+            )}
+            {offsets.map((o) => (
+              <option key={o} value={o}>
+                {reminderLabel(o, isTimed(value))}
+              </option>
+            ))}
+          </select>
+          {hint && <small className="muted">{hint}</small>}
+        </span>
+      </label>
+    );
+  }
   async function setGroupsCollapsed(keys: string[], value: boolean) {
     if (!viewEditable) {
       setReaderCollapsed((previous) => ({
@@ -3083,34 +3167,37 @@ export default function DatabaseView({
           <div className="row-detail">
             <h2>{cellText(selected.cells[fields[0].id]) || "Ohne Titel"}</h2>
             {fields.map((f) => (
-              <label className="row-property" key={`${selected.id}-${f.id}`}>
-                <span>{f.name}</span>
-                {computedTypes.includes(f.type) ? (
-                  <span>
-                    {display(
-                      {
-                        ...selected,
-                        cells: computedCells(
-                          selected,
-                          fields,
-                          data.related,
-                          data.relatedSchemas,
-                        ),
-                      },
-                      f,
-                    )}
-                  </span>
-                ) : (
-                  <CellInput
-                    field={f}
-                    value={selected.cells[f.id]}
-                    members={members}
-                    related={data.related}
-                    disabled={!editable}
-                    onChange={(v) => updateCell(selected, f, v)}
-                  />
-                )}
-              </label>
+              <Fragment key={`${selected.id}-${f.id}`}>
+                <label className="row-property">
+                  <span>{f.name}</span>
+                  {computedTypes.includes(f.type) ? (
+                    <span>
+                      {display(
+                        {
+                          ...selected,
+                          cells: computedCells(
+                            selected,
+                            fields,
+                            data.related,
+                            data.relatedSchemas,
+                          ),
+                        },
+                        f,
+                      )}
+                    </span>
+                  ) : (
+                    <CellInput
+                      field={f}
+                      value={selected.cells[f.id]}
+                      members={members}
+                      related={data.related}
+                      disabled={!editable}
+                      onChange={(v) => updateCell(selected, f, v)}
+                    />
+                  )}
+                </label>
+                {f.type === "date" && reminderControl(selected, f)}
+              </Fragment>
             ))}
             <RowDocument
               key={selected.id}
