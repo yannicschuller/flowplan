@@ -17,6 +17,7 @@ import type { SearchKind, SearchResult } from "@/lib/search-index";
 import { IconImagePicker } from "./icon-image-picker";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
+import { edgeScroller } from "./edge-scroll";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
@@ -172,7 +173,12 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
     [bulkTarget, setBulkTarget] = useState(""),
     [bulkBusy, setBulkBusy] = useState(false);
   const lastSelected = useRef<string | null>(null),
-    touchDrag = useRef<{ source: string; pointer: number } | null>(null);
+    touchDrag = useRef<{ source: string; pointer: number } | null>(null),
+    touchHoverRef = useRef((_x: number, _y: number) => {}),
+    // Holding the tree handle near the edge of the page list scrolls it.
+    [treeScroll] = useState(() =>
+      edgeScroller((x, y) => touchHoverRef.current(x, y)),
+    );
   const [privateTemplate, setPrivateTemplate] = useState(false);
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -545,6 +551,13 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
           : "inside") as "before" | "after" | "inside",
     };
   }
+  function touchHover(x: number, y: number) {
+    const drag = touchDrag.current;
+    if (!drag) return;
+    const target = touchTarget(x, y);
+    setTreeDrop(target && target.id !== drag.source ? target : null);
+  }
+  touchHoverRef.current = touchHover;
   function tree(
     parentId: string | null,
     sid: string,
@@ -677,19 +690,17 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                     e.preventDefault();
                     e.currentTarget.setPointerCapture(e.pointerId);
                     touchDrag.current = { source: p.id, pointer: e.pointerId };
+                    treeScroll.start(e.currentTarget);
                   }}
                   onPointerMove={(e) => {
                     if (touchDrag.current?.pointer !== e.pointerId) return;
-                    const target = touchTarget(e.clientX, e.clientY);
-                    setTreeDrop(
-                      target && target.id !== touchDrag.current.source
-                        ? target
-                        : null,
-                    );
+                    touchHover(e.clientX, e.clientY);
+                    treeScroll.move(e.clientX, e.clientY);
                   }}
                   onPointerUp={(e) => {
                     const drag = touchDrag.current;
                     touchDrag.current = null;
+                    treeScroll.stop();
                     if (drag?.pointer !== e.pointerId) return;
                     const target = touchTarget(e.clientX, e.clientY);
                     setTreeDrop(null);
@@ -703,6 +714,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                   }}
                   onPointerCancel={() => {
                     touchDrag.current = null;
+                    treeScroll.stop();
                     setTreeDrop(null);
                   }}
                 >
