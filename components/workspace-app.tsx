@@ -1835,6 +1835,8 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                 ["document", "Dokumente"],
                 ["database", "Datenbanken"],
                 ["row", "Einträge"],
+                ["comment", "Kommentare"],
+                ["file", "Dateien"],
               ] as const
             ).map(([kind, label]) => (
               <button
@@ -1876,9 +1878,13 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
               <PageIcon name={p.icon} />
               <span>
                 {p.title}
-                {p.rowId && (
+                {p.pageTitle && (
                   <small className="search-context">
-                    Eintrag in {p.pageTitle}
+                    {p.kind === "comment"
+                      ? `Kommentar in ${p.pageTitle}`
+                      : p.kind === "file"
+                        ? `Datei in ${p.pageTitle}`
+                        : `Eintrag in ${p.pageTitle}`}
                   </small>
                 )}
                 <small>

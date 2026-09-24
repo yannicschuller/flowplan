@@ -95,6 +95,20 @@ test("quick search finds compound words and records, filters by kind and opens e
     )
   ).json();
   expect(results).toEqual([]);
+  // Comments are found with their own filter.
+  await command({
+    action: "comment.create",
+    pageId: p.id,
+    rowId: row.id,
+    body: `Nachfrage beim Hausmeister ${tag}`,
+  });
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ControlOrMeta+k");
+  await input.fill(`hausmeister ${tag}`);
+  await dialog.getByRole("radio", { name: "Kommentare", exact: true }).click();
+  const commentHit = dialog.getByRole("button", { name: /Kommentar von/ });
+  await expect(commentHit).toBeVisible();
+  await expect(commentHit).toContainText(`Kommentar in Suchziel ${tag}`);
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });

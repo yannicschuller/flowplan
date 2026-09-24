@@ -196,3 +196,77 @@ test("a rebuilt index covers existing data and large backlogs drain in batches",
   assert.ok(rounds > 0);
   assert.equal(find("Projektplanung")[0]?.id, doc);
 });
+
+test("comments, text comments and attachment names are searchable with the page's permissions", async () => {
+  command(owner, {
+    action: "comment.create",
+    pageId: doc,
+    body: "Budgetfreigabe bis Freitag",
+  });
+  const recordRow = act({
+    action: "row.create",
+    pageId: db,
+    cells: { title: "Kommentierter Eintrag" },
+  }).id;
+  command(owner, {
+    action: "comment.create",
+    pageId: db,
+    rowId: recordRow,
+    body: "Lieferschein prüfen",
+  });
+  run(
+    "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
+    id(),
+    doc,
+    "Vertragsentwurf.pdf",
+    "application/pdf",
+    10,
+    owner.id,
+  );
+  run(
+    "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
+    id(),
+    secret,
+    "Gehaltsdaten.xlsx",
+    "application/octet-stream",
+    10,
+    owner.id,
+  );
+  const [comment] = find("budgetfreigabe", member, { kind: "comment" });
+  assert.equal(comment.kind, "comment");
+  assert.equal(comment.id, doc);
+  assert.match(comment.title, /^Kommentar von search-owner/);
+  const [recordComment] = find("Lieferschein", member, { kind: "comment" });
+  assert.equal(recordComment.rowId, recordRow);
+  const [file] = find("vertragsentwurf", member, { kind: "file" });
+  assert.equal(file.kind, "file");
+  assert.equal(file.title, "Vertragsentwurf.pdf");
+  assert.deepEqual(find("Gehaltsdaten", member), []);
+  assert.equal(find("Gehaltsdaten", owner, { kind: "file" }).length, 1);
+  // Text comment messages are indexed through their thread's page.
+  const thread = id(),
+    message = id();
+  run(
+    "INSERT INTO inline_threads(id,page_id,anchor) VALUES(?,?,?)",
+    thread,
+    doc,
+    "{}",
+  );
+  run(
+    "INSERT INTO inline_messages(id,thread_id,author_name,body) VALUES(?,?,?,?)",
+    message,
+    thread,
+    "search-owner",
+    "Rückfragezettel anhängen",
+  );
+  assert.match(
+    find("rückfragezettel", member)[0]?.title || "",
+    /^Textkommentar/,
+  );
+  run("UPDATE inline_messages SET deleted=1 WHERE id=?", message);
+  assert.deepEqual(find("rückfragezettel", member), []);
+  // Deleting the comment removes it from the index.
+  run("DELETE FROM comments WHERE body=?", "Budgetfreigabe bis Freitag");
+  assert.deepEqual(find("budgetfreigabe", member), []);
+  assert.deepEqual(find("", member, { kind: "comment" }), []);
+});

@@ -85,7 +85,53 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
   );
 }
 
+// Comments, text comment messages and attachments are indexed under
+// prefixed keys (c:, m:, f:) next to pages and records.
+function indexExtra(pageId: string, key: string) {
+  run("DELETE FROM search_index WHERE page_id=? AND row_id=?", pageId, key);
+  const [prefix, id] = [key.slice(0, 1), key.slice(2)];
+  const entry =
+    prefix === "c"
+      ? one<{ title: string; body: string }>(
+          "SELECT 'Kommentar von '||COALESCE(u.name,'Unbekannt') title,c.body FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.id=? AND c.page_id=?",
+          id,
+          pageId,
+        )
+      : prefix === "m"
+        ? one<{ title: string; body: string }>(
+            "SELECT 'Textkommentar von '||m.author_name title,m.body FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE m.id=? AND t.page_id=? AND m.deleted=0",
+            id,
+            pageId,
+          )
+        : one<{ title: string; body: string }>(
+            "SELECT name title,name||' '||mime body FROM files WHERE id=? AND page_id=?",
+            id,
+            pageId,
+          );
+  if (!entry) return;
+  run(
+    "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
+    pageId,
+    key,
+    entry.title.slice(0, 300),
+    entry.body.slice(0, 100000),
+  );
+}
 export function ensureSearchIndex() {
+  if (!one("SELECT 1 FROM search_meta WHERE key='extras'")) {
+    transaction(() => {
+      run(
+        "INSERT OR IGNORE INTO search_dirty SELECT page_id,'c:'||id FROM comments",
+      );
+      run(
+        "INSERT OR IGNORE INTO search_dirty SELECT t.page_id,'m:'||m.id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id",
+      );
+      run(
+        "INSERT OR IGNORE INTO search_dirty SELECT page_id,'f:'||id FROM files WHERE page_id IS NOT NULL",
+      );
+      run("INSERT INTO search_meta(key) VALUES('extras')");
+    });
+  }
   if (!one("SELECT 1 FROM search_state WHERE id=1")) {
     transaction(() => {
       run("DELETE FROM search_index");
@@ -107,6 +153,8 @@ export function processSearchIndex(limit = BATCH) {
   transaction(() => {
     for (const entry of dirty) {
       if (!entry.row_id) indexPage(entry.page_id);
+      else if (/^[cmf]:/.test(entry.row_id))
+        indexExtra(entry.page_id, entry.row_id);
       else {
         if (!fields.has(entry.page_id)) {
           const stored = one<{ fields: string }>(
@@ -127,7 +175,8 @@ export function processSearchIndex(limit = BATCH) {
   return dirty.length;
 }
 
-export type SearchKind = "all" | "document" | "database" | "row";
+export type SearchKind =
+  "all" | "document" | "database" | "row" | "comment" | "file";
 export type SearchResult = {
   id: string;
   rowId?: string;
@@ -135,7 +184,7 @@ export type SearchResult = {
   pageTitle?: string;
   icon: string;
   space_id: string;
-  kind: "document" | "database" | "row";
+  kind: "document" | "database" | "row" | "comment" | "file";
   snippet: string;
 };
 // Snippet markers; the client renders text between them highlighted.
@@ -161,19 +210,46 @@ export function searchWorkspace(
     if (!roles.has(page.id)) roles.set(page.id, !!pageRole(user, page));
     return roles.get(page.id)!;
   };
-  const matchesKind = (page: Page, rowId: string) =>
-    kind === "all" || (kind === "row" ? !!rowId : !rowId && page.kind === kind);
+  const hitKind = (page: Page, key: string) =>
+    key.startsWith("c:") || key.startsWith("m:")
+      ? ("comment" as const)
+      : key.startsWith("f:")
+        ? ("file" as const)
+        : key
+          ? ("row" as const)
+          : page.kind;
+  const matchesKind = (page: Page, key: string) =>
+    kind === "all" || hitKind(page, key) === kind;
+  // Comments on records open the record.
+  const recordOf = (key: string) =>
+    key.startsWith("c:")
+      ? one<{ row_id: string | null }>(
+          "SELECT row_id FROM comments WHERE id=?",
+          key.slice(2),
+        )?.row_id || undefined
+      : key.startsWith("m:")
+        ? one<{ row_id: string | null }>(
+            "SELECT t.row_id FROM inline_messages m JOIN inline_threads t ON t.id=m.thread_id WHERE m.id=?",
+            key.slice(2),
+          )?.row_id || undefined
+        : key.startsWith("f:")
+          ? undefined
+          : key || undefined;
   const results: SearchResult[] = [];
-  const push = (page: Page, rowId: string, title: string, snippet: string) =>
+  const push = (page: Page, key: string, title: string, snippet: string) => {
+    const rowId = recordOf(key),
+      type = hitKind(page, key);
     results.push({
       id: page.id,
-      ...(rowId ? { rowId, pageTitle: page.title } : {}),
-      title: rowId ? title : page.title,
+      ...(rowId ? { rowId } : {}),
+      ...(key ? { pageTitle: page.title } : {}),
+      title: key ? title : page.title,
       icon: page.icon,
       space_id: page.space_id,
-      kind: rowId ? "row" : page.kind,
+      kind: type,
       snippet,
     });
+  };
   const scope =
     "p.workspace_id=? AND p.deleted_at IS NULL" +
     (options.spaceId ? " AND p.space_id=?" : "");
@@ -181,7 +257,7 @@ export function searchWorkspace(
     ? [workspaceId, options.spaceId]
     : [workspaceId];
   if (!query) {
-    if (kind === "row") return [];
+    if (!["all", "document", "database"].includes(kind)) return [];
     for (const page of all<Page>(
       `SELECT p.* FROM pages p WHERE ${scope} ORDER BY p.updated_at DESC LIMIT 500`,
       ...scopeArgs,
