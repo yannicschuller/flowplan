@@ -3,6 +3,8 @@ import type { Field, Row, View } from "./types";
 export const timelineSchema = z.object({
   scale: z.enum(["week", "month", "quarter", "year"]),
   showWeekends: z.boolean(),
+  // Self-relation whose values are the predecessors of a row.
+  dependencyField: z.string().max(200).optional(),
 });
 export type TimelineConfig = z.infer<typeof timelineSchema>;
 export const defaultTimeline: TimelineConfig = {
@@ -165,4 +167,78 @@ export function clipRange(
         clippedEnd: end >= period.end,
       }
     : null;
+}
+
+export function dependencyFields(fields: Field[], pageId: string) {
+  return fields.filter(
+    (f) => f.type === "relation" && f.relationPage === pageId,
+  );
+}
+export type TimelineDependency = {
+  from: string;
+  to: string;
+  // Days the successor must move so it starts after the predecessor ends.
+  shift: number;
+};
+// Finish-to-start dependencies between the given rows. Links to rows that are
+// not given (filtered, deleted) or without a valid range carry no shift.
+export function timelineDependencies(
+  rows: Pick<Row, "id" | "cells">[],
+  field: Field | undefined,
+  start?: Field,
+  end?: Field,
+) {
+  const links: TimelineDependency[] = [],
+    cyclic = new Set<string>();
+  if (!field) return { links, cyclic };
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const predecessors = new Map<string, string[]>();
+  for (const row of rows) {
+    const raw = row.cells[field.id];
+    const ids = [
+      ...new Set(
+        (Array.isArray(raw) ? raw : []).filter(
+          (v): v is string =>
+            typeof v === "string" && v !== row.id && byId.has(v),
+        ),
+      ),
+    ];
+    predecessors.set(row.id, ids);
+    const range = rowRange(row, start, end);
+    for (const from of ids) {
+      const before = rowRange(byId.get(from)!, start, end);
+      links.push({
+        from,
+        to: row.id,
+        shift: range && before ? Math.max(0, before.end + 1 - range.start) : 0,
+      });
+    }
+  }
+  // Iterative DFS keeps deep chains from exhausting the call stack.
+  const state = new Map<string, 1 | 2>();
+  for (const root of rows) {
+    if (state.has(root.id)) continue;
+    const stack: { id: string; next: number }[] = [{ id: root.id, next: 0 }];
+    state.set(root.id, 1);
+    while (stack.length) {
+      const top = stack[stack.length - 1],
+        list = predecessors.get(top.id) || [];
+      if (top.next >= list.length) {
+        state.set(top.id, 2);
+        stack.pop();
+        continue;
+      }
+      const child = list[top.next++];
+      if (state.get(child) === 1) {
+        for (let i = stack.length - 1; i >= 0; i--) {
+          cyclic.add(stack[i].id);
+          if (stack[i].id === child) break;
+        }
+      } else if (!state.has(child)) {
+        state.set(child, 1);
+        stack.push({ id: child, next: 0 });
+      }
+    }
+  }
+  return { links, cyclic };
 }

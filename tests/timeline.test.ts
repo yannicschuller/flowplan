@@ -437,3 +437,147 @@ test("timeline configuration survives page and space copies, templates, snapshot
     }),
   );
 });
+
+test("timeline dependencies compute finish-to-start shifts, cycles and survive page copies", async () => {
+  const { timelineDependencies, dependencyFields } =
+    await import("../lib/database-timeline");
+  const { view: viewSchema } = await import("../lib/database-schema");
+  const fields: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "start", name: "Beginn", type: "date" },
+    { id: "end", name: "Ende", type: "date" },
+    { id: "after", name: "Nach", type: "relation", relationPage: "self" },
+    { id: "other", name: "Extern", type: "relation", relationPage: "else" },
+  ];
+  assert.deepEqual(
+    dependencyFields(fields, "self").map((f) => f.id),
+    ["after"],
+  );
+  const r = (id: string, start: string, end: string, after: unknown = []) => ({
+    id,
+    cells: { start, end, after },
+  });
+  const rowsIn = [
+    r("a", "2026-01-01", "2026-01-03"),
+    // Starts on the predecessor's last day: one day overlap.
+    r("b", "2026-01-03", "2026-01-04", ["a", "a", "b", "missing", 7]),
+    // Starts right after: no conflict.
+    r("c", "2026-01-05", "", ["b"]),
+    // No valid range: link without shift.
+    r("d", "", "", ["c"]),
+  ];
+  const { links, cyclic } = timelineDependencies(
+    rowsIn,
+    fields[3],
+    fields[1],
+    fields[2],
+  );
+  assert.deepEqual(links, [
+    { from: "a", to: "b", shift: 1 },
+    { from: "b", to: "c", shift: 0 },
+    { from: "c", to: "d", shift: 0 },
+  ]);
+  assert.equal(cyclic.size, 0);
+  const loop = timelineDependencies(
+    [
+      r("x", "2026-01-01", "", ["z"]),
+      r("y", "2026-01-02", "", ["x"]),
+      r("z", "2026-01-03", "", ["y"]),
+      r("w", "2026-01-09", "", ["x"]),
+    ],
+    fields[3],
+    fields[1],
+  );
+  assert.deepEqual([...loop.cyclic].sort(), ["x", "y", "z"]);
+  assert.equal(timelineDependencies(rowsIn, undefined).links.length, 0);
+  // Long chains do not overflow the stack.
+  const chain = Array.from({ length: 20000 }, (_, i) =>
+    r(`n${i}`, "2026-01-01", "", i ? [`n${i - 1}`] : []),
+  );
+  assert.equal(
+    timelineDependencies(chain, fields[3], fields[1]).links.length,
+    19999,
+  );
+
+  const base: View = {
+    id: "t",
+    name: "Timeline",
+    type: "timeline",
+    filters: [],
+    sorts: [],
+  };
+  assert.equal(
+    viewSchema.safeParse({
+      ...base,
+      timeline: { scale: "month", showWeekends: true, dependencyField: "x" },
+    }).success,
+    true,
+  );
+
+  // A copied database points its self-relation and dependency at the copy.
+  const owner = user();
+  const wid = createWorkspace(owner.id, "Dependencies");
+  const space = bootstrap(owner, wid).spaces[0];
+  const act = (input: Record<string, unknown>) =>
+    command(owner, input) as { id: string };
+  const pid = act({
+    action: "page.create",
+    workspaceId: wid,
+    spaceId: space.id,
+    title: "Plan",
+    kind: "database",
+  }).id;
+  command(owner, {
+    action: "database.update",
+    pageId: pid,
+    version: database(pid).version,
+    fields: fields
+      .slice(0, 4)
+      .map((f) => (f.id === "after" ? { ...f, relationPage: pid } : f)),
+    views: [
+      {
+        ...base,
+        dateField: "start",
+        endDateField: "end",
+        timeline: {
+          scale: "month",
+          showWeekends: true,
+          dependencyField: "after",
+        },
+      },
+    ],
+  });
+  const first = act({
+    action: "row.create",
+    pageId: pid,
+    cells: { title: "A", start: "2026-02-01", end: "2026-02-05" },
+  }).id;
+  act({
+    action: "row.create",
+    pageId: pid,
+    cells: {
+      title: "B",
+      start: "2026-02-03",
+      end: "2026-02-04",
+      after: [first],
+    },
+  });
+  const copy = act({ action: "page.duplicate", pageId: pid }).id;
+  const copied = database(copy);
+  const view = copied.views[0];
+  const relation = dependencyFields(copied.fields, copy).find(
+    (f) => f.id === view.timeline?.dependencyField,
+  );
+  assert.ok(relation, "dependency field resolves in the copy");
+  const copiedRows = rows(copy);
+  const deps = timelineDependencies(
+    copiedRows,
+    relation,
+    copied.fields.find((f) => f.id === "start"),
+    copied.fields.find((f) => f.id === "end"),
+  );
+  assert.equal(deps.links.length, 1);
+  assert.equal(deps.links[0].shift, 3);
+  assert.ok(copiedRows.some((row) => row.id === deps.links[0].from));
+  assert.ok(!copiedRows.some((row) => row.id === first));
+});

@@ -1833,6 +1833,7 @@ export default function DatabaseView({
       {view.type === "timeline" && (
         <DatabaseTimeline
           key={view.id}
+          pageId={page.id}
           rows={shown}
           fields={fields}
           view={view}

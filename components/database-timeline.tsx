@@ -1,11 +1,18 @@
 "use client";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import {
+  ArrowLineRight,
+  CalendarBlank,
+  CaretLeft,
+  CaretRight,
+  Warning,
+} from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import { cellText } from "@/lib/database";
 import {
@@ -17,6 +24,8 @@ import {
   scheduleFields,
   schedulePatch,
   timelinePeriod,
+  timelineDependencies,
+  dependencyFields,
   todayKey,
   DAY,
   type ScheduleChange,
@@ -31,7 +40,9 @@ type Drag = {
   days: number;
   pointer: number;
 };
+type Arrow = { key: string; d: string; conflict: boolean };
 export default function DatabaseTimeline({
+  pageId,
   rows,
   fields,
   view,
@@ -42,6 +53,7 @@ export default function DatabaseTimeline({
   onSchedule,
   onView,
 }: {
+  pageId: string;
   rows: Row[];
   fields: Field[];
   view: View;
@@ -64,6 +76,8 @@ export default function DatabaseTimeline({
       start: string;
       end: string;
     } | null>(null);
+  const [arrows, setArrows] = useState<Arrow[]>([]);
+  const grid = useRef<HTMLDivElement>(null);
   const dragging = useRef<Drag | null>(null),
     suppressed = useRef(false),
     pending = useRef(false);
@@ -74,6 +88,39 @@ export default function DatabaseTimeline({
     width = period.days * period.dayWidth,
     { start, end, invalidEnd } = scheduleFields(fields, view),
     canEdit = editable && !!start && !invalidEnd;
+  const relations = dependencyFields(fields, pageId),
+    dependencyField = relations.find((f) => f.id === config.dependencyField),
+    { links, cyclic } = timelineDependencies(rows, dependencyField, start, end);
+  // Arrows follow the rendered bars, including clipping and active drags.
+  useLayoutEffect(() => {
+    const root = grid.current;
+    const next: Arrow[] = [];
+    if (root && links.length) {
+      const origin = root.getBoundingClientRect();
+      const bar = (id: string) =>
+        root
+          .querySelector(`[data-row-id="${CSS.escape(id)}"] .timeline-range`)
+          ?.getBoundingClientRect();
+      for (const link of links) {
+        const a = bar(link.from),
+          b = bar(link.to);
+        if (!a || !b) continue;
+        const x1 = a.right - origin.left,
+          y1 = a.top + a.height / 2 - origin.top,
+          x2 = b.left - origin.left,
+          y2 = b.top + b.height / 2 - origin.top,
+          bend = Math.max(12, Math.min(40, Math.abs(x2 - x1) / 2));
+        next.push({
+          key: `${link.from}>${link.to}`,
+          d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2 - 6} ${y2}`,
+          conflict: link.shift > 0 || cyclic.has(link.to),
+        });
+      }
+    }
+    setArrows((previous) =>
+      JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
+    );
+  });
   const title = (row: Row) => cellText(row.cells[fields[0]?.id]) || "Unbenannt";
   const label = (
     day: number,
@@ -124,6 +171,21 @@ export default function DatabaseTimeline({
       setError((error as Error).message);
     } finally {
       pending.current = false;
+      setBusy(false);
+    }
+  }
+  async function configureDependencies(field: string) {
+    if (!viewEditable) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { dependencyField: _, ...rest } = config;
+      await onView({
+        timeline: field ? { ...rest, dependencyField: field } : rest,
+      });
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
       setBusy(false);
     }
   }
@@ -284,6 +346,29 @@ export default function DatabaseTimeline({
           />
           Wochenenden markieren
         </label>
+        <label>
+          Abhängigkeiten
+          <select
+            aria-label="Timeline: Abhängigkeiten"
+            value={dependencyField?.id || ""}
+            disabled={busy || !viewEditable || !relations.length}
+            title={
+              relations.length
+                ? undefined
+                : "Dafür eine Relation auf diese Datenbank anlegen."
+            }
+            onChange={(event) => void configureDependencies(event.target.value)}
+          >
+            <option value="">
+              {relations.length ? "Keine" : "Keine Selbstrelation"}
+            </option>
+            {relations.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       {!start || invalidEnd ? (
         <p className="timeline-notice">
@@ -307,6 +392,7 @@ export default function DatabaseTimeline({
           >
             <div
               className="timeline-grid"
+              ref={grid}
               style={
                 {
                   "--timeline-width": `${width}px`,
@@ -346,6 +432,35 @@ export default function DatabaseTimeline({
                   })}
                 </div>
               </div>
+              {arrows.length > 0 && (
+                <svg className="timeline-dependencies" aria-hidden="true">
+                  <defs>
+                    {(["ok", "conflict"] as const).map((kind) => (
+                      <marker
+                        key={kind}
+                        id={`timeline-arrow-${view.id}-${kind}`}
+                        className={kind}
+                        viewBox="0 0 8 8"
+                        refX="2"
+                        refY="4"
+                        markerWidth="8"
+                        markerHeight="8"
+                        orient="auto"
+                      >
+                        <path d="M0 0 L8 4 L0 8 z" />
+                      </marker>
+                    ))}
+                  </defs>
+                  {arrows.map((arrow) => (
+                    <path
+                      key={arrow.key}
+                      d={arrow.d}
+                      className={arrow.conflict ? "conflict" : undefined}
+                      markerEnd={`url(#timeline-arrow-${view.id}-${arrow.conflict ? "conflict" : "ok"})`}
+                    />
+                  ))}
+                </svg>
+              )}
               {rows.map((row) => {
                 let effective = row;
                 if (drag?.row.id === row.id)
@@ -364,6 +479,16 @@ export default function DatabaseTimeline({
                 const range = rowRange(effective, start, end),
                   bar = range && clipRange(range.start, range.end, period),
                   name = title(row);
+                const incoming = links.filter((l) => l.to === row.id),
+                  shift = Math.max(0, ...incoming.map((l) => l.shift)),
+                  loop = cyclic.has(row.id),
+                  blockers = incoming
+                    .filter((l) => l.shift > 0)
+                    .map((l) => {
+                      const other = rows.find((r) => r.id === l.from);
+                      return other ? title(other) : "";
+                    })
+                    .filter(Boolean);
                 const handlers = {
                   onPointerMove: pointerMove,
                   onPointerUp: finish,
@@ -386,6 +511,40 @@ export default function DatabaseTimeline({
                       >
                         {name}
                       </button>
+                      {(loop || shift > 0) && (
+                        <span
+                          className="timeline-conflict"
+                          role="img"
+                          aria-label={
+                            loop
+                              ? `${name}: zyklische Abhängigkeit`
+                              : `${name} beginnt vor dem Ende von ${blockers.join(", ")}`
+                          }
+                          title={
+                            loop
+                              ? "Zyklische Abhängigkeit"
+                              : `Beginnt vor dem Ende von ${blockers.join(", ")}`
+                          }
+                        >
+                          <Warning size={15} weight="fill" />
+                        </span>
+                      )}
+                      {canEdit && !loop && shift > 0 && (
+                        <button
+                          className="icon-button"
+                          aria-label={`${name} hinter Vorgänger verschieben`}
+                          title={`Um ${shift} ${shift === 1 ? "Tag" : "Tage"} hinter den Vorgänger verschieben`}
+                          disabled={busy}
+                          onClick={() =>
+                            void apply(row, version, {
+                              operation: "move",
+                              days: shift,
+                            })
+                          }
+                        >
+                          <ArrowLineRight size={17} />
+                        </button>
+                      )}
                       {canEdit && (
                         <button
                           className="icon-button"

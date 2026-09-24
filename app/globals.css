@@ -1879,8 +1879,38 @@ tr:hover .row-open {
   border-radius: 7px;
 }
 .timeline-grid {
+  position: relative;
   width: calc(200px + var(--timeline-width));
   --timeline-label: 200px;
+}
+.timeline-dependencies {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+}
+.timeline-dependencies > path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--blue) 70%, var(--secondary));
+  stroke-width: 1.5;
+}
+.timeline-dependencies marker path {
+  fill: color-mix(in srgb, var(--blue) 70%, var(--secondary));
+}
+.timeline-dependencies marker.conflict path {
+  fill: #cf4850;
+}
+.timeline-dependencies > path.conflict {
+  stroke: #cf4850;
+  stroke-dasharray: 4 3;
+}
+.timeline-conflict {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: #cf4850;
 }
 .timeline-heading,
 .timeline-entry {
