@@ -193,3 +193,62 @@ test("retention thins and expires automatic versions but keeps manual ones", () 
   assert.equal(retentionDays(), 180);
   delete process.env.FLOWPLAN_SNAPSHOT_RETENTION_DAYS;
 });
+
+test("two saved versions compare with each other, also for record documents", async () => {
+  const { rowSnapshotChanges } = await import("../lib/version-history");
+  const { replaceRowDocument } = await import("../lib/row-documents");
+  const page = create("Zwei Versionen");
+  const save = () =>
+    (
+      command(owner, { action: "page.snapshot", pageId: page }) as {
+        id: string;
+      }
+    ).id;
+  setHtml(page, "<p>eins</p>");
+  const first = save();
+  setHtml(page, "<p>eins zwei</p>");
+  const second = save();
+  setHtml(page, "<p>drei</p>");
+  assert.deepEqual(snapshotChanges(owner, page, first, second).changes, [
+    {
+      type: "changed",
+      parts: [
+        { type: "same", text: "eins" },
+        { type: "added", text: " zwei" },
+      ],
+    },
+  ]);
+  assert.throws(
+    () => snapshotChanges(owner, page, first, id()),
+    /nicht gefunden/,
+  );
+
+  const db = create("Datensatzversionen", "database");
+  const row = (
+    command(owner, {
+      action: "row.create",
+      pageId: db,
+      cells: { title: "A" },
+    }) as { id: string }
+  ).id;
+  replaceRowDocument(row, "<p>Alt</p>", owner.id);
+  const version = (
+    command(owner, { action: "row.snapshot", pageId: db, rowId: row }) as {
+      id: string;
+    }
+  ).id;
+  replaceRowDocument(row, "<p>Neu</p>", owner.id);
+  const changes = rowSnapshotChanges(owner, db, row, version).changes!;
+  assert.deepEqual(
+    changes.flatMap((c) =>
+      c.type === "changed"
+        ? c.parts.map((p) => `${p.type}:${p.text}`)
+        : [`${c.type}:${c.text}`],
+    ),
+    ["removed:Alt", "added:Neu"],
+  );
+  assert.throws(
+    () => rowSnapshotChanges(stranger, db, row, version),
+    /Berechtigung/,
+  );
+});

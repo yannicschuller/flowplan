@@ -38,7 +38,7 @@ import {
 import { one, all, run, id, audit } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
-import { snapshotChanges } from "@/lib/version-history";
+import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
@@ -122,7 +122,32 @@ export async function GET(
       path[4] === "changes"
     )
       return NextResponse.json(
-        snapshotChanges(user, z.uuid().parse(path[1]), z.uuid().parse(path[3])),
+        snapshotChanges(
+          user,
+          z.uuid().parse(path[1]),
+          z.uuid().parse(path[3]),
+          url.searchParams.get("against")
+            ? z.uuid().parse(url.searchParams.get("against"))
+            : undefined,
+        ),
+      );
+    if (
+      path[0] === "pages" &&
+      path[2] === "rows" &&
+      path[4] === "snapshots" &&
+      path[5] &&
+      path[6] === "changes"
+    )
+      return NextResponse.json(
+        rowSnapshotChanges(
+          user,
+          z.uuid().parse(path[1]),
+          z.uuid().parse(path[3]),
+          z.uuid().parse(path[5]),
+          url.searchParams.get("against")
+            ? z.uuid().parse(url.searchParams.get("against"))
+            : undefined,
+        ),
       );
     if (
       path[0] === "pages" &&

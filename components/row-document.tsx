@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Clock, Plus, SquaresFour } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
+import { VersionChanges } from "./version-changes";
 import type { Page, User } from "@/lib/types";
 const DocumentEditor = dynamic(() => import("./editor"), { ssr: false });
 type RowDocumentData = {
@@ -33,6 +34,7 @@ export default function RowDocument({
   const [data, setData] = useState<RowDocumentData | null>(null),
     [status, setStatus] = useState("Laden …"),
     [history, setHistory] = useState(false),
+    [changes, setChanges] = useState<string | null>(null),
     [saveTemplate, setSaveTemplate] = useState(false),
     [name, setName] = useState("");
   const refresh = useCallback(async () => {
@@ -129,6 +131,15 @@ export default function RowDocument({
                 "de-DE",
               )}
             </span>
+            <button
+              className="button compact"
+              onClick={() => {
+                setHistory(false);
+                setChanges(s.id);
+              }}
+            >
+              Änderungen
+            </button>
             {editable && (
               <button
                 className="button compact"
@@ -146,6 +157,28 @@ export default function RowDocument({
           <p className="muted">Noch keine gesicherten Versionen.</p>
         )}
       </Modal>
+      {changes && data && (
+        <VersionChanges
+          pageId={pageId}
+          rowId={rowId}
+          snapshotId={changes}
+          label={new Date(
+            (
+              data.snapshots.find((s) => s.id === changes)?.created_at || ""
+            ).replace(" ", "T") + "Z",
+          ).toLocaleString("de-DE")}
+          versions={data.snapshots.map((s) => ({
+            id: s.id,
+            label: new Date(
+              s.created_at.replace(" ", "T") + "Z",
+            ).toLocaleString("de-DE"),
+          }))}
+          onClose={() => {
+            setChanges(null);
+            setHistory(true);
+          }}
+        />
+      )}
       <Modal
         open={saveTemplate}
         onClose={() => setSaveTemplate(false)}

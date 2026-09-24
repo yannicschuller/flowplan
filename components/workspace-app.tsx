@@ -2205,6 +2205,10 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
           pageId={data.page.id}
           snapshotId={versionChanges.id}
           label={versionChanges.label}
+          versions={data.snapshots.map((s) => ({
+            id: s.id,
+            label: new Date(s.created_at + "Z").toLocaleString("de-DE"),
+          }))}
           onClose={() => {
             setVersionChanges(null);
             setHistory(true);

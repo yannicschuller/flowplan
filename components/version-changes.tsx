@@ -11,28 +11,57 @@ type Result =
 // Shows what changed between a saved version and the current page.
 export function VersionChanges({
   pageId,
+  rowId,
   snapshotId,
   label,
+  versions = [],
   onClose,
 }: {
   pageId: string;
+  rowId?: string;
   snapshotId: string;
   label: string;
+  // Other versions to compare with; empty compares with the current state.
+  versions?: { id: string; label: string }[];
   onClose: () => void;
 }) {
   const [result, setResult] = useState<Result | null>(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [against, setAgainst] = useState("");
   useEffect(() => {
     let active = true;
-    api<Result>(`/api/pages/${pageId}/snapshots/${snapshotId}/changes`)
+    setResult(null);
+    setError("");
+    const base = rowId
+      ? `/api/pages/${pageId}/rows/${rowId}/snapshots/${snapshotId}/changes`
+      : `/api/pages/${pageId}/snapshots/${snapshotId}/changes`;
+    api<Result>(`${base}${against ? `?against=${against}` : ""}`)
       .then((r) => active && setResult(r))
       .catch((e) => active && setError((e as Error).message));
     return () => {
       active = false;
     };
-  }, [pageId, snapshotId]);
+  }, [pageId, rowId, snapshotId, against]);
+  const others = versions.filter((v) => v.id !== snapshotId);
   return (
     <Modal open wide title={`Änderungen seit ${label}`} onClose={onClose}>
+      {others.length > 0 && (
+        <label className="version-compare">
+          Vergleichen mit
+          <select
+            aria-label="Vergleichen mit"
+            value={against}
+            onChange={(e) => setAgainst(e.target.value)}
+          >
+            <option value="">Aktueller Stand</option>
+            {others.map((v) => (
+              <option key={v.id} value={v.id}>
+                Version vom {v.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {error && <p role="alert">{error}</p>}
       {!result && !error && <p className="muted">Vergleich wird geladen …</p>}
       {result?.kind === "document" &&
@@ -42,7 +71,7 @@ export function VersionChanges({
             sich trotzdem wiederherstellen.
           </p>
         ) : !result.changes.some((c) => c.type !== "same") ? (
-          <p role="status">Keine Textänderungen seit dieser Version.</p>
+          <p role="status">Keine Textänderungen.</p>
         ) : (
           <div className="version-diff" aria-label="Textänderungen">
             <p className="muted">

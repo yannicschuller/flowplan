@@ -1,6 +1,7 @@
 import { all, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { ensureRowDocument, requireRow } from "./row-documents";
 import { compareParagraphs, type TextChange } from "./text-diff";
 import { cellText } from "./cell-text";
 import type { Field, Identity } from "./types";
@@ -81,53 +82,92 @@ function databaseChanges(before: DatabaseState, after: DatabaseState) {
   return changes;
 }
 
-// Changes from a saved version to the current state of the page.
+// Changes from a saved version to the current state of the page, or to
+// another saved version (`against`).
 export function snapshotChanges(
   user: Identity,
   pageId: string,
   snapshotId: string,
+  against?: string,
 ):
   | { kind: "document"; changes: TextChange[] | null }
   | { kind: "database"; changes: DatabaseChanges } {
   const page = requirePage(user, pageId);
-  const snapshot = one<{ html: string | null }>(
-    "SELECT html FROM snapshots WHERE id=? AND page_id=?",
-    snapshotId,
-    page.id,
-  );
-  if (!snapshot) throw new HttpError(404, "Version nicht gefunden.");
-  if (page.kind === "database") {
-    const before = JSON.parse(snapshot.html || "{}") as DatabaseState;
-    const stored = one<{ fields: string }>(
-      "SELECT fields FROM databases WHERE page_id=?",
+  const load = (sid: string) => {
+    const found = one<{ html: string | null }>(
+      "SELECT html FROM snapshots WHERE id=? AND page_id=?",
+      sid,
       page.id,
-    )!;
-    const after: DatabaseState = {
-      database: { fields: JSON.parse(stored.fields) },
+    );
+    if (!found) throw new HttpError(404, "Version nicht gefunden.");
+    return found.html || "";
+  };
+  const before = load(snapshotId);
+  if (page.kind === "database") {
+    const parse = (html: string): DatabaseState => {
+      const parsed = JSON.parse(html || "{}") as Partial<DatabaseState>;
+      return {
+        database: parsed.database || { fields: [] },
+        rows: parsed.rows || [],
+      };
+    };
+    const current = (): DatabaseState => ({
+      database: {
+        fields: JSON.parse(
+          one<{ fields: string }>(
+            "SELECT fields FROM databases WHERE page_id=?",
+            page.id,
+          )!.fields,
+        ),
+      },
       rows: all<{ id: string; cells: string }>(
         "SELECT id,cells FROM rows WHERE page_id=? ORDER BY position",
         page.id,
       ).map((r) => ({ id: r.id, cells: JSON.parse(r.cells) })),
-    };
+    });
     return {
       kind: "database",
       changes: databaseChanges(
-        {
-          database: before.database || { fields: [] },
-          rows: before.rows || [],
-        },
-        after,
+        parse(before),
+        against ? parse(load(against)) : current(),
       ),
     };
   }
-  const current =
-    one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id)
-      ?.html || "";
+  const after = against
+    ? load(against)
+    : one<{ html: string }>(
+        "SELECT html FROM documents WHERE page_id=?",
+        page.id,
+      )?.html || "";
+  return {
+    kind: "document",
+    changes: compareParagraphs(htmlParagraphs(before), htmlParagraphs(after)),
+  };
+}
+// Same comparison for record documents.
+export function rowSnapshotChanges(
+  user: Identity,
+  pageId: string,
+  rowId: string,
+  snapshotId: string,
+  against?: string,
+): { kind: "document"; changes: TextChange[] | null } {
+  const { row } = requireRow(user, pageId, rowId);
+  const load = (sid: string) => {
+    const found = one<{ html: string }>(
+      "SELECT html FROM row_snapshots WHERE id=? AND row_id=?",
+      sid,
+      row.id,
+    );
+    if (!found) throw new HttpError(404, "Version nicht gefunden.");
+    return found.html;
+  };
+  const after = against ? load(against) : ensureRowDocument(row).html;
   return {
     kind: "document",
     changes: compareParagraphs(
-      htmlParagraphs(snapshot.html || ""),
-      htmlParagraphs(current),
+      htmlParagraphs(load(snapshotId)),
+      htmlParagraphs(after),
     ),
   };
 }

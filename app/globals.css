@@ -2811,6 +2811,16 @@ tr:hover .row-open {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.version-compare {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.version-compare select {
+  width: auto;
+}
 .version-diff {
   display: grid;
   gap: 6px;
