@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, one, run } from "./db";
@@ -43,6 +44,21 @@ export function enforceQuota(workspaceId: string, addBytes: number) {
       413,
       `Speicherkontingent des Arbeitsbereichs erschöpft (${formatMb(used)} von ${quota} MB belegt).`,
     );
+}
+// For copies and imports: call before writing, run the returned check after
+// writing. Only growth beyond the quota is refused, inside the transaction.
+export function quotaCheckpoint(workspaceId: string) {
+  const before = workspaceBytes(workspaceId);
+  return () => {
+    const quota = workspaceQuotaMb(workspaceId);
+    if (!quota) return;
+    const after = workspaceBytes(workspaceId);
+    if (after > before && after > quota * 1024 * 1024)
+      throw new HttpError(
+        413,
+        `Speicherkontingent des Arbeitsbereichs reicht nicht (${formatMb(before)} von ${quota} MB belegt, benötigt zusätzlich ${formatMb(after - before)}).`,
+      );
+  };
 }
 const formatMb = (bytes: number) =>
   `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
@@ -104,4 +120,78 @@ export function setWorkspaceQuota(workspaceId: string, quotaMb: number | null) {
       .changes
   )
     throw new HttpError(404, "Arbeitsbereich nicht gefunden.");
+}
+
+// Prometheus text exposition of the instance metrics and per-workspace
+// storage. Workspace IDs only, never names or content.
+export function prometheusMetrics() {
+  const m = instanceMetrics(),
+    lines: string[] = [];
+  const metric = (
+    name: string,
+    help: string,
+    type: "gauge" | "counter",
+    values: [Record<string, string>, number][],
+  ) => {
+    lines.push(
+      `# HELP flowplan_${name} ${help}`,
+      `# TYPE flowplan_${name} ${type}`,
+    );
+    for (const [labels, value] of values) {
+      const text = Object.entries(labels)
+        .map(([k, v]) => `${k}="${v.replace(/["\\\n]/g, "")}"`)
+        .join(",");
+      lines.push(`flowplan_${name}${text ? `{${text}}` : ""} ${value}`);
+    }
+  };
+  const gauge = (name: string, help: string, value: number) =>
+    metric(name, help, "gauge", [[{}, value]]);
+  gauge(
+    "database_bytes",
+    "SQLite database and WAL size in bytes.",
+    m.databaseBytes,
+  );
+  gauge(
+    "upload_bytes",
+    "Stored uploads and template files in bytes.",
+    m.uploadBytes,
+  );
+  gauge("files", "Stored files.", m.files);
+  gauge("pages", "Pages outside the trash.", m.pages);
+  gauge("trashed_pages", "Pages in the trash.", m.trashedPages);
+  gauge("rows", "Database records.", m.rows);
+  gauge("snapshots", "Saved page and record versions.", m.snapshots);
+  gauge("push_pending", "Push deliveries waiting for retry.", m.pushPending);
+  gauge("push_failed", "Push deliveries given up after retries.", m.pushFailed);
+  gauge(
+    "search_backlog",
+    "Search index entries waiting for indexing.",
+    m.searchBacklog,
+  );
+  gauge("date_reminders", "Scheduled date reminders.", m.reminders);
+  gauge("uptime_seconds", "Process uptime in seconds.", m.uptimeSeconds);
+  const usage = workspaceUsage();
+  metric(
+    "workspace_bytes",
+    "Stored bytes per workspace.",
+    "gauge",
+    usage.map((w) => [{ workspace: w.id }, w.bytes]),
+  );
+  metric(
+    "workspace_quota_bytes",
+    "Effective storage quota per workspace in bytes (0 = unlimited).",
+    "gauge",
+    usage.map((w) => [{ workspace: w.id }, w.effectiveQuotaMb * 1024 * 1024]),
+  );
+  metric("build_info", "Runtime version.", "gauge", [[{ node: m.node }, 1]]);
+  return lines.join("\n") + "\n";
+}
+// The metrics endpoint is off unless FLOWPLAN_METRICS_TOKEN is set; scrapers
+// send it as a bearer token.
+export function metricsAuthorized(header: string | null) {
+  const token = process.env.FLOWPLAN_METRICS_TOKEN || "";
+  if (token.length < 16) return null;
+  const given = Buffer.from(/^Bearer (.+)$/.exec(header || "")?.[1] || ""),
+    expected = Buffer.from(token);
+  return given.length === expected.length && timingSafeEqual(given, expected);
 }

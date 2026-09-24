@@ -1598,7 +1598,9 @@ export function command(
           user.id,
           b.private ? "private" : "workspace",
         );
+        const quota = quotaCheckpoint(p.workspace_id);
         captureTemplateFiles(user, templateId, payload);
+        quota();
         result = { id: templateId };
         break;
       }
@@ -1696,4 +1698,4 @@ import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
-import { setWorkspaceQuota } from "./instance-ops";
+import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";

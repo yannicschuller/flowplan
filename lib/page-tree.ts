@@ -1,4 +1,5 @@
 import { mapFileCell } from "./file-cells";
+import { quotaCheckpoint } from "./instance-ops";
 import { remapViewReferences } from "./view-references";
 import { remapLinkedAttributes } from "./linked-view-references";
 import { copyFileSync, mkdirSync, unlinkSync } from "node:fs";
@@ -35,6 +36,7 @@ export function duplicatePages(
   root?: Page,
 ) {
   tree.forEach((p) => requirePage(user, p.id));
+  const quota = quotaCheckpoint(workspaceId);
   const pageIds = new Map<string, string>(),
     rowIds = new Map<string, string>(),
     fileIds = new Map<string, string>(),
@@ -251,6 +253,7 @@ export function duplicatePages(
         };
         insertRelationPair(copied);
       }
+    quota();
     return { pageIds, pages: tree.length };
   } catch (error) {
     for (const path of createdFiles) {

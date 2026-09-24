@@ -216,7 +216,19 @@ Datumsfunktionen verwenden ohne ausdrückliche Zone UTC. `now()` und `today()` a
 
 **Healthcheck und Backups:** `GET /api/health` meldet ohne Anmeldung nur Zustände (Datenbank, Schreibzugriff auf Uploads, Suchrückstand, fehlgeschlagene Push-Zustellungen) und antwortet bei Fehlern mit 503; Dockerfile und `compose.yaml` nutzen ihn als Healthcheck. Für ein konsistentes Instanz-Backup im laufenden Betrieb `sqlite3 /app/data/flowplan.sqlite "VACUUM INTO '/backup/flowplan.sqlite'"` ausführen und `/app/data/uploads` sowie `web-push-keys.json` mitsichern; zur Wiederherstellung diese Dateien in einen leeren Datenordner legen. `npm run build && npm run check:standalone` startet den Produktions-Server wie im Container mit leerem Datenordner und prüft Healthcheck, Sicherheitsvorgaben, Neustart-Persistenz und eine Wiederherstellung aus einem solchen Backup.
 
-**Betrieb und Speicher:** Admins sehen unter **Administration → Betrieb** Datenbank- und Upload-Größe, Warteschlangen, Suchindex-Rückstand, Versionen und Laufzeit. `FLOWPLAN_WORKSPACE_QUOTA_MB` legt ein Standard-Speicherkontingent je Arbeitsbereich fest (leer oder `0` = unbegrenzt); unter **Administration → Arbeitsbereiche** lässt es sich je Arbeitsbereich überschreiben. Uploads über dem Kontingent werden abgelehnt.
+**Betrieb und Speicher:** Admins sehen unter **Administration → Betrieb** Datenbank- und Upload-Größe, Warteschlangen, Suchindex-Rückstand, Versionen und Laufzeit. `FLOWPLAN_WORKSPACE_QUOTA_MB` legt ein Standard-Speicherkontingent je Arbeitsbereich fest (leer oder `0` = unbegrenzt); unter **Administration → Arbeitsbereiche** lässt es sich je Arbeitsbereich überschreiben. Uploads, Seitenkopien, Vorlagen, Veröffentlichungskopien und Importe über dem Kontingent werden abgelehnt.
+
+**Monitoring:** Mit `FLOWPLAN_METRICS_TOKEN` (mindestens 16 Zeichen) liefert `/api/metrics` Kennzahlen im Prometheus-Format (Größen, Warteschlangen, Suchindex-Rückstand, Speicher und Kontingent je Arbeitsbereichs-ID). Der Scraper sendet `Authorization: Bearer <Token>`; ohne gesetztes Token ist der Endpunkt abgeschaltet.
+
+```yaml
+scrape_configs:
+  - job_name: flowplan
+    metrics_path: /api/metrics
+    authorization:
+      credentials: <FLOWPLAN_METRICS_TOKEN>
+    static_configs:
+      - targets: ["flowplan:3000"]
+```
 
 **Versionsverlauf:** Über **Seitenaktionen → Versionsverlauf** lassen sich Versionen sichern, mit dem aktuellen Stand vergleichen (**Änderungen**) und wiederherstellen. Dokumente sichern automatisch höchstens alle fünf Minuten, Datenbanken vor der ersten Änderung nach zehn Minuten Ruhe. Manuell gesicherte und aus Archiven importierte Versionen bleiben erhalten; automatische Versionen werden nach sieben Tagen auf eine je Tag reduziert und nach `FLOWPLAN_SNAPSHOT_RETENTION_DAYS` Tagen gelöscht (Standard 180, `0` = unbegrenzt).
 

@@ -23,6 +23,7 @@ cpSync(join(root, ".next/static"), join(app, ".next/static"), {
   recursive: true,
 });
 cpSync(join(root, "public"), join(app, "public"), { recursive: true });
+const metricsToken = randomBytes(24).toString("hex");
 const port = 3200 + Math.floor(Math.random() * 500);
 const origin = `http://127.0.0.1:${port}`;
 let failures = 0;
@@ -42,6 +43,7 @@ async function start(dataDir) {
       FLOWPLAN_DATA_DIR: dataDir,
       APP_URL: origin,
       NEXT_TELEMETRY_DISABLED: "1",
+      FLOWPLAN_METRICS_TOKEN: metricsToken,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -115,6 +117,15 @@ try {
   check("Kein Demo-Login in Produktion", demo.status === 403);
   const anonymous = await fetch(`${origin}/api/bootstrap`);
   check("API verlangt Anmeldung", anonymous.status === 401);
+  const unscraped = await fetch(`${origin}/api/metrics`);
+  check("Metriken verlangen Token", unscraped.status === 401);
+  const metrics = await fetch(`${origin}/api/metrics`, {
+    headers: { authorization: `Bearer ${metricsToken}` },
+  });
+  check(
+    "Prometheus-Metriken",
+    metrics.ok && /^flowplan_database_bytes \d+$/m.test(await metrics.text()),
+  );
 
   const { cookie } = session(data);
   const headers = { origin, cookie, "content-type": "application/json" };

@@ -1,4 +1,5 @@
 import { parseRecurrence } from "./recurrence";
+import { quotaCheckpoint } from "./instance-ops";
 import { mapFileCell } from "./file-cells";
 import { spaceColorSchema } from "./space-appearance";
 import {
@@ -662,6 +663,7 @@ export async function importArchive(
   try {
     return transaction(() => {
       requireMember(user, wid, "editor");
+      const quota = quotaCheckpoint(wid);
       const pageMap = new Map(data.pages.map((p) => [p.id, id()])),
         rowMap = new Map(
           data.pages.flatMap(
@@ -1161,6 +1163,7 @@ export async function importArchive(
         wid,
         `${data.pages.length} Seiten, ${data.files.length} Dateien`,
       );
+      quota();
       return {
         pages: data.pages.length,
         files: data.files.length,

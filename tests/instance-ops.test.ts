@@ -97,3 +97,66 @@ test("quotas come from the environment or an admin override and block uploads be
   );
   delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;
 });
+
+test("copies are refused atomically when they would exceed the quota", async () => {
+  const { writeFileSync, mkdirSync } = await import("node:fs");
+  const { all } = await import("../lib/db");
+  const dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
+  mkdirSync(dir, { recursive: true });
+  const source = (
+    command(owner, {
+      action: "page.create",
+      workspaceId: wid,
+      spaceId: bootstrap(owner, wid).spaces[0].id,
+      title: "Große Anlage",
+    }) as { id: string }
+  ).id;
+  const fid = id();
+  writeFileSync(join(dir, fid), Buffer.alloc(300 * 1024));
+  run(
+    "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
+    fid,
+    source,
+    "gross.bin",
+    "application/octet-stream",
+    300 * 1024,
+    owner.id,
+  );
+  // 600 KB + 300 KB stored; a copy adds another 300 KB beyond 1 MB.
+  process.env.FLOWPLAN_WORKSPACE_QUOTA_MB = "1";
+  const pages = () =>
+    all("SELECT id FROM pages WHERE workspace_id=?", wid).length;
+  const before = [pages(), workspaceBytes(wid)];
+  assert.throws(
+    () => command(owner, { action: "page.duplicate", pageId: source }),
+    /Speicherkontingent/,
+  );
+  assert.deepEqual([pages(), workspaceBytes(wid)], before);
+  delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;
+  command(owner, { action: "page.duplicate", pageId: source });
+  assert.equal(workspaceBytes(wid), before[1] + 300 * 1024);
+});
+
+test("prometheus metrics need the configured bearer token", async () => {
+  const { prometheusMetrics, metricsAuthorized } =
+    await import("../lib/instance-ops");
+  delete process.env.FLOWPLAN_METRICS_TOKEN;
+  assert.equal(metricsAuthorized("Bearer x"), null);
+  process.env.FLOWPLAN_METRICS_TOKEN = "short";
+  assert.equal(metricsAuthorized("Bearer short"), null);
+  process.env.FLOWPLAN_METRICS_TOKEN = "a".repeat(32);
+  assert.equal(metricsAuthorized(null), false);
+  assert.equal(metricsAuthorized(`Bearer ${"b".repeat(32)}`), false);
+  assert.equal(metricsAuthorized(`Bearer ${"a".repeat(32)}`), true);
+  delete process.env.FLOWPLAN_METRICS_TOKEN;
+  const text = prometheusMetrics();
+  assert.match(text, /^# HELP flowplan_database_bytes /m);
+  assert.match(text, /^# TYPE flowplan_pages gauge$/m);
+  assert.match(
+    text,
+    new RegExp(`^flowplan_workspace_bytes\\{workspace="${wid}"\\} \\d+$`, "m"),
+  );
+  assert.match(text, /^flowplan_uptime_seconds \d+$/m);
+  // Only IDs, never workspace names.
+  assert.doesNotMatch(text, /Speicher/);
+});

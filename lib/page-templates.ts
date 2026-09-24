@@ -1,4 +1,5 @@
 import { appearanceSchema } from "./page-appearance";
+import { quotaCheckpoint } from "./instance-ops";
 import { applyAppearance } from "./page-covers";
 import { remapViewReferences } from "./view-references";
 import { instantiateTemplateFiles } from "./template-files";
@@ -89,12 +90,14 @@ export function applyPageTemplate(
 ) {
   if (template.kind !== page.kind)
     throw new HttpError(400, "Vorlagentyp passt nicht zur Seite.");
+  const quota = quotaCheckpoint(page.workspace_id);
   const payload = instantiateTemplateFiles(
     user,
     page.id,
     template.id,
     template.payload,
   );
+  quota();
   let snapshotId: string | undefined;
   if (page.kind === "document") {
     const source = z

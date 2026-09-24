@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { quotaCheckpoint } from "./instance-ops";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { all, id, one, onTransactionRollback, run } from "./db";
@@ -36,6 +37,7 @@ export function copyPublication(user: Identity, input: unknown) {
     );
   const { root, pages } = publicTree(b.token);
   requireMember(user, b.workspaceId, "editor");
+  const quota = quotaCheckpoint(b.workspaceId);
   const space = one<Space>(
     "SELECT * FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL",
     b.spaceId,
@@ -212,5 +214,6 @@ export function copyPublication(user: Identity, input: unknown) {
       );
     }
   }
+  quota();
   return { id: pageIds.get(root.id)!, pages: ordered.length };
 }

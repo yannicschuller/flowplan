@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { quotaCheckpoint } from "./instance-ops";
 import { z } from "zod";
 import { all, id, run, transaction } from "./db";
 import { HttpError } from "./auth";
@@ -120,6 +121,7 @@ export async function importTemplate(
       );
   }
   return transaction(() => {
+    const quota = quotaCheckpoint(workspaceId);
     const templateId = id();
     run(
       "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility) VALUES(?,?,?,?,?,?,?)",
@@ -141,6 +143,7 @@ export async function importTemplate(
         file.mime,
         entries.get(`files/${file.id}`)!,
       );
+    quota();
     return { id: templateId };
   }, user);
 }
