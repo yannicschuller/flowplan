@@ -133,6 +133,10 @@ export function publicFile(token: string, fileId: string) {
     pages.find((p) => p.id === file.page_id)?.cover || "",
   );
   if (coverId) referenced.add(coverId);
+  const iconId = imageFileId(
+    pages.find((p) => p.id === file.page_id)?.icon || "",
+  );
+  if (iconId) referenced.add(iconId);
   cleanHtml(html, (tagName, attribs) => {
     for (const attr of ["src", "href"]) {
       const m = /^\/api\/files\/([\w-]+)$/.exec(attribs[attr] || "");

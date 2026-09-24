@@ -4,8 +4,12 @@ import {
   exportInlineComments,
   importInlineComments,
 } from "./inline-comment-archive";
-import { appearanceSchema, coverSchema } from "./page-appearance";
-import { validateCover } from "./page-covers";
+import {
+  appearanceSchema,
+  coverSchema,
+  pageIconSchema,
+} from "./page-appearance";
+import { validateCover, validateIcon } from "./page-covers";
 import { remapViewReferences } from "./view-references";
 import { remapLinkedAttributes } from "./linked-view-references";
 import {
@@ -126,7 +130,7 @@ export const archiveSchema = z.object({
         space_id: uid,
         parent_id: uid.nullable(),
         title: str,
-        icon: str,
+        icon: pageIconSchema,
         cover: coverSchema,
         cover_position: z.number().finite().min(0).max(100).default(50),
         kind: z.enum(["document", "database"]),
@@ -774,7 +778,7 @@ export async function importArchive(
           wid,
           spaceMap.get(p.space_id)!,
           p.title,
-          p.icon,
+          rewriteUrl(p.icon),
           rewriteUrl(p.cover),
           p.cover_position,
           p.kind,
@@ -998,6 +1002,7 @@ export async function importArchive(
         );
       for (const p of data.pages) {
         validateCover(pageMap.get(p.id)!, rewriteUrl(p.cover));
+        validateIcon(pageMap.get(p.id)!, rewriteUrl(p.icon));
         for (const snap of p.snapshots)
           if (snap.appearance)
             validateCover(

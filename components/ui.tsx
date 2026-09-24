@@ -43,6 +43,18 @@ export function PageIcon({
   size?: number;
   className?: string;
 }) {
+  // Uploaded page images; public pages pass their share URL instead.
+  if (/^\/api\/(?:files|share\/[\w-]+\/files)\/[\w-]+$/.test(name || ""))
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={name}
+        alt=""
+        aria-hidden="true"
+        className={`page-image-icon ${props.className || ""}`}
+        style={{ width: size, height: size }}
+      />
+    );
   if (
     name &&
     name.length <= 64 &&

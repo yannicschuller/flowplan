@@ -124,7 +124,7 @@ export function duplicatePages(
       run(
         "UPDATE pages SET parent_id=?,icon=?,cover=?,cover_position=?,position=?,full_width=?,font=? WHERE id=?",
         p.id === root?.id ? root.parent_id : pageIds.get(p.parent_id!) || null,
-        p.icon,
+        rewrite(p.icon),
         rewrite(p.cover),
         p.cover_position ?? 50,
         p.id === root?.id ? p.position + 0.5 : p.position,

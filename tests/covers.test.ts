@@ -432,3 +432,63 @@ test("document templates and archived cover snapshots retain images, while forei
     before,
   );
 });
+test("page image icons require own raster images and survive copies, publication and ZIP restoration", async () => {
+  const { pageIconSchema } = await import("../lib/page-appearance");
+  assert.equal(pageIconSchema.safeParse("🚀").success, true);
+  assert.equal(pageIconSchema.safeParse("file").success, true);
+  for (const bad of [
+    "/etc/passwd",
+    "/api/files/x",
+    "https://example.com/i.png",
+  ])
+    assert.equal(pageIconSchema.safeParse(bad).success, false, bad);
+  const p = create(),
+    other = create(),
+    icon = file(p),
+    foreign = file(other),
+    text = file(p, "text/plain");
+  const setIcon = (value: string, as = owner) =>
+    act({ action: "page.update", pageId: p, patch: { icon: value } }, as);
+  assert.throws(() => setIcon(foreign), /Seitensymbol/);
+  assert.throws(() => setIcon(text), /Seitensymbol/);
+  assert.throws(() => setIcon(icon, viewer), /Berechtigung/);
+  setIcon(icon);
+  assert.equal(data(p).page.icon, icon);
+
+  const link = act({
+    action: "share.create",
+    pageId: p,
+    name: "Icon",
+    role: "viewer",
+  }).token;
+  const iconId = icon.split("/").at(-1)!;
+  assert.equal(publicFile(link, iconId).page_id, p);
+  setIcon("📘");
+  assert.throws(() => publicFile(link, iconId), /nicht veröffentlicht/);
+  setIcon(icon);
+
+  const copy = act({ action: "page.duplicate", pageId: p }).id;
+  const copiedIcon = data(copy).page.icon as string;
+  assert.match(copiedIcon, /^\/api\/files\//);
+  assert.notEqual(copiedIcon, icon);
+  assert.equal(
+    one<{ page_id: string }>(
+      "SELECT page_id FROM files WHERE id=?",
+      copiedIcon.split("/").at(-1)!,
+    )?.page_id,
+    copy,
+  );
+
+  const archive = await exportArchive(owner, wid),
+    destination = createWorkspace(owner.id, "Icon restore");
+  const imported = await importArchive(owner, destination, archive);
+  const restoredIcon = data(imported.pageIds[p]).page.icon as string;
+  assert.match(restoredIcon, /^\/api\/files\//);
+  assert.equal(
+    one<{ page_id: string }>(
+      "SELECT page_id FROM files WHERE id=?",
+      restoredIcon.split("/").at(-1)!,
+    )?.page_id,
+    imported.pageIds[p],
+  );
+});

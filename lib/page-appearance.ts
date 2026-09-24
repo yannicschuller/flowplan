@@ -19,6 +19,16 @@ export const coverSchema = z
       value === "" || /^#[0-9a-f]{6}$/i.test(value) || !!imageFileId(value),
     "Ungültiges Cover.",
   );
+// Page icons are an emoji, a legacy icon name or an image uploaded to the page.
+export const pageIconSchema = z
+  .string()
+  .max(100)
+  .refine(
+    (value) =>
+      !value.includes("://") &&
+      (!value.startsWith("/") || !!imageFileId(value)),
+    "Ungültiges Seitensymbol.",
+  );
 export const appearanceSchema = z.object({
   cover: coverSchema,
   coverPosition: z.number().finite().min(0).max(100),

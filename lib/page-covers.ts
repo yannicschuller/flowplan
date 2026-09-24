@@ -21,7 +21,11 @@ export function pageImages(pageId: string): PageImage[] {
       url: `/api/files/${file.id}`,
     }));
 }
-export function validateCover(pageId: string, value: string) {
+export function validateCover(
+  pageId: string,
+  value: string,
+  message = "Bitte ein Bild dieser Seite als Cover verwenden.",
+) {
   const fid = imageFileId(value);
   if (!fid) return;
   const file = one<{ page_id: string; mime: string }>(
@@ -33,11 +37,14 @@ export function validateCover(pageId: string, value: string) {
     file.page_id !== pageId ||
     !imageMimes.includes(file.mime as (typeof imageMimes)[number])
   )
-    throw new HttpError(
-      400,
-      "Bitte ein Bild dieser Seite als Cover verwenden.",
-    );
+    throw new HttpError(400, message);
 }
+export const validateIcon = (pageId: string, value: string) =>
+  validateCover(
+    pageId,
+    value,
+    "Bitte ein Bild dieser Seite als Seitensymbol verwenden.",
+  );
 export function applyAppearance(pageId: string, input: unknown) {
   const value = appearanceSchema.parse(input);
   validateCover(pageId, value.cover);

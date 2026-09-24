@@ -14,10 +14,12 @@ import {
   coverSchema,
   appearanceSchema,
   pageAppearance,
+  pageIconSchema,
 } from "./page-appearance";
 import {
   pageImages,
   validateCover,
+  validateIcon,
   applyAppearance,
   snapshotAppearance,
 } from "./page-covers";
@@ -619,7 +621,7 @@ export function command(
         const data = z
           .object({
             title: str.optional(),
-            icon: z.string().max(30).optional(),
+            icon: pageIconSchema.optional(),
             cover: coverSchema.optional(),
             cover_position: z.number().finite().min(0).max(100).optional(),
             locked: z.boolean().optional(),
@@ -650,6 +652,7 @@ export function command(
               p.id,
             );
         }
+        if (data.icon !== undefined) validateIcon(p.id, data.icon);
         for (const [key, val] of Object.entries(data))
           run(
             `UPDATE pages SET ${key}=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,

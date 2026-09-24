@@ -50,6 +50,16 @@ export function PublishedPage({
     : String(
         one("SELECT html FROM documents WHERE page_id=?", page.id)?.html || "",
       );
+  let iconUrl = page.icon;
+  const iconId = imageFileId(page.icon);
+  if (iconId) {
+    try {
+      publicFile(token, iconId);
+      iconUrl = `/api/share/${token}/files/${iconId}`;
+    } catch {
+      iconUrl = "";
+    }
+  }
   let coverUrl: string | undefined;
   const coverId = imageFileId(page.cover);
   if (coverId) {
@@ -96,7 +106,7 @@ export function PublishedPage({
           )}
         </div>
       )}
-      {!record && <PageIcon name={page.icon} size={40} />}
+      {!record && <PageIcon name={iconUrl} size={40} />}
       <h1>{record ? cellText(record.cells["title"]) : page.title}</h1>
       {d && !record ? (
         <div className="data-table-scroll">
