@@ -10,9 +10,13 @@ import {
   chartKinds,
   chartNumberField,
   chartPoints,
+  chartSeries,
+  canStack,
   defaultChart,
   type ChartConfig,
   type ChartPoint,
+  type ChartSeries,
+  type SeriesValue,
 } from "@/lib/database-chart";
 import { cellText } from "@/lib/cell-text";
 import type { Field, Row, User, View } from "@/lib/types";
@@ -300,6 +304,242 @@ function ChartGraphic({
     </svg>
   );
 }
+const SEP = "\u001f";
+function SeriesGraphic({
+  points,
+  series,
+  values,
+  config,
+  onSelect,
+}: {
+  points: ChartPoint[];
+  series: ChartSeries[];
+  values: Map<string, Map<string, SeriesValue>>;
+  config: ChartConfig;
+  onSelect: (key: string) => void;
+}) {
+  const available = points.slice(0, 100);
+  const stacked =
+    config.kind !== "line" &&
+    config.seriesMode === "stacked" &&
+    canStack(config);
+  const cell = (p: ChartPoint, s: ChartSeries) =>
+    values.get(p.key)?.get(s.key) || { value: null, rows: [] };
+  // Stacks grow separately above and below zero.
+  const extents = available.flatMap((p) => {
+    if (!stacked) return series.map((s) => cell(p, s).value ?? 0);
+    let pos = 0,
+      neg = 0;
+    for (const s of series) {
+      const v = cell(p, s).value ?? 0;
+      if (v >= 0) pos += v;
+      else neg += v;
+    }
+    return [pos, neg];
+  });
+  const max = Math.max(0, ...extents),
+    min = Math.min(0, ...extents);
+  const magnitude = Math.max(Math.abs(min), Math.abs(max), 1);
+  const lo = min / magnitude,
+    hi = max / magnitude || (min === 0 ? 1 : 0),
+    span = hi - lo;
+  const scale = (v: number) => (v / magnitude - lo) / span;
+  const label = (p: ChartPoint, s: ChartSeries) =>
+    `${p.label} · ${s.label}: ${format(cell(p, s).value)} · ${cell(p, s).rows.length} Einträge`;
+  const interaction = (p: ChartPoint, s: ChartSeries) => ({
+    role: "button",
+    tabIndex: 0,
+    "aria-label": label(p, s),
+    onClick: () => onSelect(p.key + SEP + s.key),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onSelect(p.key + SEP + s.key);
+      }
+    },
+    className: "chart-point",
+  });
+  const color = (i: number) => colors[i % colors.length];
+  if (!available.length)
+    return (
+      <p className="muted">
+        Keine Daten für diese Auswertung. Passe Filter, Suche oder Gruppierung
+        an.
+      </p>
+    );
+  // Segments of one group: offsets for stacks, slots for grouped bars.
+  const segments = (p: ChartPoint) => {
+    let pos = 0,
+      neg = 0;
+    return series.map((s, i) => {
+      const v = cell(p, s).value;
+      if (!stacked) return { s, i, v, from: 0, to: v ?? 0 };
+      const base = (v ?? 0) >= 0 ? pos : neg;
+      if ((v ?? 0) >= 0) pos += v ?? 0;
+      else neg += v ?? 0;
+      return { s, i, v, from: base, to: base + (v ?? 0) };
+    });
+  };
+  if (config.kind === "horizontal") {
+    const band = stacked ? 42 : Math.max(42, series.length * 14 + 14);
+    const width = 720,
+      height = Math.max(150, available.length * band + 50),
+      left = 165,
+      extent = 480;
+    const x = (v: number) => left + scale(v) * extent,
+      zero = x(0);
+    return (
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        aria-label="Balkendiagramm mit Datenreihen"
+      >
+        <line
+          x1={zero}
+          x2={zero}
+          y1="10"
+          y2={height - 35}
+          className="chart-axis"
+        />
+        {available.map((p, row) => {
+          const top = row * band + 10,
+            inner = band - 12,
+            thickness = stacked ? inner : inner / series.length;
+          return (
+            <g key={p.key}>
+              <text x={left - 10} y={top + band / 2 + 4} textAnchor="end">
+                {short(p.label)}
+              </text>
+              {segments(p).map(({ s, i, v, from, to }) =>
+                v === null ? null : (
+                  <g key={s.key} {...interaction(p, s)}>
+                    <title>{label(p, s)}</title>
+                    <rect
+                      x={Math.min(x(from), x(to))}
+                      y={top + 4 + (stacked ? 0 : i * thickness)}
+                      width={Math.max(1, Math.abs(x(to) - x(from)))}
+                      height={Math.max(2, thickness - (stacked ? 0 : 2))}
+                      rx="2"
+                      fill={color(i)}
+                    />
+                  </g>
+                ),
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    );
+  }
+  const step =
+    stacked || config.kind === "line"
+      ? 85
+      : Math.max(85, series.length * 18 + 20);
+  const width = Math.max(650, available.length * step + 110),
+    height = 365,
+    left = 70,
+    plot = 235,
+    bottom = 265;
+  const y = (v: number) => bottom - scale(v) * plot,
+    slot = (width - left - 35) / available.length;
+  const x = (i: number) => left + slot * (i + 0.5),
+    zero = y(0);
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      aria-label={
+        config.kind === "line"
+          ? "Liniendiagramm mit Datenreihen"
+          : "Säulendiagramm mit Datenreihen"
+      }
+    >
+      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+        <g key={t}>
+          <line
+            x1={left}
+            x2={width - 20}
+            y1={bottom - t * plot}
+            y2={bottom - t * plot}
+            className="chart-grid"
+          />
+          <text x={left - 8} y={bottom - t * plot + 4} textAnchor="end">
+            {short(format((lo + span * t) * magnitude))}
+          </text>
+        </g>
+      ))}
+      <line
+        x1={left}
+        x2={width - 20}
+        y1={zero}
+        y2={zero}
+        className="chart-axis"
+      />
+      {config.kind === "line" &&
+        series.map((s, si) => (
+          <polyline
+            key={s.key}
+            fill="none"
+            stroke={color(si)}
+            strokeWidth="2.5"
+            points={available
+              .map((p, i) =>
+                cell(p, s).value === null
+                  ? null
+                  : `${x(i)},${y(cell(p, s).value!)}`,
+              )
+              .filter(Boolean)
+              .join(" ")}
+          />
+        ))}
+      {available.map((p, i) => {
+        const width = Math.min(
+          stacked ? 44 : 16,
+          (slot * 0.8) / (stacked ? 1 : series.length),
+        );
+        const start =
+          x(i) - (stacked ? width / 2 : (width * series.length) / 2);
+        return (
+          <g key={p.key}>
+            {segments(p).map(({ s, i: si, v, from, to }) =>
+              v === null ? null : config.kind === "line" ? (
+                <g key={s.key} {...interaction(p, s)}>
+                  <title>{label(p, s)}</title>
+                  <circle cx={x(i)} cy={y(v)} r="5" fill={color(si)} />
+                </g>
+              ) : (
+                <g key={s.key} {...interaction(p, s)}>
+                  <title>{label(p, s)}</title>
+                  <rect
+                    x={stacked ? start : start + si * width}
+                    y={Math.min(y(from), y(to))}
+                    width={Math.max(2, width - (stacked ? 0 : 2))}
+                    height={Math.max(1, Math.abs(y(to) - y(from)))}
+                    rx="2"
+                    fill={color(si)}
+                  />
+                </g>
+              ),
+            )}
+            {config.showValues && stacked && (
+              <text x={x(i)} y={y(p.value ?? 0) - 8} textAnchor="middle">
+                {format(p.value)}
+              </text>
+            )}
+            <text
+              transform={`translate(${x(i)},288) rotate(30)`}
+              textAnchor="start"
+            >
+              {short(p.label)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
 function ChartSettings({
   initial,
   fields,
@@ -436,6 +676,57 @@ function ChartSettings({
           </label>
         )}
         <label>
+          Datenreihen
+          <select
+            aria-label="Datenreihen"
+            value={draft.seriesField || ""}
+            onChange={(e) =>
+              patch({ seriesField: e.target.value || undefined })
+            }
+          >
+            <option value="">Keine (eine Reihe)</option>
+            {fields
+              .filter((f) => chartGroupField(f) && f.id !== draft.xField)
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        {draft.seriesField &&
+          draft.kind !== "line" &&
+          draft.kind !== "donut" && (
+            <label>
+              Darstellung der Reihen
+              <select
+                aria-label="Darstellung der Reihen"
+                value={
+                  canStack(draft) ? draft.seriesMode || "grouped" : "grouped"
+                }
+                disabled={!canStack(draft)}
+                onChange={(e) =>
+                  patch({
+                    seriesMode: e.target.value as ChartConfig["seriesMode"],
+                  })
+                }
+              >
+                <option value="grouped">Nebeneinander</option>
+                <option value="stacked">Gestapelt</option>
+              </select>
+            </label>
+          )}
+        {draft.seriesField && (
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.showLegend !== false}
+              onChange={(e) => patch({ showLegend: e.target.checked })}
+            />
+            Legende anzeigen
+          </label>
+        )}
+        <label>
           Gruppen sortieren
           <select
             value={draft.order}
@@ -534,7 +825,24 @@ export default function DatabaseChart({
     () => chartPoints(rows, fields, config, related, members),
     [rows, fields, config, related, members],
   );
-  const selectedPoint = points.find((p) => p.key === selected);
+  const { series, values } = useMemo(
+    () => chartSeries(points, fields, config, related, members),
+    [points, fields, config, related, members],
+  );
+  const withSeries = series.length > 0 && config.kind !== "donut";
+  // Selections address a group or a group/series pair.
+  const [selectedGroup, selectedSeries] = (selected || "").split(SEP);
+  const groupPoint = points.find((p) => p.key === selectedGroup);
+  const seriesInfo = series.find((x) => x.key === selectedSeries);
+  const selectedPoint: ChartPoint | undefined =
+    groupPoint && selectedSeries !== undefined
+      ? seriesInfo && {
+          ...groupPoint,
+          label: `${groupPoint.label} · ${seriesInfo.label}`,
+          value: values.get(groupPoint.key)?.get(seriesInfo.key)?.value ?? null,
+          rows: values.get(groupPoint.key)?.get(seriesInfo.key)?.rows || [],
+        }
+      : groupPoint;
   const title =
     config.aggregate === "count"
       ? chartAggregates.count
@@ -574,7 +882,15 @@ export default function DatabaseChart({
                 Papa.unparse(
                   points.map((p) => ({
                     Gruppe: p.label,
-                    Wert: p.value,
+                    ...(withSeries
+                      ? Object.fromEntries(
+                          series.map((x) => [
+                            x.label,
+                            values.get(p.key)?.get(x.key)?.value ?? null,
+                          ]),
+                        )
+                      : {}),
+                    [withSeries ? "Gesamt" : "Wert"]: p.value,
                     Einträge: p.rows.length,
                   })),
                   { escapeFormulae: true },
@@ -605,8 +921,37 @@ export default function DatabaseChart({
             role="region"
             aria-label="Diagramm, bei Bedarf horizontal scrollen"
           >
-            <ChartGraphic points={points} config={config} onSelect={select} />
+            {withSeries ? (
+              <SeriesGraphic
+                points={points}
+                series={series}
+                values={values}
+                config={config}
+                onSelect={select}
+              />
+            ) : (
+              <ChartGraphic points={points} config={config} onSelect={select} />
+            )}
           </div>
+          {withSeries && config.showLegend !== false && (
+            <ul className="chart-legend" aria-label="Legende">
+              {series.map((x, i) => (
+                <li key={x.key}>
+                  <span
+                    className="chart-swatch"
+                    style={{ background: colors[i % colors.length] }}
+                  />
+                  {x.label}
+                </li>
+              ))}
+            </ul>
+          )}
+          {series.length > 0 && config.kind === "donut" && (
+            <p className="muted" role="status">
+              Donutdiagramme zeigen keine Datenreihen; die Wertetabelle enthält
+              die Aufschlüsselung.
+            </p>
+          )}
           <p className="chart-note muted">
             Datenpunkt oder Gruppe auswählen, um Einträge zu öffnen.
             Mehrfachzuordnungen zählen in jeder Gruppe. Leere oder nicht
@@ -619,7 +964,10 @@ export default function DatabaseChart({
               <thead>
                 <tr>
                   <th>Gruppe</th>
-                  <th>Wert</th>
+                  {series.map((x) => (
+                    <th key={x.key}>{x.label}</th>
+                  ))}
+                  <th>{series.length ? "Gesamt" : "Wert"}</th>
                   <th>Einträge</th>
                 </tr>
               </thead>
@@ -637,6 +985,16 @@ export default function DatabaseChart({
                         {p.label}
                       </button>
                     </td>
+                    {series.map((x) => (
+                      <td key={x.key}>
+                        <button
+                          aria-label={`${p.label} · ${x.label}: Einträge anzeigen`}
+                          onClick={() => select(p.key + SEP + x.key)}
+                        >
+                          {format(values.get(p.key)?.get(x.key)?.value ?? null)}
+                        </button>
+                      </td>
+                    ))}
                     <td>{format(p.value)}</td>
                     <td>{p.rows.length}</td>
                   </tr>

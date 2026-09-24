@@ -393,3 +393,85 @@ test("chart configuration and results survive duplication, templates, JSON/ZIP a
   act({ action: "snapshot.restore", pageId: restored, snapshotId: snapshot });
   check(restored);
 });
+
+test("data series split groups, merge long tails, keep multi-values per series and validate configuration", async () => {
+  const { chartSeries, canStack, MAX_SERIES, OTHER_SERIES } =
+    await import("../lib/database-chart");
+  const rows = [
+    row("a", { status: "Open", tags: ["X", "Y"], amount: 2 }),
+    row("b", { status: "Open", tags: ["X"], amount: 3 }),
+    row("c", { status: "Done", tags: [], amount: 5 }),
+  ];
+  const cfg: ChartConfig = {
+    ...config,
+    xField: "status",
+    seriesField: "tags",
+    aggregate: "sum",
+  };
+  const points = chartPoints(rows, fields, cfg);
+  const { series, values } = chartSeries(points, fields, cfg);
+  assert.deepEqual(
+    series.map((s) => s.label),
+    ["Ohne Wert", "X", "Y"],
+  );
+  const open = values.get('"Open"')!;
+  assert.equal(open.get('"X"')!.value, 5);
+  assert.equal(open.get('"Y"')!.value, 2);
+  assert.equal(open.get("empty")!.value, null);
+  assert.deepEqual(
+    values
+      .get('"Done"')!
+      .get("empty")!
+      .rows.map((r) => r.id),
+    ["c"],
+  );
+  // Counts show zero instead of an empty value.
+  const counts = chartSeries(
+    chartPoints(rows, fields, { ...cfg, aggregate: "count" }),
+    fields,
+    { ...cfg, aggregate: "count" },
+  );
+  assert.equal(counts.values.get('"Done"')!.get('"X"')!.value, 0);
+  assert.equal(canStack({ ...cfg, aggregate: "average" }), false);
+  assert.equal(canStack(cfg), true);
+
+  // More series than colors merge into "Weitere".
+  const many = Array.from({ length: 20 }, (_, i) =>
+    row(`m${i}`, { status: "Open", tags: [`T${String(i).padStart(2, "0")}`] }),
+  );
+  const big = chartSeries(
+    chartPoints(many, fields, { ...cfg, aggregate: "count" }),
+    fields,
+    { ...cfg, aggregate: "count" },
+  );
+  assert.equal(big.series.length, MAX_SERIES);
+  assert.equal(big.series.at(-1)!.key, OTHER_SERIES);
+  assert.equal(
+    big.values.get('"Open"')!.get(OTHER_SERIES)!.value,
+    20 - (MAX_SERIES - 1),
+  );
+
+  assert.match(
+    chartConfigError({ ...cfg, seriesField: "status" }, fields) || "",
+    /Datenreihen/,
+  );
+  assert.match(
+    chartConfigError({ ...cfg, seriesField: "missing" }, fields) || "",
+    /Datenreihen/,
+  );
+  assert.deepEqual(
+    chartSeries(points, fields, { ...cfg, seriesField: undefined }).series,
+    [],
+  );
+  // Older configurations without series options stay valid.
+  assert.equal(chartSchema.safeParse(defaultChart(fields)).success, true);
+  assert.equal(
+    chartSchema.safeParse({ ...cfg, seriesMode: "stacked", showLegend: false })
+      .success,
+    true,
+  );
+  assert.equal(
+    chartSchema.safeParse({ ...cfg, seriesMode: "pie" }).success,
+    false,
+  );
+});
