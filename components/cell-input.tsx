@@ -2,7 +2,15 @@
 import { useState, useEffect } from "react";
 import DateInput from "./date-input";
 import { cellText } from "@/lib/database";
+import {
+  fileIdOf,
+  fileLabel,
+  fileRefSchema,
+  fileUrls,
+  MAX_CELL_FILES,
+} from "@/lib/file-cells";
 import type { Field, Row, User } from "@/lib/types";
+export type CellFile = { url: string; name: string; mime: string };
 export function CellInput({
   field: f,
   value,
@@ -11,7 +19,12 @@ export function CellInput({
   disabled,
   onChange,
   commit = "blur",
+  upload,
+  files = [],
 }: {
+  // Uploads a file to the database page and returns its URL.
+  upload?: (file: File) => Promise<string>;
+  files?: CellFile[];
   commit?: "change" | "blur";
   field: Field;
   value: unknown;
@@ -40,6 +53,17 @@ export function CellInput({
         disabled={disabled}
         checked={!!value}
         onChange={(e) => onChange(e.target.checked)}
+      />
+    );
+  if (f.type === "files")
+    return (
+      <FilesInput
+        name={f.name}
+        value={value}
+        disabled={disabled}
+        upload={upload}
+        files={files}
+        onChange={onChange}
       />
     );
   if (f.type === "relation") {
@@ -156,7 +180,7 @@ export function CellInput({
       step={f.type === "number" ? "any" : undefined}
       disabled={disabled}
       value={draft}
-      placeholder={f.type === "files" ? "Datei-URL" : "Leer"}
+      placeholder="Leer"
       onChange={(e) => {
         setDraft(e.target.value);
         if (commit === "change")
@@ -272,6 +296,132 @@ function RelationPicker({
         >
           Auswahl leeren
         </button>
+      )}
+    </div>
+  );
+}
+
+function FilesInput({
+  name,
+  value,
+  disabled,
+  upload,
+  files,
+  onChange,
+}: {
+  name: string;
+  value: unknown;
+  disabled?: boolean;
+  upload?: (file: File) => Promise<string>;
+  files: CellFile[];
+  onChange: (v: unknown) => void | Promise<unknown>;
+}) {
+  const urls = fileUrls(value);
+  const [link, setLink] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const names = new Map(files.map((file) => [file.url, file.name]));
+  const image = (url: string) =>
+    files.find((file) => file.url === url)?.mime.startsWith("image/") ||
+    (!fileIdOf(url) && /\.(png|jpe?g|gif|webp|avif)$/i.test(url));
+  const full = urls.length >= MAX_CELL_FILES;
+  async function add() {
+    const parsed = fileRefSchema.safeParse(link.trim());
+    if (!parsed.success) {
+      setError("Bitte einen vollständigen http(s)-Link eingeben.");
+      return;
+    }
+    setError("");
+    setLink("");
+    if (!urls.includes(parsed.data)) await onChange([...urls, parsed.data]);
+  }
+  return (
+    <div className="files-input" role="group" aria-label={name}>
+      {urls.length > 0 && (
+        <ul>
+          {urls.map((url) => (
+            <li key={url}>
+              {image(url) && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={url} alt="" className="file-thumb" />
+              )}
+              <a href={url} target="_blank" rel="noreferrer noopener">
+                {fileLabel(url, names)}
+              </a>
+              {!disabled && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`${fileLabel(url, names)} entfernen`}
+                  onClick={() => onChange(urls.filter((u) => u !== url))}
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!disabled && !full && (
+        <div className="files-actions">
+          {upload && (
+            <label className="button compact">
+              {busy ? "Wird hochgeladen …" : "Datei hochladen"}
+              <input
+                type="file"
+                multiple
+                hidden
+                disabled={busy}
+                aria-label={`${name}: Datei hochladen`}
+                onChange={async (event) => {
+                  const chosen = [...(event.target.files || [])].slice(
+                    0,
+                    MAX_CELL_FILES - urls.length,
+                  );
+                  event.target.value = "";
+                  if (!chosen.length) return;
+                  setBusy(true);
+                  setError("");
+                  const added: string[] = [];
+                  try {
+                    for (const file of chosen) added.push(await upload(file));
+                  } catch (e) {
+                    setError((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                  if (added.length) await onChange([...urls, ...added]);
+                }}
+              />
+            </label>
+          )}
+          <input
+            type="url"
+            aria-label={`${name}: Link einfügen`}
+            placeholder="Link einfügen (https://…)"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void add();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="button compact"
+            disabled={!link.trim()}
+            onClick={() => void add()}
+          >
+            Hinzufügen
+          </button>
+        </div>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );

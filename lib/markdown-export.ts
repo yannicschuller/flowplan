@@ -1,3 +1,4 @@
+import { fileUrls } from "./file-cells";
 import { readFileSync, statSync } from "node:fs";
 import { resolve, posix } from "node:path";
 import { all, one, transaction, audit } from "./db";
@@ -253,14 +254,18 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       return { plain: text, md: markdownText(text), numeric: false };
     }
     if (field.type === "files") {
-      const raw = cellText(value),
-        url = ctx.url(raw);
-      if (!raw) return { plain: "", md: "", numeric: false };
-      const id = /\/api\/files\/([a-f0-9-]{36})/i.exec(raw)?.[1],
-        name = id ? fileInfo(id)?.name || "Datei nicht verfügbar" : "Datei";
+      const entries = fileUrls(value).map((raw) => {
+        const url = ctx.url(raw),
+          id = /\/api\/files\/([a-f0-9-]{36})/i.exec(raw)?.[1],
+          name = id ? fileInfo(id)?.name || "Datei nicht verfügbar" : "Datei";
+        return {
+          plain: id ? name : raw,
+          md: url ? markdownLink(name, url) : markdownText(id ? name : raw),
+        };
+      });
       return {
-        plain: id ? name : raw,
-        md: url ? markdownLink(name, url) : markdownText(id ? name : raw),
+        plain: entries.map((e) => e.plain).join(", "),
+        md: entries.map((e) => e.md).join(", "),
         numeric: false,
       };
     }

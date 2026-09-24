@@ -93,6 +93,7 @@ import {
 import Papa from "papaparse";
 import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
 import { CoverPicker } from "./cover-picker";
+import { fileLabel, fileUrls } from "@/lib/file-cells";
 import { IconImagePicker } from "./icon-image-picker";
 import dynamic from "next/dynamic";
 const EmojiPicker = dynamic(() => import("./emoji-picker"), { ssr: false });
@@ -122,6 +123,7 @@ export type DatabaseData = {
   rows: Row[];
   rowTemplates: { id: string; name: string; is_default: number }[];
   reminders?: DateReminder[];
+  files?: { url: string; name: string; mime: string }[];
   related: Record<string, Row[]>;
   relatedSchemas?: Record<string, Field[]>;
   form: {
@@ -788,17 +790,41 @@ export default function DatabaseView({
     })) as { id: string } | null;
     if (r && open) setRowId(r.id);
   }
+  async function uploadFile(file: File) {
+    if (file.size > 10 * 1024 * 1024)
+      throw new Error(`${file.name}: maximal 10 MB pro Datei.`);
+    const body = new FormData();
+    body.set("pageId", page.id);
+    body.set("file", file);
+    const response = await fetch("/api/upload", { method: "POST", body });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Upload fehlgeschlagen.");
+    return result.url as string;
+  }
   function display(r: Row, f: Field) {
     const v = r.cells[f.id];
-    if (
-      f.type === "files" &&
-      typeof v === "string" &&
-      v.startsWith("/api/files/")
-    ) {
+    if (f.type === "files") {
+      const names = new Map((data.files || []).map((x) => [x.url, x.name]));
+      const urls = fileUrls(v);
       return (
-        <span className="file-cell">
-          {data.images?.find((image) => image.url === v)?.name || "Datei"}
-        </span>
+        urls.length > 0 && (
+          <span className="file-cell">
+            {urls.slice(0, 3).map((url) => (
+              <span key={url} className="file-chip">
+                {data.files
+                  ?.find((x) => x.url === url)
+                  ?.mime.startsWith("image/") && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={url} alt="" />
+                )}
+                {fileLabel(url, names)}
+              </span>
+            ))}
+            {urls.length > 3 && (
+              <span className="muted">+{urls.length - 3}</span>
+            )}
+          </span>
+        )
       );
     }
     if (f.type === "rollup") return <RollupValue field={f} value={v} />;
@@ -1302,6 +1328,8 @@ export default function DatabaseView({
                   members={members}
                   related={data.related}
                   onChange={(v) => updateCell(r, f, v)}
+                  upload={editable ? uploadFile : undefined}
+                  files={data.files}
                 />
               </span>
             ) : (
@@ -2771,6 +2799,8 @@ export default function DatabaseView({
                   members={members}
                   related={data.related}
                   onChange={setBulkValue}
+                  upload={editable ? uploadFile : undefined}
+                  files={data.files}
                 />
               </label>
             )}
@@ -3541,7 +3571,7 @@ export default function DatabaseView({
             </h2>
             {fields.map((f) => (
               <Fragment key={`${selected.id}-${f.id}`}>
-                <label className="row-property">
+                <PropertyRow group={f.type === "files"}>
                   <span>{f.name}</span>
                   {computedTypes.includes(f.type) ? (
                     <span>
@@ -3566,9 +3596,11 @@ export default function DatabaseView({
                       related={data.related}
                       disabled={!editable}
                       onChange={(v) => updateCell(selected, f, v)}
+                      upload={editable ? uploadFile : undefined}
+                      files={data.files}
                     />
                   )}
-                </label>
+                </PropertyRow>
                 {f.type === "date" && reminderControl(selected, f)}
               </Fragment>
             ))}
@@ -3738,4 +3770,19 @@ function tagColor(s: string) {
   if (["Hoch"].includes(s)) return "red";
   if (["Mittel", "Produkt"].includes(s)) return "yellow";
   return "gray";
+}
+// Files cells contain several controls; a <label> would forward every click
+// to the first one (the file chooser).
+function PropertyRow({
+  group,
+  children,
+}: {
+  group: boolean;
+  children: ReactNode;
+}) {
+  return group ? (
+    <div className="row-property">{children}</div>
+  ) : (
+    <label className="row-property">{children}</label>
+  );
 }

@@ -21,6 +21,14 @@ export function pageImages(pageId: string): PageImage[] {
       url: `/api/files/${file.id}`,
     }));
 }
+export type PageFile = PageImage & { mime: string; size: number };
+// All attachments of a page, e.g. for names and previews in files cells.
+export function pageFiles(pageId: string): PageFile[] {
+  return all<{ id: string; name: string; mime: string; size: number }>(
+    "SELECT id,name,mime,size FROM files WHERE page_id=? ORDER BY created_at DESC LIMIT 5000",
+    pageId,
+  ).map((file) => ({ ...file, url: `/api/files/${file.id}` }));
+}
 export function validateCover(
   pageId: string,
   value: string,

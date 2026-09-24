@@ -18,6 +18,7 @@ import {
 } from "./page-appearance";
 import {
   pageImages,
+  pageFiles,
   validateCover,
   validateIcon,
   applyAppearance,
@@ -212,6 +213,7 @@ export function pageData(user: Identity, pid: string) {
     return {
       page: p,
       images: pageImages(pid),
+      files: pageFiles(pid),
       publication: publicationSettings(pid),
       shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
       role,

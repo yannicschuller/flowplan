@@ -603,3 +603,109 @@ test("record icons and covers are versioned, use database images and survive dup
     imported.pageIds[p],
   );
 });
+test("files cells hold several own uploads or links and keep them through copies, templates and ZIP", async () => {
+  const { galleryImage } = await import("../lib/database-gallery");
+  const { fileUrls, mapFileCell } = await import("../lib/file-cells");
+  assert.deepEqual(fileUrls("/api/files/x"), ["/api/files/x"]);
+  assert.deepEqual(fileUrls(["a", 3, "", "b"]), ["a", "b"]);
+  assert.deepEqual(fileUrls(null), []);
+  assert.deepEqual(
+    mapFileCell(["a", "b"], (u) => u + "!"),
+    ["a!", "b!"],
+  );
+  assert.equal(
+    mapFileCell("a", (u) => u + "!"),
+    "a!",
+  );
+
+  const p = create("database"),
+    other = create(),
+    first = file(p),
+    second = file(p, "application/pdf"),
+    foreign = file(other),
+    d = database(p);
+  act({
+    action: "database.update",
+    pageId: p,
+    version: d.version,
+    fields: [...d.fields, { id: "media", name: "Medien", type: "files" }],
+    views: d.views,
+  });
+  const row = act({
+    action: "row.create",
+    pageId: p,
+    cells: { title: "Mappe" },
+  }).id;
+  const update = (media: unknown) =>
+    act({
+      action: "row.update",
+      pageId: p,
+      rowId: row,
+      version: one<{ version: number }>(
+        "SELECT version FROM rows WHERE id=?",
+        row,
+      )!.version,
+      cells: { media },
+    });
+  assert.throws(() => update([foreign]), /gehört nicht/);
+  assert.throws(() => update(["javascript:alert(1)"]), /Ungültige|http/);
+  assert.throws(() => update(Array.from({ length: 51 }, () => first)));
+  update([first, second, "https://example.com/plan.pdf", first]);
+  const media = () =>
+    data(p).rows.find((r: { id: string }) => r.id === row).cells.media;
+  assert.deepEqual(media(), [first, second, "https://example.com/plan.pdf"]);
+  // Legacy single strings are still accepted and read.
+  update(first);
+  assert.deepEqual(media(), [first]);
+  update([second, first]);
+  assert.equal(
+    galleryImage(
+      data(p).rows.find((r: { id: string }) => r.id === row),
+      { cover: "field", fieldId: "media", fit: "cover", size: "medium" },
+      [...d.fields, { id: "media", name: "Medien", type: "files" }],
+      new Set([first]),
+    ),
+    first,
+  );
+  assert.ok(
+    data(p).files.some(
+      (f: { url: string; mime: string }) =>
+        f.url === second && f.mime === "application/pdf",
+    ),
+  );
+
+  const copy = act({ action: "page.duplicate", pageId: p }).id;
+  const copied = data(copy).rows[0].cells.media as string[];
+  assert.equal(copied.length, 2);
+  for (const url of copied)
+    assert.equal(
+      one<{ page_id: string }>(
+        "SELECT page_id FROM files WHERE id=?",
+        url.split("/").at(-1)!,
+      )?.page_id,
+      copy,
+    );
+
+  const template = act({
+    action: "template.save",
+    pageId: p,
+    name: "Medienvorlage",
+  }).id;
+  const fromTemplate = act({
+    action: "page.create",
+    workspaceId: wid,
+    spaceId: boot.spaces[0].id,
+    title: "Aus Vorlage",
+    templateId: template,
+  }).id;
+  const templated = data(fromTemplate).rows[0].cells.media as string[];
+  assert.equal(templated.length, 2);
+  assert.ok(templated.every((url) => !url.includes(first.split("/").at(-1)!)));
+
+  const archive = await exportArchive(owner, wid),
+    destination = createWorkspace(owner.id, "Medien restore");
+  const imported = await importArchive(owner, destination, archive);
+  const restored = data(imported.pageIds[p]).rows[0].cells.media as string[];
+  assert.equal(restored.length, 2);
+  assert.ok(restored.every((url) => url !== first && url !== second));
+});

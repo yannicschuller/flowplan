@@ -1,3 +1,4 @@
+import { mapFileCell } from "./file-cells";
 import { spaceColorSchema } from "./space-appearance";
 import {
   archivedThreadsSchema,
@@ -750,8 +751,8 @@ export async function importArchive(
                 key,
                 typeof value === "string" && members.has(value) ? value : "",
               ];
-            if (f?.type === "files" && typeof value === "string")
-              return [key, rewriteUrl(value)];
+            if (f?.type === "files")
+              return [key, mapFileCell(value, rewriteUrl)];
             return [key, value];
           }),
         );

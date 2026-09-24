@@ -1,3 +1,4 @@
+import { mapFileCell } from "./file-cells";
 import { remapViewReferences } from "./view-references";
 import { remapLinkedAttributes } from "./linked-view-references";
 import { copyFileSync, mkdirSync, unlinkSync } from "node:fs";
@@ -82,8 +83,7 @@ export function duplicatePages(
           const field = fields.find((f) => f.id === key);
           if (field?.type === "relation" && Array.isArray(cell))
             return [key, cell.map((rid) => rowIds.get(rid) || rid)];
-          if (field?.type === "files" && typeof cell === "string")
-            return [key, rewrite(cell)];
+          if (field?.type === "files") return [key, mapFileCell(cell, rewrite)];
           return [key, cell];
         }),
       ),

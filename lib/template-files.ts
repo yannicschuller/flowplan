@@ -1,3 +1,4 @@
+import { mapFileCell } from "./file-cells";
 import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, one, run, id, onTransactionRollback } from "./db";
@@ -32,9 +33,8 @@ export function mapTemplateFiles(
     Object.fromEntries(
       Object.entries(values).map(([key, value]) => [
         key,
-        data.database?.fields.find((f) => f.id === key)?.type === "files" &&
-        typeof value === "string"
-          ? map(value)
+        data.database?.fields.find((f) => f.id === key)?.type === "files"
+          ? mapFileCell(value, map)
           : value,
       ]),
     );

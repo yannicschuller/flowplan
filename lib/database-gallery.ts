@@ -1,3 +1,4 @@
+import { fileUrls } from "./file-cells";
 import { z } from "zod";
 import type { Field, Row } from "./types";
 export const gallerySchema = z
@@ -34,7 +35,9 @@ export function galleryImage(
             )
           ? row.cells[config.fieldId!]
           : undefined;
-  return typeof value === "string" && authorizedImages.has(value)
-    ? value
-    : undefined;
+  // Files cells may hold several entries; the first authorized image wins.
+  return (config.cover === "field" ? fileUrls(value) : [value]).find(
+    (url): url is string =>
+      typeof url === "string" && authorizedImages.has(url),
+  );
 }

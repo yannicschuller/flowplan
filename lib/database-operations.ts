@@ -1,3 +1,9 @@
+import {
+  fileIdOf,
+  fileRefSchema,
+  fileUrls,
+  MAX_CELL_FILES,
+} from "./file-cells";
 import { maintainRowOrders } from "./row-order-server";
 import { validDateValue } from "./date-values";
 import { z } from "zod";
@@ -42,7 +48,25 @@ export function validateCellPatch(
         .array(z.object({ text: z.string().max(500), done: z.boolean() }))
         .max(100)
         .parse(value);
-    else if (f.type === "relation") {
+    else if (f.type === "files") {
+      const urls = z
+        .union([
+          z.literal(""),
+          fileRefSchema,
+          z.array(fileRefSchema).max(MAX_CELL_FILES),
+        ])
+        .parse(value);
+      const list = [...new Set(fileUrls(urls))];
+      for (const url of list) {
+        const fid = fileIdOf(url);
+        if (
+          fid &&
+          !one("SELECT id FROM files WHERE id=? AND page_id=?", fid, page.id)
+        )
+          throw new HttpError(400, "Datei gehört nicht zu dieser Datenbank.");
+      }
+      result[key] = list;
+    } else if (f.type === "relation") {
       const ids = z.array(z.string().uuid()).max(500).parse(value);
       if (!f.relationPage && ids.length)
         throw new HttpError(400, "Relationsziel fehlt.");
