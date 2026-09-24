@@ -22,7 +22,38 @@ type AdminData = {
   }[];
   adminGroup: string;
   oidcConfigured: boolean;
+  metrics: {
+    databaseBytes: number;
+    uploadBytes: number;
+    files: number;
+    pages: number;
+    trashedPages: number;
+    rows: number;
+    snapshots: number;
+    pushPending: number;
+    pushFailed: number;
+    searchBacklog: number;
+    reminders: number;
+    retentionDays: number;
+    defaultQuotaMb: number;
+    uptimeSeconds: number;
+    node: string;
+  };
+  usage: {
+    id: string;
+    bytes: number;
+    quotaMb: number | null;
+    effectiveQuotaMb: number;
+  }[];
 };
+const mb = (bytes: number) =>
+  `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
+const duration = (seconds: number) =>
+  seconds < 3600
+    ? `${Math.round(seconds / 60)} Min.`
+    : seconds < 86400
+      ? `${Math.round(seconds / 3600)} Std.`
+      : `${Math.round(seconds / 86400)} Tage`;
 export default function Admin({
   mutate,
   onError,
@@ -87,6 +118,7 @@ export default function Admin({
         {[
           ["users", "Benutzer"],
           ["workspaces", "Arbeitsbereiche"],
+          ["operations", "Betrieb"],
           ["audit", "Aktivitätsprotokoll"],
         ].map(([id, label]) => (
           <button
@@ -140,18 +172,108 @@ export default function Admin({
               <th>Arbeitsbereich</th>
               <th>Mitglieder</th>
               <th>Seiten</th>
+              <th>Speicher</th>
+              <th>Kontingent (MB)</th>
             </tr>
           </thead>
           <tbody>
-            {data.workspaces.map((w) => (
-              <tr key={w.id}>
-                <td>{w.name}</td>
-                <td>{w.members}</td>
-                <td>{w.pages}</td>
-              </tr>
-            ))}
+            {data.workspaces.map((w) => {
+              const usage = data.usage.find((u) => u.id === w.id);
+              const quota = usage?.effectiveQuotaMb || 0;
+              return (
+                <tr key={w.id}>
+                  <td>{w.name}</td>
+                  <td>{w.members}</td>
+                  <td>{w.pages}</td>
+                  <td>
+                    {mb(usage?.bytes || 0)}
+                    {quota > 0 && (
+                      <meter
+                        min={0}
+                        max={quota * 1024 * 1024}
+                        value={usage?.bytes || 0}
+                        high={quota * 1024 * 1024 * 0.9}
+                        aria-label={`Belegung ${w.name}`}
+                      />
+                    )}
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min={0}
+                      className="quota-input"
+                      aria-label={`Kontingent ${w.name}`}
+                      placeholder={
+                        data.metrics.defaultQuotaMb
+                          ? `Standard ${data.metrics.defaultQuotaMb}`
+                          : "unbegrenzt"
+                      }
+                      defaultValue={usage?.quotaMb ?? ""}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim();
+                        const next = raw === "" ? null : Number(raw);
+                        if (next === (usage?.quotaMb ?? null)) return;
+                        void act({
+                          action: "admin.quota",
+                          workspaceId: w.id,
+                          quotaMb: next,
+                        });
+                      }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+      )}
+      {tab === "operations" && (
+        <div className="admin-metrics" aria-label="Betriebsmetriken">
+          {(
+            [
+              ["Datenbank", mb(data.metrics.databaseBytes)],
+              [
+                "Uploads",
+                `${mb(data.metrics.uploadBytes)} · ${data.metrics.files} Dateien`,
+              ],
+              [
+                "Seiten",
+                `${data.metrics.pages} aktiv · ${data.metrics.trashedPages} im Papierkorb`,
+              ],
+              ["Datensätze", String(data.metrics.rows)],
+              [
+                "Versionen",
+                `${data.metrics.snapshots} · Aufbewahrung ${data.metrics.retentionDays ? `${data.metrics.retentionDays} Tage` : "unbegrenzt"}`,
+              ],
+              [
+                "Push-Warteschlange",
+                `${data.metrics.pushPending} offen · ${data.metrics.pushFailed} fehlgeschlagen`,
+              ],
+              [
+                "Suchindex",
+                data.metrics.searchBacklog
+                  ? `${data.metrics.searchBacklog} Änderungen ausstehend`
+                  : "aktuell",
+              ],
+              ["Erinnerungen", String(data.metrics.reminders)],
+              [
+                "Standardkontingent",
+                data.metrics.defaultQuotaMb
+                  ? `${data.metrics.defaultQuotaMb} MB je Arbeitsbereich`
+                  : "unbegrenzt",
+              ],
+              [
+                "Laufzeit",
+                `${duration(data.metrics.uptimeSeconds)} · Node ${data.metrics.node}`,
+              ],
+            ] as const
+          ).map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
       )}
       {tab === "audit" && (
         <div className="audit-list">

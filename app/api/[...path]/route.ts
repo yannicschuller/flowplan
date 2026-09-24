@@ -39,6 +39,11 @@ import { one, all, run, id, audit } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { snapshotChanges } from "@/lib/version-history";
+import {
+  enforceQuota,
+  instanceMetrics,
+  workspaceUsage,
+} from "@/lib/instance-ops";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -181,6 +186,8 @@ export async function GET(
         ),
         adminGroup: adminGroup(),
         oidcConfigured: !!process.env.OIDC_ISSUER,
+        metrics: instanceMetrics(),
+        usage: workspaceUsage(),
       });
     }
     if (path[0] === "files" && path[1]) {
@@ -306,6 +313,7 @@ export async function POST(
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > 10 * 1024 * 1024)
         throw new HttpError(413, "Maximal 10 MB pro Datei.");
+      enforceQuota(p.workspace_id, file.size);
       if (
         data.get("purpose") === "cover" &&
         !imageMimes.includes(file.type as (typeof imageMimes)[number])

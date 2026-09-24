@@ -1585,6 +1585,18 @@ export function command(
         if (b.disabled) run("DELETE FROM sessions WHERE user_id=?", uid);
         break;
       }
+      case "admin.quota": {
+        requireAdmin(user);
+        const quota = z
+          .number()
+          .int()
+          .min(0)
+          .max(10_000_000)
+          .nullable()
+          .parse(b.quotaMb);
+        setWorkspaceQuota(uuid.parse(b.workspaceId), quota);
+        break;
+      }
       case "admin.revoke":
         requireAdmin(user);
         run("DELETE FROM sessions WHERE user_id=?", uuid.parse(b.userId));
@@ -1638,3 +1650,4 @@ import { ensureRowDocument } from "./row-documents";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance } from "./row-appearance";
 import { copyPublication } from "./publication-copy";
+import { setWorkspaceQuota } from "./instance-ops";

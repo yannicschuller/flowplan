@@ -10,6 +10,7 @@ import {
   FORM_TOTAL_BYTES,
 } from "@/lib/form-settings";
 import { one, run, id, transaction, onTransactionRollback } from "@/lib/db";
+import { enforceQuota } from "@/lib/instance-ops";
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ token: string }> },
@@ -49,6 +50,7 @@ export async function POST(
       }
       if (total > FORM_TOTAL_BYTES)
         throw new HttpError(413, "Maximal 25 MB Dateien je Antwort.");
+      if (total) enforceQuota(form.workspace_id, total);
     } else raw = await req.text();
     if (raw.length > 100_000) throw new HttpError(413, "Antwort zu groß.");
     const input = z

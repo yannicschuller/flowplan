@@ -214,6 +214,8 @@ Datumsfunktionen verwenden ohne ausdrückliche Zone UTC. `now()` und `today()` a
 
 ## Inhaltsarchive
 
+**Betrieb und Speicher:** Admins sehen unter **Administration → Betrieb** Datenbank- und Upload-Größe, Warteschlangen, Suchindex-Rückstand, Versionen und Laufzeit. `FLOWPLAN_WORKSPACE_QUOTA_MB` legt ein Standard-Speicherkontingent je Arbeitsbereich fest (leer oder `0` = unbegrenzt); unter **Administration → Arbeitsbereiche** lässt es sich je Arbeitsbereich überschreiben. Uploads über dem Kontingent werden abgelehnt.
+
 **Versionsverlauf:** Über **Seitenaktionen → Versionsverlauf** lassen sich Versionen sichern, mit dem aktuellen Stand vergleichen (**Änderungen**) und wiederherstellen. Dokumente sichern automatisch höchstens alle fünf Minuten, Datenbanken vor der ersten Änderung nach zehn Minuten Ruhe. Manuell gesicherte und aus Archiven importierte Versionen bleiben erhalten; automatische Versionen werden nach sieben Tagen auf eine je Tag reduziert und nach `FLOWPLAN_SNAPSHOT_RETENTION_DAYS` Tagen gelöscht (Standard 180, `0` = unbegrenzt).
 
 Unter **Einstellungen → Daten** lässt sich ein ZIP herunterladen und wieder importieren. Das Format `flowplan-2` enthält `flowplan.json` und unverändert gespeicherte Dateien unter `files/<id>` sowie unabhängige Vorlagenanhänge unter `template-files/<id>`. SHA-256-Prüfsummen erkennen fehlende oder beschädigte Anhänge.
