@@ -2780,6 +2780,37 @@ tr:hover .row-open {
   align-items: baseline;
   font-size: 13px;
 }
+.link-preview {
+  position: fixed;
+  z-index: 60;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  font-size: 13px;
+}
+.link-preview strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.link-preview small {
+  color: var(--secondary);
+}
+.link-preview p {
+  margin: 2px 0 0;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .version-diff {
   display: grid;
   gap: 6px;

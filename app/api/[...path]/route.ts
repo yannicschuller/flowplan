@@ -41,6 +41,7 @@ import { searchWorkspace } from "@/lib/search-index";
 import { snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
+import { pagePreview } from "@/lib/page-preview";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import {
   enforceQuota,
@@ -108,6 +109,10 @@ export async function GET(
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
       );
+    if (path[0] === "pages" && path[1] && path[2] === "preview")
+      return NextResponse.json(pagePreview(user, z.uuid().parse(path[1])), {
+        headers: { "Cache-Control": "no-store" },
+      });
     if (path[0] === "pages" && path[2] === "linked" && path[3])
       return NextResponse.json(linkedDatabaseData(user, path[1], path[3]));
     if (

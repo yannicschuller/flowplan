@@ -16,6 +16,7 @@ import {
 import type { SearchKind, SearchResult } from "@/lib/search-index";
 import { IconImagePicker } from "./icon-image-picker";
 import { VersionChanges } from "./version-changes";
+import { LinkPreview } from "./link-preview";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
@@ -2198,6 +2199,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
           </>
         )}
       </Modal>
+      <LinkPreview members={boot.members} />
       {versionChanges && data && (
         <VersionChanges
           pageId={data.page.id}
