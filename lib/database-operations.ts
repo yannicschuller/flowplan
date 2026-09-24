@@ -106,6 +106,19 @@ export function validateCellPatch(
     throw new HttpError(413, "Änderung zu groß.");
   return result;
 }
+// Automatic database version at the start of an editing session: the first
+// edit after 10 quiet minutes keeps the previous state.
+export function autoDatabaseSnapshot(user: Identity, page: Page) {
+  const recent = one(
+    `SELECT 1 WHERE EXISTS(SELECT 1 FROM snapshots WHERE page_id=? AND created_at>datetime('now','-10 minutes'))
+       OR EXISTS(SELECT 1 FROM pages WHERE id=? AND updated_at>datetime('now','-10 minutes'))
+       OR EXISTS(SELECT 1 FROM rows WHERE page_id=? AND updated_at>datetime('now','-10 minutes'))`,
+    page.id,
+    page.id,
+    page.id,
+  );
+  if (!recent) databaseSnapshot(user, page);
+}
 export function databaseSnapshot(user: Identity, page: Page) {
   const db = one<{ fields: string; views: string }>(
     "SELECT fields,views FROM databases WHERE page_id=?",

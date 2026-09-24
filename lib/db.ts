@@ -155,6 +155,23 @@ function migrate(d: DatabaseSync) {
     observed_value TEXT,armed_at INTEGER NOT NULL,fired_value TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,row_id,field_id));
     CREATE INDEX IF NOT EXISTS date_reminders_page ON date_reminders(page_id,user_id);`);
+  // Manual versions are kept; automatic ones follow the retention rules.
+  if (
+    !(
+      d.prepare("PRAGMA table_info(snapshots)").all() as { name: string }[]
+    ).some((c) => c.name === "kind")
+  )
+    d.exec(
+      "ALTER TABLE snapshots ADD COLUMN kind TEXT NOT NULL DEFAULT 'auto'",
+    );
+  if (
+    !(
+      d.prepare("PRAGMA table_info(row_snapshots)").all() as { name: string }[]
+    ).some((c) => c.name === "kind")
+  )
+    d.exec(
+      "ALTER TABLE row_snapshots ADD COLUMN kind TEXT NOT NULL DEFAULT 'auto'",
+    );
   const rowColumns = d.prepare("PRAGMA table_info(rows)").all() as {
     name: string;
   }[];

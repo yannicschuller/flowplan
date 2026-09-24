@@ -214,6 +214,8 @@ Datumsfunktionen verwenden ohne ausdrückliche Zone UTC. `now()` und `today()` a
 
 ## Inhaltsarchive
 
+**Versionsverlauf:** Über **Seitenaktionen → Versionsverlauf** lassen sich Versionen sichern, mit dem aktuellen Stand vergleichen (**Änderungen**) und wiederherstellen. Dokumente sichern automatisch höchstens alle fünf Minuten, Datenbanken vor der ersten Änderung nach zehn Minuten Ruhe. Manuell gesicherte und aus Archiven importierte Versionen bleiben erhalten; automatische Versionen werden nach sieben Tagen auf eine je Tag reduziert und nach `FLOWPLAN_SNAPSHOT_RETENTION_DAYS` Tagen gelöscht (Standard 180, `0` = unbegrenzt).
+
 Unter **Einstellungen → Daten** lässt sich ein ZIP herunterladen und wieder importieren. Das Format `flowplan-2` enthält `flowplan.json` und unverändert gespeicherte Dateien unter `files/<id>` sowie unabhängige Vorlagenanhänge unter `template-files/<id>`. SHA-256-Prüfsummen erkennen fehlende oder beschädigte Anhänge.
 
 Enthalten sind zugängliche Seiten einschließlich Papierkorb, Datenbankansichten und Datensätze, Rich-Text-Inhalte, interne Relationen, Seiten- und Datensatzvorlagen, Kommentare, Versionsstände, eigene Favoriten und Formularoptionen. Beim Import entstehen neue IDs und unabhängige Dokumente; interne Referenzen werden umgeschrieben. Personenfelder bleiben nur für im Zielarbeitsbereich vorhandene Mitglieder zugeordnet. Verweise auf nicht enthaltene Datensätze werden ausgelassen und gemeldet. Importierte Kommentare tragen den ursprünglichen Namen als Importvermerk.

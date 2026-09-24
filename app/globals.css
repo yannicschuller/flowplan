@@ -2624,6 +2624,39 @@ tr:hover .row-open {
   border-radius: 4px;
   vertical-align: middle;
 }
+.version-diff {
+  display: grid;
+  gap: 6px;
+  max-height: 60vh;
+  overflow: auto;
+  font-size: 14px;
+}
+.version-diff p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.version-diff .diff-same {
+  color: var(--muted);
+}
+.version-diff ins {
+  text-decoration: none;
+  background: color-mix(in srgb, #2f9e60 18%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.version-diff del {
+  background: color-mix(in srgb, #cf4850 16%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.version-diff.database h3 {
+  font-size: 13px;
+  margin: 8px 0 4px;
+}
+.version-diff.database ul {
+  margin: 0;
+  padding-left: 18px;
+}
 .search-filters {
   display: flex;
   flex-wrap: wrap;

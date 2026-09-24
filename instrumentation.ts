@@ -9,5 +9,7 @@ export async function register() {
     startReminderWorker(() => void dispatchPush());
     const { startSearchWorker } = await import("./lib/search-index");
     startSearchWorker();
+    const { startRetentionWorker } = await import("./lib/version-history");
+    startRetentionWorker();
   }
 }

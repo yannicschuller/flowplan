@@ -46,6 +46,7 @@ import { formConfigSchema } from "./form-settings";
 import {
   bulkRows,
   databaseSnapshot,
+  autoDatabaseSnapshot,
   validateCellPatch,
 } from "./database-operations";
 import { field, view } from "./database-schema";
@@ -187,7 +188,7 @@ export function pageData(user: Identity, pid: string) {
     pid,
   );
   const snapshots = all(
-    "SELECT id,title,created_at FROM snapshots WHERE page_id=? ORDER BY created_at DESC LIMIT 50",
+    "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC LIMIT 50",
     pid,
   );
   const present = all(
@@ -926,18 +927,22 @@ export function command(
             p.id,
           );
         if (p.kind === "database") {
-          result = { id: databaseSnapshot(user, p) };
+          const sid = databaseSnapshot(user, p);
+          run("UPDATE snapshots SET kind='manual' WHERE id=?", sid);
+          result = { id: sid };
           break;
         }
+        const sid = id();
         run(
-          "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
-          id(),
+          "INSERT INTO snapshots(id,page_id,state,html,title,created_by,kind) VALUES(?,?,?,?,?,?,'manual')",
+          sid,
           p.id,
           d?.state || null,
           d?.html || "",
           p.title,
           user.id,
         );
+        result = { id: sid };
         break;
       }
       case "snapshot.restore": {
@@ -1046,7 +1051,7 @@ export function command(
         break;
       }
       case "database.update": {
-        write();
+        autoDatabaseSnapshot(user, write());
         const d = database(pid());
         if (b.version !== d.version)
           throw new HttpError(
@@ -1150,7 +1155,7 @@ export function command(
         result = bulkRows(user, pid(), b);
         break;
       case "row.create": {
-        write();
+        autoDatabaseSnapshot(user, write());
         const template = selectedRowTemplate(pid(), b.templateId);
         const cells = {
           ...(template ? JSON.parse(template.cells) : {}),
@@ -1223,6 +1228,7 @@ export function command(
       }
       case "row.update": {
         const p = write();
+        autoDatabaseSnapshot(user, p);
         const rid = uuid.parse(b.rowId),
           row = one<{ version: number; cells: string }>(
             "SELECT * FROM rows WHERE id=? AND page_id=?",
@@ -1258,7 +1264,7 @@ export function command(
         break;
       }
       case "row.delete":
-        write();
+        autoDatabaseSnapshot(user, write());
         run(
           "DELETE FROM comments WHERE page_id=? AND row_id=?",
           pid(),

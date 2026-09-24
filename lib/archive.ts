@@ -847,7 +847,8 @@ export async function importArchive(
             for (const snap of r.snapshots) {
               const html = rewriteHtml(snap.html);
               run(
-                "INSERT INTO row_snapshots(id,row_id,state,html,created_by,created_at) VALUES(?,?,?,?,?,?)",
+                // Restored history is kept like manually saved versions.
+                "INSERT INTO row_snapshots(id,row_id,state,html,created_by,created_at,kind) VALUES(?,?,?,?,?,?,'manual')",
                 id(),
                 rid,
                 htmlState(html),
@@ -975,7 +976,7 @@ export async function importArchive(
           }
           const snapshotId = id();
           run(
-            "INSERT INTO snapshots(id,page_id,state,html,title,created_by,created_at,appearance) VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO snapshots(id,page_id,state,html,title,created_by,created_at,appearance,kind) VALUES(?,?,?,?,?,?,?,?,'manual')",
             snapshotId,
             pid,
             state,

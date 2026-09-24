@@ -141,7 +141,7 @@ export function snapshotRow(user: Identity, pageId: string, rowId: string) {
     d = ensureRowDocument(row);
   const sid = id();
   run(
-    "INSERT INTO row_snapshots(id,row_id,state,html,created_by) VALUES(?,?,?,?,?)",
+    "INSERT INTO row_snapshots(id,row_id,state,html,created_by,kind) VALUES(?,?,?,?,?,'manual')",
     sid,
     rowId,
     d.state,

@@ -15,6 +15,7 @@ import {
 } from "@/lib/page-appearance";
 import type { SearchKind, SearchResult } from "@/lib/search-index";
 import { IconImagePicker } from "./icon-image-picker";
+import { VersionChanges } from "./version-changes";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
@@ -89,7 +90,12 @@ type PageData = DatabaseData & {
   state: string | null;
   generation: string;
   backlinks: { id: string; title: string; icon: string }[];
-  snapshots: { id: string; title: string; created_at: string }[];
+  snapshots: {
+    id: string;
+    title: string;
+    created_at: string;
+    kind?: "auto" | "manual";
+  }[];
   present: { id: string; name: string }[];
 };
 type Screen = "home" | "page" | "trash" | "inbox" | "settings" | "admin";
@@ -166,6 +172,10 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchKind, setSearchKind] = useState<SearchKind>("all");
   const [iconTab, setIconTab] = useState<"emoji" | "image">("emoji");
+  const [versionChanges, setVersionChanges] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
   const [searchSpace, setSearchSpace] = useState("");
   useEffect(() => {
     if (!search) return;
@@ -2115,8 +2125,27 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                     <strong>{s.title}</strong>
                     <small>
                       {new Date(s.created_at + "Z").toLocaleString("de-DE")}
+                      {" · "}
+                      {s.kind === "manual"
+                        ? "Manuell gesichert"
+                        : "Automatisch"}
                     </small>
                   </span>
+                  <button
+                    className="button compact"
+                    onClick={() => {
+                      // Replace the history dialog; closing returns to it.
+                      setHistory(false);
+                      setVersionChanges({
+                        id: s.id,
+                        label: new Date(s.created_at + "Z").toLocaleString(
+                          "de-DE",
+                        ),
+                      });
+                    }}
+                  >
+                    Änderungen
+                  </button>
                   <button
                     className="button compact"
                     disabled={!editable}
@@ -2144,6 +2173,17 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
           </>
         )}
       </Modal>
+      {versionChanges && data && (
+        <VersionChanges
+          pageId={data.page.id}
+          snapshotId={versionChanges.id}
+          label={versionChanges.label}
+          onClose={() => {
+            setVersionChanges(null);
+            setHistory(true);
+          }}
+        />
+      )}
       <Modal
         open={iconPicker}
         onClose={() => setIconPicker(false)}

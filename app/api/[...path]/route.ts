@@ -38,6 +38,7 @@ import {
 import { one, all, run, id, audit } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
+import { snapshotChanges } from "@/lib/version-history";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -101,6 +102,15 @@ export async function GET(
       );
     if (path[0] === "pages" && path[2] === "linked" && path[3])
       return NextResponse.json(linkedDatabaseData(user, path[1], path[3]));
+    if (
+      path[0] === "pages" &&
+      path[2] === "snapshots" &&
+      path[3] &&
+      path[4] === "changes"
+    )
+      return NextResponse.json(
+        snapshotChanges(user, z.uuid().parse(path[1]), z.uuid().parse(path[3])),
+      );
     if (path[0] === "pages" && path[2] === "rows" && path[3])
       return NextResponse.json(rowDocumentData(user, path[1], path[3]));
     if (path[0] === "pages" && path[1])
