@@ -11,7 +11,13 @@ export default function FormClient({
   fields,
   anonymous,
   config,
+  internal = false,
+  members = [],
+  related = {},
 }: {
+  internal?: boolean;
+  members?: { id: string; name: string }[];
+  related?: Record<string, { id: string; cells: { title: string } }[]>;
   token: string;
   title: string;
   fields: Field[];
@@ -51,7 +57,12 @@ export default function FormClient({
               e.preventDefault();
               setError("");
               if (!e.currentTarget.reportValidity()) return;
-              const result = validateFormValues(fields, config, values);
+              const result = validateFormValues(
+                fields,
+                config,
+                values,
+                internal,
+              );
               setErrors(result.errors);
               if (Object.keys(result.errors).length) return;
               setBusy(true);
@@ -101,6 +112,9 @@ export default function FormClient({
               values={values}
               errors={errors}
               disabled={busy}
+              internal={internal}
+              members={members}
+              related={related}
               onChange={(id, value) =>
                 setValues((previous) => ({ ...previous, [id]: value }))
               }

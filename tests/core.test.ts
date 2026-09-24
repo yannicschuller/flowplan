@@ -1554,3 +1554,107 @@ test("bulk page actions move, duplicate and trash several pages atomically", () 
   );
   assert.equal(pageOf(target).deleted_at, null);
 });
+
+test("internal forms ask for people and relations; public forms never expose them", async () => {
+  const { getForm, saveFormSubmission } = await import("../lib/forms");
+  const { database: readDatabase, rows } = await import("../lib/api");
+  const create = (title: string) =>
+    (
+      command(owner, {
+        action: "page.create",
+        workspaceId: wid,
+        spaceId: page.space_id,
+        title,
+        kind: "database",
+      }) as { id: string }
+    ).id;
+  const people = create("Formular Kontakte"),
+    requests = create("Formular Anfragen");
+  const contact = (
+    command(owner, {
+      action: "row.create",
+      pageId: people,
+      cells: { title: "Kim" },
+    }) as {
+      id: string;
+    }
+  ).id;
+  const d = readDatabase(requests);
+  command(owner, {
+    action: "database.update",
+    pageId: requests,
+    version: d.version,
+    fields: [
+      { id: "title", name: "Titel", type: "text" },
+      { id: "owner", name: "Zuständig", type: "person" },
+      {
+        id: "contact",
+        name: "Kontakt",
+        type: "relation",
+        relationPage: people,
+      },
+    ],
+    views: d.views,
+  });
+  command(owner, {
+    action: "form.update",
+    pageId: requests,
+    enabled: true,
+    internal: true,
+    anonymous: false,
+  });
+  const token = one<{ token: string }>(
+    "SELECT token FROM forms WHERE page_id=?",
+    requests,
+  )!.token;
+  const internal = getForm(token, editor);
+  assert.deepEqual(
+    internal.fields.map((f) => f.id),
+    ["title", "owner", "contact"],
+  );
+  assert.ok(internal.members.some((m) => m.id === owner.id));
+  assert.deepEqual(
+    internal.related[people].map((r) => r.cells.title),
+    ["Kim"],
+  );
+  saveFormSubmission(requests, editor, {
+    title: "Frage",
+    owner: owner.id,
+    contact: [contact],
+  });
+  const saved = rows(requests).find((r) => r.cells.title === "Frage")!;
+  assert.equal(saved.cells.owner, owner.id);
+  assert.deepEqual(saved.cells.contact, [contact]);
+  assert.throws(
+    () =>
+      saveFormSubmission(requests, editor, { title: "x", owner: stranger.id }),
+    /Mitglied/,
+  );
+  assert.throws(
+    () => saveFormSubmission(requests, editor, { title: "x", contact: [id()] }),
+    /Eintrag nicht gefunden/,
+  );
+  // Public forms drop people and relations and never list members.
+  command(owner, {
+    action: "form.update",
+    pageId: requests,
+    enabled: true,
+    internal: false,
+    anonymous: true,
+  });
+  const open = getForm(token, null);
+  assert.deepEqual(
+    open.fields.map((f) => f.id),
+    ["title"],
+  );
+  assert.deepEqual(open.members, []);
+  assert.deepEqual(open.related, {});
+  saveFormSubmission(requests, null, {
+    title: "Anonym",
+    owner: owner.id,
+    contact: [contact],
+  });
+  const anon = rows(requests).find((r) => r.cells.title === "Anonym")!;
+  assert.equal(anon.cells.owner, undefined);
+  assert.equal(anon.cells.contact, undefined);
+});

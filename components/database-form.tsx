@@ -23,7 +23,13 @@ export default function DatabaseForm({
   form,
   editable,
   act,
+  members = [],
+  related = {},
+  upload,
 }: {
+  members?: { id: string; name: string }[];
+  related?: Record<string, { id: string; cells: { title: string } }[]>;
+  upload?: (file: File) => Promise<string>;
   page: Page;
   fields: Field[];
   form: Form;
@@ -51,7 +57,7 @@ export default function DatabaseForm({
       setSharingPending(null);
     }
   }
-  const designFields = [...publicFormFields(fields)].sort(
+  const designFields = [...publicFormFields(fields, !!form?.internal)].sort(
     (a, b) =>
       (draft.fieldOrder.includes(a.id) ? draft.fieldOrder.indexOf(a.id) : 999) -
       (draft.fieldOrder.includes(b.id) ? draft.fieldOrder.indexOf(b.id) : 999),
@@ -103,7 +109,7 @@ export default function DatabaseForm({
           onSubmit={async (e) => {
             e.preventDefault();
             if (!e.currentTarget.reportValidity()) return;
-            const result = validateFormValues(fields, config, values);
+            const result = validateFormValues(fields, config, values, true);
             setErrors(result.errors);
             if (Object.keys(result.errors).length) return;
             setBusy(true);
@@ -116,6 +122,10 @@ export default function DatabaseForm({
           }}
         >
           <FormQuestions
+            internal
+            members={members}
+            related={related}
+            upload={upload}
             fields={fields}
             config={config}
             values={values}

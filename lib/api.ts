@@ -1398,6 +1398,7 @@ export function command(
           pid(),
           user,
           z.record(z.string(), z.unknown()).parse(b.cells),
+          true,
         );
         break;
       case "member.invite": {

@@ -19,7 +19,9 @@ export type FormConfig = z.infer<typeof formConfigSchema>;
 export const FORM_FILES_PER_QUESTION = 5;
 export const FORM_FILE_BYTES = 10 * 1024 * 1024;
 export const FORM_TOTAL_BYTES = 25 * 1024 * 1024;
-export function publicFormFields(fields: Field[]) {
+// People and relations reveal members and records, so only forms restricted
+// to workspace members ask for them.
+export function publicFormFields(fields: Field[], internal = false) {
   return fields.filter(
     (f) =>
       ![
@@ -29,14 +31,17 @@ export function publicFormFields(fields: Field[]) {
         "updated_at",
         "created_by",
         "updated_by",
-        "person",
-        "relation",
+        ...(internal ? [] : ["person", "relation"]),
       ].includes(f.type),
   );
 }
-export function orderedFormFields(fields: Field[], config: FormConfig) {
+export function orderedFormFields(
+  fields: Field[],
+  config: FormConfig,
+  internal = false,
+) {
   const order = config.fieldOrder;
-  return publicFormFields(fields)
+  return publicFormFields(fields, internal)
     .filter((f) => !config.hiddenFields.includes(f.id))
     .sort(
       (a, b) =>
@@ -48,10 +53,11 @@ export function validateFormValues(
   fields: Field[],
   config: FormConfig,
   values: Record<string, unknown>,
+  internal = false,
 ) {
   const cells: Record<string, unknown> = {},
     errors: Record<string, string> = {};
-  for (const f of orderedFormFields(fields, config)) {
+  for (const f of orderedFormFields(fields, config, internal)) {
     const value = values[f.id],
       required = config.requiredFields.includes(f.id),
       empty =
@@ -78,6 +84,9 @@ export function validateFormValues(
         const selected = z.array(z.string()).max(100).parse(value);
         if (selected.some((v) => !f.options?.includes(v))) throw new Error();
         cells[f.id] = [...new Set(selected)];
+      } else if (f.type === "relation") {
+        const ids = z.array(z.string().uuid()).max(100).parse(value);
+        cells[f.id] = [...new Set(ids)];
       } else if (f.type === "files") {
         // Files are attached by the server from the submitted uploads.
         if (!Array.isArray(value)) throw new Error();

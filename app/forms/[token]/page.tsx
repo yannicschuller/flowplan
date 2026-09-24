@@ -17,6 +17,9 @@ export default async function FormPage({
         title={form.title}
         fields={form.fields}
         anonymous={!!form.anonymous}
+        internal={!!form.internal}
+        members={form.members}
+        related={form.related}
       />
     );
   } catch (e) {

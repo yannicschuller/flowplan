@@ -7,7 +7,7 @@ import {
   orderedFormFields,
   type FormConfig,
 } from "@/lib/form-settings";
-import type { Field } from "@/lib/types";
+import type { Field, Row, User } from "@/lib/types";
 export default function FormQuestions({
   fields,
   config,
@@ -15,7 +15,16 @@ export default function FormQuestions({
   onChange,
   errors = {},
   disabled = false,
+  internal = false,
+  members = [],
+  related = {},
+  upload,
 }: {
+  internal?: boolean;
+  members?: { id: string; name: string }[];
+  related?: Record<string, { id: string; cells: { title: string } }[]>;
+  // With an upload function files are stored right away (in-app preview).
+  upload?: (file: File) => Promise<string>;
   fields: Field[];
   config: FormConfig;
   values: Record<string, unknown>;
@@ -25,7 +34,7 @@ export default function FormQuestions({
 }) {
   return (
     <>
-      {orderedFormFields(fields, config).map((f) => (
+      {orderedFormFields(fields, config, internal).map((f) => (
         <fieldset className="form-question" key={f.id}>
           <legend>
             {f.name}
@@ -36,7 +45,7 @@ export default function FormQuestions({
           {config.descriptions[f.id] && (
             <p className="question-description">{config.descriptions[f.id]}</p>
           )}
-          {f.type === "files" ? (
+          {f.type === "files" && !upload ? (
             <FormFiles
               name={f.name}
               value={values[f.id]}
@@ -47,10 +56,11 @@ export default function FormQuestions({
             <CellInput
               field={f}
               value={values[f.id]}
-              members={[]}
-              related={{}}
+              members={members as unknown as User[]}
+              related={related as unknown as Record<string, Row[]>}
               disabled={disabled}
               commit="change"
+              upload={upload}
               onChange={(v) => onChange(f.id, v)}
             />
           )}

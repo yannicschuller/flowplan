@@ -2325,6 +2325,14 @@ export default function DatabaseView({
           form={data.form}
           editable={editable}
           act={act}
+          members={members}
+          related={
+            data.related as unknown as Record<
+              string,
+              { id: string; cells: { title: string } }[]
+            >
+          }
+          upload={editable ? uploadFile : undefined}
         />
       )}
       {shown.length === 0 && view.type !== "form" && view.type !== "chart" && (
