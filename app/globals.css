@@ -2530,6 +2530,40 @@ tr:hover .row-open {
 .search-results {
   margin: 12px -8px -7px;
 }
+.search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+.search-filters [role="radiogroup"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.search-filters .chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.search-filters .chip.active {
+  color: var(--blue);
+  background: var(--blue-light);
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
+}
+.search-filters select {
+  width: auto;
+  font-size: 12px;
+}
+.search-results mark {
+  background: color-mix(in srgb, #f5c542 45%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
 .search-results > button {
   display: flex;
   align-items: center;

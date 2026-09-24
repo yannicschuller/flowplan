@@ -37,6 +37,7 @@ import {
 } from "@/lib/permissions";
 import { one, all, run, id, audit } from "@/lib/db";
 import type { Page } from "@/lib/types";
+import { searchWorkspace } from "@/lib/search-index";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -124,42 +125,18 @@ export async function GET(
     if (path[0] === "search") {
       const wid = url.searchParams.get("workspace") || "";
       requireMember(user, wid);
-      const query = (url.searchParams.get("q") || "")
-        .trim()
-        .toLowerCase()
-        .slice(0, 200);
-      const candidates = all<Page & { html: string }>(
-        "SELECT p.*,COALESCE(d.html,'') html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL ORDER BY p.updated_at DESC",
-        wid,
-      ).filter((p) => pageRole(user, p));
-      const results = [];
-      for (const p of candidates) {
-        const text = p.html.replace(/<[^>]*>/g, " ");
-        const rowText =
-          p.kind === "database"
-            ? rows(p.id)
-                .map((r) => JSON.stringify(r.cells))
-                .join(" ")
-            : "";
-        const haystack = [p.title, text, rowText].join(" ").toLowerCase();
-        if (haystack.includes(query)) {
-          const index = text.toLowerCase().indexOf(query);
-          results.push({
-            id: p.id,
-            title: p.title,
-            icon: p.icon,
-            space_id: p.space_id,
-            snippet:
-              index >= 0
-                ? text.slice(Math.max(0, index - 40), index + 120)
-                : p.kind === "database"
-                  ? "Treffer in einer Datenbank"
-                  : "",
-          });
-        }
-        if (results.length >= 50) break;
-      }
-      return NextResponse.json(results);
+      return NextResponse.json(
+        searchWorkspace(user, wid, url.searchParams.get("q") || "", {
+          kind: z
+            .enum(["all", "document", "database", "row"])
+            .catch("all")
+            .parse(url.searchParams.get("kind") || "all"),
+          spaceId: url.searchParams.get("space")
+            ? z.uuid().parse(url.searchParams.get("space"))
+            : undefined,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     if (path[0] === "push") {
       const sessionToken = hash((await cookies()).get(cookieName)?.value || "");

@@ -7,5 +7,7 @@ export async function register() {
     startPushWorker();
     const { startReminderWorker } = await import("./lib/date-reminders");
     startReminderWorker(() => void dispatchPush());
+    const { startSearchWorker } = await import("./lib/search-index");
+    startSearchWorker();
   }
 }

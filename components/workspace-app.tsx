@@ -9,6 +9,7 @@ import { SpaceAppearance, SpaceIcon } from "./space-appearance";
 import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
 import { imageFileId } from "@/lib/page-appearance";
+import type { SearchKind, SearchResult } from "@/lib/search-index";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
@@ -147,21 +148,20 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [privateTemplate, setPrivateTemplate] = useState(false);
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<
-    {
-      id: string;
-      title: string;
-      icon: string;
-      space_id: string;
-      snippet: string;
-    }[]
-  >([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchKind, setSearchKind] = useState<SearchKind>("all");
+  const [searchSpace, setSearchSpace] = useState("");
   useEffect(() => {
     if (!search) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       fetch(
-        `/api/search?workspace=${boot.workspace.id}&q=${encodeURIComponent(query)}`,
+        `/api/search?${new URLSearchParams({
+          workspace: boot.workspace.id,
+          q: query,
+          kind: searchKind,
+          ...(searchSpace ? { space: searchSpace } : {}),
+        })}`,
         { signal: controller.signal },
       )
         .then((r) => (r.ok ? r.json() : []))
@@ -172,7 +172,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, search, boot.workspace.id]);
+  }, [query, search, boot.workspace.id, searchKind, searchSpace]);
   const currentId = useRef(pageId),
     currentWorkspace = useRef(boot.workspace.id),
     screenRef = useRef(screen),
@@ -1485,34 +1485,79 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
           <MagnifyingGlass size={22} />
           <input
             autoFocus
-            placeholder="Seiten finden …"
+            placeholder="Seiten, Inhalte und Einträge finden …"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <kbd>esc</kbd>
         </div>
+        <div className="search-filters">
+          <div role="radiogroup" aria-label="Suchergebnisse filtern">
+            {(
+              [
+                ["all", "Alles"],
+                ["document", "Dokumente"],
+                ["database", "Datenbanken"],
+                ["row", "Einträge"],
+              ] as const
+            ).map(([kind, label]) => (
+              <button
+                key={kind}
+                role="radio"
+                aria-checked={searchKind === kind}
+                className={`chip${searchKind === kind ? " active" : ""}`}
+                onClick={() => setSearchKind(kind)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <select
+            aria-label="Bereich"
+            value={searchSpace}
+            onChange={(e) => setSearchSpace(e.target.value)}
+          >
+            <option value="">Alle Bereiche</option>
+            {boot.spaces.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="search-results">
           {searchResults.map((p) => (
             <button
-              key={p.id}
+              key={`${p.id}:${p.rowId || ""}`}
               onClick={() => {
                 setSearch(false);
-                void openPage(p.id);
+                void openPage(
+                  p.id,
+                  p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined,
+                );
               }}
             >
               <PageIcon name={p.icon} />
               <span>
                 {p.title}
+                {p.rowId && (
+                  <small className="search-context">
+                    Eintrag in {p.pageTitle}
+                  </small>
+                )}
                 <small>
-                  {p.snippet ||
-                    boot.spaces.find((s) => s.id === p.space_id)?.name}
+                  {p.snippet ? (
+                    <SearchSnippet text={p.snippet} />
+                  ) : (
+                    boot.spaces.find((s) => s.id === p.space_id)?.name
+                  )}
                 </small>
               </span>
               <ArrowSquareOut size={17} />
             </button>
           ))}
           {!searchResults.length && (
-            <div className="empty-state small">Keine Seiten gefunden.</div>
+            <div className="empty-state small">Nichts gefunden.</div>
           )}
         </div>
       </Modal>
@@ -2094,4 +2139,21 @@ function relativeTime(value: string, clock: number | null) {
 }
 function InfoIcon() {
   return <Check size={18} />;
+}
+function SearchSnippet({ text }: { text: string }) {
+  // Server marks hits with \u0002…\u0003; everything is rendered as text.
+  return (
+    <>
+      {text.split("\u0002").map((part, i) => {
+        if (!i) return <span key={i}>{part}</span>;
+        const [hit, rest = ""] = part.split("\u0003");
+        return (
+          <span key={i}>
+            <mark>{hit}</mark>
+            {rest}
+          </span>
+        );
+      })}
+    </>
+  );
 }
