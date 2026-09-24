@@ -7,6 +7,7 @@ import { one } from "@/lib/db";
 import { database, rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
 import { cellText, computedCells } from "@/lib/database";
+import { displayText } from "@/lib/field-format";
 import { HttpError } from "@/lib/auth";
 import type { Row } from "@/lib/types";
 import { sharedContent, publicField } from "@/lib/shared-content";
@@ -128,7 +129,7 @@ export function PublishedPage({
                           {cellText(r.cells[f.id]) || "Ohne Titel"}
                         </a>
                       ) : (
-                        cellText(computedCells(r, d.fields)[f.id])
+                        displayText(f, computedCells(r, d.fields)[f.id], "UTC")
                       )}
                     </td>
                   ))}
@@ -146,7 +147,7 @@ export function PublishedPage({
                 .map((f) => (
                   <div key={f.id}>
                     <dt>{f.name}</dt>
-                    <dd>{cellText(record.cells[f.id]) || "—"}</dd>
+                    <dd>{displayText(f, record.cells[f.id], "UTC") || "—"}</dd>
                   </div>
                 ))}
             </dl>

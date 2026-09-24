@@ -94,6 +94,13 @@ import Papa from "papaparse";
 import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
+import {
+  dateFormats,
+  formatFieldDate,
+  formatNumber,
+  numberFormats,
+  timeFormats,
+} from "@/lib/field-format";
 import { IconImagePicker } from "./icon-image-picker";
 import dynamic from "next/dynamic";
 const EmojiPicker = dynamic(() => import("./emoji-picker"), { ssr: false });
@@ -876,20 +883,13 @@ export default function DatabaseView({
       return (
         <span className="date-cell">
           <CalendarBlank size={14} />
-          {formatDateValue(v)}
+          {formatFieldDate(v, f)}
         </span>
       );
     }
     if (f.type === "number" && v !== undefined) {
-      const num = Number(v);
-      return f.format === "percent"
-        ? new Intl.NumberFormat("de-DE", { style: "percent" }).format(num)
-        : f.format === "eur"
-          ? new Intl.NumberFormat("de-DE", {
-              style: "currency",
-              currency: "EUR",
-            }).format(num)
-          : new Intl.NumberFormat("de-DE").format(num);
+      if (v === null || v === "") return <span className="muted">—</span>;
+      return formatNumber(Number(v), f.format);
     }
     return cellText(v) || <span className="muted">—</span>;
   }
@@ -1115,7 +1115,7 @@ export default function DatabaseView({
       return (
         summary && (
           <span key={f.id}>
-            {f.name}: {summaryText(summary)}
+            {f.name}: {summaryText(summary, f)}
           </span>
         )
       );
@@ -1824,7 +1824,7 @@ export default function DatabaseView({
                         {summary ? (
                           <>
                             <span>{f.name}: </span>
-                            <strong>{summaryText(summary)}</strong>
+                            <strong>{summaryText(summary, f)}</strong>
                           </>
                         ) : (
                           <span>Berechnen</span>
@@ -3104,16 +3104,58 @@ export default function DatabaseView({
             <label>
               Format
               <select
+                aria-label="Zahlenformat"
                 value={fieldDraft.format || ""}
                 onChange={(e) =>
                   setFieldDraft((f) => ({ ...f, format: e.target.value }))
                 }
               >
-                <option value="">Zahl</option>
-                <option value="percent">Prozent</option>
-                <option value="eur">Euro</option>
+                {Object.entries(numberFormats).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </label>
+          )}
+          {fieldDraft.type === "date" && (
+            <>
+              <label>
+                Datumsformat
+                <select
+                  aria-label="Datumsformat"
+                  value={fieldDraft.format || ""}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({ ...f, format: e.target.value }))
+                  }
+                >
+                  {Object.entries(dateFormats).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Zeitformat
+                <select
+                  aria-label="Zeitformat"
+                  value={fieldDraft.timeFormat || "24"}
+                  onChange={(e) =>
+                    setFieldDraft((f) => ({
+                      ...f,
+                      timeFormat: e.target.value as "24" | "12",
+                    }))
+                  }
+                >
+                  {Object.entries(timeFormats).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
           )}
           {fieldDraft.type === "formula" && (
             <FormulaEditor

@@ -1,3 +1,4 @@
+import { formatFieldDate, formatNumber } from "./field-format";
 import type { Field, Row } from "./types";
 import { isFormulaError } from "./formula";
 import { z } from "zod";
@@ -199,7 +200,10 @@ export function columnSummary(
     overflow,
   };
 }
-export function summaryText(result: ColumnSummary) {
+export function summaryText(
+  result: ColumnSummary,
+  field?: Pick<Field, "type" | "format" | "timeFormat">,
+) {
   const label =
     result.calculation === "sum"
       ? "Σ"
@@ -210,14 +214,23 @@ export function summaryText(result: ColumnSummary) {
     ? "Zahlenbereich überschritten"
     : result.value === null || result.value === undefined
       ? "Keine Werte"
-      : typeof result.value === "number"
-        ? new Intl.NumberFormat("de-DE", {
-            maximumFractionDigits: 4,
-            ...(percentAggregate(result.calculation)
-              ? { style: "percent" as const }
-              : {}),
-          }).format(result.value)
-        : formatDateValue(result.value, "UTC");
+      : typeof result.value === "number" &&
+          field?.type === "number" &&
+          field.format &&
+          ["sum", "average", "median", "min", "max", "range"].includes(
+            result.calculation,
+          )
+        ? formatNumber(result.value, field.format)
+        : typeof result.value === "number"
+          ? new Intl.NumberFormat("de-DE", {
+              maximumFractionDigits: 4,
+              ...(percentAggregate(result.calculation)
+                ? { style: "percent" as const }
+                : {}),
+            }).format(result.value)
+          : field?.type === "date"
+            ? formatFieldDate(result.value, field, "UTC")
+            : formatDateValue(result.value, "UTC");
   return `${label} ${value}${result.errors ? ` (${result.errors} fehlerhaft)` : ""}`;
 }
 

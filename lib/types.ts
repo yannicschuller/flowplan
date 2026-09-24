@@ -71,6 +71,7 @@ export type Field = {
   rollupDisplay?: "number" | "bar" | "ring";
   rollupMax?: number;
   format?: string;
+  timeFormat?: "24" | "12";
 };
 export type Row = {
   id: string;

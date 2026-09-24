@@ -83,20 +83,40 @@ export function localValue(value: unknown, zone: string) {
     .toPlainDateTime()
     .toString({ smallestUnit: "millisecond" });
 }
-export function formatDateValue(value: unknown, zone = browserZone()) {
+export function formatDateValue(
+  value: unknown,
+  zone = browserZone(),
+  style: { date?: string; time?: string } = {},
+) {
   if (!validDateValue(value)) return String(value ?? "");
   const local = localValue(value, zone);
-  const date = Temporal.PlainDate.from(local.slice(0, 10)).toLocaleString(
-    "de-DE",
-    { day: "numeric", month: "short", year: "numeric" },
-  );
+  const day = Temporal.PlainDate.from(local.slice(0, 10));
+  const pad = (n: number, size = 2) => String(n).padStart(size, "0");
+  const date =
+    style.date === "iso"
+      ? day.toString()
+      : style.date === "eu"
+        ? `${pad(day.day)}.${pad(day.month)}.${pad(day.year, 4)}`
+        : style.date === "us"
+          ? `${pad(day.month)}/${pad(day.day)}/${pad(day.year, 4)}`
+          : day.toLocaleString("de-DE", {
+              day: "numeric",
+              month: style.date === "long" ? "long" : "short",
+              year: "numeric",
+            });
   if (!isTimed(value)) return date;
+  const hours = Number(local.slice(11, 13)),
+    minutes = local.slice(14, 16);
+  const time =
+    style.time === "12"
+      ? `${hours % 12 || 12}:${minutes} ${hours < 12 ? "AM" : "PM"}`
+      : local.slice(11, 16);
   try {
     const offset = instantOf(value, zone).toZonedDateTimeISO(zone).offset;
-    return `${date}, ${local.slice(11, 16)} (UTC${offset})`;
+    return `${date}, ${time} (UTC${offset})`;
   } catch {
     // Old imports can contain a floating, ambiguous or nonexistent wall time.
-    return `${date}, ${local.slice(11, 16)} (Zeitzone prüfen)`;
+    return `${date}, ${time} (Zeitzone prüfen)`;
   }
 }
 export function dateInZone(zone: string) {
