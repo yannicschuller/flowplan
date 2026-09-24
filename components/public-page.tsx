@@ -6,11 +6,17 @@ import { notFound } from "next/navigation";
 import { one } from "@/lib/db";
 import { database, rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
-import { cellText, computedCells } from "@/lib/database";
+import { cellText, computedCells, queryRows } from "@/lib/database";
+import { documentPreview } from "@/lib/document-preview";
+import {
+  configuredGroups,
+  databaseGroups,
+  groupingField,
+} from "@/lib/database-groups";
 import { displayText } from "@/lib/field-format";
 import { PublicationCopy } from "./publication-copy";
 import { HttpError } from "@/lib/auth";
-import type { Row } from "@/lib/types";
+import type { Field, Row, View } from "@/lib/types";
 import { sharedContent, publicField } from "@/lib/shared-content";
 import { SharedInteractions } from "./shared-interactions";
 
@@ -18,10 +24,12 @@ export function PublishedPage({
   token,
   pageId,
   rowId,
+  viewId,
 }: {
   token: string;
   pageId?: string;
   rowId?: string;
+  viewId?: string;
 }) {
   let context;
   try {
@@ -33,15 +41,39 @@ export function PublishedPage({
   const { page, root, pages } = context;
   const d = page.kind === "database" ? database(page.id) : null;
   const visible = d?.fields.filter(publicField);
-  const ranks = rowOrderRanks(d?.views[0]?.rowOrder);
-  const records = d
-    ? rows(page.id).sort(
-        (a, b) =>
-          (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) ||
-          a.position - b.position,
-      )
-    : [];
-  const record = rowId && d ? records.find((r) => r.id === rowId) : null;
+  // Table, board, gallery and list views are published with their filters,
+  // sorting and order; other layouts fall back to the table.
+  const publicViews = (d?.views || []).filter((v) =>
+    ["table", "board", "gallery", "list"].includes(v.type),
+  );
+  const activeView =
+    publicViews.find((v) => v.id === viewId) || publicViews[0] || d?.views[0];
+  const ranks = rowOrderRanks(activeView?.rowOrder);
+  const allRecords = d ? rows(page.id) : [];
+  const records =
+    d && activeView
+      ? queryRows(
+          allRecords.map((r) => ({ ...r, cells: computedCells(r, d.fields) })),
+          d.fields,
+          activeView,
+        )
+      : allRecords.sort(
+          (a, b) =>
+            (ranks.get(a.id) ?? Infinity) - (ranks.get(b.id) ?? Infinity) ||
+            a.position - b.position,
+        );
+  // Images are shown only when the publication serves them.
+  const publicImage = (url: unknown) => {
+    const fid = typeof url === "string" ? imageFileId(url) : undefined;
+    if (!fid) return undefined;
+    try {
+      publicFile(token, fid);
+      return `/api/share/${token}/files/${fid}`;
+    } catch {
+      return undefined;
+    }
+  };
+  const record = rowId && d ? allRecords.find((r) => r.id === rowId) : null;
   if (rowId && !record) notFound();
   const html = record
     ? String(
@@ -137,7 +169,90 @@ export function PublishedPage({
       )}
       {!record && <PageIcon name={iconUrl} size={40} />}
       <h1>{record ? cellText(record.cells["title"]) : page.title}</h1>
-      {d && !record ? (
+      {d && !record && publicViews.length > 1 && (
+        <nav className="public-views" aria-label="Ansichten">
+          {publicViews.map((v) => (
+            <a
+              key={v.id}
+              href={`${href(page.id)}?view=${encodeURIComponent(v.id)}`}
+              aria-current={v.id === activeView?.id ? "page" : undefined}
+            >
+              {v.name}
+            </a>
+          ))}
+        </nav>
+      )}
+      {d && !record && activeView?.type === "board" ? (
+        <PublicBoard
+          records={records}
+          fields={d.fields}
+          view={activeView}
+          visible={visible || []}
+          link={(r) => `${href(page.id)}?row=${r.id}`}
+        />
+      ) : d && !record && activeView?.type === "gallery" ? (
+        <div className="gallery gallery-size-medium public-gallery">
+          {records.map((r) => {
+            const image =
+              publicImage(r.cover) ||
+              publicImage(documentPreview(String(r.content || "")).image);
+            return (
+              <a
+                key={r.id}
+                className="record-card"
+                href={`${href(page.id)}?row=${r.id}`}
+              >
+                {image && (
+                  <span className="gallery-cover">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={image} alt="" />
+                  </span>
+                )}
+                <strong>
+                  {cellText(r.cells[d.fields[0]?.id]) || "Ohne Titel"}
+                </strong>
+                <span className="card-properties">
+                  {(visible || [])
+                    .filter(
+                      (f) =>
+                        f.id !== d.fields[0]?.id &&
+                        r.cells[f.id] != null &&
+                        r.cells[f.id] !== "",
+                    )
+                    .slice(0, 3)
+                    .map((f) => (
+                      <span key={f.id}>
+                        {displayText(f, r.cells[f.id], "UTC")}
+                      </span>
+                    ))}
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      ) : d && !record && activeView?.type === "list" ? (
+        <div className="record-list public-list">
+          {records.map((r) => (
+            <a
+              key={r.id}
+              className="record-list-item"
+              href={`${href(page.id)}?row=${r.id}`}
+            >
+              <span>{cellText(r.cells[d.fields[0]?.id]) || "Ohne Titel"}</span>
+              <span>
+                {(visible || [])
+                  .filter((f) => f.id !== d.fields[0]?.id)
+                  .slice(0, 3)
+                  .map((f) => (
+                    <span key={f.id}>
+                      {displayText(f, r.cells[f.id], "UTC")}
+                    </span>
+                  ))}
+              </span>
+            </a>
+          ))}
+        </div>
+      ) : d && !record ? (
         <div className="data-table-scroll">
           <table className="data-table">
             <thead>
@@ -157,7 +272,7 @@ export function PublishedPage({
                           {cellText(r.cells[f.id]) || "Ohne Titel"}
                         </a>
                       ) : (
-                        displayText(f, computedCells(r, d.fields)[f.id], "UTC")
+                        displayText(f, r.cells[f.id], "UTC")
                       )}
                     </td>
                   ))}
@@ -203,5 +318,59 @@ export function PublishedPage({
       />
       <footer className="home-footnote">Mit Flowplan veröffentlicht</footer>
     </main>
+  );
+}
+function PublicBoard({
+  records,
+  fields,
+  view,
+  visible,
+  link,
+}: {
+  records: Row[];
+  fields: Field[];
+  view: View;
+  visible: Field[];
+  link: (row: Row) => string;
+}) {
+  const field = groupingField(fields, view);
+  // Groups by people or relations would reveal hidden data.
+  const groups =
+    field && visible.some((f) => f.id === field.id)
+      ? configuredGroups(databaseGroups(records, field, {}), view)
+      : [{ key: "all", label: "Alle Einträge", value: null, rows: records }];
+  return (
+    <div className="board public-board">
+      {groups.map((g) => (
+        <section
+          className="board-column"
+          key={g.key}
+          aria-label={`Gruppe ${g.label}`}
+        >
+          <header>
+            <span className="tag tag-gray">{g.label}</span>
+            <span className="muted">{g.rows.length}</span>
+          </header>
+          {g.rows.map((r) => (
+            <a key={r.id} className="record-card" href={link(r)}>
+              <strong>
+                {cellText(r.cells[fields[0]?.id]) || "Ohne Titel"}
+              </strong>
+              <span className="card-properties">
+                {visible
+                  .filter((f) => f.id !== fields[0]?.id && f.id !== field?.id)
+                  .filter((f) => r.cells[f.id] != null && r.cells[f.id] !== "")
+                  .slice(0, 3)
+                  .map((f) => (
+                    <span key={f.id}>
+                      {displayText(f, r.cells[f.id], "UTC")}
+                    </span>
+                  ))}
+              </span>
+            </a>
+          ))}
+        </section>
+      ))}
+    </div>
   );
 }

@@ -2837,6 +2837,28 @@ tr:hover .row-open {
   font-size: 16px;
   margin: 0 0 4px;
 }
+.public-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+.public-views a {
+  padding: 8px 2px;
+  color: var(--secondary);
+  text-decoration: none;
+}
+.public-views a[aria-current="page"] {
+  color: var(--blue);
+  border-bottom: 2px solid var(--blue);
+}
+.public-board .record-card,
+.public-gallery .record-card,
+.public-list .record-list-item {
+  color: inherit;
+  text-decoration: none;
+}
 .version-diff {
   display: grid;
   gap: 6px;
