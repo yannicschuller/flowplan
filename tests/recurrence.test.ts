@@ -183,3 +183,83 @@ test("rules are versioned record edits and survive copies and archives", async (
   set(null);
   assert.equal(rows(page)[0].recurrence, "");
 });
+
+test("skipped occurrences disappear and repeating reminders fire once per occurrence", async () => {
+  assert.deepEqual(
+    occurrenceDates(
+      "2026-01-01",
+      { freq: "weekly", interval: 1, exclude: ["2026-01-15"] },
+      "2026-01-01",
+      "2026-01-31",
+    ),
+    ["2026-01-08", "2026-01-22", "2026-01-29"],
+  );
+  const { processDateReminders } = await import("../lib/date-reminders");
+  const owner = account("rec-reminder");
+  const wid = createWorkspace(owner.id, "Serienerinnerung");
+  const page = (
+    command(owner, {
+      action: "page.create",
+      workspaceId: wid,
+      spaceId: bootstrap(owner, wid).spaces[0].id,
+      title: "Serie",
+      kind: "database",
+    }) as { id: string }
+  ).id;
+  const d = (await import("../lib/api")).database(page);
+  command(owner, {
+    action: "database.update",
+    pageId: page,
+    version: d.version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "due", name: "Termin", type: "date" },
+    ],
+    views: d.views,
+  });
+  const start = Date.now() + 3600000;
+  const iso = (ms: number) =>
+    new Date(ms).toISOString().replace(/\.\d+Z$/, "Z");
+  const row = (
+    command(owner, {
+      action: "row.create",
+      pageId: page,
+      cells: { title: "Stand-up", due: iso(start) },
+    }) as { id: string }
+  ).id;
+  command(owner, {
+    action: "row.recurrence",
+    pageId: page,
+    rowId: row,
+    version: one<{ version: number }>(
+      "SELECT version FROM rows WHERE id=?",
+      row,
+    )!.version,
+    recurrence: {
+      freq: "daily",
+      interval: 1,
+      exclude: [iso(start + 2 * 86400000).slice(0, 10)],
+    },
+  });
+  command(owner, {
+    action: "reminder.set",
+    pageId: page,
+    rowId: row,
+    fieldId: "due",
+    offset: 0,
+    timeZone: "UTC",
+  });
+  const count = () =>
+    one<{ n: number }>(
+      "SELECT COUNT(*) n FROM notifications WHERE user_id=? AND body LIKE 'Erinnerung:%'",
+      owner.id,
+    )!.n;
+  assert.equal(processDateReminders(start + 60000), 1);
+  assert.equal(processDateReminders(start + 120000), 0);
+  // The next day's occurrence fires once more.
+  assert.equal(processDateReminders(start + 86400000 + 60000), 1);
+  // The skipped day stays silent.
+  assert.equal(processDateReminders(start + 2 * 86400000 + 60000), 0);
+  assert.equal(processDateReminders(start + 3 * 86400000 + 60000), 1);
+  assert.equal(count(), 3);
+});

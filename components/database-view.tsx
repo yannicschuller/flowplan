@@ -1049,6 +1049,44 @@ export default function DatabaseView({
                   }}
                 />
               </label>
+              <label>
+                Termin auslassen
+                <input
+                  type="date"
+                  aria-label="Termin auslassen am"
+                  disabled={!editable}
+                  onChange={(e) => {
+                    const date = e.target.value;
+                    e.target.value = "";
+                    if (date && !rule.exclude?.includes(date))
+                      void save({
+                        ...rule,
+                        exclude: [...(rule.exclude || []), date].sort(),
+                      });
+                  }}
+                />
+              </label>
+              {!!rule.exclude?.length && (
+                <span className="recurrence-exclusions">
+                  {rule.exclude.map((date) => (
+                    <button
+                      key={date}
+                      type="button"
+                      className="chip"
+                      disabled={!editable}
+                      aria-label={`${date} wieder einplanen`}
+                      onClick={() =>
+                        void save({
+                          ...rule,
+                          exclude: rule.exclude!.filter((d) => d !== date),
+                        })
+                      }
+                    >
+                      {date} ×
+                    </button>
+                  ))}
+                </span>
+              )}
               <small className="muted">{recurrenceText(rule)}</small>
             </>
           )}

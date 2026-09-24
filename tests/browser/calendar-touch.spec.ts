@@ -162,6 +162,18 @@ test("weekly repeating entries show occurrences that open the original record", 
   await occurrence.locator(".calendar-event").click();
   await expect(entry).toBeVisible();
   expect(page.url()).toContain(`row=${row.id}`);
+  // Skipping one occurrence removes it from the calendar.
+  await entry.getByLabel("Termin auslassen am").fill(`${month}-17`);
+  await expect
+    .poll(async () => (await read()).rows[0].recurrence)
+    .toContain(`${month}-17`);
+  await entry.getByRole("button", { name: "Schließen", exact: true }).click();
+  await expect(
+    page.locator(`.calendar-day[data-day="${month}-17"] .calendar-event`),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(`.calendar-day[data-day="${month}-24"] .calendar-event`),
+  ).toHaveCount(1);
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });

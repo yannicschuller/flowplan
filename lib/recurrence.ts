@@ -12,6 +12,11 @@ export const recurrenceSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
     count: z.number().int().min(2).max(1000).optional(),
+    // Single occurrences that are skipped.
+    exclude: z
+      .array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+      .max(200)
+      .optional(),
   })
   .refine((r) => !(r.until && r.count), "Entweder Enddatum oder Anzahl.");
 export type Recurrence = z.infer<typeof recurrenceSchema>;
@@ -76,7 +81,10 @@ export function occurrenceDates(
     if (rule.count && k >= rule.count) break;
     const date = step(k);
     if (Temporal.PlainDate.compare(date, end) > 0) break;
-    if (Temporal.PlainDate.compare(date, first) >= 0)
+    if (
+      Temporal.PlainDate.compare(date, first) >= 0 &&
+      !rule.exclude?.includes(date.toString())
+    )
       dates.push(date.toString());
   }
   return dates;

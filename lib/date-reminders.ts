@@ -4,7 +4,13 @@ import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { requireRow } from "./row-documents";
 import { cellText } from "./database";
-import { formatDateValue, validDateValue, validZone } from "./date-values";
+import {
+  Temporal,
+  formatDateValue,
+  validDateValue,
+  validZone,
+} from "./date-values";
+import { occurrenceDates, parseRecurrence, shiftDateValue } from "./recurrence";
 import {
   ARM_GRACE_MS,
   reminderOffsets,
@@ -143,6 +149,7 @@ type Due = {
   armed_at: number;
   fired_value: string | null;
   cells: string;
+  recurrence: string;
   disabled: number;
 };
 
@@ -151,7 +158,7 @@ type Due = {
 export function processDateReminders(now = Date.now()) {
   let fired = 0;
   const reminders = all<Due>(
-    `SELECT r.*,w.cells,u.disabled FROM date_reminders r
+    `SELECT r.*,w.cells,w.recurrence,u.disabled FROM date_reminders r
      JOIN rows w ON w.id=r.row_id AND w.page_id=r.page_id
      JOIN users u ON u.id=r.user_id`,
   );
@@ -190,18 +197,47 @@ export function processDateReminders(now = Date.now()) {
         ...key,
       );
     }
-    if (!value || value === reminder.fired_value || reminder.disabled) continue;
-    const target = reminderTarget(
+    if (!value || reminder.disabled) continue;
+    // Repeating entries remind for every occurrence: the latest due one that
+    // has not fired yet.
+    const rule = parseRecurrence(reminder.recurrence);
+    const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const candidates = [
       value,
-      reminder.offset_minutes,
-      reminder.time_zone,
-    );
-    if (
-      !target ||
-      target.epochMilliseconds > now ||
-      target.epochMilliseconds < armed - ARM_GRACE_MS
-    )
-      continue;
+      ...(rule
+        ? occurrenceDates(
+            value,
+            rule,
+            day(armed - 86400000),
+            day(now + 8 * 86400000),
+          ).map((date) =>
+            shiftDateValue(
+              value,
+              Temporal.PlainDate.from(value.slice(0, 10)).until(
+                Temporal.PlainDate.from(date),
+              ).days,
+            ),
+          )
+        : []),
+    ];
+    const due = candidates
+      .map((occurrence) => ({
+        occurrence,
+        target: reminderTarget(
+          occurrence,
+          reminder.offset_minutes,
+          reminder.time_zone,
+        ),
+      }))
+      .filter(
+        (c) =>
+          c.target &&
+          c.target.epochMilliseconds <= now &&
+          c.target.epochMilliseconds >= armed - ARM_GRACE_MS,
+      )
+      .at(-1);
+    if (!due || due.occurrence === reminder.fired_value) continue;
+    const occurrence = due.occurrence;
     const page = one<Page>(
       "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
       reminder.page_id,
@@ -218,10 +254,10 @@ export function processDateReminders(now = Date.now()) {
       if (
         !run(
           "UPDATE date_reminders SET fired_value=? WHERE user_id=? AND row_id=? AND field_id=? AND observed_value=? AND fired_value IS NOT ?",
-          value,
+          occurrence,
           ...key,
           value,
-          value,
+          occurrence,
         ).changes
       )
         return;
@@ -229,7 +265,7 @@ export function processDateReminders(now = Date.now()) {
         "INSERT INTO notifications(id,user_id,body,page_id,row_id) VALUES(?,?,?,?,?)",
         id(),
         reminder.user_id,
-        `Erinnerung: „${title}“ – ${field.name}: ${formatDateValue(value, reminder.time_zone)}`,
+        `Erinnerung: „${title}“ – ${field.name}: ${formatDateValue(occurrence, reminder.time_zone)}`,
         reminder.page_id,
         reminder.row_id,
       );

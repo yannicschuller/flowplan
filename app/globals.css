@@ -2862,6 +2862,18 @@ tr:hover .row-open {
 .chart-scroll.no-grid .chart-grid {
   display: none;
 }
+.recurrence-exclusions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-basis: 100%;
+}
+.recurrence-exclusions .chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
 .version-diff {
   display: grid;
   gap: 6px;
