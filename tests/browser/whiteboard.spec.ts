@@ -350,3 +350,106 @@ test("board templates and presenting frames", async ({ page }, testInfo) => {
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: board.id });
 });
+
+test("comment pins, tables, voting, timer and full screen", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop-Zeigergesten");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { command, board } = await setup(page, `Workshop ${Date.now()}`);
+  await page.goto(`/#page=${board.id}`);
+  const wb = page.getByLabel("Whiteboard", { exact: true });
+  const canvas = wb.locator(".wb-canvas");
+  const box = (await canvas.boundingBox())!;
+  const cx = box.x + box.width / 2,
+    cy = box.y + box.height / 2;
+  // Table: create, type into cells with Tab, add a row.
+  await wb.getByRole("button", { name: "Tabelle", exact: true }).click();
+  await page.mouse.click(cx - 150, cy - 120);
+  await expect(wb.locator(".wb-table")).toHaveCount(1);
+  const table = (await wb.locator("g.wb-table").boundingBox())!;
+  await page.mouse.dblclick(table.x + 20, table.y + 10);
+  await page.keyboard.type("Thema");
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("Owner");
+  await page.keyboard.press("Escape");
+  await expect(wb.locator(".wb-cell").nth(0)).toHaveText("Thema");
+  await expect(wb.locator(".wb-cell").nth(1)).toHaveText("Owner");
+  await wb.locator("g.wb-table").click();
+  await wb.getByRole("button", { name: "+ Zeile" }).click();
+  await expect(wb.locator(".wb-cell")).toHaveCount(12);
+  // A sticky to vote on, then a comment pin with a reply.
+  await page.keyboard.press("Escape");
+  await canvas.dblclick({
+    position: { x: box.width / 2 + 200, y: box.height / 2 + 60 },
+  });
+  await page.keyboard.type("Option A");
+  await page.keyboard.press("Escape");
+  await wb.getByRole("button", { name: "Kommentar", exact: true }).click();
+  await page.mouse.click(cx + 60, cy + 150);
+  const comment = wb.getByRole("dialog", { name: "Kommentar" });
+  await comment.getByLabel("Kommentar schreiben").fill("Bitte prüfen");
+  await comment.getByRole("button", { name: "Senden" }).click();
+  await comment.getByLabel("Antworten").fill("Erledige ich");
+  await comment.getByRole("button", { name: "Senden" }).click();
+  await expect(comment.locator(".wb-comment-message")).toHaveCount(2);
+  await comment.getByRole("button", { name: "Erledigt" }).click();
+  await expect(comment).toContainText("Erledigter Kommentar");
+  await comment.getByRole("button", { name: "Kommentar schließen" }).click();
+  await expect(wb.locator("g.wb-comment")).toContainText("2");
+  // Voting.
+  await wb.getByRole("button", { name: "Abstimmung", exact: true }).click();
+  await wb
+    .getByRole("dialog", { name: "Abstimmung" })
+    .getByRole("button", { name: "Abstimmung starten" })
+    .click();
+  await wb.getByRole("button", { name: /Stimme für Option A: 0/ }).click();
+  await expect(
+    wb.getByRole("button", { name: /Stimme für Option A: 1/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(wb.locator(".wb-results")).toContainText("Option A");
+  await wb.getByRole("button", { name: "Abstimmung beenden" }).click();
+  // Timer.
+  await wb.getByRole("button", { name: "Timer", exact: true }).click();
+  await wb
+    .getByRole("dialog", { name: "Timer einstellen" })
+    .getByRole("button", { name: "1 Min" })
+    .click();
+  const timer = wb.getByRole("timer");
+  await expect(timer).toContainText(/0:5\d|1:00/);
+  await timer.getByRole("button", { name: "Pause" }).click();
+  await expect(timer.getByRole("button", { name: "Weiter" })).toBeVisible();
+  // Everything reaches a second person.
+  await expect(wb.getByText("Gespeichert", { exact: true })).toBeVisible({
+    timeout: 10000,
+  });
+  const other = await browser.newContext({ viewport: page.viewportSize()! });
+  const second = await other.newPage();
+  await second.request.post(`${origin}/api/auth/demo`, { headers: { origin } });
+  await second.goto(`${origin}/#page=${board.id}`);
+  const b = second.getByLabel("Whiteboard", { exact: true });
+  await expect(b.getByRole("timer")).toContainText(/0:5\d|1:00/);
+  await expect(b.locator(".wb-cell").nth(0)).toHaveText("Thema");
+  await expect(
+    b.getByRole("button", { name: /Stimme für Option A: 1/ }),
+  ).toBeVisible();
+  await other.close();
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`/api/pages/${board.id}`)).json()).html,
+    )
+    .toContain("Bitte prüfen");
+  // Full screen covers the page and ends again.
+  await wb.getByRole("button", { name: "Vollbild", exact: true }).click();
+  await expect(wb).toHaveClass(/wb-fullscreen/);
+  const full = (await wb.boundingBox())!;
+  expect(full.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 1);
+  await page.screenshot({ path: "test-results/whiteboard/workshop.png" });
+  await wb.getByRole("button", { name: "Vollbild beenden" }).click();
+  await expect(wb).not.toHaveClass(/wb-fullscreen/);
+  expect(errors).toEqual([]);
+  await command({ action: "page.delete", pageId: board.id });
+});

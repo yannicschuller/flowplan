@@ -7846,8 +7846,9 @@ textarea {
   }
 }
 /* Pages and panels appear softly. */
+/* Only while it runs: a lasting transform would trap fixed children. */
 .page-layout {
-  animation: page-in 0.28s var(--ease-out) both;
+  animation: page-in 0.28s var(--ease-out) backwards;
 }
 @keyframes page-in {
   from {
@@ -7857,7 +7858,7 @@ textarea {
 }
 .comments-panel,
 .inline-comment-panel {
-  animation: panel-in 0.22s var(--ease-out) both;
+  animation: panel-in 0.22s var(--ease-out) backwards;
 }
 @keyframes panel-in {
   from {
@@ -8408,4 +8409,285 @@ textarea {
 .wb-present span {
   padding: 0 8px;
   white-space: nowrap;
+}
+/* ---------- References vs. links ----------
+   Links to the web are underlined with an outward arrow; references to
+   Flowplan pages are chips with a page symbol; people keep their @ chip. */
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel)
+  a[href^="http"] {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--blue) 40%, transparent);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel)
+  a[href^="http"]:hover {
+  text-decoration-color: var(--blue);
+}
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel)
+  a[href^="http"]::after {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-left: 2px;
+  vertical-align: 0.05em;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 3h8v8M13 3 3 13' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5 3h8v8M13 3 3 13' stroke='black' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel)
+  :is(a[href*="#page="], a[href^="/share/"]) {
+  display: inline;
+  padding: 1px 6px 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: none;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease;
+}
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel)
+  :is(a[href*="#page="], a[href^="/share/"]):hover {
+  background: var(--blue-light);
+  border-color: color-mix(in srgb, var(--blue) 30%, transparent);
+}
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel)
+  :is(a[href*="#page="], a[href^="/share/"])::before {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 4px;
+  vertical-align: -0.08em;
+  background: var(--secondary);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13 M6 8h5 M6 11h5' stroke='black' stroke-width='1.4' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13 M6 8h5 M6 11h5' stroke='black' stroke-width='1.4' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.whiteboard.wb-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  height: 100dvh;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  animation: fade-in 0.18s ease both;
+}
+.wb-table-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+.wb-cell {
+  padding: 4px 8px;
+  border-right: 1px solid #dee2e6;
+  border-bottom: 1px solid #dee2e6;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.3;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+}
+.wb-cell.head {
+  background: #f1f3f5;
+  font-weight: 600;
+}
+.wb-cell-editor {
+  background: #ffffff;
+  border-radius: 0;
+  text-align: left;
+}
+.wb-comment-popover {
+  position: absolute;
+  z-index: 6;
+  width: 300px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  user-select: text;
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+.wb-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wb-comment-head strong {
+  flex: 1;
+}
+.wb-comment-head button {
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.wb-comment-thread {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+.wb-comment-message span {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.wb-comment-message small {
+  color: var(--muted);
+}
+.wb-comment-message p {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+}
+.wb-comment-popover form {
+  display: grid;
+  gap: 6px;
+}
+.wb-comment-popover textarea {
+  min-height: 60px;
+}
+.wb-comment-popover form .button {
+  justify-self: end;
+}
+.wb-vote {
+  position: absolute;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12px;
+  box-shadow: 0 2px 6px #14244422;
+}
+.wb-vote.mine {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.wb-vote:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.wb-timer {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  animation: toast-in 0.25s var(--ease-spring) both;
+}
+.wb-timer strong {
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: center;
+}
+.wb-timer button {
+  color: inherit;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.wb-timer button:hover {
+  background: #ffffff22;
+}
+.wb-timer.done {
+  background: #e03131;
+  animation: timer-pulse 1s ease-in-out infinite;
+}
+@keyframes timer-pulse {
+  50% {
+    scale: 1.05;
+  }
+}
+.wb-panel {
+  position: absolute;
+  left: 64px;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 5;
+  width: 260px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+.wb-panel p {
+  margin: 0;
+  color: var(--secondary);
+}
+.wb-panel form {
+  display: grid;
+  gap: 8px;
+}
+.wb-panel label {
+  margin: 0;
+}
+.wb-timer-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.wb-timer-presets .button {
+  padding: 5px 9px;
+}
+.wb-results {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.wb-results li span {
+  display: inline-block;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.wb-results li strong {
+  float: right;
+}
+@media (max-width: 760px) {
+  .wb-panel {
+    left: 8px;
+    top: auto;
+    bottom: 120px;
+    translate: none;
+  }
+  .wb-comment-popover {
+    width: min(300px, calc(100% - 16px));
+  }
 }

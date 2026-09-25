@@ -308,6 +308,73 @@ export function WhiteboardShape({
         </g>
       );
     }
+    case "comment": {
+      const count = item.messages?.length || 0;
+      return (
+        <g
+          transform={`translate(${item.x} ${item.y})`}
+          opacity={item.resolved ? 0.45 : 1}
+        >
+          <path
+            d="M 16 0 C 25 0 32 7 32 16 C 32 25 25 32 16 32 L 2 32 L 2 16 C 2 7 7 0 16 0 Z"
+            fill={item.resolved ? "#adb5bd" : "#f08c00"}
+            stroke="#ffffff"
+            strokeWidth={2}
+            filter="url(#wb-shadow)"
+          />
+          <text
+            x={17}
+            y={21}
+            textAnchor="middle"
+            fontSize={13}
+            fontWeight={700}
+            fill="#ffffff"
+          >
+            {count || "+"}
+          </text>
+        </g>
+      );
+    }
+    case "table": {
+      const cells = item.cells?.length ? item.cells : [[""]];
+      const cols = Math.max(1, ...cells.map((r) => r.length));
+      return (
+        <g transform={transform}>
+          <rect
+            width={item.w}
+            height={item.h}
+            fill="#ffffff"
+            stroke="#adb5bd"
+            rx={4}
+          />
+          <foreignObject
+            width={Math.max(1, item.w)}
+            height={Math.max(1, item.h)}
+          >
+            <div
+              className="wb-table-grid"
+              style={{
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${cells.length}, minmax(0, 1fr))`,
+                fontSize: item.fontSize || 14,
+              }}
+            >
+              {cells.flatMap((row, r) =>
+                Array.from({ length: cols }, (_, c) => (
+                  <div
+                    key={`${r}:${c}`}
+                    className={`wb-cell${r === 0 && item.header !== false ? " head" : ""}`}
+                    data-cell={`${r}:${c}`}
+                  >
+                    {row[c] || ""}
+                  </div>
+                )),
+              )}
+            </div>
+          </foreignObject>
+        </g>
+      );
+    }
     case "emoji":
       return (
         <g transform={transform}>

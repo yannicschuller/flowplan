@@ -43,6 +43,28 @@ test("links and mentions in the editor can be clicked", async ({
   await page.goto(`/#page=${doc.id}`);
   const content = page.getByLabel("Dokumentinhalt", { exact: true });
   await expect(content).toContainText("Zur Zielseite");
+  // Web links and Flowplan references look different.
+  const external = await content.getByText("Extern").evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { line: s.textDecorationLine, border: s.borderTopWidth };
+  });
+  const reference = await content.getByText("Zur Zielseite").evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      line: s.textDecorationLine,
+      border: s.borderTopWidth,
+      background: s.backgroundColor,
+    };
+  });
+  expect(external.line).toBe("underline");
+  expect(external.border).toBe("0px");
+  expect(reference.line).toBe("none");
+  expect(reference.border).toBe("1px");
+  expect(reference.background).not.toBe("rgba(0, 0, 0, 0)");
+  await page.screenshot({
+    path: `test-results/editor-links-${testInfo.project.name}.png`,
+    clip: { x: 0, y: 0, width: 1000, height: 420 },
+  });
   // External links open in a new tab.
   const popup = page.waitForEvent("popup");
   await content.getByText("Extern").click();

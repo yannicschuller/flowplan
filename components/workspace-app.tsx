@@ -1687,6 +1687,8 @@ export default function WorkspaceApp({
                       onReload={refresh}
                       onError={notify}
                       onOpenPage={(id) => void openPage(id)}
+                      userId={boot.user.id}
+                      userName={boot.user.name}
                     />
                   ) : (
                     <DocumentEditor

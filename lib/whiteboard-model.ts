@@ -12,6 +12,8 @@ export const whiteboardItemTypes = [
   "frame",
   "card",
   "emoji",
+  "comment",
+  "table",
 ] as const;
 export type WhiteboardItemType = (typeof whiteboardItemTypes)[number];
 export const shapeKinds = [
@@ -59,6 +61,26 @@ export type WhiteboardItem = {
   emoji?: string;
   locked?: boolean;
   author?: string;
+  // Tables: cell texts by row; the first row can be a header.
+  cells?: string[][];
+  header?: boolean;
+  // Comment pins: the thread, and whether it is done.
+  messages?: WhiteboardMessage[];
+  resolved?: boolean;
+  // Votes by person (voting sessions).
+  votes?: Record<string, boolean>;
+};
+export type WhiteboardMessage = {
+  id: string;
+  author: string;
+  name: string;
+  text: string;
+  at: number;
+};
+// Board-wide state shared by everyone: voting session and timer.
+export type WhiteboardMeta = {
+  voting?: { active: boolean; max: number };
+  timer?: { endsAt: number | null; remaining: number; duration: number };
 };
 export const stickyColors = [
   "#fff6b6",
@@ -100,8 +122,18 @@ export const safeImageSource = (src?: string) =>
     /^\/api\/share\/[\w-]+\/files\/[\w-]+$/.test(src) ||
     /^https:\/\//i.test(src));
 export function itemText(item: Partial<WhiteboardItem>) {
-  return [item.text, item.emoji].filter(Boolean).join(" ").trim();
+  return [
+    item.text,
+    item.emoji,
+    ...(item.cells || []).flat(),
+    ...(item.messages || []).map((m) => m.text),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 }
+export const emptyTable = (rows = 3, cols = 3) =>
+  Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
 // Bounding box of an item (connectors and pens span their points).
 export function itemBounds(
   item: WhiteboardItem,

@@ -8,12 +8,15 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import * as Y from "yjs";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import {
   ArrowCounterClockwise,
   ArrowClockwise,
   ArrowUpRight,
   ArrowsOut,
+  CornersIn,
+  CornersOut,
   Cursor,
   DownloadSimple,
   FileText,
@@ -33,6 +36,10 @@ import {
   Trash,
   CopySimple,
   SquaresFour,
+  Table,
+  ChatCircle,
+  ThumbsUp,
+  Timer,
   PresentationChart,
   CaretLeft,
   CaretRight,
@@ -63,6 +70,8 @@ import {
   type ShapeKind,
   type WhiteboardItem,
   type WhiteboardItemType,
+  type WhiteboardMeta,
+  emptyTable,
 } from "@/lib/whiteboard-model";
 
 const EmojiPicker = dynamic(() => import("../emoji-picker"), {
@@ -86,7 +95,9 @@ type Tool =
   | "shape"
   | "connector"
   | "pen"
-  | "frame";
+  | "frame"
+  | "table"
+  | "comment";
 type View = { x: number; y: number; zoom: number };
 type Gesture =
   | { kind: "pan"; client: Point; view: View }
@@ -96,6 +107,7 @@ type Gesture =
       start: Point;
       origins: Map<string, { x: number; y: number; from?: Point; to?: Point }>;
       moved: boolean;
+      clicked?: string;
     }
   | {
       kind: "resize";
@@ -144,7 +156,11 @@ export default function Whiteboard({
   onReload,
   onError,
   onOpenPage,
+  userId = "",
+  userName = "",
 }: {
+  userId?: string;
+  userName?: string;
   pageId: string;
   state: string;
   generation: string;
@@ -180,6 +196,40 @@ export default function Whiteboard({
       }),
     [itemsMap],
   );
+  const [fullscreen, setFullscreen] = useState(false);
+  const [cellEdit, setCellEdit] = useState<{
+      id: string;
+      r: number;
+      c: number;
+    } | null>(null),
+    [commentOpen, setCommentOpen] = useState<string | null>(null),
+    [showComments, setShowComments] = useState(true),
+    [votingOpen, setVotingOpen] = useState(false),
+    [timerOpen, setTimerOpen] = useState(false),
+    [meta, setMeta] = useState<WhiteboardMeta>({}),
+    [now, setNow] = useState(() => Date.now());
+  // Full screen covers the page (dialogs stay visible) and, where the
+  // browser allows it, hides the browser interface too.
+  async function toggleFullscreen() {
+    if (fullscreen) {
+      setFullscreen(false);
+      if (document.fullscreenElement)
+        await document.exitFullscreen().catch(() => {});
+    } else {
+      setFullscreen(true);
+      await document.documentElement.requestFullscreen?.().catch(() => {});
+    }
+    requestAnimationFrame(() =>
+      container.current?.focus({ preventScroll: true }),
+    );
+  }
+  useEffect(() => {
+    const change = () => {
+      if (!document.fullscreenElement) setFullscreen(false);
+    };
+    document.addEventListener("fullscreenchange", change);
+    return () => document.removeEventListener("fullscreenchange", change);
+  }, []);
   const [templatesOpen, setTemplatesOpen] = useState(false),
     [presenting, setPresenting] = useState<number | null>(null);
   const [tool, setTool] = useState<Tool>("select"),
@@ -448,7 +498,8 @@ export default function Whiteboard({
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
-  }, [zoomAt]);
+    // The canvas is a new element after entering or leaving full screen.
+  }, [zoomAt, fullscreen]);
 
   // ---- editing the board ----
   const change = useCallback(
@@ -466,6 +517,135 @@ export default function Whiteboard({
     },
     [itemsMap],
   );
+  // Board-wide state (voting, timer) lives next to the items.
+  const metaMap = useMemo(() => doc.getMap<unknown>("meta"), [doc]);
+  useEffect(() => {
+    const update = () => setMeta(metaMap.toJSON() as WhiteboardMeta);
+    update();
+    metaMap.observe(update);
+    return () => metaMap.unobserve(update);
+  }, [metaMap]);
+  const setMetaValue = (key: keyof WhiteboardMeta, value: unknown) =>
+    doc.transact(() => {
+      if (value === undefined) metaMap.delete(key);
+      else metaMap.set(key, value);
+    }, LOCAL);
+  function addMessage(id: string, text: string) {
+    const map = itemsMap.get(id);
+    if (!map || !text.trim()) return;
+    change(() => {
+      let list = map.get("messages");
+      if (!(list instanceof Y.Array)) {
+        list = new Y.Array();
+        map.set("messages", list);
+      }
+      (list as Y.Array<unknown>).push([
+        {
+          id: crypto.randomUUID(),
+          author: userId,
+          name: userName || "Unbekannt",
+          text: text.trim().slice(0, 5000),
+          at: Date.now(),
+        },
+      ]);
+    });
+  }
+  function closeComment() {
+    const item = commentOpen ? itemsMap.get(commentOpen) : undefined;
+    // A pin without any message is not kept.
+    if (commentOpen && item && !(item.toJSON().messages || []).length)
+      change(() => itemsMap.delete(commentOpen));
+    setCommentOpen(null);
+  }
+  const myVotes = items.filter((i) => i.votes?.[userId]).length;
+  function toggleVote(id: string) {
+    const voting = meta.voting;
+    const map = itemsMap.get(id);
+    if (!voting?.active || !map || !userId) return;
+    const has = !!(map.toJSON().votes || {})[userId];
+    if (!has && myVotes >= voting.max)
+      return onError(`Du hast alle ${voting.max} Stimmen vergeben.`);
+    change(() => {
+      let votes = map.get("votes");
+      if (!(votes instanceof Y.Map)) {
+        votes = new Y.Map();
+        map.set("votes", votes);
+      }
+      if (has) (votes as Y.Map<unknown>).delete(userId);
+      else (votes as Y.Map<unknown>).set(userId, true);
+    });
+  }
+  function resetVotes() {
+    change(() => itemsMap.forEach((map) => map.delete("votes")));
+  }
+  // The timer counts down from the moment someone starts it.
+  const timer = meta.timer;
+  const remaining = timer
+    ? timer.endsAt
+      ? Math.max(0, timer.endsAt - now)
+      : timer.remaining
+    : 0;
+  useEffect(() => {
+    if (!timer) return;
+    const tick = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(tick);
+  }, [timer]);
+  const rang = useRef(false);
+  useEffect(() => {
+    if (!timer?.endsAt) {
+      rang.current = false;
+      return;
+    }
+    if (remaining > 0 || rang.current) return;
+    rang.current = true;
+    try {
+      const audio = new AudioContext();
+      const tone = audio.createOscillator(),
+        gain = audio.createGain();
+      tone.frequency.value = 880;
+      gain.gain.setValueAtTime(0.15, audio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.8);
+      tone.connect(gain).connect(audio.destination);
+      tone.start();
+      tone.stop(audio.currentTime + 0.8);
+    } catch {}
+  }, [remaining, timer]);
+  const startTimer = (ms: number) =>
+    setMetaValue("timer", {
+      endsAt: Date.now() + ms,
+      remaining: ms,
+      duration: ms,
+    });
+  const clock = (ms: number) => {
+    const s = Math.ceil(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  function setCell(id: string, r: number, c: number, text: string) {
+    const item = byId.get(id);
+    if (!item) return;
+    const cells = (item.cells?.length ? item.cells : [[""]]).map((row) => [
+      ...row,
+    ]);
+    while (cells[r].length <= c) cells[r].push("");
+    cells[r][c] = text.slice(0, 2000);
+    change(() => setProps(id, { cells }));
+  }
+  function resizeTable(item: WhiteboardItem, rows: number, cols: number) {
+    const cells = item.cells?.length ? item.cells : [[""]];
+    const oldCols = Math.max(1, ...cells.map((r) => r.length));
+    const nextRows = Math.max(1, Math.min(50, cells.length + rows)),
+      nextCols = Math.max(1, Math.min(20, oldCols + cols));
+    const next = Array.from({ length: nextRows }, (_, r) =>
+      Array.from({ length: nextCols }, (_, c) => cells[r]?.[c] || ""),
+    );
+    change(() =>
+      setProps(item.id, {
+        cells: next,
+        h: Math.round((item.h / cells.length) * nextRows),
+        w: Math.round((item.w / oldCols) * nextCols),
+      }),
+    );
+  }
   const addItem = useCallback(
     (item: Omit<WhiteboardItem, "id" | "z"> & { z?: number }) => {
       const id = crypto.randomUUID();
@@ -668,6 +848,26 @@ export default function Whiteboard({
           endArrow: true,
           route: "straight",
         });
+      } else if (kind === "table")
+        id = addItem({
+          type: "table",
+          x: p.x - 180,
+          y: p.y - 60,
+          w: 360,
+          h: 120,
+          cells: emptyTable(3, 3),
+          header: true,
+          fontSize: 14,
+        });
+      else if (kind === "comment") {
+        id = addItem({
+          type: "comment",
+          x: p.x - 2,
+          y: p.y - 32,
+          w: 32,
+          h: 32,
+        });
+        itemsMap.get(id)?.set("messages", new Y.Array());
       } else if (kind === "pen")
         id = addItem({
           type: "pen",
@@ -681,6 +881,13 @@ export default function Whiteboard({
         });
     });
     if (!id) return;
+    if (kind === "table" || kind === "comment") {
+      setTool("select");
+      setSelection(new Set([id]));
+      gesture.current = null;
+      if (kind === "comment") setCommentOpen(id);
+      return;
+    }
     if (kind === "sticky" || kind === "text") {
       setTool("select");
       setSelection(new Set([id]));
@@ -741,7 +948,13 @@ export default function Whiteboard({
             }
           : {}),
       });
-    gesture.current = { kind: "move", start, origins, moved: false };
+    gesture.current = {
+      kind: "move",
+      start,
+      origins,
+      moved: false,
+      clicked: item.id,
+    };
   }
   function onHandleDown(
     e: ReactPointerEvent,
@@ -918,6 +1131,9 @@ export default function Whiteboard({
     const g = gesture.current;
     gesture.current = null;
     if (!g) return;
+    if (g.kind === "move" && !g.moved && g.clicked) {
+      if (byId.get(g.clicked)?.type === "comment") setCommentOpen(g.clicked);
+    }
     if (g.kind === "marquee") {
       const a = g.start,
         b = g.current;
@@ -993,6 +1209,27 @@ export default function Whiteboard({
     const item = target ? byId.get(target) : undefined;
     if (item?.type === "card" && item.pageId) return onOpenPage(item.pageId);
     if (!editable) return;
+    if (item?.type === "table" && !item.locked) {
+      const cells = item.cells?.length ? item.cells : [[""]];
+      const cols = Math.max(1, ...cells.map((r) => r.length));
+      setSelection(new Set([item.id]));
+      setCellEdit({
+        id: item.id,
+        r: Math.min(
+          cells.length - 1,
+          Math.max(0, Math.floor(((p.y - item.y) / item.h) * cells.length)),
+        ),
+        c: Math.min(
+          cols - 1,
+          Math.max(0, Math.floor(((p.x - item.x) / item.w) * cols)),
+        ),
+      });
+      return;
+    }
+    if (item?.type === "comment") {
+      setCommentOpen(item.id);
+      return;
+    }
     if (
       item &&
       !item.locked &&
@@ -1087,6 +1324,8 @@ export default function Whiteboard({
       return;
     }
     if (e.key === "Escape") {
+      if (!selection.size && tool === "select" && fullscreen)
+        void toggleFullscreen();
       setSelection(new Set());
       setTool("select");
       return;
@@ -1131,6 +1370,8 @@ export default function Whiteboard({
       l: "connector",
       p: "pen",
       f: "frame",
+      g: "table",
+      c: "comment",
     };
     const next = keys[e.key.toLowerCase()];
     if (next && (editable || next === "select" || next === "hand"))
@@ -1295,6 +1536,7 @@ export default function Whiteboard({
   const stylePanel =
     editable &&
     selected.length > 0 &&
+    selected.some((i) => i.type !== "comment") &&
     !gesture.current &&
     selectionBox &&
     (() => {
@@ -1457,6 +1699,24 @@ export default function Whiteboard({
               </button>
             </>
           )}
+          {types.has("table") && types.size === 1 && (
+            <>
+              <span className="wb-sep" />
+              <button onClick={() => resizeTable(first, 1, 0)}>+ Zeile</button>
+              <button onClick={() => resizeTable(first, -1, 0)}>− Zeile</button>
+              <button onClick={() => resizeTable(first, 0, 1)}>+ Spalte</button>
+              <button onClick={() => resizeTable(first, 0, -1)}>
+                − Spalte
+              </button>
+              <button
+                className={first.header !== false ? "active" : ""}
+                aria-pressed={first.header !== false}
+                onClick={() => set({ header: first.header === false })}
+              >
+                Kopfzeile
+              </button>
+            </>
+          )}
           <span className="wb-sep" />
           <button
             aria-label="Nach vorne"
@@ -1591,6 +1851,8 @@ export default function Whiteboard({
           ],
           ["pen", "Stift", <PencilSimple key="p" size={18} />, "P"],
           ["frame", "Rahmen", <FrameCorners key="f" size={18} />, "F"],
+          ["table", "Tabelle", <Table key="g" size={18} />, "G"],
+          ["comment", "Kommentar", <ChatCircle key="c" size={18} />, "C"],
         ] as [Tool, string, React.ReactNode, string][])
       : []),
   ];
@@ -1603,10 +1865,10 @@ export default function Whiteboard({
           .includes(cardQuery.toLocaleLowerCase("de")),
     )
     .slice(0, 60);
-  return (
+  const board = (
     <div
       ref={container}
-      className="whiteboard"
+      className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}`}
       tabIndex={0}
       aria-label="Whiteboard"
       onKeyDown={onKeyDown}
@@ -1653,21 +1915,23 @@ export default function Whiteboard({
           data-world
           transform={`scale(${view.zoom}) translate(${-view.x} ${-view.y})`}
         >
-          {[...frames, ...others].map((item) => (
-            <g
-              key={item.id}
-              data-item={item.id}
-              className={`wb-item wb-${item.type}${selection.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}`}
-              onPointerDown={(e) => onItemDown(e, item)}
-            >
-              <WhiteboardShape
-                item={item}
-                items={byId}
-                pages={pages}
-                editing={editing === item.id ? "" : undefined}
-              />
-            </g>
-          ))}
+          {[...frames, ...others]
+            .filter((item) => showComments || item.type !== "comment")
+            .map((item) => (
+              <g
+                key={item.id}
+                data-item={item.id}
+                className={`wb-item wb-${item.type}${selection.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}`}
+                onPointerDown={(e) => onItemDown(e, item)}
+              >
+                <WhiteboardShape
+                  item={item}
+                  items={byId}
+                  pages={pages}
+                  editing={editing === item.id ? "" : undefined}
+                />
+              </g>
+            ))}
           {selectionBox && (
             <rect
               data-ui
@@ -1684,6 +1948,7 @@ export default function Whiteboard({
             !single.locked &&
             single.type !== "connector" &&
             single.type !== "pen" &&
+            single.type !== "comment" &&
             !editing && (
               <g data-ui>
                 {handle(single, "nw", single.x, single.y)}
@@ -1772,6 +2037,410 @@ export default function Whiteboard({
         );
       })}
       {editor}
+      {cellEdit &&
+        (() => {
+          const item = byId.get(cellEdit.id);
+          if (!item) return null;
+          const cells = item.cells?.length ? item.cells : [[""]];
+          const cols = Math.max(1, ...cells.map((r) => r.length));
+          const cw = item.w / cols,
+            ch = item.h / cells.length;
+          const s = toScreen({
+            x: item.x + cellEdit.c * cw,
+            y: item.y + cellEdit.r * ch,
+          });
+          const move = (r: number, c: number) => {
+            if (r < 0 || c < 0) return;
+            if (r >= cells.length) {
+              resizeTable(item, 1, 0);
+            }
+            setCellEdit({ id: item.id, r, c: Math.min(c, cols - 1) });
+          };
+          return (
+            <textarea
+              key={`${cellEdit.r}:${cellEdit.c}`}
+              className="wb-editor wb-cell-editor"
+              aria-label={`Zelle ${cellEdit.r + 1}/${cellEdit.c + 1}`}
+              autoFocus
+              style={{
+                left: s.x,
+                top: s.y,
+                width: cw * view.zoom,
+                height: ch * view.zoom,
+                fontSize: (item.fontSize || 14) * view.zoom,
+                padding: `${4 * view.zoom}px ${8 * view.zoom}px`,
+              }}
+              defaultValue={cells[cellEdit.r]?.[cellEdit.c] || ""}
+              onChange={(e) =>
+                setCell(item.id, cellEdit.r, cellEdit.c, e.target.value)
+              }
+              onBlur={() => setCellEdit(null)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCellEdit(null);
+                  container.current?.focus();
+                } else if (e.key === "Tab") {
+                  e.preventDefault();
+                  const last = cellEdit.c >= cols - 1;
+                  if (e.shiftKey)
+                    move(
+                      cellEdit.c ? cellEdit.r : cellEdit.r - 1,
+                      cellEdit.c ? cellEdit.c - 1 : cols - 1,
+                    );
+                  else
+                    move(
+                      last ? cellEdit.r + 1 : cellEdit.r,
+                      last ? 0 : cellEdit.c + 1,
+                    );
+                } else if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  move(cellEdit.r + 1, cellEdit.c);
+                }
+              }}
+            />
+          );
+        })()}
+      {commentOpen &&
+        (() => {
+          const item = byId.get(commentOpen);
+          if (!item) return null;
+          const s = toScreen({ x: item.x + item.w, y: item.y });
+          const rect = container.current?.getBoundingClientRect();
+          const left = Math.min(s.x + 8, (rect?.width || 400) - 320);
+          return (
+            <div
+              className="wb-comment-popover"
+              role="dialog"
+              aria-label="Kommentar"
+              style={{ left: Math.max(8, left), top: Math.max(8, s.y) }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") closeComment();
+              }}
+            >
+              <div className="wb-comment-head">
+                <strong>
+                  {item.resolved ? "Erledigter Kommentar" : "Kommentar"}
+                </strong>
+                {editable && !!item.messages?.length && (
+                  <button
+                    onClick={() =>
+                      change(() =>
+                        setProps(item.id, { resolved: !item.resolved }),
+                      )
+                    }
+                  >
+                    {item.resolved ? "Wieder öffnen" : "Erledigt"}
+                  </button>
+                )}
+                {editable && (
+                  <button
+                    aria-label="Kommentar löschen"
+                    onClick={() => {
+                      change(() => itemsMap.delete(item.id));
+                      setCommentOpen(null);
+                    }}
+                  >
+                    <Trash size={14} />
+                  </button>
+                )}
+                <button aria-label="Kommentar schließen" onClick={closeComment}>
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="wb-comment-thread">
+                {(item.messages || []).map((m) => (
+                  <div key={m.id} className="wb-comment-message">
+                    <span>
+                      <strong>{m.name}</strong>
+                      <small>
+                        {new Date(m.at).toLocaleString("de-DE", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </small>
+                    </span>
+                    <p>{m.text}</p>
+                  </div>
+                ))}
+              </div>
+              {editable && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const field = e.currentTarget.elements.namedItem(
+                      "message",
+                    ) as HTMLTextAreaElement;
+                    addMessage(item.id, field.value);
+                    field.value = "";
+                  }}
+                >
+                  <textarea
+                    name="message"
+                    aria-label={
+                      item.messages?.length
+                        ? "Antworten"
+                        : "Kommentar schreiben"
+                    }
+                    placeholder={
+                      item.messages?.length
+                        ? "Antworten …"
+                        : "Kommentar schreiben …"
+                    }
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        e.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                  />
+                  <button className="button primary compact">Senden</button>
+                </form>
+              )}
+            </div>
+          );
+        })()}
+      {(meta.voting?.active ||
+        items.some((i) => i.votes && Object.keys(i.votes).length)) &&
+        items
+          .filter((i) =>
+            [
+              "sticky",
+              "shape",
+              "card",
+              "text",
+              "image",
+              "table",
+              "emoji",
+            ].includes(i.type),
+          )
+          .map((item) => {
+            const count = Object.keys(item.votes || {}).length;
+            if (!meta.voting?.active && !count) return null;
+            const s = toScreen({ x: item.x + item.w, y: item.y });
+            const mine = !!item.votes?.[userId];
+            return (
+              <button
+                key={`vote-${item.id}`}
+                className={`wb-vote${mine ? " mine" : ""}`}
+                style={{ left: s.x - 18, top: s.y - 14 }}
+                aria-label={`Stimme für ${item.text || item.type}: ${count}`}
+                aria-pressed={mine}
+                disabled={!meta.voting?.active || !editable}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => toggleVote(item.id)}
+              >
+                <ThumbsUp size={12} weight={mine ? "fill" : "regular"} />{" "}
+                {count}
+              </button>
+            );
+          })}
+      {timer && (
+        <div
+          className={`wb-timer${remaining === 0 ? " done" : ""}`}
+          role="timer"
+          aria-label="Timer"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Timer size={16} />
+          <strong>
+            {remaining === 0 ? "Zeit abgelaufen" : clock(remaining)}
+          </strong>
+          {editable && (
+            <>
+              {timer.endsAt && remaining > 0 ? (
+                <button
+                  onClick={() =>
+                    setMetaValue("timer", { ...timer, endsAt: null, remaining })
+                  }
+                >
+                  Pause
+                </button>
+              ) : remaining > 0 ? (
+                <button
+                  onClick={() =>
+                    setMetaValue("timer", {
+                      ...timer,
+                      endsAt: Date.now() + remaining,
+                    })
+                  }
+                >
+                  Weiter
+                </button>
+              ) : null}
+              <button
+                onClick={() =>
+                  setMetaValue(
+                    "timer",
+                    timer.endsAt
+                      ? {
+                          ...timer,
+                          endsAt: Math.max(Date.now(), timer.endsAt) + 60000,
+                        }
+                      : { ...timer, remaining: remaining + 60000 },
+                  )
+                }
+              >
+                +1 Min
+              </button>
+              <button
+                aria-label="Timer beenden"
+                onClick={() => setMetaValue("timer", undefined)}
+              >
+                <X size={14} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {votingOpen && editable && (
+        <div
+          className="wb-panel"
+          role="dialog"
+          aria-label="Abstimmung"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <strong>Abstimmung</strong>
+          {meta.voting?.active ? (
+            <>
+              <p>
+                Du hast noch {Math.max(0, meta.voting.max - myVotes)} von{" "}
+                {meta.voting.max} Stimmen. Klicke auf 👍 an Zetteln, Formen oder
+                Karten.
+              </p>
+              <button
+                className="button"
+                onClick={() =>
+                  setMetaValue("voting", { ...meta.voting, active: false })
+                }
+              >
+                Abstimmung beenden
+              </button>
+            </>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const max =
+                  Number(
+                    (
+                      e.currentTarget.elements.namedItem(
+                        "max",
+                      ) as HTMLSelectElement
+                    ).value,
+                  ) || 3;
+                setMetaValue("voting", { active: true, max });
+              }}
+            >
+              <label>
+                Stimmen pro Person
+                <Select
+                  name="max"
+                  defaultValue="3"
+                  aria-label="Stimmen pro Person"
+                >
+                  {[1, 2, 3, 5, 10].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <button className="button primary">Abstimmung starten</button>
+            </form>
+          )}
+          {items.some((i) => i.votes && Object.keys(i.votes).length) && (
+            <>
+              <ol className="wb-results" aria-label="Ergebnis">
+                {items
+                  .filter((i) => i.votes && Object.keys(i.votes).length)
+                  .sort(
+                    (a, b) =>
+                      Object.keys(b.votes!).length -
+                      Object.keys(a.votes!).length,
+                  )
+                  .slice(0, 8)
+                  .map((i) => (
+                    <li key={i.id}>
+                      <span>
+                        {i.text ||
+                          i.emoji ||
+                          (i.type === "card"
+                            ? pages.find((p) => p.id === i.pageId)?.title
+                            : "") ||
+                          "Element"}
+                      </span>
+                      <strong>{Object.keys(i.votes!).length}</strong>
+                    </li>
+                  ))}
+              </ol>
+              <button className="text-button" onClick={resetVotes}>
+                Stimmen zurücksetzen
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {timerOpen && editable && (
+        <div
+          className="wb-panel"
+          role="dialog"
+          aria-label="Timer einstellen"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <strong>Timer</strong>
+          <div className="wb-timer-presets">
+            {[1, 3, 5, 10, 15].map((m) => (
+              <button
+                key={m}
+                className="button"
+                onClick={() => {
+                  startTimer(m * 60000);
+                  setTimerOpen(false);
+                }}
+              >
+                {m} Min
+              </button>
+            ))}
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const minutes = Number(
+                (
+                  e.currentTarget.elements.namedItem(
+                    "minutes",
+                  ) as HTMLInputElement
+                ).value,
+              );
+              if (minutes > 0 && minutes <= 180) {
+                startTimer(Math.round(minutes * 60000));
+                setTimerOpen(false);
+              }
+            }}
+          >
+            <label>
+              Minuten
+              <input
+                name="minutes"
+                type="number"
+                min={0.5}
+                max={180}
+                step={0.5}
+                defaultValue={5}
+                aria-label="Minuten"
+              />
+            </label>
+            <button className="button primary">Starten</button>
+          </form>
+        </div>
+      )}
       {stylePanel}
       <div
         className="wb-toolbar"
@@ -1827,6 +2496,28 @@ export default function Whiteboard({
               onClick={() => setTemplatesOpen(true)}
             >
               <SquaresFour size={18} />
+            </button>
+            <button
+              aria-label="Abstimmung"
+              title="Abstimmung"
+              className={meta.voting?.active ? "active" : ""}
+              onClick={() => {
+                setVotingOpen((v) => !v);
+                setTimerOpen(false);
+              }}
+            >
+              <ThumbsUp size={18} />
+            </button>
+            <button
+              aria-label="Timer"
+              title="Timer"
+              className={timer ? "active" : ""}
+              onClick={() => {
+                setTimerOpen((v) => !v);
+                setVotingOpen(false);
+              }}
+            >
+              <Timer size={18} />
             </button>
             <span className="wb-sep" />
             <button
@@ -1930,6 +2621,24 @@ export default function Whiteboard({
           onClick={() => fitToContent()}
         >
           <ArrowsOut size={16} />
+        </button>
+        <button
+          aria-label={fullscreen ? "Vollbild beenden" : "Vollbild"}
+          aria-pressed={fullscreen}
+          title={fullscreen ? "Vollbild beenden (Esc)" : "Vollbild"}
+          onClick={() => void toggleFullscreen()}
+        >
+          {fullscreen ? <CornersIn size={16} /> : <CornersOut size={16} />}
+        </button>
+        <button
+          aria-label={
+            showComments ? "Kommentare ausblenden" : "Kommentare anzeigen"
+          }
+          aria-pressed={showComments}
+          title={showComments ? "Kommentare ausblenden" : "Kommentare anzeigen"}
+          onClick={() => setShowComments((v) => !v)}
+        >
+          <ChatCircle size={16} weight={showComments ? "fill" : "regular"} />
         </button>
         <button
           aria-label="Als SVG exportieren"
@@ -2113,5 +2822,10 @@ export default function Whiteboard({
       </Modal>
     </div>
   );
+  // In full screen the board is rendered into the page body, so no parent
+  // (scrolling, transforms) can hold it back.
+  return fullscreen && typeof document !== "undefined"
+    ? createPortal(board, document.body)
+    : board;
 }
 export type { WhiteboardItemType };
