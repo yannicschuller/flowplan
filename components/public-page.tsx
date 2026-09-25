@@ -19,17 +19,26 @@ import { HttpError } from "@/lib/auth";
 import type { Field, Row, View } from "@/lib/types";
 import { sharedContent, publicField } from "@/lib/shared-content";
 import { SharedInteractions } from "./shared-interactions";
+import {
+  PublicCalendar,
+  PublicChart,
+  PublicTimeline,
+  publicLayout,
+  publicMonth,
+} from "./public-views";
 
 export function PublishedPage({
   token,
   pageId,
   rowId,
   viewId,
+  month: monthParam,
 }: {
   token: string;
   pageId?: string;
   rowId?: string;
   viewId?: string;
+  month?: string;
 }) {
   let context;
   try {
@@ -41,13 +50,17 @@ export function PublishedPage({
   const { page, root, pages } = context;
   const d = page.kind === "database" ? database(page.id) : null;
   const visible = d?.fields.filter(publicField);
-  // Table, board, gallery and list views are published with their filters,
-  // sorting and order; other layouts fall back to the table.
+  // Views are published with their filters, sorting and order when their
+  // layout only needs public properties; forms are never listed.
   const publicViews = (d?.views || []).filter((v) =>
-    ["table", "board", "gallery", "list"].includes(v.type),
+    publicLayout(v, d!.fields),
   );
-  const activeView =
-    publicViews.find((v) => v.id === viewId) || publicViews[0] || d?.views[0];
+  const month = publicMonth(monthParam);
+  // Without a publishable view the first one is shown as a plain table.
+  const activeView: View | undefined =
+    publicViews.find((v) => v.id === viewId) ||
+    publicViews[0] ||
+    (d?.views[0] && { ...d.views[0], type: "table" });
   const ranks = rowOrderRanks(activeView?.rowOrder);
   const allRecords = d ? rows(page.id) : [];
   const records =
@@ -182,7 +195,31 @@ export function PublishedPage({
           ))}
         </nav>
       )}
-      {d && !record && activeView?.type === "board" ? (
+      {d && !record && activeView?.type === "calendar" ? (
+        <PublicCalendar
+          records={records}
+          fields={d.fields}
+          view={activeView}
+          month={month}
+          monthLink={(m) =>
+            `${href(page.id)}?view=${encodeURIComponent(activeView.id)}&month=${m}`
+          }
+          recordLink={(r) => `${href(page.id)}?row=${r.id}`}
+        />
+      ) : d && !record && activeView?.type === "timeline" ? (
+        <PublicTimeline
+          records={records}
+          fields={d.fields}
+          view={activeView}
+          month={month}
+          monthLink={(m) =>
+            `${href(page.id)}?view=${encodeURIComponent(activeView.id)}&month=${m}`
+          }
+          recordLink={(r) => `${href(page.id)}?row=${r.id}`}
+        />
+      ) : d && !record && activeView?.type === "chart" ? (
+        <PublicChart records={records} fields={d.fields} view={activeView} />
+      ) : d && !record && activeView?.type === "board" ? (
         <PublicBoard
           records={records}
           fields={d.fields}

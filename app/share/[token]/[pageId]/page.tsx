@@ -9,11 +9,17 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ token: string; pageId: string }>;
-  searchParams: Promise<{ row?: string; view?: string }>;
+  searchParams: Promise<{ row?: string; view?: string; month?: string }>;
 }) {
   const { token, pageId } = await params;
-  const { row, view } = await searchParams;
+  const { row, view, month } = await searchParams;
   return (
-    <PublishedPage token={token} pageId={pageId} rowId={row} viewId={view} />
+    <PublishedPage
+      token={token}
+      pageId={pageId}
+      rowId={row}
+      viewId={view}
+      month={month}
+    />
   );
 }
