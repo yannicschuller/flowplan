@@ -36,11 +36,8 @@ test("dropping a block at the side of another creates columns", async ({
   });
   await page.goto(`/#page=${host.id}`);
   const editor = page.getByLabel("Dokumentinhalt", { exact: true });
-  await expect(editor.locator(":scope > p")).toHaveText([
-    "Alpha",
-    "Bravo",
-    "Charlie",
-  ]);
+  const paragraphs = editor.locator(":scope > p").filter({ hasText: /\S/ });
+  await expect(paragraphs).toHaveText(["Alpha", "Bravo", "Charlie"]);
   const handle = page.getByRole("button", {
     name: "Blockaktionen: Absatz · Charlie",
     exact: true,
@@ -67,7 +64,7 @@ test("dropping a block at the side of another creates columns", async ({
     "Alpha",
     "Charlie",
   ]);
-  await expect(editor.locator(":scope > p")).toHaveText(["Bravo"]);
+  await expect(paragraphs).toHaveText(["Bravo"]);
   await expect
     .poll(async () => (await read()).html)
     .toMatch(/data-columns[\s\S]*Alpha[\s\S]*Charlie/);

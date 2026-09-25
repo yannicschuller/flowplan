@@ -276,11 +276,13 @@ export function DocumentBlockControls({
       return;
     }
     // Side zones of the block under the pointer place the blocks beside it.
-    const relative = (x - target.left) / Math.max(1, target.width);
+    // Narrow edge strips, so ordinary drops over a block stay unaffected.
+    const fromLeft = x - target.left,
+      fromRight = target.left + target.width - x;
     const side =
-      under[0] && relative > 0.8
+      under[0] && fromRight >= 0 && fromRight < 48
         ? "right"
-        : under[0] && relative >= 0 && relative < 0.15
+        : under[0] && fromLeft >= 0 && fromLeft < 24
           ? "left"
           : null;
     if (side) {

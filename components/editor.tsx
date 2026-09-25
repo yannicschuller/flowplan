@@ -143,6 +143,14 @@ export default function DocumentEditor({
   const [linkedPicker, setLinkedPicker] = useState(false),
     [linking, setLinking] = useState(false),
     [linkedSearch, setLinkedSearch] = useState("");
+  const colorSelection = useRef<{ from: number; to: number } | null>(null);
+  const colorChain = () => {
+    const saved = colorSelection.current,
+      chain = editor?.chain().focus();
+    return saved && editor && saved.to <= editor.state.doc.content.size
+      ? chain?.setTextSelection(saved)
+      : chain;
+  };
   const linkedContext = useRef<LinkedEditorContext>(null!);
   linkedContext.current = {
     pageId,
@@ -669,7 +677,15 @@ export default function DocumentEditor({
             >
               <Highlighter />
             </button>
-            <Dropdown.Root>
+            <Dropdown.Root
+              onOpenChange={(open) => {
+                // The menu takes focus; colours apply to the remembered text.
+                if (open && editor) {
+                  const { from, to } = editor.state.selection;
+                  colorSelection.current = { from, to };
+                }
+              }}
+            >
               <Dropdown.Trigger asChild>
                 <button title="Farbe" aria-label="Text- und Hintergrundfarbe">
                   <Palette />
@@ -690,9 +706,7 @@ export default function DocumentEditor({
                         aria-label={`Textfarbe ${name}`}
                         title={name}
                         style={{ color }}
-                        onSelect={() =>
-                          editor?.chain().focus().setTextColor(color).run()
-                        }
+                        onSelect={() => colorChain()?.setTextColor(color).run()}
                       >
                         A
                       </Dropdown.Item>
@@ -718,12 +732,7 @@ export default function DocumentEditor({
                   <Dropdown.Item
                     className="dropdown-item"
                     onSelect={() =>
-                      editor
-                        ?.chain()
-                        .focus()
-                        .unsetTextColor()
-                        .unsetHighlight()
-                        .run()
+                      colorChain()?.unsetTextColor().unsetHighlight().run()
                     }
                   >
                     Farben entfernen

@@ -36,8 +36,7 @@ test("text gets colours, highlight colours and super/subscript", async ({
     .click();
   await page.getByRole("menuitem", { name: "Textfarbe Rot" }).click();
   await expect.poll(html).toMatch(/color: ?#d44c47/);
-  await content.click();
-  await page.keyboard.press("ControlOrMeta+a");
+  // The text stays selected after applying a colour.
   await toolbar
     .getByRole("button", { name: "Text- und Hintergrundfarbe" })
     .click();
