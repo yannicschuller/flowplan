@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { Temporal } from "@/lib/date-values";
 import { weekdayLabels } from "@/lib/database-calendar";
+import { PublicCalendarGrid } from "./public-calendar-grid";
 import { cellText } from "@/lib/database";
 import {
   chartAggregates,
@@ -141,6 +142,9 @@ export function PublicCalendar({
   month,
   monthLink,
   recordLink,
+  editable = false,
+  token = "",
+  pageId = "",
 }: {
   records: Row[];
   fields: Field[];
@@ -148,7 +152,12 @@ export function PublicCalendar({
   month: string;
   monthLink: (month: string) => string;
   recordLink: (row: Row) => string;
+  // Edit links may move entries; the date fields must be writable.
+  editable?: boolean;
+  token?: string;
+  pageId?: string;
 }) {
+  const schedule = scheduleFields(fields, view);
   const first = Temporal.PlainDate.from(`${month}-01`);
   const config = view.calendar || { mode: "month", timeZone: "UTC" };
   const sunday = config.weekStart === "sunday",
@@ -169,39 +178,25 @@ export function PublicCalendar({
   return (
     <section className="public-calendar" aria-label="Kalender">
       <MonthNav month={month} link={monthLink} />
-      <div
-        className="public-calendar-grid"
-        style={{ "--calendar-weekdays": weekends ? 7 : 5 } as CSSProperties}
-      >
-        {weekdayLabels(config).map((d) => (
-          <div key={d} className="public-calendar-weekday">
-            {d}
-          </div>
-        ))}
-        {days.map((day) => {
-          const today = entries.filter((e) => e.start <= day && e.end >= day);
-          return (
-            <div
-              key={day}
-              className={`public-calendar-day${day.startsWith(month) ? "" : " outside"}`}
-              data-day={day}
-            >
-              <span className="public-calendar-date">
-                {Number(day.slice(8))}
-              </span>
-              {today.map((e) => (
-                <a
-                  key={`${e.row.id}:${e.start}`}
-                  className={`public-calendar-entry${e.occurrence ? " occurrence" : ""}`}
-                  href={recordLink(e.row)}
-                >
-                  {title(e.row, fields)}
-                </a>
-              ))}
-            </div>
-          );
-        })}
-      </div>
+      <PublicCalendarGrid
+        days={days}
+        month={month}
+        labels={weekdayLabels(config)}
+        weekends={weekends}
+        editable={editable}
+        token={token}
+        pageId={pageId}
+        startField={schedule.start?.id || ""}
+        endField={schedule.end?.id}
+        entries={entries.map((e) => ({
+          rowId: e.row.id,
+          title: title(e.row, fields),
+          href: recordLink(e.row),
+          start: e.start,
+          end: e.end,
+          occurrence: e.occurrence,
+        }))}
+      />
     </section>
   );
 }

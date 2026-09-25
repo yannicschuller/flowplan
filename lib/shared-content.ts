@@ -9,6 +9,13 @@ import { cleanHtml, htmlState, stateHtml } from "./document-server";
 import { ensureRowDocument } from "./row-documents";
 import type { Field, Row } from "./types";
 import { formulaReferences } from "./formula";
+import { cellText } from "./cell-text";
+import {
+  fileIdOf,
+  fileRefSchema,
+  fileUrls,
+  MAX_CELL_FILES,
+} from "./file-cells";
 
 export const publicField = (f: Field) =>
   ![
@@ -51,6 +58,26 @@ export const publicFieldsOf = (fields: Field[]) => {
   const ids = publicFieldIds(fields);
   return (field: Field) => ids.has(field.id);
 };
+// Properties a share link shows and, with edit rights, changes: the public
+// ones plus relations into databases of the same share and files.
+export function guestFields(fields: Field[], pages: { id: string }[]) {
+  const visible = publicFieldsOf(fields),
+    published = new Set(pages.map((p) => p.id));
+  return fields.filter(
+    (f) =>
+      visible(f) ||
+      f.type === "files" ||
+      (f.type === "relation" &&
+        !!f.relationPage &&
+        published.has(f.relationPage)),
+  );
+}
+const guestWritable = (f: Field, pages: { id: string }[]) =>
+  writablePublicField(f) ||
+  f.type === "files" ||
+  (f.type === "relation" &&
+    !!f.relationPage &&
+    pages.some((p) => p.id === f.relationPage));
 export const writablePublicField = (f: Field) =>
   publicField(f) && !["created_at", "updated_at"].includes(f.type);
 export type SharedComment = {
@@ -99,9 +126,51 @@ function source(token: string, pageId?: string, rowId?: string) {
     .digest("hex");
   return { ...context, row, doc, fields, cells, version };
 }
+// Stored file references appear to guests as URLs of this share.
+function shareFileUrl(token: string, url: string) {
+  const fid = fileIdOf(url);
+  if (!fid) return url;
+  try {
+    publicFile(token, fid);
+    return `/api/share/${token}/files/${fid}`;
+  } catch {
+    return "";
+  }
+}
 export function sharedContent(token: string, pageId?: string, rowId?: string) {
   const s = source(token, pageId, rowId);
-  const fields = s.fields.filter(publicFieldsOf(s.fields));
+  const fields = guestFields(s.fields, s.pages);
+  // Choices for relations: records of shared databases (title only).
+  const related: Record<string, { id: string; cells: { title: string } }[]> =
+    {};
+  if (s.row)
+    for (const f of fields)
+      if (f.type === "relation" && f.relationPage && !related[f.relationPage]) {
+        const target = JSON.parse(
+          String(
+            one("SELECT fields FROM databases WHERE page_id=?", f.relationPage)
+              ?.fields || "[]",
+          ),
+        ) as Field[];
+        related[f.relationPage] = all<{ id: string; cells: string }>(
+          "SELECT id,cells FROM rows WHERE page_id=? ORDER BY position LIMIT 500",
+          f.relationPage,
+        ).map((r) => ({
+          id: r.id,
+          cells: {
+            title:
+              cellText(JSON.parse(r.cells)[target[0]?.id || "title"]) ||
+              "Ohne Titel",
+          },
+        }));
+      }
+  const files = all<{ id: string; name: string; mime: string }>(
+    "SELECT id,name,mime FROM files WHERE page_id=?",
+    s.page.id,
+  ).flatMap((f) => {
+    const url = shareFileUrl(token, `/api/files/${f.id}`);
+    return url ? [{ url, name: f.name, mime: f.mime }] : [];
+  });
   return {
     pageId: s.page.id,
     rowId,
@@ -121,8 +190,19 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
         : undefined,
     fields: s.row ? fields : [],
     cells: s.row
-      ? Object.fromEntries(fields.map((f) => [f.id, s.cells[f.id] ?? null]))
+      ? Object.fromEntries(
+          fields.map((f) => [
+            f.id,
+            f.type === "files"
+              ? fileUrls(s.cells[f.id])
+                  .map((url) => shareFileUrl(token, url))
+                  .filter(Boolean)
+              : (s.cells[f.id] ?? null),
+          ]),
+        )
       : {},
+    related,
+    files,
     comments: all<SharedComment>(
       "SELECT id,name,body,resolved,created_at FROM shared_comments WHERE page_id=? AND row_id IS ? ORDER BY created_at,id LIMIT 500",
       s.page.id,
@@ -134,17 +214,60 @@ function validatedCells(
   input: unknown,
   fields: Field[],
   current: Record<string, unknown>,
+  share: { token: string; pages: { id: string }[]; pageId: string },
 ) {
   const patch = z.record(z.string(), z.unknown()).parse(input);
   const cells = { ...current };
   for (const [key, value] of Object.entries(patch)) {
-    const f = fields.find((f) => f.id === key && writablePublicField(f));
+    const f = fields.find((f) => f.id === key && guestWritable(f, share.pages));
     if (!f)
       throw new HttpError(
         403,
         "Diese Eigenschaft kann über diesen Link nicht geändert werden.",
       );
-    if (f.type === "number") {
+    if (f.type === "relation") {
+      const ids = [
+        ...new Set(z.array(z.string().uuid()).max(500).parse(value)),
+      ];
+      for (const rid of ids)
+        if (
+          !one(
+            "SELECT id FROM rows WHERE id=? AND page_id=?",
+            rid,
+            f.relationPage!,
+          )
+        )
+          throw new HttpError(400, "Verknüpfter Eintrag fehlt.");
+      cells[key] = ids;
+    } else if (f.type === "files") {
+      // Guests keep existing files, add their own uploads or web links.
+      const existing = new Set(fileUrls(current[key]));
+      const list: string[] = [];
+      for (const url of z
+        .array(z.string().max(2000))
+        .max(MAX_CELL_FILES)
+        .parse(value)) {
+        const shared = new RegExp(
+          `^/api/share/${share.token}/files/([0-9a-f-]{36})$`,
+        ).exec(url);
+        if (shared) {
+          const file = publicFile(share.token, shared[1]);
+          if (file.page_id !== share.pageId)
+            throw new HttpError(400, "Datei gehört nicht zu dieser Datenbank.");
+          list.push(`/api/files/${shared[1]}`);
+        } else if (
+          existing.has(url) ||
+          (fileRefSchema.safeParse(url).success && !fileIdOf(url))
+        )
+          list.push(url);
+        else
+          throw new HttpError(
+            400,
+            "Datei ist über diesen Link nicht verfügbar.",
+          );
+      }
+      cells[key] = [...new Set(list)];
+    } else if (f.type === "number") {
       try {
         cells[key] = numberCell(f, value);
       } catch (e) {
@@ -236,7 +359,7 @@ export function limitShareRequests(token: string) {
 export function mutateSharedContent(token: string, input: unknown) {
   const b = z
     .object({
-      action: z.enum(["comment", "save", "create"]),
+      action: z.enum(["comment", "save", "create", "cells"]),
       pageId: z.string().uuid(),
       rowId: z.string().uuid().optional(),
     })
@@ -252,7 +375,16 @@ export function mutateSharedContent(token: string, input: unknown) {
       // New records by guests: only public, writable properties.
       if (s.page.kind !== "database" || s.row)
         throw new HttpError(400, "Neue Einträge nur in Datenbanken.");
-      const cells = validatedCells(b.cells ?? {}, s.fields, {});
+      const cells = validatedCells(
+        b.cells ?? {},
+        s.fields,
+        {},
+        {
+          token,
+          pages: s.pages,
+          pageId: s.page.id,
+        },
+      );
       const rid = id();
       run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM rows WHERE page_id=?),NULL,NULL)",
@@ -274,6 +406,27 @@ export function mutateSharedContent(token: string, input: unknown) {
       );
       audit("guest", "share.create", s.page.id, rid);
       return { ...sharedContent(token, b.pageId), createdRowId: rid };
+    }
+    if (b.action === "cells") {
+      // Single property changes, e.g. moving an entry in the calendar.
+      if (!s.row) throw new HttpError(400, "Eintrag fehlt.");
+      if (b.version !== s.version)
+        throw new HttpError(
+          409,
+          "Der Eintrag wurde inzwischen geändert. Bitte neu laden.",
+        );
+      const cells = validatedCells(b.cells ?? {}, s.fields, s.cells, {
+        token,
+        pages: s.pages,
+        pageId: s.page.id,
+      });
+      run(
+        "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
+        JSON.stringify(cells),
+        s.row.id,
+      );
+      audit("guest", "share.cells", s.page.id, s.row.id);
+      return sharedContent(token, b.pageId, b.rowId);
     }
     if (b.action === "comment") {
       const name = z.string().trim().min(1).max(80).parse(b.name);
@@ -318,7 +471,11 @@ export function mutateSharedContent(token: string, input: unknown) {
           doc.destroy();
         }
         if (s.row) {
-          const cells = validatedCells(b.cells ?? {}, s.fields, s.cells);
+          const cells = validatedCells(b.cells ?? {}, s.fields, s.cells, {
+            token,
+            pages: s.pages,
+            pageId: s.page.id,
+          });
           run(
             "INSERT INTO row_snapshots(id,row_id,state,html,created_by) VALUES(?,?,?,?,?)",
             id(),

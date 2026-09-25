@@ -2,9 +2,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { CellInput } from "./cell-input";
+import { CellInput, type CellFile } from "./cell-input";
 import type { SharedComment } from "@/lib/shared-content";
-import type { Field } from "@/lib/types";
+import type { Field, Row } from "@/lib/types";
 const SharedEditor = dynamic(() => import("./shared-editor"), { ssr: false });
 type Content = {
   pageId: string;
@@ -17,6 +17,8 @@ type Content = {
   canEditContent: boolean;
   titleField?: string;
   fields: Field[];
+  related?: Record<string, { id: string; cells: { title: string } }[]>;
+  files?: CellFile[];
   cells: Record<string, unknown>;
   comments: SharedComment[];
 };
@@ -38,7 +40,8 @@ export function SharedInteractions({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [status, setStatus] = useState(""),
-    [newTitle, setNewTitle] = useState("");
+    [newTitle, setNewTitle] = useState(""),
+    [uploaded, setUploaded] = useState<CellFile[]>([]);
   async function upload(file: File) {
     setError("");
     const form = new FormData();
@@ -51,7 +54,9 @@ export function SharedInteractions({
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      return result as { url: string; name: string; mime: string };
+      const file = result as CellFile;
+      setUploaded((list) => [...list, file]);
+      return file;
     } catch (e) {
       setError((e as Error).message);
       return null;
@@ -144,7 +149,15 @@ export function SharedInteractions({
                   field={f}
                   value={cells[f.id]}
                   members={[]}
-                  related={{}}
+                  related={
+                    (data.related || {}) as unknown as Record<string, Row[]>
+                  }
+                  files={[...(data.files || []), ...uploaded]}
+                  upload={async (file) => {
+                    const result = await upload(file);
+                    if (!result) throw new Error("Upload fehlgeschlagen.");
+                    return result.url;
+                  }}
                   disabled={busy}
                   commit="change"
                   onChange={(value) => setCells({ ...cells, [f.id]: value })}

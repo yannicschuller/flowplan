@@ -37,6 +37,11 @@ test("published pages show linked views of published databases", async ({
     pageId: tasks.id,
     cells: { title: `Konzept ${tag}` },
   });
+  await command({
+    action: "row.create",
+    pageId: tasks.id,
+    cells: { title: `Analyse ${tag}` },
+  });
   await page.goto(`/#page=${host.id}`);
   await page.getByLabel("Dokumentinhalt", { exact: true }).click();
   await page
@@ -70,6 +75,16 @@ test("published pages show linked views of published databases", async ({
   await visitor.goto(`${origin}/share/${token}`);
   const embed = visitor.locator(".public-embed");
   await expect(embed).toContainText(`Aufgaben ${tag}`);
+  // Visitors search and sort the embedded view.
+  const rows = embed.locator("tbody tr:visible");
+  await expect(rows).toHaveCount(2);
+  await embed.getByLabel("Eingebettete Ansicht durchsuchen").fill("konzept");
+  await expect(rows).toHaveCount(1);
+  await embed.getByLabel("Eingebettete Ansicht durchsuchen").fill("");
+  await embed.locator("th button").first().click();
+  await expect(rows.first()).toContainText(`Analyse ${tag}`);
+  await embed.locator("th button").first().click();
+  await expect(rows.first()).toContainText(`Konzept ${tag}`);
   await embed.getByRole("link", { name: `Konzept ${tag}` }).click();
   await expect(
     visitor.getByRole("heading", { name: `Konzept ${tag}` }),

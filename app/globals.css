@@ -2862,6 +2862,58 @@ tr:hover .row-open {
   border-bottom: 1px solid var(--border);
   text-align: left;
 }
+.public-relations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.public-calendar-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.public-calendar-item .public-calendar-entry {
+  flex: 1;
+  min-width: 0;
+}
+.public-calendar-move {
+  font-size: 11px;
+  padding: 0 3px;
+  color: var(--secondary);
+}
+.public-calendar-day.drop {
+  background: var(--blue-light);
+}
+.public-calendar-dialog {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.public-embed-search {
+  width: 100%;
+  max-width: 280px;
+  margin-bottom: 8px;
+}
+.public-embed-sort {
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.public-embed th[aria-sort="ascending"] .public-embed-sort::after {
+  content: " ↑";
+}
+.public-embed th[aria-sort="descending"] .public-embed-sort::after {
+  content: " ↓";
+}
 .public-month {
   display: flex;
   align-items: center;

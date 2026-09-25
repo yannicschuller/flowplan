@@ -18,7 +18,12 @@ import { displayText } from "@/lib/field-format";
 import { PublicationCopy } from "./publication-copy";
 import { HttpError } from "@/lib/auth";
 import type { Field, Row, View } from "@/lib/types";
-import { sharedContent, publicFieldsOf } from "@/lib/shared-content";
+import {
+  guestFields,
+  sharedContent,
+  publicFieldsOf,
+} from "@/lib/shared-content";
+import { fileIdOf, fileUrls } from "@/lib/file-cells";
 import { SharedInteractions } from "./shared-interactions";
 import {
   PublicCalendar,
@@ -206,6 +211,9 @@ export function PublishedPage({
             `${href(page.id)}?view=${encodeURIComponent(activeView.id)}&month=${m}`
           }
           recordLink={(r) => `${href(page.id)}?row=${r.id}`}
+          editable={context.role === "editor" && !page.locked}
+          token={token}
+          pageId={page.id}
         />
       ) : d && !record && activeView?.type === "timeline" ? (
         <PublicTimeline
@@ -321,14 +329,30 @@ export function PublishedPage({
         </div>
       ) : (
         <>
-          {record && (
+          {record && d && (
             <dl className="public-properties">
-              {visible
-                ?.filter((f) => f.id !== "title")
+              {guestFields(d.fields, pages)
+                .filter((f) => f.id !== d.fields[0]?.id)
                 .map((f) => (
                   <div key={f.id}>
                     <dt>{f.name}</dt>
-                    <dd>{displayText(f, record.cells[f.id], "UTC") || "—"}</dd>
+                    <dd>
+                      {f.type === "relation" ? (
+                        <PublicRelation
+                          ids={record.cells[f.id]}
+                          target={f.relationPage!}
+                          link={(pid, rid) => `${href(pid)}?row=${rid}`}
+                        />
+                      ) : f.type === "files" ? (
+                        <PublicFiles
+                          value={record.cells[f.id]}
+                          token={token}
+                          pageId={page.id}
+                        />
+                      ) : (
+                        displayText(f, record.cells[f.id], "UTC") || "—"
+                      )}
+                    </dd>
                   </div>
                 ))}
             </dl>
@@ -416,5 +440,73 @@ function PublicBoard({
         </section>
       ))}
     </div>
+  );
+}
+
+// Related records of a shared database, linked to their public pages.
+function PublicRelation({
+  ids,
+  target,
+  link,
+}: {
+  ids: unknown;
+  target: string;
+  link: (pageId: string, rowId: string) => string;
+}) {
+  const list = Array.isArray(ids) ? (ids as string[]).slice(0, 50) : [];
+  if (!list.length) return <>—</>;
+  const fields = database(target).fields;
+  const titles = new Map(
+    rows(target).map((r) => [
+      r.id,
+      cellText(r.cells[fields[0]?.id]) || "Ohne Titel",
+    ]),
+  );
+  return (
+    <span className="public-relations">
+      {list
+        .filter((rid) => titles.has(rid))
+        .map((rid) => (
+          <a key={rid} href={link(target, rid)}>
+            {titles.get(rid)}
+          </a>
+        ))}
+    </span>
+  );
+}
+// Files of a published record; external links stay external.
+function PublicFiles({
+  value,
+  token,
+  pageId,
+}: {
+  value: unknown;
+  token: string;
+  pageId: string;
+}) {
+  const urls = fileUrls(value);
+  if (!urls.length) return <>—</>;
+  return (
+    <span className="public-relations">
+      {urls.map((url) => {
+        const fid = fileIdOf(url);
+        if (!fid)
+          return (
+            <a key={url} href={url} rel="noopener noreferrer" target="_blank">
+              {url}
+            </a>
+          );
+        const file = one<{ name: string }>(
+          "SELECT name FROM files WHERE id=? AND page_id=?",
+          fid,
+          pageId,
+        );
+        return file ? (
+          <a key={url} href={`/api/share/${token}/files/${fid}`}>
+            {file.name}
+          </a>
+        ) : null;
+      })}
+    </span>
   );
 }

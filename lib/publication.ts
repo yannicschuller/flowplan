@@ -156,6 +156,13 @@ export function publicFile(token: string, fileId: string) {
     pages.find((p) => p.id === file.page_id)?.icon || "",
   );
   if (iconId) referenced.add(iconId);
+  // Files attached to records of a published database are published with it.
+  for (const row of all<{ cells: string }>(
+    "SELECT cells FROM rows WHERE page_id=? AND cells LIKE ?",
+    file.page_id,
+    `%/api/files/${fileId}%`,
+  ))
+    if (row.cells.includes(`"/api/files/${fileId}"`)) referenced.add(fileId);
   for (const row of all<{ icon: string; cover: string }>(
     "SELECT icon,cover FROM rows WHERE page_id=? AND (icon LIKE '/api/files/%' OR cover LIKE '/api/files/%')",
     file.page_id,

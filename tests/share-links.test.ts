@@ -451,3 +451,107 @@ test("public pages render linked views of published databases with public proper
   assert.equal((rendered.match(/class="public-embed"/g) || []).length, 1);
   assert.match(rendered, /Platzhalter/);
 });
+
+test("guests edit relations into shared databases, files and single properties", async () => {
+  const { guestUpload } = await import("../lib/shared-uploads");
+  const host = page(),
+    tasks = page({ kind: "database", parentId: host }),
+    people = page({ kind: "database", parentId: host }),
+    hidden = page({ kind: "database" });
+  run(
+    "UPDATE databases SET fields=? WHERE page_id=?",
+    JSON.stringify([
+      { id: "title", name: "Name", type: "text" },
+      { id: "who", name: "Beteiligte", type: "relation", relationPage: people },
+      { id: "secret", name: "Intern", type: "relation", relationPage: hidden },
+      { id: "docs", name: "Dateien", type: "files" },
+      { id: "due", name: "Fällig", type: "date" },
+    ]),
+    tasks,
+  );
+  const ada = id(),
+    foreign = id(),
+    task = id();
+  run(
+    "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
+    ada,
+    people,
+    JSON.stringify({ title: "Ada" }),
+    owner.id,
+  );
+  run(
+    "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
+    foreign,
+    hidden,
+    JSON.stringify({ title: "Geheim" }),
+    owner.id,
+  );
+  run(
+    "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
+    task,
+    tasks,
+    JSON.stringify({ title: "Aufgabe", secret: [foreign], due: "2026-09-01" }),
+    owner.id,
+  );
+  const editor = link(host, "editor", true),
+    reader = link(host, "viewer", true);
+  const data = sharedContent(editor, tasks, task);
+  // Relations into databases outside the share stay hidden.
+  assert.deepEqual(
+    data.fields.map((f) => f.id),
+    ["title", "who", "docs", "due"],
+  );
+  assert.deepEqual(data.related[people], [
+    { id: ada, cells: { title: "Ada" } },
+  ]);
+  assert.equal(data.related[hidden], undefined);
+  const cells = (patch: Record<string, unknown>, token = editor) =>
+    mutateSharedContent(token, {
+      action: "cells",
+      pageId: tasks,
+      rowId: task,
+      version: sharedContent(editor, tasks, task).version,
+      cells: patch,
+    });
+  fails(() => cells({ due: "2026-09-02" }, reader), 403);
+  fails(() => cells({ secret: [] }), 403);
+  fails(() => cells({ who: [foreign] }), 400);
+  cells({ who: [ada], due: "2026-09-03" });
+  // Stale versions are rejected.
+  fails(
+    () =>
+      mutateSharedContent(editor, {
+        action: "cells",
+        pageId: tasks,
+        rowId: task,
+        version: data.version,
+        cells: { due: "2026-09-04" },
+      }),
+    409,
+  );
+  // Uploads of this link become files of the record, foreign files do not.
+  const upload = await guestUpload(
+    editor,
+    tasks,
+    new File(["Protokoll"], "notiz.txt", { type: "text/plain" }),
+  );
+  const fid = upload.url.split("/").pop()!;
+  fails(() => cells({ docs: ["/api/files/" + id()] }), 400);
+  cells({ docs: [upload.url, "https://example.com/plan.pdf"] });
+  const row = JSON.parse(
+    String(one("SELECT cells FROM rows WHERE id=?", task)?.cells),
+  );
+  assert.deepEqual(row.who, [ada]);
+  assert.deepEqual(row.secret, [foreign]);
+  assert.equal(row.due, "2026-09-03");
+  assert.deepEqual(row.docs, [
+    `/api/files/${fid}`,
+    "https://example.com/plan.pdf",
+  ]);
+  // The attached file is now readable through every link of the share.
+  assert.equal(publicFile(reader, fid).id, fid);
+  assert.deepEqual(sharedContent(reader, tasks, task).cells.docs, [
+    `/api/share/${reader}/files/${fid}`,
+    "https://example.com/plan.pdf",
+  ]);
+});
