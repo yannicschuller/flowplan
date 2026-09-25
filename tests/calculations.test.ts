@@ -195,7 +195,9 @@ test("checkbox percentages treat missing values as unchecked and report invalid 
   assert.equal(columnSummary(f, rows, "count_unchecked")!.value, 2);
   assert.equal(columnSummary(f, rows, "percent_checked")!.value, 1 / 3);
   assert.equal(columnSummary(f, rows, "percent_unchecked")!.errors, 1);
-  assert.equal(columnSummary(f, rowsFor(false), "count_not_empty")!.value, 1);
+  // Unchecked counts as empty, like the "ist leer" filter.
+  assert.equal(columnSummary(f, rowsFor(false), "count_not_empty")!.value, 0);
+  assert.equal(columnSummary(f, rowsFor(false), "count_empty")!.value, 1);
 });
 test("date calculations compare ISO instants in UTC, reject impossible dates and normalize metadata", () => {
   const f = field("date"),

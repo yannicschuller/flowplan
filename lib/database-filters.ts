@@ -7,6 +7,7 @@ import {
 } from "./relative-dates";
 import { z } from "zod";
 import { cellText } from "./cell-text";
+import { isEmptyValue } from "./empty-value";
 import type { Field, Filter, FilterGroup, FilterNode, View } from "./types";
 export const filterOperators = [
   "contains",
@@ -27,7 +28,29 @@ export const filterOperators = [
   "notempty",
   "in_relative",
   "not_in_relative",
+  "any_of",
+  "none_of",
+  "all_of",
+  "between",
+  "checked",
+  "unchecked",
+  "complete",
+  "incomplete",
 ] as const;
+export const multiValueOperators = new Set<string>([
+  "any_of",
+  "none_of",
+  "all_of",
+]);
+// Operators without a value to enter.
+export const valuelessOperators = new Set<string>([
+  "empty",
+  "notempty",
+  "checked",
+  "unchecked",
+  "complete",
+  "incomplete",
+]);
 export const MAX_FILTER_DEPTH = 4,
   MAX_FILTER_NODES = 100;
 export const filterSchema = z
@@ -42,8 +65,20 @@ export const filterSchema = z
       .refine(validTimeZone, "Ungültige Zeitzone.")
       .optional(),
     days: z.number().int().min(1).max(36600).optional(),
+    values: z.array(z.string().max(500)).max(100).optional(),
+    to: z.string().max(500).optional(),
   })
   .superRefine((f, ctx) => {
+    if (multiValueOperators.has(f.op) && !f.values?.length)
+      ctx.addIssue({
+        code: "custom",
+        message: "Mindestens einen Wert für den Filter wählen.",
+      });
+    if (f.op === "between" && (!f.value.trim() || !f.to?.trim()))
+      ctx.addIssue({
+        code: "custom",
+        message: "„Liegt zwischen“ benötigt einen Anfangs- und Endwert.",
+      });
     if (!isRelativeOperator(f.op)) return;
     if (
       !Object.hasOwn(relativeDateNames, f.value) ||
@@ -169,6 +204,35 @@ export function matches(
     /^#(ERROR|ACCESS|PROPERTY|CYCLE|LIMIT)/.test(s.toUpperCase())
   )
     return false;
+  if (multiValueOperators.has(f.op)) {
+    const items = (
+      Array.isArray(raw) ? raw : isEmptyValue(raw) ? [] : [raw]
+    ).map((item) => cellText(item).toLowerCase());
+    const wanted = (f.values || []).map((x) => x.toLowerCase());
+    if (f.op === "all_of")
+      return !!wanted.length && wanted.every((x) => items.includes(x));
+    const any = items.some((item) => wanted.includes(item));
+    return f.op === "any_of" ? any : !any;
+  }
+  if (f.op === "checked" || f.op === "unchecked")
+    return (raw === true) === (f.op === "checked");
+  if (f.op === "complete" || f.op === "incomplete") {
+    const items = Array.isArray(raw) ? raw : [];
+    const complete =
+      items.length > 0 &&
+      items.every((item) => !!(item as { done?: boolean })?.done);
+    return f.op === "complete" ? complete : !complete;
+  }
+  if (f.op === "between") {
+    const dateField =
+      !!field && ["date", "created_at", "updated_at"].includes(field.type);
+    const [a, b, x] =
+      dateField || (!field && Number.isFinite(day(f.value)))
+        ? [day(f.value), day(f.to), day(raw)]
+        : [Number(f.value), Number(f.to), s.trim() ? Number(s) : NaN];
+    if (![a, b, x].every(Number.isFinite)) return false;
+    return x >= Math.min(a, b) && x <= Math.max(a, b);
+  }
   if (Array.isArray(raw) && ["eq", "neq"].includes(f.op)) {
     const present = raw.some((value) => cellText(value).toLowerCase() === v);
     return f.op === "eq" ? present : !present;
@@ -245,9 +309,9 @@ export function matches(
             : a >= b;
     }
     case "empty":
-      return !s;
+      return isEmptyValue(raw, field?.type);
     case "notempty":
-      return !!s;
+      return !isEmptyValue(raw, field?.type);
     case "not_contains":
       return !s.includes(v);
     case "starts_with":
@@ -295,6 +359,14 @@ export const operatorNames: Record<Filter["op"], string> = {
   on_or_after: "am oder nach",
   empty: "ist leer",
   notempty: "ist nicht leer",
+  any_of: "ist eines von",
+  none_of: "ist keines von",
+  all_of: "enthält alle",
+  between: "liegt zwischen",
+  checked: "ist abgehakt",
+  unchecked: "ist nicht abgehakt",
+  complete: "ist vollständig",
+  incomplete: "ist unvollständig",
 };
 export function operatorsFor(field?: Field): Filter["op"][] {
   const common: Filter["op"][] = ["eq", "neq", "empty", "notempty"];
@@ -306,26 +378,31 @@ export function operatorsFor(field?: Field): Filter["op"][] {
       "after",
       "on_or_before",
       "on_or_after",
+      "between",
       "in_relative",
       "not_in_relative",
       "empty",
       "notempty",
     ];
   if (field?.type === "number")
-    return ["eq", "neq", "gt", "gte", "lt", "lte", "empty", "notempty"];
-  if (
-    field &&
-    [
-      "select",
-      "multiselect",
-      "relation",
-      "person",
-      "created_by",
-      "updated_by",
-      "checkbox",
-    ].includes(field.type)
-  )
-    return common;
+    return [
+      "eq",
+      "neq",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "between",
+      "empty",
+      "notempty",
+    ];
+  if (field?.type === "checkbox") return ["checked", "unchecked"];
+  if (field?.type === "checklist")
+    return ["complete", "incomplete", "empty", "notempty"];
+  if (field && ["multiselect", "relation", "person"].includes(field.type))
+    return [...common, "any_of", "none_of", "all_of"];
+  if (field && ["select", "created_by", "updated_by"].includes(field.type))
+    return [...common, "any_of", "none_of"];
   if (field && ["formula", "rollup"].includes(field.type))
     return [...filterOperators];
   return [

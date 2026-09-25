@@ -74,6 +74,8 @@ import {
   nestedKey,
   splitNestedKey,
   subgroupCollapseKey,
+  pathCollapseKey,
+  deeperGroupingFields,
   type DatabaseGroup,
 } from "@/lib/database-groups";
 import { CellInput } from "./cell-input";
@@ -476,7 +478,7 @@ export default function DatabaseView({
             (f, i) =>
               i > 0 &&
               !computedTypes.includes(f.type) &&
-              emptyCell(selected.cells[f.id]),
+              emptyCell(selected.cells[f.id], f.type),
           )
           .map((f) => f.id)
       : [],
@@ -526,6 +528,9 @@ export default function DatabaseView({
   );
   const subCollapsed = (group: string, subgroup: string) =>
     collapsed(subgroupCollapseKey(group, subgroup));
+  const deeperFields = subField
+    ? deeperGroupingFields(fields, view, [groupField, subField])
+    : [];
   const selectableRows = grouped
     ? [
         ...new Map(
@@ -1491,10 +1496,144 @@ export default function DatabaseView({
             header
           )}
           {!subCollapsed(group.key, sg.key) &&
-            sg.rows.map((r) => render(r, key))}
+            deepRows(sg.rows, [group, sg], render, table, key)}
         </Fragment>
       );
     });
+  }
+  // Levels 3 to 5 below a subgroup. Moves keep addressing the first two
+  // levels; new records take the values of every level.
+  function deepRows(
+    rows: Row[],
+    path: DatabaseGroup[],
+    render: (r: Row, key: string) => ReactNode,
+    table: boolean,
+    key: string,
+  ): ReactNode {
+    const field = deeperFields[path.length - 2];
+    if (!field) return rows.map((r) => render(r, key));
+    return databaseGroups(rows, field, data.related, members)
+      .filter((g) => g.rows.length)
+      .map((g) => {
+        const keys = [...path.map((p) => p.key), g.key],
+          closed = collapsed(pathCollapseKey(keys)),
+          header = deepHeader([...path, g], closed);
+        return (
+          <Fragment key={JSON.stringify(keys)}>
+            {table ? (
+              <tr className="database-group-row database-subgroup-row">
+                <th
+                  colSpan={Math.max(
+                    1,
+                    visibleFields.length + (editable ? 2 : 0),
+                  )}
+                >
+                  {header}
+                </th>
+              </tr>
+            ) : (
+              header
+            )}
+            {!closed && deepRows(g.rows, [...path, g], render, table, key)}
+          </Fragment>
+        );
+      });
+  }
+  function deepCells(path: DatabaseGroup[]) {
+    const levels = [groupField, subField, ...deeperFields];
+    return Object.fromEntries(
+      path.map((g, i) => [levels[i]!.id, groupCellValue(levels[i]!, g.value)]),
+    );
+  }
+  function deepHeader(path: DatabaseGroup[], closed: boolean) {
+    const g = path.at(-1)!,
+      where = path
+        .slice(0, -1)
+        .map((p) => p.label)
+        .join(" / ");
+    const level = path.length;
+    const canCreate =
+      canSubEdit &&
+      deeperFields
+        .slice(0, level - 2)
+        .every((f) => !computedTypes.includes(f.type));
+    return (
+      <div
+        className={`database-group-header database-subgroup-header database-group-level-${level}`}
+        role="group"
+        aria-label={`Gruppe ${g.label} in ${where}`}
+      >
+        <button
+          className="group-toggle"
+          aria-expanded={!closed}
+          aria-label={`Gruppe ${g.label} in ${where} ${closed ? "ausklappen" : "einklappen"}`}
+          disabled={schemaBusy}
+          onClick={() =>
+            void setGroupsCollapsed(
+              [pathCollapseKey(path.map((p) => p.key))],
+              !closed,
+            )
+          }
+        >
+          <CaretRight
+            size={13}
+            style={{ transform: closed ? undefined : "rotate(90deg)" }}
+          />
+          <span>{g.label}</span>
+          <span className="muted">{g.rows.length}</span>
+        </button>
+        <span className="group-summary">{summaries(g.rows)}</span>
+        {canCreate && (
+          <button
+            className="icon-button"
+            title={`Eintrag in ${where} / ${g.label} hinzufügen`}
+            onClick={() => createRow(deepCells(path))}
+          >
+            <Plus size={16} />
+          </button>
+        )}
+      </div>
+    );
+  }
+  // Board swimlane cells: sections for levels 3 to 5.
+  function deepCards(
+    rows: Row[],
+    path: DatabaseGroup[],
+    key: string,
+  ): ReactNode {
+    const field = deeperFields[path.length - 2];
+    if (!field) return rows.map((r) => card(r, key));
+    return databaseGroups(rows, field, data.related, members)
+      .filter((g) => g.rows.length)
+      .map((g) => {
+        const keys = [...path.map((p) => p.key), g.key],
+          closed = collapsed(pathCollapseKey(keys));
+        return (
+          <section
+            key={JSON.stringify(keys)}
+            className={`board-card-section database-group-level-${keys.length}`}
+            aria-label={`Abschnitt ${g.label}`}
+          >
+            <button
+              className="group-toggle"
+              aria-expanded={!closed}
+              aria-label={`Abschnitt ${g.label} ${closed ? "ausklappen" : "einklappen"}`}
+              disabled={schemaBusy}
+              onClick={() =>
+                void setGroupsCollapsed([pathCollapseKey(keys)], !closed)
+              }
+            >
+              <CaretRight
+                size={12}
+                style={{ transform: closed ? undefined : "rotate(90deg)" }}
+              />
+              <span>{g.label}</span>
+              <span className="muted">{g.rows.length}</span>
+            </button>
+            {!closed && deepCards(g.rows, [...path, g], key)}
+          </section>
+        );
+      });
   }
   function subgroupHeader(group: DatabaseGroup, sub: DatabaseGroup) {
     const closed = subCollapsed(group.key, sub.key),
@@ -2275,7 +2414,11 @@ export default function DatabaseView({
                             <span className="muted">{cellRows.length}</span>
                           ) : (
                             <>
-                              {cellRows.map((r) => card(r, key))}
+                              {deepCards(
+                                cellRows,
+                                [g, { ...lane, rows: cellRows }],
+                                key,
+                              )}
                               {canSubEdit && (
                                 <button
                                   className="new-record"
@@ -2955,7 +3098,7 @@ export default function DatabaseView({
                 updateView({
                   groupBy: e.target.value,
                   ...(view.subGroupBy === e.target.value || !e.target.value
-                    ? { subGroupBy: undefined }
+                    ? { subGroupBy: undefined, groupLevels: undefined }
                     : {}),
                   groupSettings: {
                     ...groupSettings,
@@ -2987,6 +3130,10 @@ export default function DatabaseView({
                 onChange={(e) =>
                   updateView({
                     subGroupBy: e.target.value || undefined,
+                    ...(!e.target.value ||
+                    view.groupLevels?.includes(e.target.value)
+                      ? { groupLevels: undefined }
+                      : {}),
                     groupSettings: {
                       ...groupSettings,
                       // Subgroup collapse keys are only meaningful per field.
@@ -3012,6 +3159,64 @@ export default function DatabaseView({
               </select>
             </label>
           )}
+          {subField &&
+            ["table", "list", "board"].includes(view.type) &&
+            Array.from(
+              { length: Math.min(3, deeperFields.length + 1) },
+              (_, i) => {
+                const used = new Set([
+                  groupField!.id,
+                  subField.id,
+                  ...deeperFields.slice(0, i).map((f) => f.id),
+                ]);
+                const label = `Gruppenebene ${i + 3}`;
+                return (
+                  <label key={label}>
+                    {view.type === "board"
+                      ? `Abschnitte (Ebene ${i + 3})`
+                      : label}
+                    <select
+                      aria-label={label}
+                      disabled={!viewEditable}
+                      value={deeperFields[i]?.id || ""}
+                      onChange={(e) =>
+                        updateView({
+                          groupLevels: [
+                            ...deeperFields.slice(0, i).map((f) => f.id),
+                            ...(e.target.value ? [e.target.value] : []),
+                          ],
+                          groupSettings: {
+                            ...groupSettings,
+                            // Keys below the subgroups belong to the old levels.
+                            collapsed: groupSettings.collapsed.filter((key) => {
+                              try {
+                                const parts = JSON.parse(key);
+                                return !(
+                                  Array.isArray(parts) &&
+                                  parts[0] === "sub" &&
+                                  parts.length > 3 + i
+                                );
+                              } catch {
+                                return true;
+                              }
+                            }),
+                          },
+                        })
+                      }
+                    >
+                      <option value="">Keine weitere Ebene</option>
+                      {fields
+                        .filter((f) => canGroupField(f) && !used.has(f.id))
+                        .map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                );
+              },
+            )}
           {groupField && ["table", "list", "board"].includes(view.type) && (
             <div className="settings-section">
               <label className="checkbox-label">

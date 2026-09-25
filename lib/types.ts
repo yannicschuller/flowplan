@@ -108,6 +108,9 @@ export type Filter = {
   value: string;
   timeZone?: string;
   days?: number;
+  // Several values (any_of, none_of, all_of) and the upper bound of between.
+  values?: string[];
+  to?: string;
 };
 export type FilterGroup = {
   kind: "group";
@@ -138,6 +141,8 @@ export type View = {
   sorts: { field: string; direction: "asc" | "desc" }[];
   groupBy?: string;
   subGroupBy?: string;
+  // Further grouping levels below the subgroups (levels 3 to 5).
+  groupLevels?: string[];
   groupSettings?: {
     hideEmpty: boolean;
     sort: "manual" | "asc" | "desc";

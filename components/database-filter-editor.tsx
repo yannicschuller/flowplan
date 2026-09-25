@@ -18,6 +18,8 @@ import {
   MAX_FILTER_NODES,
   operatorNames,
   operatorsFor,
+  multiValueOperators,
+  valuelessOperators,
 } from "@/lib/database-filters";
 import { cellText, queryRows } from "@/lib/database";
 import type {
@@ -120,7 +122,8 @@ export default function DatabaseFilterEditor({
   }
   function condition(node: Filter & { kind: "condition" }, path: number[]) {
     const field = fields.find((f) => f.id === node.field),
-      isEmpty = ["empty", "notempty"].includes(node.op),
+      isEmpty = valuelessOperators.has(node.op),
+      multi = multiValueOperators.has(node.op),
       operators = operatorsFor(field);
     const label = `Bedingung ${path.map((i) => i + 1).join(".")}`;
     const choices =
@@ -159,6 +162,8 @@ export default function DatabaseFilterEditor({
                 value: "",
                 timeZone: undefined,
                 days: undefined,
+                values: undefined,
+                to: undefined,
               });
             }}
           >
@@ -181,6 +186,10 @@ export default function DatabaseFilterEditor({
               const op = e.target.value as Filter["op"];
               patch(path, {
                 op,
+                values: multiValueOperators.has(op)
+                  ? node.values || (node.value ? [node.value] : [])
+                  : undefined,
+                to: op === "between" ? node.to || "" : undefined,
                 ...(isRelativeOperator(op)
                   ? {
                       value: isRelativeOperator(node.op) ? node.value : "today",
@@ -225,6 +234,30 @@ export default function DatabaseFilterEditor({
                 </option>
               ))}
             </select>
+          ) : multi && choices ? (
+            <span
+              className="filter-values"
+              role="group"
+              aria-label="Filterwerte"
+            >
+              {choices.map((c) => (
+                <label className="checkbox-label" key={c.value}>
+                  <input
+                    type="checkbox"
+                    checked={!!node.values?.includes(c.value)}
+                    onChange={(e) =>
+                      patch(path, {
+                        values: e.target.checked
+                          ? [...(node.values || []), c.value]
+                          : (node.values || []).filter((v) => v !== c.value),
+                      })
+                    }
+                  />
+                  {c.name}
+                </label>
+              ))}
+              {!choices.length && <span className="muted">Keine Werte</span>}
+            </span>
           ) : choices ? (
             <select
               aria-label="Filterwert"
@@ -264,6 +297,23 @@ export default function DatabaseFilterEditor({
             />
           )}
         </label>
+        {node.op === "between" && (
+          <label>
+            Bis
+            <input
+              aria-label="Filterwert bis"
+              type={
+                field &&
+                ["date", "created_at", "updated_at"].includes(field.type)
+                  ? "date"
+                  : "number"
+              }
+              step="any"
+              value={node.to || ""}
+              onChange={(e) => patch(path, { to: e.target.value })}
+            />
+          </label>
+        )}
         <button
           className="icon-button"
           type="button"

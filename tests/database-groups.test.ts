@@ -665,3 +665,57 @@ test("board columns keep their own card order for rows listed in several columns
   assert.ok(Object.values(saved).every((ids) => !ids.includes(b)));
   assert.deepEqual(columns().A, ["Alpha", "Delta"]);
 });
+
+test("up to three further group levels nest below the subgroups", async () => {
+  const { deeperGroupingFields, pathCollapseKey, subgroupCollapseKey } =
+    await import("../lib/database-groups");
+  const more: Field[] = [
+    ...fields,
+    { id: "owner", name: "Team", type: "select", options: ["X", "Y"] },
+    { id: "done", name: "Erledigt", type: "checkbox" },
+    { id: "files", name: "Dateien", type: "files" },
+  ];
+  const nested = {
+    ...view,
+    groupBy: "status",
+    subGroupBy: "tags",
+    groupLevels: ["owner", "done", "amount"],
+  };
+  assert.deepEqual(
+    deeperGroupingFields(more, nested, [more[1], more[2]]).map((f) => f.id),
+    ["owner", "done", "amount"],
+  );
+  // Levels stop at a repeated, unknown or ungroupable property.
+  assert.deepEqual(
+    deeperGroupingFields(
+      more,
+      { ...nested, groupLevels: ["owner", "status", "done"] },
+      [more[1], more[2]],
+    ).map((f) => f.id),
+    ["owner"],
+  );
+  assert.deepEqual(
+    deeperGroupingFields(more, { ...nested, groupLevels: ["files"] }, [
+      more[1],
+      more[2],
+    ]),
+    [],
+  );
+  // Without a subgroup there are no deeper levels.
+  assert.deepEqual(
+    deeperGroupingFields(more, nested, [more[1], undefined]),
+    [],
+  );
+  // Collapse keys for two levels are unchanged; deeper paths extend them.
+  assert.equal(pathCollapseKey(["a", "b"]), subgroupCollapseKey("a", "b"));
+  assert.equal(
+    pathCollapseKey(["a", "b", "c"]),
+    JSON.stringify(["sub", "a", "b", "c"]),
+  );
+  assert.equal(
+    viewSchema.safeParse({ ...nested, groupLevels: ["a", "b", "c", "d"] })
+      .success,
+    false,
+  );
+  assert.equal(viewSchema.safeParse(nested).success, true);
+});

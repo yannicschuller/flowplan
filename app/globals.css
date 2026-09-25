@@ -7336,3 +7336,47 @@ tr.order-drop-after > td {
     position: static;
   }
 }
+.filter-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-height: 160px;
+  overflow: auto;
+}
+.database-group-level-3 {
+  padding-left: 44px;
+}
+.database-group-level-4 {
+  padding-left: 62px;
+}
+.database-group-level-5 {
+  padding-left: 80px;
+}
+.board-card-section {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+}
+.board-card-section .group-toggle {
+  display: flex;
+  justify-self: start;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.board-card-section.database-group-level-4 {
+  padding-left: 8px;
+}
+.board-card-section.database-group-level-5 {
+  padding-left: 16px;
+}
+.board-card-section.database-group-level-3 {
+  padding-left: 0;
+}

@@ -72,6 +72,7 @@ export const view = z
       .max(20),
     groupBy: z.string().optional(),
     subGroupBy: z.string().max(200).optional(),
+    groupLevels: z.array(z.string().max(200)).max(3).optional(),
     groupSettings: z
       .object({
         hideEmpty: z.boolean(),

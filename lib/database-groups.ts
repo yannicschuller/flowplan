@@ -195,6 +195,28 @@ export function splitNestedKey(key: string) {
   const [group, subgroup] = key.split(SEPARATOR);
   return { group, subgroup: subgroup as string | undefined };
 }
-// Persisted collapsed state of a subgroup; bounded like group keys.
+// Persisted collapsed state of a nested group, addressed by the keys of all
+// its levels; bounded like group keys.
+export const pathCollapseKey = (path: string[]) =>
+  boundedKey(JSON.stringify(["sub", ...path]));
 export const subgroupCollapseKey = (group: string, subgroup: string) =>
-  boundedKey(JSON.stringify(["sub", group, subgroup]));
+  pathCollapseKey([group, subgroup]);
+// Levels 3 to 5: further properties below the subgroups (tables, lists and
+// sections inside board swimlanes).
+export const MAX_EXTRA_GROUP_LEVELS = 3;
+export function deeperGroupingFields(
+  fields: Field[],
+  view: View,
+  used: (Field | undefined)[],
+) {
+  if (used.length < 2 || used.some((f) => !f)) return [];
+  const seen = new Set(used.map((f) => f!.id)),
+    result: Field[] = [];
+  for (const id of view.groupLevels || []) {
+    const f = fields.find((x) => x.id === id && canGroupField(x));
+    if (!f || seen.has(f.id)) break;
+    seen.add(f.id);
+    result.push(f);
+  }
+  return result.slice(0, MAX_EXTRA_GROUP_LEVELS);
+}

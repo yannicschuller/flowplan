@@ -1212,6 +1212,13 @@ export function command(
             ...v,
             filters: v.filters.flatMap((f) => (cleanFilter(f) ? [f] : [])),
             sorts: v.sorts.filter((s) => !deletedFields.has(s.field)),
+            ...(v.groupLevels
+              ? {
+                  groupLevels: v.groupLevels.filter(
+                    (fid) => !deletedFields.has(fid),
+                  ),
+                }
+              : {}),
             ...(v.filterGroup
               ? {
                   filterGroup: transformFilterGroup(v.filterGroup, cleanFilter),

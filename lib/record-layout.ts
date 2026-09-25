@@ -25,8 +25,4 @@ export function parseRecordLayout(raw: unknown): RecordLayout {
     return defaultRecordLayout;
   }
 }
-export const emptyCell = (value: unknown) =>
-  value == null ||
-  value === "" ||
-  value === false ||
-  (Array.isArray(value) && value.length === 0);
+export { isEmptyValue as emptyCell } from "./empty-value";

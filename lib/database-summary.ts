@@ -153,6 +153,18 @@ export function columnSummary(
       }
       value = numeric;
     }
+    // Unchecked boxes count as empty, like in filters.
+    if (
+      field.type === "checkbox" &&
+      [
+        "count_empty",
+        "count_not_empty",
+        "percent_empty",
+        "percent_not_empty",
+      ].includes(choice) &&
+      value !== true
+    )
+      value = null;
     if (checkboxAggregates.has(choice)) {
       if (emptyRollupValue(value)) value = false;
       else if (typeof value !== "boolean") {

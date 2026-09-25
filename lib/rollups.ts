@@ -1,3 +1,4 @@
+import { isEmptyValue } from "./empty-value";
 import type { Field } from "./types";
 export const rollupAggregates = [
   "count",
@@ -83,8 +84,7 @@ export function allowedAggregates(field?: Field): RollupAggregate[] {
         ["date", "created_at", "updated_at"].includes(field.type)),
   );
 }
-export const emptyRollupValue = (v: unknown) =>
-  v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length);
+export const emptyRollupValue = (v: unknown) => isEmptyValue(v);
 export function aggregateRollup(
   values: unknown[],
   aggregate: RollupAggregate,
