@@ -153,6 +153,35 @@ test("charts split groups into data series with legend, stacking, drill-down and
       .getByLabel("Liniendiagramm mit Datenreihen", { exact: true })
       .locator("polyline"),
   ).toHaveCount(2);
+  // Axis titles and a fixed value range.
+  await page.getByRole("button", { name: "Diagramm konfigurieren" }).click();
+  await dialog.getByLabel("Beschriftung Gruppenachse").fill("Status");
+  await dialog.getByLabel("Beschriftung Werteachse").fill("Anzahl");
+  await dialog.getByLabel("Werteachse von").fill("5");
+  await dialog.getByLabel("Werteachse bis").fill("1");
+  await expect(dialog.getByRole("alert")).toContainText("größer");
+  await dialog.getByLabel("Werteachse von").fill("0");
+  await dialog.getByLabel("Werteachse bis").fill("10");
+  await dialog.getByRole("button", { name: "Anwenden", exact: true }).click();
+  await expect
+    .poll(async () => (await read()).database.views[0].chart)
+    .toMatchObject({
+      groupAxisLabel: "Status",
+      valueAxisLabel: "Anzahl",
+      valueMin: 0,
+      valueMax: 10,
+    });
+  const graphic = page.getByLabel("Liniendiagramm mit Datenreihen", {
+    exact: true,
+  });
+  await expect(graphic.locator(".chart-axis-title")).toHaveText([
+    "Status",
+    "Anzahl",
+  ]);
+  // The top tick shows the configured maximum.
+  await expect(graphic.locator("text").filter({ hasText: /^10$/ })).toHaveCount(
+    1,
+  );
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });

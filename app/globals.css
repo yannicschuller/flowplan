@@ -5269,6 +5269,19 @@ tr.order-drop-after > td {
 .chart-grid {
   stroke: var(--border);
 }
+.chart-axis-title {
+  fill: var(--secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.chart-range {
+  display: flex;
+  gap: 8px;
+}
+.chart-range label {
+  flex: 1;
+  min-width: 0;
+}
 .chart-point {
   cursor: pointer;
 }

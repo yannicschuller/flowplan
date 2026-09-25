@@ -487,3 +487,50 @@ test("chart style options validate palettes and grid visibility", () => {
     false,
   );
 });
+
+test("fixed value ranges and axis titles validate and clip to the plot", async () => {
+  const { chartDomain, chartSchema } = await import("../lib/database-chart");
+  const base = {
+    kind: "bar" as const,
+    aggregate: "count" as const,
+    dateBucket: "month" as const,
+    order: "label_asc" as const,
+    includeEmpty: true,
+    showValues: true,
+  };
+  const parsed = chartSchema.parse({
+    ...base,
+    groupAxisLabel: "Monat",
+    valueAxisLabel: "Umsatz",
+    valueMin: 10,
+    valueMax: 50,
+  });
+  assert.equal(parsed.valueAxisLabel, "Umsatz");
+  assert.throws(() =>
+    chartSchema.parse({ ...base, valueAxisLabel: "x".repeat(81) }),
+  );
+  assert.throws(() => chartSchema.parse({ ...base, valueMin: Infinity }));
+  const fixed = chartDomain([20, 40], parsed);
+  assert.ok(Math.abs(fixed.scale(10) - 0) < 1e-9);
+  assert.ok(Math.abs(fixed.scale(50) - 1) < 1e-9);
+  assert.ok(Math.abs(fixed.scale(30) - 0.5) < 1e-9);
+  // Values outside the range stay inside the plot.
+  assert.ok(Math.abs(fixed.scale(0) - 0) < 1e-9);
+  assert.ok(Math.abs(fixed.scale(80) - 1) < 1e-9);
+  // Automatic range includes zero; invalid bounds fall back to it.
+  const auto = chartDomain([20, 40], { ...parsed, valueMin: 60, valueMax: 50 });
+  assert.ok(Math.abs(auto.scale(0) - 0) < 1e-9);
+  assert.ok(Math.abs(auto.scale(40) - 1) < 1e-9);
+  const onlyMax = chartDomain([20, 40], {
+    ...parsed,
+    valueMin: undefined,
+    valueMax: 100,
+  });
+  assert.ok(Math.abs(onlyMax.scale(50) - 0.5) < 1e-9);
+  const negative = chartDomain([-10, 10], {
+    ...parsed,
+    valueMin: undefined,
+    valueMax: undefined,
+  });
+  assert.ok(Math.abs(negative.scale(0) - 0.5) < 1e-9);
+});

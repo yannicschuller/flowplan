@@ -7,6 +7,7 @@ import {
   chartConfigError,
   chartDateField,
   chartGroupField,
+  chartDomain,
   chartKinds,
   chartNumberField,
   chartPaletteNames,
@@ -30,6 +31,50 @@ const format = (n: number | null) =>
     ? "–"
     : new Intl.NumberFormat("de-DE", { maximumFractionDigits: 4 }).format(n);
 const short = (s: string) => (s.length > 22 ? s.slice(0, 20) + "…" : s);
+// Optional axis titles; the value axis is vertical except in bar charts.
+function AxisTitles({
+  config,
+  height,
+  horizontal,
+  plotTop,
+  plotBottom,
+  plotLeft,
+  plotRight,
+}: {
+  config: ChartConfig;
+  height: number;
+  horizontal: boolean;
+  plotTop: number;
+  plotBottom: number;
+  plotLeft: number;
+  plotRight: number;
+}) {
+  const across = horizontal ? config.valueAxisLabel : config.groupAxisLabel,
+    up = horizontal ? config.groupAxisLabel : config.valueAxisLabel;
+  return (
+    <>
+      {across && (
+        <text
+          className="chart-axis-title"
+          x={(plotLeft + plotRight) / 2}
+          y={height - 6}
+          textAnchor="middle"
+        >
+          {across}
+        </text>
+      )}
+      {up && (
+        <text
+          className="chart-axis-title"
+          transform={`translate(14,${(plotTop + plotBottom) / 2}) rotate(-90)`}
+          textAnchor="middle"
+        >
+          {up}
+        </text>
+      )}
+    </>
+  );
+}
 function ChartGraphic({
   points,
   config,
@@ -42,14 +87,7 @@ function ChartGraphic({
   const colors = paletteOf(config);
   const available = points.slice(0, 100),
     values = available.map((p) => p.value ?? 0);
-  const max = Math.max(0, ...values),
-    min = Math.min(0, ...values);
-  // Normalize first to avoid overflowing a domain containing large positive and negative values.
-  const magnitude = Math.max(Math.abs(min), Math.abs(max), 1);
-  const lo = min / magnitude,
-    hi = max / magnitude || (min === 0 ? 1 : 0),
-    span = hi - lo;
-  const scale = (v: number) => (v / magnitude - lo) / span;
+  const { lo, span, magnitude, scale } = chartDomain(values, config);
   const label = (p: ChartPoint) =>
     `${p.label}: ${format(p.value)} · ${p.rows.length} Einträge`;
   const interaction = (p: ChartPoint) => ({
@@ -163,6 +201,15 @@ function ChartGraphic({
         viewBox={`0 0 ${width} ${height}`}
         aria-label="Balkendiagramm"
       >
+        <AxisTitles
+          config={config}
+          height={height}
+          horizontal
+          plotTop={10}
+          plotBottom={height - 35}
+          plotLeft={left}
+          plotRight={left + extent}
+        />
         <line
           x1={zero}
           x2={zero}
@@ -221,6 +268,15 @@ function ChartGraphic({
       viewBox={`0 0 ${width} ${height}`}
       aria-label={config.kind === "line" ? "Liniendiagramm" : "Säulendiagramm"}
     >
+      <AxisTitles
+        config={config}
+        height={height}
+        horizontal={false}
+        plotTop={bottom - plot}
+        plotBottom={bottom}
+        plotLeft={left}
+        plotRight={width - 20}
+      />
       {[0, 0.25, 0.5, 0.75, 1].map((t) => (
         <g key={t}>
           <line
@@ -333,13 +389,7 @@ function SeriesGraphic({
     }
     return [pos, neg];
   });
-  const max = Math.max(0, ...extents),
-    min = Math.min(0, ...extents);
-  const magnitude = Math.max(Math.abs(min), Math.abs(max), 1);
-  const lo = min / magnitude,
-    hi = max / magnitude || (min === 0 ? 1 : 0),
-    span = hi - lo;
-  const scale = (v: number) => (v / magnitude - lo) / span;
+  const { lo, span, magnitude, scale } = chartDomain(extents, config);
   const label = (p: ChartPoint, s: ChartSeries) =>
     `${p.label} · ${s.label}: ${format(cell(p, s).value)} · ${cell(p, s).rows.length} Einträge`;
   const interaction = (p: ChartPoint, s: ChartSeries) => ({
@@ -391,6 +441,15 @@ function SeriesGraphic({
         viewBox={`0 0 ${width} ${height}`}
         aria-label="Balkendiagramm mit Datenreihen"
       >
+        <AxisTitles
+          config={config}
+          height={height}
+          horizontal
+          plotTop={10}
+          plotBottom={height - 35}
+          plotLeft={left}
+          plotRight={left + extent}
+        />
         <line
           x1={zero}
           x2={zero}
@@ -452,6 +511,15 @@ function SeriesGraphic({
           : "Säulendiagramm mit Datenreihen"
       }
     >
+      <AxisTitles
+        config={config}
+        height={height}
+        horizontal={false}
+        plotTop={bottom - plot}
+        plotBottom={bottom}
+        plotLeft={left}
+        plotRight={width - 20}
+      />
       {[0, 0.25, 0.5, 0.75, 1].map((t) => (
         <g key={t}>
           <line
@@ -746,6 +814,78 @@ function ChartSettings({
           />
           Gitterlinien anzeigen
         </label>
+        {draft.kind !== "donut" && (
+          <>
+            <label>
+              Beschriftung Gruppenachse
+              <input
+                aria-label="Beschriftung Gruppenachse"
+                maxLength={80}
+                value={draft.groupAxisLabel || ""}
+                onChange={(e) =>
+                  patch({ groupAxisLabel: e.target.value || undefined })
+                }
+              />
+            </label>
+            <label>
+              Beschriftung Werteachse
+              <input
+                aria-label="Beschriftung Werteachse"
+                maxLength={80}
+                value={draft.valueAxisLabel || ""}
+                onChange={(e) =>
+                  patch({ valueAxisLabel: e.target.value || undefined })
+                }
+              />
+            </label>
+            <div className="chart-range">
+              <label>
+                Werteachse von
+                <input
+                  aria-label="Werteachse von"
+                  type="number"
+                  step="any"
+                  placeholder="Automatisch"
+                  value={draft.valueMin ?? ""}
+                  onChange={(e) =>
+                    patch({
+                      valueMin:
+                        e.target.value === ""
+                          ? undefined
+                          : Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                bis
+                <input
+                  aria-label="Werteachse bis"
+                  type="number"
+                  step="any"
+                  placeholder="Automatisch"
+                  value={draft.valueMax ?? ""}
+                  onChange={(e) =>
+                    patch({
+                      valueMax:
+                        e.target.value === ""
+                          ? undefined
+                          : Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            {draft.valueMin !== undefined &&
+              draft.valueMax !== undefined &&
+              draft.valueMax <= draft.valueMin && (
+                <p className="field-error" role="alert">
+                  Der Endwert muss größer als der Anfangswert sein; bis dahin
+                  wird automatisch skaliert.
+                </p>
+              )}
+          </>
+        )}
         <label>
           Gruppen sortieren
           <select

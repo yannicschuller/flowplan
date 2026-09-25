@@ -17,7 +17,36 @@ export const chartSchema = z.object({
   showLegend: z.boolean().optional(),
   palette: z.enum(["default", "warm", "cool", "pastel", "mono"]).optional(),
   showGrid: z.boolean().optional(),
+  // Axis titles and a fixed value range (empty = automatic).
+  groupAxisLabel: z.string().max(80).optional(),
+  valueAxisLabel: z.string().max(80).optional(),
+  valueMin: z.number().finite().optional(),
+  valueMax: z.number().finite().optional(),
 });
+// The value range of a chart: configured bounds when valid, otherwise from
+// the data including zero. Values outside are clipped to the plot.
+export function chartDomain(extents: number[], config: ChartConfig) {
+  let max = Math.max(0, ...extents),
+    min = Math.min(0, ...extents);
+  const fixedMin = config.valueMin ?? min,
+    fixedMax = config.valueMax ?? max;
+  if (fixedMax > fixedMin) {
+    min = fixedMin;
+    max = fixedMax;
+  }
+  // Normalize first to avoid overflowing a domain containing large positive
+  // and negative values.
+  const magnitude = Math.max(Math.abs(min), Math.abs(max), 1);
+  const lo = min / magnitude,
+    hi = max / magnitude || (min === 0 ? 1 : 0),
+    span = hi - lo;
+  return {
+    lo,
+    span,
+    magnitude,
+    scale: (v: number) => Math.max(0, Math.min(1, (v / magnitude - lo) / span)),
+  };
+}
 export const chartPalettes = {
   default: [
     "#4f70d5",
