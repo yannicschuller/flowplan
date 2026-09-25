@@ -86,7 +86,15 @@ import {
 } from "@phosphor-icons/react";
 import type { Bootstrap, Page, Comment, User, Role, Space } from "@/lib/types";
 import { PageExportDialog } from "./page-export";
-import { Modal, PageIcon, Avatar, api, download, ApiError } from "./ui";
+import {
+  Modal,
+  PageIcon,
+  Avatar,
+  api,
+  download,
+  ApiError,
+  PageSkeleton,
+} from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
 import Admin from "./admin";
@@ -98,7 +106,7 @@ const EmojiPicker = dynamic(() => import("./emoji-picker"), {
 });
 const DocumentEditor = dynamic(() => import("./editor"), {
   ssr: false,
-  loading: () => <div className="editor-loading">Dokument wird geöffnet …</div>,
+  loading: () => <PageSkeleton compact label="Dokument wird geöffnet …" />,
 });
 type PageData = DatabaseData & {
   shareLinks?: ShareLink[];
@@ -1515,9 +1523,20 @@ export default function WorkspaceApp({
             </div>
           )}
           {screen === "page" && (busy || !data) ? (
-            <div className="loading-content">
-              {busy ? "Seite wird geöffnet …" : "Seite nicht verfügbar."}
-            </div>
+            busy ? (
+              <div className="page-content">
+                <PageSkeleton
+                  kind={
+                    boot.pages.find((p) => p.id === pageId)?.kind ===
+                    "database"
+                      ? "database"
+                      : "document"
+                  }
+                />
+              </div>
+            ) : (
+              <div className="loading-content">Seite nicht verfügbar.</div>
+            )
           ) : (
             screen === "page" &&
             data && (

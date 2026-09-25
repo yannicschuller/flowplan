@@ -129,6 +129,66 @@ export function Modal({
     </Dialog.Root>
   );
 }
+// Placeholder while a page opens: the outline of a document or a table
+// with a soft shimmer (still for reduced motion).
+export function PageSkeleton({
+  kind = "document",
+  label = "Seite wird geöffnet …",
+  compact = false,
+}: {
+  kind?: "document" | "database";
+  label?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`page-skeleton${compact ? " compact" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="page-skeleton-label">
+        <span className="page-skeleton-dots" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+        {label}
+      </span>
+      <div aria-hidden="true" className="page-skeleton-body">
+        {!compact && (
+          <>
+            <span className="sk sk-icon" />
+            <span className="sk sk-title" />
+          </>
+        )}
+        {kind === "database" ? (
+          <div className="sk-table">
+            <span className="sk sk-tabs" />
+            {Array.from({ length: 6 }, (_, i) => (
+              <div className="sk-row" key={i}>
+                <span className="sk" />
+                <span className="sk" />
+                <span className="sk" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          [92, 100, 84, 96, 60, 0, 88, 72].map((w, i) =>
+            w ? (
+              <span
+                key={i}
+                className="sk sk-line"
+                style={{ width: `${w}%` }}
+              />
+            ) : (
+              <span key={i} className="sk-gap" />
+            ),
+          )
+        )}
+      </div>
+    </div>
+  );
+}
 export function Avatar({
   name,
   small = false,
