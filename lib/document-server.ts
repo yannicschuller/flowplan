@@ -1,4 +1,5 @@
 import { generateJSON, generateHTML } from "@tiptap/html/server";
+import { embedHosts, embedProvider } from "./embed-providers";
 import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import sanitize from "sanitize-html";
@@ -57,18 +58,23 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "background-color": [/^#[0-9a-f]{3,8}$/i],
       },
     },
-    allowedIframeHostnames: ["www.youtube-nocookie.com"],
+    allowedIframeHostnames: embedHosts,
     exclusiveFilter: (frame) => frame.tag === "iframe" && !frame.attribs.src,
     transformTags: {
       ...(transform ? { "*": transform } : {}),
-      iframe: (tagName, attribs) => ({
-        tagName,
-        attribs: {
-          ...attribs,
-          sandbox: "allow-scripts allow-same-origin allow-presentation",
-          loading: "lazy",
-        },
-      }),
+      // Only the known providers' player URLs survive, not any page on
+      // their hosts.
+      iframe: (tagName, attribs) =>
+        embedProvider(attribs.src || "")
+          ? {
+              tagName,
+              attribs: {
+                ...attribs,
+                sandbox: "allow-scripts allow-same-origin allow-presentation",
+                loading: "lazy",
+              },
+            }
+          : { tagName: "iframe", attribs: {} },
       a: (tagName, attribs) => ({
         tagName,
         attribs: { ...attribs, rel: "noopener noreferrer" },

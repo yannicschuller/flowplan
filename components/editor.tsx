@@ -1,4 +1,5 @@
 "use client";
+import { embedFromUrl, embedProviders } from "@/lib/embed-providers";
 import {
   mermaidNodeView,
   DiagramEditorDialog,
@@ -575,8 +576,8 @@ export default function DocumentEditor({
           .run(),
     },
     {
-      name: "Video einbetten",
-      description: "YouTube-Video hinzufügen",
+      name: "Einbetten",
+      description: "YouTube, Vimeo, Loom, Spotify, Figma oder CodePen",
       icon: ImageIcon,
       run: () => setEmbed(true),
     },
@@ -996,32 +997,35 @@ export default function DocumentEditor({
         }}
         open={embed}
         onClose={() => setEmbed(false)}
-        title="Video einbetten"
+        title="Inhalt einbetten"
       >
         <form
           onSubmit={(e) => {
             e.preventDefault();
             try {
-              const url = new URL(embedUrl);
-              const videoId =
-                url.hostname === "youtu.be"
-                  ? url.pathname.slice(1)
-                  : ["youtube.com", "www.youtube.com"].includes(url.hostname)
-                    ? url.searchParams.get("v")
-                    : null;
-              if (!videoId || !/^[-\w]{6,20}$/.test(videoId))
-                throw Error("Bitte eine gültige YouTube-URL eingeben.");
-              editor
-                ?.chain()
-                .focus()
-                .insertContent({
-                  type: "media",
-                  attrs: {
-                    src: `https://www.youtube-nocookie.com/embed/${videoId}`,
-                    kind: "embed",
-                  },
-                })
-                .run();
+              const embedded = embedFromUrl(embedUrl);
+              if (!embedded)
+                throw Error(
+                  `Bitte einen Link von ${embedProviders.map((p) => p.name).join(", ")} eingeben.`,
+                );
+              const media = {
+                type: "media",
+                attrs: {
+                  src: embedded.src,
+                  kind: "embed",
+                  title: embedded.provider,
+                },
+              };
+              // A selected block (e.g. the previous embed) is kept; the new
+              // one goes after it.
+              const selection = editor?.state.selection;
+              if (selection instanceof NodeSelection)
+                editor
+                  ?.chain()
+                  .focus()
+                  .insertContentAt(selection.to, media)
+                  .run();
+              else editor?.chain().focus().insertContent(media).run();
               setEmbed(false);
             } catch (err) {
               onError((err as Error).message);
@@ -1029,7 +1033,7 @@ export default function DocumentEditor({
           }}
         >
           <label>
-            YouTube-URL
+            Link (YouTube, Vimeo, Loom, Spotify, Figma, CodePen)
             <input
               autoFocus
               type="url"

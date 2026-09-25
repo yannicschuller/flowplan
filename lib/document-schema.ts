@@ -1,4 +1,5 @@
 import { Node, mergeAttributes, getSchema } from "@tiptap/core";
+import { embedProvider } from "./embed-providers";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -241,15 +242,14 @@ export const Media = Node.create({
   ],
   renderHTML: ({ node }) => {
     const { src, kind, title } = node.attrs;
-    if (
-      kind === "embed" &&
-      /^https:\/\/www.youtube-nocookie.com\/embed\/[A-Za-z0-9_-]+$/.test(src)
-    )
+    const provider = kind === "embed" ? embedProvider(src || "") : undefined;
+    if (provider)
       return [
         "iframe",
         {
           src,
-          title: title || "Video",
+          title: title || provider.name,
+          "data-provider": provider.name.toLowerCase(),
           class: "video-embed",
           allowfullscreen: "true",
           sandbox: "allow-scripts allow-same-origin allow-presentation",

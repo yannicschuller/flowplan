@@ -16,6 +16,7 @@ import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
 import { DocumentBlockControls } from "./document-block-controls";
 import { BlockShortcuts } from "@/lib/block-shortcuts";
 import { EditableCodeBlock } from "./code-block";
+import { embedProvider } from "@/lib/embed-providers";
 export type GuestUpload = { url: string; name: string; mime: string };
 export default function SharedEditor({
   html,
@@ -54,17 +55,14 @@ export default function SharedEditor({
                     /^\/api\/share\/[\w-]+\/files\/[\w-]+$/.test(src)
                   )
                     return [kind, { src, controls: true, preload: "metadata" }];
-                  if (
-                    kind === "embed" &&
-                    /^https:\/\/www.youtube-nocookie.com\/embed\/[\w-]+$/.test(
-                      src,
-                    )
-                  )
+                  const provider =
+                    kind === "embed" ? embedProvider(src || "") : undefined;
+                  if (provider)
                     return [
                       "iframe",
                       {
                         src,
-                        title: "Video",
+                        title: provider.name,
                         sandbox:
                           "allow-scripts allow-same-origin allow-presentation",
                         loading: "lazy",
