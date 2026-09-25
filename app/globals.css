@@ -8372,3 +8372,40 @@ textarea {
   color: var(--muted);
   font-size: 13px;
 }
+.wb-template-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.wb-template-list .button {
+  justify-content: center;
+  padding: 18px 10px;
+}
+.wb-present,
+.wb-present-start {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.wb-present {
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: 16px;
+  translate: -50% 0;
+  animation: toast-in 0.25s var(--ease-spring) both;
+}
+.wb-present span {
+  padding: 0 8px;
+  white-space: nowrap;
+}

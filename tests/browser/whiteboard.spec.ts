@@ -305,3 +305,48 @@ test("pen, frames, emoji, page cards, images, undo and export work", async ({
   await command({ action: "page.delete", pageId: board.id });
   await command({ action: "page.delete", pageId: target.id });
 });
+
+test("board templates and presenting frames", async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { command, board } = await setup(
+    page,
+    `Vorlagen ${testInfo.project.name} ${Date.now()}`,
+  );
+  await page.goto(`/#page=${board.id}`);
+  const wb = page.getByLabel("Whiteboard", { exact: true });
+  await wb.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Vorlage einfügen" })
+    .getByRole("button", { name: "Mindmap" })
+    .click();
+  await expect(wb.locator(".wb-shape")).toHaveCount(5);
+  await expect(wb.locator(".wb-connector")).toHaveCount(4);
+  await wb.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Vorlage einfügen" })
+    .getByRole("button", { name: "Retrospektive" })
+    .click();
+  await expect(wb.locator(".wb-frame")).toHaveCount(3);
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`/api/pages/${board.id}`)).json()).html,
+    )
+    .toContain("Zentrales Thema");
+  // Presenting walks through the frames.
+  await wb.getByRole("button", { name: "Präsentieren" }).click();
+  const bar = wb.locator(".wb-present");
+  await expect(bar).toContainText("1 / 3");
+  await bar.getByRole("button", { name: "Nächster Rahmen" }).click();
+  await expect(bar).toContainText("2 / 3");
+  await page.keyboard.press("ArrowRight");
+  await expect(bar).toContainText("Maßnahmen · 3 / 3");
+  await page.keyboard.press("Escape");
+  await expect(bar).toHaveCount(0);
+  await page.screenshot({
+    path: `test-results/whiteboard/templates-${testInfo.project.name}.png`,
+  });
+  expect(errors).toEqual([]);
+  await command({ action: "page.delete", pageId: board.id });
+});

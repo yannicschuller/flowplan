@@ -32,9 +32,19 @@ import {
   TextT,
   Trash,
   CopySimple,
+  SquaresFour,
+  PresentationChart,
+  CaretLeft,
+  CaretRight,
+  X,
 } from "@phosphor-icons/react";
 import { Modal, api } from "../ui";
 import { Select } from "../select";
+import {
+  templateItems,
+  whiteboardTemplates,
+  type WhiteboardTemplate,
+} from "@/lib/whiteboard-templates";
 import {
   WhiteboardDefs,
   WhiteboardShape,
@@ -170,6 +180,8 @@ export default function Whiteboard({
       }),
     [itemsMap],
   );
+  const [templatesOpen, setTemplatesOpen] = useState(false),
+    [presenting, setPresenting] = useState<number | null>(null);
   const [tool, setTool] = useState<Tool>("select"),
     [shapeKind, setShapeKind] = useState<ShapeKind>("rectangle"),
     [stickyColor, setStickyColor] = useState(stickyColors[0]),
@@ -330,6 +342,66 @@ export default function Whiteboard({
     x: (p.x - view.x) * view.zoom,
     y: (p.y - view.y) * view.zoom,
   });
+  // Inserts a ready-made board around the middle of the view.
+  function insertTemplate(kind: WhiteboardTemplate) {
+    const drafts = templateItems(kind);
+    const box = contentBounds(
+      drafts.map((d) => ({ ...d, z: 0 })),
+      new Map(drafts.map((d) => [d.id, { ...d, z: 0 }])),
+    );
+    const at = center();
+    const dx = at.x - (box ? box.x + box.w / 2 : 0),
+      dy = at.y - (box ? box.y + box.h / 2 : 0);
+    const ids = new Map(drafts.map((d) => [d.id, crypto.randomUUID()]));
+    change(() => {
+      const zs = read().map((i) => i.z || 0);
+      let top = Math.max(0, ...zs),
+        bottom = Math.min(0, ...zs);
+      for (const d of drafts) {
+        const map = new Y.Map<unknown>();
+        const item: Partial<WhiteboardItem> = {
+          ...d,
+          x: d.x + dx,
+          y: d.y + dy,
+          z: d.type === "frame" ? --bottom : ++top,
+          ...(d.type === "connector"
+            ? {
+                from: { ...d.from!, id: ids.get(d.from!.id!) },
+                to: { ...d.to!, id: ids.get(d.to!.id!) },
+              }
+            : {}),
+        };
+        delete item.id;
+        for (const [key, value] of Object.entries(item))
+          if (value !== undefined) map.set(key, value);
+        itemsMap.set(ids.get(d.id)!, map);
+      }
+    });
+    setSelection(new Set(ids.values()));
+    setTemplatesOpen(false);
+  }
+  // Presentation: frames in reading order, one at a time.
+  const slides = items
+    .filter((i) => i.type === "frame")
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+  function showSlide(index: number) {
+    const frame = slides[index];
+    const rect = container.current?.getBoundingClientRect();
+    if (!frame || !rect) return setPresenting(null);
+    setPresenting(index);
+    setSelection(new Set());
+    setEditing(null);
+    const zoom = Math.min(
+      4,
+      (rect.width - 80) / frame.w,
+      (rect.height - 120) / (frame.h + 30),
+    );
+    setView({
+      zoom,
+      x: frame.x + frame.w / 2 - rect.width / zoom / 2,
+      y: frame.y - 15 + frame.h / 2 - rect.height / zoom / 2,
+    });
+  }
   function fitToContent(list = read()) {
     const rect = container.current?.getBoundingClientRect();
     const box = contentBounds(list, new Map(list.map((i) => [i.id, i])));
@@ -957,6 +1029,16 @@ export default function Whiteboard({
       )
     )
       return;
+    if (presenting !== null) {
+      if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) {
+        e.preventDefault();
+        showSlide(Math.min(slides.length - 1, presenting + 1));
+      } else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) {
+        e.preventDefault();
+        showSlide(Math.max(0, presenting - 1));
+      } else if (e.key === "Escape") setPresenting(null);
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === " ") {
       setSpace(true);
@@ -1739,6 +1821,13 @@ export default function Whiteboard({
             >
               <FileText size={18} />
             </button>
+            <button
+              aria-label="Vorlagen"
+              title="Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm"
+              onClick={() => setTemplatesOpen(true)}
+            >
+              <SquaresFour size={18} />
+            </button>
             <span className="wb-sep" />
             <button
               aria-label="Rückgängig"
@@ -1857,6 +1946,76 @@ export default function Whiteboard({
           <DownloadSimple size={16} /> PNG
         </button>
       </div>
+      {presenting !== null ? (
+        <div
+          className="wb-present"
+          onPointerDown={(e) => e.stopPropagation()}
+          // Buttons that get disabled must not take the keyboard away.
+          onClickCapture={() =>
+            setTimeout(() => container.current?.focus({ preventScroll: true }))
+          }
+        >
+          <button
+            aria-label="Vorheriger Rahmen"
+            disabled={presenting === 0}
+            onClick={() => showSlide(presenting - 1)}
+          >
+            <CaretLeft size={18} />
+          </button>
+          <span>
+            {slides[presenting]?.text || "Rahmen"} · {presenting + 1} /{" "}
+            {slides.length}
+          </span>
+          <button
+            aria-label="Nächster Rahmen"
+            disabled={presenting >= slides.length - 1}
+            onClick={() => showSlide(presenting + 1)}
+          >
+            <CaretRight size={18} />
+          </button>
+          <button
+            aria-label="Präsentation beenden"
+            onClick={() => setPresenting(null)}
+          >
+            <X size={18} />
+          </button>
+        </div>
+      ) : (
+        slides.length > 0 && (
+          <button
+            className="wb-present-start"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              showSlide(0);
+              container.current?.focus({ preventScroll: true });
+            }}
+          >
+            <PresentationChart size={16} /> Präsentieren
+          </button>
+        )
+      )}
+      <Modal
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        title="Vorlage einfügen"
+      >
+        <div className="wb-template-list">
+          {(
+            Object.entries(whiteboardTemplates) as [
+              WhiteboardTemplate,
+              string,
+            ][]
+          ).map(([kind, name]) => (
+            <button
+              key={kind}
+              className="button"
+              onClick={() => insertTemplate(kind)}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </Modal>
       {!items.length && (
         <div className="wb-empty" aria-hidden="true">
           {editable
