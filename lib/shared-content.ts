@@ -1,3 +1,10 @@
+import {
+  applyHtml,
+  liveKey,
+  loadLive,
+  newProjection,
+  saveLive,
+} from "./shared-live";
 import { numberCell } from "./field-format";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -185,7 +192,13 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
         : s.role,
     locked: !!s.page.locked,
     title: s.page.title,
-    html: publishedHtml(s.doc?.html || "", token, s.pages),
+    // Editors get placeholders for what they cannot see, so saving keeps it.
+    html: publishedHtml(
+      s.doc?.html || "",
+      token,
+      s.pages,
+      s.role === "editor" ? new Map() : undefined,
+    ),
     version: s.version,
     canEditContent: s.page.kind === "document" || !!s.row,
     // Guests with edit rights may add records named by the title property.
@@ -310,12 +323,17 @@ function writableHtml(
   pages: { id: string }[],
   original: string,
 ) {
-  const linked = new Map<string, Record<string, string>>();
+  const linked = new Map<string, Record<string, string>>(),
+    mentions = new Set<string>();
   cleanHtml(original, (tagName, attribs) => {
     if (attribs["data-linked-database"])
       linked.set(attribs["data-linked-database"], attribs);
+    if (attribs["data-mention"]) mentions.add(attribs["data-mention"]);
     return { tagName, attribs };
   });
+  // Placeholders for links and files the guest cannot see map back.
+  const hidden = new Map<string, string>();
+  publishedHtml(original, token, pages, hidden);
   const seen = new Set<string>();
   return cleanHtml(html, (tagName, attribs) => {
     let attrs = { ...attribs };
@@ -326,10 +344,16 @@ function writableHtml(
       seen.add(id);
       attrs = { ...linked.get(id)! };
     }
-    delete attrs["data-mention"];
+    // Guests keep existing mentions but cannot mention anyone new.
+    if (attrs["data-mention"] && !mentions.has(attrs["data-mention"]))
+      delete attrs["data-mention"];
     for (const attr of ["href", "src"]) {
       const value = attrs[attr];
       if (!value) continue;
+      if (hidden.has(value)) {
+        attrs[attr] = hidden.get(value)!;
+        continue;
+      }
       // Only this link's already published files and pages can become internal references.
       const file = new RegExp(`^/api/share/${token}/files/([\\w-]+)$`).exec(
         value,
@@ -364,10 +388,22 @@ export function limitShareRequests(token: string) {
     throw new HttpError(429, "Zu viele Anfragen. Bitte warte eine Minute.");
   run("INSERT INTO share_requests VALUES(?,?)", token, Date.now());
 }
+// Live edits have their own, larger budget (a change every half second).
+function limitLiveChanges(token: string) {
+  run("DELETE FROM share_live_requests WHERE created_at<?", Date.now() - 60000);
+  if (
+    (one<{ n: number }>(
+      "SELECT count(*) n FROM share_live_requests WHERE token=?",
+      token,
+    )?.n || 0) >= 120
+  )
+    throw new HttpError(429, "Zu viele Änderungen. Bitte warte kurz.");
+  run("INSERT INTO share_live_requests VALUES(?,?)", token, Date.now());
+}
 export function mutateSharedContent(token: string, input: unknown) {
   const b = z
     .object({
-      action: z.enum(["comment", "save", "create", "cells"]),
+      action: z.enum(["comment", "save", "create", "cells", "live"]),
       pageId: z.string().uuid(),
       rowId: z.string().uuid().optional(),
     })
@@ -380,6 +416,7 @@ export function mutateSharedContent(token: string, input: unknown) {
     if (s.page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
     if (b.action !== "comment" && s.row?.access === "readonly")
       throw new HttpError(403, "Dieser Eintrag ist schreibgeschützt.");
+    if (b.action === "live") return liveSync(token, s, b);
     limitShareRequests(token);
     if (b.action === "create") {
       // New records by guests: only public, writable properties.
@@ -464,7 +501,23 @@ export function mutateSharedContent(token: string, input: unknown) {
           "Die Seite wurde inzwischen geändert. Lade sie neu, bevor du erneut speicherst. Dein Entwurf bleibt hier erhalten.",
         );
       const title = z.string().trim().min(1).max(500).parse(b.title);
-      if (s.page.kind === "document" || s.row) {
+      // Live editing saves the content continuously; saving then only
+      // changes the title or the properties.
+      if (b.html === undefined && s.row) {
+        const cells = validatedCells(b.cells ?? {}, s.fields, s.cells, {
+          token,
+          pages: s.pages,
+          pageId: s.page.id,
+        });
+        run(
+          "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
+          JSON.stringify(cells),
+          s.row.id,
+        );
+      } else if (
+        b.html !== undefined &&
+        (s.page.kind === "document" || s.row)
+      ) {
         const html = writableHtml(
           z.string().max(2_000_000).parse(b.html),
           token,
@@ -535,4 +588,145 @@ export function mutateSharedContent(token: string, input: unknown) {
     }
     return sharedContent(token, b.pageId, b.rowId);
   });
+}
+
+// Live editing (see lib/shared-live.ts). Without `update` it only pulls.
+function liveSync(
+  token: string,
+  s: ReturnType<typeof source>,
+  input: Record<string, unknown>,
+) {
+  if (s.page.kind !== "document" && !s.row)
+    throw new HttpError(
+      400,
+      "Nur Dokumente und Einträge sind live bearbeitbar.",
+    );
+  const b = z
+    .object({
+      pgen: z.string().max(100).optional(),
+      update: z.string().max(8_000_000).optional(),
+      vector: z.string().max(100_000).optional(),
+    })
+    .parse(input);
+  const pages = [s.root, ...s.pages.filter((p) => p.id !== s.root.id)];
+  const member = s.row
+    ? ensureRowDocument(s.row)
+    : (() => {
+        const d = s.doc!;
+        return {
+          state: d.state || htmlState(d.html || ""),
+          html: d.html || "",
+          generation: d.generation,
+        };
+      })();
+  const key = liveKey(token, s.page.id, s.row?.id);
+  const stored = loadLive(key);
+  const projected = () => publishedHtml(member.html, token, s.pages, new Map());
+  let doc: Y.Doc, pgen: string;
+  if (!stored || stored.generation !== member.generation) {
+    ({ doc, pgen } = newProjection(projected()));
+  } else {
+    doc = new Y.Doc();
+    Y.applyUpdate(doc, stored.state);
+    pgen = stored.pgen;
+    // Member changes since the last exchange flow into the projection.
+    if (stored.source_html !== member.html) applyHtml(doc, projected());
+  }
+  let sourceHtml = member.html;
+  try {
+    if (b.update && b.pgen === pgen) {
+      const before = stateHtml(doc);
+      Y.applyUpdate(doc, Buffer.from(b.update, "base64"));
+      const after = stateHtml(doc);
+      if (after !== before) {
+        limitLiveChanges(token);
+        const safe = writableHtml(after, token, pages, member.html);
+        const real = new Y.Doc();
+        try {
+          Y.applyUpdate(real, member.state);
+          applyHtml(real, safe);
+          const html = stateHtml(real),
+            state = Y.encodeStateAsUpdate(real);
+          if (html !== member.html) {
+            if (s.row) {
+              if (
+                !one(
+                  "SELECT id FROM row_snapshots WHERE row_id=? AND created_at>datetime('now','-5 minutes')",
+                  s.row.id,
+                )
+              )
+                run(
+                  "INSERT INTO row_snapshots(id,row_id,state,html,created_by) VALUES(?,?,?,?,?)",
+                  id(),
+                  s.row.id,
+                  member.state,
+                  member.html,
+                  "guest",
+                );
+              run(
+                "UPDATE row_documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?",
+                state,
+                html,
+                s.row.id,
+              );
+              run(
+                "UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
+                html,
+                s.row.id,
+              );
+            } else {
+              if (
+                !one(
+                  "SELECT id FROM snapshots WHERE page_id=? AND created_at>datetime('now','-5 minutes')",
+                  s.page.id,
+                )
+              )
+                run(
+                  "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
+                  id(),
+                  s.page.id,
+                  member.state,
+                  member.html,
+                  s.page.title,
+                  "guest",
+                );
+              run(
+                "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+                state,
+                html,
+                s.page.id,
+              );
+            }
+            run(
+              "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
+              s.page.id,
+            );
+            sourceHtml = html;
+          }
+        } finally {
+          real.destroy();
+        }
+      }
+    }
+    saveLive(key, {
+      state: Y.encodeStateAsUpdate(doc),
+      source_html: sourceHtml,
+      generation: member.generation,
+      pgen,
+    });
+    const reset = !!b.pgen && b.pgen !== pgen;
+    return {
+      pgen,
+      reset,
+      update: Buffer.from(
+        Y.encodeStateAsUpdate(
+          doc,
+          b.vector && !reset ? Buffer.from(b.vector, "base64") : undefined,
+        ),
+      ).toString("base64"),
+      version: source(token, s.page.id, s.row?.id).version,
+    };
+  } finally {
+    doc.destroy();
+  }
 }

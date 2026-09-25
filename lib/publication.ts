@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { imageFileId } from "./page-appearance";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
@@ -182,8 +183,29 @@ export function publicFile(token: string, fileId: string) {
     throw new HttpError(404, "Datei nicht veröffentlicht.");
   return file;
 }
-export function publishedHtml(html: string, token: string, pages: Page[]) {
+// Links and files outside the share are removed. For guest editing, pass
+// `hidden`: they become stable placeholders that saving maps back, so a
+// guest edit never drops what the guest cannot see.
+export function hiddenPlaceholder(token: string, value: string) {
+  return `/share/${token}/hidden/${createHash("sha256")
+    .update(`${token}\u0000${value}`)
+    .digest("hex")
+    .slice(0, 24)}`;
+}
+export function publishedHtml(
+  html: string,
+  token: string,
+  pages: { id: string }[],
+  hidden?: Map<string, string>,
+) {
   const pageIds = new Set(pages.map((p) => p.id));
+  const hide = (attrs: Record<string, string>, attr: string) => {
+    if (hidden) {
+      const placeholder = hiddenPlaceholder(token, attrs[attr]);
+      hidden.set(placeholder, attrs[attr]);
+      attrs[attr] = placeholder;
+    } else delete attrs[attr];
+  };
   return cleanHtml(html, (tagName, attribs) => {
     const attrs = { ...attribs };
     if (attrs["data-linked-database"]) {
@@ -198,13 +220,13 @@ export function publishedHtml(html: string, token: string, pages: Page[]) {
           publicFile(token, file[1]);
           attrs[attr] = `/api/share/${token}/files/${file[1]}`;
         } catch {
-          delete attrs[attr];
+          hide(attrs, attr);
         }
       }
       const link = /^\/?#page=([\w-]+)$/.exec(attrs[attr] || "");
       if (link) {
         if (pageIds.has(link[1])) attrs[attr] = `/share/${token}/${link[1]}`;
-        else delete attrs[attr];
+        else hide(attrs, attr);
       }
     }
     return { tagName, attribs: attrs };

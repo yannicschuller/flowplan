@@ -11,7 +11,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 19) return;
+  if (globalDb.flowplanSchema === 20) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -276,6 +276,16 @@ function migrate(d: DatabaseSync) {
     d.exec(
       "ALTER TABLE databases ADD COLUMN record_layout TEXT NOT NULL DEFAULT '{}'",
     );
+  d.exec(`CREATE TABLE IF NOT EXISTS share_live_requests(token TEXT NOT NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS share_live_requests_token ON share_live_requests(token,created_at);`);
+  // Per share link and document: the guest projection for live editing.
+  d.exec(`CREATE TABLE IF NOT EXISTS share_live(
+    key TEXT PRIMARY KEY,
+    state BLOB NOT NULL,
+    source_html TEXT NOT NULL,
+    generation TEXT NOT NULL,
+    pgen TEXT NOT NULL,
+    updated_at INTEGER NOT NULL)`);
   d.exec(`CREATE TABLE IF NOT EXISTS row_grants(
     row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL DEFAULT '',
@@ -316,7 +326,7 @@ function migrate(d: DatabaseSync) {
     ).some((c) => c.name === "rich_body")
   )
     d.exec("ALTER TABLE inline_messages ADD COLUMN rich_body TEXT");
-  globalDb.flowplanSchema = 19;
+  globalDb.flowplanSchema = 20;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

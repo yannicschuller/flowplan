@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import Collaboration from "@tiptap/extension-collaboration";
+import type * as Y from "yjs";
 import {
   mathNodeViews,
   MathEditorDialog,
@@ -23,11 +25,14 @@ export default function SharedEditor({
   onChange,
   disabled,
   upload,
+  ydoc,
 }: {
   html: string;
   onChange: (html: string) => void;
   disabled: boolean;
   upload?: (file: File) => Promise<GuestUpload | null>;
+  // Live editing: the content lives in this Yjs document.
+  ydoc?: Y.Doc;
 }) {
   const [diagram, setDiagram] = useState<DiagramTarget | null>(null);
   const [math, setMath] = useState<MathTarget | null>(null);
@@ -82,8 +87,9 @@ export default function SharedEditor({
               })
             : e,
         ),
+      ...(ydoc ? [Collaboration.configure({ document: ydoc })] : []),
     ],
-    content: html,
+    ...(ydoc ? {} : { content: html }),
     editable: !disabled,
     editorProps: {
       attributes: {

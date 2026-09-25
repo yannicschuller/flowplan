@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useSharedLive } from "./shared-live";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { CellInput, type CellFile } from "./cell-input";
@@ -42,6 +43,19 @@ export function SharedInteractions({
     [status, setStatus] = useState(""),
     [newTitle, setNewTitle] = useState(""),
     [uploaded, setUploaded] = useState<CellFile[]>([]);
+  // Content is edited live together with members and other guests.
+  const versionRef = useRef(data.version);
+  versionRef.current = data.version;
+  const live = useSharedLive({
+    token,
+    pageId: data.pageId,
+    rowId: data.rowId,
+    active: editing && data.canEditContent,
+    onVersion: (version) => {
+      versionRef.current = version;
+      setData((d) => (d.version === version ? d : { ...d, version }));
+    },
+  });
   async function upload(file: File) {
     setError("");
     const form = new FormData();
@@ -164,35 +178,64 @@ export function SharedInteractions({
                 />
               </label>
             ))}
-          {data.canEditContent && (
-            <SharedEditor
-              html={html}
-              onChange={setHtml}
-              disabled={busy}
-              upload={upload}
-            />
-          )}
+          {data.canEditContent &&
+            (live.doc ? (
+              <>
+                <SharedEditor
+                  key={live.docKey}
+                  html=""
+                  ydoc={live.doc}
+                  onChange={setHtml}
+                  disabled={busy}
+                  upload={upload}
+                />
+                <p className="shared-live-status" aria-live="polite">
+                  {live.state === "error"
+                    ? `Live-Bearbeitung: ${live.error}`
+                    : live.state === "saving"
+                      ? "Live · wird gespeichert …"
+                      : "Live · Inhalt gespeichert, Änderungen anderer erscheinen automatisch"}
+                </p>
+              </>
+            ) : (
+              <p className="muted">Live-Bearbeitung wird verbunden …</p>
+            ))}
           <div className="shared-actions">
             <button
               className="button primary"
               disabled={busy || !title.trim()}
               onClick={async () => {
-                const result = await send({
-                  action: "save",
-                  version: data.version,
-                  title,
-                  html,
-                  cells: Object.fromEntries(
-                    data.fields
-                      .filter(
-                        (f) =>
-                          !["created_at", "updated_at"].includes(f.type) &&
-                          JSON.stringify(cells[f.id]) !==
-                            JSON.stringify(data.cells[f.id]),
-                      )
-                      .map((f) => [f.id, cells[f.id]]),
-                  ),
-                });
+                if (data.canEditContent) {
+                  try {
+                    await live.flush();
+                  } catch (e) {
+                    setError((e as Error).message);
+                    return;
+                  }
+                }
+                const changedCells = Object.fromEntries(
+                  data.fields
+                    .filter(
+                      (f) =>
+                        !["created_at", "updated_at"].includes(f.type) &&
+                        JSON.stringify(cells[f.id]) !==
+                          JSON.stringify(data.cells[f.id]),
+                    )
+                    .map((f) => [f.id, cells[f.id]]),
+                );
+                // The content was saved live; only title and properties remain.
+                const result =
+                  data.canEditContent &&
+                  title === data.title &&
+                  !Object.keys(changedCells).length
+                    ? data
+                    : await send({
+                        action: "save",
+                        version: versionRef.current,
+                        title,
+                        ...(data.canEditContent ? {} : { html }),
+                        cells: changedCells,
+                      });
                 if (result) {
                   setEditing(false);
                   setStatus("Änderungen gespeichert");
