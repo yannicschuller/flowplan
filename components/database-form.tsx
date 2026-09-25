@@ -8,6 +8,8 @@ import {
   publicFormFields,
   validateFormValues,
   type FormConfig,
+  questionStyles,
+  type QuestionStyle,
 } from "@/lib/form-settings";
 import type { Field, Page } from "@/lib/types";
 type Form = {
@@ -279,6 +281,35 @@ export default function DatabaseForm({
                   />
                   Pflichtfeld
                 </label>
+                {questionStyles(f).length > 0 && (
+                  <label>
+                    Fragetyp
+                    <select
+                      aria-label={`Fragetyp für ${f.name}`}
+                      value={draft.questionStyles?.[f.id] || ""}
+                      onChange={(e) => {
+                        const next = { ...(draft.questionStyles || {}) };
+                        if (e.target.value)
+                          next[f.id] = e.target.value as QuestionStyle;
+                        else delete next[f.id];
+                        setDraft({ ...draft, questionStyles: next });
+                      }}
+                    >
+                      <option value="">Standard</option>
+                      {questionStyles(f).map((style) => (
+                        <option key={style} value={style}>
+                          {
+                            {
+                              long: "Langer Text",
+                              buttons: "Auswahlknöpfe",
+                              scale: "Lineare Skala 1–10",
+                            }[style]
+                          }
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <label>
                 Hinweis zu {f.name}

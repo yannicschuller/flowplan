@@ -3383,6 +3383,35 @@ tr:hover .row-open {
   text-align: center;
   width: 110px;
 }
+.form-choices {
+  display: grid;
+  gap: 6px;
+}
+.form-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.form-scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.form-scale button {
+  min-width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.form-scale button.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

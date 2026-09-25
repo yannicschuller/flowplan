@@ -15,7 +15,27 @@ export const formConfigSchema = z.object({
   hiddenFields: z.array(z.string()).max(80).default([]),
   requiredFields: z.array(z.string()).max(80).default([]),
   descriptions: z.record(z.string(), z.string().max(1000)).default({}),
+  // How a question is asked: long text, choice buttons or a 1–10 scale.
+  questionStyles: z
+    .record(z.string(), z.enum(["long", "buttons", "scale"]))
+    .default({}),
 });
+export type QuestionStyle = "long" | "buttons" | "scale";
+export const SCALE_MIN = 1,
+  SCALE_MAX = 10;
+// Styles that fit a property type; others are ignored.
+export function questionStyles(field: Field): QuestionStyle[] {
+  if (field.type === "text") return ["long"];
+  if (field.type === "select") return ["buttons"];
+  if (field.type === "number" && field.rollupDisplay !== "rating")
+    return ["scale"];
+  return [];
+}
+export function questionStyle(field: Field, config: FormConfig) {
+  const style = config.questionStyles?.[field.id];
+  return style && questionStyles(field).includes(style) ? style : undefined;
+}
+const PHONE = /^\+?[0-9 ()/.-]{3,30}$/;
 export type FormConfig = z.infer<typeof formConfigSchema>;
 export const FORM_FILES_PER_QUESTION = 5;
 export const FORM_FILE_BYTES = 10 * 1024 * 1024;
@@ -79,8 +99,16 @@ export function validateFormValues(
     }
     try {
       if (f.type === "checkbox") cells[f.id] = z.boolean().parse(value);
-      else if (f.type === "number") cells[f.id] = numberCell(f, value);
-      else if (f.type === "multiselect") {
+      else if (f.type === "number") {
+        cells[f.id] = numberCell(f, value);
+        if (
+          questionStyle(f, config) === "scale" &&
+          (!Number.isInteger(value) ||
+            (value as number) < SCALE_MIN ||
+            (value as number) > SCALE_MAX)
+        )
+          throw new Error();
+      } else if (f.type === "multiselect") {
         const selected = z.array(z.string()).max(100).parse(value);
         if (selected.some((v) => !f.options?.includes(v))) throw new Error();
         cells[f.id] = [...new Set(selected)];
@@ -114,6 +142,13 @@ export function validateFormValues(
         if (f.type === "select" && text && !f.options?.includes(text))
           throw new Error();
         if (f.type === "email" && text) z.email().parse(text);
+        if (f.type === "phone" && text && !PHONE.test(text)) throw new Error();
+        if (
+          f.type === "text" &&
+          questionStyle(f, config) !== "long" &&
+          text.includes("\n")
+        )
+          throw new Error();
         if (f.type === "url" && text)
           z.url({ protocol: /^https?$/ }).parse(text);
         if (f.type === "date" && text) {

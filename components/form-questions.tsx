@@ -6,6 +6,9 @@ import {
   FORM_FILES_PER_QUESTION,
   orderedFormFields,
   type FormConfig,
+  questionStyle,
+  SCALE_MAX,
+  SCALE_MIN,
 } from "@/lib/form-settings";
 import type { Field, Row, User } from "@/lib/types";
 export default function FormQuestions({
@@ -45,7 +48,53 @@ export default function FormQuestions({
           {config.descriptions[f.id] && (
             <p className="question-description">{config.descriptions[f.id]}</p>
           )}
-          {f.type === "files" && !upload ? (
+          {questionStyle(f, config) === "long" ? (
+            <textarea
+              aria-label={f.name}
+              rows={5}
+              maxLength={10000}
+              disabled={disabled}
+              value={
+                typeof values[f.id] === "string" ? (values[f.id] as string) : ""
+              }
+              onChange={(e) => onChange(f.id, e.target.value)}
+            />
+          ) : questionStyle(f, config) === "buttons" ? (
+            <div className="form-choices" role="radiogroup" aria-label={f.name}>
+              {(f.options || []).map((option) => (
+                <label key={option} className="form-choice">
+                  <input
+                    type="radio"
+                    name={`question-${f.id}`}
+                    disabled={disabled}
+                    checked={values[f.id] === option}
+                    onChange={() => onChange(f.id, option)}
+                  />
+                  {option}
+                </label>
+              ))}
+            </div>
+          ) : questionStyle(f, config) === "scale" ? (
+            <div className="form-scale" role="radiogroup" aria-label={f.name}>
+              {Array.from(
+                { length: SCALE_MAX - SCALE_MIN + 1 },
+                (_, i) => SCALE_MIN + i,
+              ).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={values[f.id] === n}
+                  aria-label={`${f.name}: ${n}`}
+                  className={values[f.id] === n ? "active" : ""}
+                  disabled={disabled}
+                  onClick={() => onChange(f.id, values[f.id] === n ? null : n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          ) : f.type === "files" && !upload ? (
             <FormFiles
               name={f.name}
               value={values[f.id]}
