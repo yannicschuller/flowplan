@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import { Modal } from "./ui";
 import {
@@ -63,7 +64,7 @@ export default function CalculationEditor({
       >
         <label>
           Berechnung
-          <select
+          <Select
             aria-label="Spaltenberechnung"
             value={choice}
             disabled={!editable || busy}
@@ -74,7 +75,7 @@ export default function CalculationEditor({
                 {calculationName(option as typeof choice)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <p className="muted">
           Gilt nur für diese Ansicht. Suche und Filter bestimmen die

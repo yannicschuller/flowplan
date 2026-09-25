@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import type { ShareLink } from "@/lib/share-links";
 export function ShareLinks({
@@ -109,7 +110,7 @@ export function ShareLinks({
         </label>
         <label>
           Berechtigung
-          <select
+          <Select
             aria-label="Linkberechtigung"
             value={role}
             onChange={(e) => setRole(e.target.value)}
@@ -117,7 +118,7 @@ export function ShareLinks({
             <option value="viewer">Lesen</option>
             <option value="commenter">Lesen und kommentieren</option>
             <option value="editor">Lesen, kommentieren und bearbeiten</option>
-          </select>
+          </Select>
         </label>
         <label className="checkbox-label">
           <input

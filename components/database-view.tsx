@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { RowAccess } from "./row-access";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
@@ -41,6 +42,7 @@ import {
   type ReactNode,
   useMemo,
   useState,
+  useLayoutEffect,
   useRef,
   useEffect,
   type DragEvent,
@@ -374,6 +376,11 @@ export default function DatabaseView({
     groupKey?: string;
     placement: "before" | "after";
   } | null>(null);
+  // Moved records glide to their new place (see the FLIP effect below).
+  const boardRef = useRef<HTMLDivElement | null>(null),
+    cardPositions = useRef(new Map<string, { x: number; y: number }>()),
+    lastMove = useRef(0),
+    lastMovedId = useRef<string | null>(null);
   const [orderStatus, setOrderStatus] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
   const view =
@@ -693,6 +700,8 @@ export default function DatabaseView({
   }
   async function submitMove(move: RowMove, clearSorts = false) {
     if (orderPending.current) return;
+    lastMove.current = Date.now();
+    lastMovedId.current = move.rowId;
     if (view.sorts.length && !clearSorts) {
       setMoveDialog(null);
       setSortMove(move);
@@ -829,6 +838,52 @@ export default function DatabaseView({
       ? `order-drop-${dropHint.placement}`
       : "";
   }
+  // After a move, the moved record and its neighbours glide to their new
+  // places (FLIP) instead of jumping; positions relative to the view so
+  // scrolling does not count as movement.
+  useLayoutEffect(() => {
+    const root = boardRef.current;
+    if (!root) return;
+    const items = [
+      ...root.querySelectorAll<HTMLElement>(
+        ".record-card-wrap[data-row-id], tr[data-row-id], .record-list-item[data-row-id]",
+      ),
+    ];
+    if (items.length > 500) return;
+    const origin = root.getBoundingClientRect();
+    const animate =
+      Date.now() - lastMove.current < 3000 &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const seen = new Map<string, number>(),
+      next = new Map<string, { x: number; y: number }>();
+    for (const el of items) {
+      const id = el.dataset.rowId!,
+        n = seen.get(id) || 0;
+      seen.set(id, n + 1);
+      const key = `${view.id}:${id}:${n}`,
+        rect = el.getBoundingClientRect(),
+        at = { x: rect.left - origin.left, y: rect.top - origin.top },
+        before = cardPositions.current.get(key);
+      next.set(key, at);
+      if (!animate || !before) continue;
+      const dx = before.x - at.x,
+        dy = before.y - at.y;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      const moved = id === lastMovedId.current;
+      el.style.transition = "none";
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      if (moved) el.classList.add("row-sliding");
+      requestAnimationFrame(() => {
+        el.style.transition = `transform ${moved ? 320 : 220}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
+        el.style.transform = "";
+        setTimeout(() => {
+          el.classList.remove("row-sliding");
+          el.style.transition = "";
+        }, 340);
+      });
+    }
+    cardPositions.current = next;
+  });
   function cardHover(x: number, y: number) {
     const drag = cardDrag.current;
     if (!drag?.dragging) return;
@@ -1192,7 +1247,7 @@ export default function DatabaseView({
       <div className="row-property recurrence-property">
         <span>Wiederholung</span>
         <span className="recurrence-choice">
-          <select
+          <Select
             aria-label="Wiederholung"
             disabled={!rowEditable(row)}
             value={rule?.freq || ""}
@@ -1210,7 +1265,7 @@ export default function DatabaseView({
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
           {rule && (
             <>
               <label>
@@ -1319,7 +1374,7 @@ export default function DatabaseView({
       <label className="row-property reminder-property">
         <span>Erinnerung</span>
         <span className="reminder-choice">
-          <select
+          <Select
             aria-label={`Erinnerung für ${field.name}`}
             disabled={reminderBusy || !validDateValue(value)}
             value={reminder ? String(reminder.offset) : ""}
@@ -1349,7 +1404,7 @@ export default function DatabaseView({
                 {reminderLabel(o, isTimed(value))}
               </option>
             ))}
-          </select>
+          </Select>
           {hint && <small className="muted">{hint}</small>}
         </span>
       </label>
@@ -1867,7 +1922,7 @@ export default function DatabaseView({
   }
 
   return (
-    <div className="database">
+    <div className="database" ref={boardRef}>
       <div className="database-tabs">
         {data.database.views.map((v) => {
           const Icon = viewIcons[v.type];
@@ -2879,7 +2934,7 @@ export default function DatabaseView({
               <h3>Feed-Darstellung</h3>
               <label>
                 Dokumentinhalt
-                <select
+                <Select
                   aria-label="Feed-Dokumentinhalt"
                   disabled={!viewEditable}
                   value={(view.feed || defaultFeed).content}
@@ -2896,7 +2951,7 @@ export default function DatabaseView({
                   <option value="full">Vollständig anzeigen</option>
                   <option value="compact">Kompakte Textvorschau</option>
                   <option value="hidden">Ausblenden</option>
-                </select>
+                </Select>
               </label>
               {(
                 [
@@ -2945,7 +3000,7 @@ export default function DatabaseView({
             <h3>Sortierung</h3>
             {view.sorts.map((s, i) => (
               <div className="filter-line" key={i}>
-                <select
+                <Select
                   value={s.field}
                   aria-label="Sortier-Eigenschaft"
                   onChange={(e) =>
@@ -2961,8 +3016,8 @@ export default function DatabaseView({
                       {f.name}
                     </option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   value={s.direction}
                   aria-label="Sortierrichtung"
                   onChange={(e) =>
@@ -2980,7 +3035,7 @@ export default function DatabaseView({
                 >
                   <option value="asc">Aufsteigend</option>
                   <option value="desc">Absteigend</option>
-                </select>
+                </Select>
                 <button
                   className="icon-button"
                   aria-label="Sortierung entfernen"
@@ -3015,7 +3070,7 @@ export default function DatabaseView({
               <legend>Galerie-Cover</legend>
               <label>
                 Bildquelle
-                <select
+                <Select
                   aria-label="Galerie-Bildquelle"
                   value={
                     galleryConfig.cover === "field"
@@ -3053,11 +3108,11 @@ export default function DatabaseView({
                         {field.name}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
               <label>
                 Bilddarstellung
-                <select
+                <Select
                   aria-label="Galerie-Bilddarstellung"
                   value={galleryConfig.fit}
                   onChange={(event) =>
@@ -3071,11 +3126,11 @@ export default function DatabaseView({
                 >
                   <option value="cover">Fläche ausfüllen</option>
                   <option value="contain">Ganzes Bild anzeigen</option>
-                </select>
+                </Select>
               </label>
               <label>
                 Kartengröße
-                <select
+                <Select
                   aria-label="Galerie-Kartengröße"
                   value={galleryConfig.size}
                   onChange={(event) =>
@@ -3091,13 +3146,13 @@ export default function DatabaseView({
                   <option value="small">Klein</option>
                   <option value="medium">Mittel</option>
                   <option value="large">Groß</option>
-                </select>
+                </Select>
               </label>
             </fieldset>
           )}
           <label>
             Gruppieren nach
-            <select
+            <Select
               aria-label="Gruppieren nach"
               disabled={!viewEditable}
               value={view.groupBy || ""}
@@ -3123,12 +3178,12 @@ export default function DatabaseView({
                   {f.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {groupField && ["table", "list", "board"].includes(view.type) && (
             <label>
               {view.type === "board" ? "Swimlanes nach" : "Untergruppen nach"}
-              <select
+              <Select
                 aria-label={
                   view.type === "board" ? "Swimlanes nach" : "Untergruppen nach"
                 }
@@ -3163,7 +3218,7 @@ export default function DatabaseView({
                       {f.name}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
           )}
           {subField &&
@@ -3182,7 +3237,7 @@ export default function DatabaseView({
                     {view.type === "board"
                       ? `Abschnitte (Ebene ${i + 3})`
                       : label}
-                    <select
+                    <Select
                       aria-label={label}
                       disabled={!viewEditable}
                       value={deeperFields[i]?.id || ""}
@@ -3219,7 +3274,7 @@ export default function DatabaseView({
                             {f.name}
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </label>
                 );
               },
@@ -3244,7 +3299,7 @@ export default function DatabaseView({
               </label>
               <label>
                 Gruppen sortieren
-                <select
+                <Select
                   aria-label="Gruppen sortieren"
                   disabled={!viewEditable}
                   value={groupSettings.sort}
@@ -3264,7 +3319,7 @@ export default function DatabaseView({
                   </option>
                   <option value="asc">Bezeichnung aufsteigend</option>
                   <option value="desc">Bezeichnung absteigend</option>
-                </select>
+                </Select>
               </label>
               {!!groupSettings.order?.length && (
                 <button
@@ -3283,7 +3338,7 @@ export default function DatabaseView({
           )}
           <label>
             Datumsfeld
-            <select
+            <Select
               value={view.dateField || ""}
               onChange={(e) => updateView({ dateField: e.target.value })}
             >
@@ -3295,11 +3350,11 @@ export default function DatabaseView({
                     {f.name}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
           <label>
             Enddatum
-            <select
+            <Select
               value={view.endDateField || ""}
               onChange={(e) => updateView({ endDateField: e.target.value })}
             >
@@ -3311,7 +3366,7 @@ export default function DatabaseView({
                     {f.name}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
           <div className="settings-section">
             <h3>Eigenschaften und Spalten</h3>
@@ -3412,7 +3467,7 @@ export default function DatabaseView({
           <>
             <label>
               Eigenschaft
-              <select
+              <Select
                 aria-label="Eigenschaft"
                 value={bulkField}
                 onChange={(e) => {
@@ -3427,7 +3482,7 @@ export default function DatabaseView({
                       {f.name}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
             {fields.find((f) => f.id === bulkField) && (
               <label>
@@ -3560,7 +3615,7 @@ export default function DatabaseView({
         </div>
         <label>
           Position
-          <select
+          <Select
             aria-label="Verschiebeposition"
             value={movePlacement}
             onChange={(e) =>
@@ -3569,11 +3624,11 @@ export default function DatabaseView({
           >
             <option value="before">Vor dem Eintrag</option>
             <option value="after">Nach dem Eintrag</option>
-          </select>
+          </Select>
         </label>
         <label>
           Bezugseintrag
-          <select
+          <Select
             aria-label="Bezugseintrag"
             value={moveTarget}
             onChange={(e) => setMoveTarget(e.target.value)}
@@ -3586,7 +3641,7 @@ export default function DatabaseView({
                   {cellText(r.cells[fields[0].id]) || "Ohne Titel"}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
         <div className="modal-actions">
           <button
@@ -3706,7 +3761,7 @@ export default function DatabaseView({
           </label>
           <label>
             Typ
-            <select
+            <Select
               aria-label="Eigenschaftstyp"
               value={fieldDraft.type}
               disabled={
@@ -3724,7 +3779,7 @@ export default function DatabaseView({
                   {n}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {["select", "multiselect"].includes(fieldDraft.type) && (
             <label>
@@ -3743,7 +3798,7 @@ export default function DatabaseView({
           {fieldDraft.type === "number" && (
             <label>
               Format
-              <select
+              <Select
                 aria-label="Zahlenformat"
                 value={fieldDraft.format || ""}
                 onChange={(e) =>
@@ -3755,14 +3810,14 @@ export default function DatabaseView({
                     {label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
           {fieldDraft.type === "number" && (
             <>
               <label>
                 Nachkommastellen
-                <select
+                <Select
                   aria-label="Nachkommastellen"
                   value={fieldDraft.decimals ?? ""}
                   onChange={(e) =>
@@ -3781,11 +3836,11 @@ export default function DatabaseView({
                       {n}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label>
                 Darstellung
-                <select
+                <Select
                   aria-label="Zahlendarstellung"
                   value={fieldDraft.rollupDisplay || "number"}
                   onChange={(e) =>
@@ -3806,7 +3861,7 @@ export default function DatabaseView({
                   <option value="bar">Fortschrittsbalken</option>
                   <option value="ring">Fortschrittsring</option>
                   <option value="rating">Bewertung (Sterne)</option>
-                </select>
+                </Select>
               </label>
               {fieldDraft.rollupDisplay === "rating" && (
                 <label>
@@ -3858,7 +3913,7 @@ export default function DatabaseView({
             <>
               <label>
                 Datumsformat
-                <select
+                <Select
                   aria-label="Datumsformat"
                   value={fieldDraft.format || ""}
                   onChange={(e) =>
@@ -3870,11 +3925,11 @@ export default function DatabaseView({
                       {label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label>
                 Zeitformat
-                <select
+                <Select
                   aria-label="Zeitformat"
                   value={fieldDraft.timeFormat || "24"}
                   onChange={(e) =>
@@ -3889,7 +3944,7 @@ export default function DatabaseView({
                       {label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             </>
           )}
@@ -3908,7 +3963,7 @@ export default function DatabaseView({
             <>
               <label>
                 Verknüpfte Datenbank
-                <select
+                <Select
                   aria-label="Verknüpfte Datenbank"
                   required
                   value={fieldDraft.relationPage || ""}
@@ -3928,7 +3983,7 @@ export default function DatabaseView({
                         {p.title}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
               <label className="checkbox-label">
                 <input
@@ -3989,7 +4044,7 @@ export default function DatabaseView({
             <>
               <label>
                 Relation
-                <select
+                <Select
                   aria-label="Rollup-Relation"
                   required
                   value={fieldDraft.relationField || ""}
@@ -4010,11 +4065,11 @@ export default function DatabaseView({
                         {f.name}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
               <label>
                 Eigenschaft
-                <select
+                <Select
                   aria-label="Rollup-Eigenschaft"
                   value={fieldDraft.rollupField || ""}
                   onChange={(e) =>
@@ -4031,14 +4086,14 @@ export default function DatabaseView({
                       {f.name} · {fieldNames[f.type]}
                     </option>
                   ))}
-                </select>
+                </Select>
                 {rollupRelation && !rollupFields.length && (
                   <small>Die verknüpfte Datenbank ist nicht zugänglich.</small>
                 )}
               </label>
               <label>
                 Berechnung
-                <select
+                <Select
                   aria-label="Rollup-Berechnung"
                   value={fieldDraft.aggregate || "count"}
                   onChange={(e) =>
@@ -4054,7 +4109,7 @@ export default function DatabaseView({
                       {aggregateNames[a]}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               {![
                 "show_original",
@@ -4065,7 +4120,7 @@ export default function DatabaseView({
                 <>
                   <label>
                     Darstellung
-                    <select
+                    <Select
                       aria-label="Rollup-Darstellung"
                       value={fieldDraft.rollupDisplay || "number"}
                       onChange={(e) =>
@@ -4079,7 +4134,7 @@ export default function DatabaseView({
                       <option value="number">Zahl</option>
                       <option value="bar">Fortschrittsbalken</option>
                       <option value="ring">Fortschrittsring</option>
-                    </select>
+                    </Select>
                   </label>
                   {fieldDraft.rollupDisplay &&
                     fieldDraft.rollupDisplay !== "number" &&
@@ -4224,7 +4279,7 @@ export default function DatabaseView({
           </label>
           <label>
             Darstellung
-            <select
+            <Select
               value={viewType}
               onChange={(e) => setViewType(e.target.value as View["type"])}
             >
@@ -4233,7 +4288,7 @@ export default function DatabaseView({
                   {t}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <button className="button primary">Ansicht erstellen</button>
         </form>
@@ -4398,8 +4453,7 @@ export default function DatabaseView({
                   : "Zu Favoriten"}
               </button>
               <label className="record-mode">
-                Darstellung
-                <select
+                <Select
                   aria-label="Eintrag öffnen als"
                   value={recordModeChoice}
                   onChange={(e) => {
@@ -4421,7 +4475,7 @@ export default function DatabaseView({
                       {recordOpenLabels[mode]}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               {editable && allowFieldChanges && (
                 <button

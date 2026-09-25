@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import {
   useEffect,
   useMemo,
@@ -539,7 +540,7 @@ export default function DatabaseCalendar({
             year: "numeric",
           })}
         </h3>
-        <select
+        <Select
           aria-label="Kalender: Ansicht"
           disabled={busy}
           value={config.mode}
@@ -553,8 +554,8 @@ export default function DatabaseCalendar({
           <option value="month">Monat</option>
           <option value="week">Woche</option>
           <option value="day">Tag</option>
-        </select>
-        <select
+        </Select>
+        <Select
           aria-label="Kalender: Wochenbeginn"
           disabled={busy}
           value={config.weekStart || "monday"}
@@ -567,7 +568,7 @@ export default function DatabaseCalendar({
         >
           <option value="monday">Woche ab Montag</option>
           <option value="sunday">Woche ab Sonntag</option>
-        </select>
+        </Select>
         <label className="checkbox-label">
           <input
             type="checkbox"

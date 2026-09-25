@@ -1,5 +1,7 @@
 "use client";
+import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
+import { WorkspaceIcon } from "./workspace-icon";
 import {
   useOfflineQueue,
   isQueueable,
@@ -743,11 +745,11 @@ export default function WorkspaceApp({
                 }
               >
                 {children ? (
-                  closed ? (
-                    <CaretRight size={12} />
-                  ) : (
-                    <CaretDown size={12} />
-                  )
+                  <CaretRight
+                    size={12}
+                    className="nav-caret"
+                    style={{ transform: closed ? undefined : "rotate(90deg)" }}
+                  />
                 ) : (
                   <span />
                 )}
@@ -879,9 +881,10 @@ export default function WorkspaceApp({
         </div>
         <Dropdown.Root>
           <Dropdown.Trigger className="workspace-switch">
-            <span className="workspace-letter">
-              {boot.workspace.name.slice(0, 1)}
-            </span>
+            <WorkspaceIcon
+              name={boot.workspace.name}
+              icon={boot.workspace.icon}
+            />
             <span>
               {boot.workspace.name}
               <small>
@@ -899,7 +902,7 @@ export default function WorkspaceApp({
                   key={w.id}
                   onSelect={() => switchWorkspace(w.id)}
                 >
-                  <span className="workspace-letter small">{w.name[0]}</span>
+                  <WorkspaceIcon name={w.name} icon={w.icon} small />
                   {w.name}
                   {w.id === boot.workspace.id && <Check />}
                 </Dropdown.Item>
@@ -1988,7 +1991,7 @@ export default function WorkspaceApp({
         >
           <label>
             Ziel
-            <select
+            <Select
               aria-label="Ziel"
               value={bulkTarget}
               onChange={(e) => setBulkTarget(e.target.value)}
@@ -2016,7 +2019,7 @@ export default function WorkspaceApp({
                     ))}
                 </optgroup>
               ))}
-            </select>
+            </Select>
           </label>
           <p className="muted">
             {selectedPages.length} Seiten mit ihren Unterseiten verschieben.
@@ -2102,7 +2105,7 @@ export default function WorkspaceApp({
               </button>
             ))}
           </div>
-          <select
+          <Select
             aria-label="Bereich"
             value={searchSpace}
             onChange={(e) => setSearchSpace(e.target.value)}
@@ -2113,7 +2116,7 @@ export default function WorkspaceApp({
                 {s.name}
               </option>
             ))}
-          </select>
+          </Select>
           {query.trim() && searchName === null && (
             <button
               className="button compact"
@@ -2290,7 +2293,7 @@ export default function WorkspaceApp({
           </div>
           <label>
             Bereich
-            <select
+            <Select
               value={spaceId}
               onChange={(e) => {
                 setSpaceId(e.target.value);
@@ -2302,7 +2305,7 @@ export default function WorkspaceApp({
                   {s.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <div className="modal-actions">
             <button
@@ -2340,7 +2343,7 @@ export default function WorkspaceApp({
                     <small>{m.email}</small>
                   </span>
                   {boot.workspace.role === "owner" ? (
-                    <select
+                    <Select
                       aria-label={`Seitenrechte für ${m.name}`}
                       defaultValue="remove"
                       onChange={(e) =>
@@ -2355,7 +2358,7 @@ export default function WorkspaceApp({
                       <option value="remove">Geerbt</option>
                       <option value="editor">Bearbeiten</option>
                       <option value="viewer">Ansehen</option>
-                    </select>
+                    </Select>
                   ) : (
                     <small>{m.role}</small>
                   )}
@@ -2591,7 +2594,7 @@ export default function WorkspaceApp({
             </div>
             <label className="icon-size">
               Größe
-              <select
+              <Select
                 aria-label="Symbolgröße"
                 value={data.page.icon_size || ""}
                 onChange={(e) =>
@@ -2605,7 +2608,7 @@ export default function WorkspaceApp({
                 <option value="">Standard</option>
                 <option value="small">Klein</option>
                 <option value="large">Groß</option>
-              </select>
+              </Select>
             </label>
             {iconTab === "library" ? (
               <IconLibraryPicker
@@ -2857,7 +2860,7 @@ export default function WorkspaceApp({
       >
         <label>
           Übergeordnete Seite
-          <select
+          <Select
             value={moveTarget}
             onChange={(e) => setMoveTarget(e.target.value)}
           >
@@ -2869,7 +2872,7 @@ export default function WorkspaceApp({
                   {p.title}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
         <button
           className="button primary"

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { CommentComposer, CommentBody } from "./comment-composer";
 import type { CommentNode } from "@/lib/comment-content";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -624,14 +625,14 @@ export function InlineComments({
             <>
               <label>
                 Anzeigen
-                <select
+                <Select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                 >
                   <option value="open">Offene Threads</option>
                   <option value="resolved">Erledigte Threads</option>
                   <option value="all">Alle Threads</option>
-                </select>
+                </Select>
               </label>
               {threads
                 .filter(

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useEffect, useMemo, useState } from "react";
 import {
   isRelativeOperator,
@@ -151,7 +152,7 @@ export default function DatabaseFilterEditor({
       >
         <label>
           Eigenschaft
-          <select
+          <Select
             aria-label="Filter-Eigenschaft"
             value={node.field}
             onChange={(e) => {
@@ -175,11 +176,11 @@ export default function DatabaseFilterEditor({
                 {f.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           Bedingung
-          <select
+          <Select
             aria-label="Filterbedingung"
             value={node.op}
             onChange={(e) => {
@@ -211,12 +212,12 @@ export default function DatabaseFilterEditor({
                 {operatorNames[op]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           Wert
           {isRelativeOperator(node.op) ? (
-            <select
+            <Select
               aria-label="Relativer Zeitraum"
               value={node.value}
               onChange={(e) =>
@@ -233,7 +234,7 @@ export default function DatabaseFilterEditor({
                   {name}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : multi && choices ? (
             <span
               className="filter-values"
@@ -259,7 +260,7 @@ export default function DatabaseFilterEditor({
               {!choices.length && <span className="muted">Keine Werte</span>}
             </span>
           ) : choices ? (
-            <select
+            <Select
               aria-label="Filterwert"
               value={node.value}
               disabled={isEmpty}
@@ -274,7 +275,7 @@ export default function DatabaseFilterEditor({
                   {c.name}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
             <input
               aria-label="Filterwert"
@@ -344,7 +345,7 @@ export default function DatabaseFilterEditor({
             )}
             <label>
               Zeitzone
-              <select
+              <Select
                 aria-label="Filter-Zeitzone"
                 value={node.timeZone || "UTC"}
                 onChange={(e) => patch(path, { timeZone: e.target.value })}
@@ -359,7 +360,7 @@ export default function DatabaseFilterEditor({
                     {zone}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <p className="muted">
               {relativeWindowLabel(
@@ -392,7 +393,7 @@ export default function DatabaseFilterEditor({
         <div className="filter-group-header">
           <label>
             Verknüpfung
-            <select
+            <Select
               aria-label={`${label}: Verknüpfung`}
               value={node.join}
               onChange={(e) =>
@@ -404,7 +405,7 @@ export default function DatabaseFilterEditor({
             >
               <option value="and">UND – alle Bedingungen</option>
               <option value="or">ODER – mindestens eine</option>
-            </select>
+            </Select>
           </label>
           {path.length > 0 && (
             <button

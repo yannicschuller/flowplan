@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useEffect, useState } from "react";
 import { Modal, api } from "./ui";
 import type { TextChange } from "@/lib/text-diff";
@@ -48,7 +49,7 @@ export function VersionChanges({
       {others.length > 0 && (
         <label className="version-compare">
           Vergleichen mit
-          <select
+          <Select
             aria-label="Vergleichen mit"
             value={against}
             onChange={(e) => setAgainst(e.target.value)}
@@ -59,7 +60,7 @@ export function VersionChanges({
                 Version vom {v.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
       {error && <p role="alert">{error}</p>}

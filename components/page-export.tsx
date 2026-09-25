@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import { Modal } from "./ui";
 import { flushOpenDocuments } from "@/lib/document-flush";
@@ -73,7 +74,7 @@ export function PageExportDialog({
       >
         <label>
           Format
-          <select
+          <Select
             aria-label="Exportformat"
             value={format}
             disabled={busy}
@@ -86,7 +87,7 @@ export function PageExportDialog({
                 ? "HTML (.html)"
                 : "Datenbank-JSON (.json)"}
             </option>
-          </select>
+          </Select>
         </label>
         {format === "zip" && (
           <label className="export-children">

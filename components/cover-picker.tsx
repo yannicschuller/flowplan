@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import { Modal } from "./ui";
 import {
@@ -129,7 +130,7 @@ export function CoverPicker({
         {[...uploads, ...images].length > 0 && (
           <label>
             Vorhandenes Bild
-            <select
+            <Select
               aria-label="Vorhandenes Bild"
               value={image ? cover : ""}
               onChange={(event) => {
@@ -147,7 +148,7 @@ export function CoverPicker({
                   {item.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         {image && positioned && (

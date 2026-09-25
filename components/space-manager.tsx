@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { SpaceAppearance } from "./space-appearance";
 import { useState } from "react";
 import { flushOpenDocuments } from "@/lib/document-flush";
@@ -120,7 +121,7 @@ export function SpaceManager({
             </label>
             <label>
               Sichtbarkeit
-              <select
+              <Select
                 value={visibility}
                 onChange={(event) =>
                   setVisibility(event.target.value as Space["visibility"])
@@ -129,7 +130,7 @@ export function SpaceManager({
               >
                 <option value="team">Gesamtes Team</option>
                 <option value="private">Nur Berechtigte</option>
-              </select>
+              </Select>
             </label>
             {!duplicating && (
               <SpaceAppearance

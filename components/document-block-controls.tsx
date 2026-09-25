@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import {
   useEffect,
   useRef,
@@ -526,7 +527,7 @@ export function DocumentBlockControls({
           return (
             <label className="block-media-width">
               Breite
-              <select
+              <Select
                 aria-label="Medienbreite"
                 disabled={!editor.isEditable}
                 value={String(only.node.attrs.width || 100)}
@@ -550,7 +551,7 @@ export function DocumentBlockControls({
                     {w} %
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           );
         })()}
@@ -601,7 +602,7 @@ export function DocumentBlockControls({
         )}
         <label>
           Zielposition
-          <select
+          <Select
             aria-label="Block-Zielposition"
             value={destination}
             onChange={(event) => setDestination(event.target.value)}
@@ -615,7 +616,7 @@ export function DocumentBlockControls({
                 Nach: {b.label}
               </option>,
             ])}
-          </select>
+          </Select>
         </label>
         <div className="modal-actions">
           <button

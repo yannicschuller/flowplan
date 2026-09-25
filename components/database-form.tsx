@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import { Check, Copy, SlidersHorizontal } from "@phosphor-icons/react";
 import { Modal } from "./ui";
@@ -284,7 +285,7 @@ export default function DatabaseForm({
                 {questionStyles(f).length > 0 && (
                   <label>
                     Fragetyp
-                    <select
+                    <Select
                       aria-label={`Fragetyp für ${f.name}`}
                       value={draft.questionStyles?.[f.id] || ""}
                       onChange={(e) => {
@@ -307,7 +308,7 @@ export default function DatabaseForm({
                           }
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
               </div>

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import {
   NodeViewWrapper,
@@ -20,7 +21,7 @@ function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
       <div className="code-block-toolbar" contentEditable={false}>
         <label>
           Sprache
-          <select
+          <Select
             aria-label="Code-Sprache"
             value={language}
             disabled={!editor.isEditable}
@@ -38,7 +39,7 @@ function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
                 {languageLabel(value)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <button
           type="button"

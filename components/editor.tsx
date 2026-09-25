@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   highlightColors,
@@ -771,7 +772,7 @@ export default function DocumentEditor({
               </Dropdown.Portal>
             </Dropdown.Root>
             {editor && selectedMediaWidth !== null && (
-              <select
+              <Select
                 aria-label="Medienbreite"
                 title="Breite des Videos oder der Einbettung"
                 value={String(selectedMediaWidth)}
@@ -790,7 +791,7 @@ export default function DocumentEditor({
                     {w} %
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
             <button
               title="Hochgestellt"

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useMemo, useState } from "react";
 import { emojiGroups, searchEmojis } from "@/lib/emoji-data";
 import { PageIcon } from "./ui";
@@ -49,7 +50,7 @@ export default function EmojiPicker({
       <div className="emoji-filters">
         <label>
           Kategorie
-          <select
+          <Select
             aria-label="Kategorie"
             value={group}
             onChange={(e) => {
@@ -63,11 +64,11 @@ export default function EmojiPicker({
                 {g.message}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           Hautton
-          <select
+          <Select
             aria-label="Hautton"
             value={tone}
             onChange={(e) => {
@@ -84,7 +85,7 @@ export default function EmojiPicker({
                 </option>
               ),
             )}
-          </select>
+          </Select>
         </label>
       </div>
       <p className="muted" role="status">

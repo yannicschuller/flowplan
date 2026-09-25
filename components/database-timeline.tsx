@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import {
   useEffect,
   useLayoutEffect,
@@ -334,7 +335,7 @@ export default function DatabaseTimeline({
         </label>
         <label>
           Maßstab
-          <select
+          <Select
             aria-label="Timeline: Maßstab"
             value={scale}
             disabled={busy}
@@ -348,7 +349,7 @@ export default function DatabaseTimeline({
             <option value="month">Monat</option>
             <option value="quarter">Quartal</option>
             <option value="year">Jahr</option>
-          </select>
+          </Select>
         </label>
         <label className="checkbox-label">
           <input
@@ -363,7 +364,7 @@ export default function DatabaseTimeline({
         </label>
         <label>
           Abhängigkeiten
-          <select
+          <Select
             aria-label="Timeline: Abhängigkeiten"
             value={dependencyField?.id || ""}
             disabled={busy || !viewEditable || !relations.length}
@@ -382,12 +383,12 @@ export default function DatabaseTimeline({
                 {f.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {dependencyField && (
           <label>
             Verknüpfung
-            <select
+            <Select
               aria-label="Timeline: Art der Abhängigkeit"
               value={dependencyType}
               disabled={busy || !viewEditable}
@@ -402,7 +403,7 @@ export default function DatabaseTimeline({
                   {t.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         {canEdit && !cyclic.size && links.some((l) => l.shift > 0) && (

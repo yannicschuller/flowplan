@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import {
   rowAccessLabels,
@@ -81,7 +82,7 @@ export function RowAccess({
         >
           <label>
             Zugriff
-            <select
+            <Select
               value={access}
               disabled={busy}
               onChange={(e) => setAccess(e.target.value as RowAccessMode)}
@@ -91,7 +92,7 @@ export function RowAccess({
                   {rowAccessLabels[mode]}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {access !== "inherit" && (
             <>
@@ -104,7 +105,7 @@ export function RowAccess({
               {grants.map((g) => (
                 <div className="row-access-grant" key={key(g)}>
                   <span>{name(g)}</span>
-                  <select
+                  <Select
                     aria-label={`Recht für ${name(g)}`}
                     value={g.role}
                     disabled={busy}
@@ -120,7 +121,7 @@ export function RowAccess({
                   >
                     <option value="viewer">Ansehen</option>
                     <option value="editor">Bearbeiten</option>
-                  </select>
+                  </Select>
                   <button
                     type="button"
                     className="text-button"
@@ -135,7 +136,7 @@ export function RowAccess({
                 </div>
               ))}
               {candidates.length > 0 && (
-                <select
+                <Select
                   aria-label="Person oder Gruppe freigeben"
                   value=""
                   disabled={busy}
@@ -156,7 +157,7 @@ export function RowAccess({
                       {c.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </>
           )}

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useEffect, useState, useCallback } from "react";
 import { api, Modal, PageIcon } from "./ui";
 import {
@@ -119,7 +120,7 @@ export default function SavedTemplates({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select
+        <Select
           aria-label="Vorlagentyp"
           value={kind}
           onChange={(e) => setKind(e.target.value as typeof kind)}
@@ -127,8 +128,8 @@ export default function SavedTemplates({
           <option value="all">Alle</option>
           <option value="document">Dokumente</option>
           <option value="database">Datenbanken</option>
-        </select>
-        <select
+        </Select>
+        <Select
           aria-label="Vorlagenkategorie"
           value={category}
           onChange={(e) => setCategory(e.target.value as typeof category)}
@@ -140,7 +141,7 @@ export default function SavedTemplates({
             </option>
           ))}
           <option value="">Ohne Kategorie</option>
-        </select>
+        </Select>
         {canCreate && (
           <label className="button compact">
             Vorlage importieren
@@ -274,7 +275,7 @@ export default function SavedTemplates({
             </label>
             <label>
               Kategorie
-              <select
+              <Select
                 value={editing.category || ""}
                 onChange={(e) =>
                   setEditing({
@@ -289,11 +290,11 @@ export default function SavedTemplates({
                     {label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               Sichtbar für
-              <select
+              <Select
                 value={editing.visibility}
                 onChange={(e) =>
                   setEditing({
@@ -314,7 +315,7 @@ export default function SavedTemplates({
                     {visibilityLabels.public} – auch ohne Anmeldung (Admin)
                   </option>
                 )}
-              </select>
+              </Select>
             </label>
             <p className="muted">
               Gespeicherte Inhalte und Anhänge bleiben erhalten. Bereits

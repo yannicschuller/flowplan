@@ -1,4 +1,6 @@
 "use client";
+import { WorkspaceIconPicker } from "./workspace-icon";
+import { Select } from "./select";
 import { SpaceIcon } from "./space-appearance";
 import PushSettings from "./push-settings";
 import { OfflineSettings } from "./offline-settings";
@@ -176,6 +178,12 @@ export default function Settings({
                   onError("Arbeitsbereich gespeichert");
               }}
             >
+              <WorkspaceIconPicker
+                name={boot.workspace.name}
+                icon={boot.workspace.icon}
+                disabled={!owner}
+                save={(icon) => act({ action: "workspace.update", icon })}
+              />
               <label>
                 Name
                 <input
@@ -282,7 +290,7 @@ export default function Settings({
                   </button>
                 )}
                 {owner ? (
-                  <select
+                  <Select
                     aria-label={`Rolle für ${m.name}`}
                     value={m.role}
                     onChange={(e) =>
@@ -297,7 +305,7 @@ export default function Settings({
                     <option value="editor">Bearbeiten</option>
                     <option value="viewer">Ansehen</option>
                     <option value="remove">Entfernen</option>
-                  </select>
+                  </Select>
                 ) : (
                   <span className="tag">{m.role}</span>
                 )}
@@ -334,14 +342,14 @@ export default function Settings({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
-                <select
+                <Select
                   value={role}
                   aria-label="Rolle"
                   onChange={(e) => setRole(e.target.value)}
                 >
                   <option value="editor">Bearbeiten</option>
                   <option value="viewer">Ansehen</option>
-                </select>
+                </Select>
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
@@ -423,7 +431,7 @@ export default function Settings({
                   <div className="utility-row">
                     {s.visibility === "private" ? <Lock /> : <Globe />}
                     <strong>{s.name}</strong>
-                    <select
+                    <Select
                       aria-label={`Sichtbarkeit ${s.name}`}
                       value={s.visibility}
                       onChange={(e) =>
@@ -438,13 +446,13 @@ export default function Settings({
                     >
                       <option value="team">Gesamtes Team</option>
                       <option value="private">Nur Berechtigte</option>
-                    </select>
+                    </Select>
                   </div>
                   {settings?.groups.map((g) => (
                     <div className="permission-row" key={g.id}>
                       <Users size={16} />
                       <span>{g.name}</span>
-                      <select
+                      <Select
                         aria-label={`Rechte ${g.name} in ${s.name}`}
                         value={
                           settings.grants.find(
@@ -466,7 +474,7 @@ export default function Settings({
                         </option>
                         <option value="viewer">Ansehen</option>
                         <option value="editor">Bearbeiten</option>
-                      </select>
+                      </Select>
                     </div>
                   ))}
                 </div>
@@ -606,7 +614,7 @@ export default function Settings({
             </p>
             <label>
               Zielbereich
-              <select
+              <Select
                 aria-label="Zielbereich für den Import"
                 value={importSpace || boot.spaces[0]?.id || ""}
                 onChange={(e) => setImportSpace(e.target.value)}
@@ -616,7 +624,7 @@ export default function Settings({
                     {space.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="button file-label">
               <UploadSimple />

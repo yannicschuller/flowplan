@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useEffect, useRef, useState } from "react";
 import {
   browserZone,
@@ -133,7 +134,7 @@ export default function DateInput({
       </label>
       {timed && <small>Zeitzone: {zone}</small>}
       {timed && (
-        <select
+        <Select
           aria-label={`${name}: Zeitumstellung`}
           disabled={disabled}
           value={choice}
@@ -142,7 +143,7 @@ export default function DateInput({
           <option value="reject">Doppelte Uhrzeit: nachfragen</option>
           <option value="earlier">Erstes Vorkommen</option>
           <option value="later">Zweites Vorkommen</option>
-        </select>
+        </Select>
       )}
       {error && (
         <span className="error" role="alert">

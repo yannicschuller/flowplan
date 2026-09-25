@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
 import { DownloadSimple, SlidersHorizontal } from "@phosphor-icons/react";
@@ -660,7 +661,7 @@ function ChartSettings({
       <fieldset className="schema-settings" disabled={busy || !editable}>
         <label>
           Diagrammtyp
-          <select
+          <Select
             value={draft.kind}
             onChange={(e) =>
               patch({ kind: e.target.value as ChartConfig["kind"] })
@@ -671,11 +672,11 @@ function ChartSettings({
                 {title}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           Gruppierung
-          <select
+          <Select
             value={draft.xField || ""}
             onChange={(e) => patch({ xField: e.target.value || undefined })}
           >
@@ -685,12 +686,12 @@ function ChartSettings({
                 {f.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {chartDateField(fields.find((f) => f.id === draft.xField)) && (
           <label>
             Datumsintervall
-            <select
+            <Select
               value={draft.dateBucket}
               onChange={(e) =>
                 patch({
@@ -702,12 +703,12 @@ function ChartSettings({
               <option value="week">Woche (Montag–Sonntag)</option>
               <option value="month">Monat</option>
               <option value="year">Jahr</option>
-            </select>
+            </Select>
           </label>
         )}
         <label>
           Berechnung
-          <select
+          <Select
             value={draft.aggregate}
             onChange={(e) =>
               patch({
@@ -721,12 +722,12 @@ function ChartSettings({
                 {title}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {draft.aggregate !== "count" && (
           <label>
             Messwert
-            <select
+            <Select
               value={draft.yField || ""}
               onChange={(e) => patch({ yField: e.target.value || undefined })}
             >
@@ -736,12 +737,12 @@ function ChartSettings({
                   {f.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         <label>
           Datenreihen
-          <select
+          <Select
             aria-label="Datenreihen"
             value={draft.seriesField || ""}
             onChange={(e) =>
@@ -756,14 +757,14 @@ function ChartSettings({
                   {f.name}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
         {draft.seriesField &&
           draft.kind !== "line" &&
           draft.kind !== "donut" && (
             <label>
               Darstellung der Reihen
-              <select
+              <Select
                 aria-label="Darstellung der Reihen"
                 value={
                   canStack(draft) ? draft.seriesMode || "grouped" : "grouped"
@@ -777,7 +778,7 @@ function ChartSettings({
               >
                 <option value="grouped">Nebeneinander</option>
                 <option value="stacked">Gestapelt</option>
-              </select>
+              </Select>
             </label>
           )}
         {draft.seriesField && (
@@ -792,7 +793,7 @@ function ChartSettings({
         )}
         <label>
           Farben
-          <select
+          <Select
             aria-label="Farbpalette"
             value={draft.palette || "default"}
             onChange={(e) =>
@@ -804,7 +805,7 @@ function ChartSettings({
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="checkbox-label">
           <input
@@ -888,7 +889,7 @@ function ChartSettings({
         )}
         <label>
           Gruppen sortieren
-          <select
+          <Select
             value={draft.order}
             onChange={(e) =>
               patch({ order: e.target.value as ChartConfig["order"] })
@@ -898,7 +899,7 @@ function ChartSettings({
             <option value="label_desc">Bezeichnung absteigend</option>
             <option value="value_asc">Wert aufsteigend</option>
             <option value="value_desc">Wert absteigend</option>
-          </select>
+          </Select>
         </label>
         <label className="checkbox-label">
           <input

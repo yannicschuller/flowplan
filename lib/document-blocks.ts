@@ -117,6 +117,8 @@ export function hasLinkedBlocks(node: Node) {
   return linked;
 }
 export const BLOCK_SELECTION_META = "flowplanBlockSelection";
+// Where moved blocks came from, for the slide animation.
+export const BLOCK_MOVE_META = "flowplanBlockMove";
 function finish(tr: Transaction, start: number, content?: Fragment) {
   tr.doc.check();
   const positions: number[] = [];
@@ -168,7 +170,11 @@ export function changeBlocks(
     !$target.parent.canReplace($target.index(), $target.index(), range.content)
   )
     throw new Error("Diese Blocktypen passen nicht an den gewählten Zielort.");
-  return finish(tr.insert(mapped, range.content), mapped, range.content);
+  return finish(
+    tr.insert(mapped, range.content),
+    mapped,
+    range.content,
+  ).setMeta(BLOCK_MOVE_META, { from: range.from, to: range.to });
 }
 export function adjacentBlockTarget(
   state: EditorState,

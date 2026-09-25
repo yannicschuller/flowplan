@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import { api } from "./ui";
 import type { Bootstrap } from "@/lib/types";
@@ -75,7 +76,7 @@ export function PublicationCopy({ token }: { token: string }) {
         >
           <label>
             Arbeitsbereich
-            <select
+            <Select
               value={workspace}
               disabled={busy}
               onChange={(e) => void load(e.target.value)}
@@ -87,11 +88,11 @@ export function PublicationCopy({ token }: { token: string }) {
                     {w.name}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
           <label>
             Bereich
-            <select
+            <Select
               value={space}
               disabled={busy}
               onChange={(e) => setSpace(e.target.value)}
@@ -101,7 +102,7 @@ export function PublicationCopy({ token }: { token: string }) {
                   {s.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <button className="button primary" disabled={busy || !space}>
             {busy ? "Wird kopiert …" : "Kopie anlegen"}

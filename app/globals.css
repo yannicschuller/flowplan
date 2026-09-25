@@ -27,7 +27,7 @@ body {
 button,
 input,
 textarea,
-select {
+:is(select, .fp-select) {
   font: inherit;
   color: inherit;
 }
@@ -35,7 +35,7 @@ button,
 a,
 input,
 textarea,
-select {
+:is(select, .fp-select) {
   -webkit-tap-highlight-color: transparent;
 }
 button {
@@ -63,7 +63,7 @@ a:focus-visible {
 }
 input,
 textarea,
-select {
+:is(select, .fp-select) {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -73,7 +73,8 @@ select {
 }
 input:focus,
 textarea:focus,
-select:focus {
+:is(select, .fp-select):focus,
+.fp-select:focus-within {
   border-color: #8ab4f4;
   box-shadow: 0 0 0 3px #3479e710;
 }
@@ -128,7 +129,7 @@ label small {
   font-weight: 400;
 }
 label input,
-label select,
+label :is(select, .fp-select),
 label textarea {
   width: 100%;
   font-weight: 400;
@@ -1673,7 +1674,7 @@ tr:hover .row-open {
   margin: 12px 0 20px;
 }
 .calendar-controls input,
-.calendar-controls select {
+.calendar-controls :is(select, .fp-select) {
   width: auto;
   min-width: 0;
 }
@@ -1697,7 +1698,7 @@ tr:hover .row-open {
   min-width: 0;
 }
 .date-input > input,
-.date-input > select {
+.date-input > :is(select, .fp-select) {
   width: 100%;
   min-width: 0;
 }
@@ -1972,7 +1973,7 @@ tr:hover .row-open {
   font-size: 12px;
 }
 .timeline-controls input,
-.timeline-controls select {
+.timeline-controls :is(select, .fp-select) {
   max-width: 165px;
 }
 .timeline-controls strong {
@@ -2374,7 +2375,7 @@ tr:hover .row-open {
   display: block;
   font-size: 11px;
 }
-.member-row select {
+.member-row :is(select, .fp-select) {
   font-size: 12px;
   width: auto;
   max-width: 190px;
@@ -2389,7 +2390,7 @@ tr:hover .row-open {
 .invite-form > input {
   flex: 1;
 }
-.invite-form select {
+.invite-form :is(select, .fp-select) {
   max-width: 140px;
 }
 .space-settings {
@@ -2408,7 +2409,7 @@ tr:hover .row-open {
 .permission-row > span {
   flex: 1;
 }
-.permission-row select {
+.permission-row :is(select, .fp-select) {
   font-size: 11px;
   max-width: 220px;
 }
@@ -2820,7 +2821,7 @@ tr:hover .row-open {
   margin-bottom: 10px;
   font-size: 13px;
 }
-.version-compare select {
+.version-compare :is(select, .fp-select) {
   width: auto;
 }
 .modal.modal-full {
@@ -3100,7 +3101,7 @@ tr:hover .row-open {
   flex: 1;
   min-width: 160px;
 }
-.template-filters select {
+.template-filters :is(select, .fp-select) {
   width: auto;
 }
 .version-diff {
@@ -3643,7 +3644,7 @@ tr:hover .row-open {
   background: var(--blue-light);
   border-color: color-mix(in srgb, var(--blue) 35%, transparent);
 }
-.search-filters select {
+.search-filters :is(select, .fp-select) {
   width: auto;
   font-size: 12px;
 }
@@ -3813,7 +3814,7 @@ tr:hover .row-open {
   width: 85px;
   flex: 1;
 }
-.filter-line select {
+.filter-line :is(select, .fp-select) {
   font-size: 12px;
   max-width: 135px;
 }
@@ -3955,7 +3956,7 @@ tr:hover .row-open {
   color: var(--secondary);
 }
 .row-property input,
-.row-property select {
+.row-property :is(select, .fp-select) {
   font-size: 13px;
 }
 .row-property > input[type="checkbox"] {
@@ -4608,7 +4609,7 @@ tr:hover .row-open {
     gap: 8px;
     flex-wrap: wrap;
   }
-  .member-row select {
+  .member-row :is(select, .fp-select) {
     max-width: 120px;
     font-size: 11px;
   }
@@ -4628,11 +4629,11 @@ tr:hover .row-open {
   .permission-row {
     flex-wrap: wrap;
   }
-  .permission-row select {
+  .permission-row :is(select, .fp-select) {
     width: 100%;
     max-width: 100%;
   }
-  .space-settings select {
+  .space-settings :is(select, .fp-select) {
     max-width: 140px;
     font-size: 12px;
   }
@@ -4677,7 +4678,7 @@ tr:hover .row-open {
   }
   .modal input,
   .modal textarea,
-  .modal select {
+  .modal :is(select, .fp-select) {
     font-size: 16px;
   }
   .row-property {
@@ -4686,7 +4687,7 @@ tr:hover .row-open {
     font-size: 13px;
   }
   .row-property input,
-  .row-property select {
+  .row-property :is(select, .fp-select) {
     font-size: 14px;
   }
   .row-detail h2 {
@@ -4695,7 +4696,7 @@ tr:hover .row-open {
   .filter-line {
     flex-wrap: wrap;
   }
-  .filter-line select {
+  .filter-line :is(select, .fp-select) {
     font-size: 12px;
     max-width: 120px;
   }
@@ -4911,7 +4912,7 @@ tr:hover .row-open {
   min-width: 130px;
 }
 .inline-cell input,
-.inline-cell select {
+.inline-cell :is(select, .fp-select) {
   font-size: 13px;
   padding: 4px 6px;
   max-width: 230px;
@@ -5157,7 +5158,7 @@ tr:hover .row-open {
   color: var(--red);
 }
 .form-question input:not([type="checkbox"]),
-.form-question select {
+.form-question :is(select, .fp-select) {
   width: 100%;
 }
 .question-description {
@@ -5339,7 +5340,7 @@ tr:hover .row-open {
 }
 .shared-interactions input:not([type="checkbox"]),
 .shared-interactions textarea,
-.shared-interactions select {
+.shared-interactions :is(select, .fp-select) {
   width: 100%;
 }
 
@@ -5559,7 +5560,7 @@ tr.order-drop-after > td {
   margin-bottom: 4px;
 }
 .advanced-filter-condition input,
-.advanced-filter-condition select {
+.advanced-filter-condition :is(select, .fp-select) {
   width: 100%;
   min-width: 0;
 }
@@ -6296,7 +6297,7 @@ tr.order-drop-after > td {
   gap: 8px;
   margin: 0;
 }
-.code-block-toolbar select {
+.code-block-toolbar :is(select, .fp-select) {
   max-width: 170px;
   width: auto;
   font-size: 12px;
@@ -6835,7 +6836,7 @@ tr.order-drop-after > td {
   justify-content: space-between;
   font-size: 13px;
 }
-.formula-preview-heading select {
+.formula-preview-heading :is(select, .fp-select) {
   max-width: 60%;
   min-width: 0;
 }
@@ -6874,7 +6875,7 @@ tr.order-drop-after > td {
   min-width: 0;
   flex: 1;
 }
-.formula-catalog-filters select {
+.formula-catalog-filters :is(select, .fp-select) {
   max-width: 44%;
 }
 .formula-catalog-items {
@@ -6921,7 +6922,7 @@ tr.order-drop-after > td {
   .formula-catalog-filters {
     flex-direction: column;
   }
-  .formula-catalog-filters select {
+  .formula-catalog-filters :is(select, .fp-select) {
     max-width: 100%;
   }
   .formula-editor-meta {
@@ -6932,7 +6933,7 @@ tr.order-drop-after > td {
     align-items: flex-start;
     flex-direction: column;
   }
-  .formula-preview-heading select {
+  .formula-preview-heading :is(select, .fp-select) {
     max-width: 100%;
     width: 100%;
   }
@@ -7297,7 +7298,7 @@ img.inline-comment-mark {
   align-items: center;
   gap: 6px;
 }
-.record-mode select {
+.record-mode :is(select, .fp-select) {
   width: auto;
 }
 .record-layout {
@@ -7403,7 +7404,7 @@ img.inline-comment-mark {
   flex-wrap: wrap;
   gap: 4px;
 }
-.comment-hub-filters select {
+.comment-hub-filters :is(select, .fp-select) {
   width: auto;
 }
 .comment-text blockquote {
@@ -7558,4 +7559,415 @@ img.inline-comment-mark {
   .page-skeleton-dots i {
     animation: none;
   }
+}
+/* Styled dropdowns (components/select.tsx) */
+.fp-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+.fp-select:hover {
+  border-color: color-mix(in srgb, var(--border) 60%, var(--muted));
+}
+.fp-select.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.fp-select > .fp-select-native {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.fp-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.fp-select-caret {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+.fp-select.open .fp-select-caret {
+  transform: rotate(180deg);
+}
+.fp-select-list {
+  position: absolute;
+  z-index: 1000;
+  max-height: min(320px, 50vh);
+  max-width: min(420px, calc(100vw - 24px));
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow:
+    0 10px 30px #14244426,
+    0 2px 6px #1424440f;
+  font-size: 13px;
+  transform-origin: top center;
+  animation: select-in 0.14s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.fp-select-list.up {
+  transform: translateY(-100%);
+  transform-origin: bottom center;
+  animation-name: select-in-up;
+}
+.fp-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.1s ease;
+}
+.fp-select-option.active {
+  background: var(--hover);
+}
+.fp-select-option.selected {
+  color: var(--blue);
+  font-weight: 500;
+}
+.fp-select-option.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.fp-select-group {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+@keyframes select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes select-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-100% + 4px)) scale(0.98);
+  }
+  to {
+    transform: translateY(-100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-select-list {
+    animation: none;
+  }
+}
+/* Moved records glide to their new place (FLIP in database-view.tsx) */
+.row-sliding {
+  position: relative;
+  z-index: 5;
+}
+.record-card-wrap.row-sliding .record-card,
+.record-list-item.row-sliding {
+  box-shadow: 0 12px 28px #1424442e;
+}
+tr.row-sliding > td {
+  background: var(--blue-light);
+  transition: background-color 0.6s ease;
+}
+
+.workspace-letter.has-image,
+.workspace-letter.has-symbol {
+  overflow: hidden;
+  background: var(--bg);
+}
+.workspace-letter.has-image {
+  padding: 0;
+}
+.workspace-letter.has-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.workspace-icon-picker {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.workspace-icon-preview .workspace-letter {
+  width: 56px;
+  height: 56px;
+  font-size: 26px;
+  border-radius: 12px;
+}
+.workspace-icon-preview .workspace-letter.has-symbol svg,
+.workspace-icon-preview .workspace-letter.has-symbol .page-icon {
+  width: 30px;
+  height: 30px;
+  font-size: 30px;
+}
+.workspace-icon-actions {
+  display: grid;
+  gap: 6px;
+}
+.workspace-icon-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* Cards: the insertion line sits in the middle of the gap (9px). */
+.record-card-wrap.order-drop-before,
+.record-card-wrap.order-drop-after {
+  box-shadow: none;
+}
+.record-card-wrap.order-drop-before::before,
+.record-card-wrap.order-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--blue);
+  pointer-events: none;
+  animation: drop-line-in 0.12s ease both;
+}
+.record-card-wrap.order-drop-before::before {
+  top: -6px;
+}
+.record-card-wrap.order-drop-after::after {
+  bottom: -6px;
+}
+@keyframes drop-line-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.6);
+  }
+}
+.gallery .record-card-wrap.order-drop-before::before {
+  top: -9.5px;
+}
+.gallery .record-card-wrap.order-drop-after::after {
+  bottom: -9.5px;
+}
+
+/* ---------- Motion ----------
+   Short, soft transitions everywhere; nothing moves for people who ask
+   their system to reduce motion. */
+:root {
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+button,
+.dropdown-item,
+.chip,
+.tag,
+a {
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    opacity 0.14s ease;
+}
+button:active:not(:disabled) {
+  scale: 0.98;
+}
+input,
+textarea {
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+/* Dialogs rise in; side panels slide in from the right. */
+.modal-overlay {
+  animation: fade-in 0.18s ease both;
+}
+.modal {
+  animation: modal-in 0.2s var(--ease-spring) both;
+}
+.modal.modal-side {
+  animation: side-in 0.24s var(--ease-out) both;
+}
+.modal.modal-full {
+  animation: fade-in 0.18s ease both;
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes side-in {
+  from {
+    opacity: 0.4;
+    translate: 40px 0;
+  }
+}
+/* Menus unfold from where they open. */
+.dropdown {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, top);
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+    translate: 0 -4px;
+  }
+}
+.toast {
+  animation: toast-in 0.25s var(--ease-spring) both;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+  }
+}
+/* Pages and panels appear softly. */
+.page-layout {
+  animation: page-in 0.28s var(--ease-out) both;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+.comments-panel,
+.inline-comment-panel {
+  animation: panel-in 0.22s var(--ease-out) both;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    translate: 16px 0;
+  }
+}
+.link-preview,
+.notification-item,
+.recent-card,
+.row-access-panel,
+.record-layout {
+  animation: fade-in 0.2s ease both;
+}
+/* Cards lift slightly under the pointer. */
+.record-card,
+.recent-card {
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.18s ease,
+    translate 0.18s var(--ease-out);
+}
+.record-card:hover,
+.recent-card:hover {
+  translate: 0 -1px;
+  box-shadow: 0 6px 16px #1724390f;
+}
+/* Collapse arrows turn smoothly. */
+.group-toggle svg,
+.nav-caret,
+.fp-select-caret {
+  transition: transform 0.2s var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .record-card:hover,
+  .recent-card:hover {
+    translate: none;
+  }
+}
+/* Record page toolbar: the presentation choice looks like the text actions. */
+.record-mode .fp-select {
+  border-color: transparent;
+  background: none;
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.record-mode .fp-select:hover {
+  background: var(--hover);
+}
+.recurrence-choice > .fp-select {
+  min-width: 160px;
+}
+/* Multi-select options as toggle chips. */
+.multi-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.multi-options .checkbox-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease;
+}
+.multi-options .checkbox-label:hover {
+  background: var(--hover);
+}
+.multi-options .checkbox-label input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.multi-options .checkbox-label:has(input:checked) {
+  background: var(--blue-light);
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
+  color: var(--blue);
+}
+.multi-options .checkbox-label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.multi-options .checkbox-label:has(input:disabled) {
+  opacity: 0.6;
+  cursor: default;
+}
+.row-appearance-actions > label.record-mode {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  gap: 0;
 }

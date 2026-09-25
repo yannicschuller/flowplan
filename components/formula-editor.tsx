@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computedCellsDetailed, cellText } from "@/lib/database";
 import { formulaFunctions } from "@/lib/formula-catalog";
@@ -274,7 +275,7 @@ export default function FormulaEditor({
         <div className="formula-preview-heading">
           <strong>Live-Vorschau</strong>
           {sampleRows.length > 0 && (
-            <select
+            <Select
               aria-label="Vorschaueintrag"
               value={row?.id || ""}
               onChange={(e) => setSample(e.target.value)}
@@ -285,7 +286,7 @@ export default function FormulaEditor({
                     "Ohne Titel"}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </div>
         {!row && (
@@ -322,7 +323,7 @@ export default function FormulaEditor({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <select
+          <Select
             aria-label="Formelkategorie"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -334,7 +335,7 @@ export default function FormulaEditor({
                 {name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="formula-catalog-items">
           {catalog.map((suggestion) => (

@@ -1,3 +1,4 @@
+import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import {
   assertRowAccess,
@@ -391,14 +392,25 @@ export function command(
         requireAdmin(user);
         result = saveInstanceSettings(b.settings);
         break;
-      case "workspace.update":
+      case "workspace.update": {
         requireMember(user, wid(), "owner");
-        run(
-          "UPDATE workspaces SET name=? WHERE id=?",
-          str.parse(b.name),
-          wid(),
-        );
+        if (b.name !== undefined)
+          run(
+            "UPDATE workspaces SET name=? WHERE id=?",
+            str.parse(b.name),
+            wid(),
+          );
+        if (b.icon !== undefined) {
+          const icon = validWorkspaceIcon(b.icon);
+          if (icon === null)
+            throw new HttpError(
+              400,
+              "Als Symbol sind ein Emoji, ein Bibliothekssymbol oder ein Bild (PNG, JPEG, WebP bis 100 KB) möglich.",
+            );
+          run("UPDATE workspaces SET icon=? WHERE id=?", icon, wid());
+        }
         break;
+      }
       case "workspace.delete":
       case "workspace.leave":
         result = manageWorkspace(user, b);

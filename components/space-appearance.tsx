@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { spaceColors } from "@/lib/space-appearance";
@@ -48,7 +49,7 @@ export function SpaceAppearance({
         </button>
         <label>
           Hintergrundfarbe
-          <select
+          <Select
             value={color}
             onChange={(event) => onChange(icon, event.target.value)}
           >
@@ -57,7 +58,7 @@ export function SpaceAppearance({
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
       {open && (

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import {
   recordOpenLabels,
@@ -35,7 +36,7 @@ export function RecordLayoutEditor({
       <p className="muted">Gilt für alle Einträge dieser Datenbank.</p>
       <label>
         Einträge öffnen als
-        <select
+        <Select
           value={draft.open}
           disabled={busy}
           onChange={(e) =>
@@ -47,11 +48,11 @@ export function RecordLayoutEditor({
               {recordOpenLabels[mode]}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <label>
         Position der Eigenschaften
-        <select
+        <Select
           value={draft.properties}
           disabled={busy}
           onChange={(e) =>
@@ -63,7 +64,7 @@ export function RecordLayoutEditor({
         >
           <option value="top">Über dem Inhalt</option>
           <option value="side">Neben dem Inhalt</option>
-        </select>
+        </Select>
       </label>
       <label className="checkbox-label">
         <input

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState, useEffect } from "react";
 import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
@@ -108,7 +109,7 @@ export function CellInput({
         ? members.map((u) => ({ id: u.id, name: u.name }))
         : (f.options || []).map((s) => ({ id: s, name: s }));
     return (
-      <select
+      <Select
         aria-label={f.name}
         disabled={disabled}
         value={cellText(value)}
@@ -120,7 +121,7 @@ export function CellInput({
             {o.name}
           </option>
         ))}
-      </select>
+      </Select>
     );
   }
   if (f.type === "multiselect")

@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useState } from "react";
 import type { Bootstrap } from "@/lib/types";
 import { api, Modal } from "./ui";
@@ -116,7 +117,7 @@ export function WorkspaceLifecycle({
             {mode === "leave" && owned && (
               <label>
                 Eigene Bereiche übertragen an
-                <select
+                <Select
                   value={target}
                   onChange={(event) => setTarget(event.target.value)}
                   disabled={busy}
@@ -126,7 +127,7 @@ export function WorkspaceLifecycle({
                       {owner.name}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <small>
                   Dies umfasst deine privaten Bereiche und Bereiche im
                   Papierkorb. Der gewählte Eigentümer erhält Zugriff darauf.

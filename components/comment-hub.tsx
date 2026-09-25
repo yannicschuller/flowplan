@@ -1,4 +1,5 @@
 "use client";
+import { Select } from "./select";
 import { useCallback, useEffect, useState } from "react";
 import { ChatCircle, Quotes } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
@@ -87,7 +88,7 @@ export function CommentHub({
             </button>
           ))}
         </div>
-        <select
+        <Select
           aria-label="Status der Kommentare"
           value={status}
           onChange={(e) => setStatus(e.target.value as typeof status)}
@@ -95,7 +96,7 @@ export function CommentHub({
           <option value="open">Offen</option>
           <option value="resolved">Erledigt</option>
           <option value="all">Alle</option>
-        </select>
+        </Select>
       </div>
       {error && (
         <p className="inline-comment-error" role="alert">
