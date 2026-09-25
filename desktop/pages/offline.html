@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>Keine Verbindung</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <img src="../build/icon.png" alt="" />
+      <h1>Keine Verbindung zu Flowplan</h1>
+      <p id="detail">Der Server ist gerade nicht erreichbar. Prüfe deine Internetverbindung oder die Adresse der Instanz.</p>
+      <div class="row">
+        <button id="retry">Erneut versuchen</button>
+        <button id="change" class="secondary">Server wechseln</button>
+      </div>
+    </main>
+    <script src="offline.js"></script>
+  </body>
+</html>

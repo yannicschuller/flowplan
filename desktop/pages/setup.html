@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>Flowplan einrichten</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <img src="../build/icon.png" alt="" />
+      <h1>Willkommen bei Flowplan</h1>
+      <p>Gib die Adresse deiner Flowplan-Instanz ein. Du kannst sie später im Menü unter „Server wechseln“ ändern.</p>
+      <form id="form">
+        <label for="server">Adresse der Instanz</label>
+        <input id="server" name="server" placeholder="flowplan.deine-firma.de" autocomplete="url" autofocus required />
+        <div class="error" id="error" role="alert"></div>
+        <button id="submit">Verbinden</button>
+      </form>
+    </main>
+    <script src="setup.js"></script>
+  </body>
+</html>
