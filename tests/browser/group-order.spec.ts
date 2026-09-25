@@ -116,15 +116,43 @@ test("board and table groups reorder, collapse and reset with persistence", asyn
     await page
       .locator('.board-column[aria-label="Gruppe Done"] > header')
       .dragTo(page.locator('.board-column[aria-label="Gruppe Doing"]'));
+    await expect(
+      board.getByRole("button", { name: "Gruppe Done ziehen" }),
+    ).toBeHidden();
+  } else {
+    // Touch: drag the column handle onto another column; the board scrolls
+    // sideways when the target is off-screen.
+    const handle = board.getByRole("button", { name: "Gruppe Done ziehen" });
+    const target = page.locator('.board-column[aria-label="Gruppe Doing"]');
+    await target.scrollIntoViewIfNeeded();
+    await handle.scrollIntoViewIfNeeded();
+    const from = (await handle.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    const width = page.viewportSize()!.width;
+    // Rest at the left edge until the first column is reachable.
+    await page.mouse.move(4, from.y + from.height / 2, { steps: 6 });
     await expect
-      .poll(() => boardLabels(page))
-      .toEqual([
-        "Gruppe Done",
-        "Gruppe Doing",
-        "Gruppe Open",
-        "Gruppe Ohne Gruppe",
-      ]);
+      .poll(async () => (await target.boundingBox())?.x ?? -1000)
+      .toBeGreaterThanOrEqual(0);
+    await page.waitForTimeout(300);
+    const to = (await target.boundingBox())!;
+    await page.mouse.move(
+      Math.min(to.x + to.width / 2, width - 60),
+      to.y + 40,
+      { steps: 4 },
+    );
+    await expect(target).toHaveClass(/group-drop/);
+    await page.mouse.up();
   }
+  await expect
+    .poll(() => boardLabels(page))
+    .toEqual([
+      "Gruppe Done",
+      "Gruppe Doing",
+      "Gruppe Open",
+      "Gruppe Ohne Gruppe",
+    ]);
 
   const doing = page.locator('.board-column[aria-label="Gruppe Doing"]');
   await expect(doing.locator(".record-card")).toHaveCount(1);
@@ -151,10 +179,8 @@ test("board and table groups reorder, collapse and reset with persistence", asyn
     views: current.database.views,
   });
   await page.reload();
-  const expected =
-    testInfo.project.name === "desktop"
-      ? ["Done", "Review", "Doing", "Open", "Ohne Gruppe"]
-      : ["Doing", "Review", "Open", "Done", "Ohne Gruppe"];
+  // Both platforms moved "Done" to the front by dragging.
+  const expected = ["Done", "Review", "Doing", "Open", "Ohne Gruppe"];
   await expect
     .poll(() => boardLabels(page))
     .toEqual(expected.map((l) => `Gruppe ${l}`));

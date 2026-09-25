@@ -2,6 +2,7 @@
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
+import { edgeScroller } from "./edge-scroll";
 import DatabaseCalendar from "./database-calendar";
 import FormulaEditor from "./formula-editor";
 import {
@@ -242,6 +243,13 @@ export default function DatabaseView({
       rowId: string;
       date: string;
     } | null>(null);
+  // Touch devices move board columns with a handle; the board scrolls
+  // sideways while the finger rests at its edge.
+  const columnDrag = useRef<{ key: string; pointer: number } | null>(null),
+    columnHoverRef = useRef((_x: number, _y: number) => {}),
+    [columnScroll] = useState(() =>
+      edgeScroller((x, y) => columnHoverRef.current(x, y), "x"),
+    );
   function setRowId(id: string | null, occurrence?: string) {
     setOccurrence(id && occurrence ? { rowId: id, date: occurrence } : null);
     setLocalRowId(id);
@@ -1233,6 +1241,17 @@ export default function DatabaseView({
       </span>
     );
   }
+  const columnAt = (x: number, y: number) =>
+    document
+      .elementFromPoint(x, y)
+      ?.closest<HTMLElement>(".board-column[data-group-key]")?.dataset.groupKey;
+  function columnHover(x: number, y: number) {
+    const drag = columnDrag.current;
+    if (!drag) return;
+    const target = columnAt(x, y);
+    setGroupDrop(target && target !== drag.key ? target : null);
+  }
+  columnHoverRef.current = columnHover;
   function dropGroup(e: DragEvent, target: DatabaseGroup) {
     if (!viewEditable || !e.dataTransfer.types.includes(groupDragType)) return;
     e.preventDefault();
@@ -2024,6 +2043,7 @@ export default function DatabaseView({
                   {g.label}
                 </span>
                 <span className="muted">{g.rows.length}</span>
+
                 {!collapsed(g.key) && groupMoveButtons(g, true)}
               </header>
             ))}
@@ -2124,6 +2144,7 @@ export default function DatabaseView({
             <section
               className={`board-column${collapsed(g.key) ? " collapsed" : ""}${groupDrop === g.key ? " group-drop" : ""}`}
               key={g.key}
+              data-group-key={g.key}
               aria-label={`Gruppe ${g.label}`}
               onDragOver={(e) => {
                 if (
@@ -2195,6 +2216,42 @@ export default function DatabaseView({
                   {g.label}
                 </span>
                 <span className="muted">{g.rows.length}</span>
+                {viewEditable && (
+                  <button
+                    className="group-drag"
+                    aria-label={`Gruppe ${g.label} ziehen`}
+                    disabled={schemaBusy}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      columnDrag.current = { key: g.key, pointer: e.pointerId };
+                      columnScroll.start(e.currentTarget);
+                    }}
+                    onPointerMove={(e) => {
+                      if (columnDrag.current?.pointer !== e.pointerId) return;
+                      columnHover(e.clientX, e.clientY);
+                      columnScroll.move(e.clientX, e.clientY);
+                    }}
+                    onPointerUp={(e) => {
+                      const drag = columnDrag.current;
+                      columnDrag.current = null;
+                      columnScroll.stop();
+                      setGroupDrop(null);
+                      if (drag?.pointer !== e.pointerId) return;
+                      const target = columnAt(e.clientX, e.clientY),
+                        index = groups.findIndex((x) => x.key === target);
+                      if (target !== drag.key && index >= 0)
+                        void moveGroup(drag.key, index);
+                    }}
+                    onPointerCancel={() => {
+                      columnDrag.current = null;
+                      columnScroll.stop();
+                      setGroupDrop(null);
+                    }}
+                  >
+                    <DotsSixVertical size={14} />
+                  </button>
+                )}
                 {!collapsed(g.key) && groupMoveButtons(g, true)}
                 {editable && !collapsed(g.key) && (
                   <button

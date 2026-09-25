@@ -393,6 +393,7 @@ kbd,
   opacity: 1;
 }
 /* Touch devices drag pages with this handle; mouse users drag the row. */
+.group-drag,
 .nav-drag {
   display: none;
   width: 24px;
@@ -402,6 +403,7 @@ kbd,
   touch-action: none;
 }
 @media (pointer: coarse) {
+  .group-drag,
   .nav-drag {
     display: inline-flex;
     align-items: center;
