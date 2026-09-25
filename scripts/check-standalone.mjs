@@ -3,7 +3,14 @@
 // file-level backup. Usage: npm run build && npm run check:standalone
 import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -49,8 +56,8 @@ async function start(dataDir) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
-  child.stdout.on("data", (d) => (log += d));
-  child.stderr.on("data", (d) => (log += d));
+  child.stdout.on("data", (d) => (log += d, (child.log = log)));
+  child.stderr.on("data", (d) => (log += d, (child.log = log)));
   for (let i = 0; i < 100; i++) {
     try {
       const r = await fetch(`${origin}/api/health`);
@@ -195,6 +202,45 @@ try {
     if (!pdfFound) await new Promise((r) => setTimeout(r, 500));
   }
   check("PDF-Volltext durchsuchbar", pdfFound);
+  // Scanned PDFs are recognised by OCR in the background.
+  const scanForm = new FormData();
+  scanForm.set("pageId", created.id);
+  scanForm.set(
+    "file",
+    new Blob([readFileSync(join(root, "tests/fixtures/scan.pdf"))], {
+      type: "application/pdf",
+    }),
+    "scan.pdf",
+  );
+  const scanUpload = await fetch(`${origin}/api/upload`, {
+    method: "POST",
+    headers: { origin, cookie },
+    body: scanForm,
+  });
+  let scanFound = false;
+  for (let i = 0; scanUpload.ok && i < 90 && !scanFound; i++) {
+    const hits = await (
+      await fetch(
+        `${origin}/api/search?workspace=${boot.workspace.id}&q=Wartungsvertrag&kind=file`,
+        { headers },
+      )
+    ).json();
+    scanFound = Array.isArray(hits) && hits.some((h) => h.title === "scan.pdf");
+    if (!scanFound) await new Promise((r) => setTimeout(r, 1000));
+  }
+  check("Texterkennung gescannter PDFs", scanFound);
+  if (!scanFound) {
+    const probe = new DatabaseSync(join(data, "flowplan.sqlite"));
+    console.log(
+      probe
+        .prepare(
+          "SELECT f.name,t.status,length(t.text) chars FROM files f LEFT JOIN file_texts t ON t.file_id=f.id",
+        )
+        .all(),
+    );
+    probe.close();
+    console.log(server.log?.slice(-3000));
+  }
 
   await stop(server);
   server = await start(data);
