@@ -8691,3 +8691,27 @@ textarea {
     width: min(300px, calc(100% - 16px));
   }
 }
+/* The tool bar never grows beyond the board: two columns when space is
+   short, scrolling as a last resort. */
+.wb-toolbar {
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+@media (max-height: 820px) and (min-width: 761px) {
+  .wb-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+  }
+  .wb-toolbar .wb-sep {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 1px;
+    margin: 4px 0;
+  }
+  .wb-shape-menu,
+  .wb-panel {
+    left: 104px;
+  }
+}
