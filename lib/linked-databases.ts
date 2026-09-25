@@ -14,8 +14,19 @@ import {
 import { pageData, database, command } from "./api";
 import { moveRow, validateViewRowOrders } from "./row-order-server";
 import { transformFilterGroup } from "./database-filters";
+import { ensureRowDocument, requireRow } from "./row-documents";
 import type { Identity, Filter, View } from "./types";
-function open(user: Identity, hostId: string, blockId: string, write = false) {
+// The host is a page document or, with `rowId`, a record document.
+function hostDocument(
+  user: Identity,
+  hostId: string,
+  rowId: string | undefined,
+  write: boolean,
+) {
+  if (rowId) {
+    const { page, row } = requireRow(user, hostId, rowId, write);
+    return { host: page, rowId: row.id, stored: ensureRowDocument(row) };
+  }
   const host = requirePage(user, hostId, write);
   if (host.kind !== "document")
     throw new HttpError(400, "Einbettung benötigt ein Dokument.");
@@ -27,6 +38,16 @@ function open(user: Identity, hostId: string, blockId: string, write = false) {
     generation: string;
   }>("SELECT * FROM documents WHERE page_id=?", hostId);
   if (!stored) throw new HttpError(404, "Dokument fehlt.");
+  return { host, rowId: undefined, stored };
+}
+function open(
+  user: Identity,
+  hostId: string,
+  blockId: string,
+  write = false,
+  rowId?: string,
+) {
+  const { host, stored } = hostDocument(user, hostId, rowId, write);
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, stored.state || htmlState(stored.html));
@@ -53,7 +74,15 @@ function open(user: Identity, hostId: string, blockId: string, write = false) {
     const source = requirePage(user, attrs.source);
     if (source.kind !== "database" || source.workspace_id !== host.workspace_id)
       throw new HttpError(403, "Datenquelle nicht verfügbar.");
-    return { host, source, doc, node, attrs, generation: stored.generation };
+    return {
+      host,
+      rowId,
+      source,
+      doc,
+      node,
+      attrs,
+      generation: stored.generation,
+    };
   } catch (error) {
     doc.destroy();
     throw error;
@@ -63,8 +92,9 @@ export function linkedDatabaseData(
   user: Identity,
   hostId: string,
   blockId: string,
+  rowId?: string,
 ) {
-  const context = open(user, hostId, blockId);
+  const context = open(user, hostId, blockId, false, rowId);
   try {
     const source = pageData(user, context.source.id);
     if (!("database" in source)) throw new HttpError(400, "Keine Datenbank.");
@@ -92,13 +122,27 @@ function writeViews(context: ReturnType<typeof open>, views: View[]) {
     context.node.setAttribute("views", JSON.stringify(views));
     context.node.setAttribute("version", String(context.attrs.version + 1));
   });
-  const state = Y.encodeStateAsUpdate(context.doc);
-  run(
-    "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
-    state,
-    stateHtml(context.doc),
-    context.host.id,
-  );
+  const state = Y.encodeStateAsUpdate(context.doc),
+    html = stateHtml(context.doc);
+  if (context.rowId) {
+    run(
+      "UPDATE row_documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?",
+      state,
+      html,
+      context.rowId,
+    );
+    run(
+      "UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+      html,
+      context.rowId,
+    );
+  } else
+    run(
+      "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
+      state,
+      html,
+      context.host.id,
+    );
   run(
     "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
     context.host.id,
@@ -110,7 +154,12 @@ export function mutateLinkedDatabase(
   input: Record<string, unknown>,
 ) {
   const hostId = z.string().uuid().parse(input.pageId),
-    blockId = z.string().uuid().parse(input.blockId);
+    blockId = z.string().uuid().parse(input.blockId),
+    rowId = z
+      .string()
+      .uuid()
+      .optional()
+      .parse(input.rowId ?? undefined);
   const mutation = z
     .object({ action: z.string() })
     .passthrough()
@@ -121,8 +170,9 @@ export function mutateLinkedDatabase(
     command(
       user,
       {
-        action: "document.sync",
+        action: rowId ? "row.document.sync" : "document.sync",
         pageId: hostId,
+        rowId,
         generation: input.generation,
         update: input.update,
       },
@@ -133,6 +183,7 @@ export function mutateLinkedDatabase(
     hostId,
     blockId,
     ["database.update", "row.move"].includes(mutation.action),
+    rowId,
   );
   try {
     if (input.generation !== context.generation)
@@ -234,16 +285,21 @@ export function mutateLinkedDatabase(
         );
       result = command(user, { ...mutation, pageId: context.source.id }, true);
     }
-    const stored = one<{ state: Uint8Array }>(
-      "SELECT state FROM documents WHERE page_id=?",
-      hostId,
-    )!;
+    const stored = rowId
+      ? one<{ state: Uint8Array }>(
+          "SELECT state FROM row_documents WHERE row_id=?",
+          rowId,
+        )
+      : one<{ state: Uint8Array }>(
+          "SELECT state FROM documents WHERE page_id=?",
+          hostId,
+        );
     return {
       result,
       state: Buffer.from(
-        stored.state || Y.encodeStateAsUpdate(context.doc),
+        stored?.state || Y.encodeStateAsUpdate(context.doc),
       ).toString("base64"),
-      data: linkedDatabaseData(user, hostId, blockId),
+      data: linkedDatabaseData(user, hostId, blockId, rowId),
     };
   } finally {
     context.doc.destroy();

@@ -627,3 +627,96 @@ test("deleted source fields are pruned from linked filters and gallery previews 
     [],
   );
 });
+
+test("record documents host linked views with their own configuration", () => {
+  const { source } = fixture();
+  const projects = create("database"),
+    record = act({
+      action: "row.create",
+      pageId: projects,
+      cells: { title: "Projekt Alpha" },
+    }).id as string,
+    blockId = id();
+  const html = `<p>Aufgaben</p>${block(source, blockId)}`;
+  run(
+    "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET state=excluded.state,html=excluded.html",
+    record,
+    htmlState(html),
+    html,
+    id(),
+  );
+  const rowDoc = () =>
+    one<{ html: string; generation: string }>(
+      "SELECT html,generation FROM row_documents WHERE row_id=?",
+      record,
+    )!;
+  const data = linkedDatabaseData(owner, projects, blockId, record);
+  assert.equal(data.page.id, source);
+  assert.equal(data.rows.length, 3);
+  // The block must exist in exactly this record document.
+  const other = act({
+    action: "row.create",
+    pageId: projects,
+    cells: { title: "Anderes" },
+  }).id as string;
+  assert.throws(
+    () => linkedDatabaseData(owner, projects, blockId, other),
+    /Einbettung fehlt/,
+  );
+  assert.throws(() => linkedDatabaseData(stranger, projects, blockId, record));
+  const command = (mutation: Record<string, unknown>, actor = owner) =>
+    act(
+      {
+        action: "linked.command",
+        pageId: projects,
+        rowId: record,
+        blockId,
+        generation: rowDoc().generation,
+        sourceVersion: linkedDatabaseData(owner, projects, blockId, record)
+          .sourceVersion,
+        mutation,
+      },
+      actor,
+    );
+  const current = linkedDatabaseData(owner, projects, blockId, record);
+  const filtered = [
+    {
+      ...current.database.views[0],
+      filters: [{ field: "status", op: "eq", value: "Done" }],
+    },
+  ];
+  assert.throws(() =>
+    command(
+      {
+        action: "database.update",
+        version: current.database.version,
+        fields: current.database.fields,
+        views: filtered,
+      },
+      viewer,
+    ),
+  );
+  command({
+    action: "database.update",
+    version: current.database.version,
+    fields: current.database.fields,
+    views: filtered,
+  });
+  // The record document stores the view; the source keeps its own.
+  assert.match(rowDoc().html, /data-linked-version="2"/);
+  assert.match(
+    one<{ content: string }>("SELECT content FROM rows WHERE id=?", record)!
+      .content,
+    /Done/,
+  );
+  assert.deepEqual(database(source).views[0].filters, []);
+  const updated = linkedDatabaseData(owner, projects, blockId, record);
+  assert.equal(
+    queryRows(updated.rows, updated.database.fields, updated.database.views[0])
+      .length,
+    2,
+  );
+  // Source records can be added through the embedding.
+  command({ action: "row.create", cells: { title: "D", status: "Done" } });
+  assert.equal(rows(source).length, 4);
+});

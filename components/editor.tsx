@@ -81,7 +81,6 @@ import {
   Columns,
   Column,
   Media,
-  LinkedDatabase,
 } from "@/lib/document-schema";
 export default function DocumentEditor({
   pageId,
@@ -136,6 +135,7 @@ export default function DocumentEditor({
   const linkedContext = useRef<LinkedEditorContext>(null!);
   linkedContext.current = {
     pageId,
+    rowId,
     userId,
     pages,
     members,
@@ -179,9 +179,7 @@ export default function DocumentEditor({
         Columns,
         Column,
         Media,
-        rowId
-          ? LinkedDatabase
-          : linkedDatabaseNode(() => linkedContext.current),
+        linkedDatabaseNode(() => linkedContext.current),
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }),
         inlineCommentExtension(generation),
@@ -775,25 +773,23 @@ export default function DocumentEditor({
         title="Block hinzufügen"
       >
         <div className="slash-list">
-          {commands
-            .filter((c) => !rowId || c.name !== "Verknüpfte Datenbank")
-            .map((c) => (
-              <button
-                key={c.name}
-                onClick={() => {
-                  setSlash(false);
-                  c.run();
-                }}
-              >
-                <span>
-                  <c.icon size={23} />
-                </span>
-                <div>
-                  <strong>{c.name}</strong>
-                  <small>{c.description}</small>
-                </div>
-              </button>
-            ))}
+          {commands.map((c) => (
+            <button
+              key={c.name}
+              onClick={() => {
+                setSlash(false);
+                c.run();
+              }}
+            >
+              <span>
+                <c.icon size={23} />
+              </span>
+              <div>
+                <strong>{c.name}</strong>
+                <small>{c.description}</small>
+              </div>
+            </button>
+          ))}
         </div>
       </Modal>
       <Modal

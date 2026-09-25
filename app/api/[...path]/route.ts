@@ -123,6 +123,17 @@ export async function GET(
       });
     if (path[0] === "pages" && path[2] === "linked" && path[3])
       return NextResponse.json(linkedDatabaseData(user, path[1], path[3]));
+    // Embeddings inside a record document.
+    if (
+      path[0] === "pages" &&
+      path[2] === "rows" &&
+      path[3] &&
+      path[4] === "linked" &&
+      path[5]
+    )
+      return NextResponse.json(
+        linkedDatabaseData(user, path[1], path[5], z.uuid().parse(path[3])),
+      );
     if (
       path[0] === "pages" &&
       path[2] === "snapshots" &&

@@ -16,6 +16,8 @@ const DatabaseView = dynamic(() => import("./database-view"), {
 });
 export type LinkedEditorContext = {
   pageId: string;
+  // Set when the host is a record document.
+  rowId?: string;
   userId: string;
   pages: Page[];
   members: User[];
@@ -39,6 +41,7 @@ function LinkedDatabaseView({
   const context = () =>
     (extension.options.context as () => LinkedEditorContext)();
   const host = context().pageId,
+    hostRow = context().rowId,
     block = String(node.attrs.id);
   const [data, setData] = useState<LinkedData | null>(null),
     [error, setError] = useState("");
@@ -49,7 +52,11 @@ function LinkedDatabaseView({
     if (busy.current) return;
     const request = ++sequence.current;
     try {
-      const next = await api<LinkedData>(`/api/pages/${host}/linked/${block}`);
+      const next = await api<LinkedData>(
+        hostRow
+          ? `/api/pages/${host}/rows/${hostRow}/linked/${block}`
+          : `/api/pages/${host}/linked/${block}`,
+      );
       if (alive.current && request === sequence.current) {
         setData(next);
         setError("");
@@ -73,7 +80,7 @@ function LinkedDatabaseView({
       clearInterval(timer);
       window.removeEventListener("focus", load);
     };
-  }, [host, block]);
+  }, [host, hostRow, block]);
   async function mutate(mutation: Record<string, unknown>) {
     if (!data) throw new Error("Datenquelle wird geladen.");
     busy.current = true;
@@ -88,6 +95,7 @@ function LinkedDatabaseView({
       }>("/api/command", {
         action: "linked.command",
         pageId: host,
+        rowId: hostRow,
         blockId: block,
         generation: current.generation,
         update: current.update(),
