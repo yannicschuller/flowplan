@@ -1,17 +1,26 @@
 :root {
-  --bg: #fff;
-  --surface: #f8f9fb;
-  --sidebar: #f7f8fa;
-  --hover: #eceff3;
-  --border: #e9ebef;
-  --text: #282d36;
-  --muted: #8a909c;
-  --secondary: #646c79;
-  --blue: #3479e7;
-  --blue-light: #eaf1fc;
-  --shadow: 0 12px 50px #14244415;
-  --radius: 8px;
-  font-family: Arial, Helvetica, sans-serif;
+  /* Paper and ink: warm neutrals, one confident ultramarine accent. */
+  --bg: #fcfbf8;
+  --surface: #f6f4ef;
+  --sidebar: #f3f1eb;
+  --hover: #ebe8e0;
+  --border: #e4e0d6;
+  --text: #1d1c22;
+  --muted: #8a8691;
+  --secondary: #5e5a66;
+  --blue: #3b3fd8;
+  --blue-light: #ecebfc;
+  --accent-strong: #2c2fb5;
+  --on-accent: #ffffff;
+  --signal: #f0663a;
+  --shadow: 0 12px 40px #1d1a1414;
+  --radius: 10px;
+  --font-ui: "Instrument Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-ui);
+  font-feature-settings: "ss01", "cv05";
   color-scheme: light;
 }
 * {
@@ -76,7 +85,7 @@ textarea:focus,
 :is(select, .fp-select):focus,
 .fp-select:focus-within {
   border-color: #8ab4f4;
-  box-shadow: 0 0 0 3px #3479e710;
+  box-shadow: 0 0 0 3px #3b3fd81a;
 }
 input[type="checkbox"] {
   accent-color: var(--blue);
@@ -166,7 +175,7 @@ kbd,
 }
 .button.primary {
   background: var(--blue);
-  color: white;
+  color: var(--on-accent);
   border-color: var(--blue);
 }
 .button.primary:hover {
@@ -648,8 +657,8 @@ kbd,
   display: flex;
   align-items: center;
   padding-left: 21px;
-  color: #6686b3;
-  background: #edf2fa;
+  color: #5a60c9;
+  background: #edecf8;
 }
 .illustration-1 {
   background: #eef1ed;
@@ -890,8 +899,8 @@ kbd,
 }
 .page-title {
   font-size: 38px;
-  letter-spacing: -1.3px;
-  font-weight: 700;
+  letter-spacing: -0.028em;
+  font-weight: 650;
   line-height: 1.3;
   padding: 0;
   border: 0;
@@ -925,7 +934,7 @@ kbd,
   font-family: Georgia, serif;
 }
 .font-mono .document-editor {
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .locked-notice {
   display: flex;
@@ -1082,7 +1091,7 @@ kbd,
   font-weight: 600;
 }
 .document-editor .selectedCell:after {
-  background: #3479e715;
+  background: #3b3fd81f;
   position: absolute;
   inset: 0;
   content: "";
@@ -1453,7 +1462,7 @@ tr:hover .row-open {
 .check-display.checked {
   background: var(--blue);
   border-color: var(--blue);
-  color: white;
+  color: var(--on-accent);
   align-items: center;
   justify-content: center;
 }
@@ -1936,7 +1945,7 @@ tr:hover .row-open {
 }
 .calendar-day .today {
   background: var(--blue);
-  color: white !important;
+  color: var(--on-accent) !important;
   border-radius: 50%;
 }
 .calendar-event {
@@ -3464,7 +3473,7 @@ tr:hover .row-open {
 .form-scale button.active {
   background: var(--blue);
   border-color: var(--blue);
-  color: #fff;
+  color: var(--on-accent);
 }
 .icon-size {
   display: flex;
@@ -4159,21 +4168,42 @@ tr:hover .row-open {
   margin-top: 20px;
 }
 [data-theme="dark"] {
-  --bg: #202329;
-  --surface: #252931;
-  --sidebar: #1b1e24;
-  --hover: #303641;
-  --border: #333943;
-  --text: #e0e4ed;
-  --muted: #8992a1;
-  --secondary: #a6afbe;
-  --blue: #609cef;
-  --blue-light: #283b56;
-  --shadow: 0 12px 50px #0004;
+  --bg: #16151b;
+  --surface: #1d1c23;
+  --sidebar: #121117;
+  --hover: #29272f;
+  --border: #2e2c35;
+  --text: #ecebf1;
+  --muted: #8e8a98;
+  --secondary: #b3afbd;
+  --blue: #959bff;
+  --blue-light: #2a2a55;
+  --accent-strong: #b9bcff;
+  --on-accent: #121117;
+  --signal: #ff8a5c;
+  --shadow: 0 12px 50px #0007;
   color-scheme: dark;
 }
 [data-theme="dark"] .recent-illustration {
-  filter: brightness(0.64) saturate(0.7);
+  background: #1f2233;
+  color: #8f9fd6;
+}
+[data-theme="dark"] .illustration-1 {
+  background: #1d2621;
+  color: #86a98c;
+}
+[data-theme="dark"] .illustration-2 {
+  background: #29221c;
+  color: #c7a276;
+}
+[data-theme="dark"] .illustration-3 {
+  background: #231f30;
+  color: #a898cf;
+}
+[data-theme="dark"] .mini-document,
+[data-theme="dark"] .mini-board i {
+  background: #ffffff0d;
+  border-color: #ffffff17;
 }
 [data-theme="dark"] .tag {
   filter: brightness(0.85);
@@ -8582,7 +8612,7 @@ textarea {
 .wb-vote.mine {
   background: var(--blue);
   border-color: var(--blue);
-  color: #fff;
+  color: var(--on-accent);
 }
 .wb-vote:disabled {
   opacity: 1;
@@ -8994,4 +9024,105 @@ textarea {
 }
 .settings-body .instance-settings > label {
   justify-content: space-between;
+}
+
+/* ---------- Brand type ---------- */
+body {
+  letter-spacing: -0.003em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1,
+h2,
+h3 {
+  letter-spacing: -0.018em;
+}
+code,
+kbd,
+pre,
+.keycap,
+.font-mono {
+  font-family: var(--font-mono);
+}
+/* Numbers line up wherever they are compared. */
+.data-table,
+.admin-stats strong,
+.admin-metrics strong,
+.record-count,
+.column-calculation,
+.group-summary,
+.wb-timer strong,
+.notification-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Brand moments ---------- */
+.brand-mark {
+  display: block;
+  flex-shrink: 0;
+  border-radius: 28%;
+  box-shadow: 0 1px 2px #1d1a4a26, 0 4px 12px -4px #4146e659;
+}
+.brand,
+.login-brand {
+  font-weight: 620;
+  letter-spacing: -0.035em;
+}
+.brand {
+  font-size: 21px;
+  gap: 10px;
+}
+.brand > span:first-of-type {
+  transform: translateY(-1px);
+}
+.login-brand {
+  font-size: 23px;
+}
+.login-mark {
+  background: none;
+  height: auto;
+  width: auto;
+  margin: 0 auto 24px;
+}
+.login-mark .brand-mark {
+  margin: 0 auto;
+  transition: transform 0.5s var(--ease-spring, ease);
+}
+.login-card:hover .login-mark .brand-mark {
+  transform: rotate(-4deg) translateY(-2px);
+}
+/* The serif speaks only at entrances: sign-in and the home greeting. */
+.login-card h1,
+.home-greeting h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+.login-card h1 {
+  font-size: 40px;
+}
+.home-greeting h1 {
+  font-size: 44px;
+}
+.greeting-dot {
+  color: var(--signal);
+}
+.login {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, var(--blue-light), transparent 70%),
+    var(--surface);
+}
+@media (max-width: 700px) {
+  .home-greeting h1 {
+    font-size: 36px;
+  }
+  .login-card h1 {
+    font-size: 34px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-card:hover .login-mark .brand-mark {
+    transform: none;
+  }
 }

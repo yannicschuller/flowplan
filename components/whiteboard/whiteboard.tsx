@@ -2798,7 +2798,7 @@ export default function Whiteboard({
                         ? "#7048e8"
                         : p.kind === "database"
                           ? "#2f9e44"
-                          : "#3479e7",
+                          : "#3b3fd8",
                   });
                 });
                 setSelection(new Set([id]));

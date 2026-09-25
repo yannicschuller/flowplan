@@ -286,7 +286,7 @@ export function WhiteboardShape({
             width={6}
             height={item.h}
             rx={3}
-            fill={item.fill || "#3479e7"}
+            fill={item.fill || "#3b3fd8"}
           />
           <foreignObject
             x={14}

@@ -12,7 +12,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#ffffff",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fcfbf8" },
+    { media: "(prefers-color-scheme: dark)", color: "#16151b" },
+  ],
 };
 export default function RootLayout({
   children,
@@ -21,6 +24,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de" suppressHydrationWarning>
+      <head>
+        <link
+          rel="preload"
+          href="/fonts/instrument-sans-latin-standard-normal.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin=""
+        />
+        <link rel="stylesheet" href="/fonts.css" />
+      </head>
       <body>{children}</body>
     </html>
   );

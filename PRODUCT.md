@@ -78,23 +78,24 @@ Referenz, visuell nicht. Die Marke muss
 **Entscheidung: eigene Schrift** statt Systemschrift. Bedingungen: offene
 Lizenz (z. B. SIL Open Font License), mit der App ausgeliefert (keine
 Google-Fonts-Einbindung), deutsche Zeichen und Tabellenziffern, gut lesbar in
-kleinen Größen der Oberfläche. Welche Schrift, ist noch zu entscheiden.
+kleinen Größen der Oberfläche. Gewählt: Instrument Sans (Oberfläche),
+Instrument Serif (nur Markenmomente), JetBrains Mono (Code).
+
+**Entscheidung: Name und Logo.** Der Name „Flowplan“ bleibt. Das Logo wird
+aus der bisherigen Ebenen-Marke weiterentwickelt (eigene Bildmarke statt
+Phosphor-Symbol). Details, Farben und Regeln stehen in
+[DESIGN.md](DESIGN.md).
 
 Das bisherige Erscheinungsbild (unten) ist Ausgangspunkt und Beleg dafür, was
 funktioniert, aber kein Maßstab für die neue Markenwelt.
 
-## Visuelle Richtung (Ist-Zustand)
+## Visuelle Richtung
 
-- Ruhige, helle Werkzeug-Ästhetik nach dem Vorbild von AppFlowy/Notion:
-  viel Weißraum, feine Linien (`--border`), ein Akzent Blau (`--blue`
-  #3479e7, dunkel #609cef), abgerundete Ecken, zurückhaltende Schatten.
-- Logo: gestapelte Ebenen (Phosphor „Stack“) weiß auf blauem, abgerundetem
-  Quadrat.
-- Symbole: Phosphor Icons. Schrift: Systemschrift (`public/fonts.css`);
-  Seiten wahlweise Serif oder Mono.
-- Bewegung: kurze, weiche Übergänge (`--ease-out`, `--ease-spring`),
-  Verschieben gleitet nach dem Loslassen an die neue Stelle.
-- Eine `DESIGN.md` mit Tokens und Komponentenregeln existiert noch nicht.
+„Papier und Tinte“: warme Neutraltöne, ein Ultramarin-Akzent, ein seltener
+Signalton, eigene Schriften und eine eigene Bildmarke. Verbindlich
+beschrieben in [DESIGN.md](DESIGN.md). Die frühere AppFlowy/Notion-nahe
+Anmutung (kühles Weiß, Blau `#3479e7`, Systemschrift, Phosphor-„Stack“ als
+Logo) ist abgelöst.
 
 ## Qualitätsansprüche
 
@@ -115,7 +116,4 @@ funktioniert, aber kein Maßstab für die neue Markenwelt.
 
 ## Offene Fragen
 
-- Name und Wortmarke: Bleibt es bei „Flowplan“ und dem Ebenen-Logo, oder wird
-  beides Teil der neuen Markenwelt?
-- Welche Schrift (siehe „Marke“)?
 - Konkrete Zielgruppe, sobald das Projekt veröffentlicht wird.

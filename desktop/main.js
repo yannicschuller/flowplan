@@ -87,7 +87,7 @@ function createWindow() {
     minHeight: 500,
     title: "Flowplan",
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1f2329" : "#ffffff",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#16151b" : "#fcfbf8",
     autoHideMenuBar: !isMac,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

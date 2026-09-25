@@ -4,8 +4,8 @@
   "description": "Dein Arbeitsbereich für Notizen und Projekte",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#3679e8",
+  "background_color": "#fcfbf8",
+  "theme_color": "#3b3fd8",
   "icons": [
     {
       "src": "/icons/icon-192.png",

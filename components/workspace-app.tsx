@@ -1,4 +1,5 @@
 "use client";
+import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
 import { WorkspaceIcon } from "./workspace-icon";
@@ -874,9 +875,7 @@ export default function WorkspaceApp({
               go("home");
             }}
           >
-            <span className="logo">
-              <Stack weight="bold" size={21} />
-            </span>
+            <BrandMark size={28} />
             <span>flowplan</span>
             {boot.instance?.name && (
               <small className="instance-name">{boot.instance.name}</small>

@@ -1,9 +1,9 @@
 "use client";
+import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
-  Stack,
   ShieldCheck,
   SpinnerGap,
 } from "@phosphor-icons/react";
@@ -44,15 +44,13 @@ export default function Login({
   return (
     <main className="login">
       <div className="login-brand">
-        <span className="logo">
-          <Stack weight="bold" size={24} />
-        </span>
+        <BrandMark size={32} />
         flowplan
         {instanceName && <span className="muted"> · {instanceName}</span>}
       </div>
       <section className="login-card">
         <div className="login-mark">
-          <Stack size={44} weight="duotone" />
+          <BrandMark size={48} />
         </div>
         <h1>
           Raum für deine
