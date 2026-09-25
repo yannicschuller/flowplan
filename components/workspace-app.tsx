@@ -1,6 +1,12 @@
 "use client";
 import { CommentHub } from "./comment-hub";
 import {
+  useOfflineQueue,
+  isQueueable,
+  OfflineConflicts,
+} from "./offline-queue";
+import { applyQueue } from "@/lib/offline-queue";
+import {
   parsePageLocation,
   pageLocationHash,
   notificationUrl,
@@ -300,13 +306,38 @@ export default function WorkspaceApp({
         setData(p);
     }
   }, []);
+  // Record changes without a connection wait on this device (see
+  // components/offline-queue.tsx) and are shown in the views meanwhile.
+  const offlineQueue = useOfflineQueue({
+    userId: boot.user.id,
+    onSynced: refresh,
+    notify,
+  });
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const mutate = useCallback(
     async (b: Record<string, unknown>) => {
-      const result = await api("/api/command", b);
+      const rows = () =>
+        applyQueue(
+          dataRef.current?.rows || [],
+          offlineQueue.queue,
+          String(b.pageId),
+        );
+      if (isQueueable(b) && !navigator.onLine)
+        return offlineQueue.enqueue(b, rows());
+      let result;
+      try {
+        result = await api("/api/command", b);
+      } catch (e) {
+        // A failed request without a response means the network is gone.
+        if (isQueueable(b) && e instanceof TypeError)
+          return offlineQueue.enqueue(b, rows());
+        throw e;
+      }
       await refresh();
       return result;
     },
-    [refresh],
+    [refresh, offlineQueue],
   );
   const act = useCallback(
     async (b: Record<string, unknown>) => {
@@ -1567,20 +1598,44 @@ export default function WorkspaceApp({
                     )}
                   </div>
                   {data.page.kind === "database" ? (
-                    <DatabaseView
-                      key={data.page.id}
-                      routeNavigation
-                      page={data.page}
-                      userId={boot.user.id}
-                      onRefresh={refresh}
-                      data={data}
-                      members={boot.members}
-                      pages={activePages}
-                      editable={editable}
-                      favoriteRows={boot.favoriteRows}
-                      mutate={mutate}
-                      onError={notify}
-                    />
+                    <>
+                      {offlineQueue.queue.some(
+                        (c) => c.pageId === data.page.id,
+                      ) && (
+                        <p className="offline-pending" role="status">
+                          {
+                            offlineQueue.queue.filter(
+                              (c) => c.pageId === data.page.id,
+                            ).length
+                          }{" "}
+                          Offline-Änderungen warten auf die Verbindung
+                          {offlineQueue.syncing
+                            ? " · werden übertragen …"
+                            : "."}
+                        </p>
+                      )}
+                      <DatabaseView
+                        key={data.page.id}
+                        routeNavigation
+                        page={data.page}
+                        userId={boot.user.id}
+                        onRefresh={refresh}
+                        data={{
+                          ...data,
+                          rows: applyQueue(
+                            data.rows,
+                            offlineQueue.queue,
+                            data.page.id,
+                          ),
+                        }}
+                        members={boot.members}
+                        pages={activePages}
+                        editable={editable}
+                        favoriteRows={boot.favoriteRows}
+                        mutate={mutate}
+                        onError={notify}
+                      />
+                    </>
                   ) : (
                     <DocumentEditor
                       key={`${data.page.id}-${data.generation}-${epoch}`}
@@ -2242,6 +2297,13 @@ export default function WorkspaceApp({
           </div>
         </form>
       </Modal>
+      <OfflineConflicts
+        conflicts={offlineQueue.conflicts}
+        fields={(pid) =>
+          data?.page.id === pid ? data.database?.fields || [] : []
+        }
+        resolve={offlineQueue.resolve}
+      />
       <Modal open={share} onClose={() => setShare(false)} title="Seite teilen">
         {data && (
           <>

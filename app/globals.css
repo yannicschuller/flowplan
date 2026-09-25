@@ -7422,3 +7422,23 @@ tr.order-drop-after > td {
   color: var(--blue);
   border-color: transparent;
 }
+.offline-pending {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  background: color-mix(in srgb, #f5a623 18%, var(--bg));
+}
+.offline-conflict {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 12px;
+  font-size: 13px;
+}
+.offline-conflict th,
+.offline-conflict td {
+  text-align: left;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}

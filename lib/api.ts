@@ -1288,7 +1288,23 @@ export function command(
         };
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
-        const rid = id();
+        // Records created offline bring their own id; a repeat is a no-op.
+        const rid = b.rowId ? uuid.parse(b.rowId) : id();
+        if (b.rowId) {
+          const existing = one<{ page_id: string }>(
+            "SELECT page_id FROM rows WHERE id=?",
+            rid,
+          );
+          if (existing?.page_id === pid()) {
+            result = { id: rid };
+            break;
+          }
+          if (
+            existing ||
+            one("SELECT 1 FROM row_trash WHERE id=?", rid)
+          )
+            throw new HttpError(409, "Diese Kennung ist bereits vergeben.");
+        }
         run(
           "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
           rid,
