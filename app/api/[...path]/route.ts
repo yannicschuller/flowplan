@@ -1,6 +1,7 @@
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
 import { instanceSettings } from "@/lib/instance-settings";
+import { pendingRestore } from "@/lib/instance-backup";
 import { linkedDatabaseData } from "@/lib/linked-databases";
 import { editorPresence } from "@/lib/editor-presence";
 import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
@@ -297,6 +298,7 @@ export async function GET(
         metrics: instanceMetrics(),
         usage: workspaceUsage(),
         settings: instanceSettings(),
+        restorePending: pendingRestore(),
       });
     }
     if (path[0] === "files" && path[1]) {

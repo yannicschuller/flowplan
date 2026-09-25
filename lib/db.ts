@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, unlinkSync } from "node:fs";
+import { applyPendingRestore } from "./instance-restore-apply";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
@@ -336,6 +337,9 @@ export function db() {
     /* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data",
   );
   mkdirSync(dir, { recursive: true });
+  const restored = applyPendingRestore(dir);
+  if (restored)
+    console.log(`Instanz wiederhergestellt; vorheriger Stand in ${restored}`);
   const d = new DatabaseSync(resolve(dir, "flowplan.sqlite"));
   d.exec(
     "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",

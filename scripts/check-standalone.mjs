@@ -9,6 +9,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -75,7 +76,7 @@ const stop = (child) =>
   });
 
 // A session is inserted directly, as OIDC is not configured for this check.
-function session(dataDir) {
+function session(dataDir, groups = []) {
   const db = new DatabaseSync(join(dataDir, "flowplan.sqlite"));
   db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
   const uid = randomUUID(),
@@ -91,7 +92,7 @@ function session(dataDir) {
   ).run(
     createHash("sha256").update(token).digest("hex"),
     uid,
-    "[]",
+    JSON.stringify(groups),
     Date.now() + 600000,
   );
   db.close();
@@ -250,6 +251,54 @@ try {
   check(
     "Upload nach Neustart lesbar",
     stored.ok && (await stored.text()) === "Inhalt",
+  );
+
+  // Whole-instance backup: download, change, restore, restart.
+  const admin = session(data, ["flowplan-admins"]);
+  const adminHeaders = { origin, cookie: admin.cookie };
+  const download = await fetch(`${origin}/api/admin/instance-backup`, {
+    headers: adminHeaders,
+  });
+  const instanceBackup = Buffer.from(await download.arrayBuffer());
+  check(
+    "Instanzsicherung heruntergeladen",
+    download.ok && instanceBackup.length > 1000,
+    `${Math.round(instanceBackup.length / 1024)} KB`,
+  );
+  const later = await (
+    await fetch(`${origin}/api/command`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        action: "page.create",
+        workspaceId: boot.workspace.id,
+        spaceId: boot.spaces[0].id,
+        title: "Nach der Instanzsicherung",
+      }),
+    })
+  ).json();
+  const staged = await fetch(`${origin}/api/admin/instance-backup`, {
+    method: "POST",
+    headers: { ...adminHeaders, "content-type": "application/zip" },
+    body: instanceBackup,
+  });
+  const summary = await staged.json();
+  check(
+    "Instanzsicherung geprüft und vorgemerkt",
+    staged.ok && summary.pages >= 1 && summary.files >= 1,
+    JSON.stringify(summary),
+  );
+  await stop(server);
+  server = await start(data);
+  const afterRestore = await fetch(`${origin}/api/pages/${created.id}`, {
+    headers,
+  });
+  const removed = await fetch(`${origin}/api/pages/${later.id}`, { headers });
+  check(
+    "Instanz beim Neustart wiederhergestellt",
+    afterRestore.ok &&
+      removed.status === 404 &&
+      readdirSync(data).some((name) => name.startsWith("pre-restore-")),
   );
   await stop(server);
 

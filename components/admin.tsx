@@ -47,6 +47,13 @@ type AdminData = {
     effectiveQuotaMb: number;
   }[];
   settings: InstanceSettings;
+  restorePending: {
+    createdAt: string;
+    users: number;
+    workspaces: number;
+    pages: number;
+    files: number;
+  } | null;
 };
 const mb = (bytes: number) =>
   `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
@@ -231,10 +238,17 @@ export default function Admin({
         </table>
       )}
       {tab === "instance" && (
-        <InstanceSettingsForm
-          initial={data.settings}
-          onSave={(settings) => act({ action: "admin.settings", settings })}
-        />
+        <>
+          <InstanceSettingsForm
+            initial={data.settings}
+            onSave={(settings) => act({ action: "admin.settings", settings })}
+          />
+          <InstanceBackup
+            pending={data.restorePending}
+            onChange={load}
+            onError={onError}
+          />
+        </>
       )}
       {tab === "operations" && (
         <div className="admin-metrics" aria-label="Betriebsmetriken">
@@ -400,5 +414,101 @@ function InstanceSettingsForm({
       <button className="button primary">Einstellungen speichern</button>
       {saved && <p role="status">Gespeichert.</p>}
     </form>
+  );
+}
+
+// Backup and restore of the whole instance (database and uploads).
+function InstanceBackup({
+  pending,
+  onChange,
+  onError,
+}: {
+  pending: AdminData["restorePending"];
+  onChange: () => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <section
+      className="settings-section instance-backup"
+      aria-label="Instanzsicherung"
+    >
+      <h2>Sicherung der gesamten Instanz</h2>
+      <p className="muted">
+        Enthält alle Arbeitsbereiche, Konten, Einstellungen und Dateien. Die
+        Datei enthält vertrauliche Daten und sollte sicher verwahrt werden.
+      </p>
+      <a className="button" href="/api/admin/instance-backup" download>
+        Sicherung herunterladen
+      </a>
+      <h3>Aus Sicherung wiederherstellen</h3>
+      <p className="muted">
+        Die hochgeladene Sicherung wird geprüft und beim nächsten Neustart des
+        Servers übernommen. Der bisherige Stand bleibt im Datenordner als
+        „pre-restore-…“ erhalten. Alle Sitzungen enden mit der Übernahme.
+      </p>
+      {pending ? (
+        <div className="callout" role="status">
+          <span>
+            Bereit zur Übernahme beim Neustart: Sicherung vom{" "}
+            {pending.createdAt
+              ? new Date(pending.createdAt).toLocaleString("de-DE")
+              : "unbekannten Datum"}{" "}
+            mit {pending.workspaces} Arbeitsbereichen, {pending.pages} Seiten,{" "}
+            {pending.users} Konten und {pending.files} Dateien.
+          </span>
+          <button
+            className="button compact"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await fetch("/api/admin/instance-backup", {
+                  method: "DELETE",
+                });
+                if (!r.ok) throw new Error((await r.json()).error);
+                await onChange();
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Wiederherstellung abbrechen
+          </button>
+        </div>
+      ) : (
+        <label className="button file-label">
+          {busy ? "Sicherung wird geprüft …" : "Sicherung auswählen"}
+          <input
+            type="file"
+            accept=".zip"
+            hidden
+            aria-label="Instanzsicherung hochladen"
+            disabled={busy}
+            onChange={async (e) => {
+              const file = e.currentTarget.files?.[0];
+              e.currentTarget.value = "";
+              if (!file) return;
+              setBusy(true);
+              try {
+                const r = await fetch("/api/admin/instance-backup", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/zip" },
+                  body: file,
+                });
+                if (!r.ok) throw new Error((await r.json()).error);
+                await onChange();
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        </label>
+      )}
+    </section>
   );
 }
