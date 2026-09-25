@@ -66,7 +66,7 @@ test("scanned images and PDFs are recognised", async () => {
   assert.match(await ocrImage(pages[0]), /Wartungsvertrag/);
 });
 
-test("the background extraction makes Office files and scans searchable", async () => {
+test("the background extraction makes Office files and scans searchable", async (t) => {
   const uid = id();
   run(
     "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
@@ -124,6 +124,9 @@ test("the background extraction makes Office files and scans searchable", async 
   while (await extractPendingFileTexts());
   const titles = (q: string) =>
     searchWorkspace(owner, wid, q, { kind: "file" }).map((r) => r.title);
-  assert.deepEqual(titles("Wartungsvertrag"), ["scan.pdf"]);
+  // Scans are only searchable with text recognition (FLOWPLAN_OCR=0 turns it off).
+  if (process.env.FLOWPLAN_OCR === "0")
+    t.diagnostic("Texterkennung abgeschaltet – Scan-Suche nicht geprüft.");
+  else assert.deepEqual(titles("Wartungsvertrag"), ["scan.pdf"]);
   assert.deepEqual(titles("Kündigungsbestätigung"), ["brief.docx"]);
 });
