@@ -3455,6 +3455,47 @@ tr:hover .row-open {
 .icon-grid button[aria-selected="true"] {
   background: var(--hover);
 }
+.link-card {
+  margin: 12px 0;
+}
+.link-card a {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  color: var(--text);
+  text-decoration: none;
+}
+.link-card a:hover {
+  background: var(--surface);
+}
+.link-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  min-width: 0;
+  flex: 1;
+}
+.link-card-text span {
+  color: var(--secondary);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.link-card-text small {
+  color: var(--muted);
+}
+.link-card img {
+  width: 160px;
+  max-width: 35%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

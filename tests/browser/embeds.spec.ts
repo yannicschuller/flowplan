@@ -59,11 +59,9 @@ test("embeds from several providers are inserted, stored and published", async (
     .click();
   await page.getByRole("button", { name: /^Einbetten / }).click();
   const dialog = page.getByRole("dialog", { name: "Inhalt einbetten" });
-  await dialog.getByLabel(/^Link/).fill("https://example.com/video/1");
+  await dialog.getByLabel(/^Link/).fill("http://example.com/video/1");
   await dialog.getByRole("button", { name: "Einbetten", exact: true }).click();
-  await expect(
-    page.getByText(/Bitte einen Link von YouTube, Vimeo/),
-  ).toBeVisible();
+  await expect(page.getByText(/Nur öffentliche HTTPS-Adressen/)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect
     .poll(async () => (await read()).html)

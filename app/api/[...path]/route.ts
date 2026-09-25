@@ -1,4 +1,5 @@
 import { mediaLibrary } from "@/lib/media-library";
+import { resolveEmbed } from "@/lib/oembed";
 import { linkedDatabaseData } from "@/lib/linked-databases";
 import { editorPresence } from "@/lib/editor-presence";
 import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
@@ -217,6 +218,17 @@ export async function GET(
         }),
         { headers: { "Cache-Control": "no-store" } },
       );
+    }
+    // Link previews and players for pasted URLs (server-side, SSRF-safe).
+    if (path[0] === "embed") {
+      const raw = z
+        .string()
+        .min(8)
+        .max(2000)
+        .parse(url.searchParams.get("url"));
+      return NextResponse.json(await resolveEmbed(raw), {
+        headers: { "Cache-Control": "no-store" },
+      });
     }
     if (path[0] === "media") {
       const wid = url.searchParams.get("workspace") || "";

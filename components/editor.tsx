@@ -7,7 +7,7 @@ import {
   TextColor,
   textColors,
 } from "@/lib/text-marks";
-import { embedFromUrl, embedProviders } from "@/lib/embed-providers";
+import { embedFromUrl } from "@/lib/embed-providers";
 import {
   mermaidNodeView,
   DiagramEditorDialog,
@@ -27,7 +27,7 @@ import {
 } from "./linked-database";
 import { freshLinkedIds } from "@/lib/linked-paste";
 import { NodeSelection, Selection } from "@tiptap/pm/state";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -92,6 +92,8 @@ import {
   Columns,
   Column,
   Media,
+  LinkCard,
+  MEDIA_WIDTHS,
 } from "@/lib/document-schema";
 export default function DocumentEditor({
   pageId,
@@ -212,6 +214,7 @@ export default function DocumentEditor({
         Columns,
         Column,
         Media,
+        LinkCard,
         linkedDatabaseNode(() => linkedContext.current),
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }),
@@ -630,6 +633,14 @@ export default function DocumentEditor({
   function moveBlock(direction: -1 | 1) {
     moveSelectedBlock(editor, direction);
   }
+  // The toolbar follows the selection for the width of videos and embeds.
+  const selectedMediaWidth = useEditorState({
+    editor,
+    selector: ({ editor: current }) =>
+      current?.isActive("media")
+        ? Number(current.getAttributes("media").width || 100)
+        : null,
+  });
   const headings: { text: string; pos: number; level: number }[] = [];
   editor?.state.doc.descendants((node, pos) => {
     if (node.type.name === "heading")
@@ -751,6 +762,28 @@ export default function DocumentEditor({
                 </Dropdown.Content>
               </Dropdown.Portal>
             </Dropdown.Root>
+            {editor && selectedMediaWidth !== null && (
+              <select
+                aria-label="Medienbreite"
+                title="Breite des Videos oder der Einbettung"
+                value={String(selectedMediaWidth)}
+                onChange={(e) =>
+                  editor
+                    .chain()
+                    .focus()
+                    .updateAttributes("media", {
+                      width: Number(e.target.value),
+                    })
+                    .run()
+                }
+              >
+                {MEDIA_WIDTHS.map((w) => (
+                  <option key={w} value={w}>
+                    {w} %
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               title="Hochgestellt"
               className={editor?.isActive("superscript") ? "active" : ""}
@@ -1106,14 +1139,42 @@ export default function DocumentEditor({
         title="Inhalt einbetten"
       >
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             try {
-              const embedded = embedFromUrl(embedUrl);
-              if (!embedded)
-                throw Error(
-                  `Bitte einen Link von ${embedProviders.map((p) => p.name).join(", ")} eingeben.`,
-                );
+              const known = embedFromUrl(embedUrl);
+              // Other pages are resolved on the server: player or link card.
+              const resolved = known
+                ? ({ kind: "player", ...known } as const)
+                : await api<
+                    | { kind: "player"; src: string; provider: string }
+                    | {
+                        kind: "card";
+                        url: string;
+                        title: string;
+                        provider: string;
+                        description: string;
+                        image: string;
+                      }
+                  >(`/api/embed?url=${encodeURIComponent(embedUrl)}`);
+              if (resolved.kind === "card") {
+                const { kind: _kind, ...card } = resolved;
+                const selection = editor?.state.selection;
+                const node = { type: "linkCard", attrs: card };
+                if (selection instanceof NodeSelection)
+                  editor
+                    ?.chain()
+                    .focus()
+                    .insertContentAt(selection.to, node)
+                    .run();
+                else editor?.chain().focus().insertContent(node).run();
+                setEmbed(false);
+                return;
+              }
+              const embedded = {
+                src: resolved.src,
+                provider: resolved.provider,
+              };
               const media = {
                 type: "media",
                 attrs: {
@@ -1139,7 +1200,8 @@ export default function DocumentEditor({
           }}
         >
           <label>
-            Link (YouTube, Vimeo, Loom, Spotify, Figma, CodePen)
+            Link (YouTube, Vimeo, Loom, Spotify, Figma, CodePen oder jede andere
+            Seite als Vorschaukarte)
             <input
               autoFocus
               type="url"

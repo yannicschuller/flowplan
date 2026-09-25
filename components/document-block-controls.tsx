@@ -24,6 +24,7 @@ import {
   mapBlockSelection,
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
+import { MEDIA_WIDTHS } from "@/lib/document-schema";
 import { Modal } from "./ui";
 type Positioned = DocumentBlock & {
   left: number;
@@ -515,6 +516,44 @@ export function DocumentBlockControls({
             </label>
           ))}
         </div>
+        {(() => {
+          // Videos and embeds take a width in percent of the column.
+          const only =
+            selected.current.length === 1
+              ? all.find((b) => b.pos === selected.current[0])
+              : undefined;
+          if (!editor || only?.node.type.name !== "media") return null;
+          return (
+            <label className="block-media-width">
+              Breite
+              <select
+                aria-label="Medienbreite"
+                disabled={!editor.isEditable}
+                value={String(only.node.attrs.width || 100)}
+                onChange={(event) => {
+                  const tr = editor.state.tr.setNodeMarkup(
+                    only.pos,
+                    undefined,
+                    {
+                      ...only.node.attrs,
+                      width: Number(event.target.value),
+                    },
+                  );
+                  editor.view.dispatch(
+                    tr.setMeta(BLOCK_SELECTION_META, [only.pos]),
+                  );
+                  setTick((t) => t + 1);
+                }}
+              >
+                {MEDIA_WIDTHS.map((w) => (
+                  <option key={w} value={w}>
+                    {w} %
+                  </option>
+                ))}
+              </select>
+            </label>
+          );
+        })()}
         {selected.current.length > 0 && !rangeValid && (
           <p role="status">
             Die Auswahl muss aus benachbarten Blöcken derselben Ebene bestehen.

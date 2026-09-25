@@ -6,7 +6,7 @@ import {
   MathEditorDialog,
   type MathTarget,
 } from "./math-editor";
-import { documentExtensions, Media } from "@/lib/document-schema";
+import { documentExtensions, Media, widthStyle } from "@/lib/document-schema";
 import {
   mermaidNodeView,
   DiagramEditorDialog,
@@ -54,7 +54,15 @@ export default function SharedEditor({
                     ["audio", "video"].includes(kind) &&
                     /^\/api\/share\/[\w-]+\/files\/[\w-]+$/.test(src)
                   )
-                    return [kind, { src, controls: true, preload: "metadata" }];
+                    return [
+                      kind,
+                      {
+                        src,
+                        controls: true,
+                        preload: "metadata",
+                        ...widthStyle(node.attrs.width),
+                      },
+                    ];
                   const provider =
                     kind === "embed" ? embedProvider(src || "") : undefined;
                   if (provider)
@@ -63,6 +71,7 @@ export default function SharedEditor({
                       {
                         src,
                         title: provider.name,
+                        ...widthStyle(node.attrs.width),
                         sandbox:
                           "allow-scripts allow-same-origin allow-presentation",
                         loading: "lazy",

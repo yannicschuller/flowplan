@@ -210,6 +210,18 @@ export const Column = Node.create({
     0,
   ],
 });
+export const MEDIA_WIDTHS = [25, 50, 75, 100] as const;
+function mediaWidth(style: string | null) {
+  const value = Number(/(?:^|;)\s*width\s*:\s*(\d+)%/i.exec(style || "")?.[1]);
+  return MEDIA_WIDTHS.includes(value as (typeof MEDIA_WIDTHS)[number])
+    ? value
+    : 100;
+}
+export const widthStyle = (width: unknown) =>
+  MEDIA_WIDTHS.includes(Number(width) as (typeof MEDIA_WIDTHS)[number]) &&
+  Number(width) !== 100
+    ? { style: `width: ${Number(width)}%` }
+    : {};
 export const Media = Node.create({
   name: "media",
   group: "block",
@@ -219,6 +231,11 @@ export const Media = Node.create({
       src: { default: "" },
       kind: { default: "video" },
       title: { default: "" },
+      // Width in percent of the text column (25–100).
+      width: {
+        default: 100,
+        parseHTML: (el: HTMLElement) => mediaWidth(el.getAttribute("style")),
+      },
     };
   },
   parseHTML: () => [
@@ -254,6 +271,7 @@ export const Media = Node.create({
           src,
           title: title || provider.name,
           "data-provider": provider.name.toLowerCase(),
+          ...widthStyle(node.attrs.width),
           class: "video-embed",
           allowfullscreen: "true",
           sandbox: "allow-scripts allow-same-origin allow-presentation",
@@ -266,9 +284,77 @@ export const Media = Node.create({
     )
       return [
         kind,
-        { src, controls: "true", preload: "metadata", class: "media-block" },
+        {
+          src,
+          controls: "true",
+          preload: "metadata",
+          class: "media-block",
+          ...widthStyle(node.attrs.width),
+        },
       ];
     return ["p", {}, "Medium nicht verfügbar"];
   },
 });
-documentExtensions.push(Mention, Columns, Column, Media);
+// Preview card for any web page (title, provider, description, image).
+const httpsOnly = (value: string | null) =>
+  value && /^https:\/\//i.test(value) ? value : "";
+export const LinkCard = Node.create({
+  name: "linkCard",
+  group: "block",
+  atom: true,
+  addAttributes() {
+    return {
+      url: { default: "" },
+      title: { default: "" },
+      provider: { default: "" },
+      description: { default: "" },
+      image: { default: "" },
+    };
+  },
+  parseHTML: () => [
+    {
+      tag: "div[data-link-card]",
+      getAttrs: (element) => {
+        const el = element as HTMLElement;
+        const url = httpsOnly(el.getAttribute("data-link-card"));
+        if (!url) return false;
+        return {
+          url,
+          title: el.getAttribute("data-link-title") || "",
+          provider: el.getAttribute("data-link-provider") || "",
+          description: el.getAttribute("data-link-description") || "",
+          image: httpsOnly(el.getAttribute("data-link-image")),
+        };
+      },
+    },
+  ],
+  renderHTML: ({ node }) => {
+    const { url, title, provider, description, image } = node.attrs;
+    const safe = httpsOnly(url);
+    const picture = httpsOnly(image);
+    return [
+      "div",
+      {
+        class: "link-card",
+        "data-link-card": safe,
+        "data-link-title": title,
+        "data-link-provider": provider,
+        "data-link-description": description,
+        "data-link-image": picture,
+      },
+      [
+        "a",
+        { href: safe, target: "_blank", rel: "noopener noreferrer" },
+        [
+          "span",
+          { class: "link-card-text" },
+          ["strong", {}, title || safe],
+          ...(description ? [["span", {}, description]] : []),
+          ["small", {}, provider],
+        ],
+        ...(picture ? [["img", { src: picture, alt: "" }]] : []),
+      ],
+    ];
+  },
+});
+documentExtensions.push(Mention, Columns, Column, Media, LinkCard);
