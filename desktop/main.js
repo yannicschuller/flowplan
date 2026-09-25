@@ -49,7 +49,19 @@ async function checkServer(origin) {
 }
 
 let win = null;
-const server = () => readConfig().server;
+// Managed installations can preset the instance: --server=<url> or the
+// environment variable FLOWPLAN_SERVER. A choice in the app wins later.
+function presetServer() {
+  const arg = process.argv.find((a) => a.startsWith("--server="));
+  const value = arg ? arg.slice("--server=".length) : process.env.FLOWPLAN_SERVER;
+  if (!value) return undefined;
+  try {
+    return normalizeServer(value);
+  } catch {
+    return undefined;
+  }
+}
+const server = () => readConfig().server || presetServer();
 const page = (name) => path.join(__dirname, "pages", name);
 function sameOrigin(url) {
   try {

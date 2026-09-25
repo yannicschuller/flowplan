@@ -23,6 +23,10 @@ npm start
 
 Beim ersten Start fragt die App nach der Adresse der Instanz (HTTPS, für
 lokale Tests auch `http://localhost:3000`). Ändern: Menü „Server wechseln …“.
+Vorgeben lässt sich die Adresse mit `--server=<URL>` oder `FLOWPLAN_SERVER`.
+
+Ausführlich (Signieren, Verteilen, CI, Fehlersuche):
+[docs/DEPLOYMENT-DESKTOP.md](../docs/DEPLOYMENT-DESKTOP.md).
 
 ## Bauen
 

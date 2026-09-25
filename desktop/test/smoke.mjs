@@ -11,13 +11,14 @@ const packaged = process.env.FLOWPLAN_APP;
 const executablePath = packaged || createRequire(import.meta.url)("electron");
 
 const server = process.argv[2] || "http://127.0.0.1:3100";
-async function launch(config) {
+async function launch(config, env = {}) {
   const dir = mkdtempSync(join(tmpdir(), "flowplan-desktop-"));
   if (config) writeFileSync(join(dir, "config.json"), JSON.stringify(config));
   const app = await electron.launch({
     executablePath,
     args: [...(packaged ? [] : ["."]), `--user-data-dir=${dir}`],
     cwd: new URL("..", import.meta.url).pathname,
+    env: { ...process.env, ...env },
   });
   return { app, window: await app.firstWindow() };
 }
@@ -45,4 +46,11 @@ async function launch(config) {
   await window.screenshot({ path: "test/offline.png" });
   await app.close();
   console.log("✔ Offline-Seite");
+}
+// A preset address (managed installation) skips the setup page.
+{
+  const { app, window } = await launch(undefined, { FLOWPLAN_SERVER: server });
+  await window.waitForURL((url) => url.href.startsWith(server), { timeout: 30000 });
+  await app.close();
+  console.log("✔ Vorgegebene Adresse");
 }
