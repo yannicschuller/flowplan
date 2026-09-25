@@ -7,6 +7,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { samplePdf } from "../tests/helpers/pdf.ts";
 
 const root = process.cwd();
 if (!existsSync(join(root, ".next/standalone/server.js"))) {
@@ -165,6 +166,35 @@ try {
   });
   const file = await upload.json();
   check("Upload gespeichert", upload.ok && !!file.url);
+
+  // PDF text is extracted in the background and becomes searchable.
+  const pdfForm = new FormData();
+  pdfForm.set("pageId", created.id);
+  pdfForm.set(
+    "file",
+    new Blob([samplePdf(["Kaeltemittelpruefung Standalone"])], {
+      type: "application/pdf",
+    }),
+    "pruefung.pdf",
+  );
+  const pdfUpload = await fetch(`${origin}/api/upload`, {
+    method: "POST",
+    headers: { origin, cookie },
+    body: pdfForm,
+  });
+  let pdfFound = false;
+  for (let i = 0; pdfUpload.ok && i < 40 && !pdfFound; i++) {
+    const hits = await (
+      await fetch(
+        `${origin}/api/search?workspace=${boot.workspace.id}&q=Kaeltemittelpruefung&kind=file`,
+        { headers },
+      )
+    ).json();
+    pdfFound =
+      Array.isArray(hits) && hits.some((h) => h.title === "pruefung.pdf");
+    if (!pdfFound) await new Promise((r) => setTimeout(r, 500));
+  }
+  check("PDF-Volltext durchsuchbar", pdfFound);
 
   await stop(server);
   server = await start(data);

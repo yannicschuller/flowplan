@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   output: "standalone",
   turbopack: { root: process.cwd() },
-  serverExternalPackages: ["node:sqlite"],
+  serverExternalPackages: ["node:sqlite", "pdfjs-dist"],
+  // The PDF text worker loads pdf.js and its worker module at runtime.
+  outputFileTracingIncludes: {
+    "/*": ["./node_modules/pdfjs-dist/legacy/build/*.mjs"],
+  },
   async headers() {
     return [
       {

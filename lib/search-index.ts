@@ -104,7 +104,7 @@ function indexExtra(pageId: string, key: string) {
             pageId,
           )
         : one<{ title: string; body: string }>(
-            "SELECT name title,name||' '||mime body FROM files WHERE id=? AND page_id=?",
+            "SELECT f.name title,f.name||' '||f.mime||COALESCE(char(10)||t.text,'') body FROM files f LEFT JOIN file_texts t ON t.file_id=f.id WHERE f.id=? AND f.page_id=?",
             id,
             pageId,
           );

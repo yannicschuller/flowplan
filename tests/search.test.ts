@@ -270,3 +270,53 @@ test("comments, text comments and attachment names are searchable with the page'
   assert.deepEqual(find("budgetfreigabe", member), []);
   assert.deepEqual(find("", member, { kind: "comment" }), []);
 });
+
+test("PDF attachments are searchable by their text with the page's permissions", async () => {
+  const { writeFileSync, mkdirSync } = await import("node:fs");
+  const { samplePdf } = await import("./helpers/pdf");
+  const { extractPendingFileTexts } = await import("../lib/file-text");
+  const dir = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
+  mkdirSync(dir, { recursive: true });
+  const attach = (pageId: string, name: string, data: Buffer) => {
+    const fid = id();
+    writeFileSync(join(dir, fid), data);
+    run(
+      "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
+      fid,
+      pageId,
+      name,
+      "application/pdf",
+      data.length,
+      owner.id,
+    );
+    return fid;
+  };
+  const visible = attach(
+    doc,
+    "anlage.pdf",
+    samplePdf(["Deckblatt", "Wartungsintervall der Kaeltemaschine"]),
+  );
+  attach(secret, "intern.pdf", samplePdf(["Gehaltsband Stufe vier"]));
+  const broken = attach(doc, "kaputt.pdf", Buffer.from("%PDF-1.4 kaputt"));
+  while (await extractPendingFileTexts());
+  const [hit] = find("wartungsintervall", member, { kind: "file" });
+  assert.equal(hit.title, "anlage.pdf");
+  assert.equal(hit.id, doc);
+  // The snippet comes from the PDF text, not only the file name.
+  assert.ok(hit.snippet.includes(`${MARK_START}Wartu`));
+  // Private pages keep their attachments private.
+  assert.deepEqual(find("gehaltsband", member), []);
+  assert.equal(find("gehaltsband", owner).length, 1);
+  // Broken files are recorded once and not retried.
+  assert.equal(
+    one<{ status: string }>(
+      "SELECT status FROM file_texts WHERE file_id=?",
+      broken,
+    )?.status,
+    "error",
+  );
+  assert.equal(await extractPendingFileTexts(), 0);
+  // Deleting the file removes its text from the index.
+  run("DELETE FROM files WHERE id=?", visible);
+  assert.deepEqual(find("wartungsintervall", member), []);
+});

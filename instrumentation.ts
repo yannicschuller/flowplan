@@ -9,6 +9,8 @@ export async function register() {
     startReminderWorker(() => void dispatchPush());
     const { startSearchWorker } = await import("./lib/search-index");
     startSearchWorker();
+    const { startFileTextWorker } = await import("./lib/file-text");
+    startFileTextWorker();
     const { startRetentionWorker } = await import("./lib/version-history");
     startRetentionWorker();
   }
