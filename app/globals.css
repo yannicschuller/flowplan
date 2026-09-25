@@ -3259,6 +3259,62 @@ tr:hover .row-open {
 .color-swatch[data-highlighted] {
   border-color: var(--blue);
 }
+/* Resizable images in the editor. */
+.document-editor [data-resize-container] {
+  max-width: 100%;
+}
+.document-editor [data-resize-wrapper] img {
+  max-width: 100%;
+  height: auto;
+}
+.document-editor [data-resize-handle] {
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.document-editor [data-resize-container]:hover [data-resize-handle],
+.document-editor [data-resize-container][data-resize-state="true"]
+  [data-resize-handle],
+.document-editor .ProseMirror-selectednode [data-resize-handle] {
+  opacity: 1;
+}
+.document-editor [data-resize-handle="left"],
+.document-editor [data-resize-handle="right"] {
+  width: 8px;
+  cursor: ew-resize;
+}
+.document-editor [data-resize-handle="left"]::after,
+.document-editor [data-resize-handle="right"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 4px;
+  height: 36px;
+  margin-top: -18px;
+  border-radius: 3px;
+  background: var(--blue);
+  box-shadow: 0 0 0 1px #fff;
+}
+.document-editor [data-resize-handle="bottom-left"],
+.document-editor [data-resize-handle="bottom-right"] {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--blue);
+  box-shadow: 0 0 0 1px #fff;
+}
+.document-editor [data-resize-handle="bottom-left"] {
+  cursor: nesw-resize;
+}
+.document-editor [data-resize-handle="bottom-right"] {
+  cursor: nwse-resize;
+}
+@media (pointer: coarse) {
+  .document-editor [data-resize-handle] {
+    opacity: 1;
+  }
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

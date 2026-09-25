@@ -183,7 +183,18 @@ export default function DocumentEditor({
         TableRow,
         TableCell,
         TableHeader,
-        Image.configure({ allowBase64: false }),
+        // Images are resized by their side handles, keeping proportions.
+        Image.configure({
+          allowBase64: false,
+          resize: editable
+            ? {
+                enabled: true,
+                directions: ["left", "right", "bottom-left", "bottom-right"],
+                minWidth: 60,
+                alwaysPreserveAspectRatio: true,
+              }
+            : false,
+        }),
         Placeholder.configure({
           placeholder: "Schreibe etwas oder tippe / für Befehle …",
         }),
