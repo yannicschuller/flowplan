@@ -1,3 +1,4 @@
+import { numberCell } from "./field-format";
 import { z } from "zod";
 import { validDateValue } from "./date-values";
 import type { Field } from "./types";
@@ -78,8 +79,7 @@ export function validateFormValues(
     }
     try {
       if (f.type === "checkbox") cells[f.id] = z.boolean().parse(value);
-      else if (f.type === "number")
-        cells[f.id] = z.number().finite().parse(value);
+      else if (f.type === "number") cells[f.id] = numberCell(f, value);
       else if (f.type === "multiselect") {
         const selected = z.array(z.string()).max(100).parse(value);
         if (selected.some((v) => !f.options?.includes(v))) throw new Error();

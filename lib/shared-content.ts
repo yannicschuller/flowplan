@@ -1,3 +1,4 @@
+import { numberCell } from "./field-format";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import * as Y from "yjs";
@@ -111,8 +112,13 @@ function validatedCells(
         403,
         "Diese Eigenschaft kann über diesen Link nicht geändert werden.",
       );
-    if (f.type === "number")
-      cells[key] = z.number().finite().nullable().parse(value);
+    if (f.type === "number") {
+      try {
+        cells[key] = numberCell(f, value);
+      } catch (e) {
+        throw new HttpError(400, `${f.name}: ${(e as Error).message}`);
+      }
+    }
     else if (f.type === "checkbox") cells[key] = z.boolean().parse(value);
     else if (f.type === "multiselect") {
       const values = z.array(z.string()).max(100).parse(value);

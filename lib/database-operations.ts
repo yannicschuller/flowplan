@@ -1,3 +1,4 @@
+import { numberCell } from "./field-format";
 import {
   fileIdOf,
   fileRefSchema,
@@ -36,8 +37,13 @@ export function validateCellPatch(
     const f = fields.find((f) => f.id === key);
     if (!f || computed.includes(f.type))
       throw new HttpError(400, "Eigenschaft kann nicht bearbeitet werden.");
-    if (f.type === "number")
-      result[key] = z.number().finite().nullable().parse(value);
+    if (f.type === "number") {
+      try {
+        result[key] = numberCell(f, value);
+      } catch (e) {
+        throw new HttpError(400, `${f.name}: ${(e as Error).message}`);
+      }
+    }
     else if (f.type === "checkbox") result[key] = z.boolean().parse(value);
     else if (f.type === "multiselect") {
       const values = z.array(z.string()).max(100).parse(value);

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
 import { cellText } from "@/lib/database";
 import {
@@ -45,6 +46,29 @@ export function CellInput({
         commit={commit}
       />
     );
+  if (f.type === "number" && f.rollupDisplay === "rating") {
+    const max = ratingMax(f),
+      current = typeof value === "number" ? value : 0;
+    return (
+      <span className="rating-input" role="radiogroup" aria-label={f.name}>
+        {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
+          <button
+            key={n}
+            type="button"
+            role="radio"
+            aria-checked={current === n}
+            aria-label={`${n} ${n === 1 ? "Stern" : "Sterne"}`}
+            className={n <= current ? "on" : ""}
+            disabled={disabled}
+            // Choosing the current rating again clears it.
+            onClick={() => void onChange(current === n ? null : n)}
+          >
+            ★
+          </button>
+        ))}
+      </span>
+    );
+  }
   if (f.type === "checkbox")
     return (
       <input

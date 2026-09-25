@@ -1,7 +1,7 @@
 import type { Field } from "@/lib/types";
 import { cellText } from "@/lib/database";
 import { percentAggregate } from "@/lib/rollups";
-import { formatNumber } from "@/lib/field-format";
+import { formatNumber, ratingMax } from "@/lib/field-format";
 const errors: Record<string, string> = {
   "#ACCESS": "Kein Zugriff auf die verknüpfte Datenbank",
   "#PROPERTY": "Verknüpfte Eigenschaft fehlt",
@@ -36,6 +36,23 @@ export function RollupValue({
         }).format(value);
   if (!field.rollupDisplay || field.rollupDisplay === "number")
     return <span>{label}</span>;
+  if (field.rollupDisplay === "rating") {
+    const max = ratingMax(field),
+      stars = Math.max(0, Math.min(max, Math.round(value)));
+    return (
+      <span
+        className="rating-value"
+        role="img"
+        aria-label={`${stars} von ${max} Sternen`}
+      >
+        {Array.from({ length: max }, (_, i) => (
+          <span key={i} className={i < stars ? "on" : ""} aria-hidden="true">
+            ★
+          </span>
+        ))}
+      </span>
+    );
+  }
   const max = percent ? 1 : field.rollupMax || 100,
     progress = Math.max(0, Math.min(100, (value / max) * 100));
   return (

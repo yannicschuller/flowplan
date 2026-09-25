@@ -123,3 +123,29 @@ test("fixed decimals apply to plain numbers, currencies and summaries", () => {
     false,
   );
 });
+
+test("star ratings store whole values within the configured maximum", async () => {
+  const { numberCell, ratingMax } = await import("../lib/field-format");
+  const { validateFormValues, formConfigSchema } =
+    await import("../lib/form-settings");
+  const rating = {
+    id: "score",
+    name: "Bewertung",
+    type: "number" as const,
+    rollupDisplay: "rating" as const,
+  };
+  assert.equal(ratingMax(rating), 5);
+  assert.equal(ratingMax({ rollupMax: 40 }), 10);
+  assert.equal(fieldSchema.parse(rating).rollupDisplay, "rating");
+  assert.equal(numberCell(rating, 4), 4);
+  assert.equal(numberCell(rating, null), null);
+  assert.throws(() => numberCell(rating, 6), /zwischen 0 und 5/);
+  assert.throws(() => numberCell(rating, 2.5), /zwischen/);
+  assert.throws(() => numberCell(rating, -1), /zwischen/);
+  assert.equal(numberCell({ ...rating, rollupDisplay: undefined }, 2.5), 2.5);
+  const config = formConfigSchema.parse({});
+  assert.deepEqual(validateFormValues([rating], config, { score: 3 }).cells, {
+    score: 3,
+  });
+  assert.ok(validateFormValues([rating], config, { score: 9 }).errors.score);
+});

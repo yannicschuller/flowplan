@@ -3164,6 +3164,35 @@ tr:hover .row-open {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+.rating-value,
+.rating-input {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--border);
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.rating-value .on,
+.rating-input .on {
+  color: #e2a712;
+}
+.rating-input button {
+  padding: 2px;
+  font-size: 20px;
+  line-height: 1;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.rating-input button.on {
+  color: #e2a712;
+}
+.rating-input button:focus-visible {
+  outline: 2px solid var(--blue);
+  border-radius: 4px;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

@@ -68,7 +68,7 @@ export type Field = {
   relationField?: string;
   rollupField?: string;
   aggregate?: import("./rollups").RollupAggregate;
-  rollupDisplay?: "number" | "bar" | "ring";
+  rollupDisplay?: "number" | "bar" | "ring" | "rating";
   rollupMax?: number;
   format?: string;
   timeFormat?: "24" | "12";

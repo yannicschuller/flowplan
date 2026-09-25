@@ -108,6 +108,7 @@ import {
   formatFieldDate,
   formatNumber,
   numberFormats,
+  ratingMax,
   timeFormats,
 } from "@/lib/field-format";
 import { IconImagePicker } from "./icon-image-picker";
@@ -3406,19 +3407,51 @@ export default function DatabaseView({
                   aria-label="Zahlendarstellung"
                   value={fieldDraft.rollupDisplay || "number"}
                   onChange={(e) =>
-                    setFieldDraft((f) => ({
-                      ...f,
-                      rollupDisplay: e.target.value as Field["rollupDisplay"],
-                    }))
+                    setFieldDraft((f) => {
+                      const display = e.target.value as Field["rollupDisplay"];
+                      // Stars start at five unless a small maximum exists.
+                      return {
+                        ...f,
+                        rollupDisplay: display,
+                        ...(display === "rating" && (f.rollupMax || 0) > 10
+                          ? { rollupMax: 5 }
+                          : {}),
+                      };
+                    })
                   }
                 >
                   <option value="number">Zahl</option>
                   <option value="bar">Fortschrittsbalken</option>
                   <option value="ring">Fortschrittsring</option>
+                  <option value="rating">Bewertung (Sterne)</option>
                 </select>
               </label>
+              {fieldDraft.rollupDisplay === "rating" && (
+                <label>
+                  Anzahl Sterne
+                  <input
+                    aria-label="Anzahl Sterne"
+                    type="number"
+                    min="1"
+                    max="10"
+                    step="1"
+                    required
+                    value={ratingMax(fieldDraft)}
+                    onChange={(e) =>
+                      setFieldDraft((f) => ({
+                        ...f,
+                        rollupMax: Math.min(
+                          10,
+                          Math.max(1, Math.round(Number(e.target.value) || 5)),
+                        ),
+                      }))
+                    }
+                  />
+                </label>
+              )}
               {fieldDraft.rollupDisplay &&
-                fieldDraft.rollupDisplay !== "number" && (
+                fieldDraft.rollupDisplay !== "number" &&
+                fieldDraft.rollupDisplay !== "rating" && (
                   <label>
                     Zielwert
                     <input

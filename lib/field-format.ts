@@ -125,3 +125,19 @@ export function displayText(
     return formatFieldDate(value, field, zone);
   return cellText(value);
 }
+
+// Number properties shown as stars store whole ratings from 0 to the maximum
+// (default 5, at most 10).
+export const ratingMax = (f: Pick<Field, "rollupMax">) =>
+  Math.min(10, Math.max(1, Math.round(f.rollupMax || 5)));
+export function numberCell(f: Field, value: unknown): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value))
+    throw new Error("Ungültige Zahl.");
+  if (
+    f.rollupDisplay === "rating" &&
+    (!Number.isInteger(value) || value < 0 || value > ratingMax(f))
+  )
+    throw new Error(`Bewertung zwischen 0 und ${ratingMax(f)} Sternen.`);
+  return value;
+}
