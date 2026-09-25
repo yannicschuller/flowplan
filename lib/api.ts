@@ -38,6 +38,7 @@ import { transformFilterGroup } from "./database-filters";
 import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
+import { instanceSettings, saveInstanceSettings } from "./instance-settings";
 import { notificationPrefs, setNotificationPref } from "./notification-prefs";
 import { templateCategoryIds } from "./template-categories";
 import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
@@ -171,6 +172,12 @@ export function bootstrap(user: Identity, wid?: string) {
     ).map((f) => f.page_id),
     savedSearches: savedSearches(user, workspace.id),
     notificationPrefs: notificationPrefs(user),
+    instance: {
+      name: instanceSettings().name,
+      announcement: instanceSettings().announcement,
+      allowWorkspaceCreation:
+        instanceSettings().allowWorkspaceCreation || user.isAdmin,
+    },
     // Favourite records of readable databases in this workspace.
     favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(
       `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
@@ -344,7 +351,16 @@ export function command(
     let result: unknown = { ok: true };
     switch (action) {
       case "workspace.create":
+        if (!instanceSettings().allowWorkspaceCreation && !user.isAdmin)
+          throw new HttpError(
+            403,
+            "Neue Arbeitsbereiche legen auf dieser Instanz nur Admins an.",
+          );
         result = { id: createWorkspaceInner(user.id, str.parse(b.name)) };
+        break;
+      case "admin.settings":
+        requireAdmin(user);
+        result = saveInstanceSettings(b.settings);
         break;
       case "workspace.update":
         requireMember(user, wid(), "owner");

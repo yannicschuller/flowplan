@@ -11,10 +11,12 @@ export default function Login({
   demo,
   configured,
   error,
+  instanceName = "",
 }: {
   demo: boolean;
   configured: boolean;
   error?: string;
+  instanceName?: string;
 }) {
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(error || "");
@@ -46,6 +48,7 @@ export default function Login({
           <Stack weight="bold" size={24} />
         </span>
         flowplan
+        {instanceName && <span className="muted"> · {instanceName}</span>}
       </div>
       <section className="login-card">
         <div className="login-mark">

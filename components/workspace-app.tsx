@@ -822,6 +822,9 @@ export default function WorkspaceApp({
               <Stack weight="bold" size={21} />
             </span>
             <span>flowplan</span>
+            {boot.instance?.name && (
+              <small className="instance-name">{boot.instance.name}</small>
+            )}
           </a>
           <button
             className="icon-button sidebar-hide"
@@ -861,14 +864,18 @@ export default function WorkspaceApp({
                   {w.id === boot.workspace.id && <Check />}
                 </Dropdown.Item>
               ))}
-              <Dropdown.Separator className="dropdown-separator" />
-              <Dropdown.Item
-                className="dropdown-item"
-                onSelect={() => setNewWorkspace(true)}
-              >
-                <Plus />
-                Arbeitsbereich erstellen
-              </Dropdown.Item>
+              {boot.instance?.allowWorkspaceCreation !== false && (
+                <>
+                  <Dropdown.Separator className="dropdown-separator" />
+                  <Dropdown.Item
+                    className="dropdown-item"
+                    onSelect={() => setNewWorkspace(true)}
+                  >
+                    <Plus />
+                    Arbeitsbereich erstellen
+                  </Dropdown.Item>
+                </>
+              )}
             </Dropdown.Content>
           </Dropdown.Portal>
         </Dropdown.Root>
@@ -1103,6 +1110,11 @@ export default function WorkspaceApp({
         </div>
       </aside>
       <main className="main">
+        {boot.instance?.announcement && (
+          <div className="instance-announcement" role="note">
+            {boot.instance.announcement}
+          </div>
+        )}
         {!online && (
           <div className="offline-banner" role="status">
             Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen

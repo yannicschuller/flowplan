@@ -1,5 +1,6 @@
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
+import { instanceSettings } from "@/lib/instance-settings";
 import { linkedDatabaseData } from "@/lib/linked-databases";
 import { editorPresence } from "@/lib/editor-presence";
 import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
@@ -295,6 +296,7 @@ export async function GET(
         oidcConfigured: !!process.env.OIDC_ISSUER,
         metrics: instanceMetrics(),
         usage: workspaceUsage(),
+        settings: instanceSettings(),
       });
     }
     if (path[0] === "files" && path[1]) {
@@ -454,8 +456,9 @@ export async function POST(
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
-      if (file.size > 10 * 1024 * 1024)
-        throw new HttpError(413, "Maximal 10 MB pro Datei.");
+      const maxUpload = instanceSettings().maxUploadMb;
+      if (file.size > maxUpload * 1024 * 1024)
+        throw new HttpError(413, `Maximal ${maxUpload} MB pro Datei.`);
       enforceQuota(p.workspace_id, file.size);
       if (
         data.get("purpose") === "cover" &&

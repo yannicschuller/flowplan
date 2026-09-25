@@ -213,6 +213,9 @@ function migrate(d: DatabaseSync) {
     )
   )
     d.exec("ALTER TABLE invites ADD COLUMN guest INTEGER NOT NULL DEFAULT 0");
+  d.exec(
+    "CREATE TABLE IF NOT EXISTS instance_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)",
+  );
   // Personal saved searches per workspace.
   d.exec(`CREATE TABLE IF NOT EXISTS saved_searches(
     id TEXT PRIMARY KEY,

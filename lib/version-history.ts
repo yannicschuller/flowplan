@@ -1,4 +1,5 @@
 import { all, one, run, transaction } from "./db";
+import { instanceSettings } from "./instance-settings";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { ensureRowDocument, requireRow } from "./row-documents";
@@ -177,6 +178,8 @@ export function rowSnapshotChanges(
 // page and day after a week and removed after the retention period
 // (FLOWPLAN_SNAPSHOT_RETENTION_DAYS, default 180, 0 keeps everything).
 export function retentionDays() {
+  const stored = instanceSettings().retentionDays;
+  if (stored !== null) return stored;
   const raw = process.env.FLOWPLAN_SNAPSHOT_RETENTION_DAYS;
   const value = raw === undefined || raw === "" ? 180 : Number(raw);
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 180;

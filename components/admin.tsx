@@ -9,6 +9,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
 import type { User } from "@/lib/types";
+import type { InstanceSettings } from "@/lib/instance-settings";
 type AdminData = {
   users: User[];
   workspaces: { id: string; name: string; members: number; pages: number }[];
@@ -45,6 +46,7 @@ type AdminData = {
     quotaMb: number | null;
     effectiveQuotaMb: number;
   }[];
+  settings: InstanceSettings;
 };
 const mb = (bytes: number) =>
   `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
@@ -119,6 +121,7 @@ export default function Admin({
           ["users", "Benutzer"],
           ["workspaces", "Arbeitsbereiche"],
           ["operations", "Betrieb"],
+          ["instance", "Instanz"],
           ["audit", "Aktivitätsprotokoll"],
         ].map(([id, label]) => (
           <button
@@ -227,6 +230,12 @@ export default function Admin({
           </tbody>
         </table>
       )}
+      {tab === "instance" && (
+        <InstanceSettingsForm
+          initial={data.settings}
+          onSave={(settings) => act({ action: "admin.settings", settings })}
+        />
+      )}
       {tab === "operations" && (
         <div className="admin-metrics" aria-label="Betriebsmetriken">
           {(
@@ -290,5 +299,106 @@ export default function Admin({
         </div>
       )}
     </div>
+  );
+}
+
+// Instance-wide settings; empty numbers fall back to the environment.
+function InstanceSettingsForm({
+  initial,
+  onSave,
+}: {
+  initial: InstanceSettings;
+  onSave: (settings: InstanceSettings) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(initial),
+    [saved, setSaved] = useState(false);
+  const optional = (value: string) =>
+    value.trim() === "" ? null : Math.max(0, Math.round(Number(value)));
+  return (
+    <form
+      className="settings-section instance-settings"
+      aria-label="Instanzeinstellungen"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSaved(false);
+        await onSave(draft);
+        setSaved(true);
+      }}
+    >
+      <label>
+        Name der Instanz
+        <input
+          maxLength={60}
+          placeholder="z. B. Flowplan der Muster GmbH"
+          value={draft.name}
+          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+        />
+      </label>
+      <label>
+        Hinweis für alle Personen
+        <textarea
+          maxLength={500}
+          rows={2}
+          placeholder="z. B. Wartung am Samstag ab 18 Uhr"
+          value={draft.announcement}
+          onChange={(e) => setDraft({ ...draft, announcement: e.target.value })}
+        />
+      </label>
+      <label>
+        Standard-Speicherkontingent je Arbeitsbereich (MB, 0 = unbegrenzt)
+        <input
+          type="number"
+          min={0}
+          placeholder="Wert aus der Umgebung"
+          value={draft.defaultQuotaMb ?? ""}
+          onChange={(e) =>
+            setDraft({ ...draft, defaultQuotaMb: optional(e.target.value) })
+          }
+        />
+      </label>
+      <label>
+        Versionen aufbewahren (Tage, 0 = unbegrenzt)
+        <input
+          type="number"
+          min={0}
+          placeholder="Wert aus der Umgebung"
+          value={draft.retentionDays ?? ""}
+          onChange={(e) =>
+            setDraft({ ...draft, retentionDays: optional(e.target.value) })
+          }
+        />
+      </label>
+      <label>
+        Größte Datei beim Hochladen (MB)
+        <input
+          type="number"
+          min={1}
+          max={1024}
+          required
+          value={draft.maxUploadMb}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              maxUploadMb: Math.min(
+                1024,
+                Math.max(1, Math.round(Number(e.target.value) || 1)),
+              ),
+            })
+          }
+        />
+      </label>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={draft.allowWorkspaceCreation}
+          onChange={(e) =>
+            setDraft({ ...draft, allowWorkspaceCreation: e.target.checked })
+          }
+        />
+        Alle Personen dürfen Arbeitsbereiche anlegen
+      </label>
+      <button className="button primary">Einstellungen speichern</button>
+      {saved && <p role="status">Gespeichert.</p>}
+    </form>
   );
 }

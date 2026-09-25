@@ -178,6 +178,11 @@ export type Bootstrap = {
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
   savedSearches?: import("./saved-searches").SavedSearch[];
   notificationPrefs?: import("./notification-kinds").NotificationPrefs;
+  instance?: {
+    name: string;
+    announcement: string;
+    allowWorkspaceCreation: boolean;
+  };
   members: (User & { role: Role; guest?: number })[];
   notifications: {
     row_id: string | null;

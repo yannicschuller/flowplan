@@ -4,10 +4,13 @@ import { resolve } from "node:path";
 import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { retentionDays } from "./version-history";
+import { instanceSettings } from "./instance-settings";
 
 // Storage quota in MB: per-workspace override or FLOWPLAN_WORKSPACE_QUOTA_MB;
 // 0 or unset means unlimited.
 export function defaultQuotaMb() {
+  const stored = instanceSettings().defaultQuotaMb;
+  if (stored !== null) return stored;
   const value = Number(process.env.FLOWPLAN_WORKSPACE_QUOTA_MB || 0);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }

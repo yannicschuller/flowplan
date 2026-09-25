@@ -3518,6 +3518,24 @@ tr:hover .row-open {
   display: inline-block;
   margin-bottom: 16px;
 }
+.instance-announcement {
+  padding: 8px 16px;
+  background: var(--blue-light);
+  color: var(--text);
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.instance-name {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.instance-settings {
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;
