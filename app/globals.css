@@ -2941,6 +2941,11 @@ tr:hover .row-open {
   background: var(--surface);
   font-size: 13px;
 }
+.occurrence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

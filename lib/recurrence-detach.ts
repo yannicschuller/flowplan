@@ -4,7 +4,12 @@ import { HttpError } from "./auth";
 import { requireRow, replaceRowDocument } from "./row-documents";
 import { maintainRowOrders } from "./row-order-server";
 import { Temporal } from "./date-values";
-import { occurrenceDates, parseRecurrence, shiftDateValue } from "./recurrence";
+import {
+  occurrenceDates,
+  parseRecurrence,
+  shiftDateValue,
+  type Recurrence,
+} from "./recurrence";
 import type { Field, Identity } from "./types";
 
 const input = z.object({
@@ -14,11 +19,14 @@ const input = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   startField: z.string().min(1).max(200),
   endField: z.string().min(1).max(200).optional(),
+  // "single": only this occurrence; "following": this and all later ones.
+  mode: z.enum(["single", "following"]).default("single"),
 });
 
 // "Only this occurrence": the occurrence becomes its own record with the
 // series' properties, document, icon and reminders, and the series skips
-// that date. Both happen in the surrounding command transaction.
+// that date. "This and following" splits the series at that date instead.
+// Both happen in the surrounding command transaction.
 export function detachOccurrence(user: Identity, raw: unknown) {
   const b = input.parse(raw);
   const { row } = requireRow(user, b.pageId, b.rowId, true);
@@ -49,7 +57,7 @@ export function detachOccurrence(user: Identity, raw: unknown) {
     !occurrenceDates(first, rule, b.date, b.date).includes(b.date)
   )
     throw new HttpError(409, "Diesen Termin gibt es in der Serie nicht.");
-  if ((rule.exclude?.length || 0) >= 200)
+  if (b.mode === "single" && (rule.exclude?.length || 0) >= 200)
     throw new HttpError(409, "Diese Serie hat bereits 200 Ausnahmen.");
   const shift = Temporal.PlainDate.from(first.slice(0, 10)).until(
     Temporal.PlainDate.from(b.date),
@@ -57,9 +65,47 @@ export function detachOccurrence(user: Identity, raw: unknown) {
   const copy = { ...cells, [start.id]: shiftDateValue(first, shift) };
   if (end && typeof cells[end.id] === "string" && cells[end.id])
     copy[end.id] = shiftDateValue(cells[end.id] as string, shift);
+  // Splitting a series: the old one ends the day before, the new record
+  // continues the rule (remaining count, later exclusions) from this date.
+  let tail = "",
+    head: Recurrence | null = null;
+  if (b.mode === "following") {
+    const plain = { ...rule, exclude: undefined };
+    const before = occurrenceDates(
+      first,
+      plain,
+      first.slice(0, 10),
+      Temporal.PlainDate.from(b.date).subtract({ days: 1 }).toString(),
+      100000,
+    ).length;
+    // Occurrences before this date, including the stored first one.
+    const done = before + 1;
+    const later = rule.exclude?.filter((d) => d > b.date);
+    const remaining = rule.count ? rule.count - done : undefined;
+    if (remaining === undefined || remaining >= 2)
+      tail = JSON.stringify({
+        ...rule,
+        count: remaining,
+        exclude: later?.length ? later : undefined,
+      });
+    const earlier = rule.exclude?.filter((d) => d < b.date);
+    head =
+      done >= 2
+        ? {
+            ...rule,
+            count: rule.count ? done : undefined,
+            until: rule.count
+              ? undefined
+              : Temporal.PlainDate.from(b.date)
+                  .subtract({ days: 1 })
+                  .toString(),
+            exclude: earlier?.length ? earlier : undefined,
+          }
+        : null;
+  }
   const rid = id();
   run(
-    "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,'')",
+    "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?)",
     rid,
     b.pageId,
     JSON.stringify(copy),
@@ -68,6 +114,7 @@ export function detachOccurrence(user: Identity, raw: unknown) {
     user.id,
     row.icon || "",
     row.cover || "",
+    tail,
   );
   replaceRowDocument(
     rid,
@@ -104,10 +151,14 @@ export function detachOccurrence(user: Identity, raw: unknown) {
     );
   run(
     "UPDATE rows SET recurrence=?,version=version+1,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-    JSON.stringify({
-      ...rule,
-      exclude: [...(rule.exclude || []), b.date].sort(),
-    }),
+    b.mode === "following"
+      ? head
+        ? JSON.stringify(head)
+        : ""
+      : JSON.stringify({
+          ...rule,
+          exclude: [...(rule.exclude || []), b.date].sort(),
+        }),
     user.id,
     row.id,
   );

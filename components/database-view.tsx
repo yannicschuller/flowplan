@@ -3850,28 +3850,39 @@ export default function DatabaseView({
                     aus einer Serie. Änderungen hier gelten für alle Termine.
                   </span>
                   {editable && (
-                    <button
-                      className="button compact"
-                      onClick={async () => {
-                        const { start, end } = scheduleFields(fields, view);
-                        const series = start
-                          ? start
-                          : fields.find((f) => f.type === "date");
-                        if (!series) return;
-                        const result = await act({
-                          action: "row.detachOccurrence",
-                          rowId: selected.id,
-                          version: selected.version,
-                          date: occurrence.date,
-                          startField: series.id,
-                          ...(start && end ? { endField: end.id } : {}),
-                        });
-                        const created = (result as { id?: string } | null)?.id;
-                        if (created) setRowId(created);
-                      }}
-                    >
-                      Nur diesen Termin bearbeiten
-                    </button>
+                    <span className="occurrence-actions">
+                      {(
+                        [
+                          ["single", "Nur diesen Termin bearbeiten"],
+                          ["following", "Diesen und alle folgenden"],
+                        ] as const
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          className="button compact"
+                          onClick={async () => {
+                            const { start, end } = scheduleFields(fields, view);
+                            const series =
+                              start || fields.find((f) => f.type === "date");
+                            if (!series) return;
+                            const result = await act({
+                              action: "row.detachOccurrence",
+                              rowId: selected.id,
+                              version: selected.version,
+                              date: occurrence.date,
+                              startField: series.id,
+                              mode,
+                              ...(start && end ? { endField: end.id } : {}),
+                            });
+                            const created = (result as { id?: string } | null)
+                              ?.id;
+                            if (created) setRowId(created);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </span>
                   )}
                 </div>
               )}

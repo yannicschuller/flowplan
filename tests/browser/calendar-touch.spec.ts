@@ -205,6 +205,32 @@ test("weekly repeating entries show occurrences that open the original record", 
       `.calendar-day[data-day="${month}-24"] .calendar-chip.occurrence`,
     ),
   ).toHaveCount(0);
+  // Splitting the series at the 10th: later dates continue in a new record.
+  await page
+    .locator(
+      `.calendar-day[data-day="${month}-10"] .calendar-chip.occurrence .calendar-event`,
+    )
+    .click();
+  await entry
+    .getByRole("button", { name: "Diesen und alle folgenden", exact: true })
+    .click();
+  await expect.poll(async () => (await read()).rows.length).toBe(3);
+  const series = (await read()).rows.find(
+    (r: { id: string }) => r.id === row.id,
+  );
+  // Only the first date remains before the split, so no rule is left.
+  expect(series.recurrence).toBe("");
+  const continued = (await read()).rows.find(
+    (r: { cells: { date: string } }) => r.cells.date === `${month}-10`,
+  );
+  expect(JSON.parse(continued.recurrence).freq).toBe("weekly");
+  await expect(page).toHaveURL(new RegExp(`row=${continued.id}`));
+  await entry.getByRole("button", { name: "Schließen", exact: true }).click();
+  await expect(
+    page.locator(
+      `.calendar-day[data-day="${month}-10"] .calendar-chip:not(.occurrence) .calendar-event`,
+    ),
+  ).toHaveCount(1);
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });

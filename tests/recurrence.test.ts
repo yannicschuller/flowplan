@@ -365,3 +365,97 @@ test("a single occurrence can be detached into its own record", () => {
     "2026-03-02T09:00",
   );
 });
+
+test("a series splits at an occurrence into two series", () => {
+  const owner = account("rec-split");
+  const wid = createWorkspace(owner.id, "Serienteilung");
+  const page = (
+    command(owner, {
+      action: "page.create",
+      workspaceId: wid,
+      spaceId: bootstrap(owner, wid).spaces[0].id,
+      title: "Serie",
+      kind: "database",
+    }) as { id: string }
+  ).id;
+  command(owner, {
+    action: "database.update",
+    pageId: page,
+    version: database(page).version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "start", name: "Beginn", type: "date" },
+    ],
+    views: database(page).views,
+  });
+  const create = (recurrence: Record<string, unknown>) => {
+    const rid = (
+      command(owner, {
+        action: "row.create",
+        pageId: page,
+        cells: { title: "Sprint", start: "2026-01-05" },
+      }) as { id: string }
+    ).id;
+    command(owner, {
+      action: "row.recurrence",
+      pageId: page,
+      rowId: rid,
+      version: 1,
+      recurrence,
+    });
+    return rid;
+  };
+  const split = (rid: string, date: string) =>
+    (
+      command(owner, {
+        action: "row.detachOccurrence",
+        pageId: page,
+        rowId: rid,
+        version: one<{ version: number }>(
+          "SELECT version FROM rows WHERE id=?",
+          rid,
+        )!.version,
+        date,
+        startField: "start",
+        mode: "following",
+      }) as { id: string }
+    ).id;
+  const rule = (rid: string) =>
+    parseRecurrence(rows(page).find((r) => r.id === rid)!.recurrence);
+  // Open-ended weekly series with exclusions on both sides.
+  const open = create({
+    freq: "weekly",
+    interval: 1,
+    exclude: ["2026-01-12", "2026-02-09"],
+  });
+  const tail = split(open, "2026-01-26");
+  assert.deepEqual(rule(open), {
+    freq: "weekly",
+    interval: 1,
+    until: "2026-01-25",
+    exclude: ["2026-01-12"],
+  });
+  assert.deepEqual(rule(tail), {
+    freq: "weekly",
+    interval: 1,
+    exclude: ["2026-02-09"],
+  });
+  assert.equal(
+    rows(page).find((r) => r.id === tail)!.cells.start,
+    "2026-01-26",
+  );
+  // Counted series: 5 occurrences split after the second one → 2 + 3.
+  const counted = create({ freq: "weekly", interval: 1, count: 5 });
+  const rest = split(counted, "2026-01-19");
+  assert.equal(rule(counted)?.count, 2);
+  assert.equal(rule(rest)?.count, 3);
+  // Splitting at the last occurrence leaves a single record without rule.
+  const last = split(rest, "2026-02-02");
+  assert.equal(rule(last), null);
+  assert.equal(rule(rest)?.count, 2);
+  // Splitting at the second occurrence leaves the first alone.
+  const pair = create({ freq: "daily", interval: 1 });
+  const after = split(pair, "2026-01-06");
+  assert.equal(rows(page).find((r) => r.id === pair)!.recurrence, "");
+  assert.deepEqual(rule(after), { freq: "daily", interval: 1 });
+});
