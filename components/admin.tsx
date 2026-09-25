@@ -6,8 +6,12 @@ import {
   Stack,
   Key,
   ArrowCounterClockwise,
+  Gauge,
+  SlidersHorizontal,
+  ListChecks,
 } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
+import { Select } from "./select";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
 type AdminData = {
@@ -63,6 +67,52 @@ const duration = (seconds: number) =>
     : seconds < 86400
       ? `${Math.round(seconds / 3600)} Std.`
       : `${Math.round(seconds / 86400)} Tage`;
+const adminTabs = [
+  [
+    "users",
+    "Benutzer",
+    Users,
+    "Konten der Instanz: Sitzungen beenden, sperren und wieder freigeben.",
+  ],
+  [
+    "workspaces",
+    "Arbeitsbereiche",
+    Stack,
+    "Alle Arbeitsbereiche mit Belegung und Speicherkontingent.",
+  ],
+  [
+    "operations",
+    "Betrieb",
+    Gauge,
+    "Zustand der Instanz: Speicher, Warteschlangen, Suchindex und Laufzeit.",
+  ],
+  [
+    "instance",
+    "Instanz",
+    SlidersHorizontal,
+    "Name, Hinweise, Grenzen und Sicherung der gesamten Instanz.",
+  ],
+  [
+    "audit",
+    "Aktivitätsprotokoll",
+    ListChecks,
+    "Die letzten Änderungen mit Person und betroffener Ressource.",
+  ],
+] as const;
+const auditTime = (value: string) => {
+  const date = new Date(
+    /[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : value.replace(" ", "T") + "Z",
+  );
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : value;
+};
 export default function Admin({
   mutate,
   onError,
@@ -71,7 +121,13 @@ export default function Admin({
   onError: (s: string) => void;
 }) {
   const [data, setData] = useState<AdminData | null>(null),
-    [tab, setTab] = useState("users");
+    [tab, setTabState] = useState("users"),
+    [query, setQuery] = useState(""),
+    [status, setStatus] = useState("all");
+  const setTab = (next: string) => {
+    setTabState(next);
+    setQuery("");
+  };
   async function load() {
     try {
       setData(await api("/api/admin"));
@@ -123,195 +179,298 @@ export default function Admin({
           {data.oidcConfigured ? "konfiguriert" : "nicht konfiguriert"}
         </span>
       </div>
-      <div className="settings-tabs">
-        {[
-          ["users", "Benutzer"],
-          ["workspaces", "Arbeitsbereiche"],
-          ["operations", "Betrieb"],
-          ["instance", "Instanz"],
-          ["audit", "Aktivitätsprotokoll"],
-        ].map(([id, label]) => (
+      <div className="settings-layout">
+        <nav className="settings-tabs" aria-label="Bereiche der Administration">
+          {adminTabs.map(([id, label, Icon]) => (
+            <button
+              key={id}
+              className={tab === id ? "selected" : ""}
+              aria-current={tab === id ? "page" : undefined}
+              onClick={() => setTab(id)}
+            >
+              <Icon size={18} aria-hidden="true" />
+              {label}
+            </button>
+          ))}
           <button
-            key={id}
-            className={tab === id ? "selected" : ""}
-            onClick={() => setTab(id)}
+            className="settings-refresh"
+            title="Aktualisieren"
+            aria-label="Aktualisieren"
+            onClick={() => load()}
           >
-            {label}
+            <ArrowCounterClockwise size={16} aria-hidden="true" />
+            Aktualisieren
           </button>
-        ))}
-        <button
-          className="icon-button"
-          title="Aktualisieren"
-          onClick={() => load()}
-        >
-          <ArrowCounterClockwise />
-        </button>
+        </nav>
+        <div className="settings-body">
+          <p className="settings-intro">
+            {adminTabs.find(([id]) => id === tab)?.[3]}
+          </p>
+          {tab === "users" && (
+            <section className="settings-section">
+              <div className="settings-list-head">
+                <h2>Benutzer · {data.users.length}</h2>
+                <input
+                  type="search"
+                  aria-label="Benutzer suchen"
+                  placeholder="Name oder E-Mail suchen …"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <Select
+                  aria-label="Status"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  <option value="all">Alle</option>
+                  <option value="active">Aktiv</option>
+                  <option value="disabled">Deaktiviert</option>
+                </Select>
+              </div>
+              <div className="settings-list">
+                {data.users
+                  .filter(
+                    (u) =>
+                      (status === "all" ||
+                        (status === "disabled") === !!u.disabled) &&
+                      `${u.name} ${u.email}`
+                        .toLowerCase()
+                        .includes(query.toLowerCase()),
+                  )
+                  .map((u) => (
+                    <div
+                      className={`member-row${u.disabled ? " is-disabled" : ""}`}
+                      key={u.id}
+                    >
+                      <Avatar name={u.name} />
+                      <span>
+                        {u.name}
+                        <small>{u.email}</small>
+                      </span>
+                      {!!u.disabled && (
+                        <span className="status-chip muted-chip">
+                          Deaktiviert
+                        </span>
+                      )}
+                      <button
+                        className="button compact"
+                        onClick={() =>
+                          act({ action: "admin.revoke", userId: u.id })
+                        }
+                      >
+                        Sitzungen beenden
+                      </button>
+                      <button
+                        className={`button compact ${u.disabled ? "" : "danger"}`}
+                        onClick={() =>
+                          act({
+                            action: "admin.user",
+                            userId: u.id,
+                            disabled: !u.disabled,
+                          })
+                        }
+                      >
+                        {u.disabled ? "Aktivieren" : "Deaktivieren"}
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          )}
+          {tab === "workspaces" && (
+            <section className="settings-section">
+              <div className="settings-list-head">
+                <h2>Arbeitsbereiche · {data.workspaces.length}</h2>
+                <input
+                  type="search"
+                  aria-label="Arbeitsbereiche suchen"
+                  placeholder="Arbeitsbereich suchen …"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <div className="data-table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Arbeitsbereich</th>
+                      <th>Mitglieder</th>
+                      <th>Seiten</th>
+                      <th>Speicher</th>
+                      <th>Kontingent (MB)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.workspaces
+                      .filter((w) =>
+                        w.name.toLowerCase().includes(query.toLowerCase()),
+                      )
+                      .map((w) => {
+                        const usage = data.usage.find((u) => u.id === w.id);
+                        const quota = usage?.effectiveQuotaMb || 0;
+                        return (
+                          <tr key={w.id}>
+                            <td>{w.name}</td>
+                            <td>{w.members}</td>
+                            <td>{w.pages}</td>
+                            <td>
+                              {mb(usage?.bytes || 0)}
+                              {quota > 0 && (
+                                <meter
+                                  min={0}
+                                  max={quota * 1024 * 1024}
+                                  value={usage?.bytes || 0}
+                                  high={quota * 1024 * 1024 * 0.9}
+                                  aria-label={`Belegung ${w.name}`}
+                                />
+                              )}
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min={0}
+                                className="quota-input"
+                                aria-label={`Kontingent ${w.name}`}
+                                placeholder={
+                                  data.metrics.defaultQuotaMb
+                                    ? `Standard ${data.metrics.defaultQuotaMb}`
+                                    : "unbegrenzt"
+                                }
+                                defaultValue={usage?.quotaMb ?? ""}
+                                onBlur={(e) => {
+                                  const raw = e.target.value.trim();
+                                  const next = raw === "" ? null : Number(raw);
+                                  if (next === (usage?.quotaMb ?? null)) return;
+                                  void act({
+                                    action: "admin.quota",
+                                    workspaceId: w.id,
+                                    quotaMb: next,
+                                  });
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+          {tab === "instance" && (
+            <>
+              <InstanceSettingsForm
+                initial={data.settings}
+                onSave={(settings) =>
+                  act({ action: "admin.settings", settings })
+                }
+              />
+              <InstanceBackup
+                pending={data.restorePending}
+                onChange={load}
+                onError={onError}
+              />
+            </>
+          )}
+          {tab === "operations" && (
+            <section className="settings-section">
+              <h2>Betriebsmetriken</h2>
+              <div className="admin-metrics" aria-label="Betriebsmetriken">
+                {(
+                  [
+                    ["Datenbank", mb(data.metrics.databaseBytes)],
+                    [
+                      "Uploads",
+                      `${mb(data.metrics.uploadBytes)} · ${data.metrics.files} Dateien`,
+                    ],
+                    [
+                      "Seiten",
+                      `${data.metrics.pages} aktiv · ${data.metrics.trashedPages} im Papierkorb`,
+                    ],
+                    ["Datensätze", String(data.metrics.rows)],
+                    [
+                      "Versionen",
+                      `${data.metrics.snapshots} · Aufbewahrung ${data.metrics.retentionDays ? `${data.metrics.retentionDays} Tage` : "unbegrenzt"}`,
+                    ],
+                    [
+                      "Push-Warteschlange",
+                      `${data.metrics.pushPending} offen · ${data.metrics.pushFailed} fehlgeschlagen`,
+                    ],
+                    [
+                      "Suchindex",
+                      data.metrics.searchBacklog
+                        ? `${data.metrics.searchBacklog} Änderungen ausstehend`
+                        : "aktuell",
+                    ],
+                    ["Erinnerungen", String(data.metrics.reminders)],
+                    [
+                      "Standardkontingent",
+                      data.metrics.defaultQuotaMb
+                        ? `${data.metrics.defaultQuotaMb} MB je Arbeitsbereich`
+                        : "unbegrenzt",
+                    ],
+                    [
+                      "Laufzeit",
+                      `${duration(data.metrics.uptimeSeconds)} · Node ${data.metrics.node}`,
+                    ],
+                  ] as const
+                ).map(([label, value]) => (
+                  <div key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {tab === "audit" && (
+            <section className="settings-section">
+              <div className="settings-list-head">
+                <h2>Aktivitätsprotokoll</h2>
+                <input
+                  type="search"
+                  aria-label="Protokoll durchsuchen"
+                  placeholder="Person oder Aktion suchen …"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <div className="data-table-scroll">
+                <table className="data-table audit-table">
+                  <thead>
+                    <tr>
+                      <th>Zeitpunkt</th>
+                      <th>Person</th>
+                      <th>Aktion</th>
+                      <th>Ressource</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.audit
+                      .filter((a) =>
+                        `${a.name || "System"} ${a.action}`
+                          .toLowerCase()
+                          .includes(query.toLowerCase()),
+                      )
+                      .map((a) => (
+                        <tr key={a.id}>
+                          <td>{auditTime(a.created_at)}</td>
+                          <td>{a.name || "System"}</td>
+                          <td>
+                            <code>{a.action}</code>
+                          </td>
+                          <td>
+                            <small>{a.resource_id.slice(0, 8)}</small>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </div>
       </div>
-      {tab === "users" &&
-        data.users.map((u) => (
-          <div className="member-row" key={u.id}>
-            <Avatar name={u.name} />
-            <span>
-              {u.name}
-              <small>{u.email}</small>
-            </span>
-            <button
-              className="button compact"
-              onClick={() => act({ action: "admin.revoke", userId: u.id })}
-            >
-              Sitzungen beenden
-            </button>
-            <button
-              className={`button compact ${u.disabled ? "" : "danger"}`}
-              onClick={() =>
-                act({
-                  action: "admin.user",
-                  userId: u.id,
-                  disabled: !u.disabled,
-                })
-              }
-            >
-              {u.disabled ? "Aktivieren" : "Deaktivieren"}
-            </button>
-          </div>
-        ))}
-      {tab === "workspaces" && (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Arbeitsbereich</th>
-              <th>Mitglieder</th>
-              <th>Seiten</th>
-              <th>Speicher</th>
-              <th>Kontingent (MB)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.workspaces.map((w) => {
-              const usage = data.usage.find((u) => u.id === w.id);
-              const quota = usage?.effectiveQuotaMb || 0;
-              return (
-                <tr key={w.id}>
-                  <td>{w.name}</td>
-                  <td>{w.members}</td>
-                  <td>{w.pages}</td>
-                  <td>
-                    {mb(usage?.bytes || 0)}
-                    {quota > 0 && (
-                      <meter
-                        min={0}
-                        max={quota * 1024 * 1024}
-                        value={usage?.bytes || 0}
-                        high={quota * 1024 * 1024 * 0.9}
-                        aria-label={`Belegung ${w.name}`}
-                      />
-                    )}
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min={0}
-                      className="quota-input"
-                      aria-label={`Kontingent ${w.name}`}
-                      placeholder={
-                        data.metrics.defaultQuotaMb
-                          ? `Standard ${data.metrics.defaultQuotaMb}`
-                          : "unbegrenzt"
-                      }
-                      defaultValue={usage?.quotaMb ?? ""}
-                      onBlur={(e) => {
-                        const raw = e.target.value.trim();
-                        const next = raw === "" ? null : Number(raw);
-                        if (next === (usage?.quotaMb ?? null)) return;
-                        void act({
-                          action: "admin.quota",
-                          workspaceId: w.id,
-                          quotaMb: next,
-                        });
-                      }}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-      {tab === "instance" && (
-        <>
-          <InstanceSettingsForm
-            initial={data.settings}
-            onSave={(settings) => act({ action: "admin.settings", settings })}
-          />
-          <InstanceBackup
-            pending={data.restorePending}
-            onChange={load}
-            onError={onError}
-          />
-        </>
-      )}
-      {tab === "operations" && (
-        <div className="admin-metrics" aria-label="Betriebsmetriken">
-          {(
-            [
-              ["Datenbank", mb(data.metrics.databaseBytes)],
-              [
-                "Uploads",
-                `${mb(data.metrics.uploadBytes)} · ${data.metrics.files} Dateien`,
-              ],
-              [
-                "Seiten",
-                `${data.metrics.pages} aktiv · ${data.metrics.trashedPages} im Papierkorb`,
-              ],
-              ["Datensätze", String(data.metrics.rows)],
-              [
-                "Versionen",
-                `${data.metrics.snapshots} · Aufbewahrung ${data.metrics.retentionDays ? `${data.metrics.retentionDays} Tage` : "unbegrenzt"}`,
-              ],
-              [
-                "Push-Warteschlange",
-                `${data.metrics.pushPending} offen · ${data.metrics.pushFailed} fehlgeschlagen`,
-              ],
-              [
-                "Suchindex",
-                data.metrics.searchBacklog
-                  ? `${data.metrics.searchBacklog} Änderungen ausstehend`
-                  : "aktuell",
-              ],
-              ["Erinnerungen", String(data.metrics.reminders)],
-              [
-                "Standardkontingent",
-                data.metrics.defaultQuotaMb
-                  ? `${data.metrics.defaultQuotaMb} MB je Arbeitsbereich`
-                  : "unbegrenzt",
-              ],
-              [
-                "Laufzeit",
-                `${duration(data.metrics.uptimeSeconds)} · Node ${data.metrics.node}`,
-              ],
-            ] as const
-          ).map(([label, value]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
-        </div>
-      )}
-      {tab === "audit" && (
-        <div className="audit-list">
-          {data.audit.map((a) => (
-            <div className="audit-row" key={a.id}>
-              <span>
-                <strong>{a.name || "System"}</strong>
-                <small>{a.created_at}</small>
-              </span>
-              <code>{a.action}</code>
-              <small>{a.resource_id.slice(0, 8)}</small>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -339,6 +498,11 @@ function InstanceSettingsForm({
         setSaved(true);
       }}
     >
+      <h2>Instanz</h2>
+      <p>
+        Leere Felder übernehmen die Werte aus der Umgebung (Konfigurationsdatei
+        oder Umgebungsvariablen).
+      </p>
       <label>
         Name der Instanz
         <input

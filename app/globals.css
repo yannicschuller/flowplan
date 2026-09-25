@@ -8715,3 +8715,283 @@ textarea {
     left: 104px;
   }
 }
+/* ---------- Settings & administration ----------
+   Navigation on the left, readable content on the right, every section a
+   card with its title and explanation. */
+:is(.settings-page, .admin-page) {
+  max-width: 1180px;
+}
+:is(.settings-page, .admin-page) .settings-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+:is(.settings-page, .admin-page) .settings-header > svg,
+.admin-page > .utility-title > svg {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  padding: 11px;
+  margin: 0;
+  border-radius: 14px;
+  background: var(--blue-light);
+  color: var(--blue);
+}
+:is(.settings-page, .admin-page) .settings-header h1,
+.admin-page > .utility-title h1 {
+  font-size: 26px;
+  margin: 0 0 4px;
+}
+.admin-page > .utility-title {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 16px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.admin-page > .utility-title > svg {
+  grid-row: 1 / 3;
+}
+.admin-page > .utility-title p {
+  margin: 0;
+}
+.settings-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.settings-layout > .settings-tabs {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  border: 0;
+  overflow: visible;
+}
+.settings-layout > .settings-tabs > button {
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--secondary);
+  text-align: left;
+}
+.settings-layout > .settings-tabs > button svg {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: color 0.14s ease;
+}
+.settings-layout > .settings-tabs > button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.settings-layout > .settings-tabs > button.selected {
+  background: var(--blue-light) !important;
+  color: var(--blue);
+  font-weight: 500;
+}
+.settings-layout > .settings-tabs > button.selected svg {
+  color: var(--blue);
+}
+.settings-layout > .settings-tabs > .settings-refresh {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.settings-body {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  animation: fade-in 0.2s ease backwards;
+}
+.settings-intro {
+  margin: 0 0 4px;
+  color: var(--secondary);
+  font-size: 14px;
+}
+.settings-body > .settings-section,
+.settings-body > section,
+.settings-body > div > .settings-section {
+  margin: 0;
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 1px 2px #1724390a;
+}
+.settings-body .settings-section:last-child {
+  border-bottom: 1px solid var(--border);
+}
+.settings-body .settings-section h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.settings-body .settings-section > p {
+  margin: 0 0 16px;
+  max-width: 68ch;
+  line-height: 1.55;
+}
+.settings-body .settings-section > :last-child {
+  margin-bottom: 0;
+}
+.settings-body .member-row,
+.settings-body .utility-row {
+  padding: 12px 0;
+}
+.settings-body .member-row:last-child,
+.settings-body .utility-row:last-child {
+  border-bottom: 0;
+}
+.settings-body .member-row.is-disabled > span:nth-child(2) {
+  opacity: 0.6;
+}
+.settings-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.settings-list-head h2 {
+  flex: 1;
+  margin: 0 !important;
+}
+.settings-list-head input[type="search"] {
+  width: min(280px, 100%);
+  padding: 7px 10px;
+}
+.settings-list {
+  display: grid;
+}
+.status-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--blue-light);
+  color: var(--blue);
+  white-space: nowrap;
+}
+.status-chip.muted-chip {
+  background: var(--hover);
+  color: var(--secondary);
+}
+.settings-body .data-table-scroll {
+  margin: 0 -24px -22px;
+  border-top: 1px solid var(--border);
+}
+.settings-body .data-table th:first-child,
+.settings-body .data-table td:first-child {
+  padding-left: 24px;
+}
+.audit-table code {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--hover);
+}
+.audit-table td:first-child {
+  white-space: nowrap;
+  color: var(--secondary);
+}
+.admin-stats {
+  gap: 14px;
+}
+.admin-stats > div {
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 1px 2px #1724390a;
+}
+.admin-stats svg {
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  border-radius: 10px;
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.admin-metrics > div {
+  border-radius: 12px;
+}
+.settings-body .theme-options > button {
+  border-radius: 12px;
+}
+@media (max-width: 860px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .settings-layout > .settings-tabs {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    margin: 0 -16px;
+    padding: 0 16px 4px;
+    scrollbar-width: none;
+  }
+  .settings-layout > .settings-tabs > button {
+    width: auto;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .settings-layout > .settings-tabs > .settings-refresh {
+    margin: 0;
+  }
+  .settings-body > .settings-section,
+  .settings-body > section,
+  .settings-body > div > .settings-section {
+    padding: 18px 16px;
+    border-radius: 12px;
+  }
+  .settings-body .data-table-scroll {
+    margin: 0 -16px -18px;
+  }
+  .settings-body .data-table th:first-child,
+  .settings-body .data-table td:first-child {
+    padding-left: 16px;
+  }
+  .admin-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .admin-stats > div {
+    padding: 12px;
+  }
+  .admin-stats strong {
+    font-size: 20px;
+  }
+}
+.settings-body .instance-settings {
+  max-width: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+  row-gap: 4px;
+}
+.settings-body .instance-settings > :is(h2, p, label:nth-of-type(1), label:nth-of-type(2), .checkbox-label, button, [role="status"]) {
+  grid-column: 1 / -1;
+}
+.settings-body .instance-settings > label {
+  margin-bottom: 12px;
+}
+.settings-body .instance-settings > button {
+  justify-self: start;
+}
+@media (max-width: 860px) {
+  .settings-body .instance-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.settings-body .instance-settings > label {
+  justify-content: space-between;
+}
