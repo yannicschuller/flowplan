@@ -296,3 +296,96 @@ test("database guest edits preserve private fields and reject unauthorized row a
   );
   fails(() => sharedContent(token, pid, otherRow), 404);
 });
+
+test("guests with edit links add records with public properties only", () => {
+  const pid = page({ kind: "database" });
+  run(
+    "UPDATE databases SET fields=? WHERE page_id=?",
+    JSON.stringify([
+      { id: "title", name: "Name", type: "text" },
+      { id: "owner", name: "Person", type: "person" },
+      { id: "done", name: "Erledigt", type: "checkbox" },
+    ]),
+    pid,
+  );
+  const editor = link(pid, "editor"),
+    commenter = link(pid, "commenter");
+  assert.equal(sharedContent(editor, pid).titleField, "title");
+  const create = (token: string, cells: Record<string, unknown>) =>
+    mutateSharedContent(token, { action: "create", pageId: pid, cells }) as {
+      createdRowId?: string;
+    };
+  fails(() => create(commenter, { title: "Nein" }), 403);
+  fails(() => create(editor, { owner: owner.id }), 403);
+  const rid = create(editor, { title: "Gastidee", done: true }).createdRowId!;
+  const row = one<{ cells: string; created_by: string | null }>(
+    "SELECT cells,created_by FROM rows WHERE id=? AND page_id=?",
+    rid,
+    pid,
+  )!;
+  assert.deepEqual(JSON.parse(row.cells), { title: "Gastidee", done: true });
+  assert.equal(row.created_by, null);
+  // The new record can be edited through the same link.
+  assert.equal(sharedContent(editor, pid, rid).cells.title, "Gastidee");
+  run("UPDATE pages SET locked=1 WHERE id=?", pid);
+  fails(() => create(editor, { title: "Gesperrt" }), 409);
+});
+
+test("guest uploads are checked, readable only through their link until used, and cleaned up", async () => {
+  const { guestUpload, purgeUnusedGuestUploads } =
+    await import("../lib/shared-uploads");
+  const pid = page(),
+    editor = link(pid, "editor"),
+    reader = link(pid, "viewer");
+  const png = new File(
+    [
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    ],
+    "bild.png",
+    { type: "image/png" },
+  );
+  const rejects = (p: Promise<unknown>, status: number) =>
+    assert.rejects(p, (e: any) => e.status === status);
+  await rejects(guestUpload(reader, pid, png), 403);
+  await rejects(
+    guestUpload(
+      editor,
+      pid,
+      new File(["<script>"], "x.html", { type: "text/html" }),
+    ),
+    415,
+  );
+  await rejects(
+    guestUpload(
+      editor,
+      pid,
+      new File(["nope"], "x.png", { type: "image/png" }),
+    ),
+    415,
+  );
+  const uploaded = await guestUpload(editor, pid, png);
+  const fid = uploaded.url.split("/").pop()!;
+  assert.equal(uploaded.url, `/api/share/${editor}/files/${fid}`);
+  // Only the uploading link reads the unused file.
+  assert.equal(publicFile(editor, fid).id, fid);
+  fails(() => publicFile(reader, fid), 404);
+  save(editor, pid, `<p><img src="${uploaded.url}" alt="bild.png"></p>`);
+  assert.match(
+    String(one("SELECT html FROM documents WHERE page_id=?", pid)?.html),
+    new RegExp(`/api/files/${fid}`),
+  );
+  assert.equal(publicFile(reader, fid).id, fid);
+  // After a day: used uploads stay, unused ones are removed.
+  const unused = await guestUpload(editor, pid, png);
+  const unusedId = unused.url.split("/").pop()!;
+  purgeUnusedGuestUploads(Date.now() + 2 * 86400000);
+  assert.ok(one("SELECT 1 FROM files WHERE id=?", fid));
+  assert.equal(one("SELECT 1 FROM files WHERE id=?", unusedId), undefined);
+  assert.equal(
+    one("SELECT 1 FROM share_uploads WHERE file_id=?", fid),
+    undefined,
+  );
+});

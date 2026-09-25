@@ -16,14 +16,17 @@ import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
 import { DocumentBlockControls } from "./document-block-controls";
 import { BlockShortcuts } from "@/lib/block-shortcuts";
 import { EditableCodeBlock } from "./code-block";
+export type GuestUpload = { url: string; name: string; mime: string };
 export default function SharedEditor({
   html,
   onChange,
   disabled,
+  upload,
 }: {
   html: string;
   onChange: (html: string) => void;
   disabled: boolean;
+  upload?: (file: File) => Promise<GuestUpload | null>;
 }) {
   const [diagram, setDiagram] = useState<DiagramTarget | null>(null);
   const [math, setMath] = useState<MathTarget | null>(null);
@@ -152,6 +155,48 @@ export default function SharedEditor({
         >
           Mermaid-Diagramm
         </button>
+        {upload && (
+          <label className={`button${disabled ? " disabled" : ""}`}>
+            Datei einfügen
+            <input
+              type="file"
+              hidden
+              aria-label="Datei einfügen"
+              accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain"
+              disabled={disabled}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                const result = await upload(file);
+                if (!result || !editor) return;
+                if (result.mime.startsWith("image/"))
+                  editor
+                    .chain()
+                    .focus()
+                    .setImage({ src: result.url, alt: result.name })
+                    .run();
+                else
+                  editor
+                    .chain()
+                    .focus()
+                    .insertContent({
+                      type: "paragraph",
+                      content: [
+                        {
+                          type: "text",
+                          text: result.name,
+                          marks: [
+                            { type: "link", attrs: { href: result.url } },
+                          ],
+                        },
+                      ],
+                    })
+                    .run();
+              }}
+            />
+          </label>
+        )}
       </div>
       {diagram && (
         <DiagramEditorDialog

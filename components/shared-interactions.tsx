@@ -15,6 +15,7 @@ type Content = {
   html: string;
   version: string;
   canEditContent: boolean;
+  titleField?: string;
   fields: Field[];
   cells: Record<string, unknown>;
   comments: SharedComment[];
@@ -36,7 +37,26 @@ export function SharedInteractions({
     [body, setBody] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [status, setStatus] = useState("");
+    [status, setStatus] = useState(""),
+    [newTitle, setNewTitle] = useState("");
+  async function upload(file: File) {
+    setError("");
+    const form = new FormData();
+    form.set("pageId", data.pageId);
+    form.set("file", file);
+    try {
+      const response = await fetch(`/api/share/${token}/files`, {
+        method: "POST",
+        body: form,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      return result as { url: string; name: string; mime: string };
+    } catch (e) {
+      setError((e as Error).message);
+      return null;
+    }
+  }
   async function send(payload: Record<string, unknown>) {
     setBusy(true);
     setError("");
@@ -132,7 +152,12 @@ export function SharedInteractions({
               </label>
             ))}
           {data.canEditContent && (
-            <SharedEditor html={html} onChange={setHtml} disabled={busy} />
+            <SharedEditor
+              html={html}
+              onChange={setHtml}
+              disabled={busy}
+              upload={upload}
+            />
           )}
           <div className="shared-actions">
             <button
@@ -173,6 +198,40 @@ export function SharedInteractions({
             </button>
           </div>
         </div>
+      )}
+      {data.role === "editor" && !data.locked && data.titleField && (
+        <form
+          className="shared-new-record"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const result = (await send({
+              action: "create",
+              cells: { [data.titleField!]: newTitle.trim() },
+            })) as (Content & { createdRowId?: string }) | null;
+            if (result?.createdRowId) {
+              setNewTitle("");
+              router.push(
+                `${location.pathname}?row=${encodeURIComponent(result.createdRowId)}`,
+              );
+            }
+          }}
+        >
+          <label>
+            Neuer Eintrag
+            <input
+              aria-label="Name des neuen Eintrags"
+              maxLength={500}
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+            />
+          </label>
+          <button
+            className="button primary"
+            disabled={busy || !newTitle.trim()}
+          >
+            Eintrag anlegen
+          </button>
+        </form>
       )}
       <h2>Kommentare zur Freigabe</h2>
       {data.comments.length === 0 && (

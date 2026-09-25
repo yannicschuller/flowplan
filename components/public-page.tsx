@@ -350,6 +350,7 @@ export function PublishedPage({
         </nav>
       )}
       <SharedInteractions
+        key={`${page.id}:${rowId || ""}`}
         token={token}
         initial={sharedContent(token, page.id, rowId)}
       />

@@ -78,6 +78,14 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
     html: publishedHtml(s.doc?.html || "", token, s.pages),
     version: s.version,
     canEditContent: s.page.kind === "document" || !!s.row,
+    // Guests with edit rights may add records named by the title property.
+    titleField:
+      s.page.kind === "database" &&
+      !s.row &&
+      s.fields[0] &&
+      writablePublicField(s.fields[0])
+        ? s.fields[0].id
+        : undefined,
     fields: s.row ? fields : [],
     cells: s.row
       ? Object.fromEntries(fields.map((f) => [f.id, s.cells[f.id] ?? null]))
@@ -176,10 +184,22 @@ function writableHtml(
     return { tagName, attribs: attrs };
   });
 }
+// At most 30 guest writes per link and minute.
+export function limitShareRequests(token: string) {
+  run("DELETE FROM share_requests WHERE created_at<?", Date.now() - 60000);
+  if (
+    (one<{ n: number }>(
+      "SELECT count(*) n FROM share_requests WHERE token=?",
+      token,
+    )?.n || 0) >= 30
+  )
+    throw new HttpError(429, "Zu viele Anfragen. Bitte warte eine Minute.");
+  run("INSERT INTO share_requests VALUES(?,?)", token, Date.now());
+}
 export function mutateSharedContent(token: string, input: unknown) {
   const b = z
     .object({
-      action: z.enum(["comment", "save"]),
+      action: z.enum(["comment", "save", "create"]),
       pageId: z.string().uuid(),
       rowId: z.string().uuid().optional(),
     })
@@ -187,18 +207,37 @@ export function mutateSharedContent(token: string, input: unknown) {
     .parse(input);
   return transaction(() => {
     const s = source(token, b.pageId, b.rowId);
-    if (s.role === "viewer" || (b.action === "save" && s.role !== "editor"))
+    if (s.role === "viewer" || (b.action !== "comment" && s.role !== "editor"))
       throw new HttpError(403, "Dieser Link erlaubt diese Aktion nicht.");
     if (s.page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-    run("DELETE FROM share_requests WHERE created_at<?", Date.now() - 60000);
-    if (
-      (one<{ n: number }>(
-        "SELECT count(*) n FROM share_requests WHERE token=?",
-        token,
-      )?.n || 0) >= 30
-    )
-      throw new HttpError(429, "Zu viele Anfragen. Bitte warte eine Minute.");
-    run("INSERT INTO share_requests VALUES(?,?)", token, Date.now());
+    limitShareRequests(token);
+    if (b.action === "create") {
+      // New records by guests: only public, writable properties.
+      if (s.page.kind !== "database" || s.row)
+        throw new HttpError(400, "Neue Einträge nur in Datenbanken.");
+      const cells = validatedCells(b.cells ?? {}, s.fields, {});
+      const rid = id();
+      run(
+        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,(SELECT COALESCE(MAX(position),0)+1 FROM rows WHERE page_id=?),NULL,NULL)",
+        rid,
+        s.page.id,
+        JSON.stringify(cells),
+        s.page.id,
+      );
+      run(
+        "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        s.page.id,
+      );
+      run(
+        "INSERT INTO notifications(id,user_id,body,page_id) VALUES(?,?,?,?)",
+        id(),
+        s.page.created_by,
+        `Neuer Gasteintrag in „${s.page.title}“`,
+        s.page.id,
+      );
+      audit("guest", "share.create", s.page.id, rid);
+      return { ...sharedContent(token, b.pageId), createdRowId: rid };
+    }
     if (b.action === "comment") {
       const name = z.string().trim().min(1).max(80).parse(b.name);
       const body = z.string().trim().min(1).max(5000).parse(b.body);

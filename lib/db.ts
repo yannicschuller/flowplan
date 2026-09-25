@@ -186,6 +186,11 @@ function migrate(d: DatabaseSync) {
     status TEXT NOT NULL,
     extracted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TRIGGER IF NOT EXISTS search_file_text AFTER INSERT ON file_texts BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;`);
+  // Files uploaded by guests through an editing share link.
+  d.exec(`CREATE TABLE IF NOT EXISTS share_uploads(
+    file_id TEXT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    created_at INTEGER NOT NULL);`);
   // Personal saved searches per workspace.
   d.exec(`CREATE TABLE IF NOT EXISTS saved_searches(
     id TEXT PRIMARY KEY,

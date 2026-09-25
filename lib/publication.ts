@@ -126,6 +126,15 @@ export function publicFile(token: string, fileId: string) {
   );
   if (!file || !pages.some((p) => p.id === file.page_id))
     throw new HttpError(404, "Datei nicht veröffentlicht.");
+  // Fresh guest uploads are readable through the link that uploaded them.
+  if (
+    one(
+      "SELECT 1 FROM share_uploads WHERE file_id=? AND token=?",
+      fileId,
+      token,
+    )
+  )
+    return file;
   const html =
     String(
       one("SELECT html FROM documents WHERE page_id=?", file.page_id)?.html ||
