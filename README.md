@@ -128,7 +128,7 @@ Unter **Einstellungen → Benachrichtigungen** kann Push pro Gerät aktiviert, g
 
 Der laufende Node-Server verarbeitet eine persistente Versandwarteschlange mit Wiederholungen. Ausgehendes HTTPS zu den Push-Diensten muss erreichbar sein. Für VAPID einen erreichbaren Kontakt als `WEB_PUSH_SUBJECT=mailto:admin@deine-domain.de` konfigurieren. `WEB_PUSH_PUBLIC_KEY` und `WEB_PUSH_PRIVATE_KEY` können gemeinsam vorgegeben werden; andernfalls werden sie einmalig unter `FLOWPLAN_DATA_DIR/web-push-keys.json` erstellt. Diese Datei dauerhaft sichern und aufbewahren. Sitzungsende, Abmeldung oder Kontosperre beenden das Abonnement; nach erneuter Anmeldung Push bei Bedarf wieder aktivieren.
 
-Protokoll, Sitzungsrechte, Warteschlange, Wiederholungen, Manifest, Service Worker und Bedienoberfläche sind automatisiert geprüft. Tatsächliche Zustellung auf einem physischen iPhone ist noch nicht nachgewiesen. Die Web-App besitzt noch keinen vollständigen Offlinebetrieb. Grundlage: [WebKit Web Push für iOS und iPadOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
+Protokoll, Sitzungsrechte, Warteschlange, Wiederholungen, Manifest, Service Worker und Bedienoberfläche sind automatisiert geprüft. Tatsächliche Zustellung auf einem physischen iPhone ist noch nicht nachgewiesen. Unter **Einstellungen → Daten → Offline-Nutzung** lässt sich die App je Gerät offline verfügbar machen (siehe unten). Grundlage: [WebKit Web Push für iOS und iPadOS](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
 
 ## Tabellen und Formulare
 
@@ -166,7 +166,7 @@ Auf einer Dokumentseite **Block hinzufügen → Verknüpfte Datenbank** wählen 
 
 Zum Lesen brauchst du Zugriff auf das Dokument und die Quelle. Änderungen an der Darstellung benötigen Bearbeitungsrechte am Dokument; Änderungen an Einträgen benötigen Bearbeitungsrechte an der Quelle. Eine Einbettung erteilt selbst keine zusätzlichen Zugriffsrechte. **Entfernen** löscht nur den Block aus dem Dokument.
 
-Seitenkopien, Vorlagen, Versionen und Inhaltsarchive erhalten die Einstellungen. Wird eine Quelle im selben Seitenbaum mitkopiert oder im Archiv mit importiert, zeigt die neue Einbettung auf deren Kopie. Öffentliche Freigaben und Vorschauen zeigen derzeit einen Platzhalter; aktive Einbettungen in Datensatzdokumenten und vollständige Offline-Datenbankbearbeitung sind noch offen.
+Seitenkopien, Vorlagen, Versionen und Inhaltsarchive erhalten die Einstellungen. Wird eine Quelle im selben Seitenbaum mitkopiert oder im Archiv mit importiert, zeigt die neue Einbettung auf deren Kopie. Einbettungen funktionieren auch in Datensatzdokumenten. Öffentliche Freigaben und Vorschauen zeigen derzeit einen Platzhalter; Offline-Bearbeitung von Datenbanken ist noch offen.
 
 ## Relative Datumsfilter
 
@@ -217,6 +217,10 @@ Datumsfunktionen verwenden ohne ausdrückliche Zone UTC. `now()` und `today()` a
 **Healthcheck und Backups:** `GET /api/health` meldet ohne Anmeldung nur Zustände (Datenbank, Schreibzugriff auf Uploads, Suchrückstand, fehlgeschlagene Push-Zustellungen) und antwortet bei Fehlern mit 503; Dockerfile und `compose.yaml` nutzen ihn als Healthcheck. Für ein konsistentes Instanz-Backup im laufenden Betrieb `sqlite3 /app/data/flowplan.sqlite "VACUUM INTO '/backup/flowplan.sqlite'"` ausführen und `/app/data/uploads` sowie `web-push-keys.json` mitsichern; zur Wiederherstellung diese Dateien in einen leeren Datenordner legen. `npm run build && npm run check:standalone` startet den Produktions-Server wie im Container mit leerem Datenordner und prüft Healthcheck, Sicherheitsvorgaben, Neustart-Persistenz und eine Wiederherstellung aus einem solchen Backup.
 
 **Schnellsuche:** ⌘/Strg + K durchsucht Titel, Dokumente, Einträge, Kommentare, Dateinamen und den Textinhalt von PDF-Anhängen (Textebene, keine Texterkennung; bis 50 MB je Datei, die ersten 100.000 Zeichen). PDF-Texte werden im Hintergrund extrahiert und stehen nach wenigen Sekunden zur Verfügung. Häufige Suchen lassen sich mit **Suche speichern** samt Typ- und Bereichsfilter persönlich ablegen.
+
+**Gäste:** Unter **Einstellungen → Mitglieder** können Eigentümer Personen als Gast einladen oder bestehende Mitglieder zu Gästen machen. Gäste sehen nur Seiten und Bereiche, die ausdrücklich für sie freigegeben wurden (inklusive Unterseiten); ihre Rolle (Ansehen/Bearbeiten) begrenzt diese Freigaben. Seiten anlegen, einladen oder Einstellungen ändern können sie nicht.
+
+**Offline-Nutzung:** Nach dem Einschalten unter **Einstellungen → Daten** speichert der Service Worker die App, den Arbeitsbereich, alle lesbaren Seiten und später geöffnete Dateien auf diesem Gerät (immer zuerst vom Server, die Kopie nur ohne Verbindung). Ohne Verbindung lassen sich Dokumente und Datenbanken lesen; Textänderungen werden wie bisher lokal gespeichert und später abgeglichen. Die Kopien enthalten private Inhalte: Sie werden beim Abmelden, beim Ausschalten und bei der Anmeldung einer anderen Person entfernt. `npm run build && npm run check:offline` prüft den Ablauf mit dem Produktions-Build in Chromium.
 
 **Betrieb und Speicher:** Admins sehen unter **Administration → Betrieb** Datenbank- und Upload-Größe, Warteschlangen, Suchindex-Rückstand, Versionen und Laufzeit. `FLOWPLAN_WORKSPACE_QUOTA_MB` legt ein Standard-Speicherkontingent je Arbeitsbereich fest (leer oder `0` = unbegrenzt); unter **Administration → Arbeitsbereiche** lässt es sich je Arbeitsbereich überschreiben. Uploads, Seitenkopien, Vorlagen, Veröffentlichungskopien und Importe über dem Kontingent werden abgelehnt.
 

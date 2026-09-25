@@ -2839,6 +2839,29 @@ tr:hover .row-open {
   font-size: 16px;
   margin: 0 0 4px;
 }
+.public-embed {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.public-embed-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.public-embed table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.public-embed th,
+.public-embed td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
 .public-month {
   display: flex;
   align-items: center;
@@ -3192,6 +3215,18 @@ tr:hover .row-open {
 .rating-input button:focus-visible {
   outline: 2px solid var(--blue);
   border-radius: 4px;
+}
+.offline-banner {
+  padding: 8px 16px;
+  background: #fff4d6;
+  color: #6b4d00;
+  font-size: 13px;
+  border-bottom: 1px solid #f0dca0;
+}
+:root[data-theme="dark"] .offline-banner {
+  background: #3a3017;
+  color: #f3dc9a;
+  border-color: #56461c;
 }
 .saved-search-form {
   display: flex;
@@ -5031,6 +5066,11 @@ tr:hover .row-open {
 }
 .row-order-handle:active {
   cursor: grabbing;
+}
+@media (pointer: coarse) {
+  .board .row-order-handle {
+    touch-action: none;
+  }
 }
 .row-order-handle:hover,
 .row-order-handle:focus-visible {

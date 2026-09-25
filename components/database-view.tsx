@@ -244,6 +244,22 @@ export default function DatabaseView({
       rowId: string;
       date: string;
     } | null>(null);
+  // Touch devices drag board cards by their handle across columns; a tap
+  // without movement still opens the position dialog.
+  const cardDrag = useRef<{
+      row: Row;
+      groupKey: string;
+      pointer: number;
+      x: number;
+      y: number;
+      dragging: boolean;
+      target?: { id?: string; groupKey: string; placement: "before" | "after" };
+    } | null>(null),
+    suppressClick = useRef(false),
+    cardHoverRef = useRef((_x: number, _y: number) => {}),
+    [cardScroll] = useState(() =>
+      edgeScroller((x, y) => cardHoverRef.current(x, y), "x"),
+    );
   // Touch devices move board columns with a handle; the board scrolls
   // sideways while the finger rests at its edge.
   const columnDrag = useRef<{ key: string; pointer: number } | null>(null),
@@ -759,6 +775,104 @@ export default function DatabaseView({
       ? `order-drop-${dropHint.placement}`
       : "";
   }
+  function cardHover(x: number, y: number) {
+    const drag = cardDrag.current;
+    if (!drag?.dragging) return;
+    const element = document.elementFromPoint(x, y);
+    const column = element?.closest<HTMLElement>(
+      ".board-column[data-group-key]",
+    );
+    if (!column) {
+      drag.target = undefined;
+      setDropHint(null);
+      return;
+    }
+    const groupKey = column.dataset.groupKey!;
+    const cardEl = element?.closest<HTMLElement>(
+      ".record-card-wrap[data-row-id]",
+    )?.dataset.rowId;
+    const over =
+      cardEl && cardEl !== drag.row.id
+        ? column.querySelector<HTMLElement>(
+            `.record-card-wrap[data-row-id="${CSS.escape(cardEl)}"]`,
+          )
+        : null;
+    if (over) {
+      const bounds = over.getBoundingClientRect();
+      const placement = y < bounds.top + bounds.height / 2 ? "before" : "after";
+      drag.target = { id: cardEl, groupKey, placement };
+      setDropHint({ id: cardEl!, groupKey, placement });
+    } else {
+      // Below the cards: append to the column.
+      const last = rowsOfGroup(groupKey)
+        ?.filter((r) => r.id !== drag.row.id)
+        .at(-1);
+      drag.target = { id: last?.id, groupKey, placement: "after" };
+      setDropHint(last ? { id: last.id, groupKey, placement: "after" } : null);
+    }
+  }
+  cardHoverRef.current = cardHover;
+  function touchCardHandlers(row: Row, groupKey: string) {
+    return {
+      onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (e.pointerType === "mouse" || orderBusy) return;
+        cardDrag.current = {
+          row,
+          groupKey,
+          pointer: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          dragging: false,
+        };
+      },
+      onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = cardDrag.current;
+        if (drag?.pointer !== e.pointerId) return;
+        if (
+          !drag.dragging &&
+          Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 8
+        ) {
+          drag.dragging = true;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          cardScroll.start(e.currentTarget);
+        }
+        if (!drag.dragging) return;
+        cardHover(e.clientX, e.clientY);
+        cardScroll.move(e.clientX, e.clientY);
+      },
+      onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
+        const drag = cardDrag.current;
+        cardDrag.current = null;
+        cardScroll.stop();
+        if (drag?.pointer !== e.pointerId || !drag.dragging) return;
+        // Some browsers send a click after the drag; later taps count again.
+        suppressClick.current = true;
+        setTimeout(() => (suppressClick.current = false), 400);
+        setDropHint(null);
+        const target = drag.target;
+        if (!target) return;
+        const change = groupChange(drag.groupKey, target.groupKey);
+        if (change.group.from !== change.group.to && !canGroupEdit) {
+          onError("Diese Gruppierung kann nicht bearbeitet werden.");
+          return;
+        }
+        void submitMove({
+          viewId: view.id,
+          version: data.database.version,
+          rowId: drag.row.id,
+          rowVersion: drag.row.version,
+          targetId: target.id,
+          placement: target.id ? target.placement : "end",
+          ...(canGroupEdit ? change : {}),
+        });
+      },
+      onPointerCancel: () => {
+        cardDrag.current = null;
+        cardScroll.stop();
+        setDropHint(null);
+      },
+    };
+  }
   function orderHandle(row: Row, groupKey?: string) {
     if (!viewEditable) return null;
     const siblings =
@@ -779,8 +893,16 @@ export default function DatabaseView({
           dragStart(e, row, groupKey);
         }}
         onDragEnd={() => setDropHint(null)}
+        {...(view.type === "board" && groupKey !== undefined && !lanes
+          ? touchCardHandlers(row, groupKey)
+          : {})}
         onClick={(e) => {
           e.stopPropagation();
+          // A finished touch drag is not a tap.
+          if (suppressClick.current) {
+            suppressClick.current = false;
+            return;
+          }
           openMove(row, groupKey);
         }}
         onKeyDown={(e) => {

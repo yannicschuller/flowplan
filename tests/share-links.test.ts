@@ -389,3 +389,65 @@ test("guest uploads are checked, readable only through their link until used, an
     undefined,
   );
 });
+
+test("public pages render linked views of published databases with public properties only", async () => {
+  const { withPublicEmbeds } = await import("../lib/public-embeds");
+  const { publishedHtml } = await import("../lib/publication");
+  const { escaped } = await import("../lib/document-server");
+  const host = page(),
+    inside = page({ kind: "database", parentId: host }),
+    outside = page({ kind: "database" });
+  for (const db of [inside, outside])
+    run(
+      "UPDATE databases SET fields=? WHERE page_id=?",
+      JSON.stringify([
+        { id: "title", name: "Name", type: "text" },
+        { id: "owner", name: "Person", type: "person" },
+        { id: "done", name: "Erledigt", type: "checkbox" },
+      ]),
+      db,
+    );
+  run(
+    "INSERT INTO rows(id,page_id,cells,created_by) VALUES(?,?,?,?)",
+    id(),
+    inside,
+    JSON.stringify({
+      title: "Sichtbar & <b>sicher</b>",
+      owner: owner.id,
+      done: true,
+    }),
+    owner.id,
+  );
+  const views = JSON.stringify([
+    { id: id(), name: "Alle", type: "table", filters: [], sorts: [] },
+  ]);
+  const block = (source: string, blockId = id()) =>
+    `<div data-linked-database="${blockId}" data-linked-source="${source}" data-linked-version="1" data-linked-views="${escaped(views)}">Platzhalter</div>`;
+  const html = `<p>Start</p>${block(inside)}${block(outside)}`;
+  run("UPDATE documents SET html=? WHERE page_id=?", html, host);
+  command(owner, {
+    action: "page.publish",
+    pageId: host,
+    enabled: true,
+    includeChildren: true,
+  });
+  const token = one<{ public_token: string }>(
+    "SELECT public_token FROM pages WHERE id=?",
+    host,
+  )!.public_token;
+  const { pages } = publicPage(token);
+  const rendered = withPublicEmbeds(
+    publishedHtml(html, token, pages),
+    html,
+    token,
+    pages,
+  );
+  assert.match(rendered, /class="public-embed"/);
+  assert.match(rendered, /Sichtbar &amp; &lt;b&gt;sicher&lt;\/b&gt;/);
+  assert.match(rendered, new RegExp(`/share/${token}/${inside}\\?row=`));
+  assert.match(rendered, /<th>Erledigt<\/th>/);
+  // People stay private; the outside source keeps its placeholder.
+  assert.doesNotMatch(rendered, /<th>Person<\/th>|owner/);
+  assert.equal((rendered.match(/class="public-embed"/g) || []).length, 1);
+  assert.match(rendered, /Platzhalter/);
+});

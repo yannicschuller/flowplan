@@ -11,6 +11,15 @@ export function memberRole(user: Identity, workspace: string): Role | null {
     )?.role || null
   );
 }
+export function isGuest(user: Pick<Identity, "id">, workspace: string) {
+  return !!one(
+    "SELECT 1 FROM workspace_guests WHERE workspace_id=? AND user_id=?",
+    workspace,
+    user.id,
+  );
+}
+// Guests act only on what is shared with them; workspace-wide actions need
+// full membership. Their stored role caps what page grants allow.
 export function requireMember(
   user: Identity,
   workspace: string,
@@ -19,6 +28,11 @@ export function requireMember(
   const role = memberRole(user, workspace);
   if (!role || rank[role] < rank[min])
     throw new HttpError(403, "Keine Berechtigung für diesen Arbeitsbereich.");
+  if (min !== "viewer" && isGuest(user, workspace))
+    throw new HttpError(
+      403,
+      "Gäste haben nur Zugriff auf die für sie freigegebenen Seiten.",
+    );
   return role;
 }
 function grantRole(user: Identity, resource: string): Role | null {
@@ -37,7 +51,9 @@ export function spaceRole(user: Identity, space: Space): Role | null {
   if (space.owner_id === user.id) return membership;
   const grant = grantRole(user, space.id);
   if (grant) return rank[grant] < rank[membership] ? grant : membership;
-  return space.visibility === "team" ? membership : null;
+  return space.visibility === "team" && !isGuest(user, space.workspace_id)
+    ? membership
+    : null;
 }
 export function pageRole(user: Identity, page: Page): Role | null {
   const space = one<Space>("SELECT * FROM spaces WHERE id=?", page.space_id);

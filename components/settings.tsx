@@ -1,6 +1,7 @@
 "use client";
 import { SpaceIcon } from "./space-appearance";
 import PushSettings from "./push-settings";
+import { OfflineSettings } from "./offline-settings";
 import { WorkspaceLifecycle } from "./workspace-lifecycle";
 import { SpaceManager } from "./space-manager";
 import { useEffect, useState } from "react";
@@ -19,7 +20,7 @@ import {
 import { api, Avatar, download, Modal } from "./ui";
 import type { Bootstrap, Space } from "@/lib/types";
 type SettingsData = {
-  invites: { id: string; email: string; role: string }[];
+  invites: { id: string; email: string; role: string; guest?: number }[];
   groups: { id: string; name: string }[];
   groupMembers: { group_id: string; user_id: string }[];
   grants: {
@@ -49,6 +50,7 @@ export default function Settings({
   const [tab, setTab] = useState("general"),
     [email, setEmail] = useState(""),
     [role, setRole] = useState("editor"),
+    [inviteGuest, setInviteGuest] = useState(false),
     [name, setName] = useState(boot.workspace.name),
     [groupName, setGroupName] = useState(""),
     [settings, setSettings] = useState<SettingsData | null>(null),
@@ -236,8 +238,28 @@ export default function Settings({
                 <Avatar name={m.name} />
                 <span>
                   {m.name}
+                  {!!m.guest && <span className="tag tag-yellow">Gast</span>}
                   <small>{m.email}</small>
                 </span>
+                {owner && m.role !== "owner" && (
+                  <button
+                    className="button compact"
+                    aria-label={
+                      m.guest
+                        ? `${m.name} zum Mitglied machen`
+                        : `${m.name} zum Gast machen`
+                    }
+                    onClick={() =>
+                      act({
+                        action: "member.guest",
+                        userId: m.id,
+                        guest: !m.guest,
+                      })
+                    }
+                  >
+                    {m.guest ? "Zum Mitglied machen" : "Zum Gast machen"}
+                  </button>
+                )}
                 {owner ? (
                   <select
                     aria-label={`Rolle für ${m.name}`}
@@ -272,7 +294,14 @@ export default function Settings({
                 className="invite-form"
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (await act({ action: "member.invite", email, role }))
+                  if (
+                    await act({
+                      action: "member.invite",
+                      email,
+                      role,
+                      guest: inviteGuest,
+                    })
+                  )
                     setEmail("");
                 }}
               >
@@ -292,6 +321,14 @@ export default function Settings({
                   <option value="editor">Bearbeiten</option>
                   <option value="viewer">Ansehen</option>
                 </select>
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={inviteGuest}
+                    onChange={(e) => setInviteGuest(e.target.checked)}
+                  />
+                  Als Gast (nur freigegebene Seiten)
+                </label>
                 <button className="button primary">
                   <Plus />
                   Freigeben
@@ -300,7 +337,9 @@ export default function Settings({
               {settings?.invites.map((i) => (
                 <div className="utility-row" key={i.id}>
                   <span>{i.email}</span>
-                  <span className="tag tag-yellow">Ausstehend</span>
+                  <span className="tag tag-yellow">
+                    {i.guest ? "Gast · ausstehend" : "Ausstehend"}
+                  </span>
                 </div>
               ))}
             </section>
@@ -425,6 +464,11 @@ export default function Settings({
         ))}
       {tab === "data" && (
         <>
+          <OfflineSettings
+            userId={boot.user.id}
+            workspaceId={boot.workspace.id}
+            pageIds={boot.pages.filter((p) => !p.deleted_at).map((p) => p.id)}
+          />
           <section className="settings-section">
             <h2>Arbeitsbereich exportieren</h2>
             <p>

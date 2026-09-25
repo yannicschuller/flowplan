@@ -197,7 +197,20 @@ function migrate(d: DatabaseSync) {
       d.prepare("PRAGMA table_info(templates)").all() as { name: string }[]
     ).some((c) => c.name === "category")
   )
-    d.exec("ALTER TABLE templates ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+    d.exec(
+      "ALTER TABLE templates ADD COLUMN category TEXT NOT NULL DEFAULT ''",
+    );
+  // Guests are members who only see pages and spaces shared with them.
+  d.exec(`CREATE TABLE IF NOT EXISTS workspace_guests(
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY(workspace_id,user_id));`);
+  if (
+    !(d.prepare("PRAGMA table_info(invites)").all() as { name: string }[]).some(
+      (c) => c.name === "guest",
+    )
+  )
+    d.exec("ALTER TABLE invites ADD COLUMN guest INTEGER NOT NULL DEFAULT 0");
   // Personal saved searches per workspace.
   d.exec(`CREATE TABLE IF NOT EXISTS saved_searches(
     id TEXT PRIMARY KEY,

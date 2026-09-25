@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { one } from "@/lib/db";
 import { database, rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
+import { withPublicEmbeds } from "@/lib/public-embeds";
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import { documentPreview } from "@/lib/document-preview";
 import {
@@ -334,7 +335,12 @@ export function PublishedPage({
           )}
           <ReadOnlyDocument
             className={`font-${page.font}`}
-            html={publishedHtml(html, token, pages)}
+            html={withPublicEmbeds(
+              publishedHtml(html, token, pages),
+              html,
+              token,
+              pages,
+            )}
           />
         </>
       )}

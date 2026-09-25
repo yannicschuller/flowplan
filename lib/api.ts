@@ -38,11 +38,7 @@ import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { templateCategoryIds } from "./template-categories";
-import {
-  deleteSavedSearch,
-  saveSearch,
-  savedSearches,
-} from "./saved-searches";
+import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
 import {
   requireTemplate,
   applyPageTemplate,
@@ -88,6 +84,7 @@ import {
   escaped,
 } from "./document-server";
 import {
+  isGuest,
   requireAdmin,
   requireMember,
   requirePage,
@@ -137,8 +134,9 @@ export function bootstrap(user: Identity, wid?: string) {
     name: string;
     icon: string;
     role: string;
+    guest: number;
   }>(
-    "SELECT w.*,m.role FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at",
+    "SELECT w.*,m.role,EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=w.id AND g.user_id=m.user_id) guest FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.created_at",
     user.id,
   );
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
@@ -190,9 +188,14 @@ export function bootstrap(user: Identity, wid?: string) {
             ],
           ) || "Ohne Titel",
       })),
+    // Guests only see themselves; members see who is a guest.
     members: all(
-      "SELECT u.id,u.name,u.email,u.disabled,m.role FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
+      `SELECT u.id,u.name,u.email,u.disabled,m.role,
+       EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=u.id) guest
+       FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?`,
       workspace.id,
+    ).filter(
+      (m) => !(workspace as { guest?: number }).guest || m.id === user.id,
     ),
     notifications: all(
       "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
@@ -1463,12 +1466,13 @@ export function command(
         const email = z.email().parse(b.email).toLowerCase(),
           role = z.enum(["editor", "viewer"]).parse(b.role);
         run(
-          "INSERT INTO invites(id,workspace_id,email,role,created_by) VALUES(?,?,?,?,?) ON CONFLICT(workspace_id,email) DO UPDATE SET role=excluded.role",
+          "INSERT INTO invites(id,workspace_id,email,role,created_by,guest) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,email) DO UPDATE SET role=excluded.role,guest=excluded.guest",
           id(),
           wid(),
           email,
           role,
           user.id,
+          b.guest === true ? 1 : 0,
         );
         break;
       }
@@ -1491,16 +1495,52 @@ export function command(
           ).length <= 1
         )
           throw new HttpError(400, "Der letzte Eigentümer muss bleiben.");
-        if (role === "remove")
+        if (role === "owner" && isGuest({ id: target }, wid()))
+          throw new HttpError(
+            400,
+            "Gäste zuerst zu Mitgliedern machen, bevor sie Eigentümer werden.",
+          );
+        if (role === "remove") {
           run(
             "DELETE FROM members WHERE workspace_id=? AND user_id=?",
             wid(),
             target,
           );
-        else
+          run(
+            "DELETE FROM workspace_guests WHERE workspace_id=? AND user_id=?",
+            wid(),
+            target,
+          );
+        } else
           run(
             "UPDATE members SET role=? WHERE workspace_id=? AND user_id=?",
             role,
+            wid(),
+            target,
+          );
+        break;
+      }
+      case "member.guest": {
+        requireMember(user, wid(), "owner");
+        const target = uuid.parse(b.userId),
+          guest = z.boolean().parse(b.guest);
+        const member = one<{ role: string }>(
+          "SELECT role FROM members WHERE workspace_id=? AND user_id=?",
+          wid(),
+          target,
+        );
+        if (!member) throw new HttpError(404, "Mitglied nicht gefunden.");
+        if (guest && member.role === "owner")
+          throw new HttpError(400, "Eigentümer können keine Gäste sein.");
+        if (guest)
+          run(
+            "INSERT OR IGNORE INTO workspace_guests(workspace_id,user_id) VALUES(?,?)",
+            wid(),
+            target,
+          );
+        else
+          run(
+            "DELETE FROM workspace_guests WHERE workspace_id=? AND user_id=?",
             wid(),
             target,
           );

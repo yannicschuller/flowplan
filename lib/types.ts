@@ -7,7 +7,14 @@ export type User = {
   created_at: string;
 };
 export type Identity = User & { groups: string[]; isAdmin: boolean };
-export type Workspace = { id: string; name: string; icon: string; role: Role };
+export type Workspace = {
+  id: string;
+  name: string;
+  icon: string;
+  role: Role;
+  // 1 when the person only sees pages shared with them.
+  guest?: number;
+};
 export type Space = {
   icon_color?: string;
   id: string;
@@ -169,7 +176,7 @@ export type Bootstrap = {
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
   savedSearches?: import("./saved-searches").SavedSearch[];
-  members: (User & { role: Role })[];
+  members: (User & { role: Role; guest?: number })[];
   notifications: {
     row_id: string | null;
     thread_id: string | null;

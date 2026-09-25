@@ -19,6 +19,11 @@ import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
 import { edgeScroller } from "./edge-scroll";
 import { MediaLibrary } from "./media-library";
+import {
+  checkOfflineOwner,
+  disableOffline,
+  registerServiceWorker,
+} from "./offline";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
@@ -395,6 +400,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
       }
     };
     const network = () => setOnline(navigator.onLine);
+    network();
     window.addEventListener("keydown", key);
     window.addEventListener("online", network);
     window.addEventListener("offline", network);
@@ -405,6 +411,12 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
       window.removeEventListener("offline", network);
     };
   }, [initial.pages, openPage, notify]);
+  // The service worker serves offline copies once enabled in the settings.
+  useEffect(() => {
+    void registerServiceWorker()
+      .then(() => checkOfflineOwner(boot.user.id))
+      .catch(() => undefined);
+  }, [boot.user.id]);
   useEffect(() => {
     let polling = false;
     const timer = setInterval(() => {
@@ -421,7 +433,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
   const activePages = boot.pages.filter((p) => !p.deleted_at),
     editable =
       !!data && ["editor", "owner"].includes(data.role) && !data.page.locked,
-    canCreate = boot.workspace.role !== "viewer",
+    canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id));
   function addPage(
     kind: "document" | "database" = "document",
@@ -1032,6 +1044,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                   <Dropdown.Item
                     className="dropdown-item"
                     onSelect={async () => {
+                      await disableOffline().catch(() => undefined);
                       await fetch("/api/auth/logout", { method: "POST" });
                       location.href = "/";
                     }}
@@ -1046,6 +1059,12 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
         </div>
       </aside>
       <main className="main">
+        {!online && (
+          <div className="offline-banner" role="status">
+            Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen
+            werden später abgeglichen.
+          </div>
+        )}
         <header className="topbar">
           <div className="breadcrumb">
             <button

@@ -91,16 +91,25 @@ export function upsertUser(subject: string, name: string, email: string) {
 }
 export function acceptInvites(user: User, emailVerified: boolean) {
   if (!emailVerified) return;
-  for (const inv of all<{ id: string; workspace_id: string; role: string }>(
-    "SELECT * FROM invites WHERE lower(email)=lower(?)",
-    user.email,
-  )) {
-    run(
+  for (const inv of all<{
+    id: string;
+    workspace_id: string;
+    role: string;
+    guest: number;
+  }>("SELECT * FROM invites WHERE lower(email)=lower(?)", user.email)) {
+    const added = run(
       "INSERT OR IGNORE INTO members VALUES(?,?,?)",
       inv.workspace_id,
       user.id,
       inv.role,
-    );
+    ).changes;
+    // An existing membership is never downgraded to guest by an invite.
+    if (added && inv.guest)
+      run(
+        "INSERT OR IGNORE INTO workspace_guests(workspace_id,user_id) VALUES(?,?)",
+        inv.workspace_id,
+        user.id,
+      );
     run("DELETE FROM invites WHERE id=?", inv.id);
   }
 }
