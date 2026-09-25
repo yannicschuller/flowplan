@@ -185,3 +185,134 @@ export function adjacentBlockTarget(
       : siblings.find((b) => b.pos === range.to);
   return neighbor ? (direction < 0 ? neighbor.pos : neighbor.end) : undefined;
 }
+export const MAX_COLUMNS = 3;
+// Dropping blocks at the side of another block places them next to it:
+// the target is wrapped into two columns, or the blocks become a new column
+// of an existing column layout (at most three).
+export function columnBlocks(
+  state: EditorState,
+  positions: number[],
+  targetPos: number,
+  side: "left" | "right",
+) {
+  const range = blockRange(state.doc, positions);
+  const blocks = documentBlocks(state.doc),
+    target = blocks.find((b) => b.pos === targetPos);
+  if (!target) throw new Error("Bitte einen Zielblock wählen.");
+  if (target.pos < range.to && target.end > range.from)
+    throw new Error("Der Zielort liegt innerhalb der Auswahl.");
+  const { columns, column } = state.schema.nodes;
+  if (!columns || !column) throw new Error("Spalten sind nicht verfügbar.");
+  const $target = state.doc.resolve(target.pos);
+  const inColumn = $target.parent.type === column;
+  // The column layout that receives the blocks, if there is one.
+  const layout =
+    target.node.type === columns
+      ? { pos: target.pos, node: target.node }
+      : inColumn
+        ? {
+            pos: $target.before($target.depth - 1),
+            node: $target.node($target.depth - 1),
+          }
+        : null;
+  // Moving a column's only blocks removes that column.
+  const $source = state.doc.resolve(range.from);
+  const wholeColumn =
+    $source.parent.type === column &&
+    range.from === $source.start() &&
+    range.to === $source.end();
+  // A whole column moved within its own layout just changes the order.
+  if (wholeColumn && inColumn) {
+    const depth = $source.depth - 1,
+      layoutPos = $source.before(depth),
+      layoutNode = $source.node(depth);
+    if (layoutPos === $target.before($target.depth - 1)) {
+      const from = $source.index(depth),
+        to = $target.index($target.depth - 1);
+      const order: Node[] = [];
+      layoutNode.forEach((child) => order.push(child));
+      const [moving] = order.splice(from, 1);
+      const at =
+        order.indexOf(layoutNode.child(to)) + (side === "right" ? 1 : 0);
+      order.splice(at, 0, moving);
+      const tr = state.tr.replaceWith(
+        layoutPos,
+        layoutPos + layoutNode.nodeSize,
+        layoutNode.copy(Fragment.from(order)),
+      );
+      let offset = layoutPos + 1;
+      for (const child of order.slice(0, at)) offset += child.nodeSize;
+      return finish(tr, offset + 1, range.content);
+    }
+  }
+  if (layout && layout.node.childCount >= MAX_COLUMNS)
+    throw new Error(`Höchstens ${MAX_COLUMNS} Spalten nebeneinander.`);
+  if (
+    layout &&
+    range.from >= layout.pos &&
+    range.to <= layout.pos + layout.node.nodeSize &&
+    !inColumn
+  )
+    throw new Error("Blöcke liegen bereits in diesen Spalten.");
+  const tr = state.tr;
+  if (wholeColumn) {
+    // Rebuild the layout without that column; one column dissolves.
+    const depth = $source.depth - 1,
+      layoutNode = $source.node(depth),
+      layoutPos = $source.before(depth),
+      rest: Node[] = [];
+    layoutNode.forEach((child, _offset, index) => {
+      if (index !== $source.index(depth)) rest.push(child);
+    });
+    tr.replaceWith(
+      layoutPos,
+      layoutPos + layoutNode.nodeSize,
+      rest.length > 1 ? layoutNode.copy(Fragment.from(rest)) : rest[0].content,
+    );
+  } else tr.delete(range.from, range.to);
+  const created = column.create(null, range.content);
+  let start: number;
+  if (layout) {
+    // Insert a new column next to the target's column (or at the layout edge).
+    const anchor =
+      target.node.type === columns
+        ? side === "left"
+          ? layout.pos + 1
+          : layout.pos + layout.node.nodeSize - 1
+        : side === "left"
+          ? $target.before($target.depth)
+          : $target.after($target.depth);
+    start = tr.mapping.map(anchor, side === "left" ? -1 : 1);
+    tr.insert(start, created);
+  } else {
+    const from = tr.mapping.map(target.pos),
+      to = tr.mapping.map(target.end);
+    const existing = column.create(null, tr.doc.slice(from, to).content);
+    const pair = columns.create(
+      null,
+      side === "left" ? [created, existing] : [existing, created],
+    );
+    const $from = tr.doc.resolve(from);
+    if (!$from.parent.canReplaceWith($from.index(), $from.index() + 1, columns))
+      throw new Error("Hier können keine Spalten entstehen.");
+    tr.replaceWith(from, to, pair);
+    start = from + 1 + (side === "left" ? 0 : existing.nodeSize);
+  }
+  // A layout left with a single column dissolves into its blocks.
+  let single: { pos: number; size: number; content: Fragment } | undefined;
+  tr.doc.descendants((node, pos) => {
+    if (single) return false;
+    if (node.type === columns && node.childCount === 1)
+      single = { pos, size: node.nodeSize, content: node.firstChild!.content };
+  });
+  if (single) {
+    tr.replaceWith(single.pos, single.pos + single.size, single.content);
+    start = tr.mapping.slice(tr.mapping.maps.length - 1).map(start);
+  }
+  try {
+    tr.doc.check();
+  } catch {
+    throw new Error("Die Blöcke passen hier nicht in Spalten.");
+  }
+  return finish(tr, start + 1, range.content);
+}

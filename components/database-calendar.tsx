@@ -31,6 +31,8 @@ import {
   type CalendarChange,
   type CalendarDay,
   type CalendarSegment,
+  isWeekend,
+  weekdayLabels,
 } from "@/lib/database-calendar";
 import {
   Temporal,
@@ -106,9 +108,13 @@ export default function DatabaseCalendar({
     zone = config.timeZone,
     { start, end, invalidEnd } = scheduleFields(fields, view),
     canEdit = editable && !!start && !invalidEnd,
+    weekends = config.showWeekends !== false,
     days = useMemo(
-      () => calendarDays(anchor, config.mode, zone),
-      [anchor, config.mode, zone],
+      () =>
+        calendarDays(anchor, config.mode, zone, config.weekStart).filter(
+          (day) => weekends || config.mode === "day" || !isWeekend(day.date),
+        ),
+      [anchor, config.mode, zone, config.weekStart, weekends],
     );
   // Repeating entries appear as read-only occurrences within the shown days.
   const rows = useMemo(() => {
@@ -312,11 +318,22 @@ export default function DatabaseCalendar({
   function move(event: ReactPointerEvent<HTMLButtonElement>) {
     const current = dragging.current;
     if (!current || current.pointer !== event.pointerId) return;
-    const dayDelta =
+    const columnDelta =
         config.mode === "day"
           ? 0
           : Math.round((event.clientX - current.x) / current.width),
       minutes = Math.round((event.clientY - current.y) / PX / 15) * 15;
+    // Columns may skip hidden weekends, so move by visible columns.
+    const index = days.findIndex((d) => d.date === current.day.date);
+    const column =
+      index >= 0
+        ? days[Math.max(0, Math.min(days.length - 1, index + columnDelta))]
+        : undefined;
+    const dayDelta = column
+      ? Temporal.PlainDate.from(current.day.date).until(
+          Temporal.PlainDate.from(column.date),
+        ).days
+      : columnDelta;
     try {
       const targetDay = calendarDays(
           Temporal.PlainDate.from(current.day.date)
@@ -537,6 +554,32 @@ export default function DatabaseCalendar({
           <option value="week">Woche</option>
           <option value="day">Tag</option>
         </select>
+        <select
+          aria-label="Kalender: Wochenbeginn"
+          disabled={busy}
+          value={config.weekStart || "monday"}
+          onChange={(e) =>
+            void configure({
+              ...config,
+              weekStart: e.target.value as CalendarConfig["weekStart"],
+            })
+          }
+        >
+          <option value="monday">Woche ab Montag</option>
+          <option value="sunday">Woche ab Sonntag</option>
+        </select>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            aria-label="Kalender: Wochenenden anzeigen"
+            disabled={busy}
+            checked={weekends}
+            onChange={(e) =>
+              void configure({ ...config, showWeekends: e.target.checked })
+            }
+          />
+          Wochenenden
+        </label>
         <input
           aria-label="Kalender: Datum"
           type="date"
@@ -624,8 +667,13 @@ export default function DatabaseCalendar({
         <>
           {config.mode === "month" ? (
             <div className="calendar-scroll">
-              <div className="calendar-grid">
-                {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => (
+              <div
+                className="calendar-grid"
+                style={
+                  { "--calendar-weekdays": weekends ? 7 : 5 } as CSSProperties
+                }
+              >
+                {weekdayLabels(config).map((d) => (
                   <div className="weekday" key={d}>
                     {d}
                   </div>

@@ -3,7 +3,7 @@ import { cellText, computedCells, queryRows } from "./database";
 import { database, rows } from "./api";
 import { availableLinkedViews, parseLinkedAttributes } from "./linked-views";
 import { displayText } from "./field-format";
-import { publicField } from "./shared-content";
+import { publicFieldsOf } from "./shared-content";
 import type { Page } from "./types";
 
 export const MAX_EMBED_ROWS = 100;
@@ -45,8 +45,9 @@ export function withPublicEmbeds(
       if (!view) return match;
       const hidden = new Set(view.hiddenFields || []);
       const order = view.fieldOrder || [];
+      const isPublic = publicFieldsOf(d.fields);
       const fields = d.fields
-        .filter((f) => publicField(f) && !hidden.has(f.id))
+        .filter((f) => isPublic(f) && !hidden.has(f.id))
         .sort(
           (a, b) =>
             (order.indexOf(a.id) + 1 || Infinity) -

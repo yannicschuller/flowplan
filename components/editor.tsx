@@ -1,4 +1,12 @@
 "use client";
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import {
+  highlightColors,
+  Subscript,
+  Superscript,
+  TextColor,
+  textColors,
+} from "@/lib/text-marks";
 import { embedFromUrl, embedProviders } from "@/lib/embed-providers";
 import {
   mermaidNodeView,
@@ -45,6 +53,9 @@ import {
   TextUnderline,
   TextStrikethrough,
   Highlighter,
+  Palette,
+  TextSubscript,
+  TextSuperscript,
   Link as LinkIcon,
   ListBullets,
   ListNumbers,
@@ -169,6 +180,9 @@ export default function DocumentEditor({
           placeholder: "Schreibe etwas oder tippe / für Befehle …",
         }),
         Highlight.configure({ multicolor: true }),
+        TextColor,
+        Superscript,
+        Subscript,
         TextAlign.configure({ types: ["heading", "paragraph"] }),
         Typography,
         Callout,
@@ -654,6 +668,82 @@ export default function DocumentEditor({
               onClick={() => editor?.chain().focus().toggleHighlight().run()}
             >
               <Highlighter />
+            </button>
+            <Dropdown.Root>
+              <Dropdown.Trigger asChild>
+                <button title="Farbe" aria-label="Text- und Hintergrundfarbe">
+                  <Palette />
+                </button>
+              </Dropdown.Trigger>
+              <Dropdown.Portal>
+                <Dropdown.Content
+                  className="dropdown-content color-menu"
+                  sideOffset={6}
+                  onCloseAutoFocus={(event) => event.preventDefault()}
+                >
+                  <div className="color-menu-label">Textfarbe</div>
+                  <div className="color-swatches">
+                    {textColors.map(([name, color]) => (
+                      <Dropdown.Item
+                        key={color}
+                        className="color-swatch"
+                        aria-label={`Textfarbe ${name}`}
+                        title={name}
+                        style={{ color }}
+                        onSelect={() =>
+                          editor?.chain().focus().setTextColor(color).run()
+                        }
+                      >
+                        A
+                      </Dropdown.Item>
+                    ))}
+                  </div>
+                  <div className="color-menu-label">Hintergrund</div>
+                  <div className="color-swatches">
+                    {highlightColors.map(([name, color]) => (
+                      <Dropdown.Item
+                        key={color}
+                        className="color-swatch"
+                        aria-label={`Hintergrund ${name}`}
+                        title={name}
+                        style={{ background: color }}
+                        onSelect={() =>
+                          editor?.chain().focus().setHighlight({ color }).run()
+                        }
+                      >
+                        A
+                      </Dropdown.Item>
+                    ))}
+                  </div>
+                  <Dropdown.Item
+                    className="dropdown-item"
+                    onSelect={() =>
+                      editor
+                        ?.chain()
+                        .focus()
+                        .unsetTextColor()
+                        .unsetHighlight()
+                        .run()
+                    }
+                  >
+                    Farben entfernen
+                  </Dropdown.Item>
+                </Dropdown.Content>
+              </Dropdown.Portal>
+            </Dropdown.Root>
+            <button
+              title="Hochgestellt"
+              className={editor?.isActive("superscript") ? "active" : ""}
+              onClick={() => editor?.chain().focus().toggleSuperscript().run()}
+            >
+              <TextSuperscript />
+            </button>
+            <button
+              title="Tiefgestellt"
+              className={editor?.isActive("subscript") ? "active" : ""}
+              onClick={() => editor?.chain().focus().toggleSubscript().run()}
+            >
+              <TextSubscript />
             </button>
             <button
               title="Link"

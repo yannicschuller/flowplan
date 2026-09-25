@@ -12,6 +12,7 @@ import {
 import Image from "@tiptap/extension-image";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
+import { Subscript, Superscript, TextColor } from "./text-marks";
 import { MermaidBlock } from "./mermaid-node";
 import { FlowCodeBlock } from "./code-block";
 export const Callout = Node.create({
@@ -152,6 +153,9 @@ export const documentExtensions = [
   TableHeader,
   Image.configure({ allowBase64: false }),
   Highlight.configure({ multicolor: true }),
+  TextColor,
+  Superscript,
+  Subscript,
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Callout,
   Toggle,

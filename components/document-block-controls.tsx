@@ -13,6 +13,7 @@ import {
   adjacentBlockTarget,
   blockRange,
   changeBlocks,
+  columnBlocks,
   documentBlocks,
   hasLinkedBlocks,
   selectedDocumentBlock,
@@ -37,6 +38,8 @@ type Drag = {
   active: boolean;
   positions: number[];
   target?: number;
+  // Dropping at the left or right edge of a block builds columns.
+  column?: { pos: number; side: "left" | "right" };
   clientX: number;
   clientY: number;
 };
@@ -68,6 +71,7 @@ export function DocumentBlockControls({
     top: number;
     left: number;
     width: number;
+    height?: number;
   } | null>(null);
   useEffect(() => {
     if (!editor || !surface.current) return;
@@ -187,6 +191,22 @@ export function DocumentBlockControls({
       setError((e as Error).message);
     }
   }
+  function placeBeside(target: number, side: "left" | "right") {
+    if (!editor?.isEditable) {
+      setError("Das Dokument kann nicht bearbeitet werden.");
+      return;
+    }
+    try {
+      applyBlockChange(
+        editor,
+        columnBlocks(editor.state, selected.current, target, side),
+      );
+      setError("");
+      editor.commands.focus();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   function shift(direction: -1 | 1) {
     if (!editor) return;
     try {
@@ -251,9 +271,34 @@ export function DocumentBlockControls({
       );
     if (!target) {
       drag.target = undefined;
+      drag.column = undefined;
       setDrop(null);
       return;
     }
+    // Side zones of the block under the pointer place the blocks beside it.
+    const relative = (x - target.left) / Math.max(1, target.width);
+    const side =
+      under[0] && relative > 0.8
+        ? "right"
+        : under[0] && relative >= 0 && relative < 0.15
+          ? "left"
+          : null;
+    if (side) {
+      try {
+        columnBlocks(editor.state, drag.positions, target.pos, side);
+        drag.column = { pos: target.pos, side };
+        drag.target = undefined;
+        setDrop({
+          top: target.top,
+          left:
+            side === "right" ? target.left + target.width - 3 : target.left - 1,
+          width: 4,
+          height: target.height,
+        });
+        return;
+      } catch {}
+    }
+    drag.column = undefined;
     const after = y > target.top + target.height / 2,
       boundary = after ? target.end : target.pos;
     try {
@@ -384,13 +429,15 @@ export function DocumentBlockControls({
                   const drag = dragging.current;
                   if (!drag || drag.pointer !== event.pointerId) return;
                   const active = drag.active,
-                    target = drag.target;
+                    target = drag.target,
+                    column = drag.column;
                   dragging.current = null;
                   setPointerActive(false);
                   setDrop(null);
                   event.currentTarget.releasePointerCapture(event.pointerId);
                   if (active) {
-                    if (target !== undefined) perform("move", target);
+                    if (column) placeBeside(column.pos, column.side);
+                    else if (target !== undefined) perform("move", target);
                     else
                       setError(
                         "An dieser Position kann der Block nicht abgelegt werden.",
