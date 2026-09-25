@@ -7380,3 +7380,45 @@ tr.order-drop-after > td {
 .board-card-section.database-group-level-3 {
   padding-left: 0;
 }
+.comment-hub-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.comment-hub-filters .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.comment-hub-filters select {
+  width: auto;
+}
+.comment-text blockquote {
+  margin: 4px 0;
+  padding: 2px 8px;
+  border-left: 3px solid var(--accent, #2383e2);
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.comment-text-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.comment-hub-filters .chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--secondary);
+  background: none;
+}
+.comment-hub-filters .chip.active {
+  background: var(--blue-light);
+  color: var(--blue);
+  border-color: transparent;
+}

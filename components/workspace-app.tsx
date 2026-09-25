@@ -1,4 +1,5 @@
 "use client";
+import { CommentHub } from "./comment-hub";
 import {
   parsePageLocation,
   pageLocationHash,
@@ -1644,48 +1645,15 @@ export default function WorkspaceApp({
                         <X />
                       </button>
                     </header>
-                    {data.comments
-                      .filter((c) => !c.row_id)
-                      .map((c) => (
-                        <div
-                          className={`comment ${c.resolved ? "resolved" : ""}`}
-                          key={c.id}
-                        >
-                          <Avatar name={c.name} small />
-                          <div>
-                            <strong>{c.name}</strong>
-                            <small>{relativeTime(c.created_at, clock)}</small>
-                            <p>{c.body}</p>
-                            {data.role !== "viewer" && (
-                              <button
-                                className="text-button"
-                                onClick={() =>
-                                  act({
-                                    action: "comment.resolve",
-                                    pageId,
-                                    commentId: c.id,
-                                    resolved: !c.resolved,
-                                  })
-                                }
-                              >
-                                {c.resolved
-                                  ? "Wieder öffnen"
-                                  : "Als erledigt markieren"}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    {!data.comments.filter((c) => !c.row_id).length && (
-                      <div className="empty-state small">
-                        <ChatCircle size={30} />
-                        <p>
-                          Ein guter Austausch beginnt
-                          <br />
-                          mit einem Kommentar.
-                        </p>
-                      </div>
-                    )}
+                    <CommentHub
+                      key={data.page.id}
+                      pageId={data.page.id}
+                      comments={data.comments}
+                      textComments={data.page.kind === "document"}
+                      canResolve={data.role !== "viewer"}
+                      act={act}
+                      time={(value) => relativeTime(value, clock)}
+                    />
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
