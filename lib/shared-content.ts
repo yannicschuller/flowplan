@@ -344,6 +344,12 @@ function writableHtml(
       seen.add(id);
       attrs = { ...linked.get(id)! };
     }
+    const board = attrs["data-whiteboard"];
+    if (board) {
+      if (hidden.has(board)) attrs["data-whiteboard"] = hidden.get(board)!;
+      else if (!pages.some((p) => p.id === board))
+        throw new HttpError(403, "Whiteboard nicht freigegeben.");
+    }
     // Guests keep existing mentions but cannot mention anyone new.
     if (attrs["data-mention"] && !mentions.has(attrs["data-mention"]))
       delete attrs["data-mention"];

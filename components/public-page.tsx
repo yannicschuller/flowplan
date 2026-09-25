@@ -1,5 +1,7 @@
 import { imageFileId } from "@/lib/page-appearance";
 import { ReadOnlyDocument } from "./read-only-document";
+import { WhiteboardStatic } from "./whiteboard/render";
+import { whiteboardSnapshotItems } from "@/lib/whiteboard";
 import { rowOrderRanks } from "@/lib/row-order";
 import { PageIcon } from "./ui";
 import { notFound } from "next/navigation";
@@ -201,7 +203,23 @@ export function PublishedPage({
           ))}
         </nav>
       )}
-      {d && !record && activeView?.type === "calendar" ? (
+      {page.kind === "whiteboard" ? (
+        <WhiteboardStatic
+          height={640}
+          pages={pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind }))}
+          items={whiteboardSnapshotItems(page).map((item) => {
+            // Images only through the share, and only if they are published.
+            const file = /^\/api\/files\/([\w-]+)$/.exec(item.src || "");
+            if (!file) return item;
+            try {
+              publicFile(token, file[1]);
+              return { ...item, src: `/api/share/${token}/files/${file[1]}` };
+            } catch {
+              return { ...item, src: undefined };
+            }
+          })}
+        />
+      ) : d && !record && activeView?.type === "calendar" ? (
         <PublicCalendar
           records={records}
           fields={d.fields}

@@ -63,7 +63,7 @@ export function createPage(
 ) {
   const pid = id();
   run(
-    "INSERT INTO pages(id,workspace_id,space_id,parent_id,title,kind,created_by,position) VALUES(?,?,?,?,?,?,?,?)",
+    "INSERT INTO pages(id,workspace_id,space_id,parent_id,title,kind,created_by,position,icon) VALUES(?,?,?,?,?,?,?,?,?)",
     pid,
     workspace,
     space,
@@ -72,6 +72,7 @@ export function createPage(
     kind,
     user,
     Date.now(),
+    kind === "whiteboard" ? "whiteboard" : "file",
   );
   if (kind === "database")
     run(

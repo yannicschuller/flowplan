@@ -1,3 +1,4 @@
+import { copyWhiteboard } from "./whiteboard";
 import { visibleRows } from "./row-access";
 import { mapFileCell } from "./file-cells";
 import { quotaCheckpoint } from "./instance-ops";
@@ -163,7 +164,9 @@ export function duplicatePages(
           user.id,
         );
       }
-      if (p.kind === "document") {
+      if (p.kind === "whiteboard") {
+        copyWhiteboard(p.id, target, pageIds, rewrite);
+      } else if (p.kind === "document") {
         const source = one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           p.id,

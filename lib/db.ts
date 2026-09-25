@@ -11,7 +11,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 20) return;
+  if (globalDb.flowplanSchema === 21) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -276,6 +276,20 @@ function migrate(d: DatabaseSync) {
     d.exec(
       "ALTER TABLE databases ADD COLUMN record_layout TEXT NOT NULL DEFAULT '{}'",
     );
+  // Whiteboards: the board as Yjs state, plus who is looking at it where.
+  d.exec(`CREATE TABLE IF NOT EXISTS whiteboards(
+    page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,
+    state BLOB NOT NULL,
+    generation TEXT NOT NULL,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS whiteboard_presence(
+    page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    seen INTEGER NOT NULL,
+    PRIMARY KEY(page_id,user_id));`);
   d.exec(`CREATE TABLE IF NOT EXISTS share_live_requests(token TEXT NOT NULL,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS share_live_requests_token ON share_live_requests(token,created_at);`);
   // Per share link and document: the guest projection for live editing.
@@ -326,7 +340,7 @@ function migrate(d: DatabaseSync) {
     ).some((c) => c.name === "rich_body")
   )
     d.exec("ALTER TABLE inline_messages ADD COLUMN rich_body TEXT");
-  globalDb.flowplanSchema = 20;
+  globalDb.flowplanSchema = 21;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

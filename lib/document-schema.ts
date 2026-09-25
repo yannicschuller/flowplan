@@ -134,6 +134,44 @@ export const LinkedDatabase = Node.create({
     "Verknüpfte Datenbank · Zugriff im Arbeitsbereich erforderlich",
   ],
 });
+// A whiteboard shown inside a document; the view is filled in by the editor
+// and read-only renderers, the stored HTML only names the board.
+export const WhiteboardEmbed = Node.create({
+  name: "whiteboardEmbed",
+  group: "block",
+  atom: true,
+  addAttributes() {
+    return {
+      pageId: { default: "" },
+      height: { default: 360 },
+    };
+  },
+  parseHTML: () => [
+    {
+      tag: "div[data-whiteboard]",
+      getAttrs: (element) => {
+        const el = element as HTMLElement;
+        const height = Number(el.getAttribute("data-whiteboard-height"));
+        return {
+          pageId: el.getAttribute("data-whiteboard"),
+          height:
+            Number.isFinite(height) && height >= 160 && height <= 1200
+              ? height
+              : 360,
+        };
+      },
+    },
+  ],
+  renderHTML: ({ node }) => [
+    "div",
+    {
+      "data-whiteboard": node.attrs.pageId,
+      "data-whiteboard-height": String(node.attrs.height),
+      class: "whiteboard-embed-placeholder",
+    },
+    "Eingebettetes Whiteboard",
+  ],
+});
 export const documentExtensions = [
   StarterKit.configure({
     codeBlock: false,
@@ -162,6 +200,7 @@ export const documentExtensions = [
   MathBlock,
   MathInline,
   LinkedDatabase,
+  WhiteboardEmbed,
 ];
 export const documentSchema = () => getSchema(documentExtensions);
 export const Mention = Node.create({

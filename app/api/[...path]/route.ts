@@ -211,7 +211,7 @@ export async function GET(
       return NextResponse.json(
         searchWorkspace(user, wid, url.searchParams.get("q") || "", {
           kind: z
-            .enum(["all", "document", "database", "row", "comment", "file"])
+            .enum(["all", "document", "database", "whiteboard", "row", "comment", "file"])
             .catch("all")
             .parse(url.searchParams.get("kind") || "all"),
           spaceId: url.searchParams.get("space")

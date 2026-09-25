@@ -69,6 +69,7 @@ import {
   ArrowRight,
   FileText,
   Table,
+  PresentationChart,
   Lock,
   Copy,
   DownloadSimple,
@@ -86,7 +87,15 @@ import {
   Folder,
   ArrowUpRight,
 } from "@phosphor-icons/react";
-import type { Bootstrap, Page, Comment, User, Role, Space } from "@/lib/types";
+import type {
+  Bootstrap,
+  Page,
+  PageKind,
+  Comment,
+  User,
+  Role,
+  Space,
+} from "@/lib/types";
 import { PageExportDialog } from "./page-export";
 import {
   Modal,
@@ -110,7 +119,12 @@ const DocumentEditor = dynamic(() => import("./editor"), {
   ssr: false,
   loading: () => <PageSkeleton compact label="Dokument wird geöffnet …" />,
 });
+const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
+  ssr: false,
+  loading: () => <PageSkeleton compact label="Whiteboard wird geöffnet …" />,
+});
 type PageData = DatabaseData & {
+  whiteboard?: { state: string; generation: string };
   shareLinks?: ShareLink[];
   publication?: {
     includeChildren: boolean;
@@ -163,7 +177,7 @@ export default function WorkspaceApp({
     [query, setQuery] = useState(""),
     [create, setCreate] = useState(false),
     [newTitle, setNewTitle] = useState(""),
-    [newKind, setNewKind] = useState<"document" | "database">("document"),
+    [newKind, setNewKind] = useState<PageKind>("document"),
     [parent, setParent] = useState<string | null>(null),
     [spaceId, setSpaceId] = useState(initial.spaces[0]?.id || ""),
     [templates, setTemplates] = useState(false),
@@ -522,7 +536,7 @@ export default function WorkspaceApp({
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id));
   function addPage(
-    kind: "document" | "database" = "document",
+    kind: PageKind = "document",
     parentId: string | null = null,
     sid?: string,
   ) {
@@ -1530,8 +1544,7 @@ export default function WorkspaceApp({
               <div className="page-content">
                 <PageSkeleton
                   kind={
-                    boot.pages.find((p) => p.id === pageId)?.kind ===
-                    "database"
+                    boot.pages.find((p) => p.id === pageId)?.kind === "database"
                       ? "database"
                       : "document"
                   }
@@ -1545,7 +1558,7 @@ export default function WorkspaceApp({
             data && (
               <div className={`page-layout ${comments ? "with-comments" : ""}`}>
                 <article
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
+                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
                 >
                   {data.page.cover && (
                     <div
@@ -1658,6 +1671,23 @@ export default function WorkspaceApp({
                         onError={notify}
                       />
                     </>
+                  ) : data.page.kind === "whiteboard" && data.whiteboard ? (
+                    <Whiteboard
+                      key={`${data.page.id}-${data.whiteboard.generation}`}
+                      pageId={data.page.id}
+                      state={data.whiteboard.state}
+                      generation={data.whiteboard.generation}
+                      editable={editable}
+                      pages={activePages.map((p) => ({
+                        id: p.id,
+                        title: p.title,
+                        icon: p.icon,
+                        kind: p.kind,
+                      }))}
+                      onReload={refresh}
+                      onError={notify}
+                      onOpenPage={(id) => void openPage(id)}
+                    />
                   ) : (
                     <DocumentEditor
                       key={`${data.page.id}-${data.generation}-${epoch}`}
@@ -2089,6 +2119,7 @@ export default function WorkspaceApp({
                 ["all", "Alles"],
                 ["document", "Dokumente"],
                 ["database", "Datenbanken"],
+                ["whiteboard", "Whiteboards"],
                 ["row", "Einträge"],
                 ["comment", "Kommentare"],
                 ["file", "Dateien"],
@@ -2289,6 +2320,18 @@ export default function WorkspaceApp({
               <Table size={26} />
               <strong>Datenbank</strong>
               <small>Aufgaben und strukturierte Daten</small>
+            </button>
+            <button
+              type="button"
+              className={newKind === "whiteboard" ? "chosen" : ""}
+              onClick={() => {
+                setNewKind("whiteboard");
+                setStarterTemplate(null);
+              }}
+            >
+              <PresentationChart size={26} />
+              <strong>Whiteboard</strong>
+              <small>Ideen, Diagramme und Workshops</small>
             </button>
           </div>
           <label>
@@ -2774,7 +2817,7 @@ export default function WorkspaceApp({
                 setTemplates(false);
                 setNewTitle(name);
                 setStarterTemplate(templateKey);
-                setNewKind(kind as "document" | "database");
+                setNewKind(kind as PageKind);
                 setParent(null);
                 setCreate(true);
               }}

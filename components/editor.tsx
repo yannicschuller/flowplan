@@ -1,4 +1,5 @@
 "use client";
+import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -68,6 +69,7 @@ import {
   Code,
   Image as ImageIcon,
   Table as TableIcon,
+  PresentationChart,
   ArrowUUpLeft,
   ArrowUUpRight,
   TextHOne,
@@ -146,6 +148,8 @@ export default function DocumentEditor({
     [outline, setOutline] = useState(false),
     [embed, setEmbed] = useState(false),
     [embedUrl, setEmbedUrl] = useState("");
+  const [boardPicker, setBoardPicker] = useState(false),
+    [boardSearch, setBoardSearch] = useState("");
   const [linkedPicker, setLinkedPicker] = useState(false),
     [linking, setLinking] = useState(false),
     [linkedSearch, setLinkedSearch] = useState("");
@@ -157,6 +161,19 @@ export default function DocumentEditor({
       ? chain?.setTextSelection(saved)
       : chain;
   };
+  function insertBoard(id: string) {
+    editor
+      ?.chain()
+      .focus()
+      .command(({ tr, state }) => {
+        if (state.selection instanceof NodeSelection)
+          tr.setSelection(Selection.near(tr.doc.resolve(state.selection.to)));
+        return true;
+      })
+      .insertContent({ type: "whiteboardEmbed", attrs: { pageId: id } })
+      .run();
+    setBoardPicker(false);
+  }
   const linkedContext = useRef<LinkedEditorContext>(null!);
   linkedContext.current = {
     pageId,
@@ -225,6 +242,7 @@ export default function DocumentEditor({
         Media,
         LinkCard,
         linkedDatabaseNode(() => linkedContext.current),
+        whiteboardEmbedNode(),
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }),
         inlineCommentExtension(generation),
@@ -593,6 +611,15 @@ export default function DocumentEditor({
       run: () => setReferences(true),
     },
     {
+      name: "Whiteboard",
+      description: "Board anzeigen oder neu anlegen",
+      icon: PresentationChart,
+      run: () => {
+        setBoardSearch("");
+        setBoardPicker(true);
+      },
+    },
+    {
       name: "Verknüpfte Datenbank",
       description: "Bestehende Einträge mit eigener Ansicht",
       icon: TableIcon,
@@ -942,6 +969,63 @@ export default function DocumentEditor({
               </div>
             </button>
           ))}
+        </div>
+      </Modal>
+      <Modal
+        open={boardPicker}
+        title="Whiteboard einbetten"
+        onClose={() => setBoardPicker(false)}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor?.commands.focus();
+        }}
+      >
+        <input
+          aria-label="Whiteboard suchen"
+          autoFocus
+          value={boardSearch}
+          onChange={(event) => setBoardSearch(event.target.value)}
+          placeholder="Whiteboard suchen …"
+        />
+        <div className="linked-source-list">
+          <button
+            className="button primary"
+            onClick={async () => {
+              const host = pages.find((p) => p.id === pageId);
+              if (!host) return;
+              try {
+                const created = await api<{ id: string }>("/api/command", {
+                  action: "page.create",
+                  workspaceId: host.workspace_id,
+                  spaceId: host.space_id,
+                  ...(rowId ? {} : { parentId: host.id }),
+                  title: boardSearch.trim() || "Whiteboard",
+                  kind: "whiteboard",
+                });
+                insertBoard(created.id);
+              } catch (error) {
+                onError((error as Error).message);
+              }
+            }}
+          >
+            Neues Whiteboard anlegen
+          </button>
+          {pages
+            .filter(
+              (p) =>
+                p.kind === "whiteboard" &&
+                !p.deleted_at &&
+                p.title.toLowerCase().includes(boardSearch.toLowerCase()),
+            )
+            .map((board) => (
+              <button
+                className="button"
+                key={board.id}
+                onClick={() => insertBoard(board.id)}
+              >
+                {board.title}
+              </button>
+            ))}
         </div>
       </Modal>
       <Modal

@@ -9,14 +9,14 @@ export type SavedSearch = {
   id: string;
   name: string;
   query: string;
-  kind: "all" | "document" | "database" | "row" | "comment" | "file";
+  kind: "all" | "document" | "database" | "whiteboard" | "row" | "comment" | "file";
   spaceId: string | null;
 };
 const input = z.object({
   workspaceId: z.string().uuid(),
   name: z.string().trim().min(1).max(120),
   query: z.string().trim().min(1).max(500),
-  kind: z.enum(["all", "document", "database", "row", "comment", "file"]),
+  kind: z.enum(["all", "document", "database", "whiteboard", "row", "comment", "file"]),
   spaceId: z.string().uuid().nullish(),
 });
 

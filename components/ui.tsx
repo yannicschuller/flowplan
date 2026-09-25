@@ -13,6 +13,7 @@ import {
   Lightbulb,
   Notebook,
   Stack,
+  PresentationChart,
   CalendarBlank,
   Kanban,
   SquaresFour,
@@ -34,6 +35,7 @@ const icons = {
   idea: Lightbulb,
   notes: Notebook,
   stack: Stack,
+  whiteboard: PresentationChart,
 };
 export function PageIcon({
   name,

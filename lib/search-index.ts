@@ -177,7 +177,7 @@ export function processSearchIndex(limit = BATCH) {
 }
 
 export type SearchKind =
-  "all" | "document" | "database" | "row" | "comment" | "file";
+  "all" | "document" | "database" | "whiteboard" | "row" | "comment" | "file";
 export type SearchResult = {
   id: string;
   rowId?: string;
@@ -185,7 +185,7 @@ export type SearchResult = {
   pageTitle?: string;
   icon: string;
   space_id: string;
-  kind: "document" | "database" | "row" | "comment" | "file";
+  kind: "document" | "database" | "whiteboard" | "row" | "comment" | "file";
   snippet: string;
 };
 // Snippet markers; the client renders text between them highlighted.

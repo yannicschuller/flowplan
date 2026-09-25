@@ -1,3 +1,4 @@
+import { whiteboardSnapshotItems } from "./whiteboard";
 import { createHash } from "node:crypto";
 import { imageFileId } from "./page-appearance";
 import { all, one, run, id } from "./db";
@@ -149,6 +150,11 @@ export function publicFile(token: string, fileId: string) {
       .join("");
   // An old, unused upload is not published simply because its parent page is public.
   const referenced = new Set<string>();
+  // Images placed on a whiteboard.
+  const board = pages.find((p) => p.id === file.page_id);
+  if (board?.kind === "whiteboard")
+    for (const item of whiteboardSnapshotItems(board as Page))
+      if (item.src === `/api/files/${fileId}`) referenced.add(fileId);
   const coverId = imageFileId(
     pages.find((p) => p.id === file.page_id)?.cover || "",
   );
@@ -213,6 +219,9 @@ export function publishedHtml(
       delete attrs["data-linked-views"];
       delete attrs["data-linked-version"];
     }
+    // Boards outside the share are not named.
+    if (attrs["data-whiteboard"] && !pageIds.has(attrs["data-whiteboard"]))
+      hide(attrs, "data-whiteboard");
     for (const attr of ["src", "href"]) {
       const file = /^\/api\/files\/([\w-]+)$/.exec(attrs[attr] || "");
       if (file) {

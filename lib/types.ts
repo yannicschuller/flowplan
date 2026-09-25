@@ -1,4 +1,5 @@
 export type Role = "owner" | "editor" | "viewer";
+export type PageKind = "document" | "database" | "whiteboard";
 export type User = {
   id: string;
   name: string;
@@ -35,7 +36,7 @@ export type Page = {
   icon: string;
   cover: string;
   cover_position?: number;
-  kind: "document" | "database";
+  kind: PageKind;
   position: number;
   deleted_at: string | null;
   created_by: string;

@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
+import { WhiteboardEmbedView } from "./whiteboard/embed";
 import { mountDiagram } from "@/lib/mermaid-render";
 import { renderMath } from "@/lib/math-render";
 import { renderCode, languageLabel } from "@/lib/code-highlight";
@@ -107,7 +109,26 @@ export function ReadOnlyDocument({
         });
       });
     }
-    return () => diagrams.forEach((cancel) => cancel());
+    // Embedded whiteboards show their live preview.
+    const boards = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-whiteboard]"),
+    ).flatMap((el) => {
+      const id = el.getAttribute("data-whiteboard") || "";
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return [];
+      const board = createRoot(el);
+      board.render(
+        <WhiteboardEmbedView
+          pageId={id}
+          height={Number(el.getAttribute("data-whiteboard-height")) || 360}
+        />,
+      );
+      return [board];
+    });
+    return () => {
+      diagrams.forEach((cancel) => cancel());
+      // Unmount after React finishes this commit.
+      setTimeout(() => boards.forEach((board) => board.unmount()));
+    };
   }, [html]);
   return (
     <div

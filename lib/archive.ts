@@ -1,3 +1,4 @@
+import { whiteboardData, writeWhiteboard } from "./whiteboard";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import { visibleRows } from "./row-access";
 import { parseRecurrence } from "./recurrence";
@@ -187,7 +188,7 @@ export const archiveSchema = z.object({
         icon: pageIconSchema,
         cover: coverSchema,
         cover_position: z.number().finite().min(0).max(100).default(50),
-        kind: z.enum(["document", "database"]),
+        kind: z.enum(["document", "database", "whiteboard"]),
         position: z.number().finite(),
         deleted_at: str.nullable(),
         updated_at: str,
@@ -195,6 +196,12 @@ export const archiveSchema = z.object({
         full_width: z.number().int().min(0).max(1),
         font: z.enum(["sans", "serif", "mono"]),
         html: html.optional(),
+        // Whiteboards: the Yjs state, base64.
+        whiteboard: z
+          .string()
+          .max(20_000_000)
+          .regex(/^[A-Za-z0-9+/]*={0,2}$/)
+          .optional(),
         database: databaseSchema.optional(),
         form: z
           .object({
@@ -402,6 +409,9 @@ function snapshotFor(user: Identity, wid: string) {
               html:
                 one("SELECT html FROM documents WHERE page_id=?", p.id)?.html ||
                 "",
+              ...(p.kind === "whiteboard"
+                ? { whiteboard: whiteboardData(p).state }
+                : {}),
             }),
         snapshots: all(
           "SELECT html,title,created_at,appearance FROM snapshots WHERE page_id=? ORDER BY created_at",
@@ -753,7 +763,8 @@ function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
       throw new HttpError(400, "Bereich fehlt im Archiv.");
     if (
       (p.kind === "database") !== !!p.database ||
-      (p.kind === "document" && p.html === undefined)
+      (p.kind === "document" && p.html === undefined) ||
+      (p.kind === "whiteboard" && p.whiteboard === undefined)
     )
       throw new HttpError(400, "Seiteninhalt passt nicht zum Seitentyp.");
     const ancestors = new Set([p.id]);
@@ -1110,6 +1121,13 @@ async function importEntries(
               t.is_default,
               user.id,
             );
+        } else if (p.kind === "whiteboard") {
+          writeWhiteboard(
+            pid,
+            Buffer.from(p.whiteboard!, "base64"),
+            pageMap,
+            rewriteUrl,
+          );
         } else {
           const html = rewriteHtml(p.html!);
           run(
@@ -1133,7 +1151,8 @@ async function importEntries(
             c.created_at,
           );
         // Database snapshots use JSON payloads; remap their rows separately from current records.
-        for (const snap of p.snapshots) {
+        // Board versions hold only a text summary in archives.
+        for (const snap of p.kind === "whiteboard" ? [] : p.snapshots) {
           let html = snap.html,
             state: Uint8Array | null = null;
           if (p.kind === "document") {

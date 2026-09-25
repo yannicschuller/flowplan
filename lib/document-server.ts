@@ -33,6 +33,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-mermaid",
         "data-code-wrap",
         "data-linked-database",
+        "data-whiteboard",
+        "data-whiteboard-height",
         "data-linked-source",
         "data-linked-views",
         "data-linked-version",

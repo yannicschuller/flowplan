@@ -1,3 +1,8 @@
+import {
+  restoreWhiteboardSnapshot,
+  syncWhiteboard,
+  whiteboardData,
+} from "./whiteboard";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import {
@@ -306,6 +311,23 @@ export function pageData(user: Identity, pid: string) {
       form: formSettings(pid),
     };
   }
+  if (p.kind === "whiteboard")
+    return {
+      page: p,
+      images: pageImages(pid),
+      publication: publicationSettings(pid),
+      shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+      role,
+      comments,
+      snapshots,
+      present,
+      backlinks,
+      whiteboard: whiteboardData(p),
+      // Texts on the board, for search and previews.
+      html: String(
+        one("SELECT html FROM documents WHERE page_id=?", pid)?.html || "",
+      ),
+    };
   let doc = one<{ state: Uint8Array | null; html: string; generation: string }>(
     "SELECT * FROM documents WHERE page_id=?",
     pid,
@@ -697,7 +719,9 @@ export function command(
           : undefined;
         const kind =
           savedTemplate?.kind ||
-          z.enum(["document", "database"]).parse(b.kind || "document");
+          z
+            .enum(["document", "database", "whiteboard"])
+            .parse(b.kind || "document");
         const created = createPage(
           wid(),
           sid,
@@ -1053,7 +1077,10 @@ export function command(
         if (!s) throw new HttpError(404, "Version nicht gefunden.");
         const appearance = snapshotAppearance(p.id, s.appearance);
         if (appearance) applyAppearance(p.id, appearance);
-        if (p.kind === "document")
+        if (p.kind === "whiteboard") {
+          if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
+          restoreWhiteboardSnapshot(p, s.state);
+        } else if (p.kind === "document")
           run(
             "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",
             htmlState(s.html),
@@ -1447,6 +1474,9 @@ export function command(
         result = layout;
         break;
       }
+      case "whiteboard.sync":
+        result = syncWhiteboard(user, b);
+        break;
       case "row.access":
         result = setRowAccess(user, b);
         break;
@@ -1887,6 +1917,7 @@ export function command(
       ![
         "document.sync",
         "row.document.sync",
+        "whiteboard.sync",
         "notification.read",
         "favorite",
       ].includes(action)
