@@ -14,7 +14,23 @@ import type { Field, Row, View } from "./types";
 export const calendarSchema = z.object({
   mode: z.enum(["month", "week", "day"]),
   timeZone: z.string().max(100).refine(validZone, "Ungültige Zeitzone."),
+  // First column of weeks (default Monday) and whether Sat/Sun are shown.
+  weekStart: z.enum(["monday", "sunday"]).optional(),
+  showWeekends: z.boolean().optional(),
 });
+export const isWeekend = (date: string) =>
+  Temporal.PlainDate.from(date).dayOfWeek >= 6;
+// Weekday labels in display order.
+export function weekdayLabels(
+  config: Pick<CalendarConfig, "weekStart" | "showWeekends">,
+) {
+  const labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  const ordered =
+    config.weekStart === "sunday" ? ["So", ...labels.slice(0, 6)] : labels;
+  return config.showWeekends === false
+    ? ordered.filter((l) => l !== "Sa" && l !== "So")
+    : ordered;
+}
 export type CalendarConfig = z.infer<typeof calendarSchema>;
 export const calendarChangeSchema = z.discriminatedUnion("operation", [
   z.object({
@@ -166,10 +182,14 @@ export function calendarDays(
   anchor: string,
   mode: CalendarConfig["mode"],
   zone: string,
+  weekStart: CalendarConfig["weekStart"] = "monday",
 ) {
   let first = Temporal.PlainDate.from(anchor);
   if (mode === "month") first = first.with({ day: 1 });
-  if (mode !== "day") first = first.subtract({ days: first.dayOfWeek - 1 });
+  if (mode !== "day")
+    first = first.subtract({
+      days: weekStart === "sunday" ? first.dayOfWeek % 7 : first.dayOfWeek - 1,
+    });
   return Array.from(
     { length: mode === "month" ? 42 : mode === "week" ? 7 : 1 },
     (_, i) => {

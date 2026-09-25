@@ -1902,7 +1902,7 @@ tr:hover .row-open {
 }
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(95px, 1fr));
+  grid-template-columns: repeat(var(--calendar-weekdays, 7), minmax(95px, 1fr));
   border-left: 1px solid var(--border);
   border-top: 1px solid var(--border);
   min-width: 670px;
@@ -2877,7 +2877,7 @@ tr:hover .row-open {
 }
 .public-calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--calendar-weekdays, 7), minmax(0, 1fr));
   border-top: 1px solid var(--border);
   border-left: 1px solid var(--border);
 }

@@ -1,4 +1,6 @@
+import type { CSSProperties } from "react";
 import { Temporal } from "@/lib/date-values";
+import { weekdayLabels } from "@/lib/database-calendar";
 import { cellText } from "@/lib/database";
 import {
   chartAggregates,
@@ -148,23 +150,30 @@ export function PublicCalendar({
   recordLink: (row: Row) => string;
 }) {
   const first = Temporal.PlainDate.from(`${month}-01`);
-  // Weeks start on Monday.
-  const gridStart = first.subtract({ days: first.dayOfWeek - 1 });
+  const config = view.calendar || { mode: "month", timeZone: "UTC" };
+  const sunday = config.weekStart === "sunday",
+    weekends = config.showWeekends !== false;
+  const offset = (d: Temporal.PlainDate) =>
+    sunday ? d.dayOfWeek % 7 : d.dayOfWeek - 1;
+  const gridStart = first.subtract({ days: offset(first) });
   const lastDay = first.add({ months: 1 }).subtract({ days: 1 });
-  const gridEnd = lastDay.add({ days: 7 - lastDay.dayOfWeek });
+  const gridEnd = lastDay.add({ days: 6 - offset(lastDay) });
   const days: string[] = [];
   for (
     let d = gridStart;
     Temporal.PlainDate.compare(d, gridEnd) <= 0;
     d = d.add({ days: 1 })
   )
-    days.push(d.toString());
+    if (weekends || d.dayOfWeek < 6) days.push(d.toString());
   const entries = spans(records, fields, view, days[0], days[days.length - 1]);
   return (
     <section className="public-calendar" aria-label="Kalender">
       <MonthNav month={month} link={monthLink} />
-      <div className="public-calendar-grid">
-        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => (
+      <div
+        className="public-calendar-grid"
+        style={{ "--calendar-weekdays": weekends ? 7 : 5 } as CSSProperties}
+      >
+        {weekdayLabels(config).map((d) => (
           <div key={d} className="public-calendar-weekday">
             {d}
           </div>
