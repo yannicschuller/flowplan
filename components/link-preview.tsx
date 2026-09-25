@@ -17,6 +17,19 @@ type Card =
   | { kind: "page"; rect: DOMRect; preview: Preview | null; error?: string }
   | { kind: "person"; rect: DOMRect; name: string; email: string };
 
+export function openReference(href: string, event?: MouseEvent) {
+  if (!href) return;
+  const hash = href.indexOf("#page=");
+  if (hash >= 0 && !(event?.metaKey || event?.ctrlKey)) {
+    location.hash = href.slice(hash);
+    return;
+  }
+  if (href.startsWith("/") && !href.startsWith("//") && !event?.metaKey) {
+    location.assign(href);
+    return;
+  }
+  window.open(href, "_blank", "noopener,noreferrer");
+}
 // Hover cards for page links and person mentions in documents, comments and
 // database cells. Previews are fetched once per page and respect permissions.
 export function LinkPreview({
@@ -96,12 +109,35 @@ export function LinkPreview({
       )
         clear();
     };
+    // Links and mentions inside editable text do not react to clicks by
+    // themselves: page links open the page, other links a new tab, people
+    // show their card.
+    const click = (event: MouseEvent) => {
+      if (event.button !== 0 || event.defaultPrevented) return;
+      const target = (event.target as Element | null)?.closest?.(
+        "a[href], span[data-mention]",
+      );
+      if (!target || target.closest(".sidebar, .link-preview")) return;
+      if (target.matches("span[data-mention]")) {
+        if (timer.current) clearTimeout(timer.current);
+        current.current = null;
+        show(target);
+        return;
+      }
+      if (!target.closest('[contenteditable="true"]')) return;
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) return;
+      event.preventDefault();
+      openReference(target.getAttribute("href") || "", event);
+    };
+    document.addEventListener("click", click, true);
     document.addEventListener("mouseover", over);
     document.addEventListener("focusin", over);
     document.addEventListener("mouseout", out);
     document.addEventListener("focusout", out);
     window.addEventListener("scroll", clear, true);
     return () => {
+      document.removeEventListener("click", click, true);
       document.removeEventListener("mouseover", over);
       document.removeEventListener("focusin", over);
       document.removeEventListener("mouseout", out);
