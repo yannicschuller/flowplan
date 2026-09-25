@@ -1,4 +1,5 @@
 import { diagramSourceError } from "./mermaid-source";
+import { diagramToolbar } from "./diagram-tools";
 let sequence = 0;
 let queue = Promise.resolve();
 const cache = new Map<string, Promise<string>>();
@@ -62,6 +63,7 @@ export function mountDiagram(
   element: HTMLElement,
   source: string,
   onResult?: (error: string | null) => void,
+  tools = true,
 ) {
   let cancelled = false;
   element.dataset.diagramState = "loading";
@@ -84,7 +86,7 @@ export function mountDiagram(
         onResult?.(element.textContent);
       };
       image.src = url;
-      element.replaceChildren(image);
+      element.replaceChildren(image, ...(tools ? [diagramToolbar(url)] : []));
     },
     (error: unknown) => {
       if (cancelled) return;

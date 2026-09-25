@@ -31,6 +31,8 @@ export function mermaidNodeView(onEdit: (target: DiagramTarget) => void) {
         };
         const edit = (event: Event) => {
           if (!editor.isEditable) return;
+          if ((event.target as Element | null)?.closest?.(".diagram-tools"))
+            return;
           event.preventDefault();
           event.stopPropagation();
           onEdit({ source: current.attrs.source, getPos });
@@ -78,8 +80,11 @@ export function DiagramEditorDialog({
     let cancel = () => {};
     const timer = setTimeout(() => {
       if (preview.current)
-        cancel = mountDiagram(preview.current, source, (error) =>
-          setValidated(error ? null : source),
+        cancel = mountDiagram(
+          preview.current,
+          source,
+          (error) => setValidated(error ? null : source),
+          false,
         );
     }, 250);
     return () => {

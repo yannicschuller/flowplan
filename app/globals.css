@@ -5894,6 +5894,90 @@ tr.order-drop-after > td {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.mermaid-block {
+  position: relative;
+}
+.diagram-tools {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.mermaid-block:hover .diagram-tools,
+.mermaid-block:focus-within .diagram-tools {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .diagram-tools {
+    opacity: 1;
+  }
+}
+.diagram-tool {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.diagram-tool:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+.diagram-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.diagram-viewer {
+  width: min(96vw, 1200px);
+  height: min(90vh, 900px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  background: var(--bg);
+  color: var(--text);
+}
+.diagram-viewer[open] {
+  display: flex;
+  flex-direction: column;
+}
+.diagram-viewer::backdrop {
+  background: #0006;
+}
+.diagram-viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.diagram-viewer-bar output {
+  min-width: 48px;
+  text-align: center;
+  font-size: 13px;
+}
+.diagram-viewer-bar .diagram-tool:last-child {
+  margin-left: auto;
+}
+.diagram-viewer-stage {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  background: #fff;
+}
+.diagram-viewer-stage img {
+  display: block;
+  max-width: none;
+  height: auto;
+  margin: 0 auto;
+}
 .mermaid-block[role="button"] {
   cursor: pointer;
 }

@@ -115,6 +115,13 @@ test("Mermaid diagrams validate, render several types, edit, undo, persist and r
   await expect
     .poll(async () => (await f.read()).html)
     .toContain("Gemeinsam planen");
+  await block.hover();
+  await block.getByRole("button", { name: "Diagramm vergrößern" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Diagramm vergrößert" }),
+  ).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await f.command({
     action: "page.update",
     pageId: f.host.id,
@@ -124,6 +131,34 @@ test("Mermaid diagrams validate, render several types, edit, undo, persist and r
   await expect(block).toHaveAttribute("role", "figure");
   await block.click();
   await expect(dialog).toHaveCount(0);
+  // Zoom and export work for readers as well.
+  await expect(block).toHaveAttribute("data-diagram-state", "ready");
+  const tools = block.getByRole("toolbar", { name: "Diagramm" });
+  const svgDownload = page.waitForEvent("download");
+  await tools.getByRole("button", { name: "Als SVG herunterladen" }).click();
+  expect((await svgDownload).suggestedFilename()).toBe("diagramm.svg");
+  const pngDownload = page.waitForEvent("download");
+  await tools.getByRole("button", { name: "Als PNG herunterladen" }).click();
+  const png = await pngDownload;
+  expect(png.suggestedFilename()).toBe("diagramm.png");
+  const { readFileSync } = await import("node:fs");
+  expect(
+    readFileSync((await png.path())!)
+      .subarray(1, 4)
+      .toString(),
+  ).toBe("PNG");
+  await tools.getByRole("button", { name: "Diagramm vergrößern" }).click();
+  const viewer = page.getByRole("dialog", { name: "Diagramm vergrößert" });
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator("output")).toHaveText("100 %");
+  const width = () =>
+    viewer.locator("img").evaluate((img: HTMLImageElement) => img.offsetWidth);
+  const before = await width();
+  await viewer.getByRole("button", { name: "Vergrößern" }).click();
+  await expect(viewer.locator("output")).toHaveText("150 %");
+  expect(await width()).toBeGreaterThan(before);
+  await viewer.getByRole("button", { name: "Schließen" }).click();
+  await expect(viewer).toHaveCount(0);
   expect(errors).toEqual([]);
   await page.goto("/#home");
   await f.command({ action: "page.delete", pageId: f.host.id });
