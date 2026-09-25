@@ -1,3 +1,4 @@
+import { mediaLibrary } from "@/lib/media-library";
 import { linkedDatabaseData } from "@/lib/linked-databases";
 import { editorPresence } from "@/lib/editor-presence";
 import { inlineThreads, inlineMentionCandidates } from "@/lib/inline-comments";
@@ -202,6 +203,20 @@ export async function GET(
           spaceId: url.searchParams.get("space")
             ? z.uuid().parse(url.searchParams.get("space"))
             : undefined,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "media") {
+      const wid = url.searchParams.get("workspace") || "";
+      return NextResponse.json(
+        mediaLibrary(user, wid, {
+          kind: z
+            .enum(["all", "image", "video", "audio", "pdf", "other"])
+            .catch("all")
+            .parse(url.searchParams.get("kind") || "all"),
+          query: url.searchParams.get("q") || "",
+          offset: Number(url.searchParams.get("offset") || 0) || 0,
         }),
         { headers: { "Cache-Control": "no-store" } },
       );

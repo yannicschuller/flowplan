@@ -18,11 +18,13 @@ import { IconImagePicker } from "./icon-image-picker";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
 import { edgeScroller } from "./edge-scroll";
+import { MediaLibrary } from "./media-library";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
+  Images,
   BookmarkSimple,
   Stack,
   CaretDown,
@@ -106,7 +108,8 @@ type PageData = DatabaseData & {
   }[];
   present: { id: string; name: string }[];
 };
-type Screen = "home" | "page" | "trash" | "inbox" | "settings" | "admin";
+type Screen =
+  "home" | "page" | "trash" | "inbox" | "media" | "settings" | "admin";
 export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
   const [clock, setClock] = useState<number | null>(null);
   useEffect(() => {
@@ -370,7 +373,9 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
         if (currentId.current !== target.pageId || screenRef.current !== "page")
           void openPage(target.pageId, target);
       } else if (
-        ["home", "inbox", "trash", "settings", "admin"].includes(fragment)
+        ["home", "inbox", "trash", "media", "settings", "admin"].includes(
+          fragment,
+        )
       ) {
         setScreen(fragment as Screen);
         screenRef.current = fragment as Screen;
@@ -967,6 +972,13 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
             Vorlagen
           </button>
           <button
+            className={screen === "media" ? "selected" : ""}
+            onClick={() => go("media")}
+          >
+            <Images size={18} />
+            Medien
+          </button>
+          <button
             className={screen === "trash" ? "selected" : ""}
             onClick={() => go("trash")}
           >
@@ -1060,6 +1072,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                     home: "Startseite",
                     trash: "Papierkorb",
                     inbox: "Posteingang",
+                    media: "Medien",
                     settings: "Einstellungen",
                     admin: "Administration",
                     page: "Seite",
@@ -1691,6 +1704,12 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                   </div>
                 )}
             </div>
+          )}
+          {screen === "media" && (
+            <MediaLibrary
+              workspaceId={boot.workspace.id}
+              onOpen={(id) => void openPage(id)}
+            />
           )}
           {screen === "inbox" && (
             <div className="utility-content">
