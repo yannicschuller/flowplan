@@ -36,6 +36,7 @@ import { remapLinkedAttributes } from "./linked-view-references";
 import { transformFilterGroup } from "./database-filters";
 import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
+import { detachOccurrence } from "./recurrence-detach";
 import {
   deleteSavedSearch,
   saveSearch,
@@ -1388,6 +1389,9 @@ export function command(
         break;
       case "row.recurrence":
         result = setRowRecurrence(user, b);
+        break;
+      case "row.detachOccurrence":
+        result = detachOccurrence(user, b);
         break;
       case "reminder.set":
         result = setDateReminder(user, b);

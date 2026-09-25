@@ -16,7 +16,7 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
 );
 const { one, run, id } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
-const { command, bootstrap, rows } = await import("../lib/api");
+const { command, bootstrap, rows, database } = await import("../lib/api");
 const { exportArchive, importArchive } = await import("../lib/archive");
 
 test("occurrences follow the rule, skip ahead, clamp month ends and stop at limits", () => {
@@ -262,4 +262,106 @@ test("skipped occurrences disappear and repeating reminders fire once per occurr
   assert.equal(processDateReminders(start + 2 * 86400000 + 60000), 0);
   assert.equal(processDateReminders(start + 3 * 86400000 + 60000), 1);
   assert.equal(count(), 3);
+});
+
+test("a single occurrence can be detached into its own record", () => {
+  const owner = account("rec-detach"),
+    viewer = account("rec-detach-viewer");
+  const wid = createWorkspace(owner.id, "Einzeltermin");
+  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const page = (
+    command(owner, {
+      action: "page.create",
+      workspaceId: wid,
+      spaceId: bootstrap(owner, wid).spaces[0].id,
+      title: "Serie",
+      kind: "database",
+    }) as { id: string }
+  ).id;
+  command(owner, {
+    action: "database.update",
+    pageId: page,
+    version: database(page).version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "start", name: "Beginn", type: "date" },
+      { id: "end", name: "Ende", type: "date" },
+    ],
+    views: database(page).views,
+  });
+  const row = (
+    command(owner, {
+      action: "row.create",
+      pageId: page,
+      cells: {
+        title: "Team-Termin",
+        start: "2026-03-02T09:00",
+        end: "2026-03-02T10:00",
+      },
+    }) as { id: string }
+  ).id;
+  const version = () =>
+    one<{ version: number }>("SELECT version FROM rows WHERE id=?", row)!
+      .version;
+  command(owner, {
+    action: "row.recurrence",
+    pageId: page,
+    rowId: row,
+    version: version(),
+    recurrence: { freq: "weekly", interval: 1 },
+  });
+  run(
+    "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET html=excluded.html",
+    row,
+    new Uint8Array(),
+    "<p>Agenda</p>",
+    id(),
+  );
+  const detach = (date: string, as = owner, v = version()) =>
+    command(as, {
+      action: "row.detachOccurrence",
+      pageId: page,
+      rowId: row,
+      version: v,
+      date,
+      startField: "start",
+      endField: "end",
+    }) as { id: string };
+  assert.throws(() => detach("2026-03-16", viewer), /Berechtigung/);
+  assert.throws(() => detach("2026-03-16", owner, version() + 1), /geändert/);
+  // Not an occurrence: wrong weekday, or the first (stored) date.
+  assert.throws(() => detach("2026-03-17"), /gibt es/);
+  assert.throws(() => detach("2026-03-02"), /gibt es/);
+  const single = detach("2026-03-16").id;
+  const created = rows(page).find((r) => r.id === single)!;
+  assert.deepEqual(
+    [created.cells.title, created.cells.start, created.cells.end],
+    ["Team-Termin", "2026-03-16T09:00", "2026-03-16T10:00"],
+  );
+  assert.equal(created.recurrence, "");
+  assert.match(
+    one<{ html: string }>(
+      "SELECT html FROM row_documents WHERE row_id=?",
+      single,
+    )!.html,
+    /Agenda/,
+  );
+  // The series skips that date and cannot detach it twice.
+  assert.deepEqual(
+    parseRecurrence(rows(page).find((r) => r.id === row)!.recurrence)?.exclude,
+    ["2026-03-16"],
+  );
+  assert.throws(() => detach("2026-03-16"), /gibt es/);
+  // Editing the detached record leaves the series unchanged.
+  command(owner, {
+    action: "row.update",
+    pageId: page,
+    rowId: single,
+    version: created.version,
+    cells: { start: "2026-03-17T14:00", end: "2026-03-17T15:00" },
+  });
+  assert.equal(
+    rows(page).find((r) => r.id === row)!.cells.start,
+    "2026-03-02T09:00",
+  );
 });

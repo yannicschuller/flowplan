@@ -2928,6 +2928,19 @@ tr:hover .row-open {
   gap: 8px;
   margin-top: 12px;
 }
+.occurrence-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

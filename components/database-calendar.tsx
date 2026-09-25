@@ -79,7 +79,7 @@ export default function DatabaseCalendar({
   pageId: string;
   editable: boolean;
   viewEditable: boolean;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, occurrence?: string) => void;
   onCreate: (cells: Record<string, unknown>) => Promise<unknown>;
   onSchedule: (input: Record<string, unknown>) => Promise<unknown>;
   onView: (patch: Partial<View>) => Promise<unknown>;
@@ -153,7 +153,10 @@ export default function DatabaseCalendar({
     });
   }, [baseRows, start, end, days]);
   const occurrence = (id: string) => id.includes(OCCURRENCE_SEPARATOR);
-  const openRow = (id: string) => onOpen(id.split(OCCURRENCE_SEPARATOR)[0]);
+  const openRow = (id: string) => {
+    const [rowId, date] = id.split(OCCURRENCE_SEPARATOR);
+    onOpen(rowId, date);
+  };
   const ranges = useMemo(
     () =>
       new Map(

@@ -1,5 +1,6 @@
 "use client";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
+import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
 import DatabaseCalendar from "./database-calendar";
 import FormulaEditor from "./formula-editor";
@@ -235,8 +236,14 @@ export default function DatabaseView({
     }),
     [viewName, setViewName] = useState(""),
     [viewType, setViewType] = useState<View["type"]>("table"),
-    [comment, setComment] = useState("");
-  function setRowId(id: string | null) {
+    [comment, setComment] = useState(""),
+    // Occurrence of a repeating record opened from the calendar.
+    [occurrence, setOccurrence] = useState<{
+      rowId: string;
+      date: string;
+    } | null>(null);
+  function setRowId(id: string | null, occurrence?: string) {
+    setOccurrence(id && occurrence ? { rowId: id, date: occurrence } : null);
     setLocalRowId(id);
     if (routeNavigation)
       location.hash = pageLocationHash({
@@ -2323,7 +2330,7 @@ export default function DatabaseView({
           version={data.database.version}
           editable={editable}
           viewEditable={viewEditable}
-          onOpen={setRowId}
+          onOpen={(id, date) => setRowId(id, date)}
           onCreate={createRow}
           onView={updateView}
           onSchedule={(input) => mutate({ pageId: page.id, ...input })}
@@ -3826,6 +3833,48 @@ export default function DatabaseView({
       >
         {selected && (
           <div className="row-detail">
+            {occurrence?.rowId === selected.id &&
+              parseRecurrence(selected.recurrence) && (
+                <div className="occurrence-banner" role="status">
+                  <span>
+                    Termin am{" "}
+                    {new Date(`${occurrence.date}T00:00:00`).toLocaleDateString(
+                      "de-DE",
+                      {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      },
+                    )}{" "}
+                    aus einer Serie. Änderungen hier gelten für alle Termine.
+                  </span>
+                  {editable && (
+                    <button
+                      className="button compact"
+                      onClick={async () => {
+                        const { start, end } = scheduleFields(fields, view);
+                        const series = start
+                          ? start
+                          : fields.find((f) => f.type === "date");
+                        if (!series) return;
+                        const result = await act({
+                          action: "row.detachOccurrence",
+                          rowId: selected.id,
+                          version: selected.version,
+                          date: occurrence.date,
+                          startField: series.id,
+                          ...(start && end ? { endField: end.id } : {}),
+                        });
+                        const created = (result as { id?: string } | null)?.id;
+                        if (created) setRowId(created);
+                      }}
+                    >
+                      Nur diesen Termin bearbeiten
+                    </button>
+                  )}
+                </div>
+              )}
             {selected.cover && (
               <div
                 className="row-cover"

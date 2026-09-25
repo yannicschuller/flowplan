@@ -174,6 +174,37 @@ test("weekly repeating entries show occurrences that open the original record", 
   await expect(
     page.locator(`.calendar-day[data-day="${month}-24"] .calendar-event`),
   ).toHaveCount(1);
+  // "Only this occurrence" turns it into an own record.
+  await page
+    .locator(
+      `.calendar-day[data-day="${month}-24"] .calendar-chip.occurrence .calendar-event`,
+    )
+    .click();
+  await expect(entry.locator(".occurrence-banner")).toContainText(
+    "aus einer Serie",
+  );
+  await entry
+    .getByRole("button", { name: "Nur diesen Termin bearbeiten", exact: true })
+    .click();
+  await expect.poll(async () => (await read()).rows.length).toBe(2);
+  const detached = (await read()).rows.find(
+    (r: { id: string }) => r.id !== row.id,
+  );
+  expect(detached.cells.date).toBe(`${month}-24`);
+  expect(detached.recurrence).toBe("");
+  await expect(page).toHaveURL(new RegExp(`row=${detached.id}`));
+  await expect(entry.locator(".occurrence-banner")).toHaveCount(0);
+  await entry.getByRole("button", { name: "Schließen", exact: true }).click();
+  await expect(
+    page.locator(
+      `.calendar-day[data-day="${month}-24"] .calendar-chip:not(.occurrence) .calendar-event`,
+    ),
+  ).toHaveCount(1);
+  await expect(
+    page.locator(
+      `.calendar-day[data-day="${month}-24"] .calendar-chip.occurrence`,
+    ),
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });
