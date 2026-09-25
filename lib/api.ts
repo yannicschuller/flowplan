@@ -1402,10 +1402,33 @@ export function command(
         break;
       case "notification.read":
         run(
-          "UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=?",
+          "UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=? AND read_at IS NULL",
           user.id,
         );
         break;
+      // Single notifications: mark read/unread or remove; only your own.
+      case "notification.mark":
+      case "notification.delete": {
+        const nid = z.string().min(1).max(100).parse(b.notificationId);
+        const changed =
+          action === "notification.delete"
+            ? run(
+                "DELETE FROM notifications WHERE id=? AND user_id=?",
+                nid,
+                user.id,
+              ).changes
+            : run(
+                "UPDATE notifications SET read_at=? WHERE id=? AND user_id=?",
+                z.boolean().parse(b.read)
+                  ? new Date().toISOString().replace("T", " ").slice(0, 19)
+                  : null,
+                nid,
+                user.id,
+              ).changes;
+        if (!changed)
+          throw new HttpError(404, "Benachrichtigung nicht gefunden.");
+        break;
+      }
       case "share.create":
       case "share.revoke":
         result = manageShareLink(user, b);

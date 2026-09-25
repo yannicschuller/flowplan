@@ -198,6 +198,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
     label: string;
   } | null>(null);
   const [searchSpace, setSearchSpace] = useState("");
+  const [inboxFilter, setInboxFilter] = useState<"all" | "unread">("all");
   const [searchName, setSearchName] = useState<string | null>(null);
   useEffect(() => {
     if (!search) return;
@@ -361,7 +362,6 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
     screenRef.current = s;
     setMobile(false);
     location.hash = s;
-    if (s === "inbox") void act({ action: "notification.read" });
   }
   useEffect(() => {
     const saved = localStorage.getItem("flowplan-theme") === "dark";
@@ -1737,25 +1737,102 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                 <h1>Posteingang</h1>
                 <p>Neuigkeiten aus deinem Arbeitsbereich.</p>
               </div>
-              {boot.notifications.map((n) => (
+              <div className="inbox-toolbar">
+                <div role="radiogroup" aria-label="Benachrichtigungen filtern">
+                  {(
+                    [
+                      ["all", "Alle"],
+                      ["unread", "Ungelesen"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      role="radio"
+                      aria-checked={inboxFilter === id}
+                      className={`chip${inboxFilter === id ? " active" : ""}`}
+                      onClick={() => setInboxFilter(id)}
+                    >
+                      {label}
+                      {id === "unread" &&
+                        ` (${boot.notifications.filter((n) => !n.read_at).length})`}
+                    </button>
+                  ))}
+                </div>
                 <button
-                  className="notification-row"
-                  key={n.id}
-                  onClick={() => {
-                    const target = parsePageLocation(
-                      notificationUrl(n).slice(1),
-                    );
-                    if (target) void openPage(target.pageId, target);
-                  }}
+                  className="button compact"
+                  disabled={!boot.notifications.some((n) => !n.read_at)}
+                  onClick={() => void act({ action: "notification.read" })}
                 >
-                  <ChatCircle size={22} />
-                  <span>
-                    {n.body}
-                    <small>{relativeTime(n.created_at, clock)}</small>
-                  </span>
-                  <ArrowUpRight />
+                  Alle als gelesen markieren
                 </button>
-              ))}
+              </div>
+              {boot.notifications
+                .filter((n) => inboxFilter === "all" || !n.read_at)
+                .map((n) => (
+                  <div
+                    className={`notification-item${n.read_at ? "" : " unread"}`}
+                    key={n.id}
+                  >
+                    <button
+                      className="notification-row"
+                      onClick={() => {
+                        if (!n.read_at)
+                          void act({
+                            action: "notification.mark",
+                            notificationId: n.id,
+                            read: true,
+                          });
+                        const target = parsePageLocation(
+                          notificationUrl(n).slice(1),
+                        );
+                        if (target) void openPage(target.pageId, target);
+                      }}
+                    >
+                      <ChatCircle size={22} />
+                      <span>
+                        {!n.read_at && (
+                          <span className="unread-dot" aria-label="Ungelesen" />
+                        )}
+                        {n.body}
+                        <small>{relativeTime(n.created_at, clock)}</small>
+                      </span>
+                      <ArrowUpRight />
+                    </button>
+                    <div className="notification-actions">
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          void act({
+                            action: "notification.mark",
+                            notificationId: n.id,
+                            read: !n.read_at,
+                          })
+                        }
+                      >
+                        {n.read_at
+                          ? "Als ungelesen markieren"
+                          : "Als gelesen markieren"}
+                      </button>
+                      <button
+                        className="text-button"
+                        aria-label={`Benachrichtigung entfernen: ${n.body}`}
+                        onClick={() =>
+                          void act({
+                            action: "notification.delete",
+                            notificationId: n.id,
+                          })
+                        }
+                      >
+                        Entfernen
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              {inboxFilter === "unread" &&
+                !!boot.notifications.length &&
+                !boot.notifications.some((n) => !n.read_at) && (
+                  <p className="muted">Keine ungelesenen Benachrichtigungen.</p>
+                )}
               {!boot.notifications.length && (
                 <div className="empty-state">
                   <Bell size={38} />

@@ -3315,6 +3315,57 @@ tr:hover .row-open {
     opacity: 1;
   }
 }
+.inbox-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.inbox-toolbar [role="radiogroup"] {
+  display: flex;
+  gap: 6px;
+}
+.inbox-toolbar .chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.inbox-toolbar .chip.active {
+  background: var(--blue-light);
+  color: var(--blue);
+  border-color: transparent;
+}
+.notification-item {
+  border-bottom: 1px solid var(--border);
+}
+.notification-item .notification-row {
+  border-bottom: 0;
+}
+.notification-item.unread .notification-row span {
+  font-weight: 600;
+}
+.notification-item .notification-row small {
+  font-weight: 400;
+}
+.notification-actions {
+  display: flex;
+  gap: 12px;
+  padding: 0 12px 8px 46px;
+  font-size: 12px;
+}
+.unread-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--blue);
+  vertical-align: middle;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;
