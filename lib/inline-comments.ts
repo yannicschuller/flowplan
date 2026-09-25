@@ -241,7 +241,7 @@ function notify(
       pageRole({ ...user, id: uid }, page)
     )
       run(
-        "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",
         id(),
         uid,
         mentions.includes(uid)
@@ -250,6 +250,7 @@ function notify(
         page.id,
         target?.row_id || null,
         threadId,
+        mentions.includes(uid) ? "mention" : "comment",
       );
 }
 export function inlineCommentCommand(

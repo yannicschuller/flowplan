@@ -121,7 +121,7 @@ export function syncRowDocument(
         try {
           requirePage({ ...user, id: uid }, pageId);
           run(
-            "INSERT INTO notifications(id,user_id,body,page_id,row_id) VALUES(?,?,?,?,?)",
+            "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
             id(),
             uid,
             `${user.name} hat dich in einem Eintrag von „${page.title}“ erwähnt`,

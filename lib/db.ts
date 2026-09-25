@@ -260,9 +260,24 @@ function migrate(d: DatabaseSync) {
   const notificationColumns = d
     .prepare("PRAGMA table_info(notifications)")
     .all() as { name: string }[];
-  for (const column of ["row_id", "thread_id"])
+  for (const column of ["row_id", "thread_id", "kind"])
     if (!notificationColumns.some((c) => c.name === column))
       d.exec(`ALTER TABLE notifications ADD COLUMN ${column} TEXT`);
+  // Per person and kind: whether notifications reach the inbox and push.
+  d.exec(`CREATE TABLE IF NOT EXISTS notification_prefs(
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    inbox INTEGER NOT NULL DEFAULT 1,
+    push INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY(user_id,kind));
+    CREATE TRIGGER IF NOT EXISTS notification_inbox_pref BEFORE INSERT ON notifications
+    WHEN EXISTS(SELECT 1 FROM notification_prefs p WHERE p.user_id=NEW.user_id AND p.kind=NEW.kind AND p.inbox=0)
+    BEGIN SELECT RAISE(IGNORE); END;
+    DROP TRIGGER IF EXISTS queue_notification_push;
+    CREATE TRIGGER queue_notification_push AFTER INSERT ON notifications BEGIN
+      INSERT INTO push_deliveries(notification_id,subscription_id) SELECT NEW.id,s.id FROM push_subscriptions s JOIN sessions se ON se.token=s.session_token WHERE s.user_id=NEW.user_id AND se.expires>unixepoch()*1000
+      AND NOT EXISTS(SELECT 1 FROM notification_prefs p WHERE p.user_id=NEW.user_id AND p.kind=NEW.kind AND p.push=0);
+    END;`);
   const flowColumns = d.prepare("PRAGMA table_info(oidc_flows)").all() as {
     name: string;
   }[];

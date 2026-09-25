@@ -37,6 +37,7 @@ import { transformFilterGroup } from "./database-filters";
 import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
+import { notificationPrefs, setNotificationPref } from "./notification-prefs";
 import { templateCategoryIds } from "./template-categories";
 import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
 import {
@@ -168,6 +169,7 @@ export function bootstrap(user: Identity, wid?: string) {
       user.id,
     ).map((f) => f.page_id),
     savedSearches: savedSearches(user, workspace.id),
+    notificationPrefs: notificationPrefs(user),
     // Favourite records of readable databases in this workspace.
     favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(
       `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
@@ -932,7 +934,7 @@ export function command(
               pageRole({ ...user, id: uid }, p)
             )
               run(
-                "INSERT INTO notifications(id,user_id,body,page_id) VALUES(?,?,?,?)",
+                "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'mention')",
                 id(),
                 uid,
                 `${user.name} hat dich in „${p.title}“ erwähnt`,
@@ -1363,7 +1365,7 @@ export function command(
           const other = { ...user, id: m.user_id };
           if (pageRole(other, p))
             run(
-              "INSERT INTO notifications(id,user_id,body,page_id,row_id) VALUES(?,?,?,?,?)",
+              "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'comment')",
               id(),
               m.user_id,
               `${user.name} kommentiert „${p.title}“`,
@@ -1399,6 +1401,9 @@ export function command(
         break;
       case "reminder.set":
         result = setDateReminder(user, b);
+        break;
+      case "notification.prefs":
+        result = setNotificationPref(user, b);
         break;
       case "notification.read":
         run(

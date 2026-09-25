@@ -176,6 +176,7 @@ export type Bootstrap = {
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
   savedSearches?: import("./saved-searches").SavedSearch[];
+  notificationPrefs?: import("./notification-kinds").NotificationPrefs;
   members: (User & { role: Role; guest?: number })[];
   notifications: {
     row_id: string | null;

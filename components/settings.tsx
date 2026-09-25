@@ -2,6 +2,7 @@
 import { SpaceIcon } from "./space-appearance";
 import PushSettings from "./push-settings";
 import { OfflineSettings } from "./offline-settings";
+import { NotificationSettings } from "./notification-settings";
 import { WorkspaceLifecycle } from "./workspace-lifecycle";
 import { SpaceManager } from "./space-manager";
 import { useEffect, useState } from "react";
@@ -103,7 +104,27 @@ export default function Settings({
           </button>
         ))}
       </div>
-      {tab === "notifications" && <PushSettings />}
+      {tab === "notifications" && (
+        <>
+          {boot.notificationPrefs && (
+            <NotificationSettings
+              prefs={boot.notificationPrefs}
+              onChange={async (kind, value) => {
+                try {
+                  await mutate({
+                    action: "notification.prefs",
+                    kind,
+                    ...value,
+                  });
+                } catch (e) {
+                  onError((e as Error).message);
+                }
+              }}
+            />
+          )}
+          <PushSettings />
+        </>
+      )}
       {tab === "spaces" && (
         <section className="settings-section">
           <h2>Bereiche verwalten</h2>

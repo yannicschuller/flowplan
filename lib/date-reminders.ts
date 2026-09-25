@@ -262,7 +262,7 @@ export function processDateReminders(now = Date.now()) {
       )
         return;
       run(
-        "INSERT INTO notifications(id,user_id,body,page_id,row_id) VALUES(?,?,?,?,?)",
+        "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
         id(),
         reminder.user_id,
         `Erinnerung: „${title}“ – ${field.name}: ${formatDateValue(occurrence, reminder.time_zone)}`,

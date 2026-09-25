@@ -78,3 +78,74 @@ test("single notifications are marked, unmarked and removed by their owner only"
   assert.deepEqual(state(me), { A: true });
   assert.deepEqual(state(other), { Fremd: false });
 });
+
+test("notification kinds can be switched off for the inbox or for push", () => {
+  const person = account("notify-prefs");
+  const token = id();
+  run(
+    "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",
+    token,
+    person.id,
+    "[]",
+    Date.now() + 600000,
+  );
+  run(
+    "INSERT INTO push_subscriptions(id,user_id,session_token,endpoint,p256dh,auth) VALUES(?,?,?,?,?,?)",
+    id(),
+    person.id,
+    token,
+    `https://push.example.test/${id()}`,
+    "key",
+    "auth",
+  );
+  const add = (kind: string, body: string) =>
+    run(
+      "INSERT INTO notifications(id,user_id,body,kind) VALUES(?,?,?,?)",
+      id(),
+      person.id,
+      body,
+      kind,
+    );
+  const pushed = () =>
+    all<{ body: string }>(
+      "SELECT n.body FROM push_deliveries d JOIN notifications n ON n.id=d.notification_id WHERE n.user_id=?",
+      person.id,
+    ).map((n) => n.body);
+  command(person, {
+    action: "notification.prefs",
+    kind: "mention",
+    inbox: false,
+    push: true,
+  });
+  command(person, {
+    action: "notification.prefs",
+    kind: "comment",
+    inbox: true,
+    push: false,
+  });
+  add("mention", "Erwähnung");
+  add("comment", "Kommentar");
+  add("reminder", "Erinnerung");
+  assert.deepEqual(Object.keys(state(person)).sort(), [
+    "Erinnerung",
+    "Kommentar",
+  ]);
+  assert.deepEqual(pushed(), ["Erinnerung"]);
+  // Push without inbox is not possible; defaults stay on.
+  const prefs = command(person, {
+    action: "notification.prefs",
+    kind: "reminder",
+    inbox: false,
+    push: true,
+  }) as Record<string, { inbox: boolean; push: boolean }>;
+  assert.deepEqual(prefs.reminder, { inbox: false, push: false });
+  assert.deepEqual(prefs.guest, { inbox: true, push: true });
+  assert.throws(() =>
+    command(person, {
+      action: "notification.prefs",
+      kind: "spam",
+      inbox: true,
+      push: true,
+    }),
+  );
+});

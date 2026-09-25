@@ -266,7 +266,7 @@ export function mutateSharedContent(token: string, input: unknown) {
         s.page.id,
       );
       run(
-        "INSERT INTO notifications(id,user_id,body,page_id) VALUES(?,?,?,?)",
+        "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'guest')",
         id(),
         s.page.created_by,
         `Neuer Gasteintrag in „${s.page.title}“`,
@@ -287,7 +287,7 @@ export function mutateSharedContent(token: string, input: unknown) {
         body,
       );
       run(
-        "INSERT INTO notifications(id,user_id,body,page_id) VALUES(?,?,?,?)",
+        "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'guest')",
         id(),
         s.page.created_by,
         `Neuer Gastkommentar auf „${s.page.title}“`,
