@@ -268,7 +268,8 @@ export default function DatabaseView({
       dragging: boolean;
       target?: { id?: string; groupKey: string; placement: "before" | "after" };
     } | null>(null),
-    suppressClick = useRef(false),
+    // Handle of the row whose finished drag may still send a click.
+    suppressClick = useRef<string | null>(null),
     cardHoverRef = useRef((_x: number, _y: number) => {}),
     [cardScroll] = useState(() =>
       edgeScroller((x, y) => cardHoverRef.current(x, y), "x"),
@@ -868,6 +869,8 @@ export default function DatabaseView({
   function touchCardHandlers(row: Row, groupKey: string) {
     return {
       onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+        // A new gesture starts; the last drag sends no click any more.
+        suppressClick.current = null;
         if (e.pointerType === "mouse" || orderBusy) return;
         cardDrag.current = {
           row,
@@ -898,9 +901,13 @@ export default function DatabaseView({
         cardDrag.current = null;
         cardScroll.stop();
         if (drag?.pointer !== e.pointerId || !drag.dragging) return;
-        // Some browsers send a click after the drag; later taps count again.
-        suppressClick.current = true;
-        setTimeout(() => (suppressClick.current = false), 400);
+        // Some browsers send a click to the dragged handle; taps on other
+        // handles and later taps count again.
+        suppressClick.current = drag.row.id;
+        setTimeout(() => {
+          if (suppressClick.current === drag.row.id)
+            suppressClick.current = null;
+        }, 400);
         setDropHint(null);
         const target = drag.target;
         if (!target) return;
@@ -952,8 +959,8 @@ export default function DatabaseView({
         onClick={(e) => {
           e.stopPropagation();
           // A finished touch drag is not a tap.
-          if (suppressClick.current) {
-            suppressClick.current = false;
+          if (suppressClick.current === row.id) {
+            suppressClick.current = null;
             return;
           }
           openMove(row, groupKey);
