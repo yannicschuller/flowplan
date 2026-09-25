@@ -9,7 +9,7 @@ type Template = {
   id: string;
   name: string;
   kind: string;
-  visibility: "private" | "workspace" | "instance";
+  visibility: "private" | "workspace" | "instance" | "public";
   category: TemplateCategory;
   version: number;
   deleted_at: string | null;
@@ -20,6 +20,7 @@ const visibilityLabels = {
   private: "Nur für mich",
   workspace: "Arbeitsbereich",
   instance: "Alle Arbeitsbereiche",
+  public: "Öffentliche Galerie",
 };
 export default function SavedTemplates({
   workspaceId,
@@ -105,6 +106,11 @@ export default function SavedTemplates({
   return (
     <section className="saved-templates">
       <h3>Deine Vorlagen</h3>
+      <p className="muted">
+        <a href="/templates" target="_blank" rel="noopener">
+          Öffentliche Vorlagengalerie öffnen
+        </a>
+      </p>
       <div className="template-filters">
         <input
           type="search"
@@ -301,6 +307,11 @@ export default function SavedTemplates({
                 {(isAdmin || editing.visibility === "instance") && (
                   <option value="instance" disabled={!isAdmin}>
                     {visibilityLabels.instance} (Admin)
+                  </option>
+                )}
+                {(isAdmin || editing.visibility === "public") && (
+                  <option value="public" disabled={!isAdmin}>
+                    {visibilityLabels.public} – auch ohne Anmeldung (Admin)
                   </option>
                 )}
               </select>

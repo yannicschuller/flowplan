@@ -77,7 +77,7 @@ export function requireTemplate(
     throw new HttpError(404, "Vorlage fehlt.");
   // Instance templates are published by admins for every workspace.
   if (
-    template.visibility === "instance" &&
+    ["instance", "public"].includes(template.visibility) &&
     !template.deleted_at &&
     template.workspace_id !== workspaceId
   ) {
@@ -340,8 +340,8 @@ export function listPageTemplates(user: Identity, workspaceId: string) {
   const role = requireMember(user, workspaceId);
   return all<PageTemplate>(
     `SELECT id,workspace_id,name,kind,visibility,category,created_by,version,deleted_at FROM templates
-     WHERE (workspace_id=? AND (visibility IN ('workspace','instance') OR created_by=?))
-        OR (workspace_id<>? AND visibility='instance' AND deleted_at IS NULL)
+     WHERE (workspace_id=? AND (visibility IN ('workspace','instance','public') OR created_by=?))
+        OR (workspace_id<>? AND visibility IN ('instance','public') AND deleted_at IS NULL)
      ORDER BY name`,
     workspaceId,
     user.id,
@@ -354,7 +354,7 @@ export function listPageTemplates(user: Identity, workspaceId: string) {
       workspace_id === workspaceId &&
       role !== "viewer" &&
       (t.created_by === user.id || role === "owner") &&
-      (t.visibility !== "instance" || user.isAdmin),
+      (!["instance", "public"].includes(t.visibility) || user.isAdmin),
   }));
 }
 export function managePageTemplate(
@@ -388,10 +388,11 @@ export function managePageTemplate(
     if (template.deleted_at)
       throw new HttpError(409, "Vorlage zuerst wiederherstellen.");
     const visibility = z
-      .enum(["private", "workspace", "instance"])
+      .enum(["private", "workspace", "instance", "public"])
       .parse(input.visibility);
     if (
-      (visibility === "instance" || template.visibility === "instance") &&
+      (["instance", "public"].includes(visibility) ||
+        ["instance", "public"].includes(template.visibility)) &&
       !user.isAdmin
     )
       throw new HttpError(

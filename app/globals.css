@@ -3496,6 +3496,28 @@ tr:hover .row-open {
   object-fit: cover;
   flex-shrink: 0;
 }
+.template-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.template-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+}
+.template-card:hover {
+  background: var(--surface);
+}
+.template-preview > .button {
+  display: inline-block;
+  margin-bottom: 16px;
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

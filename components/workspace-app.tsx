@@ -117,7 +117,14 @@ type PageData = DatabaseData & {
 };
 type Screen =
   "home" | "page" | "trash" | "inbox" | "media" | "settings" | "admin";
-export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
+export default function WorkspaceApp({
+  initial,
+  useTemplate,
+}: {
+  initial: Bootstrap;
+  // Public gallery: create a page from this template once signed in.
+  useTemplate?: string;
+}) {
   const [clock, setClock] = useState<number | null>(null);
   useEffect(() => {
     // The server and initial browser render must not depend on different clocks.
@@ -415,6 +422,39 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
       window.removeEventListener("offline", network);
     };
   }, [initial.pages, openPage, notify]);
+  const templateUsed = useRef(false);
+  useEffect(() => {
+    if (!useTemplate || templateUsed.current) return;
+    templateUsed.current = true;
+    window.history.replaceState(null, "", location.pathname + location.hash);
+    void (async () => {
+      try {
+        const list = await api<{ id: string; name: string; kind: string }[]>(
+          `/api/templates?workspace=${boot.workspace.id}`,
+        );
+        const template = list.find((t) => t.id === useTemplate);
+        if (!template)
+          throw new Error("Diese Vorlage ist nicht mehr verfügbar.");
+        const space = boot.spaces.find((s) =>
+          ["owner", "editor"].includes(
+            (s as { role?: string }).role || "editor",
+          ),
+        );
+        const created = await mutate({
+          action: "page.create",
+          workspaceId: boot.workspace.id,
+          spaceId: space?.id || boot.spaces[0]?.id,
+          title: template.name,
+          kind: template.kind,
+          templateId: template.id,
+        });
+        if (created?.id) void openPage(String(created.id));
+      } catch (e) {
+        notify((e as Error).message);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useTemplate]);
   // The service worker serves offline copies once enabled in the settings.
   useEffect(() => {
     void registerServiceWorker()

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ authError?: string }>;
+  searchParams: Promise<{ authError?: string; useTemplate?: string }>;
 }) {
   const user = await currentUser();
   if (!user)
@@ -19,5 +19,15 @@ export default async function Home({
       />
     );
   ensureWorkspace(user.id);
-  return <WorkspaceApp initial={bootstrap(user) as never} />;
+  const { useTemplate } = await searchParams;
+  return (
+    <WorkspaceApp
+      initial={bootstrap(user) as never}
+      useTemplate={
+        useTemplate && /^[0-9a-f-]{36}$/i.test(useTemplate)
+          ? useTemplate
+          : undefined
+      }
+    />
+  );
 }
