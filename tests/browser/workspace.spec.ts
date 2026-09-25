@@ -88,7 +88,8 @@ test("public forms store submissions, search finds content and admin is protecte
     (await request.post("/api/auth/demo", { headers: { origin } })).ok(),
   ).toBe(true);
   const boot = await (await request.get("/api/bootstrap")).json();
-  expect((await request.get("/api/admin")).status()).toBe(403);
+  // The development demo account administers the instance.
+  expect((await request.get("/api/admin")).status()).toBe(200);
   const command = async (body: Record<string, unknown>) => {
     const r = await request.post("/api/command", {
       headers: { origin },

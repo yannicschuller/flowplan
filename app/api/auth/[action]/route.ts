@@ -12,6 +12,7 @@ import {
   upsertUser,
   extractGroups,
   acceptInvites,
+  adminGroup,
   HttpError,
 } from "@/lib/auth";
 import { one, run } from "@/lib/db";
@@ -142,7 +143,8 @@ export async function POST(
         "alex@flowplan.local",
       );
       ensureWorkspace(user.id);
-      await issueSession(user.id, []);
+      // In development the demo account administers the instance.
+      await issueSession(user.id, [adminGroup()]);
       return NextResponse.json({ ok: true });
     }
     if (action === "logout") {
