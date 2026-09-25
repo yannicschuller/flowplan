@@ -18,7 +18,10 @@ import { DocumentBlockControls } from "./document-block-controls";
 import { BlockShortcuts, moveSelectedBlock } from "@/lib/block-shortcuts";
 import { registerDocumentFlush } from "@/lib/document-flush";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
-import { inlineCommentExtension } from "@/lib/inline-comment-plugin";
+import {
+  commentMarkedNodeView,
+  inlineCommentExtension,
+} from "@/lib/inline-comment-plugin";
 import { InlineComments } from "./inline-comments";
 import { EditableCodeBlock } from "./code-block";
 import {
@@ -186,7 +189,12 @@ export default function DocumentEditor({
         TableCell,
         TableHeader,
         // Images are resized by their side handles, keeping proportions.
-        Image.configure({
+        Image.extend({
+          addNodeView() {
+            const render = this.parent?.();
+            return render ? commentMarkedNodeView(render, "img") : null;
+          },
+        }).configure({
           allowBase64: false,
           resize: editable
             ? {

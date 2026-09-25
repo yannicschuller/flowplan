@@ -1,4 +1,4 @@
-import { Extension, type Editor } from "@tiptap/core";
+import { Extension, type Editor, type NodeViewRenderer } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { ySyncPluginKey, isStructuralTransaction } from "@tiptap/y-tiptap";
@@ -41,6 +41,42 @@ export function setCommentHighlights(
 ) {
   if (!editor.isDestroyed)
     editor.view.dispatch(editor.state.tr.setMeta(key, { threads, active }));
+}
+type CommentAttrs = { class: string; "data-comment-thread": string };
+// Wrapping node views (resizable images) render the node inside a container,
+// which receives the node decoration; the mark belongs on the inner element.
+export function commentMarkedNodeView(
+  render: NodeViewRenderer,
+  selector: string,
+): NodeViewRenderer {
+  return (props) => {
+    const nodeView = render(props),
+      target =
+        nodeView.dom instanceof HTMLElement
+          ? nodeView.dom.querySelector<HTMLElement>(selector)
+          : null;
+    if (!target) return nodeView;
+    const mark = (decos: readonly Decoration[]) => {
+      const attrs = decos.find((d) => d.spec.comment)?.spec.comment as
+        CommentAttrs | undefined;
+      target.classList.toggle("inline-comment-mark", !!attrs);
+      target.classList.toggle(
+        "inline-comment-active",
+        !!attrs?.class.includes("inline-comment-active"),
+      );
+      if (attrs) target.dataset.commentThread = attrs["data-comment-thread"];
+      else delete target.dataset.commentThread;
+    };
+    mark(props.decorations);
+    const update = nodeView.update?.bind(nodeView);
+    if (update)
+      nodeView.update = (n, decos, innerDecos) => {
+        const ok = update(n, decos, innerDecos);
+        if (ok) mark(decos);
+        return ok;
+      };
+    return nodeView;
+  };
 }
 export function inlineCommentExtension(generation: string) {
   return Extension.create({
@@ -103,7 +139,9 @@ export function inlineCommentExtension(generation: string) {
                     };
                     marks.push(
                       node?.isBlock && range.to === range.from + node.nodeSize
-                        ? Decoration.node(range.from, range.to, attrs)
+                        ? Decoration.node(range.from, range.to, attrs, {
+                            comment: attrs,
+                          })
                         : Decoration.inline(range.from, range.to, attrs, {
                             inclusiveStart: false,
                             inclusiveEnd: true,

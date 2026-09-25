@@ -3325,7 +3325,8 @@ tr:hover .row-open {
   transition: opacity 0.15s;
 }
 .document-editor [data-resize-container]:hover [data-resize-handle],
-.document-editor [data-resize-container][data-resize-state="true"]
+.document-editor
+  [data-resize-container][data-resize-state="true"]
   [data-resize-handle],
 .document-editor .ProseMirror-selectednode [data-resize-handle] {
   opacity: 1;
@@ -6970,6 +6971,15 @@ tr.order-drop-after > td {
 }
 .inline-comment-active {
   background: #f8d66499;
+}
+/* Resizable images carry the mark on the image itself, not on the container. */
+[data-resize-container].inline-comment-mark {
+  background: none;
+  border-bottom: 0;
+}
+img.inline-comment-mark {
+  outline: 3px solid #dab234;
+  outline-offset: 2px;
 }
 .inline-comment-tools,
 .inline-comment-actions {
