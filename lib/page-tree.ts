@@ -124,7 +124,7 @@ export function duplicatePages(
     for (const p of tree) {
       const target = pageIds.get(p.id)!;
       run(
-        "UPDATE pages SET parent_id=?,icon=?,cover=?,cover_position=?,position=?,full_width=?,font=? WHERE id=?",
+        "UPDATE pages SET parent_id=?,icon=?,cover=?,cover_position=?,position=?,full_width=?,font=?,icon_size=? WHERE id=?",
         p.id === root?.id ? root.parent_id : pageIds.get(p.parent_id!) || null,
         rewrite(p.icon),
         rewrite(p.cover),
@@ -132,6 +132,7 @@ export function duplicatePages(
         p.id === root?.id ? p.position + 0.5 : p.position,
         p.full_width,
         p.font,
+        p.icon_size || "",
         target,
       );
       for (const f of all<{

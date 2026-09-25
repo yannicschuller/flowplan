@@ -16,6 +16,7 @@ import {
   appearanceSchema,
   pageAppearance,
   pageIconSchema,
+  iconSizeSchema,
 } from "./page-appearance";
 import {
   pageImages,
@@ -679,6 +680,7 @@ export function command(
             locked: z.boolean().optional(),
             full_width: z.boolean().optional(),
             font: z.enum(["sans", "serif", "mono"]).optional(),
+            icon_size: iconSizeSchema.optional(),
           })
           .parse(b.patch);
         if (data.cover !== undefined || data.cover_position !== undefined) {

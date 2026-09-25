@@ -1,4 +1,5 @@
 "use client";
+import { LibraryIcon } from "./library-icons";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -43,6 +44,8 @@ export function PageIcon({
   size?: number;
   className?: string;
 }) {
+  if (name?.startsWith("icon:"))
+    return <LibraryIcon value={name} size={size} className={props.className} />;
   // Uploaded page images; public pages pass their share URL instead.
   if (/^\/api\/(?:files|share\/[\w-]+\/files)\/[\w-]+$/.test(name || ""))
     return (

@@ -3412,6 +3412,49 @@ tr:hover .row-open {
   border-color: var(--blue);
   color: #fff;
 }
+.icon-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.icon-library {
+  display: grid;
+  gap: 10px;
+}
+.icon-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.icon-color {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.icon-color[aria-checked="true"] {
+  border-color: var(--text);
+}
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.icon-grid button {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+.icon-grid button:hover,
+.icon-grid button[aria-selected="true"] {
+  background: var(--hover);
+}
 .saved-search-form {
   display: flex;
   gap: 6px;

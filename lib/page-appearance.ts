@@ -1,3 +1,4 @@
+import { parseLibraryIcon } from "./icon-library";
 import { z } from "zod";
 export const imageMimes = [
   "image/png",
@@ -26,9 +27,13 @@ export const pageIconSchema = z
   .refine(
     (value) =>
       !value.includes("://") &&
-      (!value.startsWith("/") || !!imageFileId(value)),
+      (!value.startsWith("/") || !!imageFileId(value)) &&
+      (!value.startsWith("icon:") || !!parseLibraryIcon(value)),
     "Ungültiges Seitensymbol.",
   );
+export const iconSizeSchema = z.enum(["", "small", "medium", "large"]);
+// Size of the large icon above the page title.
+export const iconPixels = { "": 43, small: 30, medium: 43, large: 64 } as const;
 export const appearanceSchema = z.object({
   cover: coverSchema,
   coverPosition: z.number().finite().min(0).max(100),

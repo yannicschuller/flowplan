@@ -15,6 +15,8 @@ import {
 } from "@/lib/page-appearance";
 import type { SearchKind, SearchResult } from "@/lib/search-index";
 import { IconImagePicker } from "./icon-image-picker";
+import { IconLibraryPicker } from "./icon-library-picker";
+import { iconPixels } from "@/lib/page-appearance";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
 import { edgeScroller } from "./edge-scroll";
@@ -192,7 +194,9 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchKind, setSearchKind] = useState<SearchKind>("all");
-  const [iconTab, setIconTab] = useState<"emoji" | "image">("emoji");
+  const [iconTab, setIconTab] = useState<"emoji" | "image" | "library">(
+    "emoji",
+  );
   const [versionChanges, setVersionChanges] = useState<{
     id: string;
     label: string;
@@ -1471,7 +1475,10 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                       title="Seiten-Icon ändern"
                       onClick={() => editable && setIconPicker(true)}
                     >
-                      <PageIcon name={data.page.icon} size={43} />
+                      <PageIcon
+                        name={data.page.icon}
+                        size={iconPixels[data.page.icon_size || ""]}
+                      />
                     </button>
                     {editable && !data.page.cover && (
                       <button
@@ -2467,6 +2474,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                 [
                   ["emoji", "Emoji"],
                   ["image", "Bild"],
+                  ["library", "Symbole"],
                 ] as const
               ).map(([tab, label]) => (
                 <button
@@ -2480,7 +2488,37 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
                 </button>
               ))}
             </div>
-            {iconTab === "emoji" ? (
+            <label className="icon-size">
+              Größe
+              <select
+                aria-label="Symbolgröße"
+                value={data.page.icon_size || ""}
+                onChange={(e) =>
+                  void act({
+                    action: "page.update",
+                    pageId: data.page.id,
+                    patch: { icon_size: e.target.value },
+                  })
+                }
+              >
+                <option value="">Standard</option>
+                <option value="small">Klein</option>
+                <option value="large">Groß</option>
+              </select>
+            </label>
+            {iconTab === "library" ? (
+              <IconLibraryPicker
+                current={data.page.icon}
+                onSelect={async (icon) => {
+                  const result = await act({
+                    action: "page.update",
+                    pageId: data.page.id,
+                    patch: { icon },
+                  });
+                  if (result) setIconPicker(false);
+                }}
+              />
+            ) : iconTab === "emoji" ? (
               <EmojiPicker
                 selected={data.page.icon}
                 onSelect={async (icon) => {

@@ -79,6 +79,8 @@ function migrate(d: DatabaseSync) {
     d.exec(
       "ALTER TABLE pages ADD COLUMN cover_position REAL NOT NULL DEFAULT 50",
     );
+  if (!pageColumns.some((column) => column.name === "icon_size"))
+    d.exec("ALTER TABLE pages ADD COLUMN icon_size TEXT NOT NULL DEFAULT ''");
   const snapshotColumns = d.prepare("PRAGMA table_info(snapshots)").all() as {
     name: string;
   }[];

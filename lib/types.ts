@@ -43,6 +43,7 @@ export type Page = {
   locked: number;
   public_token: string | null;
   full_width: number;
+  icon_size?: "" | "small" | "medium" | "large";
   font: string;
 };
 export type FieldType =
