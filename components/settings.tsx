@@ -667,7 +667,7 @@ export default function Settings({
             <p>
               ZIP-Archive werden als Kopien in neuen privaten Bereichen
               wiederhergestellt. Alte Freigaben und Anmeldedaten werden nicht
-              aktiviert. Maximal 100 MB ZIP / 250 MB entpackt. JSON-Dateien
+              aktiviert. Maximal 2 GB ZIP / 4 GB entpackt. JSON-Dateien
               bleiben als älteres Importformat verfügbar.
             </p>
             <label className="button file-label">
@@ -686,8 +686,8 @@ export default function Settings({
                   if (!file) return;
                   setArchiveBusy(true);
                   try {
-                    if (file.size > 100 * 1024 * 1024)
-                      throw new Error("ZIP darf maximal 100 MB groß sein.");
+                    if (file.size > 2 * 1024 * 1024 * 1024)
+                      throw new Error("ZIP darf maximal 2 GB groß sein.");
                     const r = await fetch(
                       `/api/backup?workspace=${boot.workspace.id}`,
                       {

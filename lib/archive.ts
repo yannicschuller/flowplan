@@ -1,5 +1,6 @@
 import { parseRecurrence } from "./recurrence";
 import { quotaCheckpoint } from "./instance-ops";
+import { instanceSettings } from "./instance-settings";
 import { mapFileCell } from "./file-cells";
 import { spaceColorSchema } from "./space-appearance";
 import {
@@ -26,11 +27,24 @@ import {
   validateRelationGraph,
 } from "./relation-sync";
 import { formConfigSchema } from "./form-settings";
-import { fromBuffer, type Entry } from "yauzl";
+import { fromBuffer, open as openZip, type Entry } from "yauzl";
 import { ZipFile } from "yazl";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  copyFileSync,
+  createWriteStream,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  unlinkSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { all, one, run, id, transaction, audit } from "./db";
@@ -41,8 +55,35 @@ import { cleanHtml, htmlState } from "./document-server";
 import type { Identity, Page, Field, Space } from "./types";
 
 export const ARCHIVE_LIMIT = 100 * 1024 * 1024;
-const EXPANDED_LIMIT = 250 * 1024 * 1024,
-  MANIFEST_LIMIT = 30 * 1024 * 1024;
+const MANIFEST_LIMIT = 30 * 1024 * 1024;
+// Workspace archives stream files from and to disk, so they may be large.
+export const LARGE_ARCHIVE_LIMIT = 2 * 1024 * 1024 * 1024;
+const EXPANDED_LIMIT = 4 * 1024 * 1024 * 1024,
+  MAX_ARCHIVE_FILES = 20000;
+// A file inside an archive: in memory, or on disk with its checksum.
+export type Spooled = { path: string; size: number; sha256: string };
+export type ArchiveEntry = Buffer | Spooled;
+const entrySize = (e: ArchiveEntry) => (Buffer.isBuffer(e) ? e.length : e.size);
+function fileDigest(path: string) {
+  const hash = createHash("sha256"),
+    fd = openSync(path, "r"),
+    chunk = Buffer.alloc(1024 * 1024);
+  try {
+    for (let n; (n = readSync(fd, chunk, 0, chunk.length, null)) > 0;)
+      hash.update(chunk.subarray(0, n));
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest("hex");
+}
+const entryHash = (e: ArchiveEntry) =>
+  Buffer.isBuffer(e) ? createHash("sha256").update(e).digest("hex") : e.sha256;
+const entryBytes = (e: ArchiveEntry) =>
+  Buffer.isBuffer(e) ? e : readFileSync(e.path);
+// Per file inside an archive: at least 10 MB, otherwise the upload limit.
+function archiveFileLimit() {
+  return Math.max(10, instanceSettings().maxUploadMb) * 1024 * 1024;
+}
 const str = z.string().max(500),
   uid = z.string().uuid(),
   html = z.string().max(2_000_000);
@@ -188,11 +229,11 @@ export const archiveSchema = z.object({
           .number()
           .int()
           .min(0)
-          .max(10 * 1024 * 1024),
+          .max(1024 * 1024 * 1024),
         sha256: z.string().regex(/^[a-f0-9]{64}$/),
       }),
     )
-    .max(2000),
+    .max(MAX_ARCHIVE_FILES),
 });
 export type ContentArchive = z.infer<typeof archiveSchema>;
 function digest(bytes: Buffer) {
@@ -206,7 +247,7 @@ function snapshotFor(user: Identity, wid: string) {
   ).filter((p) => pageRole(user, p));
   const pageIds = new Set(pages.map((p) => p.id));
   const spaceIds = new Set(pages.map((p) => p.space_id));
-  const binaries = new Map<string, Buffer>();
+  const binaries = new Map<string, ArchiveEntry>();
   let bytes = 0;
   const manifest = {
     format: "flowplan-2",
@@ -373,30 +414,35 @@ function snapshotFor(user: Identity, wid: string) {
         "SELECT id,page_id,name,mime,size FROM files WHERE page_id=?",
         p.id,
       ).map((f) => {
-        let data: Buffer;
+        const path = resolve(
+          process.env.FLOWPLAN_DATA_DIR || "./data",
+          "uploads",
+          f.id,
+        );
+        let size: number;
         try {
-          data = readFileSync(
-            resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", f.id),
-          );
+          size = statSync(path).size;
         } catch {
           throw new HttpError(
             409,
             `Datei „${f.name}“ fehlt auf dem Server. Sicherung abgebrochen.`,
           );
         }
-        bytes += data.length;
+        bytes += size;
         if (bytes > EXPANDED_LIMIT)
           throw new HttpError(
             413,
-            "Dateien überschreiten 250 MB pro Inhaltsarchiv.",
+            "Dateien überschreiten 4 GB pro Inhaltsarchiv.",
           );
+        // Files are streamed into the ZIP; only their checksum is computed here.
+        const data: Spooled = { path, size, sha256: fileDigest(path) };
         binaries.set(`files/${f.id}`, data);
-        return { ...f, size: data.length, sha256: digest(data) };
+        return { ...f, size: data.size, sha256: data.sha256 };
       }),
     ),
   };
-  if (binaries.size > 2000)
-    throw new HttpError(413, "Höchstens 2.000 Dateien pro Inhaltsarchiv.");
+  if (binaries.size > MAX_ARCHIVE_FILES)
+    throw new HttpError(413, "Höchstens 20.000 Dateien pro Inhaltsarchiv.");
   const validated = archiveSchema.parse(manifest);
   const encoded = Buffer.from(JSON.stringify(validated));
   if (
@@ -407,9 +453,17 @@ function snapshotFor(user: Identity, wid: string) {
   binaries.set("flowplan.json", encoded);
   return binaries;
 }
-export async function writeZip(entries: Map<string, Buffer>) {
+function zipFile(entries: Map<string, ArchiveEntry>) {
   const zip = new ZipFile();
-  const result = new Promise<Buffer>((resolve, reject) => {
+  for (const [name, entry] of entries)
+    if (Buffer.isBuffer(entry)) zip.addBuffer(entry, name);
+    else zip.addFile(entry.path, name);
+  zip.end();
+  return zip;
+}
+export async function writeZip(entries: Map<string, ArchiveEntry>) {
+  const zip = zipFile(entries);
+  return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;
     zip.outputStream.on("data", (chunk: Buffer) => {
@@ -426,9 +480,12 @@ export async function writeZip(entries: Map<string, Buffer>) {
     zip.once("error", reject);
     zip.outputStream.once("end", () => resolve(Buffer.concat(chunks)));
   });
-  for (const [name, bytes] of entries) zip.addBuffer(bytes, name);
-  zip.end();
-  return result;
+}
+// Streams a workspace archive without holding its files in memory.
+export function exportArchiveStream(user: Identity, wid: string) {
+  const entries = transaction(() => snapshotFor(user, wid));
+  audit(user.id, "workspace.archive.export", wid);
+  return zipFile(entries).outputStream as Readable;
 }
 export async function exportArchive(user: Identity, wid: string) {
   const entries = transaction(() => snapshotFor(user, wid));
@@ -551,7 +608,118 @@ export async function readZip(
     ),
   );
 }
-function validateArchive(input: unknown, files: Map<string, Buffer>) {
+// Reads a workspace archive from disk: the manifest into memory, files into
+// the spool folder while their size and checksum are computed.
+export async function readArchiveFile(
+  path: string,
+  spoolDir: string,
+): Promise<Map<string, ArchiveEntry>> {
+  if (statSync(path).size > LARGE_ARCHIVE_LIMIT)
+    throw new HttpError(413, "ZIP darf maximal 2 GB groß sein.");
+  mkdirSync(spoolDir, { recursive: true });
+  const perFile = archiveFileLimit();
+  return new Promise((finish, reject) =>
+    openZip(
+      path,
+      { lazyEntries: true, validateEntrySizes: true, strictFileNames: true },
+      (error, zip) => {
+        if (error) {
+          reject(new HttpError(400, "Ungültige ZIP-Datei."));
+          return;
+        }
+        let total = 0,
+          count = 0,
+          failed = false;
+        const result = new Map<string, ArchiveEntry>();
+        const fail = (e: unknown) => {
+          if (failed) return;
+          failed = true;
+          zip.close();
+          reject(
+            e instanceof HttpError
+              ? e
+              : new HttpError(400, "Beschädigtes ZIP-Archiv."),
+          );
+        };
+        const tooLarge = () =>
+          fail(
+            new HttpError(
+              413,
+              "Entpacktes Archiv überschreitet das Größenlimit.",
+            ),
+          );
+        zip.on("error", fail);
+        zip.on("end", () => {
+          if (!failed) finish(result);
+        });
+        zip.on("entry", (entry: Entry) => {
+          if (failed) return;
+          count++;
+          if (
+            count > MAX_ARCHIVE_FILES + 1 ||
+            entry.isEncrypted() ||
+            result.has(entry.fileName) ||
+            !/^flowplan\.json$|^(?:files|template-files)\/[a-f0-9-]{36}$/.test(
+              entry.fileName,
+            )
+          ) {
+            fail(
+              new HttpError(
+                400,
+                "ZIP enthält unbekannte, doppelte oder verschlüsselte Einträge.",
+              ),
+            );
+            return;
+          }
+          const manifest = entry.fileName === "flowplan.json";
+          const max = manifest ? MANIFEST_LIMIT : perFile;
+          if (
+            entry.uncompressedSize > max ||
+            total + entry.uncompressedSize > EXPANDED_LIMIT
+          )
+            return tooLarge();
+          zip.openReadStream(entry, (err, stream) => {
+            if (err) return fail(err);
+            let size = 0;
+            const hash = createHash("sha256"),
+              chunks: Buffer[] = [],
+              target = resolve(spoolDir, String(count)),
+              out = manifest
+                ? null
+                : createWriteStream(target, { flags: "wx" });
+            stream.on("error", fail);
+            out?.on("error", fail);
+            stream.on("data", (chunk: Buffer) => {
+              size += chunk.length;
+              total += chunk.length;
+              if (size > max || total > EXPANDED_LIMIT) {
+                stream.destroy();
+                return tooLarge();
+              }
+              if (manifest) chunks.push(chunk);
+              else hash.update(chunk);
+            });
+            if (out) stream.pipe(out);
+            const done = () => {
+              if (failed) return;
+              result.set(
+                entry.fileName,
+                manifest
+                  ? Buffer.concat(chunks)
+                  : { path: target, size, sha256: hash.digest("hex") },
+              );
+              zip.readEntry();
+            };
+            if (out) out.once("finish", done);
+            else stream.once("end", done);
+          });
+        });
+        zip.readEntry();
+      },
+    ),
+  );
+}
+function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
   const data = archiveSchema.parse(input),
     seen = new Set<string>(),
     pages = new Map(data.pages.map((p) => [p.id, p]));
@@ -619,8 +787,8 @@ function validateArchive(input: unknown, files: Map<string, Buffer>) {
     if (
       !pages.has(f.page_id) ||
       !bytes ||
-      bytes.length !== f.size ||
-      digest(bytes) !== f.sha256
+      entrySize(bytes) !== f.size ||
+      entryHash(bytes) !== f.sha256
     )
       throw new HttpError(400, "Datei fehlt oder Prüfsumme stimmt nicht.");
   }
@@ -633,7 +801,11 @@ function validateArchive(input: unknown, files: Map<string, Buffer>) {
         throw new HttpError(400, "Doppelter Vorlagenanhang.");
       originals.add(f.original_id);
       const bytes = files.get(`template-files/${f.id}`);
-      if (!bytes || bytes.length !== f.size || digest(bytes) !== f.sha256)
+      if (
+        !bytes ||
+        entrySize(bytes) !== f.size ||
+        entryHash(bytes) !== f.sha256
+      )
         throw new HttpError(
           400,
           "Vorlagenanhang fehlt oder Prüfsumme stimmt nicht.",
@@ -645,16 +817,41 @@ function validateArchive(input: unknown, files: Map<string, Buffer>) {
     throw new HttpError(400, "Archiv enthält nicht zugeordnete Dateien.");
   return data;
 }
+// `source` is the archive in memory or, for large archives, a file on disk.
 export async function importArchive(
   user: Identity,
   wid: string,
-  bytes: Buffer,
+  source: Buffer | string,
 ) {
   requireMember(user, wid, "editor");
-  const entries = await readZip(bytes);
+  const spool = resolve(
+    process.env.FLOWPLAN_DATA_DIR || "./data",
+    "tmp",
+    `archive-${id()}`,
+  );
+  try {
+    return await importEntries(
+      user,
+      wid,
+      Buffer.isBuffer(source)
+        ? await readZip(source)
+        : await readArchiveFile(source, spool),
+    );
+  } finally {
+    rmSync(spool, { recursive: true, force: true });
+  }
+}
+async function importEntries(
+  user: Identity,
+  wid: string,
+  entries: Map<string, ArchiveEntry>,
+) {
   let raw: unknown;
   try {
-    raw = JSON.parse(entries.get("flowplan.json")?.toString("utf8") || "");
+    const manifest = entries.get("flowplan.json");
+    raw = JSON.parse(
+      Buffer.isBuffer(manifest) ? manifest.toString("utf8") : "",
+    );
   } catch {
     throw new HttpError(400, "flowplan.json fehlt oder ist beschädigt.");
   }
@@ -783,7 +980,9 @@ export async function importArchive(
       mkdirSync(dir, { recursive: true });
       for (const f of data.files) {
         const path = resolve(dir, fileMap.get(f.id)!);
-        writeFileSync(path, entries.get(`files/${f.id}`)!, { flag: "wx" });
+        const entry = entries.get(`files/${f.id}`)!;
+        if (Buffer.isBuffer(entry)) writeFileSync(path, entry, { flag: "wx" });
+        else copyFileSync(entry.path, path, fsConstants.COPYFILE_EXCL);
         written.push(path);
       }
       for (const s of data.spaces)
@@ -1152,7 +1351,7 @@ export async function importArchive(
             fileMap.get(f.original_id) || f.original_id,
             f.name,
             f.mime,
-            entries.get(`template-files/${f.id}`)!,
+            entryBytes(entries.get(`template-files/${f.id}`)!),
           );
       }
       for (const pair of remapPairs(data.relationPairs))

@@ -244,7 +244,7 @@ Enthalten sind zugängliche Seiten einschließlich Papierkorb, Datenbankansichte
 
 Importierte Bereiche und Seitenvorlagen sind privat. Öffentliche Links, Formulare und alte Zugriffsrechte werden nicht aktiviert. Formulare können nach Prüfung erneut freigegeben werden. Konten, Sitzungen, OIDC-Konfiguration und administrative Auditdaten gehören zur Instanzsicherung, nicht zum Inhaltsarchiv.
 
-Grenzen pro Archiv: 100 MB ZIP, 250 MB entpackt, 30 MB Manifest, 500 Seiten und 2.000 Dateien; je Datenbank 5.000 Einträge, je Anhang 10 MB. Ein ungültiger Import wird vollständig zurückgerollt, einschließlich bereits abgelegter Dateien. ZIP-Dateien aus Notion/AppFlowy sind noch kein unterstütztes Importformat.
+Grenzen pro Archiv: 2 GB ZIP, 4 GB entpackt, 30 MB Manifest, 500 Seiten und 20.000 Dateien; je Datenbank 5.000 Einträge, je Anhang die maximale Uploadgröße der Instanz (mindestens 10 MB). Export und Import laufen als Datenstrom über die Festplatte, ohne das Archiv im Arbeitsspeicher zu halten. Ein ungültiger Import wird vollständig zurückgerollt, einschließlich bereits abgelegter Dateien. ZIP-Dateien aus Notion/AppFlowy sind noch kein unterstütztes Importformat.
 
 Private Seitenvorlagen können beim Speichern mit **Nur für mich sichtbar** erstellt werden. Andere Mitglieder können sie weder auflisten noch anwenden. Der JSON-Import `flowplan-1` bleibt verfügbar und erhält jetzt ebenfalls interne Seitenlinks und Datensatzrelationen.
 
