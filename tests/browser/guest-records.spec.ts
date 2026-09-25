@@ -75,9 +75,13 @@ test("guests with an edit link add records and upload images", async ({
       "src",
       new RegExp(`/api/share/${link.token}/files/`),
     );
-    expect(
-      await published.evaluate((img: HTMLImageElement) => img.naturalWidth),
-    ).toBe(1);
+    // Lazy images load once visible.
+    await published.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        published.evaluate((img: HTMLImageElement) => img.naturalWidth),
+      )
+      .toBe(1);
     // Unsupported types are refused with a message.
     await guest
       .getByRole("button", { name: "Inhalt bearbeiten", exact: true })

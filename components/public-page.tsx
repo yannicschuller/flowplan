@@ -18,7 +18,7 @@ import { displayText } from "@/lib/field-format";
 import { PublicationCopy } from "./publication-copy";
 import { HttpError } from "@/lib/auth";
 import type { Field, Row, View } from "@/lib/types";
-import { sharedContent, publicField } from "@/lib/shared-content";
+import { sharedContent, publicFieldsOf } from "@/lib/shared-content";
 import { SharedInteractions } from "./shared-interactions";
 import {
   PublicCalendar,
@@ -50,7 +50,7 @@ export function PublishedPage({
   }
   const { page, root, pages } = context;
   const d = page.kind === "database" ? database(page.id) : null;
-  const visible = d?.fields.filter(publicField);
+  const visible = d?.fields.filter(publicFieldsOf(d.fields));
   // Views are published with their filters, sorting and order when their
   // layout only needs public properties; forms are never listed.
   const publicViews = (d?.views || []).filter((v) =>

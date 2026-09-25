@@ -8,6 +8,7 @@ import { publicPage, publicFile, publishedHtml } from "./publication";
 import { cleanHtml, htmlState, stateHtml } from "./document-server";
 import { ensureRowDocument } from "./row-documents";
 import type { Field, Row } from "./types";
+import { formulaReferences } from "./formula";
 
 export const publicField = (f: Field) =>
   ![
@@ -19,6 +20,37 @@ export const publicField = (f: Field) =>
     "formula",
     "rollup",
   ].includes(f.type);
+// Properties a publication may show. Formulas count when every property
+// they read is public as well (no relations, people or dynamic prop()).
+export function publicFieldIds(fields: Field[]) {
+  const result = new Map<string, boolean>();
+  const visit = (field: Field, trail: Set<string>): boolean => {
+    if (result.has(field.id)) return result.get(field.id)!;
+    let ok: boolean;
+    if (field.type !== "formula") ok = publicField(field);
+    else if (trail.has(field.id)) ok = false;
+    else {
+      const refs = formulaReferences(field.formula || "");
+      const next = new Set(trail).add(field.id);
+      ok =
+        !!refs &&
+        !refs.dynamic &&
+        refs.names.every((name) => {
+          const target =
+            fields.find((f) => f.id === name) ||
+            fields.findLast((f) => f.name === name);
+          return !!target && visit(target, next);
+        });
+    }
+    result.set(field.id, ok);
+    return ok;
+  };
+  return new Set(fields.filter((f) => visit(f, new Set())).map((f) => f.id));
+}
+export const publicFieldsOf = (fields: Field[]) => {
+  const ids = publicFieldIds(fields);
+  return (field: Field) => ids.has(field.id);
+};
 export const writablePublicField = (f: Field) =>
   publicField(f) && !["created_at", "updated_at"].includes(f.type);
 export type SharedComment = {
@@ -69,7 +101,7 @@ function source(token: string, pageId?: string, rowId?: string) {
 }
 export function sharedContent(token: string, pageId?: string, rowId?: string) {
   const s = source(token, pageId, rowId);
-  const fields = s.fields.filter(publicField);
+  const fields = s.fields.filter(publicFieldsOf(s.fields));
   return {
     pageId: s.page.id,
     rowId,
@@ -118,8 +150,7 @@ function validatedCells(
       } catch (e) {
         throw new HttpError(400, `${f.name}: ${(e as Error).message}`);
       }
-    }
-    else if (f.type === "checkbox") cells[key] = z.boolean().parse(value);
+    } else if (f.type === "checkbox") cells[key] = z.boolean().parse(value);
     else if (f.type === "multiselect") {
       const values = z.array(z.string()).max(100).parse(value);
       if (values.some((v) => !f.options?.includes(v)))

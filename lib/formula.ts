@@ -374,6 +374,31 @@ export function validateFormula(
   }
   return null;
 }
+// Property names or IDs a formula reads. `dynamic` is set when prop() gets
+// a computed argument, so any property could be read.
+export function formulaReferences(source: string) {
+  const compiled = compileFormula(source);
+  if (!compiled.ok) return null;
+  const names = new Set<string>();
+  let dynamic = false;
+  const pending = [compiled.tree];
+  while (pending.length) {
+    const node = pending.pop()!;
+    if (node.kind === "property") names.add(node.name);
+    if (node.kind === "call") {
+      if (node.name === "prop") {
+        const arg = node.args[0];
+        if (arg?.kind === "literal" && typeof arg.value === "string")
+          names.add(arg.value);
+        else dynamic = true;
+      }
+      pending.push(...node.args);
+    }
+    if (node.kind === "binary") pending.push(node.left, node.right);
+    if (node.kind === "unary") pending.push(node.child);
+  }
+  return { names: [...names], dynamic };
+}
 export function hasClockFormulas(
   fields: Field[],
   schemas: Record<string, Field[]> = {},

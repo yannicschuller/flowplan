@@ -13,7 +13,7 @@ import {
   parseRecurrence,
   shiftDateValue,
 } from "@/lib/recurrence";
-import { publicField } from "@/lib/shared-content";
+import { publicField, publicFieldIds } from "@/lib/shared-content";
 import type { Field, Row, View } from "@/lib/types";
 
 // Read-only, server-rendered calendar, timeline and chart views for
@@ -36,10 +36,8 @@ const monthLabel = (month: string) =>
 
 // Whether a view can be published without revealing hidden properties.
 export function publicLayout(view: View, fields: Field[]) {
-  const visible = (id?: string) => {
-    const f = fields.find((x) => x.id === id);
-    return !!f && publicField(f);
-  };
+  const publicIds = publicFieldIds(fields);
+  const visible = (id?: string) => !!id && publicIds.has(id);
   if (view.type === "calendar" || view.type === "timeline") {
     const { start, end, invalidEnd } = scheduleFields(fields, view);
     return (
