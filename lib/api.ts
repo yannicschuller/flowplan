@@ -37,6 +37,11 @@ import { transformFilterGroup } from "./database-filters";
 import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import {
+  deleteSavedSearch,
+  saveSearch,
+  savedSearches,
+} from "./saved-searches";
+import {
   requireTemplate,
   applyPageTemplate,
   databaseTemplateExtras,
@@ -162,6 +167,7 @@ export function bootstrap(user: Identity, wid?: string) {
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
     ).map((f) => f.page_id),
+    savedSearches: savedSearches(user, workspace.id),
     // Favourite records of readable databases in this workspace.
     favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(
       `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
@@ -1300,6 +1306,12 @@ export function command(
         break;
       case "row.trash.purge":
         result = purgeTrashedRow(user, b);
+        break;
+      case "search.save":
+        result = saveSearch(user, b);
+        break;
+      case "search.delete":
+        deleteSavedSearch(user, b.searchId);
         break;
       case "favorite.row": {
         const { row } = requireRow(user, pid(), uuid.parse(b.rowId));

@@ -2928,6 +2928,43 @@ tr:hover .row-open {
   gap: 8px;
   margin-top: 12px;
 }
+.saved-search-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.saved-search-form input {
+  flex: 1;
+  min-width: 0;
+}
+.saved-searches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.saved-search {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--secondary);
+  overflow: hidden;
+}
+.saved-search button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  min-height: 28px;
+}
+.saved-search button + button {
+  padding: 3px 7px 3px 2px;
+}
+.saved-search button:hover {
+  color: var(--text);
+}
 .search-filters [role="radiogroup"] {
   display: flex;
   flex-wrap: wrap;

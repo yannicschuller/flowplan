@@ -179,6 +179,17 @@ function migrate(d: DatabaseSync) {
     row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,
     page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
     PRIMARY KEY(user_id,row_id));`);
+  // Personal saved searches per workspace.
+  d.exec(`CREATE TABLE IF NOT EXISTS saved_searches(
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    query TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    space_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE INDEX IF NOT EXISTS saved_searches_user ON saved_searches(user_id,workspace_id);`);
   // Publication metadata and whether visitors may copy the publication.
   const publicationColumns = d
     .prepare("PRAGMA table_info(publications)")

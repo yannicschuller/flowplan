@@ -168,6 +168,7 @@ export type Bootstrap = {
   pages: Page[];
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
+  savedSearches?: import("./saved-searches").SavedSearch[];
   members: (User & { role: Role })[];
   notifications: {
     row_id: string | null;

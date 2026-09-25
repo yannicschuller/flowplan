@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
+  BookmarkSimple,
   Stack,
   CaretDown,
   CaretRight,
@@ -189,6 +190,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
     label: string;
   } | null>(null);
   const [searchSpace, setSearchSpace] = useState("");
+  const [searchName, setSearchName] = useState<string | null>(null);
   useEffect(() => {
     if (!search) return;
     const controller = new AbortController();
@@ -1847,6 +1849,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
         onClose={() => {
           setSearch(false);
           setQuery("");
+          setSearchName(null);
         }}
         title="Schnellsuche"
       >
@@ -1895,7 +1898,86 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
               </option>
             ))}
           </select>
+          {query.trim() && searchName === null && (
+            <button
+              className="button compact"
+              onClick={() => setSearchName(query.trim().slice(0, 120))}
+            >
+              <BookmarkSimple size={15} /> Suche speichern
+            </button>
+          )}
         </div>
+        {searchName !== null && (
+          <form
+            className="saved-search-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const saved = await act({
+                action: "search.save",
+                workspaceId: boot.workspace.id,
+                name: searchName,
+                query,
+                kind: searchKind,
+                spaceId: searchSpace || null,
+              });
+              if (saved) setSearchName(null);
+            }}
+          >
+            <input
+              aria-label="Name der gespeicherten Suche"
+              value={searchName}
+              maxLength={120}
+              autoFocus
+              onChange={(e) => setSearchName(e.target.value)}
+            />
+            <button
+              className="button compact primary"
+              disabled={!searchName.trim()}
+            >
+              Speichern
+            </button>
+            <button
+              type="button"
+              className="button compact"
+              onClick={() => setSearchName(null)}
+            >
+              Abbrechen
+            </button>
+          </form>
+        )}
+        {!!boot.savedSearches?.length && (
+          <div
+            className="saved-searches"
+            role="list"
+            aria-label="Gespeicherte Suchen"
+          >
+            {boot.savedSearches.map((s) => (
+              <span className="chip saved-search" role="listitem" key={s.id}>
+                <button
+                  onClick={() => {
+                    setQuery(s.query);
+                    setSearchKind(s.kind);
+                    setSearchSpace(
+                      s.spaceId && boot.spaces.some((x) => x.id === s.spaceId)
+                        ? s.spaceId
+                        : "",
+                    );
+                  }}
+                >
+                  <BookmarkSimple size={13} /> {s.name}
+                </button>
+                <button
+                  aria-label={`Gespeicherte Suche ${s.name} löschen`}
+                  onClick={() =>
+                    void act({ action: "search.delete", searchId: s.id })
+                  }
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="search-results">
           {searchResults.map((p) => (
             <button
