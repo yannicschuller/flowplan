@@ -1,4 +1,13 @@
 "use client";
+import { RowAccess } from "./row-access";
+import { RecordLayoutEditor } from "./record-layout-editor";
+import {
+  defaultRecordLayout,
+  emptyCell,
+  recordOpenLabels,
+  recordOpenModes,
+  type RecordOpenMode,
+} from "@/lib/record-layout";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
@@ -151,6 +160,8 @@ export type DatabaseData = {
     config: FormConfig;
   } | null;
   comments: Comment[];
+  role?: string;
+  groups?: { id: string; name: string }[];
 };
 const fieldNames: Record<FieldType, string> = {
   text: "Text",
@@ -331,13 +342,27 @@ export default function DatabaseView({
   const [sortMove, setSortMove] = useState<RowMove | null>(null);
   const [groupDrop, setGroupDrop] = useState<string | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
-  // Record pages open as a dialog or full page (remembered per browser).
-  const [fullRecord, setFullRecord] = useState(false);
+  // Record pages open as the database layout says, unless this browser
+  // chose its own presentation.
+  const recordLayout = data.database.recordLayout || defaultRecordLayout;
+  const [recordModeChoice, setRecordModeChoice] = useState<RecordOpenMode | "">(
+    "",
+  );
+  const [showEmpty, setShowEmpty] = useState(false),
+    [layoutOpen, setLayoutOpen] = useState(false);
   useEffect(() => {
     try {
-      setFullRecord(localStorage.getItem("flowplan-record-full") === "1");
+      const stored = localStorage.getItem("flowplan-record-mode") || "";
+      setRecordModeChoice(
+        (recordOpenModes as readonly string[]).includes(stored)
+          ? (stored as RecordOpenMode)
+          : localStorage.getItem("flowplan-record-full") === "1"
+            ? "full"
+            : "",
+      );
     } catch {}
   }, []);
+  const recordMode = recordModeChoice || recordLayout.open;
   const [rowIconPicker, setRowIconPicker] = useState(false),
     [rowIconTab, setRowIconTab] = useState<"emoji" | "image">("emoji"),
     [rowCoverPicker, setRowCoverPicker] = useState(false);
@@ -439,6 +464,27 @@ export default function DatabaseView({
     [data, fields, view, query, filterNow],
   );
   const selected = data.rows.find((r) => r.id === rowId);
+  const selectedEditable = editable && selected?.role !== "viewer";
+  // Properties shown on the record page (layout: hidden and empty ones).
+  const layoutFields = fields.filter(
+    (f, i) => i === 0 || !recordLayout.hidden.includes(f.id),
+  );
+  const emptyFields = new Set(
+    recordLayout.hideEmpty && selected
+      ? layoutFields
+          .filter(
+            (f, i) =>
+              i > 0 &&
+              !computedTypes.includes(f.type) &&
+              emptyCell(selected.cells[f.id]),
+          )
+          .map((f) => f.id)
+      : [],
+  );
+  const recordFields = showEmpty
+    ? layoutFields
+    : layoutFields.filter((f) => !emptyFields.has(f.id));
+  const emptyHidden = emptyFields.size;
   useEffect(() => {
     if (rowId && !selected)
       onError("Dieser Datensatz ist nicht mehr verfügbar.");
@@ -586,6 +632,8 @@ export default function DatabaseView({
     relationTarget?.id === fieldDraft.relationPage &&
     !!relationTarget?.version &&
     !relationTarget?.error;
+  // Records can be read-only for this person (record permissions).
+  const rowEditable = (r: Row) => editable && r.role !== "viewer";
   const act = async (b: Record<string, unknown>) => {
     try {
       return await mutate({ pageId: page.id, ...b });
@@ -1134,7 +1182,7 @@ export default function DatabaseView({
         <span className="recurrence-choice">
           <select
             aria-label="Wiederholung"
-            disabled={!editable}
+            disabled={!rowEditable(row)}
             value={rule?.freq || ""}
             onChange={(e) =>
               void save(
@@ -1160,7 +1208,7 @@ export default function DatabaseView({
                   min={1}
                   max={99}
                   aria-label="Wiederholungsintervall"
-                  disabled={!editable}
+                  disabled={!rowEditable(row)}
                   defaultValue={rule.interval}
                   onBlur={(e) => {
                     const interval = Math.min(
@@ -1178,7 +1226,7 @@ export default function DatabaseView({
                 <input
                   type="date"
                   aria-label="Wiederholung endet am"
-                  disabled={!editable}
+                  disabled={!rowEditable(row)}
                   defaultValue={rule.until || ""}
                   onBlur={(e) => {
                     const until = e.target.value || undefined;
@@ -1192,7 +1240,7 @@ export default function DatabaseView({
                 <input
                   type="date"
                   aria-label="Termin auslassen am"
-                  disabled={!editable}
+                  disabled={!rowEditable(row)}
                   onChange={(e) => {
                     const date = e.target.value;
                     e.target.value = "";
@@ -1211,7 +1259,7 @@ export default function DatabaseView({
                       key={date}
                       type="button"
                       className="chip"
-                      disabled={!editable}
+                      disabled={!rowEditable(row)}
                       aria-label={`${date} wieder einplanen`}
                       onClick={() =>
                         void save({
@@ -1603,7 +1651,7 @@ export default function DatabaseView({
             key={f.id}
             onClick={() => {
               if (
-                !editable ||
+                !rowEditable(r) ||
                 f.id === fields[0].id ||
                 computedTypes.includes(f.type)
               )
@@ -4041,7 +4089,15 @@ export default function DatabaseView({
         onClose={() => setRowId(null)}
         title="Eintrag"
         wide
-        className={fullRecord ? "modal-full" : ""}
+        className={
+          recordMode === "full"
+            ? "modal-full"
+            : recordMode === "side"
+              ? "modal-side"
+              : recordLayout.properties === "side"
+                ? "modal-record-wide"
+                : ""
+        }
       >
         {selected && (
           <div className="row-detail">
@@ -4061,7 +4117,7 @@ export default function DatabaseView({
                     )}{" "}
                     aus einer Serie. Änderungen hier gelten für alle Termine.
                   </span>
-                  {editable && (
+                  {selectedEditable && (
                     <span className="occurrence-actions">
                       {(
                         [
@@ -4129,24 +4185,42 @@ export default function DatabaseView({
                   ? "Aus Favoriten entfernen"
                   : "Zu Favoriten"}
               </button>
-              <button
-                className="text-button"
-                aria-pressed={fullRecord}
-                onClick={() => {
-                  setFullRecord((v) => !v);
-                  try {
-                    localStorage.setItem(
-                      "flowplan-record-full",
-                      fullRecord ? "0" : "1",
-                    );
-                  } catch {}
-                }}
-              >
-                {fullRecord
-                  ? "Als Dialog anzeigen"
-                  : "Als ganze Seite anzeigen"}
-              </button>
-              {editable && (
+              <label className="record-mode">
+                Darstellung
+                <select
+                  aria-label="Eintrag öffnen als"
+                  value={recordModeChoice}
+                  onChange={(e) => {
+                    const mode = e.target.value as RecordOpenMode | "";
+                    setRecordModeChoice(mode);
+                    try {
+                      if (mode)
+                        localStorage.setItem("flowplan-record-mode", mode);
+                      else localStorage.removeItem("flowplan-record-mode");
+                      localStorage.removeItem("flowplan-record-full");
+                    } catch {}
+                  }}
+                >
+                  <option value="">
+                    Standard ({recordOpenLabels[recordLayout.open]})
+                  </option>
+                  {recordOpenModes.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {recordOpenLabels[mode]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {editable && allowFieldChanges && (
+                <button
+                  className="text-button"
+                  aria-expanded={layoutOpen}
+                  onClick={() => setLayoutOpen((v) => !v)}
+                >
+                  Layout anpassen
+                </button>
+              )}
+              {selectedEditable && (
                 <>
                   <button
                     className="text-button"
@@ -4163,6 +4237,30 @@ export default function DatabaseView({
                 </>
               )}
             </div>
+            {layoutOpen && editable && allowFieldChanges && (
+              <RecordLayoutEditor
+                layout={recordLayout}
+                fields={fields}
+                save={(layout) =>
+                  act({ action: "database.recordLayout", layout })
+                }
+              />
+            )}
+            {selected.role === "viewer" && (
+              <p className="row-access-note" role="note">
+                Dieser Eintrag ist für dich schreibgeschützt.
+              </p>
+            )}
+            {editable &&
+              (data.role === "owner" || selected.created_by === userId) && (
+                <RowAccess
+                  key={`access-${selected.id}`}
+                  row={selected}
+                  members={members}
+                  groups={data.groups || []}
+                  act={act}
+                />
+              )}
             <h2>
               {selected.icon && (
                 <PageIcon
@@ -4173,95 +4271,114 @@ export default function DatabaseView({
               )}
               {cellText(selected.cells[fields[0].id]) || "Ohne Titel"}
             </h2>
-            {fields.map((f) => (
-              <Fragment key={`${selected.id}-${f.id}`}>
-                <PropertyRow group={f.type === "files"}>
-                  <span>{f.name}</span>
-                  {computedTypes.includes(f.type) ? (
-                    <span>
-                      {display(
-                        {
-                          ...selected,
-                          cells: computedCells(
-                            selected,
-                            fields,
-                            data.related,
-                            data.relatedSchemas,
-                          ),
-                        },
-                        f,
+            <div
+              className={`row-columns${recordLayout.properties === "side" ? " properties-side" : ""}`}
+            >
+              <div className="row-properties">
+                {recordFields.map((f) => (
+                  <Fragment key={`${selected.id}-${f.id}`}>
+                    <PropertyRow group={f.type === "files"}>
+                      <span>{f.name}</span>
+                      {computedTypes.includes(f.type) ? (
+                        <span>
+                          {display(
+                            {
+                              ...selected,
+                              cells: computedCells(
+                                selected,
+                                fields,
+                                data.related,
+                                data.relatedSchemas,
+                              ),
+                            },
+                            f,
+                          )}
+                        </span>
+                      ) : (
+                        <CellInput
+                          field={f}
+                          value={selected.cells[f.id]}
+                          members={members}
+                          related={data.related}
+                          disabled={!selectedEditable}
+                          onChange={(v) => updateCell(selected, f, v)}
+                          upload={selectedEditable ? uploadFile : undefined}
+                          files={data.files}
+                        />
                       )}
-                    </span>
-                  ) : (
-                    <CellInput
-                      field={f}
-                      value={selected.cells[f.id]}
-                      members={members}
-                      related={data.related}
-                      disabled={!editable}
-                      onChange={(v) => updateCell(selected, f, v)}
-                      upload={editable ? uploadFile : undefined}
-                      files={data.files}
-                    />
-                  )}
-                </PropertyRow>
-                {f.type === "date" && reminderControl(selected, f)}
-                {f.type === "date" &&
-                  f.id === fields.find((x) => x.type === "date")?.id &&
-                  recurrenceControl(selected)}
-              </Fragment>
-            ))}
-            <RelationBacklinks
-              key={`backlinks-${selected.id}-${selected.version}`}
-              pageId={page.id}
-              rowId={selected.id}
-            />
-            <RowDocument
-              key={selected.id}
-              pageId={page.id}
-              rowId={selected.id}
-              userId={userId}
-              pages={pages}
-              members={members}
-              editable={editable}
-              onError={onError}
-              onChanged={onRefresh}
-            />
-            <div className="settings-section">
-              <h3>Kommentare</h3>
-              {data.comments
-                .filter((c) => c.row_id === selected.id)
-                .map((c) => (
-                  <div className="comment" key={c.id}>
-                    <Avatar name={c.name} small />
-                    <div>
-                      <strong>{c.name}</strong>
-                      <p>{c.body}</p>
-                    </div>
-                  </div>
+                    </PropertyRow>
+                    {f.type === "date" && reminderControl(selected, f)}
+                    {f.type === "date" &&
+                      f.id === fields.find((x) => x.type === "date")?.id &&
+                      recurrenceControl(selected)}
+                  </Fragment>
                 ))}
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (comment.trim()) {
-                    await act({
-                      action: "comment.create",
-                      rowId: selected.id,
-                      body: comment,
-                    });
-                    setComment("");
-                  }
-                }}
-              >
-                <input
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Kommentar schreiben …"
+                {emptyHidden > 0 && (
+                  <button
+                    className="text-button"
+                    aria-expanded={showEmpty}
+                    onClick={() => setShowEmpty((v) => !v)}
+                  >
+                    {showEmpty
+                      ? "Leere Eigenschaften ausblenden"
+                      : `${emptyHidden} leere ${emptyHidden === 1 ? "Eigenschaft" : "Eigenschaften"} anzeigen`}
+                  </button>
+                )}
+                <RelationBacklinks
+                  key={`backlinks-${selected.id}-${selected.version}`}
+                  pageId={page.id}
+                  rowId={selected.id}
                 />
-                <button className="button compact">Senden</button>
-              </form>
+              </div>
+              <div className="row-main">
+                <RowDocument
+                  key={selected.id}
+                  pageId={page.id}
+                  rowId={selected.id}
+                  userId={userId}
+                  pages={pages}
+                  members={members}
+                  editable={selectedEditable}
+                  onError={onError}
+                  onChanged={onRefresh}
+                />
+                <div className="settings-section">
+                  <h3>Kommentare</h3>
+                  {data.comments
+                    .filter((c) => c.row_id === selected.id)
+                    .map((c) => (
+                      <div className="comment" key={c.id}>
+                        <Avatar name={c.name} small />
+                        <div>
+                          <strong>{c.name}</strong>
+                          <p>{c.body}</p>
+                        </div>
+                      </div>
+                    ))}
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (comment.trim()) {
+                        await act({
+                          action: "comment.create",
+                          rowId: selected.id,
+                          body: comment,
+                        });
+                        setComment("");
+                      }
+                    }}
+                  >
+                    <input
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      placeholder="Kommentar schreiben …"
+                    />
+                    <button className="button compact">Senden</button>
+                  </form>
+                </div>
+              </div>
             </div>
-            {editable && (
+            {selectedEditable && (
               <button
                 className="button danger"
                 onClick={async () => {

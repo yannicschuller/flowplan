@@ -1,3 +1,4 @@
+import { rowRoleResolver } from "./row-access";
 import { all, one, run, transaction } from "./db";
 import { instanceSettings } from "./instance-settings";
 import { HttpError } from "./auth";
@@ -106,11 +107,13 @@ export function snapshotChanges(
   };
   const before = load(snapshotId);
   if (page.kind === "database") {
+    // Records hidden by their permissions stay out of the comparison.
+    const visible = rowRoleResolver(user, page);
     const parse = (html: string): DatabaseState => {
       const parsed = JSON.parse(html || "{}") as Partial<DatabaseState>;
       return {
         database: parsed.database || { fields: [] },
-        rows: parsed.rows || [],
+        rows: (parsed.rows || []).filter((r) => visible(r)),
       };
     };
     const current = (): DatabaseState => ({
@@ -122,10 +125,17 @@ export function snapshotChanges(
           )!.fields,
         ),
       },
-      rows: all<{ id: string; cells: string }>(
-        "SELECT id,cells FROM rows WHERE page_id=? ORDER BY position",
+      rows: all<{
+        id: string;
+        cells: string;
+        access: string;
+        created_by: string;
+      }>(
+        "SELECT id,cells,access,created_by FROM rows WHERE page_id=? ORDER BY position",
         page.id,
-      ).map((r) => ({ id: r.id, cells: JSON.parse(r.cells) })),
+      )
+        .filter((r) => visible(r))
+        .map((r) => ({ id: r.id, cells: JSON.parse(r.cells) })),
     });
     return {
       kind: "database",

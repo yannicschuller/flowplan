@@ -1,3 +1,4 @@
+import { visibleRows } from "./row-access";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requireMember, requirePage } from "./permissions";
@@ -87,9 +88,13 @@ function relationChoices(user: Identity, fields: Field[]) {
           )?.fields || "[]",
         ) as Field[]
       )[0]?.id || "title";
-    related[target.id] = all<{ id: string; cells: string }>(
-      "SELECT id,cells FROM rows WHERE page_id=? ORDER BY position LIMIT 1000",
-      target.id,
+    related[target.id] = visibleRows(
+      user,
+      target,
+      all<{ id: string; cells: string; access: string; created_by: string }>(
+        "SELECT id,cells,access,created_by FROM rows WHERE page_id=? ORDER BY position LIMIT 1000",
+        target.id,
+      ),
     ).map((r) => ({
       id: r.id,
       cells: { title: cellText(JSON.parse(r.cells)[title]) },

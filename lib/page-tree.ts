@@ -1,3 +1,4 @@
+import { visibleRows } from "./row-access";
 import { mapFileCell } from "./file-cells";
 import { quotaCheckpoint } from "./instance-ops";
 import { remapViewReferences } from "./view-references";
@@ -57,9 +58,14 @@ export function duplicatePages(
       ),
     );
     if (p.kind === "database") {
-      const rs = all<Omit<Row, "cells"> & { cells: string }>(
-        "SELECT * FROM rows WHERE page_id=? ORDER BY position",
-        p.id,
+      // Records hidden from the copier are not copied.
+      const rs = visibleRows(
+        user,
+        p,
+        all<Omit<Row, "cells"> & { cells: string }>(
+          "SELECT * FROM rows WHERE page_id=? ORDER BY position",
+          p.id,
+        ),
       );
       sourceRows.set(p.id, rs);
       for (const r of rs) rowIds.set(r.id, id());
@@ -170,10 +176,19 @@ export function duplicatePages(
           target,
         );
       } else {
-        const source = one<{ fields: string; views: string }>(
-          "SELECT fields,views FROM databases WHERE page_id=?",
+        const source = one<{
+          fields: string;
+          views: string;
+          record_layout: string;
+        }>(
+          "SELECT fields,views,record_layout FROM databases WHERE page_id=?",
           p.id,
         )!;
+        run(
+          "UPDATE databases SET record_layout=? WHERE page_id=?",
+          source.record_layout || "{}",
+          target,
+        );
         const fields = JSON.parse(source.fields) as Field[];
         run(
           "UPDATE databases SET fields=?,views=? WHERE page_id=?",
@@ -199,7 +214,7 @@ export function duplicatePages(
         );
         for (const r of sourceRows.get(p.id) || []) {
           run(
-            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             rowIds.get(r.id)!,
             target,
             rewriteCells(r.cells, fields),
@@ -210,7 +225,14 @@ export function duplicatePages(
             rewrite(r.icon || ""),
             rewrite(r.cover || ""),
             r.recurrence || "",
+            r.access || "inherit",
           );
+          if (workspaceId === p.workspace_id)
+            run(
+              "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,user_id,group_id,role FROM row_grants WHERE row_id=?",
+              rowIds.get(r.id)!,
+              r.id,
+            );
         }
         for (const t of all<{
           name: string;

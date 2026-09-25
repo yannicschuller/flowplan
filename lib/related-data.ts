@@ -1,3 +1,4 @@
+import { visibleRows } from "./row-access";
 import { all, one } from "./db";
 import { requirePage } from "./permissions";
 import { HttpError } from "./auth";
@@ -29,9 +30,13 @@ export function relatedData(user: Identity, root: Page) {
     if (!raw) continue;
     const fields: Field[] = JSON.parse(raw.fields);
     relatedSchemas[pageId] = fields;
-    related[pageId] = all<Row & { cells: string }>(
-      "SELECT * FROM rows WHERE page_id=? ORDER BY position",
-      pageId,
+    related[pageId] = visibleRows(
+      user,
+      page,
+      all<Row & { cells: string }>(
+        "SELECT * FROM rows WHERE page_id=? ORDER BY position",
+        pageId,
+      ),
     ).map((r) => ({ ...r, cells: JSON.parse(r.cells) }));
     for (const field of fields)
       if (field.type === "relation" && field.relationPage)

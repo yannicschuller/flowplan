@@ -3,6 +3,7 @@ import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { maintainRowOrders } from "./row-order-server";
+import { roleWithGrants, rowGrants, type RowGrant } from "./row-access";
 import { cellText } from "./cell-text";
 import type { Field, Identity, Page } from "./types";
 
@@ -14,7 +15,19 @@ type Payload = {
   row: Record<string, unknown>;
   document: { state: string; html: string; generation: string } | null;
   comments: Record<string, unknown>[];
+  grants?: RowGrant[];
 };
+const trashedRole = (user: Identity, page: Page, payload: Payload) =>
+  roleWithGrants(
+    user,
+    page,
+    {
+      id: String(payload.row.id),
+      access: String(payload.row.access || "inherit"),
+      created_by: (payload.row.created_by as string | null) ?? null,
+    },
+    payload.grants || [],
+  );
 // Called inside the command transaction instead of deleting a record directly.
 export function trashRow(user: Identity, page: Page, rowId: string) {
   const row = one<Record<string, unknown> & { cells: string }>(
@@ -47,6 +60,7 @@ export function trashRow(user: Identity, page: Page, rowId: string) {
       page.id,
       rowId,
     ),
+    grants: rowGrants(rowId),
   };
   run(
     "INSERT OR REPLACE INTO row_trash(id,page_id,workspace_id,title,payload,deleted_by) VALUES(?,?,?,?,?,?)",
@@ -64,14 +78,21 @@ export function trashRow(user: Identity, page: Page, rowId: string) {
 
 export function listRowTrash(user: Identity, workspaceId: string) {
   return all<
-    Page & { trash_id: string; trash_title: string; deleted_at: string }
+    Page & {
+      trash_id: string;
+      trash_title: string;
+      deleted_at: string;
+      payload: string;
+    }
   >(
-    `SELECT p.*,t.id trash_id,t.title trash_title,t.deleted_at FROM row_trash t
+    `SELECT p.*,t.id trash_id,t.title trash_title,t.deleted_at,t.payload FROM row_trash t
      JOIN pages p ON p.id=t.page_id WHERE t.workspace_id=? AND p.deleted_at IS NULL
      ORDER BY t.deleted_at DESC LIMIT 500`,
     workspaceId,
   )
-    .filter((p) => pageRole(user, p))
+    .filter(
+      (p) => pageRole(user, p) && trashedRole(user, p, JSON.parse(p.payload)),
+    )
     .map((p) => ({
       id: p.trash_id,
       title: p.trash_title,
@@ -91,7 +112,12 @@ function entry(user: Identity, raw: unknown) {
   if (!found) throw new HttpError(404, "Eintrag nicht im Papierkorb.");
   const page = requirePage(user, found.page_id, true);
   if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
-  return { trashId, page, payload: JSON.parse(found.payload) as Payload };
+  const payload = JSON.parse(found.payload) as Payload;
+  const role = trashedRole(user, page, payload);
+  if (!role) throw new HttpError(404, "Eintrag nicht im Papierkorb.");
+  if (role === "viewer")
+    throw new HttpError(403, "Dieser Eintrag ist für dich schreibgeschützt.");
+  return { trashId, page, payload };
 }
 export function restoreTrashedRow(user: Identity, raw: unknown) {
   const { trashId, page, payload } = entry(user, raw);
@@ -102,7 +128,7 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
     );
   const r = payload.row;
   run(
-    "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?)",
+    "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?)",
     trashId,
     page.id,
     String(r.cells),
@@ -114,7 +140,18 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
     String(r.icon || ""),
     String(r.cover || ""),
     String(r.recurrence || ""),
+    ["readonly", "private"].includes(String(r.access))
+      ? String(r.access)
+      : "inherit",
   );
+  for (const g of payload.grants || [])
+    run(
+      "INSERT OR IGNORE INTO row_grants(row_id,user_id,group_id,role) VALUES(?,?,?,?)",
+      trashId,
+      g.user_id,
+      g.group_id,
+      g.role,
+    );
   if (payload.document)
     run(
       "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",

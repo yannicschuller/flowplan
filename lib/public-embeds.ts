@@ -1,6 +1,6 @@
 import { cleanHtml, escaped } from "./document-server";
 import { cellText, computedCells, queryRows } from "./database";
-import { database, rows } from "./api";
+import { database, publicRows as rows } from "./api";
 import { availableLinkedViews, parseLinkedAttributes } from "./linked-views";
 import { displayText } from "./field-format";
 import { publicFieldsOf } from "./shared-content";

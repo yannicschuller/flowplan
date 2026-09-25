@@ -3917,9 +3917,14 @@ tr:hover .row-open {
 }
 .row-appearance-actions {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
   font-size: 12px;
   min-height: 4px;
+}
+.row-appearance-actions > * {
+  white-space: nowrap;
 }
 .row-title-icon {
   margin-right: 10px;
@@ -7227,4 +7232,107 @@ tr.order-drop-after > td {
 [data-theme="dark"] .comment-rich-body a,
 [data-theme="dark"] .comment-mention {
   color: var(--blue);
+}
+.row-access {
+  margin: 4px 0 8px;
+}
+.row-access-panel {
+  display: grid;
+  gap: 8px;
+  max-width: 560px;
+  padding: 12px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.row-access-panel label {
+  display: grid;
+  gap: 4px;
+}
+.row-access-grant {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.row-access-grant span {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.row-access-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.row-access-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+.modal.modal-record-wide {
+  width: min(1040px, calc(100% - 32px));
+}
+.modal.modal-side {
+  width: min(620px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  top: 0;
+  left: auto;
+  right: 0;
+  transform: none;
+  border-radius: 0;
+}
+.record-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.record-mode select {
+  width: auto;
+}
+.record-layout {
+  display: grid;
+  gap: 8px;
+  max-width: 560px;
+  padding: 12px;
+  margin: 6px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.record-layout label:not(.checkbox-label) {
+  display: grid;
+  gap: 4px;
+}
+.record-layout fieldset {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.row-columns.properties-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: 24px;
+  align-items: start;
+}
+.row-columns.properties-side .row-properties {
+  order: 2;
+  position: sticky;
+  top: 0;
+}
+.row-columns.properties-side .row-main {
+  min-width: 0;
+}
+.row-detail {
+  container-type: inline-size;
+}
+@container (max-width: 640px) {
+  .row-columns.properties-side {
+    display: block;
+  }
+  .row-columns.properties-side .row-properties {
+    position: static;
+  }
 }

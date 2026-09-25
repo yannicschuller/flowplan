@@ -3,6 +3,7 @@ import { z } from "zod";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { assertRowAccess } from "./row-access";
 import { cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
 import type { Identity, Row, Field } from "./types";
 type StoredDocument = { state: Uint8Array; html: string; generation: string };
@@ -30,6 +31,7 @@ export function requireRow(
     pageId,
   );
   if (!row) throw new HttpError(404, "Datensatz nicht gefunden.");
+  assertRowAccess(user, page, row, write);
   return { page, row };
 }
 export function ensureRowDocument(row: Row): StoredDocument {
@@ -119,7 +121,7 @@ export function syncRowDocument(
         !previous.html.includes('data-mention="' + uid + '"')
       ) {
         try {
-          requirePage({ ...user, id: uid }, pageId);
+          requireRow({ ...user, id: uid }, pageId, rowId);
           run(
             "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'mention')",
             id(),

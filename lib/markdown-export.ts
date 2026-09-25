@@ -1,3 +1,4 @@
+import { visibleRows } from "./row-access";
 import { fileUrls } from "./file-cells";
 import { readFileSync, statSync } from "node:fs";
 import { resolve, posix } from "node:path";
@@ -97,7 +98,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         page.id,
         {
           schema: database(page.id),
-          rows: rows(page.id),
+          rows: visibleRows(user, page, rows(page.id)),
           ...relatedData(user, page),
         },
       ]),

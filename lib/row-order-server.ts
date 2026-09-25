@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { assertRowAccess } from "./row-access";
 import { relatedData } from "./related-data";
 import { queryRows } from "./database";
 import {
@@ -137,6 +138,8 @@ export function moveRow(
   const rows = records(pageId),
     row = rows.find((r) => r.id === b.rowId);
   if (!row) throw new HttpError(404, "Eintrag fehlt.");
+  // Reordering is a view setting; changing groups changes the record.
+  assertRowAccess(user, page, row, !!b.group);
   if (row.version !== b.rowVersion)
     throw new HttpError(409, "Der Eintrag wurde geändert. Bitte neu laden.");
   if ((b.placement === "before" || b.placement === "after") && !b.targetId)

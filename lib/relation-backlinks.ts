@@ -1,3 +1,4 @@
+import { rowRole, rowRoleResolver } from "./row-access";
 import { all, one } from "./db";
 import { pageRole, requirePage } from "./permissions";
 import { cellText } from "./cell-text";
@@ -18,8 +19,12 @@ export function relationBacklinks(
   limit = 100,
 ): Backlink[] {
   const page = requirePage(user, pageId);
-  if (!one("SELECT 1 FROM rows WHERE id=? AND page_id=?", rowId, page.id))
-    return [];
+  const target = one<{ id: string; access: string; created_by: string }>(
+    "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
+    rowId,
+    page.id,
+  );
+  if (!target || !rowRole(user, page, target)) return [];
   const sources = all<Page & { fields: string }>(
     `SELECT p.*,d.fields FROM databases d JOIN pages p ON p.id=d.page_id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL AND d.fields LIKE ?`,
@@ -33,11 +38,18 @@ export function relationBacklinks(
       (f) => f.type === "relation" && f.relationPage === page.id,
     );
     if (!fields.length) continue;
-    for (const row of all<{ id: string; cells: string }>(
-      "SELECT id,cells FROM rows WHERE page_id=? AND cells LIKE ? ORDER BY position",
+    const visible = rowRoleResolver(user, source);
+    for (const row of all<{
+      id: string;
+      cells: string;
+      access: string;
+      created_by: string;
+    }>(
+      "SELECT id,cells,access,created_by FROM rows WHERE page_id=? AND cells LIKE ? ORDER BY position",
       source.id,
       `%${rowId}%`,
     )) {
+      if (!visible(row)) continue;
       const cells = JSON.parse(row.cells) as Record<string, unknown>;
       for (const field of fields) {
         const value = cells[field.id];

@@ -96,6 +96,10 @@ export type Row = {
   icon?: string;
   cover?: string;
   recurrence?: string;
+  access?: import("./row-access-modes").RowAccessMode;
+  // The viewer's role on this record (from the record permissions).
+  role?: Role;
+  grants?: { user_id: string; group_id: string; role: "viewer" | "editor" }[];
   preview?: import("./document-preview").DocumentPreview;
 };
 export type Filter = {
@@ -155,6 +159,7 @@ export type Database = {
   fields: Field[];
   views: View[];
   version: number;
+  recordLayout?: import("./record-layout").RecordLayout;
 };
 export type Comment = {
   id: string;

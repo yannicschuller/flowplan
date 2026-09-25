@@ -4,7 +4,7 @@ import { rowOrderRanks } from "@/lib/row-order";
 import { PageIcon } from "./ui";
 import { notFound } from "next/navigation";
 import { one } from "@/lib/db";
-import { database, rows } from "@/lib/api";
+import { database, publicRows as rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
 import { withPublicEmbeds } from "@/lib/public-embeds";
 import { cellText, computedCells, queryRows } from "@/lib/database";

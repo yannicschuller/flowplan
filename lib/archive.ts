@@ -1,3 +1,5 @@
+import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
+import { visibleRows } from "./row-access";
 import { parseRecurrence } from "./recurrence";
 import { quotaCheckpoint } from "./instance-ops";
 import { instanceSettings } from "./instance-settings";
@@ -116,6 +118,7 @@ const rowSchema = z.object({
 const databaseSchema = z.object({
   fields: z.array(field).min(1).max(80),
   views: z.array(view).min(1).max(30),
+  recordLayout: recordLayoutSchema.optional(),
   rows: z.array(rowSchema).max(5000),
   templates: z
     .array(
@@ -311,8 +314,8 @@ function snapshotFor(user: Identity, wid: string) {
     pages: pages.map((p) => {
       const db =
         p.kind === "database"
-          ? one<{ fields: string; views: string }>(
-              "SELECT fields,views FROM databases WHERE page_id=?",
+          ? one<{ fields: string; views: string; record_layout: string }>(
+              "SELECT fields,views,record_layout FROM databases WHERE page_id=?",
               p.id,
             )
           : null;
@@ -352,24 +355,38 @@ function snapshotFor(user: Identity, wid: string) {
               database: {
                 fields: JSON.parse(db.fields),
                 views: JSON.parse(db.views),
-                rows: all<{
-                  id: string;
-                  cells: string;
-                  content: string;
-                  position: number;
-                  created_at: string;
-                  updated_at: string;
-                }>(
-                  "SELECT id,cells,content,position,icon,cover,recurrence,created_at,updated_at FROM rows WHERE page_id=? ORDER BY position",
-                  p.id,
-                ).map((r) => ({
-                  ...r,
-                  cells: JSON.parse(r.cells),
-                  snapshots: all(
-                    "SELECT html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at",
-                    r.id,
+                recordLayout: parseRecordLayout(db.record_layout),
+                rows: visibleRows(
+                  user,
+                  p,
+                  all<{
+                    id: string;
+                    cells: string;
+                    content: string;
+                    position: number;
+                    created_at: string;
+                    updated_at: string;
+                    access: string;
+                    created_by: string;
+                  }>(
+                    "SELECT id,cells,content,position,icon,cover,recurrence,created_at,updated_at,access,created_by FROM rows WHERE page_id=? ORDER BY position",
+                    p.id,
                   ),
-                })),
+                ).map(
+                  ({
+                    access: _access,
+                    created_by: _by,
+                    role: _role,
+                    ...r
+                  }) => ({
+                    ...r,
+                    cells: JSON.parse(r.cells),
+                    snapshots: all(
+                      "SELECT html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at",
+                      r.id,
+                    ),
+                  }),
+                ),
                 templates: all<{
                   name: string;
                   cells: string;
@@ -1035,12 +1052,13 @@ async function importEntries(
         if (p.database) {
           const d = p.database;
           run(
-            "INSERT INTO databases(page_id,fields,views) VALUES(?,?,?)",
+            "INSERT INTO databases(page_id,fields,views,record_layout) VALUES(?,?,?,?)",
             pid,
             JSON.stringify(rewriteFields(d.fields)),
             JSON.stringify(
               remapViewReferences(d.views, d.fields, rowMap, d.rows),
             ),
+            JSON.stringify(d.recordLayout || {}),
           );
           for (const r of d.rows) {
             const rid = rowMap.get(r.id)!,

@@ -1,5 +1,6 @@
 import { all, one, run, transaction } from "./db";
 import { pageRole } from "./permissions";
+import { hiddenRowIds } from "./row-access";
 import type { Field, Identity, Page } from "./types";
 
 // Full-text index over page titles, document text, record cells and record
@@ -236,9 +237,15 @@ export function searchWorkspace(
           ? undefined
           : key || undefined;
   const results: SearchResult[] = [];
+  const hidden = new Map<string, Set<string>>();
   const push = (page: Page, key: string, title: string, snippet: string) => {
     const rowId = recordOf(key),
       type = hitKind(page, key);
+    // Records hidden by their own permissions do not appear.
+    if (rowId && page.kind === "database") {
+      if (!hidden.has(page.id)) hidden.set(page.id, hiddenRowIds(user, page));
+      if (hidden.get(page.id)!.has(rowId)) return;
+    }
     results.push({
       id: page.id,
       ...(rowId ? { rowId } : {}),

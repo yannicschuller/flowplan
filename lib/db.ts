@@ -11,7 +11,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 18) return;
+  if (globalDb.flowplanSchema === 19) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -263,6 +263,25 @@ function migrate(d: DatabaseSync) {
   for (const column of ["icon", "cover", "recurrence"])
     if (!rowColumns.some((c) => c.name === column))
       d.exec(`ALTER TABLE rows ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+  // Per record access: inherited, read-only or private, plus grants.
+  if (!rowColumns.some((c) => c.name === "access"))
+    d.exec(
+      "ALTER TABLE rows ADD COLUMN access TEXT NOT NULL DEFAULT 'inherit'",
+    );
+  if (
+    !(
+      d.prepare("PRAGMA table_info(databases)").all() as { name: string }[]
+    ).some((c) => c.name === "record_layout")
+  )
+    d.exec(
+      "ALTER TABLE databases ADD COLUMN record_layout TEXT NOT NULL DEFAULT '{}'",
+    );
+  d.exec(`CREATE TABLE IF NOT EXISTS row_grants(
+    row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL DEFAULT '',
+    group_id TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL CHECK(role IN ('viewer','editor')),
+    PRIMARY KEY(row_id,user_id,group_id))`);
   const notificationColumns = d
     .prepare("PRAGMA table_info(notifications)")
     .all() as { name: string }[];
@@ -297,7 +316,7 @@ function migrate(d: DatabaseSync) {
     ).some((c) => c.name === "rich_body")
   )
     d.exec("ALTER TABLE inline_messages ADD COLUMN rich_body TEXT");
-  globalDb.flowplanSchema = 18;
+  globalDb.flowplanSchema = 19;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

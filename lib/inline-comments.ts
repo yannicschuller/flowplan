@@ -1,3 +1,4 @@
+import { hiddenRowIds } from "./row-access";
 import {
   richCommentSchema,
   commentText,
@@ -169,7 +170,8 @@ export function inlineMentionCandidates(
     if (
       (member.name.toLocaleLowerCase().includes(search) ||
         member.email.toLocaleLowerCase().includes(search)) &&
-      pageRole({ ...user, id: member.id }, page)
+      pageRole({ ...user, id: member.id }, page) &&
+      (!rowId || !hiddenRowIds({ ...user, id: member.id }, page).has(rowId))
     )
       matches.push({ ...member, name: member.name.slice(0, 200) });
     if (matches.length === 100) break;
@@ -238,7 +240,9 @@ function notify(
     if (
       uid !== user.id &&
       one("SELECT id FROM users WHERE id=? AND disabled=0", uid) &&
-      pageRole({ ...user, id: uid }, page)
+      pageRole({ ...user, id: uid }, page) &&
+      (!target?.row_id ||
+        !hiddenRowIds({ ...user, id: uid }, page).has(target.row_id))
     )
       run(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,thread_id,kind) VALUES(?,?,?,?,?,?,?)",

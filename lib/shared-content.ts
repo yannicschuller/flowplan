@@ -91,7 +91,11 @@ function source(token: string, pageId?: string, rowId?: string) {
   const context = publicPage(token, pageId);
   const { page } = context;
   const row = rowId
-    ? one<Row>("SELECT * FROM rows WHERE id=? AND page_id=?", rowId, page.id)
+    ? one<Row>(
+        "SELECT * FROM rows WHERE id=? AND page_id=? AND access!='private'",
+        rowId,
+        page.id,
+      )
     : undefined;
   if (rowId && !row) throw new HttpError(404, "Datensatz nicht gefunden.");
   const doc = row
@@ -153,7 +157,7 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
           ),
         ) as Field[];
         related[f.relationPage] = all<{ id: string; cells: string }>(
-          "SELECT id,cells FROM rows WHERE page_id=? ORDER BY position LIMIT 500",
+          "SELECT id,cells FROM rows WHERE page_id=? AND access!='private' ORDER BY position LIMIT 500",
           f.relationPage,
         ).map((r) => ({
           id: r.id,
@@ -174,7 +178,11 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
   return {
     pageId: s.page.id,
     rowId,
-    role: s.role,
+    // Read-only records take comments at most.
+    role:
+      s.row?.access === "readonly" && s.role === "editor"
+        ? ("commenter" as const)
+        : s.role,
     locked: !!s.page.locked,
     title: s.page.title,
     html: publishedHtml(s.doc?.html || "", token, s.pages),
@@ -232,7 +240,7 @@ function validatedCells(
       for (const rid of ids)
         if (
           !one(
-            "SELECT id FROM rows WHERE id=? AND page_id=?",
+            "SELECT id FROM rows WHERE id=? AND page_id=? AND access!='private'",
             rid,
             f.relationPage!,
           )
@@ -370,6 +378,8 @@ export function mutateSharedContent(token: string, input: unknown) {
     if (s.role === "viewer" || (b.action !== "comment" && s.role !== "editor"))
       throw new HttpError(403, "Dieser Link erlaubt diese Aktion nicht.");
     if (s.page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
+    if (b.action !== "comment" && s.row?.access === "readonly")
+      throw new HttpError(403, "Dieser Eintrag ist schreibgeschützt.");
     limitShareRequests(token);
     if (b.action === "create") {
       // New records by guests: only public, writable properties.

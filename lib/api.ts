@@ -1,3 +1,12 @@
+import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
+import {
+  assertRowAccess,
+  canManageRow,
+  hiddenRowIds,
+  rowGrants,
+  setRowAccess,
+  visibleRows,
+} from "./row-access";
 import { cellText } from "./cell-text";
 import { scheduleRow, cascadeTimeline } from "./row-schedule";
 import { rewriteFormulaReferences } from "./formula";
@@ -117,12 +126,15 @@ export function database(pid: string): Database {
     fields: string;
     views: string;
     version: number;
+    record_layout?: string;
   }>("SELECT * FROM databases WHERE page_id=?", pid);
   if (!raw) throw new HttpError(404, "Datenbank nicht gefunden.");
+  const { record_layout, ...rest } = raw;
   return {
-    ...raw,
+    ...rest,
     fields: JSON.parse(raw.fields),
     views: JSON.parse(raw.views),
+    recordLayout: parseRecordLayout(record_layout),
   };
 }
 export function rows(pid: string): Row[] {
@@ -130,6 +142,10 @@ export function rows(pid: string): Row[] {
     "SELECT * FROM rows WHERE page_id=? ORDER BY position",
     pid,
   ).map((r) => ({ ...r, cells: JSON.parse(r.cells) }));
+}
+// Records visible on public pages and share links: private ones stay hidden.
+export function publicRows(pid: string): Row[] {
+  return rows(pid).filter((r) => r.access !== "private");
 }
 export function bootstrap(user: Identity, wid?: string) {
   const workspaces = all<{
@@ -223,12 +239,13 @@ export function pageData(user: Identity, pid: string) {
   )
     .filter((x) => pageRole(user, x) && x.html.includes("#page=" + p.id))
     .map((x) => ({ id: x.id, title: x.title, icon: x.icon }));
-  const comments = all(
+  const hidden = p.kind === "database" ? hiddenRowIds(user, p) : new Set();
+  const comments = all<{ row_id: string | null }>(
     `SELECT c.*,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
      UNION ALL SELECT id,page_id,row_id,NULL author_id,body,resolved,created_at,name || ' (Gast)' name FROM shared_comments WHERE page_id=? ORDER BY created_at`,
     pid,
     pid,
-  );
+  ).filter((c) => !c.row_id || !hidden.has(c.row_id));
   const snapshots = all(
     "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC LIMIT 50",
     pid,
@@ -266,11 +283,23 @@ export function pageData(user: Identity, pid: string) {
       backlinks,
       database: data,
       relationPairs: relationPairs(pid),
-      rows: rows(pid).map((r) => ({
+      // Each record carries the viewer's role; hidden ones are left out.
+      rows: visibleRows(user, p, rows(pid)).map((r) => ({
         ...r,
         preview: documentPreview(documentHtml.get(r.id) ?? r.content ?? ""),
+        ...(r.access !== "inherit" && canManageRow(user, p, r)
+          ? { grants: rowGrants(r.id) }
+          : {}),
       })),
       rowTemplates: rowTemplates(pid),
+      // Groups for record permissions.
+      groups:
+        role === "viewer"
+          ? []
+          : all<{ id: string; name: string }>(
+              "SELECT id,name FROM groups WHERE workspace_id=? ORDER BY name",
+              p.workspace_id,
+            ),
       reminders: listDateReminders(user, pid),
       ...relations,
       form: formSettings(pid),
@@ -1022,29 +1051,62 @@ export function command(
           );
         else {
           const data = JSON.parse(s.html);
+          // Versions with restricted records are restored by owners only.
+          if (
+            pageRole(user, p) !== "owner" &&
+            (one(
+              "SELECT 1 FROM rows WHERE page_id=? AND access!='inherit'",
+              p.id,
+            ) ||
+              data.rows.some(
+                (r: { access?: string }) => r.access && r.access !== "inherit",
+              ))
+          )
+            throw new HttpError(
+              403,
+              "Diese Version enthält Einträge mit eigenen Rechten. Nur Besitzer stellen sie wieder her.",
+            );
           run(
             "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
             JSON.stringify(data.database.fields),
             JSON.stringify(data.database.views),
             p.id,
           );
+          if (data.database.recordLayout)
+            run(
+              "UPDATE databases SET record_layout=? WHERE page_id=?",
+              JSON.stringify(parseRecordLayout(data.database.recordLayout)),
+              p.id,
+            );
           if (Array.isArray(data.comments))
             run("DELETE FROM comments WHERE page_id=?", p.id);
           run("DELETE FROM rows WHERE page_id=?", p.id);
           for (const r of data.rows)
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access) VALUES(?,?,?,?,COALESCE((SELECT id FROM users WHERE id=?),?),?,?,?,?,?,?)",
               r.id,
               p.id,
               JSON.stringify(r.cells),
               r.position,
+              typeof r.created_by === "string" ? r.created_by : "",
               user.id,
               user.id,
               r.content || "",
               restorableImage(p.id, r.icon, validateIcon),
               restorableImage(p.id, r.cover, validateCover),
               typeof r.recurrence === "string" ? r.recurrence : "",
+              ["readonly", "private"].includes(r.access) ? r.access : "inherit",
             );
+          for (const r of data.rows)
+            for (const g of Array.isArray(r.grants) ? r.grants : [])
+              run(
+                "INSERT OR IGNORE INTO row_grants(row_id,user_id,group_id,role) SELECT ?,?,?,? WHERE ? IN ('viewer','editor')",
+                r.id,
+                String(g.user_id || ""),
+                String(g.group_id || ""),
+                String(g.role),
+                String(g.role),
+              );
           if (Array.isArray(data.rowTemplates)) {
             run("DELETE FROM row_templates WHERE page_id=?", p.id);
             for (const t of data.rowTemplates)
@@ -1284,14 +1346,17 @@ export function command(
       }
       case "row.update": {
         const p = write();
-        autoDatabaseSnapshot(user, p);
         const rid = uuid.parse(b.rowId),
-          row = one<{ version: number; cells: string }>(
-            "SELECT * FROM rows WHERE id=? AND page_id=?",
-            rid,
-            pid(),
-          );
+          row = one<{
+            id: string;
+            version: number;
+            cells: string;
+            access: string;
+            created_by: string;
+          }>("SELECT * FROM rows WHERE id=? AND page_id=?", rid, pid());
         if (!row) throw new HttpError(404, "Datensatz fehlt.");
+        assertRowAccess(user, p, row, true);
+        autoDatabaseSnapshot(user, p);
         if (b.version !== row.version)
           throw new HttpError(
             409,
@@ -1321,6 +1386,7 @@ export function command(
       }
       case "row.delete": {
         const p = write();
+        requireRow(user, p.id, uuid.parse(b.rowId), true);
         autoDatabaseSnapshot(user, p);
         trashRow(user, p, uuid.parse(b.rowId));
         maintainRowOrders(pid());
@@ -1328,6 +1394,26 @@ export function command(
       }
       case "row.trash.restore":
         result = restoreTrashedRow(user, b);
+        break;
+      case "database.recordLayout": {
+        const p = write();
+        const fields = database(p.id).fields;
+        const layout = recordLayoutSchema.parse(b.layout);
+        // The title stays visible; unknown properties are dropped.
+        layout.hidden = [...new Set(layout.hidden)].filter(
+          (fid) => fid !== fields[0]?.id && fields.some((f) => f.id === fid),
+        );
+        run(
+          "UPDATE databases SET record_layout=? WHERE page_id=?",
+          JSON.stringify(layout),
+          p.id,
+        );
+        run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", p.id);
+        result = layout;
+        break;
+      }
+      case "row.access":
+        result = setRowAccess(user, b);
         break;
       case "row.trash.purge":
         result = purgeTrashedRow(user, b);
@@ -1381,7 +1467,10 @@ export function command(
           user.id,
         )) {
           const other = { ...user, id: m.user_id };
-          if (pageRole(other, p))
+          if (
+            pageRole(other, p) &&
+            (!b.rowId || !hiddenRowIds(other, p).has(uuid.parse(b.rowId)))
+          )
             run(
               "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'comment')",
               id(),

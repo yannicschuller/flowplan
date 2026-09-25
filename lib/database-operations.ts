@@ -11,6 +11,7 @@ import { validDateValue } from "./date-values";
 import { z } from "zod";
 import { all, one, run, id } from "./db";
 import { requirePage } from "./permissions";
+import { rowGrants, rowRoleResolver } from "./row-access";
 import { HttpError } from "./auth";
 import { replaceRowDocument } from "./row-documents";
 import { relationPairs } from "./relation-sync";
@@ -43,8 +44,7 @@ export function validateCellPatch(
       } catch (e) {
         throw new HttpError(400, `${f.name}: ${(e as Error).message}`);
       }
-    }
-    else if (f.type === "checkbox") result[key] = z.boolean().parse(value);
+    } else if (f.type === "checkbox") result[key] = z.boolean().parse(value);
     else if (f.type === "multiselect") {
       const values = z.array(z.string()).max(100).parse(value);
       if (values.some((v) => !f.options?.includes(v)))
@@ -127,21 +127,29 @@ export function autoDatabaseSnapshot(user: Identity, page: Page) {
   if (!recent) databaseSnapshot(user, page);
 }
 export function databaseSnapshot(user: Identity, page: Page) {
-  const db = one<{ fields: string; views: string }>(
-    "SELECT fields,views FROM databases WHERE page_id=?",
+  const db = one<{ fields: string; views: string; record_layout: string }>(
+    "SELECT fields,views,record_layout FROM databases WHERE page_id=?",
     page.id,
   )!;
   const rows = all<Row & { cells: string }>(
     "SELECT * FROM rows WHERE page_id=? ORDER BY position",
     page.id,
-  ).map((r) => ({ ...r, cells: JSON.parse(r.cells) }));
+  ).map((r) => ({
+    ...r,
+    cells: JSON.parse(r.cells),
+    ...(r.access && r.access !== "inherit" ? { grants: rowGrants(r.id) } : {}),
+  }));
   const snapshotId = id();
   run(
     "INSERT INTO snapshots(id,page_id,html,title,created_by) VALUES(?,?,?,?,?)",
     snapshotId,
     page.id,
     JSON.stringify({
-      database: { fields: JSON.parse(db.fields), views: JSON.parse(db.views) },
+      database: {
+        fields: JSON.parse(db.fields),
+        views: JSON.parse(db.views),
+        recordLayout: JSON.parse(db.record_layout || "{}"),
+      },
       relationPairs: relationPairs(page.id),
       rows,
       comments: all("SELECT * FROM comments WHERE page_id=?", page.id),
@@ -187,13 +195,20 @@ export function bulkRows(
       .parse(input.rows);
   if (new Set(selected.map((r) => r.id)).size !== selected.length)
     throw new HttpError(400, "Doppelte Einträge in der Auswahl.");
+  const access = rowRoleResolver(user, page);
   const source = selected.map((selection) => {
     const row = one<Row & { cells: string }>(
       "SELECT * FROM rows WHERE id=? AND page_id=?",
       selection.id,
       pageId,
     );
-    if (!row) throw new HttpError(404, "Eintrag nicht gefunden.");
+    const role = row && access(row);
+    if (!row || !role) throw new HttpError(404, "Eintrag nicht gefunden.");
+    if (operation !== "duplicate" && role === "viewer")
+      throw new HttpError(
+        403,
+        "Mindestens ein ausgewählter Eintrag ist für dich schreibgeschützt.",
+      );
     if (row.version !== selection.version)
       throw new HttpError(
         409,
@@ -234,7 +249,7 @@ export function bulkRows(
           );
       const rid = mapping.get(row.id)!;
       run(
-        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence,access) VALUES(?,?,?,?,?,?,?,?,?,?)",
         rid,
         pageId,
         JSON.stringify(cells),
@@ -244,6 +259,13 @@ export function bulkRows(
         row.icon || "",
         row.cover || "",
         row.recurrence || "",
+        row.access || "inherit",
+      );
+      // Copies keep the record permissions of their original.
+      run(
+        "INSERT INTO row_grants(row_id,user_id,group_id,role) SELECT ?,user_id,group_id,role FROM row_grants WHERE row_id=?",
+        rid,
+        row.id,
       );
       const html = String(
         one("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ||

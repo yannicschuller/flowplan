@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { assertRowAccess, assertRowsWritable } from "./row-access";
 import {
   cascadeShifts,
   dependencyFields,
@@ -49,12 +50,13 @@ export function scheduleRow(
   if (!view || !["timeline", "calendar"].includes(view.type))
     throw new HttpError(400, "Kalender- oder Timeline-Ansicht fehlt.");
   const rid = z.string().uuid().parse(input.rowId),
-    row = one<{ cells: string; version: number }>(
-      "SELECT cells,version FROM rows WHERE id=? AND page_id=?",
+    row = one<{ id: string; cells: string; version: number }>(
+      "SELECT id,cells,version,access,created_by FROM rows WHERE id=? AND page_id=?",
       rid,
       pageId,
     );
   if (!row) throw new HttpError(404, "Datensatz fehlt.");
+  assertRowAccess(user, page, row, true);
   if (input.rowVersion !== row.version)
     throw new HttpError(
       409,
@@ -130,6 +132,7 @@ export function cascadeTimeline(
       409,
       "Zyklische Abhängigkeiten lassen sich nicht auflösen.",
     );
+  assertRowsWritable(user, page, shifts.keys());
   for (const [rid, days] of shifts) {
     const row = rows.find((r) => r.id === rid)!;
     const patch = schedulePatch(row, fields, view, { operation: "move", days });

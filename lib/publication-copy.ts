@@ -181,7 +181,7 @@ export function copyPublication(user: Identity, input: unknown) {
       copy,
     );
     for (const row of all<Row & { cells: string }>(
-      "SELECT * FROM rows WHERE page_id=? ORDER BY position",
+      "SELECT * FROM rows WHERE page_id=? AND access!='private' ORDER BY position",
       p.id,
     )) {
       const cells = Object.fromEntries(

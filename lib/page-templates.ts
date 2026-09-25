@@ -1,3 +1,4 @@
+import { hiddenRowIds } from "./row-access";
 import { appearanceSchema } from "./page-appearance";
 import { templateCategoryIds } from "./template-categories";
 import { quotaCheckpoint } from "./instance-ops";
@@ -239,6 +240,11 @@ export function applyPageTemplate(
       templates.some((t) => JSON.stringify(t.cells).length > 200000)
     )
       throw new HttpError(413, "Datensatz in Vorlage zu groß.");
+    if (hiddenRowIds(user, page).size)
+      throw new HttpError(
+        403,
+        "Die Datenbank enthält private Einträge, die du nicht siehst. Nur Besitzer ersetzen sie durch eine Vorlage.",
+      );
     if (backup) snapshotId = databaseSnapshot(user, page);
     run("DELETE FROM comments WHERE page_id=? AND row_id IS NOT NULL", page.id);
     run("DELETE FROM rows WHERE page_id=?", page.id);
