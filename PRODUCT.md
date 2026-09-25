@@ -25,8 +25,10 @@ Admin-Gruppe. Daten verlassen die eigene Infrastruktur nicht.
 - **Admins** der Instanz, die Konten, Arbeitsbereiche, Speicher und
   Sicherungen verwalten.
 
-Offen: Größe und Art der Zielorganisationen (Firma, Verein, Schule …) und ob
-Flowplan kommerziell angeboten wird.
+**Entwicklungsphase:** vorerst ein eigenes Projekt. Später Open Source oder
+ein eigenes Produkt. Daraus folgt: Alles, was mit der App ausgeliefert wird
+(Schriften, Symbole, Bilder, Abhängigkeiten), muss unter Lizenzen stehen, die
+Weitergabe und kommerzielle Nutzung erlauben.
 
 ## Oberflächen und Modus
 
@@ -60,6 +62,27 @@ Es gibt keine Marketing-Oberfläche im Projekt.
 - Keine Werbesprache in der Anwendung; kurze Leitsätze nur an Einstiegen
   (Anmeldung, Startseite).
 
+## Marke
+
+**Entscheidung: Flowplan bekommt eine eigene, unverwechselbare Markenwelt**
+statt der geliehenen AppFlowy/Notion-Anmutung. Funktional bleibt AppFlowy die
+Referenz, visuell nicht. Die Marke muss
+
+- in einer dichten Arbeitsoberfläche tragen (Operate): Ausdruck in präzisen
+  Details, Farbe, Typografie und Bewegung – nicht in Dekoration, die beim
+  Arbeiten stört;
+- hell und dunkel gleich gut funktionieren;
+- ohne externe Dienste auskommen (selbst gehostet, offline-fähig);
+- später als Open-Source-Projekt oder Produkt bestehen können.
+
+**Entscheidung: eigene Schrift** statt Systemschrift. Bedingungen: offene
+Lizenz (z. B. SIL Open Font License), mit der App ausgeliefert (keine
+Google-Fonts-Einbindung), deutsche Zeichen und Tabellenziffern, gut lesbar in
+kleinen Größen der Oberfläche. Welche Schrift, ist noch zu entscheiden.
+
+Das bisherige Erscheinungsbild (unten) ist Ausgangspunkt und Beleg dafür, was
+funktioniert, aber kein Maßstab für die neue Markenwelt.
+
 ## Visuelle Richtung (Ist-Zustand)
 
 - Ruhige, helle Werkzeug-Ästhetik nach dem Vorbild von AppFlowy/Notion:
@@ -67,8 +90,8 @@ Es gibt keine Marketing-Oberfläche im Projekt.
   #3479e7, dunkel #609cef), abgerundete Ecken, zurückhaltende Schatten.
 - Logo: gestapelte Ebenen (Phosphor „Stack“) weiß auf blauem, abgerundetem
   Quadrat.
-- Symbole: Phosphor Icons. Schrift: Systemschrift; Seiten wahlweise Serif
-  oder Mono.
+- Symbole: Phosphor Icons. Schrift: Systemschrift (`public/fonts.css`);
+  Seiten wahlweise Serif oder Mono.
 - Bewegung: kurze, weiche Übergänge (`--ease-out`, `--ease-spring`),
   Verschieben gleitet nach dem Loslassen an die neue Stelle.
 - Eine `DESIGN.md` mit Tokens und Komponentenregeln existiert noch nicht.
@@ -87,11 +110,12 @@ Es gibt keine Marketing-Oberfläche im Projekt.
 
 - Keine AI-Funktionen.
 - Kein Cloud-Dienst des Herstellers; kein Tracking.
-- Keine Imitation fremder Marken im Erscheinungsbild.
+- Keine Imitation fremder Marken im Erscheinungsbild – auch nicht von
+  AppFlowy, Notion oder Miro.
 
 ## Offene Fragen
 
-- Soll Flowplan eine eigene, unverwechselbare Markenwelt bekommen oder bei
-  der ruhigen AppFlowy/Notion-Anmutung bleiben?
-- Zielgruppe und Einsatzkontext genauer (siehe „Für wen“).
-- Wird eine eigene Schrift gewünscht, oder bleibt es bei Systemschriften?
+- Name und Wortmarke: Bleibt es bei „Flowplan“ und dem Ebenen-Logo, oder wird
+  beides Teil der neuen Markenwelt?
+- Welche Schrift (siehe „Marke“)?
+- Konkrete Zielgruppe, sobald das Projekt veröffentlicht wird.
