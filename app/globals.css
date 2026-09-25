@@ -3228,6 +3228,37 @@ tr:hover .row-open {
   color: #f3dc9a;
   border-color: #56461c;
 }
+.color-menu {
+  padding: 8px;
+  min-width: 220px;
+}
+.color-menu-label {
+  font-size: 12px;
+  color: var(--secondary);
+  margin: 4px 2px;
+}
+.color-swatches {
+  display: grid;
+  grid-template-columns: repeat(9, 22px);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+.color-swatch[data-highlighted] {
+  border-color: var(--blue);
+}
 .saved-search-form {
   display: flex;
   gap: 6px;
