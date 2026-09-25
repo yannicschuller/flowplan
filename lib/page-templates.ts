@@ -1,4 +1,5 @@
 import { appearanceSchema } from "./page-appearance";
+import { templateCategoryIds } from "./template-categories";
 import { quotaCheckpoint } from "./instance-ops";
 import { applyAppearance } from "./page-covers";
 import { remapViewReferences } from "./view-references";
@@ -57,6 +58,7 @@ export type PageTemplate = {
   kind: "document" | "database";
   payload: string;
   visibility: string;
+  category?: string;
   created_by: string;
   version: number;
   deleted_at: string | null;
@@ -73,6 +75,15 @@ export function requireTemplate(
   );
   if (!template || (template.deleted_at && !includeDeleted))
     throw new HttpError(404, "Vorlage fehlt.");
+  // Instance templates are published by admins for every workspace.
+  if (
+    template.visibility === "instance" &&
+    !template.deleted_at &&
+    template.workspace_id !== workspaceId
+  ) {
+    requireMember(user, workspaceId);
+    return template;
+  }
   requireMember(user, template.workspace_id);
   if (template.visibility === "private" && template.created_by !== user.id)
     throw new HttpError(403, "Private Vorlage.");
@@ -328,13 +339,22 @@ export function databaseTemplateExtras(pageId: string) {
 export function listPageTemplates(user: Identity, workspaceId: string) {
   const role = requireMember(user, workspaceId);
   return all<PageTemplate>(
-    "SELECT id,name,kind,visibility,created_by,version,deleted_at FROM templates WHERE workspace_id=? AND (visibility='workspace' OR created_by=?) ORDER BY name",
+    `SELECT id,workspace_id,name,kind,visibility,category,created_by,version,deleted_at FROM templates
+     WHERE (workspace_id=? AND (visibility IN ('workspace','instance') OR created_by=?))
+        OR (workspace_id<>? AND visibility='instance' AND deleted_at IS NULL)
+     ORDER BY name`,
     workspaceId,
     user.id,
-  ).map((t) => ({
+    workspaceId,
+  ).map(({ workspace_id, ...t }) => ({
     ...t,
+    // Instance templates from other workspaces are only used, not managed.
+    shared: workspace_id !== workspaceId,
     can_manage:
-      role !== "viewer" && (t.created_by === user.id || role === "owner"),
+      workspace_id === workspaceId &&
+      role !== "viewer" &&
+      (t.created_by === user.id || role === "owner") &&
+      (t.visibility !== "instance" || user.isAdmin),
   }));
 }
 export function managePageTemplate(
@@ -367,10 +387,26 @@ export function managePageTemplate(
   else {
     if (template.deleted_at)
       throw new HttpError(409, "Vorlage zuerst wiederherstellen.");
+    const visibility = z
+      .enum(["private", "workspace", "instance"])
+      .parse(input.visibility);
+    if (
+      (visibility === "instance" || template.visibility === "instance") &&
+      !user.isAdmin
+    )
+      throw new HttpError(
+        403,
+        "Nur Admins veröffentlichen Vorlagen für alle Arbeitsbereiche.",
+      );
     run(
-      "UPDATE templates SET name=?,visibility=?,version=version+1 WHERE id=?",
+      "UPDATE templates SET name=?,visibility=?,category=?,version=version+1 WHERE id=?",
       z.string().trim().min(1).max(500).parse(input.name),
-      z.enum(["private", "workspace"]).parse(input.visibility),
+      visibility,
+      z
+        .enum(templateCategoryIds)
+        .or(z.literal(""))
+        .catch("")
+        .parse(input.category ?? template.category ?? ""),
       template.id,
     );
   }

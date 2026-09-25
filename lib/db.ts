@@ -191,6 +191,13 @@ function migrate(d: DatabaseSync) {
     file_id TEXT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
     token TEXT NOT NULL,
     created_at INTEGER NOT NULL);`);
+  // Template gallery category; visibility may also be 'instance' (admins).
+  if (
+    !(
+      d.prepare("PRAGMA table_info(templates)").all() as { name: string }[]
+    ).some((c) => c.name === "category")
+  )
+    d.exec("ALTER TABLE templates ADD COLUMN category TEXT NOT NULL DEFAULT ''");
   // Personal saved searches per workspace.
   d.exec(`CREATE TABLE IF NOT EXISTS saved_searches(
     id TEXT PRIMARY KEY,

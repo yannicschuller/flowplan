@@ -994,9 +994,8 @@ test("saved template management renames, changes visibility, deletes and restore
     exact: true,
   });
   await edit.getByLabel("Name", { exact: true }).fill(name + " renamed");
-  await edit
-    .getByRole("checkbox", { name: "Nur für mich sichtbar", exact: true })
-    .check();
+  await edit.getByLabel("Sichtbar für").selectOption("private");
+  await edit.getByLabel("Kategorie").selectOption("meetings");
   await edit
     .getByRole("button", { name: "Änderungen speichern", exact: true })
     .click();
@@ -1004,7 +1003,11 @@ test("saved template management renames, changes visibility, deletes and restore
   const row = gallery
     .locator(".saved-template-row")
     .filter({ hasText: name + " renamed" });
-  await expect(row).toContainText("Nur für mich");
+  await expect(row).toContainText("Nur für mich · Meetings");
+  await gallery.getByLabel("Vorlagenkategorie").selectOption("projects");
+  await expect(row).toHaveCount(0);
+  await gallery.getByLabel("Vorlagenkategorie").selectOption("meetings");
+  await expect(row).toHaveCount(1);
   await row
     .getByRole("button", { name: `${name} renamed löschen`, exact: true })
     .click();

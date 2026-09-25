@@ -1,23 +1,36 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { api, Modal, PageIcon } from "./ui";
+import {
+  templateCategories,
+  type TemplateCategory,
+} from "@/lib/template-categories";
 type Template = {
   id: string;
   name: string;
   kind: string;
-  visibility: "private" | "workspace";
+  visibility: "private" | "workspace" | "instance";
+  category: TemplateCategory;
   version: number;
   deleted_at: string | null;
   can_manage: boolean;
+  shared?: boolean;
+};
+const visibilityLabels = {
+  private: "Nur für mich",
+  workspace: "Arbeitsbereich",
+  instance: "Alle Arbeitsbereiche",
 };
 export default function SavedTemplates({
   workspaceId,
   canCreate,
+  isAdmin = false,
   onUse,
   onError,
 }: {
   workspaceId: string;
   canCreate: boolean;
+  isAdmin?: boolean;
   onUse: (t: Template) => Promise<void>;
   onError: (message: string) => void;
 }) {
@@ -47,6 +60,7 @@ export default function SavedTemplates({
         version: t.version,
         name: t.name,
         visibility: t.visibility,
+        category: t.category || "",
       });
       await refresh();
       setEditing(null);
@@ -59,11 +73,13 @@ export default function SavedTemplates({
     }
   }
   const [search, setSearch] = useState(""),
-    [kind, setKind] = useState<"all" | "document" | "database">("all");
+    [kind, setKind] = useState<"all" | "document" | "database">("all"),
+    [category, setCategory] = useState<"all" | TemplateCategory>("all");
   const shown = items.filter(
     (t) =>
       !!t.deleted_at === deleted &&
       (kind === "all" || t.kind === kind) &&
+      (category === "all" || (t.category || "") === category) &&
       t.name.toLocaleLowerCase("de").includes(search.toLocaleLowerCase("de")),
   );
   async function importFile(file: File) {
@@ -106,6 +122,19 @@ export default function SavedTemplates({
           <option value="document">Dokumente</option>
           <option value="database">Datenbanken</option>
         </select>
+        <select
+          aria-label="Vorlagenkategorie"
+          value={category}
+          onChange={(e) => setCategory(e.target.value as typeof category)}
+        >
+          <option value="all">Alle Kategorien</option>
+          {Object.entries(templateCategories).map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+          <option value="">Ohne Kategorie</option>
+        </select>
         {canCreate && (
           <label className="button compact">
             Vorlage importieren
@@ -147,7 +176,11 @@ export default function SavedTemplates({
             <div className="saved-template-name">
               <strong>{t.name}</strong>
               <small>
-                {t.visibility === "private" ? "Nur für mich" : "Arbeitsbereich"}
+                {t.shared
+                  ? "Instanzvorlage"
+                  : visibilityLabels[t.visibility] ||
+                    visibilityLabels.workspace}
+                {t.category && ` · ${templateCategories[t.category]}`}
               </small>
             </div>
             <div className="saved-template-actions">
@@ -233,18 +266,44 @@ export default function SavedTemplates({
                 }
               />
             </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={editing.visibility === "private"}
+            <label>
+              Kategorie
+              <select
+                value={editing.category || ""}
                 onChange={(e) =>
                   setEditing({
                     ...editing,
-                    visibility: e.target.checked ? "private" : "workspace",
+                    category: e.target.value as TemplateCategory,
                   })
                 }
-              />
-              Nur für mich sichtbar
+              >
+                <option value="">Ohne Kategorie</option>
+                {Object.entries(templateCategories).map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Sichtbar für
+              <select
+                value={editing.visibility}
+                onChange={(e) =>
+                  setEditing({
+                    ...editing,
+                    visibility: e.target.value as Template["visibility"],
+                  })
+                }
+              >
+                <option value="private">{visibilityLabels.private}</option>
+                <option value="workspace">{visibilityLabels.workspace}</option>
+                {(isAdmin || editing.visibility === "instance") && (
+                  <option value="instance" disabled={!isAdmin}>
+                    {visibilityLabels.instance} (Admin)
+                  </option>
+                )}
+              </select>
             </label>
             <p className="muted">
               Gespeicherte Inhalte und Anhänge bleiben erhalten. Bereits

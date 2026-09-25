@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { templateCategoryIds } from "./template-categories";
 import { quotaCheckpoint } from "./instance-ops";
 import { z } from "zod";
 import { all, id, run, transaction } from "./db";
@@ -17,6 +18,7 @@ const manifestSchema = z.object({
   format: z.literal(TEMPLATE_FORMAT),
   name: z.string().trim().min(1).max(200),
   kind: z.enum(["document", "database"]),
+  category: z.enum(templateCategoryIds).or(z.literal("")).catch("").optional(),
   payload: z.string().max(20_000_000),
   files: z
     .array(
@@ -51,6 +53,7 @@ export async function exportTemplate(
     format: TEMPLATE_FORMAT,
     name: template.name,
     kind: template.kind,
+    category: template.category || "",
     payload: template.payload,
     files: files.map((f) => ({
       id: f.original_id,
@@ -124,7 +127,7 @@ export async function importTemplate(
     const quota = quotaCheckpoint(workspaceId);
     const templateId = id();
     run(
-      "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility) VALUES(?,?,?,?,?,?,?)",
+      "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?)",
       templateId,
       workspaceId,
       manifest.name,
@@ -132,6 +135,7 @@ export async function importTemplate(
       manifest.payload,
       user.id,
       visibility,
+      manifest.category || "",
     );
     for (const file of manifest.files)
       run(

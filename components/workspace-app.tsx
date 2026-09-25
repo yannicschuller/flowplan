@@ -2557,6 +2557,7 @@ export default function WorkspaceApp({ initial }: { initial: Bootstrap }) {
         <SavedTemplates
           workspaceId={boot.workspace.id}
           canCreate={canCreate}
+          isAdmin={!!boot.user.isAdmin}
           onError={notify}
           onUse={async (t) => {
             const r = await act({

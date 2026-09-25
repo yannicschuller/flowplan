@@ -37,6 +37,7 @@ import { transformFilterGroup } from "./database-filters";
 import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
+import { templateCategoryIds } from "./template-categories";
 import {
   deleteSavedSearch,
   saveSearch,
@@ -1605,7 +1606,7 @@ export function command(
         if (payload.length > 20_000_000)
           throw new HttpError(413, "Vorlage zu groß.");
         run(
-          "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility) VALUES(?,?,?,?,?,?,?)",
+          "INSERT INTO templates(id,workspace_id,name,kind,payload,created_by,visibility,category) VALUES(?,?,?,?,?,?,?,?)",
           templateId,
           p.workspace_id,
           str.parse(b.name),
@@ -1613,6 +1614,11 @@ export function command(
           payload,
           user.id,
           b.private ? "private" : "workspace",
+          z
+            .enum(templateCategoryIds)
+            .or(z.literal(""))
+            .catch("")
+            .parse(b.category ?? ""),
         );
         const quota = quotaCheckpoint(p.workspace_id);
         captureTemplateFiles(user, templateId, payload);

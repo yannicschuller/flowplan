@@ -128,7 +128,7 @@ export function displayText(
 
 // Number properties shown as stars store whole ratings from 0 to the maximum
 // (default 5, at most 10).
-export const ratingMax = (f: Pick<Field, "rollupMax">) =>
+export const ratingMax = (f: Partial<Field>) =>
   Math.min(10, Math.max(1, Math.round(f.rollupMax || 5)));
 export function numberCell(f: Field, value: unknown): number | null {
   if (value === null) return null;
