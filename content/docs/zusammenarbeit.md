@@ -1,0 +1,35 @@
+# Zusammenarbeit und Kommentare
+
+Mehrere Personen schreiben gleichzeitig in derselben Seite, ohne sich zu überschreiben. Kommentare, Erwähnungen und der Posteingang halten Gespräche beim Inhalt.
+
+## Gleichzeitig bearbeiten
+
+- Dokumente und Eintragsinhalte werden über Yjs (CRDT) zusammengeführt: Jede Änderung bleibt erhalten, auch wenn zwei Personen im selben Absatz tippen.
+- **Farbige Cursor und Auswahlen** mit Namen zeigen, wo andere gerade schreiben.
+- Ohne Verbindung arbeitest du weiter; die Änderungen werden abgeglichen, sobald das Netz zurück ist.
+- Datenbank-Änderungen werden auf Versionskonflikte geprüft: Hat jemand denselben Eintrag inzwischen geändert, wird deine Änderung nicht stillschweigend darübergeschrieben, sondern abgelehnt, und du siehst den neuen Stand.
+- Auf Whiteboards gibt es zusätzlich [Live-Cursor](/docs/whiteboards#gemeinsam-arbeiten) wie in Miro.
+
+## Seitenkommentare
+
+Das Sprechblasen-Symbol in der Kopfzeile öffnet die Kommentare der Seite. Kommentare können formatiert sein (Listen, Links, Zitate, Code) und Personen mit `@` erwähnen. <kbd>⌘</kbd> <kbd>Enter</kbd> sendet.
+
+## Textkommentare
+
+Text markieren und **Text kommentieren** wählen oder <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>M</kbd> drücken.
+
+- Der kommentierte Text wird markiert; Klick darauf öffnet den Thread.
+- Antworten, Emoji-Reaktionen, **Erledigen** und **Wieder öffnen**.
+- Eigene Beiträge lassen sich bearbeiten und löschen.
+- Wird der Text später gelöscht, bleibt das Zitat im Thread erhalten.
+- Entwürfe bleiben gespeichert, bis du sie sendest oder verwirfst.
+
+Textkommentare gibt es in Dokumenten und in den Inhalten von Datenbankeinträgen, auch in Exporten und Inhaltsarchiven.
+
+## Erwähnungen
+
+- `@Name` in Text oder Kommentar benachrichtigt die Person. Die Personensuche zeigt nur Mitglieder, die die Seite lesen dürfen.
+
+## Posteingang
+
+Der **Posteingang** in der Seitenleiste sammelt Erwähnungen, Kommentare und Antworten, Datums-Erinnerungen sowie Kommentare und Einträge von Gästen. Ungelesenes ist markiert; ein Klick springt zur Stelle – bei Textkommentaren direkt in den Thread. Welche Ereignisse als Push-Nachricht kommen, stellst du unter **Einstellungen → Benachrichtigungen** ein (siehe [Suche, Posteingang und Push](/docs/suche-und-benachrichtigungen)).

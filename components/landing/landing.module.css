@@ -1788,6 +1788,34 @@
 .footer .brand {
   font-size: 16px;
 }
+.footerNav {
+  display: flex;
+  gap: 18px;
+}
+.footerNav a {
+  color: var(--secondary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.footerNav a:hover {
+  color: var(--text);
+}
+.docsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: none;
+}
+.docsLink svg {
+  transition: translate 0.25s var(--ease);
+}
+.docsLink:hover svg {
+  translate: 4px 0;
+}
 
 /* ---------- Small screens ---------- */
 @media (max-width: 1080px) {

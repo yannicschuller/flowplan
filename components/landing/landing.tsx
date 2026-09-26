@@ -843,6 +843,7 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
               {label}
             </a>
           ))}
+          <a href="/docs">Doku</a>
         </nav>
         <div className={s.actions}>
           {demoEnabled && <DemoButton className={s.ghost} label="Demo" />}
@@ -965,6 +966,9 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
               </div>
             ))}
           </div>
+          <a className={s.docsLink} href="/docs">
+            Jede Funktion Schritt für Schritt in der Dokumentation <ArrowRight size={16} />
+          </a>
         </section>
 
         <section className={s.ops} id="betrieb">
@@ -992,6 +996,9 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
                   <LockSimple size={16} /> Keine Cloud des Herstellers
                 </span>
               </div>
+              <a className={s.docsLink} href="/docs/installation">
+                Anleitung zum Selbst-Hosten <ArrowRight size={16} />
+              </a>
             </Reveal>
             <Reveal className={s.terminal}>
               <div className={s.terminalBar}>
@@ -1060,6 +1067,11 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
           <span>flowplan</span>
         </span>
         <span>Dokumente, Datenbanken, Whiteboards und Journal. Selbst gehostet.</span>
+        <nav className={s.footerNav} aria-label="Weiteres">
+          <a href="/docs">Dokumentation</a>
+          <a href="/docs/installation">Selbst hosten</a>
+          <a href="/templates">Vorlagen</a>
+        </nav>
       </footer>
     </div>
   );

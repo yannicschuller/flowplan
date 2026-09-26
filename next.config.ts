@@ -22,6 +22,8 @@ const config: NextConfig = {
       "./node_modules/wasm-feature-detect/**/*",
       "./node_modules/zlibjs/**/*",
       "./node_modules/idb-keyval/**/*",
+      // Documentation pages (/docs) are read from Markdown files.
+      "./content/docs/*.md",
     ],
   },
   async headers() {

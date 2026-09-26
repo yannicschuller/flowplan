@@ -2,6 +2,8 @@
 
 Next.js-Arbeitsbereich für Dokumente, Wissen und Projekte. AppFlowy-inspirierte Oberfläche, ohne AI-Funktionen. OIDC-Anmeldung, gruppenbasierte Administration und responsive Bedienung sind integriert.
 
+**Dokumentation:** Unter `/docs` jeder Instanz (Quelle: [content/docs](content/docs)) – vom Selbst-Hosten bis zu allen Funktionen.
+
 **Status:** Lauffähige Implementierung mit umfangreichem Kernumfang. Noch keine vollständig nachgewiesene AppFlowy-Parität. Der genaue Stand und verbleibende Lücken stehen in [docs/FEATURE-PARITY.md](docs/FEATURE-PARITY.md).
 
 Text markieren und **Text kommentieren** oder **Strg/⌘ + Alt + M** wählen: Dokumente und Datensatzseiten unterstützen interne Threads mit Antworten, Emoji-Reaktionen, Erledigen/Wiederöffnen sowie Bearbeiten/Löschen eigener Beiträge. Zitate bleiben nach Textlöschung erreichbar; ZIP-Inhaltsarchive erhalten die Diskussionen. Rechte, Entwürfe und verbleibende Unterschiede stehen in [docs/INLINE-COMMENTS.md](docs/INLINE-COMMENTS.md).
