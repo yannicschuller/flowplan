@@ -446,6 +446,12 @@ export function DocumentBlockControls({
                       setError(
                         "An dieser Position kann der Block nicht abgelegt werden.",
                       );
+                    // A drag selects only for its own duration; the moved
+                    // block's handle must not stay highlighted afterwards.
+                    if (!open) {
+                      remember([]);
+                      setTick((t) => t + 1);
+                    }
                   } else setOpen(true);
                 }}
                 onPointerCancel={() => {

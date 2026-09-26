@@ -80,6 +80,8 @@ async function dragBlock(
     await expect(page.locator(".document-block-drop")).toBeVisible();
     await page.mouse.up();
   }
+  // The moved block's handle must not stay highlighted after the drop.
+  await expect(page.locator(".document-block-handle.selected")).toHaveCount(0);
 }
 test("block handles drag with mouse or touch, bulk actions preserve content and mobile placement enters containers", async ({
   page,
