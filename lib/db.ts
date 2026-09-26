@@ -11,7 +11,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 21) return;
+  if (globalDb.flowplanSchema === 22) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -82,6 +82,11 @@ function migrate(d: DatabaseSync) {
     );
   if (!pageColumns.some((column) => column.name === "icon_size"))
     d.exec("ALTER TABLE pages ADD COLUMN icon_size TEXT NOT NULL DEFAULT ''");
+  if (!pageColumns.some((column) => column.name === "journal_date"))
+    d.exec("ALTER TABLE pages ADD COLUMN journal_date TEXT");
+  d.exec(
+    "CREATE INDEX IF NOT EXISTS pages_journal_days ON pages(parent_id,journal_date) WHERE journal_date IS NOT NULL",
+  );
   const snapshotColumns = d.prepare("PRAGMA table_info(snapshots)").all() as {
     name: string;
   }[];
@@ -340,7 +345,7 @@ function migrate(d: DatabaseSync) {
     ).some((c) => c.name === "rich_body")
   )
     d.exec("ALTER TABLE inline_messages ADD COLUMN rich_body TEXT");
-  globalDb.flowplanSchema = 21;
+  globalDb.flowplanSchema = 22;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

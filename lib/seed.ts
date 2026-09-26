@@ -72,7 +72,7 @@ export function createPage(
     kind,
     user,
     Date.now(),
-    kind === "whiteboard" ? "whiteboard" : "file",
+    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : "file",
   );
   if (kind === "database")
     run(

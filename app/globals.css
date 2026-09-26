@@ -9200,3 +9200,176 @@ html.card-grabbing * {
   cursor: grabbing !important;
   user-select: none !important;
 }
+
+/* ---------- Journal ---------- */
+.journal {
+  display: grid;
+  gap: 22px;
+  max-width: 720px;
+  padding-bottom: 40px;
+}
+.journal-today {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  padding: 18px 20px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background:
+    radial-gradient(28rem 10rem at 100% 0%, var(--blue-light), transparent 70%),
+    var(--bg);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.18s ease,
+    translate 0.18s var(--ease-out);
+}
+.journal-today:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
+  box-shadow: 0 10px 28px -12px #1d1a1433;
+  translate: 0 -1px;
+}
+.journal-today-date {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 62px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.journal-today-date small {
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--on-accent);
+  background: var(--blue);
+  padding: 3px 0;
+}
+.journal-today-date strong {
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1;
+  padding-bottom: 6px;
+}
+.journal-today-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.journal-today-text small {
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.journal-today-text strong {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.1;
+}
+.journal-today-text span {
+  color: var(--secondary);
+  font-size: 13px;
+}
+.journal-today-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--blue);
+  font-weight: 600;
+  font-size: 13px;
+}
+.journal-hint,
+.journal-empty {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.journal-hint svg,
+.journal-empty svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.journal-month h2 {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.journal-month ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.journal-month li button {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 6px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  font-variant-numeric: tabular-nums;
+}
+.journal-month li button:hover {
+  background: var(--hover);
+}
+.journal-day-number {
+  font-size: 18px;
+  font-weight: 650;
+  text-align: right;
+}
+.journal-day-name {
+  font-size: 14px;
+}
+.journal-day-when {
+  color: var(--muted);
+  font-size: 12px;
+}
+/* Tasks carried over from an earlier journal day. */
+li[data-journal-since] > label::after {
+  content: "↻";
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  vertical-align: 1px;
+}
+@media (max-width: 700px) {
+  .journal-today {
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+    padding: 16px;
+  }
+  .journal-today-open {
+    display: none;
+  }
+  .journal-today-text strong {
+    font-size: 26px;
+  }
+}
+.journal-day-name small {
+  display: block;
+  color: var(--secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

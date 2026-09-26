@@ -1,5 +1,5 @@
 export type Role = "owner" | "editor" | "viewer";
-export type PageKind = "document" | "database" | "whiteboard";
+export type PageKind = "document" | "database" | "whiteboard" | "journal";
 export type User = {
   id: string;
   name: string;
@@ -46,6 +46,8 @@ export type Page = {
   full_width: number;
   icon_size?: "" | "small" | "medium" | "large";
   font: string;
+  // Day pages of a journal: the day they belong to (YYYY-MM-DD).
+  journal_date?: string | null;
 };
 export type FieldType =
   | "text"

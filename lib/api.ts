@@ -3,6 +3,7 @@ import {
   syncWhiteboard,
   whiteboardData,
 } from "./whiteboard";
+import { journalDate, journalDays, rollJournal, rollJournals } from "./journal";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import {
@@ -354,6 +355,7 @@ export function pageData(user: Identity, pid: string) {
     snapshots,
     present,
     backlinks,
+    ...(p.kind === "journal" ? { journal: { days: journalDays(p.id) } } : {}),
     state: doc?.state ? Buffer.from(doc.state).toString("base64") : null,
     html: doc?.html || "",
     generation: doc?.generation || "1",
@@ -720,7 +722,7 @@ export function command(
         const kind =
           savedTemplate?.kind ||
           z
-            .enum(["document", "database", "whiteboard"])
+            .enum(["document", "database", "whiteboard", "journal"])
             .parse(b.kind || "document");
         const created = createPage(
           wid(),
@@ -921,6 +923,18 @@ export function command(
         siblings.forEach((sibling, i) =>
           run("UPDATE pages SET position=? WHERE id=?", i, sibling),
         );
+        break;
+      }
+      case "journal.roll": {
+        // The client sends its own date: a new day starts at local midnight.
+        const date = journalDate.parse(b.date);
+        if (b.pageId) {
+          const journal = write();
+          result = rollJournal(user, journal, date);
+        } else {
+          requireMember(user, wid());
+          result = { changed: rollJournals(user, wid(), date) };
+        }
         break;
       }
       case "page.delete": {

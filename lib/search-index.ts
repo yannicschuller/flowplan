@@ -218,7 +218,9 @@ export function searchWorkspace(
         ? ("file" as const)
         : key
           ? ("row" as const)
-          : page.kind;
+          : page.kind === "journal"
+            ? ("document" as const)
+            : page.kind;
   const matchesKind = (page: Page, key: string) =>
     kind === "all" || hitKind(page, key) === kind;
   // Comments on records open the record.

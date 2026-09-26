@@ -7,8 +7,10 @@ README, `docs/` und dem Code; Offenes ist als offen markiert.
 
 Ein selbst betriebener Arbeitsbereich für Dokumente, Wissen, Projekte und
 gemeinsames Denken: Dokumente, Datenbanken (Tabelle, Board, Kalender,
-Timeline, Galerie, Liste, Feed, Diagramm, Formular) und Whiteboards in einem
-Seitenbaum. Orientierung ist der Funktionsumfang von AppFlowy (Referenz
+Timeline, Galerie, Liste, Feed, Diagramm, Formular), Whiteboards und Journale
+in einem Seitenbaum. Ein **Journal** legt jeden Tag eine Tagesseite an
+(Tagebuch und Aufgaben): offene Aufgaben wandern in den neuen Tag, Tage ohne
+eigenen Eintrag werden wieder entfernt. Orientierung ist der Funktionsumfang von AppFlowy (Referenz
 0.14.5), ergänzt um Whiteboards im Stil von Miro. **Bewusst ohne
 AI-Funktionen.**
 
@@ -38,6 +40,7 @@ Weitergabe und kommerzielle Nutzung erlauben.
 | Dokument-Editor, Datensatzseiten | Operate | ungestört schreiben und strukturieren |
 | Datenbankansichten | Operate | Daten erfassen, sortieren, planen |
 | Whiteboard | Operate | gemeinsam denken, workshoppen, präsentieren |
+| Journal und Tagesseiten | Operate | den Tag festhalten, Offenes nicht verlieren |
 | Einstellungen, Administration | Operate | eine Einstellung finden und sicher ändern |
 | Öffentliche Seiten, Vorlagengalerie für Besucher | Read | Inhalt verstehen, ggf. kopieren |
 | Anmeldung | Operate | ohne Umweg hinein |

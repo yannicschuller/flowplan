@@ -35,7 +35,6 @@ import { NodeSelection, Selection } from "@tiptap/pm/state";
 import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
 import {
   Table,
   TableCell,
@@ -99,6 +98,7 @@ import {
   Column,
   Media,
   LinkCard,
+  FlowTaskItem,
   MEDIA_WIDTHS,
 } from "@/lib/document-schema";
 export default function DocumentEditor({
@@ -201,7 +201,7 @@ export default function DocumentEditor({
         EditableCodeBlock,
         BlockShortcuts,
         TaskList,
-        TaskItem.configure({ nested: true }),
+        FlowTaskItem.configure({ nested: true }),
         Table.configure({ resizable: true }),
         TableRow,
         TableCell,

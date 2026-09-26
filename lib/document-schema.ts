@@ -172,6 +172,23 @@ export const WhiteboardEmbed = Node.create({
     "Eingebettetes Whiteboard",
   ],
 });
+// Tasks remember the day they were first carried over in a journal, so a day
+// that only holds carried tasks counts as untouched.
+export const FlowTaskItem = TaskItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      journalSince: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-journal-since"),
+        renderHTML: (attributes) =>
+          attributes.journalSince
+            ? { "data-journal-since": attributes.journalSince }
+            : {},
+      },
+    };
+  },
+});
 export const documentExtensions = [
   StarterKit.configure({
     codeBlock: false,
@@ -184,7 +201,7 @@ export const documentExtensions = [
   FlowCodeBlock,
   MermaidBlock,
   TaskList,
-  TaskItem.configure({ nested: true }),
+  FlowTaskItem.configure({ nested: true }),
   Table.configure({ resizable: true }),
   TableRow,
   TableCell,

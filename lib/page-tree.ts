@@ -58,6 +58,12 @@ export function duplicatePages(
         p.kind,
       ),
     );
+    if (p.journal_date)
+      run(
+        "UPDATE pages SET journal_date=? WHERE id=?",
+        p.journal_date,
+        pageIds.get(p.id)!,
+      );
     if (p.kind === "database") {
       // Records hidden from the copier are not copied.
       const rs = visibleRows(
@@ -166,7 +172,7 @@ export function duplicatePages(
       }
       if (p.kind === "whiteboard") {
         copyWhiteboard(p.id, target, pageIds, rewrite);
-      } else if (p.kind === "document") {
+      } else if (p.kind === "document" || p.kind === "journal") {
         const source = one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           p.id,

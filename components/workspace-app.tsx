@@ -71,6 +71,7 @@ import {
   FileText,
   Table,
   PresentationChart,
+  Notebook,
   Lock,
   Copy,
   DownloadSimple,
@@ -111,6 +112,7 @@ import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
 import Admin from "./admin";
 import { ShareLinks } from "./share-links";
+import { JournalView, localDay, type JournalDay } from "./journal-view";
 import type { ShareLink } from "@/lib/share-links";
 const EmojiPicker = dynamic(() => import("./emoji-picker"), {
   ssr: false,
@@ -126,6 +128,7 @@ const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
 });
 type PageData = DatabaseData & {
   whiteboard?: { state: string; generation: string };
+  journal?: { days: JournalDay[] };
   shareLinks?: ShareLink[];
   publication?: {
     includeChildren: boolean;
@@ -364,6 +367,46 @@ export default function WorkspaceApp({
     },
     [refresh, offlineQueue],
   );
+  // Journals get a page for the new day: when the app opens, comes back to
+  // the foreground and at local midnight.
+  const hasJournal = boot.pages.some(
+    (page) => page.kind === "journal" && !page.deleted_at,
+  );
+  const rollJournal = useCallback(
+    async (pageId: string | null, date: string) => {
+      const result = await api<{ changed?: boolean }>("/api/command", {
+        action: "journal.roll",
+        workspaceId: boot.workspace.id,
+        ...(pageId ? { pageId } : {}),
+        date,
+      });
+      if (result?.changed) await refresh();
+      return result;
+    },
+    [boot.workspace.id, refresh],
+  );
+  useEffect(() => {
+    if (!hasJournal) return;
+    let rolled = "";
+    const check = () => {
+      if (document.visibilityState === "hidden" || !navigator.onLine) return;
+      const today = localDay();
+      if (today === rolled) return;
+      rolled = today;
+      rollJournal(null, today).catch(() => {
+        rolled = "";
+      });
+    };
+    check();
+    const timer = setInterval(check, 60_000);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, [hasJournal, rollJournal]);
   const act = useCallback(
     async (b: Record<string, unknown>) => {
       try {
@@ -1670,6 +1713,14 @@ export default function WorkspaceApp({
                         onError={notify}
                       />
                     </>
+                  ) : data.page.kind === "journal" && data.journal ? (
+                    <JournalView
+                      pageId={data.page.id}
+                      days={data.journal.days}
+                      editable={editable}
+                      onOpen={(id) => void openPage(id)}
+                      onRoll={rollJournal}
+                    />
                   ) : data.page.kind === "whiteboard" && data.whiteboard ? (
                     <Whiteboard
                       key={`${data.page.id}-${data.whiteboard.generation}`}
@@ -1720,7 +1771,10 @@ export default function WorkspaceApp({
                   </div>
                   <div className="subpages">
                     {activePages
-                      .filter((p) => p.parent_id === data.page.id)
+                      // Journal days are listed by the journal itself.
+                      .filter(
+                        (p) => p.parent_id === data.page.id && !p.journal_date,
+                      )
                       .map((p) => (
                         <button key={p.id} onClick={() => openPage(p.id)}>
                           <PageIcon name={p.icon} />
@@ -2333,6 +2387,18 @@ export default function WorkspaceApp({
               <PresentationChart size={26} />
               <strong>Whiteboard</strong>
               <small>Ideen, Diagramme und Workshops</small>
+            </button>
+            <button
+              type="button"
+              className={newKind === "journal" ? "chosen" : ""}
+              onClick={() => {
+                setNewKind("journal");
+                setStarterTemplate(null);
+              }}
+            >
+              <Notebook size={26} />
+              <strong>Journal</strong>
+              <small>Jeden Tag eine Seite, offene Aufgaben wandern mit</small>
             </button>
           </div>
           <label>

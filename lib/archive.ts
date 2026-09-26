@@ -188,7 +188,12 @@ export const archiveSchema = z.object({
         icon: pageIconSchema,
         cover: coverSchema,
         cover_position: z.number().finite().min(0).max(100).default(50),
-        kind: z.enum(["document", "database", "whiteboard"]),
+        kind: z.enum(["document", "database", "whiteboard", "journal"]),
+        journal_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
         position: z.number().finite(),
         deleted_at: str.nullable(),
         updated_at: str,
@@ -763,7 +768,8 @@ function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
       throw new HttpError(400, "Bereich fehlt im Archiv.");
     if (
       (p.kind === "database") !== !!p.database ||
-      (p.kind === "document" && p.html === undefined) ||
+      ((p.kind === "document" || p.kind === "journal") &&
+        p.html === undefined) ||
       (p.kind === "whiteboard" && p.whiteboard === undefined)
     )
       throw new HttpError(400, "Seiteninhalt passt nicht zum Seitentyp.");
@@ -1026,7 +1032,7 @@ async function importEntries(
         );
       for (const p of data.pages)
         run(
-          "INSERT INTO pages(id,workspace_id,space_id,title,icon,cover,cover_position,kind,position,deleted_at,created_by,updated_at,locked,full_width,font) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO pages(id,workspace_id,space_id,title,icon,cover,cover_position,kind,position,deleted_at,created_by,updated_at,locked,full_width,font,journal_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           pageMap.get(p.id)!,
           wid,
           spaceMap.get(p.space_id)!,
@@ -1042,6 +1048,7 @@ async function importEntries(
           p.locked,
           p.full_width,
           p.font,
+          p.journal_date ?? null,
         );
       for (const p of data.pages) {
         const pid = pageMap.get(p.id)!;
@@ -1155,7 +1162,7 @@ async function importEntries(
         for (const snap of p.kind === "whiteboard" ? [] : p.snapshots) {
           let html = snap.html,
             state: Uint8Array | null = null;
-          if (p.kind === "document") {
+          if (p.kind === "document" || p.kind === "journal") {
             html = rewriteHtml(html);
             state = htmlState(html);
           } else {

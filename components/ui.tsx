@@ -36,6 +36,8 @@ const icons = {
   notes: Notebook,
   stack: Stack,
   whiteboard: PresentationChart,
+  journal: Notebook,
+  day: CalendarBlank,
 };
 export function PageIcon({
   name,
