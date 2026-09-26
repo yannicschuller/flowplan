@@ -13,7 +13,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
-COPY docker/litestream.yml /etc/litestream.yml
+# Explicit modes: the checkout may be private (umask 077); the app runs as node.
+COPY --chmod=644 docker/litestream.yml /etc/litestream.yml
 COPY --chmod=755 docker/entrypoint.sh /app/entrypoint.sh
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 FLOWPLAN_DATA_DIR=/app/data
 RUN mkdir /app/data && chown node:node /app/data
