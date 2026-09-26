@@ -111,6 +111,8 @@ export function endDemo(userId: string) {
       try {
         run(`DELETE FROM ${table} WHERE user_id=?`, userId);
       } catch {}
+    // What the demo did is no activity of the instance.
+    run("DELETE FROM audit WHERE actor_id=?", userId);
     run("DELETE FROM sessions WHERE user_id=?", userId);
     run("DELETE FROM members WHERE user_id=?", userId);
     try {

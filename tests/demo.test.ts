@@ -53,16 +53,21 @@ test("a demo gets its own example workspace and cannot reach anyone outside it",
   assert.equal(demoAllows("form.update", { config: { enabled: false } }), true);
 });
 
-test("ending a demo deletes account, workspace and pages", () => {
+test("ending a demo deletes account, workspace, pages and its activity", () => {
   const uid = startDemo("10.0.0.2");
-  session(uid);
+  const me = session(uid);
   const ws = workspaceOf(uid)!.id;
+  const space = bootstrap(me).spaces[0].id;
+  command(me, { action: "page.create", workspaceId: ws, spaceId: space, title: "Notiz", kind: "document" });
+  command(me, { action: "space.create", workspaceId: ws, name: "Eigener Bereich", visibility: "private" });
+  command(me, { action: "group.create", workspaceId: ws, name: "Team" });
   assert.ok(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE workspace_id=?", ws)!.n) > 0);
   assert.equal(endDemo(uid), true);
   assert.equal(one("SELECT 1 FROM users WHERE id=?", uid), undefined);
   assert.equal(one("SELECT 1 FROM workspaces WHERE id=?", ws), undefined);
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE workspace_id=?", ws)!.n, 0);
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM sessions WHERE user_id=?", uid)!.n, 0);
+  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM audit WHERE actor_id=?", uid)!.n, 0);
 });
 
 test("demos without an active session or past their end are cleaned up; starts are limited", () => {
