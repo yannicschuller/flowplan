@@ -454,12 +454,39 @@ test("handles stay centred on large headings after a move and tasks adapt when d
     return Math.abs(g.y + g.height / 2 - (h.y + h.height / 2));
   };
   await expect.poll(centred).toBeLessThan(4);
+  // Sample every frame around the drop: the handle travels with the heading.
+  await page.evaluate(() => {
+    const w = window as unknown as { glide: number[] };
+    w.glide = [];
+    const until = performance.now() + 4000;
+    const tick = () => {
+      const h = [...document.querySelectorAll("h1")].find((e) =>
+          e.textContent?.includes("Große Überschrift"),
+        ),
+        g = [...document.querySelectorAll(".document-block-handle")].find(
+          (e) => e.getAttribute("aria-label")?.endsWith("Große Überschrift"),
+        );
+      if (h && g && h.getAnimations().length) {
+        const a = h.getBoundingClientRect(),
+          b = g.getBoundingClientRect();
+        w.glide.push(Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)));
+      }
+      if (performance.now() < until) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
   await dragBlock(page, handleFor("Große Überschrift"), editor.locator("p", { hasText: "Alpha" }), false);
   await expect(
     editor.locator(":scope > *").filter({ hasText: /\S/ }).first(),
   ).toHaveText("Alpha");
   await page.waitForTimeout(700);
   expect(await centred()).toBeLessThan(4);
+  const glide = await page.evaluate(
+    () => (window as unknown as { glide: number[] }).glide,
+  );
+  expect(glide.length).toBeGreaterThan(3);
+  // The handle plays the heading's own glide: no lag in any frame.
+  expect(Math.max(...glide)).toBeLessThan(3);
   // A paragraph dropped onto a task becomes a task of that list.
   await dragBlock(page, handleFor("Omega"), editor.locator("li", { hasText: "Zwei" }), false);
   await expect(page.getByText("An dieser Position kann der Block nicht abgelegt werden.")).toHaveCount(0);

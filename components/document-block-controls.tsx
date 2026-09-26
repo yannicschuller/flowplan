@@ -2,15 +2,18 @@
 import { Select } from "./select";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import type { Editor } from "@tiptap/core";
 import type { Transaction } from "@tiptap/pm/state";
 import {
   BLOCK_SELECTION_META,
+  BLOCK_MOVE_META,
   adjacentBlockTarget,
   blockRange,
   changeBlocks,
@@ -33,6 +36,7 @@ type Positioned = DocumentBlock & {
   width: number;
   height: number;
   handleTop: number;
+  glide?: Animation;
 };
 // Handles sit on the middle of a block's first text line, so they stay
 // aligned with large headings and indented list text alike.
@@ -84,7 +88,6 @@ export function DocumentBlockControls({
   const geometry = useRef<Positioned[]>([]);
   const [blocks, setBlocks] = useState<Positioned[]>([]),
     [open, setOpen] = useState(false),
-    [settling, setSettling] = useState(false),
     [, setTick] = useState(0),
     [error, setError] = useState(""),
     [destination, setDestination] = useState("");
@@ -100,47 +103,72 @@ export function DocumentBlockControls({
     let frame = 0;
     const refresh = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const host = surface.current;
-        if (!host || editor.isDestroyed) return;
-        // Blocks still gliding after a move would be measured mid-flight;
-        // measure once they have settled and keep the handles hidden until then.
-        const gliding = (editor.view.dom.getAnimations?.({ subtree: true }) ?? [])
-          .filter(
-            (a) =>
-              !("animationName" in a) &&
-              !("transitionProperty" in a) &&
-              a.playState === "running" &&
-              Number.isFinite(Number(a.effect?.getComputedTiming().endTime)),
-          );
-        if (gliding.length) {
-          setSettling(true);
-          void Promise.allSettled(gliding.map((a) => a.finished)).then(refresh);
-          return;
+      frame = requestAnimationFrame(measure);
+    };
+    const measure = () => {
+      const host = surface.current;
+      if (!host || editor.isDestroyed) return;
+      // Moved blocks and their neighbours glide into place with Web
+      // Animations. Handles are placed at the final positions and play the
+      // same animation, so both move as one.
+      const gliding = new Map<Element, Animation>();
+      for (const a of editor.view.dom.getAnimations?.({ subtree: true }) ?? []) {
+        const target = (a.effect as KeyframeEffect | null)?.target;
+        if (
+          target &&
+          !("animationName" in a) &&
+          !("transitionProperty" in a) &&
+          a.playState === "running"
+        )
+          gliding.set(target, a);
+      }
+      const glideOf = (dom: HTMLElement) => {
+        for (
+          let el: HTMLElement | null = dom;
+          el && el !== editor.view.dom;
+          el = el.parentElement
+        ) {
+          const animation = gliding.get(el);
+          if (animation) {
+            const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+            return { animation, x: m.m41, y: m.m42 };
+          }
         }
-        setSettling(false);
-        const origin = host.getBoundingClientRect();
-        const next = documentBlocks(editor.state.doc).flatMap((b) => {
-          const dom = editor.view.nodeDOM(b.pos);
-          if (!(dom instanceof HTMLElement)) return [];
-          const rect = dom.getBoundingClientRect();
-          if (!rect.height || !rect.width) return [];
-          return [
-            {
-              ...b,
-              left: rect.left - origin.left,
-              top: rect.top - origin.top,
-              width: rect.width,
-              height: rect.height,
-              handleTop: firstLineCenter(editor, b, rect) - origin.top - 14,
-            },
-          ];
-        });
-        geometry.current = next;
-        setBlocks(next);
+      };
+      const origin = host.getBoundingClientRect();
+      const next = documentBlocks(editor.state.doc).flatMap((b) => {
+        const dom = editor.view.nodeDOM(b.pos);
+        if (!(dom instanceof HTMLElement)) return [];
+        const rect = dom.getBoundingClientRect();
+        if (!rect.height || !rect.width) return [];
+        const glide = glideOf(dom),
+          dx = glide?.x ?? 0,
+          dy = glide?.y ?? 0;
+        return [
+          {
+            ...b,
+            left: rect.left - origin.left - dx,
+            top: rect.top - origin.top - dy,
+            width: rect.width,
+            height: rect.height,
+            handleTop: firstLineCenter(editor, b, rect) - origin.top - 14 - dy,
+            glide: glide?.animation,
+          },
+        ];
       });
+      geometry.current = next;
+      // During a glide the handles must start in this very frame.
+      if (gliding.size) flushSync(() => setBlocks(next));
+      else setBlocks(next);
     };
     const transaction = ({ transaction: tr }: { transaction: Transaction }) => {
+      // The slide starts right after this dispatch; measuring before the
+      // next frame lets the handles glide from its very first frame.
+      if (tr.getMeta(BLOCK_MOVE_META))
+        queueMicrotask(() => {
+          cancelAnimationFrame(frame);
+          if (!editor.isDestroyed) measure();
+        });
       if (tr.docChanged) {
         if (dragging.current) {
           dragging.current = null;
@@ -440,6 +468,24 @@ export function DocumentBlockControls({
     frame = requestAnimationFrame(scroll);
     return () => cancelAnimationFrame(frame);
   }, [editor, pointerActive]);
+  useLayoutEffect(() => {
+    const layer = surface.current?.querySelector(".block-handle-layer");
+    if (!layer) return;
+    for (const block of blocks) {
+      const animation = block.glide;
+      if (!animation || animation.playState !== "running") continue;
+      const handle = layer.querySelector(`[data-block-pos="${block.pos}"]`);
+      const effect = animation.effect as KeyframeEffect | null;
+      if (!(handle instanceof HTMLElement) || !effect) continue;
+      const replay = handle.animate(
+        effect
+          .getKeyframes()
+          .map(({ transform, offset, easing }) => ({ transform, offset, easing })),
+        effect.getTiming(),
+      );
+      replay.currentTime = animation.currentTime;
+    }
+  }, [blocks]);
   const all = editor ? documentBlocks(editor.state.doc) : [];
   let rangeValid = false,
     up = false,
@@ -477,14 +523,12 @@ export function DocumentBlockControls({
       >
         {children}
         {editor?.isEditable && (
-          <div
-            className={`block-handle-layer ${settling ? "settling" : ""}`}
-            aria-label="Blockgriffe"
-          >
+          <div className="block-handle-layer" aria-label="Blockgriffe">
             {blocks.map((block) => (
               <button
                 key={block.pos}
                 type="button"
+                data-block-pos={block.pos}
                 className={`document-block-handle ${selected.current.includes(block.pos) ? "selected" : ""}`}
                 style={{
                   left: Math.max(0, block.left - 25),
