@@ -34,6 +34,10 @@ Das Menü `…` oben rechts auf jeder Seite bietet:
 | Versionsverlauf | Frühere Stände vergleichen und wiederherstellen. |
 | In den Papierkorb | Seite samt Unterseiten entfernen, wiederherstellbar. |
 
+### Rechtsklick in der Seitenleiste
+
+Ein Rechtsklick auf eine Seite im Seitenbaum oder unter Favoriten öffnet ihre Aktionen direkt: **In neuem Tab öffnen**, **Link kopieren**, **Zu Favoriten**, **Teilen**, **Unterseite hinzufügen**, **Icon ändern**, **Duplizieren**, **Verschieben**, **Exportieren**, **Seite sperren** und **In den Papierkorb**. Aktionen mit Dialog öffnen die Seite vorher.
+
 ## Ordnen und verschieben
 
 - In der Seitenleiste Seiten per Drag and Drop umsortieren oder auf eine andere Seite ziehen, um sie unterzuordnen.

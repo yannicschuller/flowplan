@@ -75,6 +75,7 @@ import {
   type WhiteboardMeta,
   emptyTable,
 } from "@/lib/whiteboard-model";
+import { compressImage } from "@/lib/image-compress";
 
 const EmojiPicker = dynamic(() => import("../emoji-picker"), {
   ssr: false,
@@ -1457,7 +1458,8 @@ export default function Whiteboard({
     if (next && (editable || next === "select" || next === "hand"))
       setTool(next);
   }
-  async function upload(file: File) {
+  async function upload(original: File) {
+    const file = await compressImage(original);
     const body = new FormData();
     body.set("pageId", pageId);
     body.set("file", file);

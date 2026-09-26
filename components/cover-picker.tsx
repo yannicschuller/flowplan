@@ -10,6 +10,7 @@ import {
   type PageImage,
 } from "@/lib/page-appearance";
 import type { Page } from "@/lib/types";
+import { compressImage } from "@/lib/image-compress";
 export function CoverPicker({
   page,
   images,
@@ -94,9 +95,10 @@ export function CoverPicker({
             accept={imageAccept}
             aria-label="Coverbild hochladen"
             onChange={async (event) => {
-              const file = event.target.files?.[0];
+              const picked = event.target.files?.[0];
               event.target.value = "";
-              if (!file) return;
+              if (!picked) return;
+              const file = await compressImage(picked);
               if (file.size > 10 * 1024 * 1024) {
                 setError("Maximal 10 MB pro Bild.");
                 return;

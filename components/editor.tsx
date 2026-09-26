@@ -111,6 +111,7 @@ import {
   Indent,
   MEDIA_WIDTHS,
 } from "@/lib/document-schema";
+import { compressImage } from "@/lib/image-compress";
 export default function DocumentEditor({
   pageId,
   rowId,
@@ -550,7 +551,9 @@ export default function DocumentEditor({
     editor?.setEditable(editable);
   }, [editable, editor]);
   uploadFile.current = (file: File) => upload(file);
-  async function upload(file: File) {
+  async function upload(original: File) {
+    // Photos shrink before upload; the alt text keeps the original name.
+    const file = await compressImage(original);
     const form = new FormData();
     form.set("pageId", pageId);
     form.set("file", file);
@@ -562,7 +565,7 @@ export default function DocumentEditor({
         editor
           ?.chain()
           .focus()
-          .setImage({ src: data.url, alt: file.name })
+          .setImage({ src: data.url, alt: original.name })
           .run();
       else if (file.type.startsWith("video/") || file.type.startsWith("audio/"))
         editor

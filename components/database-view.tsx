@@ -279,6 +279,8 @@ export default function DatabaseView({
     [columnScroll] = useState(() =>
       edgeScroller((x, y) => columnHoverRef.current(x, y), "x"),
     );
+  // A record just created opens with its title ready for typing.
+  const [freshRowId, setFreshRowId] = useState<string | null>(null);
   function setRowId(id: string | null, occurrence?: string) {
     setOccurrence(id && occurrence ? { rowId: id, date: occurrence } : null);
     setLocalRowId(id);
@@ -487,9 +489,10 @@ export default function DatabaseView({
           .map((f) => f.id)
       : [],
   );
-  const recordFields = showEmpty
-    ? layoutFields
-    : layoutFields.filter((f) => !emptyFields.has(f.id));
+  // The title is edited in the heading, not again among the properties.
+  const recordFields = (
+    showEmpty ? layoutFields : layoutFields.filter((f) => !emptyFields.has(f.id))
+  ).filter((f) => f.id !== fields[0]?.id);
   const emptyHidden = emptyFields.size;
   useEffect(() => {
     if (rowId && !selected)
@@ -1072,7 +1075,10 @@ export default function DatabaseView({
           : { [fields[0].id]: "Neue Aufgabe", ...cells },
       templateId,
     })) as { id: string } | null;
-    if (r && open) setRowId(r.id);
+    if (r && open) {
+      setFreshRowId(r.id);
+      setRowId(r.id);
+    }
   }
   async function uploadFile(file: File) {
     if (file.size > 10 * 1024 * 1024)
@@ -4554,7 +4560,16 @@ export default function DatabaseView({
                   className="row-title-icon"
                 />
               )}
-              {cellText(selected.cells[fields[0].id]) || "Ohne Titel"}
+              {selectedEditable ? (
+                <RowTitle
+                  key={selected.id}
+                  value={cellText(selected.cells[fields[0].id])}
+                  focus={freshRowId === selected.id}
+                  onSave={(title) => updateCell(selected, fields[0], title)}
+                />
+              ) : (
+                cellText(selected.cells[fields[0].id]) || "Ohne Titel"
+              )}
             </h2>
             <div
               className={`row-columns${recordLayout.properties === "side" ? " properties-side" : ""}`}
@@ -4787,6 +4802,67 @@ function tagColor(s: string) {
 }
 // Files cells contain several controls; a <label> would forward every click
 // to the first one (the file chooser).
+// Title of a record, edited in place. Enter or leaving the field saves;
+// Escape restores the stored title.
+function RowTitle({
+  value,
+  focus,
+  onSave,
+}: {
+  value: string;
+  focus: boolean;
+  onSave: (title: string) => unknown;
+}) {
+  const [draft, setDraft] = useState(value);
+  const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => setDraft(value), [value]);
+  useEffect(() => {
+    if (!focus) return;
+    input.current?.focus();
+    input.current?.select();
+  }, [focus]);
+  // One line that grows with long titles, also when the width changes
+  // (the dialog opens with an animation, phones rotate).
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [draft]);
+  const save = () => {
+    const title = draft.replace(/\s+/g, " ").trim();
+    if (title !== value) void onSave(title);
+  };
+  return (
+    <textarea
+      ref={input}
+      className="row-title-input"
+      aria-label="Titel des Eintrags"
+      placeholder="Ohne Titel"
+      rows={1}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value.replace(/\n/g, ""))}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        } else if (e.key === "Escape") {
+          e.stopPropagation();
+          setDraft(value);
+          requestAnimationFrame(() => input.current?.blur());
+        }
+      }}
+    />
+  );
+}
+
 function PropertyRow({
   group,
   children,

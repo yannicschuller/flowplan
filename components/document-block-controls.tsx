@@ -68,6 +68,10 @@ type Drag = {
   clientX: number;
   clientY: number;
 };
+// A whole list has no handle of its own: its items carry one each (like
+// Notion); moving the entire list stays available in "Blöcke verwalten".
+const listContainers = ["bulletList", "orderedList", "taskList"];
+const listItems = ["listItem", "taskItem"];
 export function DocumentBlockControls({
   editor,
   children,
@@ -144,10 +148,19 @@ export function DocumentBlockControls({
         const glide = glideOf(dom),
           dx = glide?.x ?? 0,
           dy = glide?.y ?? 0;
+        // List items take their handle in line with the other blocks, left
+        // of the bullet or checkbox, not on top of it.
+        const list = listItems.includes(b.node.type.name)
+          ? editor.view.nodeDOM(b.parentPos)
+          : null;
+        const left =
+          list instanceof HTMLElement
+            ? list.getBoundingClientRect().left
+            : rect.left;
         return [
           {
             ...b,
-            left: rect.left - origin.left - dx,
+            left: left - origin.left - dx,
             top: rect.top - origin.top - dy,
             width: rect.width,
             height: rect.height,
@@ -524,7 +537,9 @@ export function DocumentBlockControls({
         {children}
         {editor?.isEditable && (
           <div className="block-handle-layer" aria-label="Blockgriffe">
-            {blocks.map((block) => (
+            {blocks
+              .filter((block) => !listContainers.includes(block.node.type.name))
+              .map((block) => (
               <button
                 key={block.pos}
                 type="button"

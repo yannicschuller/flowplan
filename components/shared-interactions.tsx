@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { CellInput, type CellFile } from "./cell-input";
 import type { SharedComment } from "@/lib/shared-content";
 import type { Field, Row } from "@/lib/types";
+import { compressImage } from "@/lib/image-compress";
 const SharedEditor = dynamic(() => import("./shared-editor"), { ssr: false });
 type Content = {
   pageId: string;
@@ -56,8 +57,9 @@ export function SharedInteractions({
       setData((d) => (d.version === version ? d : { ...d, version }));
     },
   });
-  async function upload(file: File) {
+  async function upload(original: File) {
     setError("");
+    const file = await compressImage(original);
     const form = new FormData();
     form.set("pageId", data.pageId);
     form.set("file", file);

@@ -3941,6 +3941,33 @@ tr:hover .row-open {
   margin-right: 10px;
   vertical-align: -4px;
 }
+h2:has(> .row-title-input) {
+  display: flex;
+  align-items: flex-start;
+}
+h2:has(> .row-title-input) .row-title-icon {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.row-title-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: 1.25;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+}
+.row-title-input::placeholder {
+  color: var(--muted);
+}
 .row-icon {
   margin-right: 6px;
   vertical-align: -2px;
@@ -3954,7 +3981,9 @@ tr:hover .row-open {
 }
 .row-property {
   display: grid;
-  grid-template-columns: 150px 1fr;
+  /* minmax(0, …): wide values (native date fields on iOS, long links)
+     must not push the record wider than the screen. */
+  grid-template-columns: 150px minmax(0, 1fr);
   align-items: center;
   gap: 15px;
   margin-bottom: 14px;
@@ -3970,6 +3999,26 @@ tr:hover .row-open {
 }
 .row-property > input[type="checkbox"] {
   width: 16px;
+}
+.row-property > * {
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .row-property {
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+/* iOS Safari gives date fields an intrinsic width and centred text unless
+   the native look is switched off; the picker still opens on tap. */
+input:is([type="date"], [type="datetime-local"], [type="time"]) {
+  min-width: 0;
+  max-width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-and-time-value {
+  text-align: left;
 }
 .row-notes {
   border-top: 1px solid var(--border);
@@ -7623,6 +7672,13 @@ img.inline-comment-mark {
   border: 0 !important;
   box-shadow: none !important;
 }
+/* Phones and tablets: taps go to the native select, which opens the
+   system picker; the styled list is for mouse and keyboard. */
+@media (pointer: coarse) {
+  .fp-select > .fp-select-native {
+    pointer-events: auto !important;
+  }
+}
 .fp-select-value {
   flex: 1;
   min-width: 0;
@@ -7841,6 +7897,13 @@ textarea {
 }
 .modal.modal-full {
   animation: fade-in 0.18s ease both;
+}
+/* Phones: dialogs and record pages scroll only up and down. */
+@media (max-width: 600px) {
+  .modal {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
 }
 @keyframes modal-in {
   from {
@@ -9347,12 +9410,26 @@ html.card-grabbing * {
   font-size: 12px;
 }
 /* Tasks carried over from an earlier journal day. */
+/* A small badge on the checkbox corner, so the row keeps its layout. */
+li[data-journal-since] > label {
+  position: relative;
+}
 li[data-journal-since] > label::after {
   content: "↻";
-  margin-left: 4px;
-  font-size: 11px;
-  color: var(--muted);
-  vertical-align: 1px;
+  position: absolute;
+  right: -6px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--blue);
+  pointer-events: none;
 }
 @media (max-width: 700px) {
   .journal-today {
@@ -9777,4 +9854,12 @@ li[data-journal-since] > label::after {
 .demo-banner .button {
   padding: 6px 12px;
   font-size: 13px;
+}
+
+/* Invisible anchor at the pointer for right-click menus. */
+.context-anchor {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { imageAccept, type PageImage } from "@/lib/page-appearance";
+import { compressImage } from "@/lib/image-compress";
 
 // Image icons are uploaded to (or chosen from) the images of a page; database
 // records use the images of their database page.
@@ -40,9 +41,10 @@ export function IconImagePicker({
           hidden
           disabled={busy}
           onChange={async (event) => {
-            const file = event.target.files?.[0];
+            const picked = event.target.files?.[0];
             event.target.value = "";
-            if (!file) return;
+            if (!picked) return;
+            const file = await compressImage(picked);
             if (file.size > 10 * 1024 * 1024) {
               setError("Maximal 10 MB pro Bild.");
               return;

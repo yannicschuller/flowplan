@@ -209,6 +209,20 @@ export function Select({
       onPointerDown={(e) => {
         // Events from the list arrive here through the portal.
         if (e.button !== 0 || list.current?.contains(e.target as Node)) return;
+        // Touch: the system picker opens anyway (iOS, Android); showing the
+        // styled list as well would open two lists at once.
+        if (e.pointerType === "touch" || e.pointerType === "pen") {
+          // Phones tap the native select itself (see globals.css); on touch
+          // screens with a mouse as main pointer it is not hit directly.
+          const el = native.current;
+          if (el && e.target !== el && !el.disabled)
+            try {
+              el.showPicker();
+            } catch {
+              el.focus();
+            }
+          return;
+        }
         e.preventDefault();
         if (open) setOpen(false);
         else show();

@@ -213,6 +213,8 @@ export default function WorkspaceApp({
     [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
     [online, setOnline] = useState(true),
     [move, setMove] = useState(false),
+    // Right click on a page in the sidebar: its actions at the pointer.
+    [pageMenu, setPageMenu] = useState<{ page: Page; x: number; y: number } | null>(null),
     [templateName, setTemplateName] = useState(false),
     [templateTitle, setTemplateTitle] = useState("");
   const [treeDrop, setTreeDrop] = useState<{
@@ -746,6 +748,10 @@ export default function WorkspaceApp({
             <div
               className={`page-nav ${screen === "page" && pageId === p.id ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
               data-page-id={p.id}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setPageMenu({ page: p, x: e.clientX, y: e.clientY });
+              }}
               draggable={canCreate}
               onDragStart={(e) => {
                 if ((e.target as HTMLElement).closest(".nav-drag")) {
@@ -1018,6 +1024,10 @@ export default function WorkspaceApp({
                   className={`favorite-nav ${pageId === p.id && screen === "page" ? "selected" : ""}`}
                   key={p.id}
                   onClick={() => openPage(p.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setPageMenu({ page: p, x: e.clientX, y: e.clientY });
+                  }}
                 >
                   <PageIcon name={p.icon} />
                   <span>{p.title}</span>
@@ -2988,6 +2998,155 @@ export default function WorkspaceApp({
           <button className="button primary">Speichern</button>
         </form>
       </Modal>
+      {pageMenu && (
+        <Dropdown.Root
+          open
+          modal={false}
+          onOpenChange={(open) => !open && setPageMenu(null)}
+        >
+          <Dropdown.Trigger asChild>
+            <span
+              className="context-anchor"
+              style={{ left: pageMenu.x, top: pageMenu.y }}
+              aria-hidden="true"
+            />
+          </Dropdown.Trigger>
+          <Dropdown.Portal>
+            <Dropdown.Content
+              className="dropdown"
+              align="start"
+              sideOffset={2}
+              collisionPadding={8}
+              aria-label={`Aktionen für ${pageMenu.page.title || "Ohne Titel"}`}
+            >
+              {(() => {
+                const target = pageMenu.page;
+                // Dialogs of the page menu work on the open page: open it
+                // first, then show the dialog.
+                const openThen = async (show: () => void) => {
+                  if (pageId !== target.id || screen !== "page")
+                    await openPage(target.id);
+                  show();
+                };
+                const url = () =>
+                  `${location.origin}${location.pathname}${pageLocationHash({ pageId: target.id })}`;
+                const starred = boot.favorites.includes(target.id);
+                return (
+                  <>
+                    <Dropdown.Item
+                      className="dropdown-item"
+                      onSelect={() => window.open(url(), "_blank", "noopener")}
+                    >
+                      <ArrowSquareOut />
+                      In neuem Tab öffnen
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      className="dropdown-item"
+                      onSelect={async () => {
+                        try {
+                          await navigator.clipboard.writeText(url());
+                          notify("Link kopiert");
+                        } catch {
+                          notify("Link konnte nicht kopiert werden.");
+                        }
+                      }}
+                    >
+                      <LinkIcon />
+                      Link kopieren
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      className="dropdown-item"
+                      onSelect={() =>
+                        act({ action: "favorite", pageId: target.id, value: !starred })
+                      }
+                    >
+                      <Star />
+                      {starred ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+                    </Dropdown.Item>
+                    <Dropdown.Item
+                      className="dropdown-item"
+                      onSelect={() => openThen(() => setShare(true))}
+                    >
+                      <ShareNetwork />
+                      Teilen
+                    </Dropdown.Item>
+                    {canCreate && (
+                      <>
+                        <Dropdown.Separator className="dropdown-separator" />
+                        <Dropdown.Item
+                          className="dropdown-item"
+                          onSelect={() => addPage("document", target.id, target.space_id)}
+                        >
+                          <Plus />
+                          Unterseite hinzufügen
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          className="dropdown-item"
+                          onSelect={() => openThen(() => setIconPicker(true))}
+                        >
+                          <Flag />
+                          Icon ändern
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          className="dropdown-item"
+                          onSelect={async () => {
+                            const r = await act({ action: "page.duplicate", pageId: target.id });
+                            if (r?.id) void openPage(String(r.id));
+                          }}
+                        >
+                          <Copy />
+                          Duplizieren
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          className="dropdown-item"
+                          onSelect={() => openThen(() => setMove(true))}
+                        >
+                          <ArrowRight />
+                          Verschieben
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          className="dropdown-item"
+                          onSelect={() => openThen(() => setPageExport(true))}
+                        >
+                          <DownloadSimple />
+                          Exportieren
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          className="dropdown-item"
+                          onSelect={() =>
+                            act({
+                              action: "page.update",
+                              pageId: target.id,
+                              patch: { locked: !target.locked },
+                            })
+                          }
+                        >
+                          <Lock />
+                          {target.locked ? "Seite entsperren" : "Seite sperren"}
+                        </Dropdown.Item>
+                        <Dropdown.Separator className="dropdown-separator" />
+                        <Dropdown.Item
+                          className="dropdown-item danger"
+                          onSelect={async () => {
+                            const r = await act({ action: "page.delete", pageId: target.id });
+                            if (r && pageId === target.id) {
+                              go("trash");
+                              setPageId(null);
+                            }
+                          }}
+                        >
+                          <Trash />
+                          In den Papierkorb
+                        </Dropdown.Item>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+            </Dropdown.Content>
+          </Dropdown.Portal>
+        </Dropdown.Root>
+      )}
       <MovePageDialog
         open={move}
         onClose={() => setMove(false)}
