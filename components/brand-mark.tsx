@@ -1,7 +1,7 @@
 import { useId } from "react";
 
 // Flowplan's mark: a solid plan on top, two layers flowing out beneath it,
-// on an ultramarine tile. Keep in sync with app/icon.svg and public/icon.svg.
+// on an ultramarine tile. Keep in sync with public/icon.svg.
 export function BrandMark({ size = 32 }: { size?: number }) {
   const id = useId();
   return (

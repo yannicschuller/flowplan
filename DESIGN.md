@@ -75,8 +75,9 @@ Regeln:
   bisherigen Ebenen-Marke.
 - **Wortmarke:** `flowplan` klein geschrieben, Instrument Sans, Gewicht
   ~620, Laufweite `-0.035em`.
-- Quelle: `components/brand-mark.tsx` (React), `app/icon.svg` und
-  `public/icon.svg` (identisch). Die PNGs (`public/icons/*`,
+- Quelle: `components/brand-mark.tsx` (React) und `public/icon.svg`
+  (Favicon, in `app/layout.tsx` eingetragen; keine `app/icon.*`-Datei, sie
+  würde mit `public/icon.svg` kollidieren). Die PNGs (`public/icons/*`,
   `desktop/build/icon.png`) werden aus derselben SVG gerendert; das
   Apple-Touch-Icon ist randlos (iOS rundet selbst), das Desktop-Icon hat
   100 px Rand auf 1024 px.
