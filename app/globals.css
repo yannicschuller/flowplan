@@ -9719,3 +9719,29 @@ li[data-journal-since] > label::after {
     transition: none;
   }
 }
+
+/* Indented paragraphs and headings (Tab / Shift+Tab) */
+[data-indent="1"] {
+  margin-left: 1.75em;
+}
+[data-indent="2"] {
+  margin-left: 3.5em;
+}
+[data-indent="3"] {
+  margin-left: 5.25em;
+}
+[data-indent="4"] {
+  margin-left: 7em;
+}
+[data-indent="5"] {
+  margin-left: 8.75em;
+}
+[data-indent="6"] {
+  margin-left: 10.5em;
+}
+[data-indent="7"] {
+  margin-left: 12.25em;
+}
+[data-indent="8"] {
+  margin-left: 14em;
+}

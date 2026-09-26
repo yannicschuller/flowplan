@@ -108,6 +108,7 @@ import {
   LinkCard,
   FlowTaskItem,
   Spoiler,
+  Indent,
   MEDIA_WIDTHS,
 } from "@/lib/document-schema";
 export default function DocumentEditor({
@@ -276,6 +277,7 @@ export default function DocumentEditor({
         Superscript,
         Subscript,
         Spoiler,
+        Indent,
         TextAlign.configure({ types: ["heading", "paragraph"] }),
         Typography,
         Callout,

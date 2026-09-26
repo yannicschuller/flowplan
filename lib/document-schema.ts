@@ -1,5 +1,5 @@
-import { Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { embedProvider } from "./embed-providers";
 import StarterKit from "@tiptap/starter-kit";
@@ -260,6 +260,86 @@ export const Spoiler = Mark.create({
     ];
   },
 });
+// Indenting paragraphs and headings with Tab / Shift+Tab (lists, tasks,
+// tables and code keep their own Tab). Backspace at the start of an indented
+// line first moves it back out.
+export const MAX_INDENT = 8;
+export const Indent = Extension.create({
+  name: "indent",
+  // Before the default Backspace; inside lists, tables and code the
+  // handlers below step aside so those keep their own Tab.
+  priority: 1000,
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["paragraph", "heading"],
+        attributes: {
+          indent: {
+            default: 0,
+            parseHTML: (element) =>
+              Math.min(MAX_INDENT, Math.max(0, Number(element.getAttribute("data-indent")) || 0)),
+            renderHTML: (attributes) =>
+              attributes.indent ? { "data-indent": attributes.indent } : {},
+          },
+        },
+      },
+    ];
+  },
+  addKeyboardShortcuts() {
+    // Caret moves by the browser (arrow keys) reach the editor a moment
+    // later; take them over before reading the selection.
+    const syncSelection = () =>
+      (
+        this.editor.view as unknown as { domObserver?: { flush?: () => void } }
+      ).domObserver?.flush?.();
+    const shift = (by: number) => () => {
+      syncSelection();
+      const { state, view } = this.editor;
+      const { from, to, $from } = state.selection;
+      // Inside lists, tasks, tables and code the other handlers decide.
+      for (let d = $from.depth; d > 0; d--)
+        if (["listItem", "taskItem", "tableCell", "tableHeader"].includes($from.node(d).type.name))
+          return false;
+      if ($from.parent.type.name === "codeBlock") return false;
+      const tr = state.tr;
+      state.doc.nodesBetween(from, to, (node, pos) => {
+        if (node.type.name !== "paragraph" && node.type.name !== "heading") return true;
+        const indent = Math.min(MAX_INDENT, Math.max(0, (node.attrs.indent || 0) + by));
+        if (indent !== (node.attrs.indent || 0))
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent });
+        return false;
+      });
+      if (tr.docChanged) {
+        // Keep the caret where it was (the attribute change would otherwise
+        // let it jump to the end of the line).
+        tr.setSelection(
+          TextSelection.create(tr.doc, tr.mapping.map(from), tr.mapping.map(to)),
+        );
+        view.dispatch(tr);
+      }
+      // Tab never leaves the text.
+      return true;
+    };
+    return {
+      Tab: shift(1),
+      "Shift-Tab": shift(-1),
+      Backspace: () => {
+        syncSelection();
+        const { state, view } = this.editor;
+        const { $from, empty } = state.selection;
+        const node = $from.parent;
+        if (!empty || $from.parentOffset !== 0 || !node.attrs.indent) return false;
+        if (node.type.name !== "paragraph" && node.type.name !== "heading") return false;
+        const tr = state.tr.setNodeMarkup($from.before(), undefined, {
+          ...node.attrs,
+          indent: node.attrs.indent - 1,
+        });
+        view.dispatch(tr.setSelection(TextSelection.create(tr.doc, $from.pos)));
+        return true;
+      },
+    };
+  },
+});
 export const documentExtensions = [
   StarterKit.configure({
     codeBlock: false,
@@ -283,6 +363,7 @@ export const documentExtensions = [
   Superscript,
   Subscript,
   Spoiler,
+  Indent,
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Callout,
   Toggle,

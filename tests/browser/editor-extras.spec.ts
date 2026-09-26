@@ -57,6 +57,31 @@ test("formats switch off at once, images paste from the clipboard, spoilers cove
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
 
+  // Tab indents a paragraph, Shift+Tab and Backspace at the start move it
+  // back; in lists Tab still nests the item.
+  await page.keyboard.type("Eingerückt");
+  for (let i = 0; i < "Eingerückt".length; i++) await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  const indented = editor.locator("p", { hasText: "Eingerückt" });
+  await expect(indented).toHaveAttribute("data-indent", "2");
+  await expect(editor).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(indented).toHaveAttribute("data-indent", "1");
+  await page.keyboard.press("Backspace");
+  await expect(indented).not.toHaveAttribute("data-indent", /.*/);
+  await expect(indented).toHaveText("Eingerückt");
+  for (let i = 0; i < "Eingerückt".length; i++) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("- Oben");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Darunter");
+  await page.keyboard.press("Tab");
+  await expect(editor.locator("ul ul li", { hasText: "Darunter" })).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+
   // "/ " is a plain slash.
   await page.keyboard.press("Enter");
   await page.keyboard.type("a / b");
