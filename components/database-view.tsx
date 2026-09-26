@@ -1116,7 +1116,7 @@ export default function DatabaseView({
       const u = members.find((m) => m.id === v);
       return u ? (
         <span className="person-cell">
-          <Avatar name={u.name} small />
+          <Avatar name={u.name} userId={u.id} small />
           {u.name}
         </span>
       ) : (

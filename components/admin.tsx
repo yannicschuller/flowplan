@@ -242,7 +242,7 @@ export default function Admin({
                       className={`member-row${u.disabled ? " is-disabled" : ""}`}
                       key={u.id}
                     >
-                      <Avatar name={u.name} />
+                      <Avatar name={u.name} userId={u.id} />
                       <span>
                         {u.name}
                         <small>{u.email}</small>

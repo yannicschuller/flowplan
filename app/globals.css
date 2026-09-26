@@ -9373,3 +9373,16 @@ li[data-journal-since] > label::after {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Profile pictures from the identity provider (components/ui.tsx Avatar). */
+.avatar.has-picture {
+  overflow: hidden;
+  padding: 0;
+  flex-shrink: 0;
+}
+.avatar.has-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

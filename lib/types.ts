@@ -6,6 +6,8 @@ export type User = {
   email: string;
   disabled: number;
   created_at: string;
+  // Version of the stored profile picture, null without one.
+  avatar?: string | null;
 };
 export type Identity = User & { groups: string[]; isAdmin: boolean };
 export type Workspace = {

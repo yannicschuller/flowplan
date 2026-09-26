@@ -223,7 +223,7 @@ export function bootstrap(user: Identity, wid?: string) {
       })),
     // Guests only see themselves; members see who is a guest.
     members: all(
-      `SELECT u.id,u.name,u.email,u.disabled,m.role,
+      `SELECT u.id,u.name,u.email,u.disabled,u.avatar,m.role,
        EXISTS(SELECT 1 FROM workspace_guests g WHERE g.workspace_id=m.workspace_id AND g.user_id=u.id) guest
        FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?`,
       workspace.id,

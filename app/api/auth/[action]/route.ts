@@ -1,3 +1,4 @@
+import { syncAvatar } from "@/lib/avatars";
 import { loginReturnPath } from "@/lib/page-location";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -116,6 +117,7 @@ export async function GET(
         String(profile.name || profile.preferred_username || "Mitglied"),
         String(profile.email || ""),
       );
+      await syncAvatar(user.id, profile.picture);
       acceptInvites(user, profile.email_verified === true);
       ensureWorkspace(user.id);
       await issueSession(user.id, groups);

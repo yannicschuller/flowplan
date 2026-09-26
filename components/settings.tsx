@@ -274,7 +274,7 @@ export default function Settings({
               <section className="settings-section">
                 <h2>Dein Profil</h2>
                 <div className="member-row">
-                  <Avatar name={boot.user.name} />
+                  <Avatar name={boot.user.name} userId={boot.user.id} />
                   <span>
                     {boot.user.name}
                     <small>{boot.user.email}</small>
@@ -313,7 +313,7 @@ export default function Settings({
                 <h2>Mitglieder · {boot.members.length}</h2>
                 {boot.members.map((m) => (
                   <div className="member-row" key={m.id}>
-                    <Avatar name={m.name} />
+                    <Avatar name={m.name} userId={m.id} />
                     <span>
                       {m.name}
                       {!!m.guest && (
@@ -843,7 +843,7 @@ export default function Settings({
                 })
               }
             />
-            <Avatar name={m.name} />
+            <Avatar name={m.name} userId={m.id} />
             <span>{m.name}</span>
           </label>
         ))}

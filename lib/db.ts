@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 22) return;
+  if (globalDb.flowplanSchema === 23) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -346,7 +346,15 @@ function migrate(d: DatabaseSync) {
     ).some((c) => c.name === "rich_body")
   )
     d.exec("ALTER TABLE inline_messages ADD COLUMN rich_body TEXT");
-  globalDb.flowplanSchema = 22;
+  const userColumns = d.prepare("PRAGMA table_info(users)").all() as {
+    name: string;
+  }[];
+  if (!userColumns.some((c) => c.name === "avatar"))
+    d.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
+  d.exec(
+    "CREATE TABLE IF NOT EXISTS user_avatars(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,mime TEXT NOT NULL,data BLOB NOT NULL)",
+  );
+  globalDb.flowplanSchema = 23;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

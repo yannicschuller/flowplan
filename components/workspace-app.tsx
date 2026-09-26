@@ -103,6 +103,7 @@ import {
   Modal,
   PageIcon,
   Avatar,
+  setAvatarDirectory,
   api,
   download,
   ApiError,
@@ -218,6 +219,8 @@ export default function WorkspaceApp({
     id: string;
     placement: "before" | "after" | "inside";
   } | null>(null);
+  // Profile pictures for every Avatar below, from the current member list.
+  setAvatarDirectory([...boot.members, boot.user]);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   // Sidebar multi-selection (Ctrl/⌘/Shift-click or selection mode on touch).
   const [selectedPages, setSelectedPages] = useState<string[]>([]),
@@ -1164,7 +1167,7 @@ export default function WorkspaceApp({
             </button>
           )}
           <div className="profile">
-            <Avatar name={boot.user.name} />
+            <Avatar name={boot.user.name} userId={boot.user.id} />
             <span>
               {boot.user.name}
               <small>{online ? "Arbeitsbereich verbunden" : "Offline"}</small>
@@ -1266,7 +1269,7 @@ export default function WorkspaceApp({
                   .filter((u) => u.id !== boot.user.id)
                   .slice(0, 3)
                   .map((u) => (
-                    <Avatar name={u.name} small key={u.id} />
+                    <Avatar name={u.name} userId={u.id} small key={u.id} />
                   ))}
               </div>
               <button
@@ -2447,7 +2450,7 @@ export default function WorkspaceApp({
               </p>
               {boot.members.map((m) => (
                 <div className="member-row" key={m.id}>
-                  <Avatar name={m.name} />
+                  <Avatar name={m.name} userId={m.id} />
                   <span>
                     {m.name}
                     <small>{m.email}</small>

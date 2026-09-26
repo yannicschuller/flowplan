@@ -1,3 +1,4 @@
+import { avatarFor } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
 import { instanceSettings } from "@/lib/instance-settings";
@@ -299,6 +300,18 @@ export async function GET(
         usage: workspaceUsage(),
         settings: instanceSettings(),
         restorePending: pendingRestore(),
+      });
+    }
+    if (path.length === 2 && path[0] === "avatars") {
+      const picture = avatarFor(user, z.uuid().parse(path[1]));
+      if (!picture) throw new HttpError(404, "Kein Profilbild.");
+      return new Response(Buffer.from(picture.data), {
+        headers: {
+          "Content-Type": picture.mime,
+          // The URL carries the version, so it can be cached for long.
+          "Cache-Control": "private, max-age=604800, immutable",
+          "X-Content-Type-Options": "nosniff",
+        },
       });
     }
     if (path[0] === "files" && path[1]) {

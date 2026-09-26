@@ -23,7 +23,7 @@ import {
   Article,
   ClipboardText,
 } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 const icons = {
   file: FileText,
   table: Table,
@@ -193,29 +193,60 @@ export function PageSkeleton({
     </div>
   );
 }
+// Profile pictures of the people in the current workspace (from the identity
+// provider), keyed by user id. The app fills it from the member list.
+const pictures = { byId: new Map<string, string>(), byName: new Map<string, string>() };
+export function setAvatarDirectory(
+  people: { id: string; name: string; avatar?: string | null }[],
+) {
+  const byId = new Map<string, string>(),
+    byName = new Map<string, string>(),
+    names = new Map<string, number>();
+  for (const p of people) names.set(p.name, (names.get(p.name) || 0) + 1);
+  for (const p of people)
+    if (p.avatar) {
+      const src = `/api/avatars/${p.id}?v=${p.avatar}`;
+      byId.set(p.id, src);
+      // Places that only know a name use it when the name is unique.
+      if (names.get(p.name) === 1) byName.set(p.name, src);
+    }
+  pictures.byId = byId;
+  pictures.byName = byName;
+}
 export function Avatar({
   name,
+  userId,
   small = false,
 }: {
   name: string;
+  userId?: string | null;
   small?: boolean;
 }) {
+  const src =
+    (userId && pictures.byId.get(userId)) || pictures.byName.get(name);
+  const [broken, setBroken] = useState<string | null>(null);
+  const initials = name
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
   return (
     <span
       title={name}
-      className={`avatar ${small ? "small" : ""}`}
+      className={`avatar ${small ? "small" : ""} ${src && broken !== src ? "has-picture" : ""}`}
       style={{
         background: ["#e5edff", "#f1e8fb", "#e6f2ed", "#fcebcf"][
           name.charCodeAt(0) % 4
         ],
       }}
     >
-      {name
-        .split(" ")
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase()}
+      {src && broken !== src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" loading="lazy" onError={() => setBroken(src)} />
+      ) : (
+        initials
+      )}
     </span>
   );
 }
