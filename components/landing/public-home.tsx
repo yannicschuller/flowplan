@@ -9,6 +9,7 @@ type Props = {
   configured: boolean;
   error?: string;
   instanceName: string;
+  demoEnabled?: boolean;
 };
 // Visitors see the product page. A link to a page (#page=…) or a failed
 // sign-in leads straight to the sign-in card instead, so deep links still
@@ -29,6 +30,7 @@ export default function PublicHome(props: Props) {
       loginHref={props.configured ? "/api/auth/login" : "/login"}
       registerHref={props.configured ? "/api/auth/login?register=1" : "/login"}
       instanceName={props.instanceName}
+      demoEnabled={props.demoEnabled}
     />
   );
 }

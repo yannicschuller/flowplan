@@ -10,6 +10,8 @@ export const instanceSettingsSchema = z.object({
   retentionDays: z.number().int().min(0).max(36500).nullable(),
   maxUploadMb: z.number().int().min(1).max(1024),
   allowWorkspaceCreation: z.boolean(),
+  // "Demo ausprobieren" on the start page: throwaway accounts for visitors.
+  publicDemo: z.boolean().default(false),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -19,6 +21,7 @@ const defaults: InstanceSettings = {
   retentionDays: null,
   maxUploadMb: 10,
   allowWorkspaceCreation: true,
+  publicDemo: false,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

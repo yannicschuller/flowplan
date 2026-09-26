@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 23) return;
+  if (globalDb.flowplanSchema === 24) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -351,10 +351,16 @@ function migrate(d: DatabaseSync) {
   }[];
   if (!userColumns.some((c) => c.name === "avatar"))
     d.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
+  // Public demo accounts: when they end at the latest (null for real ones).
+  if (!userColumns.some((c) => c.name === "demo_until"))
+    d.exec("ALTER TABLE users ADD COLUMN demo_until INTEGER");
+  d.exec(
+    "CREATE TABLE IF NOT EXISTS demo_starts(address TEXT NOT NULL,at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS demo_starts_address ON demo_starts(address,at);",
+  );
   d.exec(
     "CREATE TABLE IF NOT EXISTS user_avatars(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,mime TEXT NOT NULL,data BLOB NOT NULL)",
   );
-  globalDb.flowplanSchema = 23;
+  globalDb.flowplanSchema = 24;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

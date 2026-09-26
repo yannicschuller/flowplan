@@ -577,6 +577,22 @@ function InstanceSettingsForm({
         />
         Alle Personen dürfen Arbeitsbereiche anlegen
       </label>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={!!draft.publicDemo}
+          onChange={(e) => setDraft({ ...draft, publicDemo: e.target.checked })}
+        />
+        <span>
+          Demo auf der Startseite anbieten
+          <small className="muted">
+            Besucher erhalten ohne Konto einen eigenen Arbeitsbereich mit
+            Beispielen. Er wird nach 45 Minuten ohne Aktivität (spätestens
+            nach 3 Stunden) oder mit „Demo beenden“ gelöscht. Demo-Konten
+            können nichts veröffentlichen, teilen oder einladen.
+          </small>
+        </span>
+      </label>
       <button className="button primary">Einstellungen speichern</button>
       {saved && <p role="status">Gespeichert.</p>}
     </form>

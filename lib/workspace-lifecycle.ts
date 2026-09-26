@@ -98,6 +98,18 @@ function purgePages(workspaceId: string, pages: Page[]) {
   }
   for (const page of pages) run("DELETE FROM pages WHERE id=?", page.id);
 }
+// Removes a workspace with everything in it. Inside a transaction.
+export function purgeWorkspace(wid: string) {
+  purgePages(wid, all<Page>("SELECT * FROM pages WHERE workspace_id=?", wid));
+  run(
+    "DELETE FROM grants WHERE resource_id IN (SELECT id FROM spaces WHERE workspace_id=?) OR group_id IN (SELECT id FROM groups WHERE workspace_id=?)",
+    wid,
+    wid,
+  );
+  run("DELETE FROM templates WHERE workspace_id=?", wid);
+  run("DELETE FROM invites WHERE workspace_id=?", wid);
+  run("DELETE FROM workspaces WHERE id=?", wid);
+}
 export function manageSpace(user: Identity, input: Record<string, unknown>) {
   const space = requireSpaceManager(user, uuid.parse(input.spaceId));
   if (z.number().int().positive().parse(input.version) !== space.version)
@@ -191,15 +203,7 @@ export function manageWorkspace(
         "Lege zuerst einen weiteren Arbeitsbereich an. Dein einziger Arbeitsbereich kann nicht gelöscht werden.",
       );
     confirmName(input.confirmName, workspace.name);
-    purgePages(wid, all<Page>("SELECT * FROM pages WHERE workspace_id=?", wid));
-    run(
-      "DELETE FROM grants WHERE resource_id IN (SELECT id FROM spaces WHERE workspace_id=?) OR group_id IN (SELECT id FROM groups WHERE workspace_id=?)",
-      wid,
-      wid,
-    );
-    run("DELETE FROM templates WHERE workspace_id=?", wid);
-    run("DELETE FROM invites WHERE workspace_id=?", wid);
-    run("DELETE FROM workspaces WHERE id=?", wid);
+    purgeWorkspace(wid);
   } else if (input.action === "workspace.leave") {
     confirmName(input.confirmName, workspace.name);
     const owners = all<{ id: string }>(

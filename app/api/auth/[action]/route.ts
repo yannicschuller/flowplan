@@ -1,3 +1,4 @@
+import { DEMO_MAX_MS, demoSessionExpiry, endDemo, startDemo } from "@/lib/demo";
 import { syncAvatar } from "@/lib/avatars";
 import { loginReturnPath } from "@/lib/page-location";
 import { NextResponse } from "next/server";
@@ -14,6 +15,7 @@ import {
   extractGroups,
   acceptInvites,
   adminGroup,
+  currentUser,
   HttpError,
 } from "@/lib/auth";
 import { one, run } from "@/lib/db";
@@ -157,7 +159,30 @@ export async function POST(
       await issueSession(user.id, [adminGroup()]);
       return NextResponse.json({ ok: true });
     }
+    // "Demo ausprobieren" on the start page.
+    if (action === "trial") {
+      const address =
+        req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+        req.headers.get("x-real-ip") ||
+        "local";
+      const uid = startDemo(address);
+      const until = Date.now() + DEMO_MAX_MS;
+      await issueSession(uid, [], {
+        expires: demoSessionExpiry(until),
+        until,
+      });
+      return NextResponse.json({ ok: true });
+    }
+    // Ends a demo right away: account, workspace and files are deleted.
+    if (action === "trial-end") {
+      const user = await currentUser();
+      if (user?.demo) endDemo(user.id);
+      (await cookies()).delete(cookieName);
+      return NextResponse.json({ ok: true });
+    }
     if (action === "logout") {
+      const demoUser = await currentUser();
+      if (demoUser?.demo) endDemo(demoUser.id);
       const jar = await cookies(),
         token = jar.get(cookieName)?.value;
       if (token) run("DELETE FROM sessions WHERE token=?", hash(token));

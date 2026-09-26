@@ -18,6 +18,7 @@ export default async function Home({
         configured={!!process.env.OIDC_ISSUER}
         error={(await searchParams).authError}
         instanceName={instanceSettings().name}
+        demoEnabled={instanceSettings().publicDemo}
       />
     );
   ensureWorkspace(user.id);

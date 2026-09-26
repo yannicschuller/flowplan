@@ -24,21 +24,31 @@ export function extractGroups(claims: Record<string, unknown>): string[] {
     : [];
 }
 export function identityFromToken(token: string): Identity | null {
-  const s = one<User & { groups_json: string }>(
-    "SELECT u.*,s.groups_json FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
+  const s = one<User & { groups_json: string; expires: number }>(
+    "SELECT u.*,s.groups_json,s.expires FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
     hash(token),
     Date.now(),
   );
   if (!s) return null;
   const groups = JSON.parse(s.groups_json) as string[];
+  // Demo sessions live on while used: 45 minutes after the last request,
+  // never beyond the end of the demo.
+  if (s.demo_until) {
+    const next = Math.min(Date.now() + 45 * 60_000, s.demo_until);
+    if (next - s.expires > 60_000)
+      run("UPDATE sessions SET expires=? WHERE token=?", next, hash(token));
+  }
   return {
     id: s.id,
     name: s.name,
     email: s.email,
     disabled: s.disabled,
     created_at: s.created_at,
+    avatar: s.avatar,
+    demo_until: s.demo_until ?? null,
+    demo: !!s.demo_until,
     groups,
-    isAdmin: groups.includes(adminGroup()),
+    isAdmin: !s.demo_until && groups.includes(adminGroup()),
   };
 }
 export async function currentUser() {
@@ -51,7 +61,12 @@ export async function requireUser() {
   if (!u) throw new HttpError(401, "Bitte melde dich an.");
   return u;
 }
-export async function issueSession(userId: string, groups: string[]) {
+export async function issueSession(
+  userId: string,
+  groups: string[],
+  // Demo sessions: their own end (the cookie lasts until the demo's end).
+  demo?: { expires: number; until: number },
+) {
   const token = randomBytes(32).toString("base64url");
   const hours = Math.min(
     24,
@@ -62,14 +77,16 @@ export async function issueSession(userId: string, groups: string[]) {
     hash(token),
     userId,
     JSON.stringify(groups),
-    Date.now() + hours * 3600000,
+    demo ? demo.expires : Date.now() + hours * 3600000,
   );
   (await cookies()).set(cookieName, token, {
     httpOnly: true,
     secure: new URL(appUrl()).protocol === "https:",
     sameSite: "lax",
     path: "/",
-    maxAge: hours * 3600,
+    maxAge: demo
+      ? Math.max(60, Math.round((demo.until - Date.now()) / 1000))
+      : hours * 3600,
   });
 }
 export function upsertUser(subject: string, name: string, email: string) {

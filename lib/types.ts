@@ -8,8 +8,10 @@ export type User = {
   created_at: string;
   // Version of the stored profile picture, null without one.
   avatar?: string | null;
+  // Public demo accounts: end at the latest (ms), null for real accounts.
+  demo_until?: number | null;
 };
-export type Identity = User & { groups: string[]; isAdmin: boolean };
+export type Identity = User & { groups: string[]; isAdmin: boolean; demo?: boolean };
 export type Workspace = {
   id: string;
   name: string;

@@ -1212,6 +1212,28 @@ export default function WorkspaceApp({
         </div>
       </aside>
       <main className="main">
+        {boot.user.demo && (
+          <div className="demo-banner" role="note">
+            <span>
+              <strong>Demo</strong> – probier alles aus. Dein Arbeitsbereich
+              wird gelöscht, sobald du die Demo beendest oder 45 Minuten nichts
+              tust.
+            </span>
+            <a className="button primary" href="/api/auth/login?register=1">
+              Registrieren
+            </a>
+            <button
+              type="button"
+              className="button"
+              onClick={async () => {
+                await fetch("/api/auth/trial-end", { method: "POST" });
+                location.assign("/");
+              }}
+            >
+              Demo beenden
+            </button>
+          </div>
+        )}
         {boot.instance?.announcement && (
           <div className="instance-announcement" role="note">
             {boot.instance.announcement}

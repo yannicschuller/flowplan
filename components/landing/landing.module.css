@@ -1923,3 +1923,21 @@
     transform: none;
   }
 }
+
+.demoError {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 13px;
+  color: #e03131;
+}
+button.ghost,
+button.secondaryLarge {
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secondaryLarge:disabled,
+button.ghost:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

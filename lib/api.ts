@@ -5,6 +5,7 @@ import {
 } from "./whiteboard";
 import { journalDate, journalDays, rollJournal, rollJournals } from "./journal";
 import { transferPages } from "./page-transfer";
+import { demoAllows } from "./demo";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import {
@@ -391,6 +392,11 @@ export function command(
   const base = z.object({ action: str }).passthrough().parse(input);
   const action = base.action;
   const b = base as Record<string, unknown>;
+  if (user.demo && !demoAllows(action, b))
+    throw new HttpError(
+      403,
+      "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.",
+    );
   const pid = () => uuid.parse(b.pageId);
   const wid = () => uuid.parse(b.workspaceId);
   const write = () => {

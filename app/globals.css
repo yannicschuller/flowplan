@@ -9756,3 +9756,25 @@ li[data-journal-since] > label::after {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* Public demo */
+.demo-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 18px;
+  background: var(--blue-light);
+  border-bottom: 1px solid color-mix(in srgb, var(--blue) 25%, var(--border));
+  font-size: 13.5px;
+}
+.demo-banner span {
+  flex: 1 1 280px;
+}
+.demo-banner strong {
+  color: var(--blue);
+}
+.demo-banner .button {
+  padding: 6px 12px;
+  font-size: 13px;
+}

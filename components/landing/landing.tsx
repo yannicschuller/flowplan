@@ -30,7 +30,41 @@ type Props = {
   loginHref: string;
   registerHref: string;
   instanceName?: string;
+  demoEnabled?: boolean;
 };
+
+// "Demo ausprobieren": a throwaway account, deleted after leaving.
+function DemoButton({ className, label = "Demo ausprobieren" }: { className: string; label?: string }) {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  return (
+    <>
+      <button
+        type="button"
+        className={className}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError("");
+          const response = await fetch("/api/auth/trial", { method: "POST" });
+          if (response.ok) {
+            location.assign("/");
+            return;
+          }
+          setError(((await response.json().catch(() => ({}))) as { error?: string }).error || "Die Demo konnte nicht starten.");
+          setBusy(false);
+        }}
+      >
+        {busy ? "Demo wird vorbereitet …" : label}
+      </button>
+      {error && (
+        <span role="alert" className={s.demoError}>
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
 
 const TYPES = [
   { key: "doc", label: "Dokumente", icon: FileText, page: "Projekt-Kickoff" },
@@ -738,7 +772,7 @@ function Reveal({ children, className }: { children: ReactNode; className?: stri
   );
 }
 
-export default function Landing({ loginHref, registerHref, instanceName }: Props) {
+export default function Landing({ loginHref, registerHref, instanceName, demoEnabled }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
   const [section, setSection] = useState("");
@@ -811,6 +845,7 @@ export default function Landing({ loginHref, registerHref, instanceName }: Props
           ))}
         </nav>
         <div className={s.actions}>
+          {demoEnabled && <DemoButton className={s.ghost} label="Demo" />}
           <a className={s.ghost} href={loginHref}>
             Anmelden
           </a>
@@ -848,6 +883,7 @@ export default function Landing({ loginHref, registerHref, instanceName }: Props
               <a className={s.secondaryLarge} href={loginHref}>
                 Anmelden
               </a>
+              {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
             <ul className={`${s.facts} ${s.rise}`} style={{ "--d": 4 } as React.CSSProperties}>
               <li>Selbst gehostet</li>
@@ -1012,6 +1048,7 @@ export default function Landing({ loginHref, registerHref, instanceName }: Props
               <a className={s.secondaryLarge} href={loginHref}>
                 Anmelden
               </a>
+              {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
           </Reveal>
         </section>
