@@ -9745,3 +9745,14 @@ li[data-journal-since] > label::after {
 [data-indent="8"] {
   margin-left: 14em;
 }
+
+/* Move page dialog */
+.move-page-dialog {
+  display: grid;
+  gap: 14px;
+}
+.move-page-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}

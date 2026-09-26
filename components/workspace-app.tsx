@@ -113,6 +113,7 @@ import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
 import Admin from "./admin";
 import { ShareLinks } from "./share-links";
+import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import type { ShareLink } from "@/lib/share-links";
 const EmojiPicker = dynamic(() => import("./emoji-picker"), {
@@ -212,7 +213,6 @@ export default function WorkspaceApp({
     [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
     [online, setOnline] = useState(true),
     [move, setMove] = useState(false),
-    [moveTarget, setMoveTarget] = useState(""),
     [templateName, setTemplateName] = useState(false),
     [templateTitle, setTemplateTitle] = useState("");
   const [treeDrop, setTreeDrop] = useState<{
@@ -2966,41 +2966,31 @@ export default function WorkspaceApp({
           <button className="button primary">Speichern</button>
         </form>
       </Modal>
-      <Modal
+      <MovePageDialog
         open={move}
         onClose={() => setMove(false)}
-        title="Seite verschieben"
-      >
-        <label>
-          Übergeordnete Seite
-          <Select
-            value={moveTarget}
-            onChange={(e) => setMoveTarget(e.target.value)}
-          >
-            <option value="">Auf oberste Ebene</option>
-            {activePages
-              .filter((p) => p.id !== pageId)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-          </Select>
-        </label>
-        <button
-          className="button primary"
-          onClick={async () => {
-            const r = await act({
-              action: "page.move",
-              pageId,
-              parentId: moveTarget || null,
-            });
-            if (r) setMove(false);
-          }}
-        >
-          Verschieben
-        </button>
-      </Modal>
+        page={activePages.find((p) => p.id === pageId)}
+        workspaces={boot.workspaces}
+        currentWorkspace={boot.workspace.id}
+        current={{ spaces: boot.spaces, pages: activePages }}
+        onMove={async ({ spaceId: target, parentId, workspaceId }) => {
+          const moved = pageId;
+          const r = await act({
+            action: "page.move",
+            workspaceId: boot.workspace.id,
+            pageId: moved,
+            parentId,
+            spaceId: target,
+          });
+          if (!r) return false;
+          // Follow the page into the other workspace.
+          if (workspaceId !== boot.workspace.id && moved) {
+            await switchWorkspace(workspaceId);
+            await openPage(moved);
+          }
+          return true;
+        }}
+      />
       {pageExport && data && (
         <PageExportDialog
           page={data.page}

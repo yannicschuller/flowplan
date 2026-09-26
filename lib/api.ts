@@ -4,6 +4,7 @@ import {
   whiteboardData,
 } from "./whiteboard";
 import { journalDate, journalDays, rollJournal, rollJournals } from "./journal";
+import { transferPages } from "./page-transfer";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import {
@@ -889,7 +890,7 @@ export function command(
         const destination = one<Space>("SELECT * FROM spaces WHERE id=?", sid);
         if (
           !destination ||
-          destination.workspace_id !== p.workspace_id ||
+          destination.deleted_at ||
           target?.id === p.id ||
           (parent && subtree.includes(parent))
         )
@@ -902,6 +903,9 @@ export function command(
         )
           throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
         subtree.forEach((child) => requirePage(user, child, true, true));
+        // Into another workspace: rights, favourites and quota follow it.
+        if (destination.workspace_id !== p.workspace_id)
+          transferPages(user, subtree, p.workspace_id, destination.workspace_id);
         for (const child of subtree)
           run("UPDATE pages SET space_id=? WHERE id=?", sid, child);
         run(
