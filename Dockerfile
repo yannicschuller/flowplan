@@ -4,6 +4,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 FROM deps AS build
 COPY . .
+# The CI checkout may be private (umask 077) and COPY keeps those modes; the
+# app runs as node, so everything that ends up in the image must be readable.
+RUN chmod -R a+rX /app
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 FROM litestream/litestream:0.5.17 AS litestream
