@@ -9386,3 +9386,89 @@ li[data-journal-since] > label::after {
   object-fit: cover;
   display: block;
 }
+
+/* "/" block menu next to the caret (components/slash-menu.tsx). */
+.slash-menu {
+  position: fixed;
+  z-index: 400;
+  width: 320px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 18px 40px -12px #1d1a1440;
+  overflow: hidden;
+  animation: slash-in 0.14s var(--ease-out, ease) both;
+}
+@keyframes slash-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.slash-menu input {
+  margin: 8px 8px 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+}
+.slash-menu-list {
+  overflow-y: auto;
+  padding: 6px;
+  display: grid;
+  gap: 1px;
+}
+.slash-menu-list > button {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  text-align: left;
+}
+.slash-menu-list > button[data-active="true"] {
+  background: var(--hover);
+}
+.slash-menu-list > button > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--secondary);
+}
+.slash-menu-list > button[data-active="true"] > span {
+  color: var(--blue);
+}
+.slash-menu-list strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 550;
+}
+.slash-menu-list small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slash-menu-empty {
+  margin: 0;
+  padding: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .slash-menu {
+    animation: none;
+  }
+}

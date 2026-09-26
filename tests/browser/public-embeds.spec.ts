@@ -47,7 +47,7 @@ test("published pages show linked views of published databases", async ({
   await page
     .getByRole("button", { name: "Block hinzufügen", exact: true })
     .click();
-  await page.getByRole("button", { name: /^Verknüpfte Datenbank/ }).click();
+  await page.locator(".slash-menu").getByRole("button", { name: /^Verknüpfte Datenbank/ }).click();
   const picker = page.getByRole("dialog", { name: "Datenbank verknüpfen" });
   await picker.getByLabel("Datenquelle suchen").fill(`Aufgaben ${tag}`);
   await picker

@@ -41,7 +41,7 @@ test("record documents embed linked database views", async ({
   await entry
     .getByRole("button", { name: "Block hinzufügen", exact: true })
     .click();
-  await page.getByRole("button", { name: /^Verknüpfte Datenbank/ }).click();
+  await page.locator(".slash-menu").getByRole("button", { name: /^Verknüpfte Datenbank/ }).click();
   const picker = page.getByRole("dialog", {
     name: "Datenbank verknüpfen",
     exact: true,

@@ -34,7 +34,7 @@ test("embeds from several providers are inserted, stored and published", async (
     await page
       .getByRole("button", { name: "Block hinzufügen", exact: true })
       .click();
-    await page.getByRole("button", { name: /^Einbetten / }).click();
+    await page.locator(".slash-menu").getByRole("button", { name: /^Einbetten / }).click();
     const dialog = page.getByRole("dialog", { name: "Inhalt einbetten" });
     await dialog.getByLabel(/^Link/).fill(url);
     await dialog
@@ -57,7 +57,7 @@ test("embeds from several providers are inserted, stored and published", async (
   await page
     .getByRole("button", { name: "Block hinzufügen", exact: true })
     .click();
-  await page.getByRole("button", { name: /^Einbetten / }).click();
+  await page.locator(".slash-menu").getByRole("button", { name: /^Einbetten / }).click();
   const dialog = page.getByRole("dialog", { name: "Inhalt einbetten" });
   await dialog.getByLabel(/^Link/).fill("http://example.com/video/1");
   await dialog.getByRole("button", { name: "Einbetten", exact: true }).click();
@@ -66,7 +66,10 @@ test("embeds from several providers are inserted, stored and published", async (
   await expect
     .poll(async () => (await read()).html)
     .toContain("player.vimeo.com/video/76979871");
-  expect((await read()).html).toContain("open.spotify.com/embed/track/");
+  // Saving is debounced; the second player may arrive a moment later.
+  await expect
+    .poll(async () => (await read()).html)
+    .toContain("open.spotify.com/embed/track/");
 
   // The published page shows the same players.
   await command({ action: "page.publish", pageId: p.id, enabled: true });

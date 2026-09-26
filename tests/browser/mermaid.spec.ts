@@ -39,7 +39,7 @@ test("Mermaid diagrams validate, render several types, edit, undo, persist and r
   await page
     .getByRole("button", { name: "Block hinzufügen", exact: true })
     .click();
-  await page.getByRole("button", { name: /^Mermaid-Diagramm / }).click();
+  await page.locator(".slash-menu").getByRole("button", { name: /^Mermaid-Diagramm / }).click();
   const dialog = page.getByRole("dialog", {
     name: "Mermaid-Diagramm",
     exact: true,

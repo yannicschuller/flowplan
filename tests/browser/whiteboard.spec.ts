@@ -185,7 +185,7 @@ test("whiteboards are embedded in documents and open from there", async ({
   const content = page.getByLabel("Dokumentinhalt", { exact: true });
   await content.click();
   await page.keyboard.type("/");
-  await page.getByRole("button", { name: /^Whiteboard/ }).click();
+  await page.locator(".slash-menu").getByRole("button", { name: /^Whiteboard/ }).click();
   const picker = page.getByRole("dialog", { name: "Whiteboard einbetten" });
   await picker.getByLabel("Whiteboard suchen").fill(`Eingebettet ${tag}`);
   await picker.getByRole("button", { name: `Eingebettet ${tag}` }).click();

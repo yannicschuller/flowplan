@@ -48,6 +48,9 @@ import TextAlign from "@tiptap/extension-text-align";
 import Typography from "@tiptap/extension-typography";
 import Collaboration from "@tiptap/extension-collaboration";
 import { Node, mergeAttributes } from "@tiptap/core";
+import type { Editor as TiptapEditor } from "@tiptap/core";
+import { SlashMenu, type SlashItem } from "./slash-menu";
+import { rankCommands } from "@/lib/slash-commands";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
@@ -135,7 +138,14 @@ export default function DocumentEditor({
     lastHtml = useRef(html),
     initial = useRef({ state, html }),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [slash, setSlash] = useState(false),
+  // "/" menu: typed in the text (inline) or opened from the toolbar (button,
+  // with its own search field). `from` is where the "/" sits.
+  const [slash, setSlash] = useState<{
+      from: number;
+      mode: "inline" | "button";
+      query: string;
+    } | null>(null),
+    [slashActive, setSlashActive] = useState(0),
     [link, setLink] = useState(false),
     [linkUrl, setLinkUrl] = useState(""),
     [diagram, setDiagram] = useState<DiagramTarget | null>(null),
@@ -185,6 +195,31 @@ export default function DocumentEditor({
     update: () => bytesTo64(Y.encodeStateAsUpdate(doc)),
     receive: (state) => Y.applyUpdate(doc, from64(state), "remote"),
   };
+  const slashState = useRef(slash);
+  slashState.current = slash;
+  const slashActiveRef = useRef(slashActive);
+  slashActiveRef.current = slashActive;
+  const slashItems = useRef<SlashItem[]>([]);
+  const slashPick = useRef((_index: number) => {});
+  // Keeps the typed query in step with the text; leaving the "/…" word,
+  // a line break or a query without any match closes the menu.
+  const slashFollow = useRef((current: TiptapEditor) => {
+    const menu = slashState.current;
+    if (menu?.mode !== "inline") return;
+    const { selection, doc: content } = current.state;
+    const close = () => setSlash(null);
+    if (!selection.empty || selection.from <= menu.from) return close();
+    if (content.resolve(menu.from).parent !== selection.$from.parent)
+      return close();
+    const text = content.textBetween(menu.from, selection.from, "\n", "\ufffc");
+    if (!text.startsWith("/") || /[\n\ufffc]/.test(text) || text.length > 40)
+      return close();
+    const query = text.slice(1);
+    if (query !== menu.query) {
+      setSlash({ ...menu, query });
+      setSlashActive(0);
+    }
+  });
   const editor = useEditor(
     {
       immediatelyRender: false,
@@ -260,13 +295,35 @@ export default function DocumentEditor({
             setReferences(true);
             return true;
           }
-          if (event.key === "/" && editable) {
-            setSlash(true);
-            return true;
+          const menu = slashState.current;
+          if (menu?.mode === "inline") {
+            const count = slashItems.current.length;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              if (count)
+                setSlashActive(
+                  (i) => (i + (event.key === "ArrowDown" ? 1 : -1) + count) % count,
+                );
+              return true;
+            }
+            if ((event.key === "Enter" || event.key === "Tab") && count) {
+              slashPick.current(slashActiveRef.current);
+              return true;
+            }
+            if (event.key === "Escape") {
+              setSlash(null);
+              return true;
+            }
           }
-          if (event.key === "Escape") setSlash(false);
+          // The "/" stays in the text; what follows filters the menu.
+          if (event.key === "/" && editable && _view.state.selection.empty) {
+            setSlash({ from: _view.state.selection.from, mode: "inline", query: "" });
+            setSlashActive(0);
+          }
           return false;
         },
+      },
+      onBlur: () => {
+        if (slashState.current?.mode === "inline") setSlash(null);
       },
       onUpdate: ({ editor, transaction }) => {
         lastHtml.current = editor.getHTML();
@@ -279,8 +336,12 @@ export default function DocumentEditor({
           dirty.current = true;
           onStatus(navigator.onLine ? "Änderungen …" : "Offline gespeichert");
         }
+        slashFollow.current(editor);
       },
-      onSelectionUpdate: () => setTick((t) => t + 1),
+      onSelectionUpdate: ({ editor }) => {
+        setTick((t) => t + 1);
+        slashFollow.current(editor);
+      },
     },
     [doc],
   );
@@ -489,57 +550,66 @@ export default function DocumentEditor({
       onError((e as Error).message);
     }
   }
-  const commands = [
+  const commands: SlashItem[] = [
     {
       name: "Text",
+      keywords: ["text", "p", "absatz", "paragraph"],
       description: "Einfach losschreiben",
       icon: TextAlignLeft,
       run: () => editor?.chain().focus().setParagraph().run(),
     },
     {
       name: "Überschrift 1",
+      keywords: ["h1", "#", "titel", "heading1"],
       description: "Große Überschrift",
       icon: TextHOne,
       run: () => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
     },
     {
       name: "Überschrift 2",
+      keywords: ["h2", "##", "heading2"],
       description: "Mittlere Überschrift",
       icon: TextHTwo,
       run: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
     },
     {
       name: "Überschrift 3",
+      keywords: ["h3", "###", "heading3"],
       description: "Kleine Überschrift",
       icon: TextHThree,
       run: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
     },
     {
       name: "Aufgabenliste",
+      keywords: ["todo", "aufgabe", "task", "checkbox", "[]"],
       description: "Schritt für Schritt abhaken",
       icon: CheckSquare,
       run: () => editor?.chain().focus().toggleTaskList().run(),
     },
     {
       name: "Aufzählung",
+      keywords: ["ul", "liste", "bullet", "punkte", "-"],
       description: "Eine Liste mit Punkten",
       icon: ListBullets,
       run: () => editor?.chain().focus().toggleBulletList().run(),
     },
     {
       name: "Nummerierte Liste",
+      keywords: ["ol", "1.", "nummer", "numbered"],
       description: "Eine geordnete Liste",
       icon: ListNumbers,
       run: () => editor?.chain().focus().toggleOrderedList().run(),
     },
     {
       name: "Zitat",
+      keywords: ["quote", ">"],
       description: "Einen Gedanken hervorheben",
       icon: Quotes,
       run: () => editor?.chain().focus().toggleBlockquote().run(),
     },
     {
       name: "Hinweis",
+      keywords: ["callout", "info", "note"],
       description: "Wichtige Informationen",
       icon: Info,
       run: () =>
@@ -559,18 +629,21 @@ export default function DocumentEditor({
     },
     {
       name: "Aufklappbarer Block",
+      keywords: ["toggle", "details", "aufklappen"],
       description: "Details ein- und ausblenden",
       icon: CaretRight,
       run: () => setToggle(true),
     },
     {
       name: "Code",
+      keywords: ["codeblock", "```"],
       description: "Codeblock einfügen",
       icon: Code,
       run: () => editor?.chain().focus().toggleCodeBlock().run(),
     },
     {
       name: "Tabelle",
+      keywords: ["table"],
       description: "Zeilen und Spalten",
       icon: TableIcon,
       run: () =>
@@ -582,36 +655,42 @@ export default function DocumentEditor({
     },
     {
       name: "Bild oder Datei",
+      keywords: ["bild", "image", "img", "datei", "file", "upload", "foto"],
       description: "Datei vom Gerät hochladen",
       icon: ImageIcon,
       run: () => uploadRef.current?.click(),
     },
     {
       name: "Mermaid-Diagramm",
+      keywords: ["mermaid", "diagramm", "flowchart", "chart"],
       description: "Abläufe, Sequenzen und Beziehungen",
       icon: Code,
       run: () => setDiagram({ source: DEFAULT_DIAGRAM }),
     },
     {
       name: "Formel",
+      keywords: ["math", "latex", "katex", "tex"],
       description: "Mathematischer Ausdruck",
       icon: FunctionIcon,
       run: () => setMath({ type: "mathBlock", expression: "" }),
     },
     {
       name: "Inline-Formel",
+      keywords: ["inlinemath"],
       description: "Mathematik direkt im Satz",
       icon: FunctionIcon,
       run: () => openInlineMath(),
     },
     {
       name: "Seite oder Person erwähnen",
+      keywords: ["mention", "link", "@", "seite", "person"],
       description: "Mit @ Wissen verknüpfen",
       icon: LinkIcon,
       run: () => setReferences(true),
     },
     {
       name: "Whiteboard",
+      keywords: ["board", "canvas"],
       description: "Board anzeigen oder neu anlegen",
       icon: PresentationChart,
       run: () => {
@@ -621,6 +700,7 @@ export default function DocumentEditor({
     },
     {
       name: "Verknüpfte Datenbank",
+      keywords: ["datenbank", "db", "database", "linked"],
       description: "Bestehende Einträge mit eigener Ansicht",
       icon: TableIcon,
       run: () => {
@@ -630,6 +710,7 @@ export default function DocumentEditor({
     },
     {
       name: "Zwei Spalten",
+      keywords: ["spalten", "columns", "cols"],
       description: "Inhalte nebeneinander",
       icon: TableIcon,
       run: () =>
@@ -647,17 +728,55 @@ export default function DocumentEditor({
     },
     {
       name: "Einbetten",
+      keywords: ["embed", "youtube", "video", "figma", "loom"],
       description: "YouTube, Vimeo, Loom, Spotify, Figma oder CodePen",
       icon: ImageIcon,
       run: () => setEmbed(true),
     },
     {
       name: "Trennlinie",
+      keywords: ["hr", "divider", "linie", "---"],
       description: "Inhalte voneinander trennen",
       icon: Minus,
       run: () => editor?.chain().focus().setHorizontalRule().run(),
     },
   ];
+  const slashMatches = slash ? rankCommands(commands, slash.query) : [];
+  slashItems.current = slashMatches;
+  // Runs a block command; typed "/…" text is removed first.
+  slashPick.current = (index: number) => {
+    const list = slashItems.current,
+      item = list[Math.min(index, list.length - 1)],
+      menu = slashState.current;
+    if (!item || !menu) return;
+    setSlash(null);
+    if (menu.mode === "inline" && editor) {
+      const to = editor.state.selection.from;
+      if (to > menu.from)
+        editor.chain().focus().deleteRange({ from: menu.from, to }).run();
+    } else editor?.commands.focus();
+    item.run();
+  };
+  // A typed query that matches nothing closes the menu ("und/oder").
+  useEffect(() => {
+    if (slash?.mode === "inline" && slash.query && !slashMatches.length)
+      setSlash(null);
+  }, [slash, slashMatches.length]);
+  // The menu stays next to the text while the page scrolls.
+  useEffect(() => {
+    if (!slash) return;
+    const follow = () => setTick((t) => t + 1);
+    window.addEventListener("scroll", follow, true);
+    return () => window.removeEventListener("scroll", follow, true);
+  }, [slash]);
+  let slashAnchor: { left: number; top: number; bottom: number } | null =
+    null;
+  if (slash && editor && !editor.isDestroyed)
+    try {
+      slashAnchor = editor.view.coordsAtPos(
+        Math.min(slash.from, editor.state.doc.content.size),
+      );
+    } catch {}
   function openInlineMath() {
     if (!editor) return;
     const { from, to } = editor.state.selection;
@@ -881,7 +1000,18 @@ export default function DocumentEditor({
             <button title="Inline-Formel" onClick={openInlineMath}>
               <FunctionIcon />
             </button>
-            <button title="Block hinzufügen" onClick={() => setSlash(true)}>
+            <button
+              title="Block hinzufügen"
+              onClick={() => {
+                if (!editor) return;
+                setSlash({
+                  from: editor.state.selection.from,
+                  mode: "button",
+                  query: "",
+                });
+                setSlashActive(0);
+              }}
+            >
               <Plus />
             </button>
           </div>
@@ -942,35 +1072,41 @@ export default function DocumentEditor({
           e.target.value = "";
         }}
       />
-      <Modal
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          editor?.commands.focus();
-        }}
-        open={slash}
-        onClose={() => setSlash(false)}
-        title="Block hinzufügen"
-      >
-        <div className="slash-list">
-          {commands.map((c) => (
-            <button
-              key={c.name}
-              onClick={() => {
-                setSlash(false);
-                c.run();
-              }}
-            >
-              <span>
-                <c.icon size={23} />
-              </span>
-              <div>
-                <strong>{c.name}</strong>
-                <small>{c.description}</small>
-              </div>
-            </button>
-          ))}
-        </div>
-      </Modal>
+      {slash && slashAnchor && (
+        <SlashMenu
+          items={slashMatches}
+          active={Math.min(slashActive, Math.max(0, slashMatches.length - 1))}
+          anchor={slashAnchor}
+          search={slash.mode === "button" ? slash.query : undefined}
+          onSearch={(query) => {
+            setSlash({ ...slash, query });
+            setSlashActive(0);
+          }}
+          onKey={(event) => {
+            const count = slashMatches.length;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              if (count)
+                setSlashActive(
+                  (i) => (i + (event.key === "ArrowDown" ? 1 : -1) + count) % count,
+                );
+            } else if (event.key === "Enter" && count) {
+              event.preventDefault();
+              slashPick.current(slashActive);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              setSlash(null);
+              editor?.commands.focus();
+            }
+          }}
+          onPick={(index) => slashPick.current(index)}
+          onHover={setSlashActive}
+          onClose={() => setSlash(null)}
+          container={
+            editor?.view.dom.closest<HTMLElement>('[role="dialog"]') || null
+          }
+        />
+      )}
       <Modal
         open={boardPicker}
         title="Whiteboard einbetten"
