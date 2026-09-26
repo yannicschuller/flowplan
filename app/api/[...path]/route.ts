@@ -1,3 +1,4 @@
+import { storageOverview } from "@/lib/storage-overview";
 import { avatarFor } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
@@ -277,6 +278,12 @@ export async function GET(
     if (path[0] === "templates") {
       const wid = url.searchParams.get("workspace") || "";
       return NextResponse.json(listPageTemplates(user, wid));
+    }
+    if (path.length === 2 && path[0] === "admin" && path[1] === "storage") {
+      requireAdmin(user);
+      return NextResponse.json(await storageOverview(), {
+        headers: { "Cache-Control": "no-store" },
+      });
     }
     if (path[0] === "admin") {
       requireAdmin(user);

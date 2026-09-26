@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
 import { Select } from "./select";
+import { AdminStorage } from "./admin-storage";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
 type AdminData = {
@@ -423,6 +424,7 @@ export default function Admin({
               </div>
             </section>
           )}
+          {tab === "operations" && <AdminStorage onError={onError} />}
           {tab === "audit" && (
             <section className="settings-section">
               <div className="settings-list-head">
