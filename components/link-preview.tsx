@@ -52,6 +52,8 @@ export function LinkPreview({
       if (timer.current) clearTimeout(timer.current);
       current.current = target;
       timer.current = setTimeout(async () => {
+        // The link may be gone meanwhile (the page changed under it).
+        if (!target.isConnected) return clear();
         const rect = target.getBoundingClientRect();
         const person = target.getAttribute("data-mention");
         if (person) {
@@ -118,6 +120,9 @@ export function LinkPreview({
         "a[href], span[data-mention]",
       );
       if (!target || target.closest(".sidebar, .link-preview")) return;
+      // Opening a page removes the link before the pointer can leave it, so
+      // no mouseout would ever close the card.
+      if (target.matches('a[href*="#page="]')) clear();
       if (target.matches("span[data-mention]")) {
         if (timer.current) clearTimeout(timer.current);
         current.current = null;
@@ -136,7 +141,9 @@ export function LinkPreview({
     document.addEventListener("mouseout", out);
     document.addEventListener("focusout", out);
     window.addEventListener("scroll", clear, true);
+    window.addEventListener("hashchange", clear);
     return () => {
+      window.removeEventListener("hashchange", clear);
       document.removeEventListener("click", click, true);
       document.removeEventListener("mouseover", over);
       document.removeEventListener("focusin", over);
