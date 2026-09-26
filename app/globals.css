@@ -8267,7 +8267,9 @@ textarea {
   display: flex;
   align-items: flex-start;
   gap: 2px;
-  transition: transform 0.9s linear;
+  /* Updates arrive ~15× a second; a short glide hides the steps. */
+  transition: transform 0.1s linear;
+  will-change: transform;
 }
 .wb-cursor span {
   margin-top: 12px;
@@ -9669,5 +9671,40 @@ li[data-journal-since] > label::after {
 @media (max-width: 800px) {
   .storage-columns {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Collaborators outside the visible part of the board */
+.wb-cursor-edge {
+  position: absolute;
+  z-index: 5;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px -4px #0005;
+  transition:
+    left 0.15s linear,
+    top 0.15s linear,
+    scale 0.15s ease;
+}
+.wb-cursor-edge:hover {
+  scale: 1.06;
+}
+.wb-cursor-edge i {
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-cursor,
+  .wb-cursor-edge {
+    transition: none;
   }
 }

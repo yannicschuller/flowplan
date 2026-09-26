@@ -385,6 +385,7 @@ test("comment pins, tables, voting, timer and full screen", async ({
   await canvas.dblclick({
     position: { x: box.width / 2 + 200, y: box.height / 2 + 60 },
   });
+  await expect(wb.locator("textarea").first()).toBeFocused();
   await page.keyboard.type("Option A");
   await page.keyboard.press("Escape");
   await wb.getByRole("button", { name: "Kommentar", exact: true }).click();

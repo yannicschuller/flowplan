@@ -324,8 +324,6 @@ export default function Whiteboard({
       dirty.current = false;
       setStatus("Speichern …");
     }
-    const c = cursor.current;
-    cursor.current = undefined;
     try {
       const result = await api<{
         state: string;
@@ -335,11 +333,9 @@ export default function Whiteboard({
         pageId,
         generation,
         ...(update ? { update: to64(update) } : {}),
-        ...(c !== undefined ? { cursor: c } : {}),
       });
       Y.applyUpdate(doc, from64(result.state), "remote");
       if (send) lastVector.current = vector;
-      setPresence(result.presence);
       setStatus(dirty.current ? "Änderungen …" : "Gespeichert");
     } catch (e) {
       if (send) dirty.current = true;
@@ -380,6 +376,86 @@ export default function Whiteboard({
       leave();
     };
   }, [sync, doc, editable, generation, pageId]);
+
+  // Live cursors: own position goes out up to ~15 times a second, the others
+  // arrive as a server-sent event stream (polling if a proxy blocks it).
+  const sendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSent = useRef(0);
+  const flushCursor = useCallback(() => {
+    sendTimer.current = null;
+    const c = cursor.current;
+    if (c === undefined) return;
+    cursor.current = undefined;
+    lastSent.current = Date.now();
+    void fetch(`/api/whiteboards/${pageId}/cursor`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(c),
+      keepalive: c === null,
+    }).catch(() => {});
+  }, [pageId]);
+  const queueCursor = useCallback(
+    (point: Point | null) => {
+      cursor.current = point;
+      if (sendTimer.current) return;
+      const wait = point === null ? 0 : Math.max(0, 66 - (Date.now() - lastSent.current));
+      sendTimer.current = setTimeout(flushCursor, wait);
+    },
+    [flushCursor],
+  );
+  useEffect(() => {
+    const others = new Map<string, { user_id: string; name: string; x: number; y: number }>();
+    const publish = () => setPresence([...others.values()]);
+    const take = (c: { userId: string; name: string; x: number; y: number }) =>
+      others.set(c.userId, { user_id: c.userId, name: c.name, x: c.x, y: c.y });
+    let source: EventSource | null = null,
+      poll: ReturnType<typeof setInterval> | null = null,
+      failures = 0;
+    const startPolling = () => {
+      if (poll) return;
+      poll = setInterval(async () => {
+        try {
+          const list = await api<{ userId: string; name: string; x: number; y: number }[]>(
+            `/api/whiteboards/${pageId}/cursors`,
+          );
+          others.clear();
+          list.forEach(take);
+          publish();
+        } catch {}
+      }, 700);
+    };
+    if (typeof EventSource === "undefined") startPolling();
+    else {
+      source = new EventSource(`/api/whiteboards/${pageId}/cursors`);
+      source.onmessage = (event) => {
+        failures = 0;
+        const data = JSON.parse(event.data);
+        if (data.type === "snapshot") {
+          others.clear();
+          data.cursors.forEach(take);
+        } else if (data.type === "cursor") take(data);
+        else if (data.type === "leave") others.delete(data.userId);
+        publish();
+      };
+      source.onerror = () => {
+        if (++failures >= 3) {
+          source?.close();
+          startPolling();
+        }
+      };
+    }
+    return () => {
+      source?.close();
+      if (poll) clearInterval(poll);
+      if (sendTimer.current) clearTimeout(sendTimer.current);
+      void fetch(`/api/whiteboards/${pageId}/cursor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "null",
+        keepalive: true,
+      }).catch(() => {});
+    };
+  }, [pageId]);
 
   // ---- coordinates ----
   const toWorld = useCallback((clientX: number, clientY: number): Point => {
@@ -988,7 +1064,7 @@ export default function Whiteboard({
   }
   function onMove(e: ReactPointerEvent<SVGSVGElement>) {
     const p = toWorld(e.clientX, e.clientY);
-    cursor.current = { x: Math.round(p.x), y: Math.round(p.y) };
+    queueCursor({ x: Math.round(p.x), y: Math.round(p.y) });
     if (e.pointerType === "touch" && pointers.current.has(e.pointerId)) {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pinch.current && pointers.current.size >= 2) {
@@ -1925,7 +2001,7 @@ export default function Whiteboard({
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        onPointerLeave={() => (cursor.current = null)}
+        onPointerLeave={() => queueCursor(null)}
         onDoubleClick={onDoubleClick}
       >
         <WhiteboardDefs />
@@ -2046,25 +2122,62 @@ export default function Whiteboard({
       </svg>
       {presence.map((p) => {
         const s = toScreen(p);
+        const box = svg.current?.getBoundingClientRect();
+        const w = box?.width || 0,
+          h = box?.height || 0;
+        const inside = !box || (s.x >= 0 && s.y >= 0 && s.x <= w && s.y <= h);
+        if (inside)
+          return (
+            <div
+              key={p.user_id}
+              className="wb-cursor"
+              style={{
+                transform: `translate(${s.x}px, ${s.y}px)`,
+                color: colorFor(p.user_id),
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                <path
+                  d="M1 1 L6 15 L8 9 L14 7 Z"
+                  fill="currentColor"
+                  stroke="#fff"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span style={{ background: colorFor(p.user_id) }}>{p.name}</span>
+            </div>
+          );
+        // Someone working elsewhere on the board: a marker at the edge
+        // pointing their way; clicking brings them into view.
+        const cx = Math.min(Math.max(s.x, 16), w - 16),
+          cy = Math.min(Math.max(s.y, 16), h - 16);
+        const angle = (Math.atan2(s.y - cy, s.x - cx) * 180) / Math.PI;
         return (
-          <div
+          <button
             key={p.user_id}
-            className="wb-cursor"
+            type="button"
+            className="wb-cursor-edge"
+            title={`Zu ${p.name} springen`}
+            aria-label={`Zu ${p.name} springen`}
             style={{
-              transform: `translate(${s.x}px, ${s.y}px)`,
-              color: colorFor(p.user_id),
+              left: cx,
+              top: cy,
+              background: colorFor(p.user_id),
             }}
+            onClick={() =>
+              setView((v) => ({
+                ...v,
+                x: p.x - w / 2 / v.zoom,
+                y: p.y - h / 2 / v.zoom,
+              }))
+            }
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M1 1 L6 15 L8 9 L14 7 Z"
-                fill="currentColor"
-                stroke="#fff"
-                strokeWidth="1"
-              />
-            </svg>
-            <span style={{ background: colorFor(p.user_id) }}>{p.name}</span>
-          </div>
+            <i style={{ transform: `rotate(${angle}deg)` }} aria-hidden="true">
+              ➜
+            </i>
+            {p.name}
+          </button>
         );
       })}
       {editor}

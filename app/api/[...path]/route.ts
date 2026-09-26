@@ -1,3 +1,4 @@
+import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { storageOverview } from "@/lib/storage-overview";
 import { avatarFor } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
@@ -279,6 +280,48 @@ export async function GET(
       const wid = url.searchParams.get("workspace") || "";
       return NextResponse.json(listPageTemplates(user, wid));
     }
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
+      const page = requirePage(user, z.uuid().parse(path[1]));
+      if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      if (!(req.headers.get("accept") || "").includes("text/event-stream"))
+        return NextResponse.json(boardCursors(page.id, user.id), {
+          headers: { "Cache-Control": "no-store" },
+        });
+      // Live stream of the other cursors on this board.
+      const encoder = new TextEncoder();
+      let stop = () => {};
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+          const unwatch = watchBoard(page.id, user.id, send);
+          const ping = setInterval(() => {
+            try {
+              send(": ping\n\n");
+            } catch {
+              stop();
+            }
+          }, 15_000);
+          stop = () => {
+            clearInterval(ping);
+            unwatch();
+            try {
+              controller.close();
+            } catch {}
+          };
+          req.signal.addEventListener("abort", () => stop());
+        },
+        cancel() {
+          stop();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
     if (path.length === 2 && path[0] === "admin" && path[1] === "storage") {
       requireAdmin(user);
       return NextResponse.json(await storageOverview(), {
@@ -381,6 +424,21 @@ export async function POST(
     )
       throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
+      if (Number(req.headers.get("content-length") || 0) > 512)
+        throw new HttpError(413, "Cursoranfrage zu groß.");
+      const page = requirePage(user, z.uuid().parse(path[1]));
+      if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      const body = z
+        .object({
+          x: z.number().finite().min(-1e7).max(1e7),
+          y: z.number().finite().min(-1e7).max(1e7),
+        })
+        .nullable()
+        .parse(await req.json());
+      moveCursor(page.id, user, body);
+      return new Response(null, { status: 204 });
+    }
     if (path.length === 1 && path[0] === "presence") {
       if (Number(req.headers.get("content-length") || 0) > 4096)
         throw new HttpError(413, "Cursoranfrage zu groß.");
