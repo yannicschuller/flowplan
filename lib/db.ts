@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 24) return;
+  if (globalDb.flowplanSchema === 25) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -357,10 +357,14 @@ function migrate(d: DatabaseSync) {
   d.exec(
     "CREATE TABLE IF NOT EXISTS demo_starts(address TEXT NOT NULL,at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS demo_starts_address ON demo_starts(address,at);",
   );
+  // Instance-wide counters that outlive the rows they count (e.g. demos).
+  d.exec(
+    "CREATE TABLE IF NOT EXISTS counters(name TEXT PRIMARY KEY,value INTEGER NOT NULL DEFAULT 0); INSERT OR IGNORE INTO counters(name,value) SELECT 'demos_started',COUNT(*) FROM demo_starts;",
+  );
   d.exec(
     "CREATE TABLE IF NOT EXISTS user_avatars(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,mime TEXT NOT NULL,data BLOB NOT NULL)",
   );
-  globalDb.flowplanSchema = 24;
+  globalDb.flowplanSchema = 25;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

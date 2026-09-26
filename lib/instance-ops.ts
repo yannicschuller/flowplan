@@ -6,6 +6,7 @@ import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { retentionDays } from "./version-history";
 import { instanceSettings } from "./instance-settings";
+import { demoCounts } from "./demo";
 
 // Storage quota in MB: per-workspace override or FLOWPLAN_WORKSPACE_QUOTA_MB;
 // 0 or unset means unlimited.
@@ -78,6 +79,7 @@ export function instanceMetrics() {
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
   const count = (sql: string, ...args: (string | number)[]) =>
     Number(one<{ n: number }>(sql, ...args)?.n || 0);
+  const demos = demoCounts();
   return {
     databaseBytes:
       fileSize(resolve(dir, "flowplan.sqlite")) +
@@ -102,6 +104,8 @@ export function instanceMetrics() {
     ),
     searchBacklog: count("SELECT COUNT(*) n FROM search_dirty"),
     reminders: count("SELECT COUNT(*) n FROM date_reminders"),
+    demosActive: demos.active,
+    demosStarted: demos.started,
     retentionDays: retentionDays(),
     defaultQuotaMb: defaultQuotaMb(),
     uptimeSeconds: Math.round(process.uptime()),
@@ -180,6 +184,8 @@ export function prometheusMetrics() {
     m.searchBacklog,
   );
   gauge("date_reminders", "Scheduled date reminders.", m.reminders);
+  gauge("demos_active", "Public demo sessions currently running.", m.demosActive);
+  metric("demos_started_total", "Public demos started on this instance.", "counter", [[{}, m.demosStarted]]);
   gauge("uptime_seconds", "Process uptime in seconds.", m.uptimeSeconds);
   const usage = workspaceUsage();
   metric(

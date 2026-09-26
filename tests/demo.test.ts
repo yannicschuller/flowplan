@@ -82,3 +82,18 @@ test("demos without an active session or past their end are cleaned up; starts a
   startDemo("10.0.0.3");
   assert.throws(() => startDemo("10.0.0.3"), /Zu viele Demos/);
 });
+
+test("operations count running demos and every demo ever started", async () => {
+  const { instanceMetrics, prometheusMetrics } = await import("../lib/instance-ops");
+  const before = instanceMetrics();
+  const uid = startDemo("10.0.0.9");
+  session(uid);
+  const during = instanceMetrics();
+  assert.equal(during.demosActive, before.demosActive + 1);
+  assert.equal(during.demosStarted, before.demosStarted + 1);
+  endDemo(uid);
+  const after = instanceMetrics();
+  assert.equal(after.demosActive, before.demosActive);
+  assert.equal(after.demosStarted, before.demosStarted + 1, "the total survives deleted demos");
+  assert.match(prometheusMetrics(), /flowplan_demos_started_total \d+/);
+});

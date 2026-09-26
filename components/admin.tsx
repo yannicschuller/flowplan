@@ -40,6 +40,8 @@ type AdminData = {
     pushFailed: number;
     searchBacklog: number;
     reminders: number;
+    demosActive: number;
+    demosStarted: number;
     retentionDays: number;
     defaultQuotaMb: number;
     uptimeSeconds: number;
@@ -404,6 +406,10 @@ export default function Admin({
                         : "aktuell",
                     ],
                     ["Erinnerungen", String(data.metrics.reminders)],
+                    [
+                      "Demos",
+                      `${data.metrics.demosActive} laufen · ${data.metrics.demosStarted} insgesamt gestartet${data.settings.publicDemo ? "" : " · ausgeschaltet"}`,
+                    ],
                     [
                       "Standardkontingent",
                       data.metrics.defaultQuotaMb

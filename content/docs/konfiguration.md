@@ -57,6 +57,6 @@ Unter **Administration → Instanz** stellen Admins ein:
 - Standard-Speicherkontingent und Aufbewahrung von Versionen,
 - maximale Uploadgröße,
 - ob alle Personen eigene Arbeitsbereiche anlegen dürfen,
-- ob die Startseite eine **Demo** anbietet.
+- ob die Startseite eine **Demo** anbietet (laufende und insgesamt gestartete Demos zeigt **Administration → Betrieb**).
 
 Leere Felder fallen auf die Umgebungsvariablen zurück.

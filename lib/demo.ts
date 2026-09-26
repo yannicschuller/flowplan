@@ -75,6 +75,9 @@ export function startDemo(address: string) {
   if (active >= MAX_ACTIVE)
     throw new HttpError(503, "Gerade laufen zu viele Demos. Bitte in ein paar Minuten erneut versuchen.");
   run("INSERT INTO demo_starts(address,at) VALUES(?,?)", key, now);
+  run(
+    "INSERT INTO counters(name,value) VALUES('demos_started',1) ON CONFLICT(name) DO UPDATE SET value=value+1",
+  );
   const uid = randomUUID();
   run(
     "INSERT INTO users(id,subject,name,email,demo_until) VALUES(?,?,?,?,?)",
@@ -118,6 +121,24 @@ export function endDemo(userId: string) {
     }
   });
   return true;
+}
+
+// Running demos (a valid session, not past their end) and all demos ever
+// started on this instance.
+export function demoCounts() {
+  const now = Date.now();
+  const active = Number(
+    one<{ n: number }>(
+      `SELECT COUNT(*) n FROM users u WHERE u.demo_until>? AND EXISTS
+         (SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.expires>?)`,
+      now,
+      now,
+    )?.n || 0,
+  );
+  const started = Number(
+    one<{ value: number }>("SELECT value FROM counters WHERE name='demos_started'")?.value || 0,
+  );
+  return { active, started };
 }
 
 // Demos past their end, or without an active session, are deleted.
