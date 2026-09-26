@@ -9126,3 +9126,77 @@ pre,
     transform: none;
   }
 }
+
+/* ---------- Board: columns, cards and dragging (board-card-drag.ts) ---------- */
+.board-column:not(.collapsed) {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 10px 8px 4px;
+}
+.board-column > .record-card-wrap .record-card,
+.board-drag-preview > .record-card {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px #1d1a1412,
+    0 1px 2px #1d1a140d;
+}
+.board-column > .record-card-wrap .record-card:hover {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px #1d1a141c,
+    0 6px 16px -4px #1d1a1424;
+}
+[data-theme="dark"] .board-column > .record-card-wrap .record-card,
+[data-theme="dark"] .board-drag-preview > .record-card {
+  background: var(--hover);
+  box-shadow:
+    0 0 0 1px #ffffff0d,
+    0 1px 2px #0006;
+}
+.board .record-card {
+  cursor: pointer;
+}
+/* The column grows by the opened gap so its background follows. */
+.board-column:not(.collapsed)::after {
+  content: "";
+  display: block;
+  height: var(--drop-gap, 0px);
+  transition: height 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* The card left behind while dragging: a faded placeholder. */
+.record-card-wrap[data-drag="source"] .record-card {
+  opacity: 0.38;
+  box-shadow: none;
+  translate: none;
+  transition: opacity 0.16s ease;
+}
+.record-card-wrap[data-drag="source"] .row-order-handle {
+  visibility: hidden;
+}
+.board[data-card-dragging] .record-card {
+  pointer-events: none;
+  translate: none;
+}
+/* The gap shows where the card lands; no insertion line needed. */
+.board[data-card-dragging] .record-card-wrap.order-drop-before::before,
+.board[data-card-dragging] .record-card-wrap.order-drop-after::after {
+  display: none;
+}
+.board-drag-preview {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  pointer-events: none;
+  will-change: transform;
+}
+.board-drag-preview > .record-card {
+  margin: 0;
+  background: var(--bg);
+  transform-origin: 30% 50%;
+}
+html.card-grabbing,
+html.card-grabbing * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}

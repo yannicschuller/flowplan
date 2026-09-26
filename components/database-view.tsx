@@ -13,6 +13,7 @@ import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
 import { edgeScroller } from "./edge-scroll";
+import { startBoardCardDrag, type BoardCardDrag } from "./board-card-drag";
 import DatabaseCalendar from "./database-calendar";
 import FormulaEditor from "./formula-editor";
 import {
@@ -259,17 +260,12 @@ export default function DatabaseView({
       rowId: string;
       date: string;
     } | null>(null);
-  // Touch devices drag board cards by their handle across columns; a tap
-  // without movement still opens the position dialog.
-  const cardDrag = useRef<{
-      row: Row;
-      groupKey: string;
-      pointer: number;
-      x: number;
-      y: number;
-      dragging: boolean;
-      target?: { id?: string; groupKey: string; placement: "before" | "after" };
-    } | null>(null),
+  // Board cards are dragged with pointer events (mouse on the card, touch on
+  // the handle); see board-card-drag.ts. A tap without movement still opens
+  // the record or the position dialog.
+  const cardDrag = useRef<BoardCardDrag | null>(null),
+    // A dropped card waits in its gap until the re-render with the move.
+    cardLanding = useRef<{ drag: BoardCardDrag; rows: unknown } | null>(null),
     // Handle of the row whose finished drag may still send a click.
     suppressClick = useRef<string | null>(null),
     cardHoverRef = useRef((_x: number, _y: number) => {}),
@@ -526,6 +522,8 @@ export default function DatabaseView({
           (lane) => lane.rows.length,
         )
       : null;
+  // Plain boards (no swimlanes) drag cards with pointer events.
+  const plainBoard = view.type === "board" && !lanes;
   const subgroups = new Map<string, DatabaseGroup[]>(
     subField
       ? groups.map((g) => [
@@ -844,6 +842,16 @@ export default function DatabaseView({
   useLayoutEffect(() => {
     const root = boardRef.current;
     if (!root) return;
+    // Mid-drag nothing moves by layout; the drag places the cards itself.
+    if (cardDrag.current) return;
+    // The committed move of a dropped card: cards glide on from where the
+    // drag left them on screen.
+    let seeds: Map<string, { left: number; top: number }> | undefined;
+    const landing = cardLanding.current;
+    if (landing && landing.rows !== data.rows) {
+      cardLanding.current = null;
+      seeds = landing.drag.settle();
+    }
     const items = [
       ...root.querySelectorAll<HTMLElement>(
         ".record-card-wrap[data-row-id], tr[data-row-id], .record-list-item[data-row-id]",
@@ -863,7 +871,10 @@ export default function DatabaseView({
       const key = `${view.id}:${id}:${n}`,
         rect = el.getBoundingClientRect(),
         at = { x: rect.left - origin.left, y: rect.top - origin.top },
-        before = cardPositions.current.get(key);
+        seed = n === 0 ? seeds?.get(id) : undefined,
+        before = seed
+          ? { x: seed.left - origin.left, y: seed.top - origin.top }
+          : cardPositions.current.get(key);
       next.set(key, at);
       if (!animate || !before) continue;
       const dx = before.x - at.x,
@@ -884,109 +895,101 @@ export default function DatabaseView({
     }
     cardPositions.current = next;
   });
-  function cardHover(x: number, y: number) {
-    const drag = cardDrag.current;
-    if (!drag?.dragging) return;
-    const element = document.elementFromPoint(x, y);
-    const column = element?.closest<HTMLElement>(
-      ".board-column[data-group-key]",
-    );
-    if (!column) {
-      drag.target = undefined;
-      setDropHint(null);
-      return;
-    }
-    const groupKey = column.dataset.groupKey!;
-    const cardEl = element?.closest<HTMLElement>(
-      ".record-card-wrap[data-row-id]",
-    )?.dataset.rowId;
-    const over =
-      cardEl && cardEl !== drag.row.id
-        ? column.querySelector<HTMLElement>(
-            `.record-card-wrap[data-row-id="${CSS.escape(cardEl)}"]`,
-          )
-        : null;
-    if (over) {
-      const bounds = over.getBoundingClientRect();
-      const placement = y < bounds.top + bounds.height / 2 ? "before" : "after";
-      drag.target = { id: cardEl, groupKey, placement };
-      setDropHint({ id: cardEl!, groupKey, placement });
-    } else {
-      // Below the cards: append to the column.
-      const last = rowsOfGroup(groupKey)
-        ?.filter((r) => r.id !== drag.row.id)
-        .at(-1);
-      drag.target = { id: last?.id, groupKey, placement: "after" };
-      setDropHint(last ? { id: last.id, groupKey, placement: "after" } : null);
-    }
-  }
-  cardHoverRef.current = cardHover;
-  function touchCardHandlers(row: Row, groupKey: string) {
-    return {
-      onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
-        // A new gesture starts; the last drag sends no click any more.
-        suppressClick.current = null;
-        if (e.pointerType === "mouse" || orderBusy) return;
-        cardDrag.current = {
-          row,
-          groupKey,
-          pointer: e.pointerId,
-          x: e.clientX,
-          y: e.clientY,
-          dragging: false,
-        };
-      },
-      onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
-        const drag = cardDrag.current;
-        if (drag?.pointer !== e.pointerId) return;
-        if (
-          !drag.dragging &&
-          Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 8
-        ) {
-          drag.dragging = true;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          cardScroll.start(e.currentTarget);
-        }
-        if (!drag.dragging) return;
-        cardHover(e.clientX, e.clientY);
-        cardScroll.move(e.clientX, e.clientY);
-      },
-      onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
-        const drag = cardDrag.current;
-        cardDrag.current = null;
-        cardScroll.stop();
-        if (drag?.pointer !== e.pointerId || !drag.dragging) return;
-        // Some browsers send a click to the dragged handle; taps on other
-        // handles and later taps count again.
-        suppressClick.current = drag.row.id;
-        setTimeout(() => {
-          if (suppressClick.current === drag.row.id)
-            suppressClick.current = null;
-        }, 400);
-        setDropHint(null);
-        const target = drag.target;
-        if (!target) return;
-        const change = groupChange(drag.groupKey, target.groupKey);
-        if (change.group.from !== change.group.to && !canGroupEdit) {
-          onError("Diese Gruppierung kann nicht bearbeitet werden.");
-          return;
-        }
-        void submitMove({
-          viewId: view.id,
-          version: data.database.version,
-          rowId: drag.row.id,
-          rowVersion: drag.row.version,
-          targetId: target.id,
-          placement: target.id ? target.placement : "end",
-          ...(canGroupEdit ? change : {}),
-        });
-      },
-      onPointerCancel: () => {
-        cardDrag.current = null;
-        cardScroll.stop();
-        setDropHint(null);
-      },
+  cardHoverRef.current = (x, y) => cardDrag.current?.move(x, y);
+  const latestRows = useRef(data.rows);
+  latestRows.current = data.rows;
+  // Starts watching a pointer on a board card; the drag begins once it has
+  // moved past the threshold, so clicks and taps keep working.
+  function beginCardDrag(
+    e: React.PointerEvent<HTMLElement>,
+    row: Row,
+    groupKey: string,
+    threshold: number,
+  ) {
+    suppressClick.current = null;
+    if (!editable || !viewEditable || orderBusy || cardDrag.current) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const wrap = e.currentTarget.closest<HTMLElement>(".record-card-wrap"),
+      board = e.currentTarget.closest<HTMLElement>(".board");
+    if (!wrap || !board) return;
+    const pointer = e.pointerId,
+      x0 = e.clientX,
+      y0 = e.clientY;
+    let drag: BoardCardDrag | null = null;
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      cardScroll.stop();
+      document.documentElement.classList.remove("card-grabbing");
     };
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointer) return;
+      if (!drag) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) <= threshold) return;
+        drag = startBoardCardDrag({
+          board,
+          wrap,
+          rowId: row.id,
+          groupKey,
+          x: x0,
+          y: y0,
+          onHint: setDropHint,
+        });
+        if (!drag) return stop();
+        cardDrag.current = drag;
+        cardScroll.start(wrap);
+        document.documentElement.classList.add("card-grabbing");
+        window.getSelection()?.removeAllRanges();
+      }
+      ev.preventDefault();
+      drag.move(ev.clientX, ev.clientY);
+      cardScroll.move(ev.clientX, ev.clientY);
+    };
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointer) return;
+      stop();
+      if (!drag) return;
+      cardDrag.current = null;
+      // The browser may still send a click to the dragged card or handle.
+      suppressClick.current = row.id;
+      setTimeout(() => {
+        if (suppressClick.current === row.id) suppressClick.current = null;
+      }, 400);
+      setDropHint(null);
+      if (ev.type === "pointercancel") return drag.cancel();
+      const drop = drag.drop();
+      if (!drop) return;
+      const change = groupChange(groupKey, drop.groupKey);
+      if (change.group.from !== change.group.to && !canGroupEdit) {
+        onError("Diese Gruppierung kann nicht bearbeitet werden.");
+        return drag.cancel();
+      }
+      const landed = drag;
+      cardLanding.current = { drag: landed, rows: latestRows.current };
+      void submitMove({
+        viewId: view.id,
+        version: data.database.version,
+        rowId: row.id,
+        rowVersion: row.version,
+        targetId: drop.targetId,
+        placement: drop.placement,
+        ...(canGroupEdit ? change : {}),
+      }).finally(() =>
+        // React commits the moved data shortly after the request resolves.
+        // Without such a re-render (error, or the sort question first) the
+        // card returns to its place.
+        setTimeout(() => {
+          if (cardLanding.current?.drag === landed) {
+            cardLanding.current = null;
+            landed.cancel();
+          }
+        }, 250),
+      );
+    };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
   }
   function orderHandle(row: Row, groupKey?: string) {
     if (!viewEditable) return null;
@@ -1002,14 +1005,19 @@ export default function DatabaseView({
         aria-label={`Eintrag verschieben: ${cellText(row.cells[fields[0].id]) || "Ohne Titel"}`}
         title="Ziehen oder Position wählen · Alt + Pfeil hoch/runter"
         disabled={orderBusy}
-        draggable={!orderBusy}
+        draggable={!orderBusy && !plainBoard}
         onDragStart={(e) => {
           e.stopPropagation();
           dragStart(e, row, groupKey);
         }}
         onDragEnd={() => setDropHint(null)}
-        {...(view.type === "board" && groupKey !== undefined && !lanes
-          ? touchCardHandlers(row, groupKey)
+        {...(plainBoard && groupKey !== undefined
+          ? {
+              onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+                e.stopPropagation();
+                beginCardDrag(e, row, groupKey, e.pointerType === "mouse" ? 4 : 8);
+              },
+            }
           : {})}
         onClick={(e) => {
           e.stopPropagation();
@@ -1194,10 +1202,21 @@ export default function DatabaseView({
       >
         <button
           className="record-card"
-          draggable={editable && viewEditable && !orderBusy}
+          draggable={editable && viewEditable && !orderBusy && !plainBoard}
           onDragStart={(e) => dragStart(e, r, groupKey)}
           onDragEnd={() => setDropHint(null)}
-          onClick={() => setRowId(r.id)}
+          onPointerDown={(e) => {
+            if (plainBoard && groupKey !== undefined && e.pointerType === "mouse")
+              beginCardDrag(e, r, groupKey, 4);
+          }}
+          onClick={() => {
+            // The end of a drag is not a click.
+            if (suppressClick.current === r.id) {
+              suppressClick.current = null;
+              return;
+            }
+            setRowId(r.id);
+          }}
         >
           {view.type === "gallery" && galleryConfig.cover !== "none" && (
             <GalleryCover

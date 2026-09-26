@@ -96,9 +96,16 @@ Regeln:
   bei Erscheinen und Markenmomenten).
 - Dauer: 120–180 ms für Hover/Zustände, 200–320 ms für Ebenen und
   Seitenwechsel, Gleiten nach dem Verschieben bis 280 ms.
-- Beim Ziehen zeigt eine Einfügelinie das Ziel; erst nach dem Loslassen
-  gleitet das Element an die neue Stelle. Kein Umsortieren während des
-  Ziehens.
+- **Board-Karten** heben sich beim Ziehen ab: eine leicht gekippte Kopie
+  (3°, weicher Schatten) folgt dem Zeiger, das Original bleibt als blasser
+  Platzhalter stehen, und die Zielspalte öffnet gleitend eine Lücke. Beim
+  Loslassen setzt sich die Kopie in die Lücke, die echte Karte übernimmt
+  nahtlos. Das Layout ändert sich während des Ziehens nicht (nur
+  Verschiebungen per `translate`), Treffer werden gegen die Positionen vom
+  Ziehbeginn gerechnet – so springt nichts (`components/board-card-drag.ts`).
+- **Blöcke, Listen und Tabellen** zeigen beim Ziehen eine Einfügelinie;
+  erst nach dem Loslassen gleitet das Element an die neue Stelle, die
+  Blockgriffe gleiten in derselben Animation mit.
 - Animationen mit `fill-mode: both` und `transform` nie auf Vorfahren von
   `position: fixed`-Elementen (Vollbild, Popover) – dafür `backwards`.
 - `prefers-reduced-motion` schaltet Bewegung ab; Zustandswechsel bleiben
