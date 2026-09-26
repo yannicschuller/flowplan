@@ -1,3 +1,4 @@
+import { storageStatus } from "./storage";
 import { timingSafeEqual } from "node:crypto";
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
@@ -160,6 +161,13 @@ export function prometheusMetrics() {
     m.uploadBytes,
   );
   gauge("files", "Stored files.", m.files);
+  const mirror = storageStatus();
+  if (mirror.enabled)
+    gauge(
+      "object_storage_pending",
+      "Files waiting to be uploaded to or deleted from object storage.",
+      mirror.pending,
+    );
   gauge("pages", "Pages outside the trash.", m.pages);
   gauge("trashed_pages", "Pages in the trash.", m.trashedPages);
   gauge("rows", "Database records.", m.rows);

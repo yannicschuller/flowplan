@@ -4,6 +4,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
 
@@ -31,6 +32,8 @@ export function applyPendingRestore(dir: string) {
     renameSync(resolve(pending, "uploads"), resolve(dir, "uploads"));
   else mkdirSync(resolve(dir, "uploads"), { recursive: true });
   rmSync(pending, { recursive: true, force: true });
+  // With object storage configured, every restored file is uploaded again.
+  writeFileSync(resolve(dir, "storage-resync"), "");
   // Language data and caches are rebuilt on demand.
   for (const name of readdirSync(dir))
     if (name === "tmp")

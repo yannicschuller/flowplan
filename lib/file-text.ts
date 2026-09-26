@@ -1,3 +1,4 @@
+import { ensureLocal } from "./storage";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, run } from "./db";
@@ -31,6 +32,7 @@ const IMAGE_TYPES = ["image/png", "image/jpeg"];
 const officeMimes = Object.keys(OFFICE_TYPES);
 
 async function extract(file: { id: string; name: string; mime: string }) {
+  await ensureLocal(file.id);
   const path = resolve(
     process.env.FLOWPLAN_DATA_DIR || "./data",
     "uploads",

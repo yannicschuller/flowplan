@@ -1,3 +1,4 @@
+import { ensureLocal } from "./storage";
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { HttpError } from "./auth";
@@ -7,6 +8,8 @@ export async function fileResponse(
   file: { id: string; name: string; mime: string },
 ) {
   let handle;
+  // A new container may not have the file yet; the bucket has it.
+  await ensureLocal(file.id);
   try {
     handle = await open(
       resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", file.id),

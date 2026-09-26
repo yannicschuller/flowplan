@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { accessSync, constants, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { one } from "@/lib/db";
+import { storageStatus } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,12 +39,21 @@ export async function GET() {
     checks.storage = "error";
   }
   const healthy = Object.values(checks).every((c) => c === "ok");
+  let mirror: ReturnType<typeof storageStatus> = { enabled: false };
+  try {
+    mirror = storageStatus();
+  } catch {}
   return NextResponse.json(
     {
       status: healthy ? "ok" : "error",
       checks,
       searchBacklog: backlog,
       failedPushDeliveries: failedPush,
+      // Object storage mirror: pending uploads/deletions, not part of the
+      // health verdict (the local copy keeps working while S3 is away).
+      objectStorage: mirror.enabled
+        ? { pending: mirror.pending, retrying: mirror.failing }
+        : "off",
       uptimeSeconds: Math.round(process.uptime()),
     },
     {

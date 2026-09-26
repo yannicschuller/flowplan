@@ -1,3 +1,4 @@
+import { setupStorage } from "./storage";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, unlinkSync } from "node:fs";
 import { applyPendingRestore } from "./instance-restore-apply";
@@ -424,6 +425,7 @@ export function db() {
   globalDb.flowplanDb = d;
   migrate(d);
   cleanDeletedFiles(d);
+  setupStorage(d);
   return d;
 }
 export function one<T = Record<string, unknown>>(

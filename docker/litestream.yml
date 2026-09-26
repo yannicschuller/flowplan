@@ -1,0 +1,14 @@
+# Continuous SQLite replication to the same bucket as the file storage.
+# docker/entrypoint.sh sets the variables; Litestream expands ${VAR} here.
+dbs:
+  - path: ${FLOWPLAN_DB}
+    replicas:
+      - type: s3
+        bucket: ${S3_BUCKET}
+        path: ${S3_PREFIX}/db
+        endpoint: ${S3_ENDPOINT}
+        region: ${S3_REGION}
+        access-key-id: ${S3_ACCESS_KEY_ID}
+        secret-access-key: ${S3_SECRET_ACCESS_KEY}
+        force-path-style: true
+        sync-interval: 1s
