@@ -60,6 +60,9 @@ export type WhiteboardItem = {
   pageId?: string;
   emoji?: string;
   locked?: boolean;
+  // Covered for everyone until someone uncovers it (workshops: collect
+  // answers hidden, then reveal together). Its content is not rendered.
+  covered?: boolean;
   author?: string;
   // Tables: cell texts by row; the first row can be a header.
   cells?: string[][];

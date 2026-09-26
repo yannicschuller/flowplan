@@ -21,6 +21,8 @@ export function whiteboardItems(doc: Y.Doc): WhiteboardItem[] {
 }
 export function whiteboardSummary(items: WhiteboardItem[]) {
   return items
+    // Covered cards stay out of search and previews until uncovered.
+    .filter((item) => !item.covered)
     .map(itemText)
     .filter(Boolean)
     .map((text) => `<p>${escaped(text.slice(0, 2000))}</p>`)

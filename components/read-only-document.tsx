@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { WhiteboardEmbedView } from "./whiteboard/embed";
+import { revealSpoiler } from "./link-preview";
 import { mountDiagram } from "@/lib/mermaid-render";
 import { renderMath } from "@/lib/math-render";
 import { renderCode, languageLabel } from "@/lib/code-highlight";
@@ -134,6 +135,10 @@ export function ReadOnlyDocument({
     <div
       ref={ref}
       className={`document-editor ${className}`}
+      // In the app the page-wide handler already reacted (and prevented).
+      onClick={(event) => {
+        if (!event.defaultPrevented) revealSpoiler(event);
+      }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

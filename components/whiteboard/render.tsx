@@ -129,6 +129,38 @@ function TextBox({
     </foreignObject>
   );
 }
+// A covered item shows only its outline: nothing of its content is in the
+// DOM until it is uncovered.
+function CoveredShape({
+  item,
+  transform,
+}: {
+  item: WhiteboardItem;
+  transform: string;
+}) {
+  const size = Math.max(12, Math.min(22, Math.min(item.w, item.h) / 6));
+  return (
+    <g transform={transform} className="wb-covered">
+      <rect
+        width={item.w}
+        height={item.h}
+        rx={10}
+        fill="url(#wb-cover-hatch)"
+        className="wb-cover-card"
+      />
+      <text
+        x={item.w / 2}
+        y={item.h / 2}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={size}
+        className="wb-cover-label"
+      >
+        Verdeckt
+      </text>
+    </g>
+  );
+}
 export function WhiteboardShape({
   item,
   items,
@@ -142,6 +174,8 @@ export function WhiteboardShape({
 }) {
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${item.rotation} ${item.w / 2} ${item.h / 2})` : ""}`;
   const text = editing ?? undefined;
+  if (item.covered && !["frame", "connector", "comment"].includes(item.type))
+    return <CoveredShape item={item} transform={transform} />;
   switch (item.type) {
     case "sticky":
       return (
@@ -407,6 +441,16 @@ export function WhiteboardDefs() {
         patternUnits="userSpaceOnUse"
       >
         <circle cx="1" cy="1" r="1" fill="#ced4da" />
+      </pattern>
+      <pattern
+        id="wb-cover-hatch"
+        width="10"
+        height="10"
+        patternUnits="userSpaceOnUse"
+        patternTransform="rotate(45)"
+      >
+        <rect width="10" height="10" fill="#3b3fd8" />
+        <rect width="4" height="10" fill="#4a4ee6" />
       </pattern>
     </defs>
   );

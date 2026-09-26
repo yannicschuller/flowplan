@@ -29,6 +29,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-type",
         "data-checked",
         "data-journal-since",
+        "data-spoiler",
         "data-callout",
         "data-math",
         "data-mermaid",

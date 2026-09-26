@@ -1,4 +1,4 @@
-import { Node, mergeAttributes, getSchema } from "@tiptap/core";
+import { Mark, Node, mergeAttributes, getSchema } from "@tiptap/core";
 import { embedProvider } from "./embed-providers";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
@@ -189,6 +189,20 @@ export const FlowTaskItem = TaskItem.extend({
     };
   },
 });
+// Spoiler text: covered for readers until clicked, lightly marked while
+// writing.
+export const Spoiler = Mark.create({
+  name: "spoiler",
+  parseHTML() {
+    return [{ tag: "span[data-spoiler]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", mergeAttributes(HTMLAttributes, { "data-spoiler": "" }), 0];
+  },
+  addKeyboardShortcuts() {
+    return { "Mod-Alt-h": () => this.editor.commands.toggleMark(this.name) };
+  },
+});
 export const documentExtensions = [
   StarterKit.configure({
     codeBlock: false,
@@ -211,6 +225,7 @@ export const documentExtensions = [
   TextColor,
   Superscript,
   Subscript,
+  Spoiler,
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Callout,
   Toggle,

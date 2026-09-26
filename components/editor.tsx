@@ -17,7 +17,11 @@ import {
 } from "./mermaid-editor";
 import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
 import { DocumentBlockControls } from "./document-block-controls";
-import { BlockShortcuts, moveSelectedBlock } from "@/lib/block-shortcuts";
+import {
+  BlockShortcuts,
+  PlainNewLine,
+  moveSelectedBlock,
+} from "@/lib/block-shortcuts";
 import { registerDocumentFlush } from "@/lib/document-flush";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
 import {
@@ -63,6 +67,7 @@ import {
   Palette,
   TextSubscript,
   TextSuperscript,
+  EyeSlash,
   Link as LinkIcon,
   ListBullets,
   ListNumbers,
@@ -102,6 +107,7 @@ import {
   Media,
   LinkCard,
   FlowTaskItem,
+  Spoiler,
   MEDIA_WIDTHS,
 } from "@/lib/document-schema";
 export default function DocumentEditor({
@@ -200,6 +206,7 @@ export default function DocumentEditor({
   const slashActiveRef = useRef(slashActive);
   slashActiveRef.current = slashActive;
   const slashItems = useRef<SlashItem[]>([]);
+  const uploadFile = useRef(async (_file: File) => {});
   const slashPick = useRef((_index: number) => {});
   // Keeps the typed query in step with the text; leaving the "/…" word,
   // a line break or a query without any match closes the menu.
@@ -215,6 +222,8 @@ export default function DocumentEditor({
     if (!text.startsWith("/") || /[\n\ufffc]/.test(text) || text.length > 40)
       return close();
     const query = text.slice(1);
+    // "/ " is a plain slash: a space right after it closes the menu.
+    if (/^\s/.test(query)) return close();
     if (query !== menu.query) {
       setSlash({ ...menu, query });
       setSlashActive(0);
@@ -235,6 +244,7 @@ export default function DocumentEditor({
         }),
         EditableCodeBlock,
         BlockShortcuts,
+        PlainNewLine,
         TaskList,
         FlowTaskItem.configure({ nested: true }),
         Table.configure({ resizable: true }),
@@ -265,6 +275,7 @@ export default function DocumentEditor({
         TextColor,
         Superscript,
         Subscript,
+        Spoiler,
         TextAlign.configure({ types: ["heading", "paragraph"] }),
         Typography,
         Callout,
@@ -287,6 +298,32 @@ export default function DocumentEditor({
         attributes: {
           class: "document-editor",
           "aria-label": "Dokumentinhalt",
+        },
+        // Images and files from the clipboard or dropped on the page are
+        // uploaded and inserted where the caret is.
+        handlePaste: (_view, event) => {
+          const data = event.clipboardData;
+          const files = [...(data?.files || [])];
+          if (!editable || !files.length) return false;
+          // Copied web content brings text along; then paste it as usual.
+          if (data?.getData("text/plain").trim()) return false;
+          event.preventDefault();
+          for (const file of files) void uploadFile.current(file);
+          return true;
+        },
+        handleDrop: (view, event, _slice, moved) => {
+          const files = [...(event.dataTransfer?.files || [])];
+          if (!editable || moved || !files.length) return false;
+          event.preventDefault();
+          const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          if (at)
+            view.dispatch(
+              view.state.tr.setSelection(
+                Selection.near(view.state.doc.resolve(at.pos)),
+              ),
+            );
+          for (const file of files) void uploadFile.current(file);
+          return true;
         },
         handleKeyDown: (_view, event) => {
           if (_view.state.selection.$from.parent.type.name === "codeBlock")
@@ -341,6 +378,12 @@ export default function DocumentEditor({
       onSelectionUpdate: ({ editor }) => {
         setTick((t) => t + 1);
         slashFollow.current(editor);
+      },
+      // Toggling a format without a selection only changes the marks for the
+      // next character; the toolbar has to show that right away.
+      onTransaction: ({ transaction }) => {
+        if (!transaction.docChanged && !transaction.selectionSet)
+          setTick((t) => t + 1);
       },
     },
     [doc],
@@ -504,6 +547,7 @@ export default function DocumentEditor({
   useEffect(() => {
     editor?.setEditable(editable);
   }, [editable, editor]);
+  uploadFile.current = (file: File) => upload(file);
   async function upload(file: File) {
     const form = new FormData();
     form.set("pageId", pageId);
@@ -734,6 +778,13 @@ export default function DocumentEditor({
       run: () => setEmbed(true),
     },
     {
+      name: "Spoiler",
+      keywords: ["verdecken", "versteckt", "hide", "geheim"],
+      description: "Text verdecken, bis jemand darauf klickt",
+      icon: EyeSlash,
+      run: () => editor?.chain().focus().toggleMark("spoiler").run(),
+    },
+    {
       name: "Trennlinie",
       keywords: ["hr", "divider", "linie", "---"],
       description: "Inhalte voneinander trennen",
@@ -809,6 +860,12 @@ export default function DocumentEditor({
             className="editor-toolbar"
             role="toolbar"
             aria-label="Textformatierung"
+            // Buttons keep the caret and selection in the text; fields and
+            // pickers still take focus.
+            onMouseDown={(event) => {
+              if ((event.target as HTMLElement).closest("button"))
+                event.preventDefault();
+            }}
           >
             <button
               title="Rückgängig"
@@ -952,6 +1009,14 @@ export default function DocumentEditor({
               onClick={() => editor?.chain().focus().toggleSubscript().run()}
             >
               <TextSubscript />
+            </button>
+            <button
+              title="Verdecken (Spoiler) · ⌘⌥H"
+              aria-pressed={!!editor?.isActive("spoiler")}
+              className={editor?.isActive("spoiler") ? "active" : ""}
+              onClick={() => editor?.chain().focus().toggleMark("spoiler").run()}
+            >
+              <EyeSlash />
             </button>
             <button
               title="Link"

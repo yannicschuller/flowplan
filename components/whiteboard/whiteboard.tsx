@@ -25,6 +25,8 @@ import {
   ImageSquare,
   LockSimple,
   LockSimpleOpen,
+  Eye,
+  EyeSlash,
   Minus,
   Note,
   PencilSimple,
@@ -1233,6 +1235,7 @@ export default function Whiteboard({
     if (
       item &&
       !item.locked &&
+      !item.covered &&
       ["sticky", "text", "shape", "frame", "connector"].includes(item.type)
     ) {
       setSelection(new Set([item.id]));
@@ -1332,7 +1335,8 @@ export default function Whiteboard({
     }
     if (e.key === "Enter" && selection.size === 1 && editable) {
       e.preventDefault();
-      setEditing([...selection][0]);
+      if (!byId.get([...selection][0])?.covered)
+        setEditing([...selection][0]);
       return;
     }
     if (e.key.startsWith("Arrow") && selection.size && editable) {
@@ -1739,6 +1743,33 @@ export default function Whiteboard({
           >
             <CopySimple size={16} />
           </button>
+          {selected.some(
+            (i) => !["frame", "connector", "comment"].includes(i.type),
+          ) && (
+            <button
+              aria-label={first.covered ? "Aufdecken" : "Verdecken"}
+              title={
+                first.covered
+                  ? "Aufdecken – für alle sichtbar"
+                  : "Verdecken – Inhalt für alle ausblenden"
+              }
+              className={first.covered ? "active" : ""}
+              aria-pressed={!!first.covered}
+              onClick={() =>
+                change(() =>
+                  selected
+                    .filter(
+                      (i) => !["frame", "connector", "comment"].includes(i.type),
+                    )
+                    .forEach((i) =>
+                      setProps(i.id, { covered: !first.covered }),
+                    ),
+                )
+              }
+            >
+              {first.covered ? <Eye size={16} /> : <EyeSlash size={16} />}
+            </button>
+          )}
           <button
             aria-label={first.locked ? "Entsperren" : "Sperren"}
             title={first.locked ? "Entsperren" : "Sperren"}

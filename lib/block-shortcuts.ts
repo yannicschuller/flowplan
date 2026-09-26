@@ -1,5 +1,5 @@
 import { yUndoPluginKey } from "@tiptap/y-tiptap";
-import type { Transaction } from "@tiptap/pm/state";
+import { Plugin, type Transaction } from "@tiptap/pm/state";
 import { Extension, type Editor } from "@tiptap/core";
 import {
   adjacentBlockTarget,
@@ -111,5 +111,41 @@ export const BlockShortcuts = Extension.create({
       "Mod-Shift-ArrowUp": () => moveSelectedBlock(this.editor, -1),
       "Mod-Shift-ArrowDown": () => moveSelectedBlock(this.editor, 1),
     };
+  },
+});
+
+// A new line starts as plain text: bold, colours, highlights, super- and
+// subscript do not carry over from the line above (Enter and Shift+Enter).
+// The block itself behaves as before: lists and tasks continue with a new
+// item, a heading is followed by a normal paragraph.
+export const PlainNewLine = Extension.create({
+  name: "plainNewLine",
+  addProseMirrorPlugins() {
+    let enter = false;
+    return [
+      new Plugin({
+        props: {
+          handleKeyDown(_view, event) {
+            enter =
+              event.key === "Enter" &&
+              !event.isComposing &&
+              !event.metaKey &&
+              !event.ctrlKey &&
+              !event.altKey;
+            return false;
+          },
+        },
+        appendTransaction(transactions, _old, state) {
+          if (!enter || !transactions.some((tr) => tr.docChanged)) return null;
+          enter = false;
+          const { empty, $from } = state.selection;
+          const lineStart =
+            $from.parentOffset === 0 ||
+            $from.nodeBefore?.type.name === "hardBreak";
+          if (!empty || !lineStart || !$from.parent.isTextblock) return null;
+          return state.tr.setStoredMarks([]);
+        },
+      }),
+    ];
   },
 });

@@ -17,6 +17,15 @@ type Card =
   | { kind: "page"; rect: DOMRect; preview: Preview | null; error?: string }
   | { kind: "person"; rect: DOMRect; name: string; email: string };
 
+// Spoiler text in read-only content opens (and closes) with a click; while
+// writing it stays readable.
+export function revealSpoiler(event: MouseEvent | React.MouseEvent) {
+  const spoiler = (event.target as Element | null)?.closest?.("[data-spoiler]");
+  if (!spoiler || spoiler.closest('[contenteditable="true"]')) return false;
+  event.preventDefault();
+  spoiler.toggleAttribute("data-revealed");
+  return true;
+}
 export function openReference(href: string, event?: MouseEvent) {
   if (!href) return;
   const hash = href.indexOf("#page=");
@@ -116,6 +125,7 @@ export function LinkPreview({
     // show their card.
     const click = (event: MouseEvent) => {
       if (event.button !== 0 || event.defaultPrevented) return;
+      if (revealSpoiler(event)) return;
       const target = (event.target as Element | null)?.closest?.(
         "a[href], span[data-mention]",
       );
