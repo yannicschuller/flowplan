@@ -9497,16 +9497,27 @@ li[data-journal-since] > label::after {
   color: inherit;
   cursor: auto;
 }
-[contenteditable="true"] [data-spoiler] {
-  cursor: text;
+/* While writing, the opened spoiler shows its text on a light hatch. */
+[data-spoiler-open] [data-spoiler] {
   color: inherit;
+  cursor: auto;
+  background: var(--hover);
+}
+[data-spoiler-open] [data-spoiler] * {
+  color: inherit !important;
+  visibility: visible;
+}
+[contenteditable="true"] [data-spoiler-open] [data-spoiler],
+[contenteditable="true"] [data-spoiler][data-revealed] {
+  color: inherit;
+  cursor: text;
   background: repeating-linear-gradient(
     -45deg,
     color-mix(in srgb, var(--text) 12%, transparent) 0 3px,
     transparent 3px 7px
   );
 }
-[contenteditable="true"] [data-spoiler] * {
+[data-spoiler][data-revealed] * {
   color: inherit !important;
   visibility: visible;
 }

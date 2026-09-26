@@ -1,4 +1,6 @@
-import { Mark, Node, mergeAttributes, getSchema } from "@tiptap/core";
+import { Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { embedProvider } from "./embed-providers";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
@@ -201,6 +203,61 @@ export const Spoiler = Mark.create({
   },
   addKeyboardShortcuts() {
     return { "Mod-Alt-h": () => this.editor.commands.toggleMark(this.name) };
+  },
+  // Spoilers stay covered while writing too. The paragraph with the caret in
+  // a spoiler (or a clicked one in a read-only view) opens its spoilers;
+  // leaving covers them again. The mark goes on the block, not around the
+  // text, so typing at the end of a spoiler stays inside it.
+  addProseMirrorPlugins() {
+    const type = this.type;
+    type Open = { from: number; to: number } | null;
+    const key = new PluginKey<Open>("spoilerReveal");
+    const blockAt = (doc: import("@tiptap/pm/model").Node, pos: number): Open => {
+      const $pos = doc.resolve(pos);
+      if (!getMarkRange($pos, type)) return null;
+      if (!$pos.parent.isTextblock || $pos.depth < 1) return null;
+      return { from: $pos.before(), to: $pos.after() };
+    };
+    return [
+      new Plugin<Open>({
+        key,
+        state: {
+          init: (): Open => null,
+          apply(tr, value: Open, _old, state): Open {
+            const clicked = tr.getMeta(key);
+            if (clicked !== undefined) return clicked;
+            if (tr.selectionSet || tr.docChanged) {
+              const here = state.selection.empty
+                ? blockAt(state.doc, state.selection.from)
+                : null;
+              if (here) return here;
+              if (tr.selectionSet) return null;
+            }
+            if (!value) return null;
+            const from = tr.mapping.map(value.from, 1),
+              to = tr.mapping.map(value.to, -1);
+            return to > from ? { from, to } : null;
+          },
+        },
+        props: {
+          handleClick(view, pos) {
+            view.dispatch(view.state.tr.setMeta(key, blockAt(view.state.doc, pos)));
+            return false;
+          },
+          decorations(state) {
+            const open = key.getState(state);
+            if (!open) return null;
+            try {
+              return DecorationSet.create(state.doc, [
+                Decoration.node(open.from, open.to, { "data-spoiler-open": "" }),
+              ]);
+            } catch {
+              return null;
+            }
+          },
+        },
+      }),
+    ];
   },
 });
 export const documentExtensions = [

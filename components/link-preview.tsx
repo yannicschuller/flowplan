@@ -21,7 +21,8 @@ type Card =
 // writing it stays readable.
 export function revealSpoiler(event: MouseEvent | React.MouseEvent) {
   const spoiler = (event.target as Element | null)?.closest?.("[data-spoiler]");
-  if (!spoiler || spoiler.closest('[contenteditable="true"]')) return false;
+  // Inside editors the editor's own plugin opens spoilers.
+  if (!spoiler || spoiler.closest(".ProseMirror")) return false;
   event.preventDefault();
   spoiler.toggleAttribute("data-revealed");
   return true;

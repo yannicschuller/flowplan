@@ -84,7 +84,18 @@ test("formats switch off at once, images paste from the clipboard, spoilers cove
   // Toolbar buttons leave the caret in the text.
   await expect(editor).toBeFocused();
   await page.keyboard.type("zweiundvierzig");
-  await expect(editor.locator("[data-spoiler]")).toHaveText("zweiundvierzig");
+  const hidden = editor.locator("[data-spoiler]");
+  await expect(hidden).toHaveText("zweiundvierzig");
+  // Open while writing in it, covered again once the caret leaves.
+  const openBlock = editor.locator("[data-spoiler-open]");
+  await expect(openBlock).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Weiter");
+  await expect(openBlock).toHaveCount(0);
+  await expect(hidden).toHaveCSS("color", "rgba(0, 0, 0, 0)");
+  await hidden.click();
+  await expect(openBlock).toHaveCount(1);
+  await expect(hidden).not.toHaveCSS("color", "rgba(0, 0, 0, 0)");
   await expect
     .poll(async () => (await (await page.request.get(`/api/pages/${created.id}`)).json()).html)
     .toContain("data-spoiler");
