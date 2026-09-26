@@ -42,7 +42,7 @@ setzen, für macOS zusätzlich `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` und
 `APPLE_TEAM_ID` (Notarisierung).
 
 Der Windows-Installer braucht NSIS; auf Apple-Silicon-Macs dafür Rosetta
-(`softwareupdate --install-rosetta`) oder die CI-Aufgabe „Desktop Windows“,
+(`softwareupdate --install-rosetta`) oder den CI-Job `desktop-windows`,
 die unter Linux mit Wine baut.
 
 ## Prüfen
