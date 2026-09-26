@@ -2,7 +2,7 @@ import { currentUser } from "@/lib/auth";
 import { bootstrap } from "@/lib/api";
 import { ensureWorkspace } from "@/lib/seed";
 import WorkspaceApp from "@/components/workspace-app";
-import Login from "@/components/login";
+import PublicHome from "@/components/landing/public-home";
 import { instanceSettings } from "@/lib/instance-settings";
 export const dynamic = "force-dynamic";
 export default async function Home({
@@ -13,7 +13,7 @@ export default async function Home({
   const user = await currentUser();
   if (!user)
     return (
-      <Login
+      <PublicHome
         demo={process.env.NODE_ENV !== "production"}
         configured={!!process.env.OIDC_ISSUER}
         error={(await searchParams).authError}

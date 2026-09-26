@@ -4,7 +4,12 @@ test("workspace, documents, databases and mobile navigation", async ({
 }, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  // Visitors land on the product page; "Anmelden" leads to the sign-in.
   await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Alles, woran ihr arbeitet.",
+  );
+  await page.getByRole("link", { name: "Anmelden" }).first().click();
   await page
     .getByRole("button", { name: "Lokalen Arbeitsbereich öffnen" })
     .click();

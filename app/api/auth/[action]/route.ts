@@ -27,7 +27,14 @@ export async function GET(
   let returnTo = "/";
   try {
     if (action === "login") {
-      returnTo = loginReturnPath(new URL(req.url).searchParams.get("returnTo"));
+      const params = new URL(req.url).searchParams;
+      returnTo = loginReturnPath(params.get("returnTo"));
+      // "Registrieren": providers that support it open their sign-up page
+      // (OpenID Connect prompt=create); others show their normal login,
+      // where the first sign-in creates the account.
+      const register =
+        params.get("register") === "1" &&
+        process.env.OIDC_PROMPT_CREATE === "true";
       const c = await config(),
         verifier = oidc.randomPKCECodeVerifier(),
         state = oidc.randomState(),
@@ -58,6 +65,7 @@ export async function GET(
           code_challenge_method: "S256",
           state,
           nonce,
+          ...(register ? { prompt: "create" } : {}),
         }),
       );
     }

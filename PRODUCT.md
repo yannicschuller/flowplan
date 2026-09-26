@@ -43,10 +43,13 @@ Weitergabe und kommerzielle Nutzung erlauben.
 | Journal und Tagesseiten | Operate | den Tag festhalten, Offenes nicht verlieren |
 | Einstellungen, Administration | Operate | eine Einstellung finden und sicher ändern |
 | Öffentliche Seiten, Vorlagengalerie für Besucher | Read | Inhalt verstehen, ggf. kopieren |
-| Anmeldung | Operate | ohne Umweg hinein |
+| Startseite für Besucher (`/`, nicht angemeldet) | Persuade | verstehen, was Flowplan kann, und sich registrieren oder anmelden |
+| Anmeldung (`/login`) | Operate | ohne Umweg hinein |
 | Desktop-App (Einrichtung, Offline-Seite) | Operate | Server verbinden, Verbindung wiederfinden |
 
-Es gibt keine Marketing-Oberfläche im Projekt.
+Die Startseite ist die einzige Marketing-Oberfläche: ein Onepager, der
+Seitentypen, Ansichten, Zusammenarbeit, alle Funktionen und den Betrieb zeigt.
+Aussagen dort müssen durch den Code gedeckt sein; keine Werbefloskeln.
 
 ## Plattformen
 
