@@ -429,3 +429,45 @@ test("block selections track remote edits and a remote transaction cancels an ac
   await page.goto("/#home");
   await f.command({ action: "page.delete", pageId: f.host.id });
 });
+test("handles stay centred on large headings after a move and tasks adapt when dropped in or out of task lists", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name === "mobile", "Maus-Ziehen");
+  const f = await fixture(
+    page,
+    `Block handles ${info.project.name} ${Date.now()}`,
+  );
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await f.seed(
+    '<h1>Große Überschrift</h1><p>Alpha</p><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Eins</p></li><li data-type="taskItem" data-checked="true"><p>Zwei</p></li></ul><p>Omega</p>',
+  );
+  await page.goto(`/#page=${f.host.id}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  const heading = editor.locator("h1", { hasText: "Große Überschrift" });
+  await expect(heading).toBeVisible();
+  const handleFor = (text: string) =>
+    page.getByRole("button", { name: new RegExp(`^Blockaktionen: [^·]+ · ${text}$`) });
+  const centred = async () => {
+    const h = (await heading.boundingBox())!,
+      g = (await handleFor("Große Überschrift").boundingBox())!;
+    return Math.abs(g.y + g.height / 2 - (h.y + h.height / 2));
+  };
+  await expect.poll(centred).toBeLessThan(4);
+  await dragBlock(page, handleFor("Große Überschrift"), editor.locator("p", { hasText: "Alpha" }), false);
+  await expect(
+    editor.locator(":scope > *").filter({ hasText: /\S/ }).first(),
+  ).toHaveText("Alpha");
+  await page.waitForTimeout(700);
+  expect(await centred()).toBeLessThan(4);
+  // A paragraph dropped onto a task becomes a task of that list.
+  await dragBlock(page, handleFor("Omega"), editor.locator("li", { hasText: "Zwei" }), false);
+  await expect(page.getByText("An dieser Position kann der Block nicht abgelegt werden.")).toHaveCount(0);
+  await expect(editor.locator('li:has(input[type=checkbox])')).toHaveCount(3);
+  await expect(editor.locator('li:has(input[type=checkbox])', { hasText: "Omega" })).toHaveCount(1);
+  // A task dropped onto a paragraph becomes a paragraph again.
+  await dragBlock(page, handleFor("Eins"), editor.locator(":scope > p", { hasText: "Alpha" }), false);
+  await expect(editor.locator(":scope > p", { hasText: "Eins" })).toHaveCount(1);
+  await expect(editor.locator('li:has(input[type=checkbox])')).toHaveCount(2);
+  expect(errors).toEqual([]);
+});

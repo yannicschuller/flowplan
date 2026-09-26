@@ -32,7 +32,26 @@ type Positioned = DocumentBlock & {
   top: number;
   width: number;
   height: number;
+  handleTop: number;
 };
+// Handles sit on the middle of a block's first text line, so they stay
+// aligned with large headings and indented list text alike.
+function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect) {
+  let text = block.node.isTextblock ? block.pos : -1;
+  if (text < 0 && !block.node.isAtom)
+    block.node.descendants((node, offset) => {
+      if (text >= 0) return false;
+      if (node.isTextblock) text = block.pos + 1 + offset;
+      return !node.isAtom;
+    });
+  if (text >= 0)
+    try {
+      const line = editor.view.coordsAtPos(text + 1);
+      if (line.bottom > line.top && line.top >= rect.top - 1)
+        return (line.top + line.bottom) / 2;
+    } catch {}
+  return rect.top + Math.min(rect.height, 28) / 2;
+}
 type Drag = {
   pointer: number;
   x: number;
@@ -65,6 +84,7 @@ export function DocumentBlockControls({
   const geometry = useRef<Positioned[]>([]);
   const [blocks, setBlocks] = useState<Positioned[]>([]),
     [open, setOpen] = useState(false),
+    [settling, setSettling] = useState(false),
     [, setTick] = useState(0),
     [error, setError] = useState(""),
     [destination, setDestination] = useState("");
@@ -83,6 +103,22 @@ export function DocumentBlockControls({
       frame = requestAnimationFrame(() => {
         const host = surface.current;
         if (!host || editor.isDestroyed) return;
+        // Blocks still gliding after a move would be measured mid-flight;
+        // measure once they have settled and keep the handles hidden until then.
+        const gliding = (editor.view.dom.getAnimations?.({ subtree: true }) ?? [])
+          .filter(
+            (a) =>
+              !("animationName" in a) &&
+              !("transitionProperty" in a) &&
+              a.playState === "running" &&
+              Number.isFinite(Number(a.effect?.getComputedTiming().endTime)),
+          );
+        if (gliding.length) {
+          setSettling(true);
+          void Promise.allSettled(gliding.map((a) => a.finished)).then(refresh);
+          return;
+        }
+        setSettling(false);
         const origin = host.getBoundingClientRect();
         const next = documentBlocks(editor.state.doc).flatMap((b) => {
           const dom = editor.view.nodeDOM(b.pos);
@@ -96,6 +132,7 @@ export function DocumentBlockControls({
               top: rect.top - origin.top,
               width: rect.width,
               height: rect.height,
+              handleTop: firstLineCenter(editor, b, rect) - origin.top - 14,
             },
           ];
         });
@@ -303,20 +340,42 @@ export function DocumentBlockControls({
       } catch {}
     }
     drag.column = undefined;
-    const after = y > target.top + target.height / 2,
-      boundary = after ? target.end : target.pos;
-    try {
-      changeBlocks(editor.state, drag.positions, "move", boundary);
-    } catch {
+    const after = y > target.top + target.height / 2;
+    // The boundary next to the pointer first; when the blocks cannot go
+    // there (e.g. at the edge of a task list), the nearest one that works.
+    const candidates = [
+      { block: target, after },
+      ...available
+        .flatMap((b) => [
+          { block: b, after: false, y: b.top },
+          { block: b, after: true, y: b.top + b.height },
+        ])
+        .sort((a, b) => Math.abs(y - a.y) - Math.abs(y - b.y))
+        .slice(0, 12),
+    ];
+    const valid = candidates.find(({ block, after }) => {
+      try {
+        changeBlocks(
+          editor.state,
+          drag.positions,
+          "move",
+          after ? block.end : block.pos,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!valid) {
       drag.target = undefined;
       setDrop(null);
       return;
     }
-    drag.target = boundary;
+    drag.target = valid.after ? valid.block.end : valid.block.pos;
     setDrop({
-      top: after ? target.top + target.height : target.top,
-      left: target.left,
-      width: target.width,
+      top: valid.after ? valid.block.top + valid.block.height : valid.block.top,
+      left: valid.block.left,
+      width: valid.block.width,
     });
   }
   function pointerDown(
@@ -418,13 +477,19 @@ export function DocumentBlockControls({
       >
         {children}
         {editor?.isEditable && (
-          <div className="block-handle-layer" aria-label="Blockgriffe">
+          <div
+            className={`block-handle-layer ${settling ? "settling" : ""}`}
+            aria-label="Blockgriffe"
+          >
             {blocks.map((block) => (
               <button
                 key={block.pos}
                 type="button"
                 className={`document-block-handle ${selected.current.includes(block.pos) ? "selected" : ""}`}
-                style={{ left: Math.max(0, block.left - 25), top: block.top }}
+                style={{
+                  left: Math.max(0, block.left - 25),
+                  top: block.handleTop,
+                }}
                 aria-label={`Blockaktionen: ${block.label}`}
                 title="Ziehen oder Blockaktionen öffnen"
                 onPointerDown={(event) => pointerDown(event, block)}

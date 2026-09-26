@@ -102,10 +102,10 @@ test("nested moves support list siblings and columns while preserving schema and
   let s = state(list("A", "B", "C"), p("End"));
   let blocks = documentBlocks(s.doc),
     items = blocks.filter((b) => b.node.type.name === "listItem");
-  assert.throws(
-    () => changeBlocks(s, [items[0].pos], "move", blocks.at(-1)!.end),
-    /Blocktypen/,
-  );
+  // A list item dropped outside its list turns back into its paragraph.
+  const out = changeBlocks(s, [items[0].pos], "move", blocks.at(-1)!.end).doc;
+  assert.equal(out.lastChild!.type.name, "paragraph");
+  assert.equal(out.lastChild!.textContent, "A");
   s = s.apply(changeBlocks(s, [items[2].pos], "move", items[0].pos));
   assert.equal(s.doc.textContent, "CABEnd");
   s.doc.check();
@@ -200,4 +200,38 @@ test("duplication retains rich content and creates independent IDs for nested li
   assert.ok(s.doc.child(0).eq(original));
   const moved = changeBlocks(s, [0], "move", s.doc.content.size);
   assert.equal(moved.doc.lastChild!.child(1).attrs.id, "original");
+});
+test("moved blocks adapt to task lists: paragraphs become tasks, tasks become text outside, items switch list kinds", () => {
+  const task = (text: string, checked = false) =>
+    schema.nodes.taskItem.create({ checked }, p(text));
+  const tasks = (...items: import("@tiptap/pm/model").Node[]) =>
+    schema.nodes.taskList.create(null, items);
+  let s = state(p("Intro"), tasks(task("Eins", true), task("Zwei")), list("Punkt"));
+  let blocks = documentBlocks(s.doc);
+  const find = (text: string, type: string) =>
+    blocks.find((b) => b.node.type.name === type && b.node.textContent === text)!;
+  // Paragraph into the task list, between the two tasks.
+  let tr = changeBlocks(s, [find("Intro", "paragraph").pos], "move", find("Eins", "taskItem").end);
+  let list0 = tr.doc.child(0);
+  assert.equal(list0.type.name, "taskList");
+  assert.deepEqual(
+    Array.from({ length: list0.childCount }, (_, i) => list0.child(i).textContent),
+    ["Eins", "Intro", "Zwei"],
+  );
+  assert.equal(list0.child(1).type.name, "taskItem");
+  // A task dropped before the first paragraph-level block becomes a paragraph.
+  s = state(p("Intro"), tasks(task("Eins", true), task("Zwei")), list("Punkt"));
+  blocks = documentBlocks(s.doc);
+  tr = changeBlocks(s, [find("Zwei", "taskItem").pos], "move", find("Intro", "paragraph").pos);
+  assert.equal(tr.doc.child(0).type.name, "paragraph");
+  assert.equal(tr.doc.child(0).textContent, "Zwei");
+  // A checked task moved into a bullet list becomes a bullet; back keeps text.
+  tr = changeBlocks(s, [find("Eins", "taskItem").pos], "move", find("Punkt", "listItem").end);
+  const bullets = tr.doc.lastChild!;
+  assert.equal(bullets.type.name, "bulletList");
+  assert.deepEqual(
+    Array.from({ length: bullets.childCount }, (_, i) => bullets.child(i).type.name),
+    ["listItem", "listItem"],
+  );
+  assert.equal(bullets.lastChild!.textContent, "Eins");
 });

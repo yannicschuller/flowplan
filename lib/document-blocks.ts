@@ -1,4 +1,4 @@
-import { Fragment, Slice, type Node } from "@tiptap/pm/model";
+import { Fragment, Slice, type Node, type NodeType } from "@tiptap/pm/model";
 import {
   NodeSelection,
   Selection,
@@ -166,15 +166,57 @@ export function changeBlocks(
   const tr = state.tr.deleteRange(range.from, range.to),
     mapped = tr.mapping.map(target, target < range.from ? -1 : 1),
     $target = tr.doc.resolve(mapped);
-  if (
-    !$target.parent.canReplace($target.index(), $target.index(), range.content)
-  )
+  const content = fitBlocks($target.parent, $target.index(), range.content);
+  if (!content)
     throw new Error("Diese Blocktypen passen nicht an den gewählten Zielort.");
-  return finish(
-    tr.insert(mapped, range.content),
-    mapped,
-    range.content,
-  ).setMeta(BLOCK_MOVE_META, { from: range.from, to: range.to });
+  return finish(tr.insert(mapped, content), mapped, content).setMeta(
+    BLOCK_MOVE_META,
+    { from: range.from, to: range.to },
+  );
+}
+const LIST_ITEMS = ["listItem", "taskItem"];
+// Moved blocks adapt to where they land, like in a word processor: a
+// paragraph dropped into a task list becomes a task, a task dropped between
+// paragraphs becomes its text again, and items switch between list kinds.
+export function fitBlocks(parent: Node, index: number, content: Fragment) {
+  const fits = (f: Fragment) => parent.canReplace(index, index, f);
+  if (fits(content)) return content;
+  const nodes: Node[] = [];
+  content.forEach((n) => nodes.push(n));
+  // Items to another list kind, or out of the list.
+  const itemType = LIST_ITEMS.map((name) => parent.type.schema.nodes[name])
+    .filter(Boolean)
+    .find((type) => parent.type.contentMatch.matchType(type));
+  const unwrapped = nodes.flatMap((n) =>
+    LIST_ITEMS.includes(n.type.name) ? (n.content.content as Node[]) : [n],
+  );
+  try {
+    const converted = Fragment.fromArray(
+      itemType
+        ? nodes.map((n) =>
+            LIST_ITEMS.includes(n.type.name)
+              ? itemType.createChecked(
+                  itemType.name === "taskItem"
+                    ? { checked: !!n.attrs.checked }
+                    : null,
+                  n.content,
+                )
+              : wrapIn(itemType, n),
+          )
+        : unwrapped,
+    );
+    if (converted.size && fits(converted)) return converted;
+  } catch {}
+  return undefined;
+}
+function wrapIn(itemType: NodeType, node: Node) {
+  // Items start with a paragraph; other blocks are nested below an empty one.
+  if (itemType.contentMatch.matchType(node.type))
+    return itemType.createChecked(null, node);
+  return itemType.createChecked(null, [
+    itemType.schema.nodes.paragraph.create(),
+    node,
+  ]);
 }
 export function adjacentBlockTarget(
   state: EditorState,

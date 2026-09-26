@@ -6609,6 +6609,13 @@ tr.order-drop-after > td {
 .document-block-handle:active {
   cursor: grabbing;
 }
+.block-handle-layer {
+  transition: opacity 0.16s var(--ease-out, ease);
+}
+.block-handle-layer.settling {
+  opacity: 0;
+  transition: none;
+}
 .document-block-drop {
   position: absolute;
   height: 3px;
