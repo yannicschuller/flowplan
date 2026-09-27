@@ -6,6 +6,7 @@ import {
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { changeDocTask, dueTaskCount, syncDocTasks } from "./doc-tasks";
+import { syncedUsage } from "./synced-blocks";
 import {
   dayEntry,
   journalDayDetails,
@@ -191,7 +192,8 @@ export function bootstrap(user: Identity, wid?: string) {
   const workspace = workspaces.find((w) => w.id === wid) || workspaces[0];
   if (!workspace) throw new HttpError(404, "Kein Arbeitsbereich.");
   const pages = all<Page>(
-    "SELECT * FROM pages WHERE workspace_id=? ORDER BY position",
+    // Synced blocks live inside the pages that show them, not in the tree.
+    "SELECT * FROM pages WHERE workspace_id=? AND synced=0 ORDER BY position",
     workspace.id,
   ).filter((p) => pageRole(user, p));
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
@@ -411,6 +413,7 @@ export function pageData(user: Identity, pid: string) {
           },
         }
       : {}),
+    ...(p.synced ? { syncedUsage: syncedUsage(user, p) } : {}),
     ...(p.journal_date && journalOf(p)
       ? {
           journalDay: {
@@ -1007,6 +1010,30 @@ export function command(
       case "task.update": {
         afterCommit.push(changeDocTask(user, b));
         if (typeof b.pageId === "string") recordPageEdit(user, b.pageId);
+        break;
+      }
+      case "synced.create": {
+        // The content of a new synced block: a document under the page that
+        // first shows it (and so with its permissions).
+        const host = write();
+        const html = z.string().max(500_000).optional().parse(b.html) || "";
+        const sid = createPage(
+          host.workspace_id,
+          host.space_id,
+          user.id,
+          "Synchronisierter Block",
+          "document",
+          host.journal_date ? null : host.id,
+        );
+        run("UPDATE pages SET synced=1 WHERE id=?", sid);
+        if (html)
+          run(
+            "UPDATE documents SET html=?,state=? WHERE page_id=?",
+            cleanHtml(html),
+            htmlState(html),
+            sid,
+          );
+        result = { id: sid };
         break;
       }
       case "page.follow": {

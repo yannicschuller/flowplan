@@ -36,6 +36,13 @@ function offlineKind(request, url) {
     return "data";
   return null;
 }
+// Opening a page adds ?visit=1 (read receipts); offline it is the same data.
+function cacheKey(url) {
+  const params = new URLSearchParams(url.search);
+  params.delete("visit");
+  const search = params.toString();
+  return url.pathname + (search ? `?${search}` : "");
+}
 // Network first; the stored copy is used only when the network fails.
 async function networkFirst(request, cacheName, key) {
   try {
@@ -61,7 +68,7 @@ self.addEventListener("fetch", (event) => {
       return networkFirst(
         event.request,
         kind === "static" ? STATIC_CACHE : DATA_CACHE,
-        event.request.mode === "navigate" ? "/" : url.pathname + url.search,
+        event.request.mode === "navigate" ? "/" : cacheKey(url),
       );
     })(),
   );

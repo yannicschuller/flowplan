@@ -492,7 +492,7 @@ export default function WorkspaceApp({
       const hash = pageLocationHash(target || { pageId: id });
       if (location.hash !== hash) location.hash = hash;
       try {
-        const p = await api<PageData>(`/api/pages/${id}`);
+        const p = await api<PageData>(`/api/pages/${id}?visit=1`);
         if (
           version !== navigationVersion.current ||
           screenRef.current !== "page"

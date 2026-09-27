@@ -244,7 +244,17 @@ export function searchWorkspace(
           : key || undefined;
   const results: SearchResult[] = [];
   const hidden = new Map<string, Set<string>>();
-  const push = (page: Page, key: string, title: string, snippet: string) => {
+  const push = (hit: Page, key: string, title: string, snippet: string) => {
+    let page = hit;
+    // Text of a synced block leads to the page it was created on.
+    if (page.synced) {
+      const origin = page.parent_id
+        ? one<Page>("SELECT * FROM pages WHERE id=? AND deleted_at IS NULL", page.parent_id)
+        : undefined;
+      if (!origin || !allowed(origin) || results.some((r) => r.id === origin.id && !r.rowId)) return;
+      page = origin;
+      title = origin.title;
+    }
     const rowId = recordOf(key),
       type = hitKind(page, key);
     // Records hidden by their own permissions do not appear.
@@ -275,7 +285,7 @@ export function searchWorkspace(
       `SELECT p.* FROM pages p WHERE ${scope} ORDER BY p.updated_at DESC LIMIT 500`,
       ...scopeArgs,
     )) {
-      if (!allowed(page) || !matchesKind(page, "")) continue;
+      if (page.synced || !allowed(page) || !matchesKind(page, "")) continue;
       push(page, "", page.title, "");
       if (results.length >= SEARCH_LIMIT) break;
     }

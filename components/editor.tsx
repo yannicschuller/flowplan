@@ -1,5 +1,6 @@
 "use client";
 import { TaskDue } from "@/lib/task-due-plugin";
+import { syncedBlockNode, type SyncedContext } from "./synced-block";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
@@ -92,6 +93,7 @@ import {
   Function as FunctionIcon,
   TextAlignLeft,
   TextAlignCenter,
+  ArrowsClockwise,
 } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
 import type { Page, User } from "@/lib/types";
@@ -127,7 +129,11 @@ export default function DocumentEditor({
   onStatus,
   onError,
   onHtml,
+  embedded = false,
 }: {
+  // Shown inside another document (synced block): no toolbar, outline,
+  // block management or comment bar.
+  embedded?: boolean;
   pageId: string;
   rowId?: string;
   userId: string;
@@ -181,6 +187,9 @@ export default function DocumentEditor({
     [embedUrl, setEmbedUrl] = useState("");
   const [boardPicker, setBoardPicker] = useState(false),
     [boardSearch, setBoardSearch] = useState("");
+  const [syncedPicker, setSyncedPicker] = useState<
+    { id: string; preview: string; origin: string }[] | null
+  >(null);
   const [linkedPicker, setLinkedPicker] = useState(false),
     [linking, setLinking] = useState(false),
     [linkedSearch, setLinkedSearch] = useState("");
@@ -219,6 +228,21 @@ export default function DocumentEditor({
   // Names for reaction tooltips (read by the reactions plugin).
   const memberNames = useRef(new Map<string, string>());
   memberNames.current = new Map(members.map((m) => [m.id, m.name]));
+  const syncedContext = useRef<SyncedContext>(null!);
+  syncedContext.current = { userId, pages, members, editable, onError };
+  function insertSynced(id: string) {
+    editor
+      ?.chain()
+      .focus()
+      .command(({ tr, state }) => {
+        if (state.selection instanceof NodeSelection)
+          tr.setSelection(Selection.near(tr.doc.resolve(state.selection.to)));
+        return true;
+      })
+      .insertContent([{ type: "syncedBlock", attrs: { pageId: id } }, { type: "paragraph" }])
+      .run();
+    setSyncedPicker(null);
+  }
   const slashState = useRef(slash);
   slashState.current = slash;
   const slashActiveRef = useRef(slashActive);
@@ -313,6 +337,7 @@ export default function DocumentEditor({
         Media,
         LinkCard,
         linkedDatabaseNode(() => linkedContext.current),
+        syncedBlockNode(() => syncedContext.current),
         whiteboardEmbedNode(),
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }, liveId),
@@ -850,6 +875,40 @@ export default function DocumentEditor({
       },
     },
     {
+      name: "Synchronisierter Block",
+      keywords: ["sync", "synced", "synchron", "wiederverwenden"],
+      description: "Inhalt, der auf mehreren Seiten gleich bleibt",
+      icon: ArrowsClockwise,
+      run: async () => {
+        try {
+          const created = await api<{ id: string }>("/api/command", {
+            action: "synced.create",
+            pageId,
+          });
+          insertSynced(created.id);
+        } catch (error) {
+          onError((error as Error).message);
+        }
+      },
+    },
+    {
+      name: "Synchronisierten Block einfügen",
+      keywords: ["sync", "synced", "einfuegen", "kopie"],
+      description: "Einen bestehenden synchronisierten Block zeigen",
+      icon: ArrowsClockwise,
+      run: async () => {
+        const host = pages.find((p) => p.id === pageId);
+        try {
+          const list = await api<{ blocks: { id: string; preview: string; origin: string }[] }>(
+            `/api/synced?workspace=${host?.workspace_id || ""}`,
+          );
+          setSyncedPicker(list.blocks);
+        } catch (error) {
+          onError((error as Error).message);
+        }
+      },
+    },
+    {
       name: "Verknüpfte Datenbank",
       keywords: ["datenbank", "db", "database", "linked"],
       description: "Bestehende Einträge mit eigener Ansicht",
@@ -960,9 +1019,9 @@ export default function DocumentEditor({
       headings.push({ text: node.textContent, pos, level: node.attrs.level });
   });
   return (
-    <div className="editor-wrapper">
+    <div className={`editor-wrapper${embedded ? " embedded" : ""}`}>
       <div className="document-writing-surface">
-        {editable && (
+        {editable && !embedded && (
           <div
             className="editor-toolbar"
             role="toolbar"
@@ -1206,9 +1265,13 @@ export default function DocumentEditor({
             ))}
           </nav>
         )}
-        <DocumentBlockControls editor={editor}>
+        {embedded ? (
           <EditorContent editor={editor} />
-        </DocumentBlockControls>
+        ) : (
+          <DocumentBlockControls editor={editor}>
+            <EditorContent editor={editor} />
+          </DocumentBlockControls>
+        )}
         {editor?.isActive("table") && editable && (
           <div className="table-tools">
             <button onClick={() => editor.chain().focus().addRowAfter().run()}>
@@ -1228,6 +1291,7 @@ export default function DocumentEditor({
           </div>
         )}
       </div>
+      {!embedded && (
       <InlineComments
         editor={editor}
         pageId={pageId}
@@ -1235,6 +1299,7 @@ export default function DocumentEditor({
         generation={generation}
         userId={userId}
       />
+      )}
       <input
         ref={uploadRef}
         type="file"
@@ -1279,6 +1344,30 @@ export default function DocumentEditor({
           }
         />
       )}
+      <Modal
+        open={!!syncedPicker}
+        title="Synchronisierten Block einfügen"
+        onClose={() => setSyncedPicker(null)}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor?.commands.focus();
+        }}
+      >
+        <div className="linked-source-list">
+          {syncedPicker?.length ? (
+            syncedPicker.map((block) => (
+              <button key={block.id} className="synced-choice" onClick={() => insertSynced(block.id)}>
+                <strong>{block.preview}</strong>
+                {block.origin && <small>aus „{block.origin}“</small>}
+              </button>
+            ))
+          ) : (
+            <p className="muted">
+              Noch keine synchronisierten Blöcke. Lege mit /sync einen an.
+            </p>
+          )}
+        </div>
+      </Modal>
       <Modal
         open={boardPicker}
         title="Whiteboard einbetten"

@@ -175,6 +175,31 @@ export const WhiteboardEmbed = Node.create({
     "Eingebettetes Whiteboard",
   ],
 });
+// A synced block: shows the content of a synced page (lib/api.ts
+// "synced.create"); editing it anywhere changes it everywhere.
+export const SyncedBlock = Node.create({
+  name: "syncedBlock",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return { pageId: { default: "" } };
+  },
+  parseHTML: () => [
+    {
+      tag: "div[data-synced-block]",
+      getAttrs: (element) => {
+        const id = (element as HTMLElement).getAttribute("data-synced-block") || "";
+        return /^[0-9a-f-]{36}$/i.test(id) ? { pageId: id } : false;
+      },
+    },
+  ],
+  renderHTML: ({ node }) => [
+    "div",
+    { "data-synced-block": node.attrs.pageId, class: "synced-block-placeholder" },
+    "Synchronisierter Block",
+  ],
+});
 // Tasks remember the day they were first carried over in a journal, so a day
 // that only holds carried tasks counts as untouched.
 export const FlowTaskItem = TaskItem.extend({
@@ -365,6 +390,7 @@ export const documentExtensions = [
   TaskList,
   FlowTaskItem.configure({ nested: true }),
   BlockReactionAttribute,
+  SyncedBlock,
   Table.configure({ resizable: true }),
   TableRow,
   TableCell,

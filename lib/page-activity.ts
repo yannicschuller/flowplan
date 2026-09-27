@@ -194,12 +194,16 @@ export function recentVisits(user: Identity, workspaceId: string, limit = 8) {
 export function withActivity<T extends { page: Page; html?: string; locked?: unknown }>(
   user: Identity,
   data: T,
+  visit = true,
 ) {
   if (data.locked) return data;
   const page = data.page;
   return {
     ...data,
-    sinceVisit: visitPage(user, page, page.kind === "document" ? data.html || "" : null),
+    // Only opening the page counts as a visit (not reloads or embeds).
+    sinceVisit: visit
+      ? visitPage(user, page, page.kind === "document" ? data.html || "" : null)
+      : null,
     readers: pageReaders(user, page),
     following: isFollowing(user, page.id),
     followers: followerCount(page.id),

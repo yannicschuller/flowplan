@@ -57,6 +57,7 @@ import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks } from "@/lib/doc-tasks";
+import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { journalDate } from "@/lib/journal";
 import {
   calendarEvents,
@@ -187,6 +188,12 @@ export async function GET(
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
       );
+    // Synced blocks that can be inserted into another page.
+    if (path.length === 1 && path[0] === "synced") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      requireMember(user, wid);
+      return NextResponse.json({ blocks: listSyncedBlocks(user, wid) }, { headers: { "Cache-Control": "no-store" } });
+    }
     // Tasks in documents assigned to the person ("Meine Aufgaben").
     if (path.length === 1 && path[0] === "tasks") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -293,7 +300,9 @@ export async function GET(
       return NextResponse.json(rowDocumentData(user, path[1], path[3]));
     // Opening a page: records the visit (read receipts, changes since then).
     if (path[0] === "pages" && path[1])
-      return NextResponse.json(withActivity(user, pageData(user, path[1])));
+      return NextResponse.json(
+        withActivity(user, pageData(user, path[1]), url.searchParams.get("visit") === "1"),
+      );
     if (path[0] === "settings") {
       const wid = url.searchParams.get("workspace") || "";
       requireMember(user, wid, "owner");

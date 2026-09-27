@@ -60,6 +60,8 @@ export type Page = {
   font: string;
   // Day pages of a journal: the day they belong to (YYYY-MM-DD).
   journal_date?: string | null;
+  // 1 for the content of a synced block (not listed in the page tree).
+  synced?: number;
 };
 export type FieldType =
   | "text"

@@ -29,7 +29,18 @@ Am Zeilenanfang oder nach einem Leerzeichen öffnet `/` das Blockmenü direkt an
 | Zwei Spalten | `/spalten` | Inhalte nebeneinander |
 | Einbetten | `/embed` | Player für YouTube, Vimeo, Loom, Spotify, Figma, CodePen; sonst Linkkarte |
 | Spoiler | `/spoiler` | Verdeckter Text, per Klick sichtbar |
+| Synchronisierter Block | `/sync` | Inhalt, der auf mehreren Seiten gleich bleibt |
+| Synchronisierten Block einfügen | `/sync` | Einen bestehenden synchronisierten Block zeigen |
 | Trennlinie | `/hr` | Horizontale Linie |
+
+## Synchronisierte Blöcke
+
+Ein synchronisierter Block (`/sync` → **Synchronisierter Block**) ist Inhalt, der an mehreren Stellen derselbe ist – etwa Kontaktdaten, eine Checkliste oder ein Statushinweis. **Synchronisierten Block einfügen** zeigt ihn auf einer weiteren Seite. Bearbeiten geht überall; die Änderung erscheint auf allen Seiten, bei geöffneten Seiten live.
+
+- Der orange Rahmen kennzeichnet den Block, oben stehen die Zahl der Seiten und die Seite, auf der er entstanden ist.
+- Der Papierkorb im Rahmen entfernt den Block nur an dieser Stelle; an den anderen bleibt er.
+- Die Rechte kommen von der Seite, auf der der Block entstanden ist: Wer dort nicht lesen darf, sieht statt des Inhalts einen Hinweis.
+- Die Suche findet den Text auf der Ursprungsseite. Auf veröffentlichten Seiten erscheint der Block nicht.
 
 ## Aufgaben mit Person und Datum
 
