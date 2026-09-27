@@ -392,6 +392,11 @@ export function command(
   const base = z.object({ action: str }).passthrough().parse(input);
   const action = base.action;
   const b = base as Record<string, unknown>;
+  // Read tokens only read; tokens never administer the instance.
+  if (user.apiScope === "read")
+    throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+  if (user.apiScope && (action.startsWith("admin.") || action.startsWith("token.")))
+    throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   if (user.demo && !demoAllows(action, b))
     throw new HttpError(
       403,
@@ -1708,6 +1713,14 @@ export function command(
           user.id,
           b.guest === true ? 1 : 0,
         );
+        // With SMTP configured the person hears about it by e-mail.
+        {
+          const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
+          const invite = { email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: b.guest === true };
+          afterCommit.push(() => {
+            if (queueInviteMail(invite)) void dispatchMail();
+          });
+        }
         break;
       }
       case "member.role": {
@@ -1916,6 +1929,21 @@ export function command(
         result = applyPageTemplate(user, p, template);
         break;
       }
+      case "calendar.feed":
+        result = createCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
+        break;
+      case "calendar.feed.revoke":
+        revokeCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
+        break;
+      case "token.create":
+        result = createApiToken(user, b);
+        break;
+      case "token.revoke":
+        revokeApiToken(user, b.id);
+        break;
+      case "webhook.delete":
+        deleteWebhook(user, b);
+        break;
       case "admin.user": {
         requireAdmin(user);
         const uid = uuid.parse(b.userId);
@@ -1964,6 +1992,11 @@ export function command(
     return result;
   };
   const result = withinTransaction ? execute() : transaction(execute, user);
+  try {
+    commandWebhooks(action, b, result);
+  } catch (error) {
+    console.error("Webhook-Ereignis fehlgeschlagen", error);
+  }
   for (const task of afterCommit)
     try {
       task();
@@ -1971,6 +2004,37 @@ export function command(
       console.error("Nachlauf eines Befehls fehlgeschlagen", error);
     }
   return result;
+}
+// Webhooks for records and pages changed through commands.
+function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown) {
+  const created = (result as { id?: unknown } | null)?.id;
+  if (action === "page.create" && typeof created === "string") {
+    const page = one<{ workspace_id: string; title: string; kind: string; parent_id: string | null }>(
+      "SELECT workspace_id,title,kind,parent_id FROM pages WHERE id=?",
+      created,
+    );
+    if (page)
+      emitWebhook(page.workspace_id, "page.created", {
+        pageId: created,
+        title: page.title,
+        kind: page.kind,
+        parentId: page.parent_id,
+      });
+    return;
+  }
+  const rowId = action === "row.create" ? created : action === "row.update" ? b.rowId : null;
+  if (typeof rowId !== "string") return;
+  const row = one<{ page_id: string; cells: string; workspace_id: string }>(
+    "SELECT r.page_id,r.cells,p.workspace_id FROM rows r JOIN pages p ON p.id=r.page_id WHERE r.id=?",
+    rowId,
+  );
+  if (!row) return;
+  emitWebhook(row.workspace_id, action === "row.create" ? "row.created" : "row.updated", {
+    pageId: row.page_id,
+    rowId,
+    cells: JSON.parse(row.cells),
+    ...(action === "row.update" ? { changed: Object.keys((b.cells as object) || {}) } : {}),
+  });
 }
 // Live editing: clients send their state vector, so the answer only holds
 // what they are missing instead of the whole document.
@@ -2021,6 +2085,10 @@ import {
   importInlineComments,
 } from "./inline-comment-archive";
 import { ensureRowDocument } from "./row-documents";
+import { createCalendarFeed, revokeCalendarFeed } from "./calendar-feed";
+import { createApiToken, revokeApiToken } from "./api-tokens";
+import { deleteWebhook, emitWebhook } from "./webhooks";
+import { dispatchMail, queueInviteMail } from "./mail";
 import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";

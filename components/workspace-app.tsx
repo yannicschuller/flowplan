@@ -211,6 +211,8 @@ export default function WorkspaceApp({
     [privateSpace, setPrivateSpace] = useState(false),
     [epoch, setEpoch] = useState(0),
     [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
+    // Quick filter above the page tree.
+    [treeFilter, setTreeFilter] = useState(""),
     [online, setOnline] = useState(true),
     [move, setMove] = useState(false),
     // Right click on a page in the sidebar: its actions at the pointer.
@@ -726,6 +728,22 @@ export default function WorkspaceApp({
     setTreeDrop(target && target.id !== drag.source ? target : null);
   }
   touchHoverRef.current = touchHover;
+  // Pages whose title matches the filter, plus all their parent pages.
+  const filterMatches = (() => {
+    const query = treeFilter.trim().toLocaleLowerCase("de");
+    if (!query) return null;
+    const byId = new Map(activePages.map((p) => [p.id, p]));
+    const shown = new Set<string>();
+    for (const p of activePages)
+      if ((p.title || "Ohne Titel").toLocaleLowerCase("de").includes(query))
+        for (
+          let at: Page | undefined = p;
+          at && !shown.has(at.id);
+          at = at.parent_id ? byId.get(at.parent_id) : undefined
+        )
+          shown.add(at.id);
+    return shown;
+  })();
   function tree(
     parentId: string | null,
     sid: string,
@@ -738,11 +756,15 @@ export default function WorkspaceApp({
           p.space_id === sid &&
           (parentId
             ? p.parent_id === parentId
-            : !p.parent_id || !activePages.some((x) => x.id === p.parent_id)),
+            : !p.parent_id || !activePages.some((x) => x.id === p.parent_id)) &&
+          (!filterMatches || filterMatches.has(p.id)),
       )
       .map((p) => {
-        const children = activePages.some((x) => x.parent_id === p.id),
-          closed = collapsed.has(p.id);
+        const children = activePages.some(
+            (x) => x.parent_id === p.id && (!filterMatches || filterMatches.has(x.id)),
+          ),
+          // While filtering, the way to every match stays open.
+          closed = !filterMatches && collapsed.has(p.id);
         return (
           <div key={p.id}>
             <div
@@ -987,33 +1009,47 @@ export default function WorkspaceApp({
             </Dropdown.Content>
           </Dropdown.Portal>
         </Dropdown.Root>
-        <nav className="main-nav">
-          <button onClick={() => setSearch(true)}>
-            <MagnifyingGlass size={19} />
-            Suchen<span className="keycap">⌘ K</span>
-          </button>
-          <button
-            className={screen === "home" ? "selected" : ""}
-            onClick={() => go("home")}
-          >
-            <House size={19} />
-            Startseite
-          </button>
-          <button
-            className={screen === "inbox" ? "selected" : ""}
-            onClick={() => go("inbox")}
-          >
-            <Bell size={19} />
-            Posteingang
-            {boot.notifications.some((n) => !n.read_at) && (
-              <span className="notification-count">
-                {boot.notifications.filter((n) => !n.read_at).length}
-              </span>
-            )}
-          </button>
-        </nav>
         <div className="sidebar-scroll">
-          {(favorites.length > 0 || !!boot.favoriteRows?.length) && (
+          <nav className="main-nav">
+            <button onClick={() => setSearch(true)}>
+              <MagnifyingGlass size={19} />
+              Suchen<span className="keycap">⌘ K</span>
+            </button>
+            <button
+              className={screen === "home" ? "selected" : ""}
+              onClick={() => go("home")}
+            >
+              <House size={19} />
+              Startseite
+            </button>
+            <button
+              className={screen === "inbox" ? "selected" : ""}
+              onClick={() => go("inbox")}
+            >
+              <Bell size={19} />
+              Posteingang
+              {boot.notifications.some((n) => !n.read_at) && (
+                <span className="notification-count">
+                    {boot.notifications.filter((n) => !n.read_at).length}
+                </span>
+              )}
+            </button>
+          </nav>
+          <div className="tree-filter">
+            <MagnifyingGlass size={14} aria-hidden="true" />
+            <input
+              type="search"
+              value={treeFilter}
+              onChange={(e) => setTreeFilter(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setTreeFilter("")}
+              placeholder="Seiten filtern"
+              aria-label="Seiten filtern"
+            />
+          </div>
+          {filterMatches && !filterMatches.size && (
+            <p className="sidebar-empty tree-filter-empty">Keine Seite heißt so.</p>
+          )}
+          {!filterMatches && (favorites.length > 0 || !!boot.favoriteRows?.length) && (
             <section className="nav-section">
               <div className="nav-section-title">
                 Favoriten
@@ -1084,7 +1120,13 @@ export default function WorkspaceApp({
               </button>
             </div>
           )}
-          {boot.spaces.map((space) => (
+          {boot.spaces
+            .filter(
+              (space) =>
+                !filterMatches ||
+                activePages.some((p) => p.space_id === space.id && filterMatches.has(p.id)),
+            )
+            .map((space) => (
             <section className="nav-section" key={space.id}>
               <div className="nav-section-title">
                 <span>
@@ -1142,40 +1184,51 @@ export default function WorkspaceApp({
           )}
         </div>
         <div className="sidebar-bottom">
-          <button onClick={() => setTemplates(true)}>
-            <SquaresFour size={18} />
-            Vorlagen
-          </button>
-          <button
-            className={screen === "media" ? "selected" : ""}
-            onClick={() => go("media")}
-          >
-            <Images size={18} />
-            Medien
-          </button>
-          <button
-            className={screen === "trash" ? "selected" : ""}
-            onClick={() => go("trash")}
-          >
-            <Trash size={18} />
-            Papierkorb
-          </button>
-          <button
-            className={screen === "settings" ? "selected" : ""}
-            onClick={() => go("settings")}
-          >
-            <GearSix size={18} />
-            Einstellungen
-          </button>
-          {boot.user.isAdmin && (
+          {/* Less used places as one row of symbols: the page tree above
+              keeps the height. */}
+          <div className="sidebar-tools">
             <button
-              className={screen === "admin" ? "selected" : ""}
-              onClick={() => go("admin")}
+              aria-label="Vorlagen"
+              title="Vorlagen"
+              onClick={() => setTemplates(true)}
             >
-              <ShieldCheck size={18} />
-              Administration
+              <SquaresFour size={18} />
             </button>
-          )}
+            <button
+              aria-label="Medien"
+              title="Medien"
+              className={screen === "media" ? "selected" : ""}
+              onClick={() => go("media")}
+            >
+              <Images size={18} />
+            </button>
+            <button
+              aria-label="Papierkorb"
+              title="Papierkorb"
+              className={screen === "trash" ? "selected" : ""}
+              onClick={() => go("trash")}
+            >
+              <Trash size={18} />
+            </button>
+            <button
+              aria-label="Einstellungen"
+              title="Einstellungen"
+              className={screen === "settings" ? "selected" : ""}
+              onClick={() => go("settings")}
+            >
+              <GearSix size={18} />
+            </button>
+            {boot.user.isAdmin && (
+              <button
+                aria-label="Administration"
+                title="Administration"
+                className={screen === "admin" ? "selected" : ""}
+                onClick={() => go("admin")}
+              >
+                <ShieldCheck size={18} />
+              </button>
+            )}
+          </div>
           <div className="profile">
             <Avatar name={boot.user.name} userId={boot.user.id} />
             <span>

@@ -12,6 +12,11 @@ export const instanceSettingsSchema = z.object({
   allowWorkspaceCreation: z.boolean(),
   // "Demo ausprobieren" on the start page: throwaway accounts for visitors.
   publicDemo: z.boolean().default(false),
+  // Daily database copy (S3 bucket or backups/ in the data folder).
+  backupSchedule: z.boolean().default(true),
+  backupKeep: z.number().int().min(1).max(365).default(7),
+  // Accounts without sign-in for this many days are disabled (null = never).
+  inactiveDays: z.number().int().min(30).max(3650).nullable().default(null),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -22,6 +27,9 @@ const defaults: InstanceSettings = {
   maxUploadMb: 10,
   allowWorkspaceCreation: true,
   publicDemo: false,
+  backupSchedule: true,
+  backupKeep: 7,
+  inactiveDays: null,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.
@@ -38,7 +46,11 @@ export function instanceSettings(): InstanceSettings {
   return parsed.success ? parsed.data : defaults;
 }
 export function saveInstanceSettings(input: unknown) {
-  const next = instanceSettingsSchema.parse(input);
+  // Fields a form does not send keep their stored value.
+  const next = instanceSettingsSchema.parse({
+    ...instanceSettings(),
+    ...(input && typeof input === "object" ? input : {}),
+  });
   for (const [key, value] of Object.entries(next))
     run(
       "INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",

@@ -37,6 +37,24 @@ Die übrigen Anmelde-Variablen stehen unter [Anmeldung mit OIDC](/docs/anmeldung
 
 Details: [Speicher, S3 und Sicherung](/docs/speicher-und-sicherung).
 
+## E-Mail (SMTP)
+
+| Variable | Standard | Bedeutung |
+| --- | --- | --- |
+| `SMTP_HOST` | *leer* | Schaltet den E-Mail-Versand ein: Einladungen und Zusammenfassungen ungelesener Benachrichtigungen. |
+| `SMTP_PORT` | `587` | Port. Bei `465` spricht Flowplan direkt TLS, sonst STARTTLS. |
+| `SMTP_SECURE` | nach Port | `true`/`false` erzwingt TLS ab Verbindungsbeginn. |
+| `SMTP_USER` / `SMTP_PASSWORD` | *leer* | Anmeldung am Mailserver. |
+| `SMTP_FROM` | `Flowplan <SMTP_USER>` | Absender, z. B. `Flowplan <flowplan@example.com>`. |
+
+Den Versand prüfst du unter **Administration → Instanz → Test-E-Mail senden**.
+
+## Integrationen
+
+| Variable | Standard | Bedeutung |
+| --- | --- | --- |
+| `FLOWPLAN_WEBHOOK_ALLOW_PRIVATE` | *leer* | `true` erlaubt Webhooks an interne Adressen und `http://` – etwa Home Assistant oder n8n im selben Netz. Ohne diese Variable sind nur öffentliche HTTPS-Adressen erlaubt. |
+
 ## Push-Benachrichtigungen
 
 | Variable | Bedeutung |
@@ -58,6 +76,8 @@ Unter **Administration → Instanz** stellen Admins ein:
 - Standard-Speicherkontingent und Aufbewahrung von Versionen,
 - maximale Uploadgröße,
 - ob alle Personen eigene Arbeitsbereiche anlegen dürfen,
+- tägliche Datenbanksicherung und wie viele Kopien bleiben,
+- nach wie vielen Tagen ohne Anmeldung Konten gesperrt werden,
 - ob die Startseite eine **Demo** anbietet (laufende und insgesamt gestartete Demos zeigt **Administration → Betrieb**).
 
 Leere Felder fallen auf die Umgebungsvariablen zurück.

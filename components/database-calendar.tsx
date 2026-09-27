@@ -15,6 +15,7 @@ import {
   DotsSixVertical,
 } from "@phosphor-icons/react";
 import { Modal } from "./ui";
+import { CalendarSubscribe } from "./calendar-subscribe";
 import DateInput from "./date-input";
 import {
   OCCURRENCE_SEPARATOR,
@@ -615,6 +616,7 @@ export default function DatabaseCalendar({
         >
           <CaretRight />
         </button>
+        <CalendarSubscribe pageId={pageId} viewId={view.id} />
       </div>
       <form
         className="calendar-zone"

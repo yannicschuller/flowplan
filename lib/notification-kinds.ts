@@ -8,5 +8,5 @@ export const notificationKinds = {
 export type NotificationKind = keyof typeof notificationKinds;
 export type NotificationPrefs = Record<
   NotificationKind,
-  { inbox: boolean; push: boolean }
+  { inbox: boolean; push: boolean; email: boolean }
 >;

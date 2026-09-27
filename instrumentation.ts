@@ -13,5 +13,13 @@ export async function register() {
     startFileTextWorker();
     const { startRetentionWorker } = await import("./lib/version-history");
     startRetentionWorker();
+    const { startMailWorker } = await import("./lib/mail");
+    startMailWorker();
+    const { startWebhookWorker } = await import("./lib/webhooks");
+    startWebhookWorker();
+    const { startBackupWorker } = await import("./lib/scheduled-backup");
+    startBackupWorker();
+    const { startInactiveWorker } = await import("./lib/inactive-accounts");
+    startInactiveWorker();
   }
 }

@@ -9,6 +9,7 @@ import {
   validateFormValues,
 } from "./form-settings";
 import type { Identity, Field, Page } from "./types";
+import { emitWebhook } from "./webhooks";
 export function formSettings(pageId: string) {
   const raw = one<{
     token: string;
@@ -170,5 +171,11 @@ export function saveFormSubmission(
     form?.anonymous ? null : user?.id || null,
   );
   run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  const workspace = one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", pageId);
+  if (workspace) {
+    const payload = { pageId, rowId: rid, cells: result.cells, anonymous: !!form?.anonymous };
+    emitWebhook(workspace.workspace_id, "form.submitted", payload);
+    emitWebhook(workspace.workspace_id, "row.created", payload);
+  }
   return { id: rid };
 }

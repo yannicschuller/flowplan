@@ -14,7 +14,7 @@ export function NotificationSettings({
   prefs: NotificationPrefs;
   onChange: (
     kind: NotificationKind,
-    value: { inbox: boolean; push: boolean },
+    value: { inbox: boolean; push: boolean; email: boolean },
   ) => void;
 }) {
   // Checkboxes react at once; the saved state arrives with the next refresh.
@@ -22,7 +22,7 @@ export function NotificationSettings({
   useEffect(() => setLocal(prefs), [prefs]);
   const change = (
     kind: NotificationKind,
-    value: { inbox: boolean; push: boolean },
+    value: { inbox: boolean; push: boolean; email: boolean },
   ) => {
     setLocal((current) => ({ ...current, [kind]: value }));
     onChange(kind, value);
@@ -32,6 +32,8 @@ export function NotificationSettings({
       <h2>Benachrichtigungsarten</h2>
       <p className="muted">
         Ausgeschaltete Arten erscheinen weder im Posteingang noch als Push.
+        Per E-Mail kommt eine Zusammenfassung, wenn eine Benachrichtigung zehn
+        Minuten ungelesen bleibt – sofern die Instanz E-Mails versenden kann.
       </p>
       <table className="notification-prefs">
         <thead>
@@ -39,6 +41,7 @@ export function NotificationSettings({
             <th>Art</th>
             <th>Posteingang</th>
             <th>Push</th>
+            <th>E-Mail</th>
           </tr>
         </thead>
         <tbody>
@@ -55,6 +58,7 @@ export function NotificationSettings({
                       change(kind, {
                         inbox: e.target.checked,
                         push: e.target.checked && local[kind].push,
+                        email: e.target.checked && local[kind].email,
                       })
                     }
                   />
@@ -69,6 +73,22 @@ export function NotificationSettings({
                       change(kind, {
                         inbox: local[kind].inbox,
                         push: e.target.checked,
+                        email: local[kind].email,
+                      })
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`${notificationKinds[kind]} per E-Mail`}
+                    checked={local[kind].email}
+                    disabled={!local[kind].inbox}
+                    onChange={(e) =>
+                      change(kind, {
+                        inbox: local[kind].inbox,
+                        push: local[kind].push,
+                        email: e.target.checked,
                       })
                     }
                   />

@@ -42,6 +42,7 @@ const groups: { title: string; pages: [slug: string, title: string][] }[] = [
       ["suche-und-benachrichtigungen", "Suche, Posteingang und Push"],
       ["import-export-versionen", "Import, Export und Versionen"],
       ["offline-und-apps", "Offline, Web-App und Desktop"],
+      ["api-und-webhooks", "API und Webhooks"],
       ["tastenkuerzel", "Tastenkürzel"],
     ],
   },

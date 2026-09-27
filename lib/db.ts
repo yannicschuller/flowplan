@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 25) return;
+  if (globalDb.flowplanSchema === 26) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -364,7 +364,25 @@ function migrate(d: DatabaseSync) {
   d.exec(
     "CREATE TABLE IF NOT EXISTS user_avatars(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,mime TEXT NOT NULL,data BLOB NOT NULL)",
   );
-  globalDb.flowplanSchema = 25;
+  // E-mail: queue, digest marker on notifications, e-mail channel per kind.
+  d.exec(
+    "CREATE TABLE IF NOT EXISTS mail_queue(id TEXT PRIMARY KEY,recipient TEXT NOT NULL,subject TEXT NOT NULL,text TEXT NOT NULL,html TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL,sent_at INTEGER,error TEXT); CREATE INDEX IF NOT EXISTS mail_queue_due ON mail_queue(sent_at,next_at);",
+  );
+  if (!(d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).some((c) => c.name === "emailed_at"))
+    d.exec("ALTER TABLE notifications ADD COLUMN emailed_at TEXT");
+  if (!(d.prepare("PRAGMA table_info(notification_prefs)").all() as { name: string }[]).some((c) => c.name === "email"))
+    d.exec("ALTER TABLE notification_prefs ADD COLUMN email INTEGER NOT NULL DEFAULT 1");
+  // Calendar subscriptions, API tokens, webhooks, instance state.
+  d.exec(`CREATE TABLE IF NOT EXISTS calendar_feeds(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,view_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS api_tokens(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,scope TEXT NOT NULL CHECK(scope IN ('read','write')),token_hash TEXT NOT NULL UNIQUE,prefix TEXT NOT NULL,created_at INTEGER NOT NULL,last_used_at INTEGER,expires_at INTEGER);
+    CREATE TABLE IF NOT EXISTS webhooks(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,url TEXT NOT NULL,events TEXT NOT NULL,page_id TEXT,secret TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS webhook_deliveries(id TEXT PRIMARY KEY,webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,body TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL,created_at INTEGER NOT NULL,delivered_at INTEGER,status INTEGER,error TEXT);
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_due ON webhook_deliveries(delivered_at,next_at);
+    CREATE TABLE IF NOT EXISTS instance_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
+  // Last sign-in, for inactive accounts in the administration.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "last_login_at"))
+    d.exec("ALTER TABLE users ADD COLUMN last_login_at INTEGER");
+  globalDb.flowplanSchema = 26;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

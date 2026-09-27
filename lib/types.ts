@@ -10,8 +10,16 @@ export type User = {
   avatar?: string | null;
   // Public demo accounts: end at the latest (ms), null for real accounts.
   demo_until?: number | null;
+  // Last sign-in through the identity provider (ms).
+  last_login_at?: number | null;
 };
-export type Identity = User & { groups: string[]; isAdmin: boolean; demo?: boolean };
+export type Identity = User & {
+  groups: string[];
+  isAdmin: boolean;
+  demo?: boolean;
+  // Set when the request came with a personal API token.
+  apiScope?: "read" | "write";
+};
 export type Workspace = {
   id: string;
   name: string;

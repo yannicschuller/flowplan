@@ -242,7 +242,7 @@ kbd,
   min-height: 0;
 }
 .sidebar-top {
-  height: 66px;
+  height: 56px;
   padding: 0 19px;
   display: flex;
   align-items: center;
@@ -255,8 +255,8 @@ kbd,
   display: flex;
   gap: 9px;
   text-align: left;
-  margin: 6px 12px 15px;
-  padding: 9px 6px;
+  margin: 0 10px 6px;
+  padding: 7px 6px;
   justify-content: flex-start;
 }
 .workspace-switch > span:nth-child(2) {
@@ -294,13 +294,12 @@ kbd,
   font-size: 13px;
 }
 .main-nav {
-  padding: 0 12px 17px;
+  padding: 2px 10px 8px;
 }
-.main-nav > button,
-.sidebar-bottom > button {
+.main-nav > button {
   width: 100%;
   justify-content: flex-start;
-  padding: 8px 10px;
+  padding: 6px 10px;
   color: var(--secondary);
   gap: 10px;
   font-size: 13px;
@@ -316,24 +315,65 @@ kbd,
 .main-nav .selected {
   font-weight: 600;
 }
+/* Navigation, favourites and page tree scroll together, so the tree gets
+   all the height the window has. */
 .sidebar-scroll {
   overflow: auto;
   flex: 1;
-  padding-top: 3px;
+  min-height: 0;
+  padding-bottom: 12px;
+  overscroll-behavior: contain;
+}
+.tree-filter {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 10px 8px;
+  padding: 0 9px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--sidebar);
+  color: var(--muted);
+  box-shadow: 0 6px 8px -6px var(--sidebar);
+}
+.tree-filter:focus-within {
+  border-color: var(--blue);
+  background: var(--bg);
+}
+.tree-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  height: 100%;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+  box-shadow: none;
+}
+.tree-filter-empty {
+  display: block;
+  margin: 4px 0 10px;
 }
 .nav-section {
-  margin-bottom: 23px;
+  margin-bottom: 14px;
 }
 .nav-section-title {
   color: var(--muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 21px 8px;
+  padding: 0 21px 4px;
   font-size: 11px;
   font-weight: 600;
   height: auto;
-  min-height: 35px;
+  min-height: 30px;
   gap: 4px;
 }
 .nav-section-title > span {
@@ -361,9 +401,9 @@ kbd,
   display: flex;
   align-items: center;
   gap: 2px;
-  margin: 2px 10px 2px 7px;
+  margin: 1px 10px 1px 7px;
   border-radius: 5px;
-  height: 33px;
+  height: 30px;
   color: var(--secondary);
 }
 .page-nav:hover {
@@ -475,15 +515,34 @@ kbd,
   padding-left: 25px;
 }
 .sidebar-bottom {
-  padding: 6px 12px 0;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-tools {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 6px 0;
+}
+.sidebar-tools > button {
+  flex: 1;
+  height: 34px;
+  max-width: 44px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--secondary);
+}
+.sidebar-tools > button:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 .profile {
   display: flex;
   align-items: center;
   gap: 9px;
   border-top: 1px solid var(--border);
-  margin: 12px -12px 0;
-  padding: 15px 17px;
+  margin: 0 -10px;
+  padding: 10px 16px;
 }
 .profile > span:nth-child(2) {
   font-size: 12px;
@@ -4406,7 +4465,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     left: 0;
     top: 0;
     bottom: 0;
-    width: 270px;
+    width: min(320px, 86vw);
     z-index: 42;
     transform: translateX(-100%);
     transition: transform 0.18s ease;
@@ -4827,13 +4886,21 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .nav-add {
     opacity: 0.7;
   }
-  .main-nav > button,
-  .sidebar-bottom > button {
+  .main-nav > button {
     font-size: 14px;
-    padding: 10px;
+    padding: 8px 10px;
   }
   .page-nav {
-    height: 37px;
+    height: 36px;
+  }
+  .sidebar-tools > button {
+    height: 40px;
+  }
+  .tree-filter {
+    height: 34px;
+  }
+  .tree-filter input {
+    font-size: 16px; /* no zoom on iOS */
   }
   .page-nav-title {
     font-size: 14px;
@@ -9862,4 +9929,94 @@ li[data-journal-since] > label::after {
   width: 0;
   height: 0;
   pointer-events: none;
+}
+
+.calendar-subscribe {
+  display: grid;
+  gap: 14px;
+}
+.calendar-subscribe label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.calendar-subscribe input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.calendar-subscribe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.integration-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+}
+.integration-form > input {
+  flex: 1 1 220px;
+}
+.integration-form fieldset {
+  flex-basis: 100%;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+}
+.integration-form legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+.integration-form code,
+.integration-list code {
+  font-size: 11px;
+  color: var(--muted);
+}
+.integration-secret {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--blue-light);
+  font-size: 13px;
+}
+.integration-secret code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.integration-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.integration-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.integration-list li > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.integration-list strong {
+  overflow-wrap: anywhere;
+}
+.integration-list small {
+  color: var(--muted);
+  font-size: 12px;
 }

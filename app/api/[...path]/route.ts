@@ -23,6 +23,11 @@ import { fileResponse } from "@/lib/file-response";
 import { publicFile } from "@/lib/publication";
 import { requireRow, rowDocumentData } from "@/lib/row-documents";
 import { documentKey, publishPresence, watchDocument } from "@/lib/document-live";
+import { calendarFeed, hasCalendarFeed } from "@/lib/calendar-feed";
+import { listApiTokens } from "@/lib/api-tokens";
+import { createWebhook, listWebhooks, webhookEvents } from "@/lib/webhooks";
+import { mailStatus, sendTestMail } from "@/lib/mail";
+import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -87,7 +92,56 @@ export async function GET(
     // Keep public asset authorization identical when the catch-all handles the URL.
     if (path.length === 4 && path[0] === "share" && path[2] === "files")
       return await fileResponse(req, publicFile(path[1], path[3]));
+    // Calendar subscriptions: the secret link is the authorization.
+    if (path.length === 2 && path[0] === "calendar" && path[1].endsWith(".ics"))
+      return new Response(calendarFeed(path[1].slice(0, -4)), {
+        headers: {
+          "Content-Type": "text/calendar; charset=utf-8",
+          "Cache-Control": "private, no-store",
+          "Content-Disposition": 'inline; filename="flowplan.ics"',
+        },
+      });
     const user = await requireUser();
+    if (path.length === 1 && path[0] === "tokens")
+      return NextResponse.json(listApiTokens(user));
+    if (path.length === 1 && path[0] === "webhooks")
+      return NextResponse.json({
+        webhooks: listWebhooks(user, z.uuid().parse(url.searchParams.get("workspace"))),
+        events: webhookEvents,
+      });
+    if (path.length === 1 && path[0] === "calendar-feed")
+      return NextResponse.json({
+        active: hasCalendarFeed(
+          user,
+          z.uuid().parse(url.searchParams.get("page")),
+          z.string().max(100).parse(url.searchParams.get("view")),
+        ),
+      });
+    if (path.length === 2 && path[0] === "admin" && path[1] === "audit.csv") {
+      requireAdmin(user);
+      const cell = (v: unknown) => {
+        const text = String(v ?? "");
+        // Spreadsheet programs must not run formulas from the log.
+        const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+        return `"${safe.replace(/"/g, '""')}"`;
+      };
+      const rowsCsv = all<Record<string, unknown>>(
+        "SELECT a.created_at,u.name,u.email,a.action,a.resource_id,a.detail FROM audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 100000",
+      );
+      const csv = [
+        ["Zeitpunkt", "Person", "E-Mail", "Aktion", "Ressource", "Details"].map(cell).join(";"),
+        ...rowsCsv.map((r) =>
+          [r.created_at, r.name, r.email, r.action, r.resource_id, r.detail].map(cell).join(";"),
+        ),
+      ].join("\r\n");
+      return new Response("\ufeff" + csv, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="flowplan-aktivitaet-${new Date().toISOString().slice(0, 10)}.csv"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
     if (path.length === 2 && path[0] === "threads" && path[1] === "mentions")
       return NextResponse.json(
         inlineMentionCandidates(
@@ -404,8 +458,10 @@ export async function GET(
       requireAdmin(user);
       return NextResponse.json({
         users: all(
-          "SELECT id,name,email,disabled,created_at FROM users ORDER BY created_at DESC",
+          "SELECT id,name,email,disabled,created_at,last_login_at FROM users WHERE demo_until IS NULL ORDER BY created_at DESC",
         ),
+        mail: mailStatus(),
+        backup: scheduledBackupStatus(),
         workspaces: all(
           "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages FROM workspaces w",
         ),
@@ -496,6 +552,20 @@ export async function POST(
     )
       throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
+    if (path.length === 1 && path[0] === "webhooks") {
+      if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+      return NextResponse.json(await createWebhook(user, await req.json()));
+    }
+    if (path.length === 2 && path[0] === "admin" && path[1] === "mail-test") {
+      requireAdmin(user);
+      const to = z.email().parse((await req.json()).to);
+      await sendTestMail(to);
+      return NextResponse.json({ ok: true });
+    }
+    if (path.length === 2 && path[0] === "admin" && path[1] === "backup-run") {
+      requireAdmin(user);
+      return NextResponse.json(await runScheduledBackup());
+    }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
       if (Number(req.headers.get("content-length") || 0) > 512)
         throw new HttpError(413, "Cursoranfrage zu groß.");

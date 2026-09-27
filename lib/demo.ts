@@ -27,6 +27,9 @@ const BLOCKED = new Set([
   "member.role",
   "member.guest",
   "group.member",
+  "calendar.feed",
+  "token.create",
+  "webhook.delete",
 ]);
 export function demoAllows(action: string, input: Record<string, unknown>) {
   if (BLOCKED.has(action) || action.startsWith("admin.")) return false;

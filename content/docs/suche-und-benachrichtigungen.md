@@ -33,6 +33,10 @@ Der **Posteingang** sammelt:
 
 Ungelesenes ist markiert und lässt sich filtern. Ein Klick öffnet die Stelle, bei Textkommentaren direkt den Thread.
 
+## E-Mail
+
+Ist auf der Instanz ein Mailserver eingerichtet, kommen ungelesene Benachrichtigungen nach zehn Minuten als Zusammenfassung per E-Mail – eine Mail für alles, was sich angesammelt hat, jede Benachrichtigung höchstens einmal. Unter **Einstellungen → Benachrichtigungen** lässt sich die Spalte **E-Mail** je Art abschalten. Einladungen in einen Arbeitsbereich kommen ebenfalls per E-Mail.
+
 ## Push-Benachrichtigungen
 
 Unter **Einstellungen → Benachrichtigungen**:

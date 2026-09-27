@@ -7,6 +7,7 @@ import { OfflineSettings } from "./offline-settings";
 import { NotificationSettings } from "./notification-settings";
 import { WorkspaceLifecycle } from "./workspace-lifecycle";
 import { SpaceManager } from "./space-manager";
+import { IntegrationSettings } from "./integration-settings";
 import { useEffect, useState } from "react";
 import {
   GearSix,
@@ -24,6 +25,7 @@ import {
   UsersThree,
   Database,
   BellSimple,
+  PlugsConnected,
 } from "@phosphor-icons/react";
 import { api, Avatar, download, Modal } from "./ui";
 import type { Bootstrap, Space } from "@/lib/types";
@@ -73,7 +75,13 @@ const settingsTabs = [
     "notifications",
     "Benachrichtigungen",
     BellSimple,
-    "Welche Benachrichtigungen dich im Posteingang und per Push erreichen.",
+    "Welche Benachrichtigungen dich im Posteingang, per Push und per E-Mail erreichen.",
+  ],
+  [
+    "integrations",
+    "API & Webhooks",
+    PlugsConnected,
+    "Persönliche API-Tokens für Skripte und Automationen, Webhooks des Arbeitsbereichs.",
   ],
 ] as const;
 export default function Settings({
@@ -154,6 +162,14 @@ export default function Settings({
           <p className="settings-intro">
             {settingsTabs.find(([id]) => id === tab)?.[3]}
           </p>
+          {tab === "integrations" && (
+            <IntegrationSettings
+              workspaceId={boot.workspace.id}
+              owner={owner}
+              pages={boot.pages.filter((p) => !p.deleted_at)}
+              onError={onError}
+            />
+          )}
           {tab === "notifications" && (
             <>
               {boot.notificationPrefs && (

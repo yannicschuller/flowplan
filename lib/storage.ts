@@ -58,6 +58,17 @@ function aws(config: StorageConfig) {
     };
   return client.aws;
 }
+// Other objects of this instance in the bucket (scheduled backups): the
+// path is relative to the prefix; a query string lists objects.
+export function bucketFetch(path: string, init: RequestInit) {
+  const config = storageConfig();
+  if (!config) throw new Error("Kein S3-Speicher eingerichtet.");
+  const base = `${config.endpoint}/${encodeURIComponent(config.bucket)}`;
+  const url = path.startsWith("?")
+    ? `${base}${path}`
+    : `${base}/${[config.prefix, path].filter(Boolean).join("/")}`;
+  return aws(config).fetch(url, init);
+}
 // Where the files of this instance go; a change means a full upload.
 const target = (config: StorageConfig) =>
   `${config.endpoint}/${config.bucket}/${config.prefix}`;

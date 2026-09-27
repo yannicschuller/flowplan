@@ -54,6 +54,21 @@ type AdminData = {
     effectiveQuotaMb: number;
   }[];
   settings: InstanceSettings;
+  mail: {
+    configured: boolean;
+    host: string | null;
+    from: string | null;
+    pending: number;
+    failed: number;
+    sentWeek: number;
+    lastError: string | null;
+  };
+  backup: {
+    enabled: boolean;
+    keep: number;
+    target: "s3" | "local";
+    last: { at: number; target: string; name: string; bytes: number; error: string | null } | null;
+  };
   restorePending: {
     createdAt: string;
     users: number;
@@ -248,7 +263,13 @@ export default function Admin({
                       <Avatar name={u.name} userId={u.id} />
                       <span>
                         {u.name}
-                        <small>{u.email}</small>
+                        <small>
+                          {u.email}
+                          {" · "}
+                          {u.last_login_at
+                            ? `zuletzt angemeldet ${new Date(u.last_login_at).toLocaleDateString("de-DE")}`
+                            : "noch nie angemeldet"}
+                        </small>
                       </span>
                       {!!u.disabled && (
                         <span className="status-chip muted-chip">
@@ -368,6 +389,12 @@ export default function Admin({
                   act({ action: "admin.settings", settings })
                 }
               />
+              <MailAndBackup
+                mail={data.mail}
+                backup={data.backup}
+                onChange={load}
+                onError={onError}
+              />
               <InstanceBackup
                 pending={data.restorePending}
                 onChange={load}
@@ -435,6 +462,9 @@ export default function Admin({
             <section className="settings-section">
               <div className="settings-list-head">
                 <h2>Aktivitätsprotokoll</h2>
+                <a className="button compact" href="/api/admin/audit.csv" download>
+                  Als CSV exportieren
+                </a>
                 <input
                   type="search"
                   aria-label="Protokoll durchsuchen"
@@ -599,9 +629,143 @@ function InstanceSettingsForm({
           </small>
         </span>
       </label>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={draft.backupSchedule !== false}
+          onChange={(e) => setDraft({ ...draft, backupSchedule: e.target.checked })}
+        />
+        <span>
+          Tägliche Datenbanksicherung
+          <small className="muted">
+            Eine Kopie der Datenbank pro Tag – mit S3 in den Bucket
+            (Ordner <code>backups/</code>), sonst in den Datenordner.
+          </small>
+        </span>
+      </label>
+      <label>
+        Aufbewahrte Sicherungen
+        <input
+          type="number"
+          min={1}
+          max={365}
+          value={draft.backupKeep ?? 7}
+          onChange={(e) => setDraft({ ...draft, backupKeep: Math.max(1, Number(e.target.value) || 1) })}
+        />
+      </label>
+      <label>
+        Konten ohne Anmeldung sperren nach (Tagen)
+        <input
+          type="number"
+          min={30}
+          max={3650}
+          placeholder="nie"
+          value={draft.inactiveDays ?? ""}
+          onChange={(e) =>
+            setDraft({ ...draft, inactiveDays: e.target.value ? Number(e.target.value) : null })
+          }
+        />
+      </label>
       <button className="button primary">Einstellungen speichern</button>
       {saved && <p role="status">Gespeichert.</p>}
     </form>
+  );
+}
+
+// E-mail and scheduled backups: configuration state and a manual run.
+function MailAndBackup({
+  mail,
+  backup,
+  onChange,
+  onError,
+}: {
+  mail: AdminData["mail"];
+  backup: AdminData["backup"];
+  onChange: () => void;
+  onError: (message: string) => void;
+}) {
+  const [to, setTo] = useState(""),
+    [busy, setBusy] = useState(""),
+    [note, setNote] = useState("");
+  const post = async (path: string, body: unknown, done: string) => {
+    setBusy(path);
+    setNote("");
+    try {
+      await api(path, body);
+      setNote(done);
+      onChange();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <>
+      <section className="settings-section">
+        <h2>E-Mail-Versand</h2>
+        {mail.configured ? (
+          <p>
+            SMTP: <code>{mail.host}</code> als <code>{mail.from}</code> ·{" "}
+            {mail.pending} in der Warteschlange · {mail.sentWeek} gesendet (7 Tage)
+            {mail.failed > 0 && ` · ${mail.failed} aufgegeben`}
+          </p>
+        ) : (
+          <p className="muted">
+            Nicht eingerichtet. Mit <code>SMTP_HOST</code>, <code>SMTP_PORT</code>,{" "}
+            <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code> und <code>SMTP_FROM</code>{" "}
+            verschickt Flowplan Einladungen und Zusammenfassungen ungelesener
+            Benachrichtigungen.
+          </p>
+        )}
+        {mail.lastError && <p className="error">Letzter Fehler: {mail.lastError}</p>}
+        {mail.configured && (
+          <form
+            className="integration-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void post("/api/admin/mail-test", { to }, `Test-E-Mail an ${to} gesendet.`);
+            }}
+          >
+            <input
+              type="email"
+              required
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="E-Mail-Adresse"
+              aria-label="Empfänger der Test-E-Mail"
+            />
+            <button className="button" disabled={!!busy}>
+              Test-E-Mail senden
+            </button>
+          </form>
+        )}
+      </section>
+      <section className="settings-section">
+        <h2>Geplante Sicherung</h2>
+        <p>
+          {backup.enabled ? "Täglich" : "Ausgeschaltet"} ·{" "}
+          {backup.target === "s3" ? "in den S3-Bucket" : "in den Datenordner"} · die neuesten{" "}
+          {backup.keep} bleiben erhalten.
+        </p>
+        {backup.last && (
+          <p className={backup.last.error ? "error" : "muted"}>
+            Letzte Sicherung {new Date(backup.last.at).toLocaleString("de-DE")}:{" "}
+            {backup.last.error
+              ? backup.last.error
+              : `${backup.last.name} (${(backup.last.bytes / 1048576).toFixed(1)} MB)`}
+          </p>
+        )}
+        <button
+          className="button"
+          disabled={!!busy}
+          onClick={() => void post("/api/admin/backup-run", {}, "Sicherung erstellt.")}
+        >
+          {busy === "/api/admin/backup-run" ? "Sichert …" : "Jetzt sichern"}
+        </button>
+      </section>
+      {note && <p role="status">{note}</p>}
+    </>
   );
 }
 

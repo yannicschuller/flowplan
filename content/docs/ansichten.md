@@ -32,6 +32,10 @@ Monats-, Wochen- und Tagesansicht nach einem Datumsfeld.
 - Jede Ansicht hat eine eigene Zeitzone; ohne Einstellung gilt die des Browsers.
 - Tastatur: <kbd>Alt</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> verschiebt um 15 Minuten, <kbd>Alt</kbd> + <kbd>←</kbd>/<kbd>→</kbd> um einen Tag.
 
+### Kalender abonnieren
+
+**Abonnieren** in der Kalenderansicht erzeugt deinen persönlichen Link für Apple Kalender, Google Kalender oder Outlook. Er zeigt die Einträge dieser Ansicht mit ihren Filtern – nur, was du sehen darfst – und Wiederholungen als Serien. Der Link ist geheim und nur einmal sichtbar; **Neuen Link erzeugen** macht den alten ungültig, **Abo beenden** schaltet ihn ab. Verlierst du den Zugriff auf die Datenbank, liefert der Link nichts mehr.
+
 ## Timeline
 
 Balken von einem Beginn- bis zu einem End-Datumsfeld, im Maßstab Woche, Monat, Quartal oder Jahr.

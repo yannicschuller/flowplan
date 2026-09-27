@@ -1,7 +1,8 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { randomBytes, createHash } from "node:crypto";
 import { all, one, run, id } from "./db";
 import type { Identity, User } from "./types";
+import { identityFromApiToken } from "./api-tokens";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -52,6 +53,9 @@ export function identityFromToken(token: string): Identity | null {
   };
 }
 export async function currentUser() {
+  // Scripts and integrations sign in with a personal API token.
+  const authorization = (await headers()).get("authorization");
+  if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
   const jar = await cookies();
   const token = jar.get(cookieName)?.value;
   return token ? identityFromToken(token) : null;
@@ -68,6 +72,7 @@ export async function issueSession(
   demo?: { expires: number; until: number },
 ) {
   const token = randomBytes(32).toString("base64url");
+  if (!demo) run("UPDATE users SET last_login_at=? WHERE id=?", Date.now(), userId);
   const hours = Math.min(
     24,
     Math.max(1, Number(process.env.SESSION_HOURS) || 8),
@@ -139,6 +144,9 @@ export class HttpError extends Error {
   }
 }
 export function checkOrigin(req: Request) {
+  // Browsers never add a bearer token on their own, so such requests cannot
+  // be forged by another site (the cookie is ignored for them).
+  if (req.headers.get("authorization")?.startsWith("Bearer fp_")) return;
   const origin = req.headers.get("origin");
   if (origin !== new URL(appUrl()).origin)
     throw new HttpError(403, "Ungültiger Anfrageursprung.");

@@ -112,3 +112,28 @@ test("photos are made smaller before they are uploaded", async ({ page }) => {
   const width = await image.evaluate((el: HTMLImageElement) => el.naturalWidth);
   expect(width).toBe(2560);
 });
+
+test("the page filter in the sidebar finds nested pages and keeps their parents", async ({ page }, info) => {
+  const stamp = Date.now();
+  const { origin, host } = await setup(page, "document", `Elternseite ${stamp}`);
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const child = await page.request.post("/api/command", {
+    headers: { origin },
+    data: { action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, parentId: host.id, kind: "document", title: `Gesuchtes Kind ${stamp}` },
+  });
+  expect(child.ok()).toBe(true);
+  await page.goto("/#home");
+  if (info.project.name === "mobile") await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  const sidebar = page.locator(".sidebar");
+  await sidebar.getByRole("searchbox", { name: "Seiten filtern" }).fill(`kind ${stamp}`);
+  await expect(sidebar.locator(".page-nav")).toHaveCount(2);
+  await expect(sidebar.locator(".page-nav", { hasText: `Elternseite ${stamp}` })).toBeVisible();
+  await expect(sidebar.locator(".page-nav", { hasText: `Gesuchtes Kind ${stamp}` })).toBeVisible();
+  await sidebar.getByRole("searchbox", { name: "Seiten filtern" }).fill(`nichts ${stamp}`);
+  await expect(sidebar.getByText("Keine Seite heißt so.")).toBeVisible();
+  await sidebar.getByRole("searchbox", { name: "Seiten filtern" }).press("Escape");
+  await expect(sidebar.locator(".page-nav").first()).toBeVisible();
+  // The less used places are still reachable by name.
+  for (const name of ["Vorlagen", "Medien", "Papierkorb", "Einstellungen"])
+    await expect(sidebar.getByRole("button", { name, exact: true })).toBeVisible();
+});
