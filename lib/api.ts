@@ -7,6 +7,7 @@ import { journalDate, rollJournal, rollJournals } from "./journal";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { changeDocTask, dueTaskCount, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
+import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import {
   dayEntry,
   journalDayDetails,
@@ -1034,6 +1035,11 @@ export function command(
             sid,
           );
         result = { id: sid };
+        break;
+      }
+      case "mention.link": {
+        afterCommit.push(linkMention(user, pid(), uuid.parse(b.targetId)));
+        recordPageEdit(user, pid());
         break;
       }
       case "page.follow": {

@@ -67,3 +67,17 @@ Der Stern in der Kopfzeile legt eine Seite unter **Favoriten** in der Seitenleis
 ## Papierkorb
 
 Gelöschte Seiten und Bereiche landen im **Papierkorb** unten in der Seitenleiste. Dort lassen sie sich wiederherstellen oder endgültig löschen. Veröffentlichungen, Freigabelinks und Formulare werden beim Löschen deaktiviert und bei der Wiederherstellung nicht automatisch wieder eingeschaltet.
+
+## Graph der Verlinkungen
+
+Das Netz-Symbol unten in der Seitenleiste (oder `> graph` in der Schnellsuche) zeigt alle Seiten als Punkte und ihre Links als Linien. Große Punkte haben viele Verbindungen; Farben unterscheiden Dokumente, Datenbanken, Whiteboards und Journale.
+
+- Ziehen verschiebt, Mausrad oder zwei Finger zoomen, ein Klick öffnet die Seite.
+- Überfahren hebt eine Seite und ihre Nachbarn hervor; **Hervorheben** markiert Seiten nach Titel.
+- **Unterseiten verbinden** zeigt zusätzlich die Seitenhierarchie (gestrichelt), **Seiten ohne Verbindung** blendet einzelne Seiten ein oder aus.
+- Als Verbindung zählen Links auf Seiten, eingebettete Whiteboards, verknüpfte Datenbanken und synchronisierte Blöcke. Der Graph zeigt nur, was du sehen darfst.
+
+## Nicht verlinkte Erwähnungen
+
+Unter **Verlinkt von** am Seitenende listet **Nicht verlinkte Erwähnungen** Dokumente, in denen der Titel dieser Seite vorkommt, ohne dass er verlinkt ist (Titel ab vier Zeichen). **Verlinken** macht die erste Erwähnung dort zu einem Link auf diese Seite.
+

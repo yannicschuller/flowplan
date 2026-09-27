@@ -58,6 +58,7 @@ import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks } from "@/lib/doc-tasks";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
+import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
 import { journalDate } from "@/lib/journal";
 import {
   calendarEvents,
@@ -188,6 +189,17 @@ export async function GET(
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
       );
+    // Links between pages as a graph; texts naming a page without a link.
+    if (path.length === 1 && path[0] === "graph") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      requireMember(user, wid);
+      return NextResponse.json(pageGraph(user, wid), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path.length === 3 && path[0] === "pages" && path[2] === "unlinked") {
+      const page = requirePage(user, z.uuid().parse(path[1]));
+      requireUnlocked(user, page);
+      return NextResponse.json({ mentions: unlinkedMentions(user, page) }, { headers: { "Cache-Control": "no-store" } });
+    }
     // Synced blocks that can be inserted into another page.
     if (path.length === 1 && path[0] === "synced") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));

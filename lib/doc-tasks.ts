@@ -4,23 +4,17 @@
 // one off there changes the document itself (live for open editors).
 import * as Y from "yjs";
 import { Node as PMNode } from "@tiptap/pm/model";
-import {
-  updateYFragment,
-  yDocToProsemirrorJSON,
-} from "y-prosemirror";
+import { yDocToProsemirrorJSON } from "y-prosemirror";
 import { z } from "zod";
 import { all, id, one, run } from "./db";
-import { documentSchema } from "./document-schema";
-import { htmlState, stateHtml } from "./document-server";
-import { documentKey, documentChanged, publishDocumentUpdate } from "./document-live";
+import { htmlState } from "./document-server";
+import { rewriteDocument } from "./document-rewrite";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { requireRow } from "./row-documents";
 import { journalLocked } from "./journal-extras";
 import type { Identity, Page } from "./types";
 
-let cachedSchema: ReturnType<typeof documentSchema> | undefined;
-const schema = () => (cachedSchema ??= documentSchema());
 
 type JsonNode = {
   type: string;
@@ -190,68 +184,36 @@ export function changeDocTask(user: Identity, input: unknown) {
   const rowId = change.rowId || null;
   if (rowId) requireRow(user, page.id, rowId, true);
   else if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
-  const stored = rowId
-    ? one<{ state: Uint8Array | null; html: string; generation: string }>(
-        "SELECT state,html,generation FROM row_documents WHERE row_id=?",
-        rowId,
-      )
-    : one<{ state: Uint8Array | null; html: string; generation: string }>(
-        "SELECT state,html,generation FROM documents WHERE page_id=?",
-        page.id,
-      );
-  if (!stored) throw new HttpError(404, "Dokument nicht gefunden.");
-  const ydoc = new Y.Doc();
-  Y.applyUpdate(ydoc, stored.state || htmlState(stored.html));
-  const before = Y.encodeStateVector(ydoc);
-  const doc = PMNode.fromJSON(schema(), yDocToProsemirrorJSON(ydoc, "default"));
-  let index = -1;
   let found = false;
-  const edit = (node: PMNode): PMNode => {
-    if (node.isText || node.isLeaf) return node;
-    let attrs = node.attrs;
-    if (node.type.name === "taskItem") {
-      index++;
-      if (index === change.index) {
-        const json = node.toJSON() as JsonNode;
-        if (lineOf(json).text !== change.text)
-          throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
-        found = true;
-        attrs = {
-          ...node.attrs,
-          ...(change.checked !== undefined ? { checked: change.checked } : {}),
-          ...(change.due !== undefined ? { due: change.due } : {}),
-        };
+  const result = rewriteDocument(page.id, rowId, user.id, (doc) => {
+    let index = -1;
+    const edit = (node: PMNode): PMNode => {
+      if (node.isText || node.isLeaf) return node;
+      let attrs = node.attrs;
+      if (node.type.name === "taskItem") {
+        index++;
+        if (index === change.index) {
+          const json = node.toJSON() as JsonNode;
+          if (lineOf(json).text !== change.text)
+            throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
+          found = true;
+          attrs = {
+            ...node.attrs,
+            ...(change.checked !== undefined ? { checked: change.checked } : {}),
+            ...(change.due !== undefined ? { due: change.due } : {}),
+          };
+        }
       }
-    }
-    const children: PMNode[] = [];
-    node.forEach((child) => children.push(edit(child)));
-    return node.type.create(attrs, children, node.marks);
-  };
-  const next = edit(doc);
-  if (!found) throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
-  ydoc.transact(() =>
-    updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, {
-      mapping: new Map(),
-      isOMark: new Map(),
-    }),
-  );
-  const state = Y.encodeStateAsUpdate(ydoc);
-  const html = stateHtml(ydoc);
-  if (rowId) {
-    run("UPDATE row_documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE row_id=?", state, html, rowId);
-    run("UPDATE rows SET content=?,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?", html, user.id, rowId);
-  } else {
-    run("UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?", state, html, page.id);
-    run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", page.id);
-  }
-  syncDocTasks(user, page, rowId, ydoc);
-  const update = Buffer.from(Y.encodeStateAsUpdate(ydoc, before)).toString("base64");
-  const key = documentKey(page.id, rowId, stored.generation);
-  ydoc.destroy();
-  return () => {
-    publishDocumentUpdate(key, update);
-    documentChanged(page.id, rowId);
-  };
+      const children: PMNode[] = [];
+      node.forEach((child) => children.push(edit(child)));
+      return node.type.create(attrs, children, node.marks);
+    };
+    const next = edit(doc);
+    if (!found) throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
+    return next;
+  })!;
+  syncDocTasks(user, page, rowId, result.ydoc);
+  return result.publish;
 }
 
 // Morning reminders: open tasks due today, once per task and person.

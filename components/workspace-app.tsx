@@ -93,6 +93,7 @@ import {
   TextAa,
   Printer,
   ClockCounterClockwise,
+  Graph,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -122,6 +123,8 @@ import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import { MyTasks } from "./my-tasks";
 import { FocusBar } from "./focus-bar";
+import { PageGraph } from "./page-graph";
+import { UnlinkedMentions } from "./unlinked-mentions";
 import {
   FollowButton,
   ReadersButton,
@@ -205,6 +208,7 @@ type Screen =
   | "trash"
   | "inbox"
   | "tasks"
+  | "graph"
   | "media"
   | "settings"
   | "admin";
@@ -570,7 +574,7 @@ export default function WorkspaceApp({
         if (currentId.current !== target.pageId || screenRef.current !== "page")
           void openPage(target.pageId, target);
       } else if (
-        ["home", "inbox", "tasks", "trash", "media", "settings", "admin"].includes(
+        ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin"].includes(
           fragment,
         )
       ) {
@@ -1082,6 +1086,7 @@ export default function WorkspaceApp({
     { label: "Posteingang öffnen", keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
     { label: "Meine Aufgaben", keywords: "tasks todo fällig", icon: CheckSquare, run: () => go("tasks") },
     { label: "Medien", keywords: "bilder dateien", icon: ImageSquare, run: () => go("media") },
+    { label: "Graph der Verlinkungen", keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
     { label: "Papierkorb", keywords: "trash gelöscht wiederherstellen", icon: Trash, run: () => go("trash") },
     { label: "Einstellungen", keywords: "settings konto mitglieder", icon: GearSix, run: () => go("settings") },
     ...(boot.user.isAdmin
@@ -1418,6 +1423,14 @@ export default function WorkspaceApp({
               <Images size={18} />
             </button>
             <button
+              aria-label="Graph"
+              title="Graph der Verlinkungen"
+              className={screen === "graph" ? "selected" : ""}
+              onClick={() => go("graph")}
+            >
+              <Graph size={18} />
+            </button>
+            <button
               aria-label="Papierkorb"
               title="Papierkorb"
               className={screen === "trash" ? "selected" : ""}
@@ -1543,6 +1556,7 @@ export default function WorkspaceApp({
                     trash: "Papierkorb",
                     inbox: "Posteingang",
                     tasks: "Meine Aufgaben",
+                    graph: "Graph",
                     media: "Medien",
                     settings: "Einstellungen",
                     admin: "Administration",
@@ -2121,6 +2135,16 @@ export default function WorkspaceApp({
                     </>
                   )}
                   <div className="backlinks">
+                    {!data.locked && (
+                      <UnlinkedMentions
+                        key={data.page.id}
+                        pageId={data.page.id}
+                        editable={editable}
+                        onOpen={(id) => void openPage(id)}
+                        onLinked={() => void refresh()}
+                        onError={notify}
+                      />
+                    )}
                     {data.backlinks?.length > 0 && (
                       <>
                         <h3>Verlinkt von</h3>
@@ -2281,6 +2305,14 @@ export default function WorkspaceApp({
             <MediaLibrary
               workspaceId={boot.workspace.id}
               onOpen={(id) => void openPage(id)}
+            />
+          )}
+          {screen === "graph" && (
+            <PageGraph
+              workspaceId={boot.workspace.id}
+              currentId={pageId}
+              onOpen={(id) => void openPage(id)}
+              onError={notify}
             />
           )}
           {screen === "tasks" && (
