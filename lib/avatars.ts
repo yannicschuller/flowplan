@@ -4,6 +4,7 @@
 // backup. Only raster images are accepted (no SVG: it could carry scripts).
 import { createHash } from "node:crypto";
 import { one, run } from "./db";
+import { safeFetch } from "./safe-fetch";
 import type { Identity } from "./types";
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -39,22 +40,16 @@ export async function syncAvatar(userId: string, picture: unknown) {
       removeAvatar(userId);
       return;
     }
-    const url = new URL(picture);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return;
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { Accept: "image/png,image/jpeg,image/webp,image/gif" },
+    // Same protection as link previews: public HTTPS only, no internal
+    // addresses on any redirect hop (the claim may be user-editable).
+    const response = await safeFetch(picture, {
+      maxBytes: MAX_BYTES,
+      timeout: TIMEOUT_MS,
+      accept: "image/png,image/jpeg,image/webp,image/gif",
+      allowPrivate: process.env.OIDC_ALLOW_LOCAL_HTTP === "true",
     });
-    if (!response.ok || !response.body) return;
-    if (Number(response.headers.get("content-length") || 0) > MAX_BYTES) return;
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-      size += chunk.length;
-      if (size > MAX_BYTES) return;
-      chunks.push(chunk);
-    }
-    const data = Buffer.concat(chunks);
+    if (response.status < 200 || response.status >= 300) return;
+    const data = response.data;
     const mime = sniffImage(data);
     if (!mime) return;
     const version = createHash("sha256").update(data).digest("hex").slice(0, 16);

@@ -22,6 +22,7 @@ import { one, run } from "@/lib/db";
 import { ensureWorkspace } from "@/lib/seed";
 export const runtime = "nodejs";
 import { oidcConfig as config } from "@/lib/oidc";
+import { clientAddress } from "@/lib/client-address";
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ action: string }> },
@@ -161,10 +162,7 @@ export async function POST(
     }
     // "Demo ausprobieren" on the start page.
     if (action === "trial") {
-      const address =
-        req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-        req.headers.get("x-real-ip") ||
-        "local";
+      const address = clientAddress(req.headers);
       const uid = startDemo(address);
       const until = Date.now() + DEMO_MAX_MS;
       await issueSession(uid, [], {

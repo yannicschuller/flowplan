@@ -11,6 +11,7 @@ import {
 } from "@/lib/form-settings";
 import { one, run, id, transaction, onTransactionRollback } from "@/lib/db";
 import { enforceQuota } from "@/lib/instance-ops";
+import { clientAddress } from "@/lib/client-address";
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ token: string }> },
@@ -71,7 +72,7 @@ export async function POST(
         ),
       );
     const fingerprint = hash(
-      `${token}|${user?.id || req.headers.get("x-forwarded-for") || "anonymous"}`,
+      `${token}|${user?.id || clientAddress(req.headers)}`,
     );
     transaction(() => {
       const count =

@@ -1,11 +1,13 @@
 import { lookup as dnsLookup } from "node:dns";
-import { request } from "node:https";
+import { request as httpsRequest } from "node:https";
+import { request as httpRequest } from "node:http";
 import { isIP } from "node:net";
 import { HttpError } from "./auth";
 
-// Fetches public HTTPS resources for link previews without reaching
-// internal services: every hop is resolved, private and special addresses
-// are refused, and the connection uses exactly the checked address.
+// Fetches public HTTPS resources (link previews, embeds, profile pictures)
+// without reaching internal services: every hop is resolved, private and
+// special addresses are refused, and the connection uses exactly the
+// checked address. `allowPrivate` exists only for local test setups.
 const MAX_REDIRECTS = 3;
 function ipv4Private(ip: string) {
   const [a, b] = ip.split(".").map(Number);
@@ -37,9 +39,16 @@ export function privateAddress(ip: string) {
     lower.startsWith("2001:db8")
   );
 }
-type Fetched = { url: string; status: number; type: string; body: string };
-function once(url: URL, maxBytes: number, timeout: number) {
+type Fetched = { url: string; status: number; type: string; body: string; data: Buffer };
+type Options = {
+  maxBytes?: number;
+  timeout?: number;
+  accept?: string;
+  allowPrivate?: boolean;
+};
+function once(url: URL, maxBytes: number, timeout: number, accept: string, allowPrivate: boolean) {
   return new Promise<Fetched & { location?: string }>((resolve, reject) => {
+    const request = url.protocol === "http:" ? httpRequest : httpsRequest;
     const req = request(
       url,
       {
@@ -47,14 +56,17 @@ function once(url: URL, maxBytes: number, timeout: number) {
         timeout,
         headers: {
           "user-agent": "Flowplan-LinkPreview/1.0",
-          accept: "application/json, text/html;q=0.9",
+          accept,
         },
         // Resolve, check and pin the address that is used.
         lookup: (host, options, callback) =>
           dnsLookup(host, { all: true }, (error, addresses) => {
             if (error) return callback(error, "", 4);
             const list = addresses as { address: string; family: number }[];
-            if (!list.length || list.some((a) => privateAddress(a.address)))
+            if (
+              !list.length ||
+              (!allowPrivate && list.some((a) => privateAddress(a.address)))
+            )
               return callback(
                 new Error("Interne Adressen sind nicht erlaubt."),
                 "",
@@ -79,6 +91,7 @@ function once(url: URL, maxBytes: number, timeout: number) {
             status,
             type: "",
             body: "",
+            data: Buffer.alloc(0),
             location: res.headers.location,
           });
         }
@@ -92,14 +105,16 @@ function once(url: URL, maxBytes: number, timeout: number) {
           }
           chunks.push(chunk);
         });
-        res.on("end", () =>
+        res.on("end", () => {
+          const data = Buffer.concat(chunks);
           resolve({
             url: url.href,
             status,
             type: String(res.headers["content-type"] || ""),
-            body: Buffer.concat(chunks).toString("utf8"),
-          }),
-        );
+            body: data.toString("utf8"),
+            data,
+          });
+        });
         res.on("error", reject);
       },
     );
@@ -110,7 +125,12 @@ function once(url: URL, maxBytes: number, timeout: number) {
 }
 export async function safeFetch(
   raw: string,
-  { maxBytes = 1_000_000, timeout = 5000 } = {},
+  {
+    maxBytes = 1_000_000,
+    timeout = 5000,
+    accept = "application/json, text/html;q=0.9",
+    allowPrivate = false,
+  }: Options = {},
 ): Promise<Fetched> {
   let url: URL;
   try {
@@ -119,16 +139,21 @@ export async function safeFetch(
     throw new HttpError(400, "Ungültige Adresse.");
   }
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    if (url.protocol !== "https:" || url.username || url.password)
+    if (
+      !(url.protocol === "https:" || (allowPrivate && url.protocol === "http:")) ||
+      url.username ||
+      url.password
+    )
       throw new HttpError(400, "Nur öffentliche HTTPS-Adressen sind erlaubt.");
     if (
+      !allowPrivate &&
       isIP(url.hostname.replace(/^\[|\]$/g, "")) &&
       privateAddress(url.hostname.replace(/^\[|\]$/g, ""))
     )
       throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
     let result;
     try {
-      result = await once(url, maxBytes, timeout);
+      result = await once(url, maxBytes, timeout, accept, allowPrivate);
     } catch (error) {
       throw new HttpError(
         502,

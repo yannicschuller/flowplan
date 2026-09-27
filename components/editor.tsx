@@ -496,7 +496,12 @@ export default function DocumentEditor({
       } catch {
         return;
       }
-      if (message.type === "ready") {
+      if (message.type === "revoked") {
+        // Access ended: no reconnect; the next check reports it.
+        live.current = false;
+        source.close();
+        lastPoll.current = 0;
+      } else if (message.type === "ready") {
         live.current = true;
         // Anything missed while the channel was down comes with a full check.
         lastPoll.current = 0;

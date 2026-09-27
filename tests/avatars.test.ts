@@ -7,6 +7,9 @@ import { join } from "node:path";
 import type { Identity } from "../lib/types";
 
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-avatars-"));
+// The picture server of this test runs on 127.0.0.1 (see the last test for
+// the protection that normally refuses it).
+process.env.OIDC_ALLOW_LOCAL_HTTP = "true";
 const { run, id, one } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { syncAvatar, avatarFor, sniffImage } = await import("../lib/avatars");
@@ -64,4 +67,27 @@ test("the picture claim is stored once, shared with co-members only, and removed
   await syncAvatar(ana.id, undefined);
   assert.equal(version(), null);
   assert.equal(avatarFor(ben, ana.id), null);
+});
+
+test("pictures from internal addresses are refused without the local test switch", async () => {
+  const before = version();
+  let requests = 0;
+  const probe = createServer((_req, res) => {
+    requests++;
+    res.writeHead(200, { "Content-Type": "image/png" }).end(png);
+  });
+  await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
+  const port = (probe.address() as { port: number }).port;
+  delete process.env.OIDC_ALLOW_LOCAL_HTTP;
+  try {
+    await syncAvatar(ana.id, `http://127.0.0.1:${port}/me.png`);
+    await syncAvatar(ana.id, `https://127.0.0.1:${port}/me.png`);
+    await syncAvatar(ana.id, `https://localhost:${port}/me.png`);
+    await syncAvatar(ana.id, "https://169.254.169.254/latest/meta-data/");
+  } finally {
+    process.env.OIDC_ALLOW_LOCAL_HTTP = "true";
+    probe.close();
+  }
+  assert.equal(requests, 0, "no request reached the internal server");
+  assert.equal(version(), before);
 });

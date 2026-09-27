@@ -227,6 +227,13 @@ export async function GET(
     }
     // Link previews and players for pasted URLs (server-side, SSRF-safe).
     if (path[0] === "embed") {
+      // Link cards make the server load foreign pages; anonymous demo
+      // guests must not use it as a fetch service (players work without).
+      if (user.demo)
+        throw new HttpError(
+          403,
+          "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.",
+        );
       const raw = z
         .string()
         .min(8)
@@ -290,17 +297,30 @@ export async function GET(
         : null;
       const generation = z.string().min(1).max(100).parse(url.searchParams.get("generation"));
       const clientId = z.uuid().parse(url.searchParams.get("client"));
-      if (rowId) requireRow(user, pageId, rowId);
-      else if (requirePage(user, pageId).kind !== "document")
-        throw new HttpError(400, "Kein Dokument.");
+      const check = () => {
+        if (rowId) requireRow(user, pageId, rowId);
+        else if (requirePage(user, pageId).kind !== "document")
+          throw new HttpError(400, "Kein Dokument.");
+      };
+      check();
+      const allowed = streamGuard(
+        hash((await cookies()).get(cookieName)?.value || ""),
+        check,
+      );
       const encoder = new TextEncoder();
       let stop = () => {};
       const stream = new ReadableStream<Uint8Array>({
         start(controller) {
           const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
           const unwatch = watchDocument(documentKey(pageId, rowId, generation), clientId, send);
+          // Every keepalive checks session and read access again: whoever
+          // loses access stops receiving changes within 15 seconds.
           const ping = setInterval(() => {
             try {
+              if (!allowed()) {
+                send(`data: ${JSON.stringify({ type: "revoked" })}\n\n`);
+                return stop();
+              }
               send(": ping\n\n");
             } catch {
               stop();
@@ -330,6 +350,10 @@ export async function GET(
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
       const page = requirePage(user, z.uuid().parse(path[1]));
       if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
+      const boardAllowed = streamGuard(
+        hash((await cookies()).get(cookieName)?.value || ""),
+        () => requirePage(user, page.id),
+      );
       if (!(req.headers.get("accept") || "").includes("text/event-stream"))
         return NextResponse.json(boardCursors(page.id, user.id), {
           headers: { "Cache-Control": "no-store" },
@@ -343,6 +367,7 @@ export async function GET(
           const unwatch = watchBoard(page.id, user.id, send);
           const ping = setInterval(() => {
             try {
+              if (!boardAllowed()) return stop();
               send(": ping\n\n");
             } catch {
               stop();
@@ -627,3 +652,22 @@ export async function POST(
 }
 
 export const HEAD = GET;
+
+// Long-lived streams: whether the session is still valid, the account
+// active and the resource still readable. Used on every keepalive.
+function streamGuard(sessionToken: string, check: () => unknown) {
+  return () => {
+    const session = one<{ ok: number }>(
+      "SELECT 1 ok FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
+      sessionToken,
+      Date.now(),
+    );
+    if (!session) return false;
+    try {
+      check();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
