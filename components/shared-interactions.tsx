@@ -187,6 +187,7 @@ export function SharedInteractions({
                   key={live.docKey}
                   html=""
                   ydoc={live.doc}
+                  presence={{ token, pageId: data.pageId, rowId: data.rowId, clientId: live.clientId }}
                   onChange={setHtml}
                   disabled={busy}
                   upload={upload}

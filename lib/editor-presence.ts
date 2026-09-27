@@ -8,6 +8,7 @@ import {
 } from "./cursor-protocol";
 import type { Identity } from "./types";
 import { documentKey } from "./document-live";
+import { presencePrefix, setTextPresence, textPeers } from "./text-presence";
 
 // Tombstones outlive a lease so a delayed request cannot resurrect a departed tab.
 const RETENTION_MS = 300_000;
@@ -109,15 +110,28 @@ export function editorPresence(
     data.clientId,
   );
   const cursor = data.cursor ? JSON.stringify(data.cursor) : null;
+  // Guests on share links see members by text address, members see guests.
+  const prefix = presencePrefix(page.id, data.rowId);
+  const textChanged =
+    data.sequence > (previous?.sequence ?? -1) &&
+    setTextPresence(
+      prefix,
+      data.cursor && data.text
+        ? { id: data.clientId, userId: user.id, name: user.name.slice(0, 100), text: data.text, source: "member" }
+        : { id: data.clientId, text: null },
+    );
+  const guests = textPeers(prefix, data.clientId, "guest");
   return {
     // Whether the others should hear about it: a new, moved or removed
     // cursor (a heartbeat with the same position is no news).
     changed:
-      data.sequence > (previous?.sequence ?? -1) &&
-      (previous?.cursor ?? null) !== cursor,
+      textChanged ||
+      (data.sequence > (previous?.sequence ?? -1) && (previous?.cursor ?? null) !== cursor),
     key: documentKey(page.id, data.rowId, data.generation),
     clientId: data.clientId,
-    peers: peers
+    peers: [
+      ...guests,
+      ...peers
       .filter((p) => pageRole({ ...user, id: p.user_id }, page))
       .map((p): CursorPeer => ({
         id: p.id,
@@ -126,5 +140,6 @@ export function editorPresence(
         cursor: JSON.parse(p.cursor),
         expiresInMs: Math.max(0, p.seen + CURSOR_LEASE_MS - now),
       })),
+    ],
   };
 }

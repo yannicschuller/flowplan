@@ -21,6 +21,11 @@ export const cursorSchema = z
     head: relativePositionSchema,
   })
   .strict();
+// Block/offset address shared by member documents and guest projections.
+const textPoint = z
+  .object({ b: z.number().int().min(0).max(1_000_000), o: z.number().int().min(0).max(10_000_000) })
+  .strict();
+export const textCursorSchema = z.object({ anchor: textPoint, head: textPoint }).strict();
 export const cursorRequestSchema = z
   .object({
     clientId: z.uuid(),
@@ -29,15 +34,21 @@ export const cursorRequestSchema = z
     generation: z.string().min(1).max(128),
     sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     cursor: cursorSchema.nullable(),
+    // The same position as text address, for guests on share links.
+    text: textCursorSchema.nullable().optional(),
   })
   .strict();
 export type Cursor = z.infer<typeof cursorSchema>;
 export type CursorRequest = z.infer<typeof cursorRequestSchema>;
+export type TextCursorValue = z.infer<typeof textCursorSchema>;
+// Members carry a Yjs cursor; guests (and members as seen by guests) a
+// text address.
 export type CursorPeer = {
   id: string;
   userId: string;
   name: string;
-  cursor: Cursor;
+  cursor?: Cursor;
+  text?: TextCursorValue;
   expiresInMs: number;
 };
 export const CURSOR_LEASE_MS = 15_000;

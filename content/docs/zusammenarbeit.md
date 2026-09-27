@@ -9,6 +9,7 @@ Mehrere Personen schreiben gleichzeitig in derselben Seite, ohne sich zu übersc
 - **Farbige Cursor und Auswahlen** mit Namen zeigen, wo andere gerade schreiben; Bewegungen kommen ebenfalls sofort an.
 - Ohne Verbindung arbeitest du weiter; die Änderungen werden abgeglichen, sobald das Netz zurück ist.
 - Datenbank-Änderungen werden auf Versionskonflikte geprüft: Hat jemand denselben Eintrag inzwischen geändert, wird deine Änderung nicht stillschweigend darübergeschrieben, sondern abgelehnt, und du siehst den neuen Stand.
+- Gäste mit Bearbeitungslink arbeiten ebenfalls live mit und sehen die Cursor der Mitglieder; Mitglieder sehen die Gäste als „Gast · <Linkname>“.
 - Auf Whiteboards gibt es zusätzlich [Live-Cursor](/docs/whiteboards#gemeinsam-arbeiten) wie in Miro.
 
 ## Seitenkommentare

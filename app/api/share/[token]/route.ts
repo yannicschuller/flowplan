@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { checkOrigin, HttpError } from "@/lib/auth";
 import { sharedContent, mutateSharedContent } from "@/lib/shared-content";
+import { sharePresence } from "@/lib/share-presence";
 import { dispatchPush } from "@/lib/push";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,7 +57,10 @@ export async function POST(
     const { token } = await params,
       text = await req.text();
     if (text.length > 2_100_000) throw new HttpError(413, "Anfrage zu groß.");
-    const data = mutateSharedContent(token, JSON.parse(text));
+    const body = JSON.parse(text);
+    // Cursor of a guest editor: frequent and small, outside the edit limits.
+    if (body?.action === "presence") return NextResponse.json(sharePresence(token, body), { headers });
+    const data = mutateSharedContent(token, body);
     after(dispatchPush);
     return NextResponse.json(data, { headers });
   } catch (e) {

@@ -12,7 +12,9 @@ const from64 = (text: string) =>
   Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
 // Live editing through a share link: the guest's Yjs document is exchanged
-// with the server's projection every 1.2 seconds (see lib/shared-live.ts).
+// with the server's projection (see lib/shared-live.ts) shortly after
+// typing and whenever the push channel reports a change; the interval is
+// the fallback when the channel is down.
 export function useSharedLive({
   token,
   pageId,
@@ -32,6 +34,11 @@ export function useSharedLive({
       "connecting",
     ),
     [error, setError] = useState("");
+  const clientId = useRef(crypto.randomUUID()).current;
+  const live = useRef(false),
+    lastRun = useRef(0),
+    soon = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
+    runRef = useRef<() => unknown>(() => {});
   const current = useRef<Y.Doc | null>(null),
     pgen = useRef(""),
     dirty = useRef(false),
@@ -44,6 +51,12 @@ export function useSharedLive({
       if (origin !== "remote") {
         dirty.current = true;
         setState("saving");
+        // Sent shortly after typing instead of on the next interval.
+        if (!soon.current)
+          soon.current = setTimeout(() => {
+            soon.current = undefined;
+            void runRef.current();
+          }, 100);
       }
     });
     current.current?.destroy();
@@ -88,30 +101,63 @@ export function useSharedLive({
     }
   }, [token, pageId, rowId, attach]);
   const run = useCallback(() => {
+    lastRun.current = Date.now();
     if (!inflight.current)
       inflight.current = sync().finally(() => {
         inflight.current = null;
       });
     return inflight.current;
   }, [sync]);
+  runRef.current = run;
   useEffect(() => {
     if (!active) return;
     pgen.current = "";
     dirty.current = false;
     void run();
-    const timer = setInterval(() => void run(), 1200);
+    // With the push channel open a full check every 10 s is enough.
+    const timer = setInterval(() => {
+      if (!live.current || dirty.current || Date.now() - lastRun.current > 10_000) void run();
+    }, 1200);
+    const params = new URLSearchParams({ pageId, client: clientId });
+    if (rowId) params.set("rowId", rowId);
+    const source = typeof EventSource === "undefined" ? null : new EventSource(`/api/share/${token}/live?${params}`);
+    if (source) {
+      source.onmessage = (event) => {
+        let type = "";
+        try {
+          type = JSON.parse(event.data).type;
+        } catch {
+          return;
+        }
+        if (type === "ready") live.current = true;
+        else if (type === "check") void run();
+        else if (type === "presence")
+          window.dispatchEvent(new CustomEvent("flowplan:presence", { detail: `guest:${pageId}:${rowId || ""}` }));
+        else if (type === "revoked") {
+          live.current = false;
+          source.close();
+        }
+      };
+      source.onerror = () => {
+        live.current = false;
+      };
+    }
     return () => {
+      source?.close();
+      live.current = false;
+      clearTimeout(soon.current);
+      soon.current = undefined;
       clearInterval(timer);
       current.current?.destroy();
       current.current = null;
       setDoc(null);
     };
-  }, [active, run]);
+  }, [active, run, token, pageId, rowId, clientId]);
   // Sends pending changes before saving the title or properties.
   const flush = useCallback(async () => {
     if (inflight.current) await inflight.current;
     for (let i = 0; i < 5 && dirty.current; i++) await run();
     if (failure.current) throw new Error(failure.current);
   }, [run]);
-  return { doc, docKey, state, error, flush };
+  return { doc, docKey, state, error, flush, clientId };
 }

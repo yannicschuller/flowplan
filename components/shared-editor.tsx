@@ -19,6 +19,7 @@ import { DocumentBlockControls } from "./document-block-controls";
 import { BlockShortcuts } from "@/lib/block-shortcuts";
 import { EditableCodeBlock } from "./code-block";
 import { embedProvider } from "@/lib/embed-providers";
+import { guestCursors } from "@/lib/guest-cursors";
 export type GuestUpload = { url: string; name: string; mime: string };
 export default function SharedEditor({
   html,
@@ -26,6 +27,7 @@ export default function SharedEditor({
   disabled,
   upload,
   ydoc,
+  presence,
 }: {
   html: string;
   onChange: (html: string) => void;
@@ -33,6 +35,8 @@ export default function SharedEditor({
   upload?: (file: File) => Promise<GuestUpload | null>;
   // Live editing: the content lives in this Yjs document.
   ydoc?: Y.Doc;
+  // Live cursors with members and other guests (edit links).
+  presence?: { token: string; pageId: string; rowId?: string; clientId: string };
 }) {
   const [diagram, setDiagram] = useState<DiagramTarget | null>(null);
   const [math, setMath] = useState<MathTarget | null>(null);
@@ -88,6 +92,7 @@ export default function SharedEditor({
             : e,
         ),
       ...(ydoc ? [Collaboration.configure({ document: ydoc })] : []),
+      ...(ydoc && presence ? [guestCursors(presence)] : []),
     ],
     ...(ydoc ? {} : { content: html }),
     editable: !disabled,

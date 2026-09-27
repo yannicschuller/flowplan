@@ -14,19 +14,21 @@ import {
   type CursorPeer,
   type CursorRequest,
 } from "./cursor-protocol";
+import { fromTextPoint, toTextCursor } from "./text-anchors";
 
-type Peer = CursorPeer & { deadline: number };
+export type Peer = CursorPeer & { deadline: number };
 type PresenceState = { peers: Peer[]; decorations: DecorationSet };
 const key = new PluginKey<PresenceState>("flowplanCursors");
 
-function decorations(state: EditorState, peers: Peer[]) {
+export function decorations(state: EditorState, peers: Peer[]) {
   const sync = ySyncPluginKey.getState(state);
-  if (!sync?.binding?.mapping.size || sync.snapshot || sync.prevSnapshot)
-    return DecorationSet.empty;
+  const yjs = !!sync?.binding?.mapping.size && !sync.snapshot && !sync.prevSnapshot;
+  if (sync && !yjs) return DecorationSet.empty;
   const marks: Decoration[] = [];
   for (const peer of peers) {
     if (peer.deadline <= Date.now()) continue;
     const resolve = (position: Cursor["anchor"]) => {
+      if (!yjs) return null;
       try {
         return relativePositionToAbsolutePosition(
           sync.doc,
@@ -38,8 +40,9 @@ function decorations(state: EditorState, peers: Peer[]) {
         return null;
       }
     };
-    const a = resolve(peer.cursor.anchor),
-      h = resolve(peer.cursor.head);
+    // Guests (and members seen by guests) come as text addresses.
+    const a = peer.cursor ? resolve(peer.cursor.anchor) : peer.text ? fromTextPoint(state.doc, peer.text.anchor) : null,
+      h = peer.cursor ? resolve(peer.cursor.head) : peer.text ? fromTextPoint(state.doc, peer.text.head) : null;
     if (a === null || h === null) continue;
     const max = Math.max(0, state.doc.content.size - 1),
       anchor = Math.min(a, max),
@@ -205,7 +208,13 @@ export function collaborationCursors(
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   cache: "no-store",
-                  body: JSON.stringify(request(localCursor(view))),
+                  body: JSON.stringify({
+                    ...request(localCursor(view)),
+                    // Also as text address, so guests on share links see it.
+                    text: view.hasFocus()
+                      ? toTextCursor(view.state.doc, view.state.selection.anchor, view.state.selection.head)
+                      : null,
+                  }),
                   signal: ownController.signal,
                 });
                 if (!response.ok) {

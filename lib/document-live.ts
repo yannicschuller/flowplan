@@ -5,16 +5,20 @@
 // process, so one hub reaches every open editor.
 type Listener = { clientId: string; send: (event: string) => void };
 
-const hub = globalThis as unknown as { flowplanDocuments?: Map<string, Set<Listener>> };
+const hub = globalThis as unknown as {
+  flowplanDocuments?: Map<string, Set<Listener>>;
+  flowplanDocumentPrefixes?: Map<string, Set<Listener>>;
+};
 const documents = (hub.flowplanDocuments ??= new Map());
+// Guests on share links follow a document without its Yjs identity: they
+// get "check" (fetch your projection) and "presence" signals.
+const prefixes = (hub.flowplanDocumentPrefixes ??= new Map());
 
 export function documentKey(pageId: string, rowId: string | null | undefined, generation: string) {
   return `${pageId}:${rowId || ""}:${generation}`;
 }
 
-function broadcast(key: string, payload: unknown, except?: string) {
-  const listeners = documents.get(key);
-  if (!listeners) return;
+function send(listeners: Set<Listener>, payload: unknown, except?: string) {
   const event = `data: ${JSON.stringify(payload)}\n\n`;
   for (const listener of listeners)
     if (listener.clientId !== except)
@@ -23,6 +27,16 @@ function broadcast(key: string, payload: unknown, except?: string) {
       } catch {
         listeners.delete(listener);
       }
+}
+function notifyPrefix(key: string, type: "check" | "presence", except?: string) {
+  const prefix = key.split(":").slice(0, 2).join(":");
+  const listeners = prefixes.get(prefix);
+  if (listeners) send(listeners, { type }, except);
+}
+function broadcast(key: string, payload: { type: string; [key: string]: unknown }, except?: string) {
+  notifyPrefix(key, payload.type === "presence" ? "presence" : "check", except);
+  const listeners = documents.get(key);
+  if (listeners) send(listeners, payload, except);
 }
 
 // A Yjs update (base64) that was just stored; the sender already has it.
@@ -37,10 +51,45 @@ export function publishPresence(key: string, from?: string) {
 
 // Stored some other way (guest link, journal, version restore, linked
 // database): open editors fetch the current state right away.
-export function documentChanged(pageId: string, rowId?: string | null) {
+export function documentChanged(pageId: string, rowId?: string | null, except?: string) {
   const prefix = `${pageId}:${rowId || ""}:`;
+  const guests = prefixes.get(`${pageId}:${rowId || ""}`);
+  if (guests) send(guests, { type: "check" }, except);
   for (const key of documents.keys())
-    if (key.startsWith(prefix)) broadcast(key, { type: "check" });
+    if (key.startsWith(prefix)) {
+      const listeners = documents.get(key);
+      if (listeners) send(listeners, { type: "check" }, except);
+    }
+}
+
+// Guests of a share link: "check" and "presence" for one page or record.
+export function watchPrefix(pageId: string, rowId: string | null | undefined, clientId: string, emit: (event: string) => void) {
+  const prefix = `${pageId}:${rowId || ""}`;
+  let listeners = prefixes.get(prefix);
+  if (!listeners) {
+    listeners = new Set();
+    prefixes.set(prefix, listeners);
+  }
+  const listener = { clientId, send: emit };
+  listeners.add(listener);
+  emit(`data: ${JSON.stringify({ type: "ready" })}\n\n`);
+  return () => {
+    const set = prefixes.get(prefix);
+    set?.delete(listener);
+    if (set && !set.size) prefixes.delete(prefix);
+  };
+}
+
+// A guest moved their cursor: members and other guests ask again.
+export function publishPresenceFor(pageId: string, rowId: string | null | undefined, from?: string) {
+  const prefix = `${pageId}:${rowId || ""}`;
+  const guests = prefixes.get(prefix);
+  if (guests) send(guests, { type: "presence" }, from);
+  for (const key of documents.keys())
+    if (key.startsWith(`${prefix}:`)) {
+      const listeners = documents.get(key);
+      if (listeners) send(listeners, { type: "presence" }, from);
+    }
 }
 
 export function watchDocument(key: string, clientId: string, send: (event: string) => void) {
