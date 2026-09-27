@@ -73,7 +73,7 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   // Review of the week.
   await page.getByRole("button", { name: "Rückblick" }).click();
   const review = page.getByRole("dialog", { name: "Rückblick" });
-  await expect(review.locator(".journal-review-numbers")).toContainText("Tage");
+  await expect(review.locator(".journal-review-numbers")).toContainText(/\d+ Tage?/);
   await review.getByRole("button", { name: "Monat", exact: true }).click();
   await expect(review.locator(".journal-review-trackers")).toContainText("Stimmung");
   await review.getByRole("button", { name: "Schließen" }).click();
