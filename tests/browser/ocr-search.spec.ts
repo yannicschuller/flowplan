@@ -51,7 +51,7 @@ test("quick search finds text in scanned images", async ({
   await page.keyboard.press("ControlOrMeta+k");
   const dialog = page.getByRole("dialog", { name: "Schnellsuche" });
   await dialog
-    .getByPlaceholder("Seiten, Inhalte und Einträge finden …")
+    .getByLabel("Suchen oder Befehl")
     .fill("Wartungsvertrag Heizung");
   await expect(
     dialog.getByRole("button", { name: new RegExp(fileName) }),

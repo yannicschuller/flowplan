@@ -26,9 +26,7 @@ test("quick search saves, reapplies and deletes personal searches", async ({
     name: "Schnellsuche",
     exact: true,
   });
-  const input = dialog.getByPlaceholder(
-    "Seiten, Inhalte und Einträge finden …",
-  );
+  const input = dialog.getByLabel("Suchen oder Befehl");
   await input.fill(`Gespeichert ${tag}`);
   await dialog.getByRole("radio", { name: "Dokumente", exact: true }).click();
   await dialog.getByRole("button", { name: "Suche speichern" }).click();

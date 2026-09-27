@@ -53,9 +53,7 @@ test("quick search finds compound words and records, filters by kind and opens e
     exact: true,
   });
   await expect(dialog).toBeVisible();
-  const input = dialog.getByPlaceholder(
-    "Seiten, Inhalte und Einträge finden …",
-  );
+  const input = dialog.getByLabel("Suchen oder Befehl");
   // Part of a compound word, without umlaut and in other case.
   await input.fill(`UBERPRUFUNG im kellerraum ${tag}`);
   const hit = dialog.getByRole("button", {

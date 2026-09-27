@@ -16,7 +16,11 @@ Durchsucht werden:
 - gescannte PDFs und Bilder per Texterkennung (Deutsch und Englisch),
 - Word-, Excel-, PowerPoint- und OpenDocument-Dateien.
 
-Treffer lassen sich nach Typ und Bereich filtern. Dateitexte werden im Hintergrund erfasst und sind nach wenigen Sekunden auffindbar. Die Suche zeigt nur, was du lesen darfst.
+Treffer lassen sich nach Typ und Bereich filtern. Dateitexte werden im Hintergrund erfasst und sind nach wenigen Sekunden auffindbar. Die Suche zeigt nur, was du lesen darfst. <kbd>Enter</kbd> öffnet den ersten Treffer.
+
+### Befehle
+
+Dieselbe Schnellsuche führt auch Befehle aus: Beginnt die Eingabe mit `>`, erscheinen nur Befehle, etwa `> neue datenbank`, `> aufgaben`, `> dunkel` oder `> fokus`; <kbd>Enter</kbd> führt den ersten aus. Passende Befehle erscheinen auch ohne `>` über den Suchtreffern. Mit geöffneter Seite gibt es zusätzlich Seitenbefehle: Favorit, Folgen, Kommentare, Export, Drucken/PDF, Versionsverlauf, Teilen und Fokusmodus.
 
 ### Gespeicherte Suchen
 

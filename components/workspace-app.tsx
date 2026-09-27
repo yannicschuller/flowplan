@@ -89,6 +89,10 @@ import {
   Folder,
   ArrowUpRight,
   Eye,
+  ImageSquare,
+  TextAa,
+  Printer,
+  ClockCounterClockwise,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -117,6 +121,7 @@ import { ShareLinks } from "./share-links";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import { MyTasks } from "./my-tasks";
+import { FocusBar } from "./focus-bar";
 import {
   FollowButton,
   ReadersButton,
@@ -182,6 +187,18 @@ type PageData = DatabaseData & {
   }[];
   present: { id: string; name: string }[];
 };
+type CommandAction = {
+  label: string;
+  keywords: string;
+  icon: import("@phosphor-icons/react").Icon;
+  run: () => void;
+};
+const normalizeCommand = (value: string) =>
+  value
+    .toLocaleLowerCase("de")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
 type Screen =
   | "home"
   | "page"
@@ -232,6 +249,7 @@ export default function WorkspaceApp({
     } | null>(null),
     [history, setHistory] = useState(false),
     [comments, setComments] = useState(false),
+    [focusMode, setFocusMode] = useState(false),
     [comment, setComment] = useState(""),
     [status, setStatus] = useState("Gespeichert"),
     [toast, setToast] = useState(""),
@@ -329,6 +347,10 @@ export default function WorkspaceApp({
   const setHtml = useCallback((s: string) => {
     html.current = s;
   }, []);
+  const readHtml = useCallback(
+    () => html.current || dataRef.current?.html || "",
+    [],
+  );
   const navigationVersion = useRef(0);
   const navigationPending = useRef(false);
   const refresh = useCallback(async () => {
@@ -1043,10 +1065,77 @@ export default function WorkspaceApp({
         );
       });
   }
+  function toggleTheme() {
+    setDark(!dark);
+    document.documentElement.dataset.theme = !dark ? "dark" : "light";
+    localStorage.setItem("flowplan-theme", !dark ? "dark" : "light");
+  }
+  // Commands for the quick search ("> …" or matching words).
+  const openPageData = screen === "page" && data ? data : null;
+  const commandActions: CommandAction[] = [
+    { label: "Neue Seite", keywords: "dokument anlegen erstellen notiz", icon: FileText, run: () => addPage() },
+    { label: "Neue Datenbank", keywords: "tabelle projekt anlegen", icon: Table, run: () => addPage("database") },
+    { label: "Neues Whiteboard", keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
+    { label: "Neues Journal", keywords: "tagebuch tag", icon: Notebook, run: () => addPage("journal") },
+    { label: "Vorlagen öffnen", keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
+    { label: "Zur Startseite", keywords: "home start", icon: House, run: () => go("home") },
+    { label: "Posteingang öffnen", keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
+    { label: "Meine Aufgaben", keywords: "tasks todo fällig", icon: CheckSquare, run: () => go("tasks") },
+    { label: "Medien", keywords: "bilder dateien", icon: ImageSquare, run: () => go("media") },
+    { label: "Papierkorb", keywords: "trash gelöscht wiederherstellen", icon: Trash, run: () => go("trash") },
+    { label: "Einstellungen", keywords: "settings konto mitglieder", icon: GearSix, run: () => go("settings") },
+    ...(boot.user.isAdmin
+      ? [{ label: "Administration", keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
+      : []),
+    { label: dark ? "Helles Design" : "Dunkles Design", keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
+    { label: "Seitenleiste ein- oder ausblenden", keywords: "sidebar navigation", icon: SidebarSimple, run: () => setDesktopCollapsed((v) => !v) },
+    ...(openPageData
+      ? [
+          { label: "Fokusmodus", keywords: "schreiben ablenkungsfrei zen wortziel", icon: TextAa, run: () => setFocusMode(true) },
+          {
+            label: boot.favorites.includes(openPageData.page.id) ? "Aus Favoriten entfernen" : "Zu Favoriten",
+            keywords: "favorit stern",
+            icon: Star,
+            run: () =>
+              void act({ action: "favorite", pageId: openPageData.page.id, value: !boot.favorites.includes(openPageData.page.id) }),
+          },
+          {
+            label: openPageData.following ? "Seite nicht mehr folgen" : "Seite folgen",
+            keywords: "benachrichtigen glocke follow",
+            icon: Bell,
+            run: () => void act({ action: "page.follow", pageId: openPageData.page.id, follow: !openPageData.following }),
+          },
+          { label: "Kommentare öffnen", keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
+          { label: "Seite exportieren", keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
+          { label: "Drucken oder als PDF sichern", keywords: "pdf print drucken", icon: Printer, run: () => window.print() },
+          { label: "Versionsverlauf", keywords: "history versionen wiederherstellen", icon: ClockCounterClockwise, run: () => setHistory(true) },
+          { label: "Teilen", keywords: "share link freigeben", icon: ShareNetwork, run: () => setShare(true) },
+        ]
+      : []),
+  ];
+  const commandQuery = normalizeCommand(query.replace(/^>\s*/, ""));
+  const shownActions =
+    query.startsWith(">") || commandQuery.length >= 2
+      ? commandActions
+          .filter((a) => !commandQuery || normalizeCommand(`${a.label} ${a.keywords}`).includes(commandQuery))
+          .slice(0, query.startsWith(">") ? 20 : 4)
+      : [];
+  const runCommand = (action: CommandAction) => {
+    setSearch(false);
+    setQuery("");
+    action.run();
+  };
   return (
     <div
-      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}`}
+      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}`}
     >
+      {focusMode && screen === "page" && data && (
+        <FocusBar
+          pageId={data.page.id}
+          html={readHtml}
+          onClose={() => setFocusMode(false)}
+        />
+      )}
       <button
         className="mobile-scrim"
         aria-label="Navigation schließen"
@@ -1370,14 +1459,7 @@ export default function WorkspaceApp({
                   <Dropdown.Item
                     className="dropdown-item"
                     onSelect={() => {
-                      setDark(!dark);
-                      document.documentElement.dataset.theme = !dark
-                        ? "dark"
-                        : "light";
-                      localStorage.setItem(
-                        "flowplan-theme",
-                        !dark ? "dark" : "light",
-                      );
+                      toggleTheme();
                     }}
                   >
                     {dark ? <Sun /> : <Moon />}
@@ -2453,9 +2535,24 @@ export default function WorkspaceApp({
           <MagnifyingGlass size={22} />
           <input
             autoFocus
-            placeholder="Seiten, Inhalte und Einträge finden …"
+            aria-label="Suchen oder Befehl"
+            placeholder="Suchen … oder > für Befehle"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              const first = searchResults[0];
+              if (shownActions.length && (query.startsWith(">") || !first))
+                runCommand(shownActions[0]);
+              else if (first) {
+                setSearch(false);
+                void openPage(
+                  first.id,
+                  first.rowId ? { pageId: first.id, rowId: first.rowId } : undefined,
+                );
+              }
+            }}
           />
           <kbd>esc</kbd>
         </div>
@@ -2575,6 +2672,24 @@ export default function WorkspaceApp({
             ))}
           </div>
         )}
+        {shownActions.length > 0 && (
+          <div className="command-actions" aria-label="Aktionen">
+            <small>Aktionen</small>
+            {shownActions.map((action, i) => (
+              <button
+                key={action.label}
+                type="button"
+                className={i === 0 && (query.startsWith(">") || !searchResults.length) ? "first" : ""}
+                onClick={() => runCommand(action)}
+              >
+                <action.icon size={17} />
+                <span>{action.label}</span>
+                {i === 0 && (query.startsWith(">") || !searchResults.length) && <kbd>↵</kbd>}
+              </button>
+            ))}
+          </div>
+        )}
+        {!query.startsWith(">") && (
         <div className="search-results">
           {searchResults.map((p) => (
             <button
@@ -2610,10 +2725,11 @@ export default function WorkspaceApp({
               <ArrowSquareOut size={17} />
             </button>
           ))}
-          {!searchResults.length && (
+          {!searchResults.length && !shownActions.length && (
             <div className="empty-state small">Nichts gefunden.</div>
           )}
         </div>
+        )}
       </Modal>
       <Modal open={create} onClose={() => setCreate(false)} title="Neue Seite">
         <form
