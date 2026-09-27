@@ -12,6 +12,16 @@ Mehrere Personen schreiben gleichzeitig in derselben Seite, ohne sich zu übersc
 - Gäste mit Bearbeitungslink arbeiten ebenfalls live mit und sehen die Cursor der Mitglieder; Mitglieder sehen die Gäste als „Gast · <Linkname>“.
 - Auf Whiteboards gibt es zusätzlich [Live-Cursor](/docs/whiteboards#gemeinsam-arbeiten) wie in Miro.
 
+## Änderungen vorschlagen
+
+Der Stift-Knopf **Vorschlagen** in der Werkzeugleiste schaltet den Vorschlagsmodus ein. Dann ändert Tippen den Text nicht direkt:
+
+- **Eingefügter Text** erscheint grün unterstrichen, **gelöschter Text** bleibt rot durchgestrichen stehen. Überschreiben einer Markierung erzeugt beides.
+- Wer den eigenen Vorschlag wieder löscht, entfernt ihn ganz.
+- Über dem Text zeigt eine Leiste die Zahl der offenen Vorschläge. Aufgeklappt listet sie jeden mit Person und Text; ein Klick springt zur Stelle. **✓** nimmt einen Vorschlag an (Einfügung bleibt, Gelöschtes verschwindet), **✗** lehnt ihn ab. **Alle annehmen** und **Alle ablehnen** erledigen alles auf einmal.
+- Vorschläge sind Teil des Dokuments: Sie erscheinen bei allen sofort und bleiben gespeichert, bis jemand sie annimmt oder ablehnt. Annehmen und ablehnen kann jeder, der die Seite bearbeiten darf.
+- Formatierungen, Absatzwechsel und verschobene Blöcke werden auch im Vorschlagsmodus direkt übernommen; Änderungen anderer Personen werden nie zu deinen Vorschlägen.
+
 ## Reaktionen
 
 - **Kommentare**: Unter jedem Seiten- und Eintragskommentar fügt das Smiley eine Reaktion hinzu (👍 ❤️ 🎉 😄 👀 ✅ 🙏 🔥). Ein Klick auf eine vorhandene Reaktion schließt sich an oder nimmt die eigene zurück; der Tooltip zeigt, wer reagiert hat. Reagieren kann jeder, der die Seite sehen darf.

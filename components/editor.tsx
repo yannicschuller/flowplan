@@ -1,5 +1,11 @@
 "use client";
 import { TaskDue } from "@/lib/task-due-plugin";
+import {
+  resolveSuggestions,
+  suggestionGroups,
+  Suggestion,
+  SuggestChanges,
+} from "@/lib/suggestions";
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
 import { VoiceRecorder } from "./voice-recorder";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
@@ -96,6 +102,9 @@ import {
   TextAlignCenter,
   ArrowsClockwise,
   Microphone,
+  PencilLine,
+  Check,
+  X,
 } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
 import type { Page, User } from "@/lib/types";
@@ -193,6 +202,11 @@ export default function DocumentEditor({
   const [boardPicker, setBoardPicker] = useState(false),
     [boardSearch, setBoardSearch] = useState("");
   const [voice, setVoice] = useState(false);
+  // "Vorschlagen": changes become suggestions others can accept or reject.
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestingRef = useRef(false);
+  suggestingRef.current = suggesting && editable;
+  const [suggestionList, setSuggestionList] = useState(false);
   const [syncedPicker, setSyncedPicker] = useState<
     { id: string; preview: string; origin: string }[] | null
   >(null);
@@ -296,6 +310,14 @@ export default function DocumentEditor({
         TaskList,
         FlowTaskItem.configure({ nested: true }),
         TaskDue,
+        Suggestion,
+        SuggestChanges.configure({
+          enabled: () => suggestingRef.current,
+          user: () => ({
+            id: userId,
+            name: memberNames.current.get(userId) || "Jemand",
+          }),
+        }),
         BlockReactionAttribute,
         BlockReactions.configure({
           userId,
@@ -1033,7 +1055,7 @@ export default function DocumentEditor({
   });
   return (
     <div className={`editor-wrapper${embedded ? " embedded" : ""}`}>
-      <div className="document-writing-surface">
+      <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
         {editable && !embedded && (
           <div
             className="editor-toolbar"
@@ -1198,6 +1220,16 @@ export default function DocumentEditor({
               <EyeSlash />
             </button>
             <button
+              title={suggesting ? "Vorschlagen beenden – wieder direkt bearbeiten" : "Vorschlagen: Änderungen als Vorschläge markieren"}
+              aria-label="Vorschlagen"
+              aria-pressed={suggesting}
+              className={`suggest-toggle${suggesting ? " active" : ""}`}
+              onClick={() => setSuggesting(!suggesting)}
+            >
+              <PencilLine />
+              {suggesting && <span>Vorschlagen</span>}
+            </button>
+            <button
               title="Link"
               onClick={() => {
                 setLinkUrl(editor?.getAttributes("link").href || "");
@@ -1260,6 +1292,63 @@ export default function DocumentEditor({
             </button>
           </div>
         )}
+        {(() => {
+          if (!editor || embedded) return null;
+          const groups = suggestionGroups(editor.state.doc);
+          if (!groups.length) return null;
+          const ids = new Set(groups.map((g) => g.id));
+          const apply = (accept: boolean, test: (a: { id: string; kind: string }) => boolean) =>
+            editor.view.dispatch(resolveSuggestions(editor.state, accept, test));
+          return (
+            <div className="suggestion-bar" role="region" aria-label="Vorschläge">
+              <button type="button" className="suggestion-count" aria-expanded={suggestionList} onClick={() => setSuggestionList(!suggestionList)}>
+                <PencilLine size={15} />
+                {ids.size} {ids.size === 1 ? "Vorschlag" : "Vorschläge"}
+              </button>
+              {editable && (
+                <>
+                  <button type="button" className="text-button" onClick={() => apply(true, () => true)}>
+                    Alle annehmen
+                  </button>
+                  <button type="button" className="text-button" onClick={() => apply(false, () => true)}>
+                    Alle ablehnen
+                  </button>
+                </>
+              )}
+              {suggestionList && (
+                <ul className="suggestion-list">
+                  {groups.map((g) => (
+                    <li key={`${g.id}:${g.kind}`} className={`suggestion-item ${g.kind}`}>
+                      <button
+                        type="button"
+                        className="suggestion-jump"
+                        onClick={() => {
+                          editor.chain().focus().setTextSelection(g.from).run();
+                          const node = editor.view.domAtPos(g.from).node as HTMLElement;
+                          (node.nodeType === 1 ? node : node.parentElement)?.scrollIntoView({ block: "center" });
+                        }}
+                      >
+                        <strong>{g.name || "Jemand"}</strong>
+                        <span>{g.kind === "insert" ? "fügt ein" : "löscht"}</span>
+                        <q>{g.text.length > 80 ? `${g.text.slice(0, 78)}…` : g.text}</q>
+                      </button>
+                      {editable && (
+                        <span className="suggestion-actions">
+                          <button type="button" aria-label="Annehmen" title="Annehmen" onClick={() => apply(true, (a) => a.id === g.id)}>
+                            <Check size={15} />
+                          </button>
+                          <button type="button" aria-label="Ablehnen" title="Ablehnen" onClick={() => apply(false, (a) => a.id === g.id)}>
+                            <X size={15} />
+                          </button>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })()}
         {outline && (
           <nav className="document-outline" aria-label="Inhaltsverzeichnis">
             <strong>Inhalt</strong>

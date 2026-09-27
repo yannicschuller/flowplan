@@ -12198,3 +12198,122 @@ h3 .block-reactions {
 .wb-icon-grid button:hover {
   background: var(--hover);
 }
+
+/* Suggested changes (lib/suggestions.ts). */
+.suggestion-insert {
+  color: #1b7a43;
+  background: color-mix(in srgb, #2f9e62 12%, transparent);
+  text-decoration: underline;
+  text-decoration-color: #2f9e62;
+  text-underline-offset: 3px;
+}
+.suggestion-delete {
+  color: #b42318;
+  background: color-mix(in srgb, #d92d20 8%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: #d92d20;
+}
+:root[data-theme="dark"] .suggestion-insert {
+  color: #6fdc9b;
+}
+:root[data-theme="dark"] .suggestion-delete {
+  color: #ff9d92;
+}
+.suggest-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.suggest-toggle.active {
+  color: #1b7a43 !important;
+  background: color-mix(in srgb, #2f9e62 14%, transparent) !important;
+}
+.suggest-toggle span {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.document-writing-surface.suggesting .ProseMirror {
+  caret-color: #2f9e62;
+}
+.suggestion-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 8px 0 12px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, #2f9e62 30%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, #2f9e62 5%, var(--bg));
+  font-size: 13px;
+}
+.suggestion-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #1b7a43;
+}
+.suggestion-list {
+  list-style: none;
+  margin: 4px 0 2px;
+  padding: 0;
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+.suggestion-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.suggestion-jump {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  text-align: left;
+  min-width: 0;
+}
+.suggestion-jump span {
+  color: var(--muted);
+}
+.suggestion-jump q {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.suggestion-item.insert q {
+  color: #1b7a43;
+}
+.suggestion-item.delete q {
+  color: #b42318;
+  text-decoration: line-through;
+}
+.suggestion-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.suggestion-actions button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+.suggestion-actions button:first-child:hover {
+  background: color-mix(in srgb, #2f9e62 16%, transparent);
+  color: #1b7a43;
+}
+.suggestion-actions button:last-child:hover {
+  background: color-mix(in srgb, #d92d20 12%, transparent);
+  color: #b42318;
+}

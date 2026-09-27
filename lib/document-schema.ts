@@ -1,3 +1,4 @@
+import { Suggestion } from "./suggestions";
 import { BlockReactionAttribute } from "./block-reactions";
 import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
@@ -391,6 +392,7 @@ export const documentExtensions = [
   FlowTaskItem.configure({ nested: true }),
   BlockReactionAttribute,
   SyncedBlock,
+  Suggestion,
   Table.configure({ resizable: true }),
   TableRow,
   TableCell,
