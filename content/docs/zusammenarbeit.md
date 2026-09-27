@@ -12,6 +12,20 @@ Mehrere Personen schreiben gleichzeitig in derselben Seite, ohne sich zu übersc
 - Gäste mit Bearbeitungslink arbeiten ebenfalls live mit und sehen die Cursor der Mitglieder; Mitglieder sehen die Gäste als „Gast · <Linkname>“.
 - Auf Whiteboards gibt es zusätzlich [Live-Cursor](/docs/whiteboards#gemeinsam-arbeiten) wie in Miro.
 
+## Seiten folgen
+
+Die Glocke oben auf einer Seite schaltet **Folgen** ein oder aus. Wer einer Seite folgt, bekommt eine Benachrichtigung, sobald jemand anderes sie ändert – eine pro Seite, bis du sie wieder angesehen hast. Mit E-Mail-Versand landet sie in der E-Mail-Zusammenfassung. Wer eine Seite anlegt, folgt ihr automatisch. Unter **Einstellungen → Benachrichtigungen** lässt sich die Art „Änderungen an Seiten, denen du folgst“ für Posteingang, Push und E-Mail einzeln abschalten.
+
+## Wer hat die Seite gesehen?
+
+Das Auge neben der Glocke zeigt, wer die Seite geöffnet hat und wann. Ein Haken bedeutet, dass die Person den neuesten Stand gesehen hat; „älter“, dass sich die Seite seitdem geändert hat. Angezeigt werden nur Personen, die die Seite noch sehen dürfen.
+
+## Änderungen seit deinem letzten Besuch
+
+Hat jemand anderes eine Seite geändert, seit du sie zuletzt geöffnet hast, erscheint oben ein Hinweis mit den Namen. Bei Dokumenten zeigt **Änderungen zeigen** die Textänderungen seit deinem letzten Besuch (eingefügt und gelöscht, wie im Versionsverlauf). Bei Datenbanken nennt der Hinweis die Zahl der bearbeiteten Einträge.
+
+Die Startseite listet unter **Zuletzt angesehen** die Seiten, die du zuletzt geöffnet hast.
+
 ## Seitenkommentare
 
 Das Sprechblasen-Symbol in der Kopfzeile öffnet die Kommentare der Seite. Kommentare können formatiert sein (Listen, Links, Zitate, Code) und Personen mit `@` erwähnen. <kbd>⌘</kbd> <kbd>Enter</kbd> sendet.

@@ -4,6 +4,7 @@ import {
   whiteboardData,
 } from "./whiteboard";
 import { journalDate, rollJournal, rollJournals } from "./journal";
+import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import {
   dayEntry,
   journalDayDetails,
@@ -215,6 +216,7 @@ export function bootstrap(user: Identity, wid?: string) {
       user.id,
     ).map((f) => f.page_id),
     savedSearches: savedSearches(user, workspace.id),
+    recentVisits: recentVisits(user, workspace.id, 8),
     notificationPrefs: notificationPrefs(user),
     instance: {
       name: instanceSettings().name,
@@ -996,6 +998,12 @@ export function command(
         siblings.forEach((sibling, i) =>
           run("UPDATE pages SET position=? WHERE id=?", i, sibling),
         );
+        break;
+      }
+      case "page.follow": {
+        const page = requirePage(user, pid());
+        setFollowing(user, page.id, z.boolean().parse(b.follow));
+        result = { following: z.boolean().parse(b.follow) };
         break;
       }
       case "journal.settings": {
@@ -2114,6 +2122,13 @@ export function command(
       default:
         throw new HttpError(400, "Unbekannte Aktion.");
     }
+    // Content changes: who edited, and followers are told.
+    if (editActions.has(action) && typeof b.pageId === "string")
+      recordPageEdit(user, b.pageId);
+    // Whoever creates a page follows it.
+    const createdId = (result as { id?: unknown } | null)?.id;
+    if (action === "page.create" && typeof createdId === "string" && !user.apiScope)
+      setFollowing(user, createdId, true);
     if (
       ![
         "document.sync",
@@ -2144,6 +2159,26 @@ export function command(
     }
   return result;
 }
+const editActions = new Set([
+  "document.sync",
+  "database.update",
+  "row.schedule",
+  "timeline.cascade",
+  "row.move",
+  "rows.bulk",
+  "row.create",
+  "row.document.sync",
+  "rows.import",
+  "row.update",
+  "row.delete",
+  "whiteboard.sync",
+  "row.recurrence",
+  "row.detachOccurrence",
+  "row.appearance",
+  "snapshot.restore",
+  "row.snapshot.restore",
+  "page.update",
+]);
 // Webhooks for records and pages changed through commands.
 function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown) {
   const created = (result as { id?: unknown } | null)?.id;

@@ -10247,6 +10247,121 @@ li[data-journal-since] > label::after {
   }
 }
 
+/* Following, readers, changes since the last visit. */
+.visited-section {
+  margin-top: 30px;
+}
+.visited-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.visited-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.visited-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.visited-list button:hover {
+  border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
+}
+.visited-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.visited-list small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.follow-button.active {
+  color: var(--blue);
+}
+.readers-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 6px;
+}
+.readers-button small {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--secondary);
+}
+.readers-menu {
+  min-width: 260px;
+  max-height: min(420px, var(--radix-dropdown-menu-content-available-height));
+  overflow: auto;
+}
+.readers-menu .reader {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+}
+.readers-menu .reader span {
+  display: grid;
+  line-height: 1.25;
+}
+.readers-menu .reader small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.reader-current {
+  color: var(--blue);
+}
+.reader-stale {
+  font-size: 11px;
+  color: var(--muted);
+}
+.since-visit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--border));
+  border-radius: 10px;
+  background: var(--blue-light);
+  font-size: 13px;
+  animation: since-visit-in 0.3s var(--ease-out);
+}
+.since-visit > span:nth-child(2) {
+  flex: 1;
+}
+.since-visit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  flex: none;
+}
+@keyframes since-visit-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .since-visit {
+    animation: none;
+  }
+}
+
 /* Profile pictures from the identity provider (components/ui.tsx Avatar). */
 .avatar.has-picture {
   overflow: hidden;

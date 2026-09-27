@@ -55,6 +55,7 @@ import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
+import { withActivity } from "@/lib/page-activity";
 import { journalDate } from "@/lib/journal";
 import {
   calendarEvents,
@@ -280,8 +281,9 @@ export async function GET(
       );
     if (path[0] === "pages" && path[2] === "rows" && path[3])
       return NextResponse.json(rowDocumentData(user, path[1], path[3]));
+    // Opening a page: records the visit (read receipts, changes since then).
     if (path[0] === "pages" && path[1])
-      return NextResponse.json(pageData(user, path[1]));
+      return NextResponse.json(withActivity(user, pageData(user, path[1])));
     if (path[0] === "settings") {
       const wid = url.searchParams.get("workspace") || "";
       requireMember(user, wid, "owner");

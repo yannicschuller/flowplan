@@ -202,6 +202,7 @@ export type Bootstrap = {
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
   savedSearches?: import("./saved-searches").SavedSearch[];
+  recentVisits?: { pageId: string; seenAt: number }[];
   notificationPrefs?: import("./notification-kinds").NotificationPrefs;
   instance?: {
     name: string;

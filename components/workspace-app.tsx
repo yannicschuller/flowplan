@@ -88,6 +88,7 @@ import {
   Flag,
   Folder,
   ArrowUpRight,
+  Eye,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -115,6 +116,14 @@ import Admin from "./admin";
 import { ShareLinks } from "./share-links";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
+import {
+  FollowButton,
+  ReadersButton,
+  ago,
+  SinceVisitBanner,
+  type Reader,
+  type SinceVisit,
+} from "./page-activity";
 import {
   JournalDayBar,
   JournalLockScreen,
@@ -147,6 +156,10 @@ type PageData = DatabaseData & {
   };
   // Behind a journal PIN that was not entered yet.
   locked?: { journalId: string };
+  sinceVisit?: SinceVisit | null;
+  readers?: Reader[];
+  following?: boolean;
+  followers?: number;
   shareLinks?: ShareLink[];
   publication?: {
     includeChildren: boolean;
@@ -442,6 +455,20 @@ export default function WorkspaceApp({
     },
     [mutate, notify],
   );
+  // What changed since the last visit: kept for the page while it stays open
+  // (later loads of the same page count as a new visit).
+  const [since, setSince] = useState<{
+    pageId: string;
+    value: SinceVisit | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    setSince((current) =>
+      current?.pageId === data.page.id && !data.sinceVisit
+        ? current
+        : { pageId: data.page.id, value: data.sinceVisit || null },
+    );
+  }, [data]);
   const openPage = useCallback(
     async (id: string, target?: PageLocation) => {
       const version = ++navigationVersion.current;
@@ -1443,6 +1470,16 @@ export default function WorkspaceApp({
               >
                 <ChatCircle size={20} />
               </button>
+              <ReadersButton readers={data.readers || []} />
+              {data.following !== undefined && (
+                <FollowButton
+                  following={data.following}
+                  followers={data.followers || 0}
+                  onToggle={(follow) =>
+                    act({ action: "page.follow", pageId: data.page.id, follow })
+                  }
+                />
+              )}
               <button
                 className={`icon-button ${boot.favorites.includes(data.page.id) ? "starred" : ""}`}
                 title="Favorit"
@@ -1674,6 +1711,34 @@ export default function WorkspaceApp({
                     ))}
                 </div>
               </section>
+              {(boot.recentVisits || []).some((v) =>
+                activePages.some((p) => p.id === v.pageId),
+              ) && (
+                <section className="visited-section">
+                  <h2>
+                    <Eye size={17} />
+                    Zuletzt angesehen
+                  </h2>
+                  <div className="visited-list">
+                    {(boot.recentVisits || []).flatMap((visit) => {
+                      const p = activePages.find((x) => x.id === visit.pageId);
+                      return p
+                        ? [
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => openPage(p.id)}
+                            >
+                              <PageIcon name={p.icon} size={16} />
+                              <span>{p.title || "Ohne Titel"}</span>
+                              <small>{ago(visit.seenAt, clock || Date.now())}</small>
+                            </button>,
+                          ]
+                        : [];
+                    })}
+                  </div>
+                </section>
+              )}
               <section className="quick-section">
                 <h2>Was hast du heute vor?</h2>
                 <div className="quick-actions">
@@ -1841,6 +1906,14 @@ export default function WorkspaceApp({
                       </div>
                     )}
                   </div>
+                  {since?.pageId === data.page.id && since.value && (
+                    <SinceVisitBanner
+                      since={since.value}
+                      onDismiss={() =>
+                        setSince({ pageId: data.page.id, value: null })
+                      }
+                    />
+                  )}
                   {data.page.kind === "database" ? (
                     <>
                       {offlineQueue.queue.some(

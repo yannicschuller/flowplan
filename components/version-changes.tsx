@@ -74,39 +74,7 @@ export function VersionChanges({
         ) : !result.changes.some((c) => c.type !== "same") ? (
           <p role="status">Keine Textänderungen.</p>
         ) : (
-          <div className="version-diff" aria-label="Textänderungen">
-            <p className="muted">
-              <del>Entfernt</del> · <ins>Hinzugefügt</ins> · unveränderte
-              Absätze sind abgeblendet.
-            </p>
-            {result.changes.map((change, i) =>
-              change.type === "changed" ? (
-                <p key={i} className="diff-changed">
-                  {change.parts.map((part, j) =>
-                    part.type === "added" ? (
-                      <ins key={j}>{part.text}</ins>
-                    ) : part.type === "removed" ? (
-                      <del key={j}>{part.text}</del>
-                    ) : (
-                      <span key={j}>{part.text}</span>
-                    ),
-                  )}
-                </p>
-              ) : change.type === "added" ? (
-                <p key={i} className="diff-added">
-                  <ins>{change.text}</ins>
-                </p>
-              ) : change.type === "removed" ? (
-                <p key={i} className="diff-removed">
-                  <del>{change.text}</del>
-                </p>
-              ) : (
-                <p key={i} className="diff-same">
-                  {change.text}
-                </p>
-              ),
-            )}
-          </div>
+          <TextChanges changes={result.changes} />
         ))}
       {result?.kind === "database" && (
         <DatabaseSummary changes={result.changes} />
@@ -149,5 +117,44 @@ function DatabaseSummary({ changes }: { changes: DatabaseChanges }) {
         changes.rows.changed.map((c) => `${c.title}: ${c.fields.join(", ")}`),
       )}
     </div>
+  );
+}
+
+// Paragraph and word changes, as in the version history.
+export function TextChanges({ changes }: { changes: TextChange[] }) {
+  return (
+          <div className="version-diff" aria-label="Textänderungen">
+            <p className="muted">
+              <del>Entfernt</del> · <ins>Hinzugefügt</ins> · unveränderte
+              Absätze sind abgeblendet.
+            </p>
+            {changes.map((change, i) =>
+              change.type === "changed" ? (
+                <p key={i} className="diff-changed">
+                  {change.parts.map((part, j) =>
+                    part.type === "added" ? (
+                      <ins key={j}>{part.text}</ins>
+                    ) : part.type === "removed" ? (
+                      <del key={j}>{part.text}</del>
+                    ) : (
+                      <span key={j}>{part.text}</span>
+                    ),
+                  )}
+                </p>
+              ) : change.type === "added" ? (
+                <p key={i} className="diff-added">
+                  <ins>{change.text}</ins>
+                </p>
+              ) : change.type === "removed" ? (
+                <p key={i} className="diff-removed">
+                  <del>{change.text}</del>
+                </p>
+              ) : (
+                <p key={i} className="diff-same">
+                  {change.text}
+                </p>
+              ),
+            )}
+          </div>
   );
 }
