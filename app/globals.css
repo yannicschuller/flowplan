@@ -2607,8 +2607,11 @@ tr:hover .row-open {
   box-shadow: var(--shadow);
   z-index: 60;
   min-width: 210px;
-  max-height: 85dvh;
+  /* Never taller than the room Radix measured beside the trigger (long
+     menus opened near the edge of a phone screen scroll instead). */
+  max-height: min(85dvh, var(--radix-dropdown-menu-content-available-height, 85dvh));
   overflow: auto;
+  overscroll-behavior: contain;
 }
 .dropdown-item {
   display: flex;
