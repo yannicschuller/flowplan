@@ -17,6 +17,7 @@ import { createPage } from "./seed";
 import { pageRole } from "./permissions";
 import { HttpError } from "./auth";
 import type { Identity, Page } from "./types";
+import { documentChanged } from "./document-live";
 
 // One schema instance: nodes of different instances cannot be combined.
 let cachedSchema: ReturnType<typeof documentSchema> | undefined;
@@ -140,6 +141,7 @@ function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
     stateHtml(ydoc),
     pageId,
   );
+  documentChanged(pageId);
   run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
 }
 // A page nobody touched: no own text, same title, no icon or cover set, no
@@ -238,6 +240,7 @@ export function rollJournal(
     stateHtml(ydoc),
     dayId,
   );
+  documentChanged(dayId);
   ydoc.destroy();
   return { dayId, changed: true };
 }

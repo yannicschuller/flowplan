@@ -5,7 +5,8 @@ Mehrere Personen schreiben gleichzeitig in derselben Seite, ohne sich zu übersc
 ## Gleichzeitig bearbeiten
 
 - Dokumente und Eintragsinhalte werden über Yjs (CRDT) zusammengeführt: Jede Änderung bleibt erhalten, auch wenn zwei Personen im selben Absatz tippen.
-- **Farbige Cursor und Auswahlen** mit Namen zeigen, wo andere gerade schreiben.
+- Änderungen erscheinen bei den anderen nach Sekundenbruchteilen: Der Server schiebt jede gespeicherte Änderung sofort an alle, die dasselbe Dokument offen haben (Server-Sent Events). Übertragen wird nur das Geänderte, nicht das ganze Dokument.
+- **Farbige Cursor und Auswahlen** mit Namen zeigen, wo andere gerade schreiben; Bewegungen kommen ebenfalls sofort an.
 - Ohne Verbindung arbeitest du weiter; die Änderungen werden abgeglichen, sobald das Netz zurück ist.
 - Datenbank-Änderungen werden auf Versionskonflikte geprüft: Hat jemand denselben Eintrag inzwischen geändert, wird deine Änderung nicht stillschweigend darübergeschrieben, sondern abgelehnt, und du siehst den neuen Stand.
 - Auf Whiteboards gibt es zusätzlich [Live-Cursor](/docs/whiteboards#gemeinsam-arbeiten) wie in Miro.

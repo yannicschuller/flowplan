@@ -23,6 +23,7 @@ import {
   fileUrls,
   MAX_CELL_FILES,
 } from "./file-cells";
+import { documentChanged } from "./document-live";
 
 export const publicField = (f: Field) =>
   ![
@@ -560,6 +561,7 @@ export function mutateSharedContent(token: string, input: unknown) {
             id(),
             s.row.id,
           );
+          documentChanged(s.page.id, s.row.id);
           run(
             "UPDATE rows SET cells=?,content=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=NULL WHERE id=?",
             JSON.stringify(cells),
@@ -583,6 +585,7 @@ export function mutateSharedContent(token: string, input: unknown) {
             id(),
             s.page.id,
           );
+          documentChanged(s.page.id);
         }
       }
       run(
@@ -707,6 +710,8 @@ function liveSync(
               "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
               s.page.id,
             );
+            // Members with the page open see the guest's change at once.
+            documentChanged(s.page.id, s.row?.id);
             sourceHtml = html;
           }
         } finally {

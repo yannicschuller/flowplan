@@ -408,6 +408,8 @@ export function command(
       throw new HttpError(409, "Diese Seite ist gesperrt.");
     return p;
   };
+  // Work that must only happen once the transaction is committed.
+  const afterCommit: (() => void)[] = [];
   const execute = () => {
     let result: unknown = { ok: true };
     switch (action) {
@@ -1055,7 +1057,9 @@ export function command(
             p.id,
           );
           run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", p.id);
-          result = { state: Buffer.from(merged).toString("base64") };
+          result = { state: liveState(d, merged, b.vector) };
+          const key = documentKey(p.id, null, existing!.generation);
+          afterCommit.push(() => publishDocumentUpdate(key, update, liveClient(b.client)));
         } finally {
           d.destroy();
         }
@@ -1104,7 +1108,7 @@ export function command(
         if (p.kind === "whiteboard") {
           if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
           restoreWhiteboardSnapshot(p, s.state);
-        } else if (p.kind === "document")
+        } else if (p.kind === "document") {
           run(
             "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",
             htmlState(s.html),
@@ -1112,7 +1116,8 @@ export function command(
             id(),
             p.id,
           );
-        else {
+          documentChanged(p.id);
+        } else {
           const data = JSON.parse(s.html);
           // Versions with restricted records are restored by owners only.
           if (
@@ -1381,15 +1386,20 @@ export function command(
         result = { id: rid };
         break;
       }
-      case "row.document.sync":
-        result = syncRowDocument(
+      case "row.document.sync": {
+        const synced = syncRowDocument(
           user,
           pid(),
           uuid.parse(b.rowId),
           b.generation,
           b.update,
-        );
+        ) as { state: string };
+        result = { ...synced, state: liveDiff(synced.state, b.vector) };
+        const key = documentKey(pid(), uuid.parse(b.rowId), String(b.generation));
+        const update = String(b.update);
+        afterCommit.push(() => publishDocumentUpdate(key, update, liveClient(b.client)));
         break;
+      }
       case "row.snapshot":
         result = snapshotRow(user, pid(), uuid.parse(b.rowId));
         break;
@@ -1953,8 +1963,38 @@ export function command(
       );
     return result;
   };
-  return withinTransaction ? execute() : transaction(execute, user);
+  const result = withinTransaction ? execute() : transaction(execute, user);
+  for (const task of afterCommit)
+    try {
+      task();
+    } catch (error) {
+      console.error("Nachlauf eines Befehls fehlgeschlagen", error);
+    }
+  return result;
 }
+// Live editing: clients send their state vector, so the answer only holds
+// what they are missing instead of the whole document.
+function liveVector(vector: unknown) {
+  if (typeof vector !== "string" || !vector || vector.length > 200_000) return null;
+  return Buffer.from(vector, "base64");
+}
+function liveState(doc: Y.Doc, merged: Uint8Array, vector: unknown) {
+  const v = liveVector(vector);
+  return Buffer.from(v ? Y.encodeStateAsUpdate(doc, v) : merged).toString("base64");
+}
+function liveDiff(state: string, vector: unknown) {
+  const v = liveVector(vector);
+  if (!v) return state;
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, Buffer.from(state, "base64"));
+    return Buffer.from(Y.encodeStateAsUpdate(doc, v)).toString("base64");
+  } finally {
+    doc.destroy();
+  }
+}
+const liveClient = (client: unknown) =>
+  typeof client === "string" && client.length <= 64 ? client : undefined;
 function createWorkspaceInner(user: string, name: string) {
   const wid = id(),
     sid = id();
@@ -1981,6 +2021,7 @@ import {
   importInlineComments,
 } from "./inline-comment-archive";
 import { ensureRowDocument } from "./row-documents";
+import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { copyPublication } from "./publication-copy";

@@ -45,7 +45,7 @@ Eine CI-Pipeline kann nach dem Image-Build ein Deployment über die Coolify-API 
 - Endet TLS am vorderen Proxy (etwa Pangolin) und reicht er an Traefik weiter, dort **TLS zum Ziel ausschalten** und einen **eigenen Host-Header** mit der Flowplan-Domain setzen – sonst findet Traefik keine Route und antwortet mit 404.
 - Großes Hochladen: Inhaltsarchive können bis zu 2 GB groß sein. Traefik begrenzt die Anfragegröße nicht; nginx braucht `client_max_body_size`, Cloudflare hat eigene Grenzen.
 - Zeitlimits: Export und Import großer Archive können Minuten dauern; Proxy-Timeouts ggf. erhöhen.
-- Server-Sent Events (Live-Cursor auf Whiteboards) dürfen nicht gepuffert werden; nginx: `proxy_buffering off` für `/api/whiteboards/`.
+- Server-Sent Events (Live-Bearbeitung in Dokumenten, Live-Cursor auf Whiteboards) dürfen nicht gepuffert werden; nginx: `proxy_buffering off` (siehe Beispiel unten). Flowplan sendet dafür zusätzlich `X-Accel-Buffering: no`.
 
 ### nginx
 

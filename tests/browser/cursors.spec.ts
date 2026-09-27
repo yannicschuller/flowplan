@@ -153,6 +153,8 @@ async function select(page: Page, from: number, to = from) {
     },
     { from, to },
   );
+  // TipTap focuses in the next animation frame; typing before that is lost.
+  await expect(page.locator(".tiptap")).toBeFocused();
 }
 async function selected(page: Page) {
   return page.locator(".collaborator-selection").allTextContents();

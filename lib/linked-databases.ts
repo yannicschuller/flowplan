@@ -16,6 +16,7 @@ import { moveRow, validateViewRowOrders } from "./row-order-server";
 import { transformFilterGroup } from "./database-filters";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import type { Identity, Filter, View } from "./types";
+import { documentChanged } from "./document-live";
 // The host is a page document or, with `rowId`, a record document.
 function hostDocument(
   user: Identity,
@@ -147,6 +148,7 @@ function writeViews(context: ReturnType<typeof open>, views: View[]) {
     "UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?",
     context.host.id,
   );
+  documentChanged(context.host.id, context.rowId);
 }
 // Runs inside the command transaction. Any failed source mutation also rolls back the merged document update.
 export function mutateLinkedDatabase(

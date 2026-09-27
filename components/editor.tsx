@@ -140,9 +140,20 @@ export default function DocumentEditor({
   onHtml: (v: string) => void;
 }) {
   const doc = useMemo(() => new Y.Doc(), [pageId, rowId]);
+  // One id per open editor: the live channel does not echo its own changes
+  // and cursor moves back to it.
+  const liveId = useMemo(() => crypto.randomUUID(), [pageId, rowId, generation]);
   const ready = useRef(false),
     dirty = useRef(false),
     inflight = useRef(false),
+    // Live editing (lib/document-live.ts): local changes not yet stored,
+    // whether the next save must carry the whole state (first save, after
+    // an error), the push channel and the last full poll.
+    pending = useRef<Uint8Array[]>([]),
+    sendAll = useRef(true),
+    live = useRef(false),
+    lastPoll = useRef(0),
+    saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
     lastHtml = useRef(html),
     initial = useRef({ state, html }),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -293,7 +304,7 @@ export default function DocumentEditor({
         linkedDatabaseNode(() => linkedContext.current),
         whiteboardEmbedNode(),
         Collaboration.configure({ document: doc }),
-        collaborationCursors({ pageId, rowId, generation }),
+        collaborationCursors({ pageId, rowId, generation }, liveId),
         inlineCommentExtension(generation),
       ],
       editorProps: {
@@ -391,6 +402,13 @@ export default function DocumentEditor({
     },
     [doc],
   );
+  // Changes of others, from the push channel or a save/poll answer.
+  const applyRemote = useCallback(
+    (state: string) => {
+      Y.applyUpdate(doc, from64(state), "remote");
+    },
+    [doc, editor],
+  );
   const sync = useCallback(async () => {
     if (!editor || !ready.current || inflight.current || !navigator.onLine)
       return;
@@ -398,18 +416,37 @@ export default function DocumentEditor({
     try {
       if (dirty.current && editable) {
         dirty.current = false;
-        onStatus("Speichern …");
-        const result = await api<{ state: string }>("/api/command", {
-          action: rowId ? "row.document.sync" : "document.sync",
-          rowId,
-          pageId,
-          generation,
-          update: bytesTo64(Y.encodeStateAsUpdate(doc)),
-          html: lastHtml.current,
-        });
-        Y.applyUpdate(doc, from64(result.state), "remote");
+        // Normally only the changes since the last save; the whole state
+        // on the first save and after a failed one.
+        const all = sendAll.current,
+          sent = pending.current.length;
+        const update = all
+          ? Y.encodeStateAsUpdate(doc)
+          : sent
+            ? Y.mergeUpdates(pending.current)
+            : null;
+        if (update) {
+          onStatus("Speichern …");
+          const result = await api<{ state: string }>("/api/command", {
+            action: rowId ? "row.document.sync" : "document.sync",
+            rowId,
+            pageId,
+            generation,
+            update: bytesTo64(update),
+            vector: bytesTo64(Y.encodeStateVector(doc)),
+            client: liveId,
+            html: lastHtml.current,
+          });
+          pending.current.splice(0, sent);
+          if (all) sendAll.current = false;
+          applyRemote(result.state);
+        }
         onStatus(dirty.current ? "Änderungen …" : "Gespeichert");
       } else {
+        // With the live channel open, changes arrive by push; the full
+        // check (new document version, missed updates) runs less often.
+        if (live.current && Date.now() - lastPoll.current < 20_000) return;
+        lastPoll.current = Date.now();
         const result = await api<{ state: string | null; generation: string }>(
           rowId ? `/api/pages/${pageId}/rows/${rowId}` : `/api/pages/${pageId}`,
         );
@@ -419,18 +456,67 @@ export default function DocumentEditor({
           onStatus("Neue Dokumentversion wird geladen …");
           return;
         }
-        if (result.state) Y.applyUpdate(doc, from64(result.state), "remote");
+        if (result.state) applyRemote(result.state);
       }
     } catch (e) {
       dirty.current = true;
+      sendAll.current = true;
       onStatus(
         navigator.onLine ? "Speichern fehlgeschlagen" : "Offline gespeichert",
       );
       if (navigator.onLine) onError((e as Error).message);
     } finally {
       inflight.current = false;
+      // Typing went on during the request: send the rest right away.
+      if (dirty.current && editable && navigator.onLine && !sendAll.current)
+        saveSoon.current();
     }
-  }, [doc, editor, editable, pageId, rowId, generation, onStatus, onError]);
+  }, [doc, editor, editable, pageId, rowId, generation, liveId, applyRemote, onStatus, onError]);
+  // Changes go out shortly after typing instead of on the next interval.
+  const saveSoon = useRef(() => {});
+  saveSoon.current = () => {
+    if (saveTimer.current) return;
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = undefined;
+      void sync();
+    }, 80);
+  };
+  useEffect(() => () => clearTimeout(saveTimer.current), []);
+  // Push channel: changes and cursor moves of the others arrive at once.
+  useEffect(() => {
+    if (typeof EventSource === "undefined") return;
+    const params = new URLSearchParams({ page: pageId, generation, client: liveId });
+    if (rowId) params.set("row", rowId);
+    const source = new EventSource(`/api/documents/live?${params}`);
+    const key = `${pageId}:${rowId || ""}:${generation}`;
+    source.onmessage = (event) => {
+      let message: { type: string; update?: string };
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (message.type === "ready") {
+        live.current = true;
+        // Anything missed while the channel was down comes with a full check.
+        lastPoll.current = 0;
+        void sync();
+      } else if (message.type === "update" && message.update)
+        applyRemote(message.update);
+      else if (message.type === "check") {
+        lastPoll.current = 0;
+        void sync();
+      } else if (message.type === "presence")
+        window.dispatchEvent(new CustomEvent("flowplan:presence", { detail: key }));
+    };
+    source.onerror = () => {
+      live.current = false;
+    };
+    return () => {
+      live.current = false;
+      source.close();
+    };
+  }, [doc, pageId, rowId, generation, liveId, sync, applyRemote]);
   useEffect(
     () =>
       registerDocumentFlush(async () => {
@@ -501,14 +587,14 @@ export default function DocumentEditor({
           : "Offline gespeichert",
       );
     });
-    const update = (_u: Uint8Array, origin: unknown) => {
-      if (
-        ready.current &&
-        origin !== "remote" &&
-        origin !== persistence &&
-        editable
-      )
+    const update = (change: Uint8Array, origin: unknown) => {
+      if (origin === "remote" || origin === persistence || !editable) return;
+      // Kept even before loading finished: the first save sends everything.
+      pending.current.push(change);
+      if (ready.current) {
         dirty.current = true;
+        saveSoon.current();
+      }
     };
     doc.on("update", update);
     return () => {

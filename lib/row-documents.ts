@@ -6,6 +6,7 @@ import { requirePage } from "./permissions";
 import { assertRowAccess } from "./row-access";
 import { cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
 import type { Identity, Row, Field } from "./types";
+import { documentChanged } from "./document-live";
 type StoredDocument = { state: Uint8Array; html: string; generation: string };
 export type RowTemplate = {
   id: string;
@@ -188,6 +189,8 @@ export function replaceRowDocument(
     userId,
     rowId,
   );
+  const owner = one<{ page_id: string }>("SELECT page_id FROM rows WHERE id=?", rowId);
+  if (owner) documentChanged(owner.page_id, rowId);
 }
 export function rowTemplates(pageId: string) {
   return all<{ id: string; name: string; is_default: number }>(

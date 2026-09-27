@@ -21,7 +21,8 @@ import {
 import { listPageTemplates } from "@/lib/page-templates";
 import { fileResponse } from "@/lib/file-response";
 import { publicFile } from "@/lib/publication";
-import { rowDocumentData } from "@/lib/row-documents";
+import { requireRow, rowDocumentData } from "@/lib/row-documents";
+import { documentKey, publishPresence, watchDocument } from "@/lib/document-live";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -280,6 +281,52 @@ export async function GET(
       const wid = url.searchParams.get("workspace") || "";
       return NextResponse.json(listPageTemplates(user, wid));
     }
+    // Live stream of an open document or record content: changes and cursor
+    // moves of the others arrive as they happen (lib/document-live.ts).
+    if (path.length === 2 && path[0] === "documents" && path[1] === "live") {
+      const pageId = z.uuid().parse(url.searchParams.get("page"));
+      const rowId = url.searchParams.get("row")
+        ? z.uuid().parse(url.searchParams.get("row"))
+        : null;
+      const generation = z.string().min(1).max(100).parse(url.searchParams.get("generation"));
+      const clientId = z.uuid().parse(url.searchParams.get("client"));
+      if (rowId) requireRow(user, pageId, rowId);
+      else if (requirePage(user, pageId).kind !== "document")
+        throw new HttpError(400, "Kein Dokument.");
+      const encoder = new TextEncoder();
+      let stop = () => {};
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const send = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+          const unwatch = watchDocument(documentKey(pageId, rowId, generation), clientId, send);
+          const ping = setInterval(() => {
+            try {
+              send(": ping\n\n");
+            } catch {
+              stop();
+            }
+          }, 15_000);
+          stop = () => {
+            clearInterval(ping);
+            unwatch();
+            try {
+              controller.close();
+            } catch {}
+          };
+          req.signal.addEventListener("abort", () => stop());
+        },
+        cancel() {
+          stop();
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursors") {
       const page = requirePage(user, z.uuid().parse(path[1]));
       if (page.kind !== "whiteboard") throw new HttpError(400, "Kein Whiteboard.");
@@ -462,12 +509,16 @@ export async function POST(
       } catch {
         throw new HttpError(400, "Ungültige Cursoranfrage.");
       }
+      const presence = editorPresence(
+        user,
+        hash((await cookies()).get(cookieName)?.value || ""),
+        data,
+      );
+      // A moved cursor reaches the others right away.
+      if (presence.changed)
+        publishPresence(presence.key, presence.clientId);
       return NextResponse.json(
-        editorPresence(
-          user,
-          hash((await cookies()).get(cookieName)?.value || ""),
-          data,
-        ),
+        { peers: presence.peers },
         {
           headers: { "Cache-Control": "no-store" },
         },

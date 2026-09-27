@@ -109,6 +109,8 @@ function localCursor(view: EditorView): Cursor | null {
 // IndexedDB, undo history or exports. Relative positions share the existing binding.
 export function collaborationCursors(
   scope: Pick<CursorRequest, "pageId" | "rowId" | "generation">,
+  // The editor's live channel id, so its own cursor moves are not echoed.
+  liveClientId?: string,
 ) {
   return Extension.create({
     name: "flowplanCursors",
@@ -139,7 +141,7 @@ export function collaborationCursors(
           },
           props: { decorations: (state) => key.getState(state)?.decorations },
           view(view) {
-            const clientId = crypto.randomUUID();
+            const clientId = liveClientId || crypto.randomUUID();
             let layoutFrame = 0;
             function alignLabels() {
               cancelAnimationFrame(layoutFrame);
@@ -168,8 +170,8 @@ export function collaborationCursors(
             const active = () =>
               !destroyed && !stopped && !document.hidden && navigator.onLine;
             const show = (peers: Peer[]) => {
-              if (!destroyed && !view.isDestroyed)
-                view.dispatch(view.state.tr.setMeta(key, peers));
+              if (destroyed || view.isDestroyed) return;
+              view.dispatch(view.state.tr.setMeta(key, peers));
             };
             const request = (cursor: Cursor | null): CursorRequest => ({
               ...scope,
@@ -177,7 +179,7 @@ export function collaborationCursors(
               sequence: ++sequence,
               cursor,
             });
-            function schedule(delay = 150) {
+            function schedule(delay = 40) {
               if (!active()) return;
               if (controller) {
                 pending = true;
@@ -196,7 +198,7 @@ export function collaborationCursors(
               controller = ownController;
               pending = false;
               const timeout = setTimeout(() => ownController.abort(), 8000);
-              nextSend = Date.now() + 250;
+              nextSend = Date.now() + 80;
               let delay = 1000;
               try {
                 const response = await fetch("/api/presence", {
@@ -230,7 +232,7 @@ export function collaborationCursors(
                 clearTimeout(timeout);
                 if (controller === ownController) {
                   controller = null;
-                  schedule(pending ? 150 : delay);
+                  schedule(pending ? 40 : delay);
                 }
               }
             }
@@ -261,6 +263,12 @@ export function collaborationCursors(
                 schedule();
               }
             }
+            // Someone else moved: ask for the current cursors now.
+            const liveKey = `${scope.pageId}:${scope.rowId || ""}:${scope.generation}`;
+            const ping = (event: Event) => {
+              if ((event as CustomEvent<string>).detail === liveKey) schedule(0);
+            };
+            window.addEventListener("flowplan:presence", ping);
             view.dom.addEventListener("focusin", changed);
             view.dom.addEventListener("focusout", changed);
             document.addEventListener("visibilitychange", environment);
@@ -281,6 +289,7 @@ export function collaborationCursors(
                 leave();
                 clearInterval(expiry);
                 cancelAnimationFrame(layoutFrame);
+                window.removeEventListener("flowplan:presence", ping);
                 view.dom.removeEventListener("focusin", changed);
                 view.dom.removeEventListener("focusout", changed);
                 document.removeEventListener("visibilitychange", environment);

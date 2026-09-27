@@ -7,6 +7,7 @@ import {
   type CursorPeer,
 } from "./cursor-protocol";
 import type { Identity } from "./types";
+import { documentKey } from "./document-live";
 
 // Tombstones outlive a lease so a delayed request cannot resurrect a departed tab.
 const RETENTION_MS = 300_000;
@@ -46,8 +47,10 @@ export function editorPresence(
     row_id: string | null;
     generation: string;
     seen: number;
+    cursor: string | null;
+    sequence: number;
   }>(
-    "SELECT page_id,row_id,generation,seen FROM editor_presence WHERE session_token=? AND client_id=?",
+    "SELECT page_id,row_id,generation,seen,cursor,sequence FROM editor_presence WHERE session_token=? AND client_id=?",
     sessionToken,
     data.clientId,
   );
@@ -105,7 +108,15 @@ export function editorPresence(
     sessionToken,
     data.clientId,
   );
+  const cursor = data.cursor ? JSON.stringify(data.cursor) : null;
   return {
+    // Whether the others should hear about it: a new, moved or removed
+    // cursor (a heartbeat with the same position is no news).
+    changed:
+      data.sequence > (previous?.sequence ?? -1) &&
+      (previous?.cursor ?? null) !== cursor,
+    key: documentKey(page.id, data.rowId, data.generation),
+    clientId: data.clientId,
     peers: peers
       .filter((p) => pageRole({ ...user, id: p.user_id }, page))
       .map((p): CursorPeer => ({
