@@ -190,7 +190,9 @@ export type Comment = {
   body: string;
   resolved: number;
   created_at: string;
+  reactions?: Reaction[];
 };
+export type Reaction = { emoji: string; count: number; mine: boolean; names: string[] };
 export type Bootstrap = {
   user: Identity;
   workspaces: Workspace[];

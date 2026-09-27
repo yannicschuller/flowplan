@@ -13,6 +13,7 @@ import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
 import { edgeScroller } from "./edge-scroll";
+import { Reactions } from "./reactions";
 import { startBoardCardDrag, type BoardCardDrag } from "./board-card-drag";
 import DatabaseCalendar from "./database-calendar";
 import FormulaEditor from "./formula-editor";
@@ -4739,6 +4740,19 @@ export default function DatabaseView({
                         <div>
                           <strong>{c.name}</strong>
                           <p>{c.body}</p>
+                          {c.author_id && (
+                            <Reactions
+                              reactions={c.reactions || []}
+                              onToggle={(emoji, active) =>
+                                act({
+                                  action: "comment.react",
+                                  commentId: c.id,
+                                  emoji,
+                                  active,
+                                })
+                              }
+                            />
+                          )}
                         </div>
                       </div>
                     ))}

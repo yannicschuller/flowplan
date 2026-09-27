@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 29) return;
+  if (globalDb.flowplanSchema === 30) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -397,7 +397,9 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS doc_tasks_assignee ON doc_tasks(workspace_id,assignee,checked);
     CREATE INDEX IF NOT EXISTS doc_tasks_due ON doc_tasks(due,checked);
     CREATE TABLE IF NOT EXISTS task_reminders(user_id TEXT NOT NULL,page_id TEXT NOT NULL,text TEXT NOT NULL,due TEXT NOT NULL,PRIMARY KEY(user_id,page_id,text,due));`);
-  globalDb.flowplanSchema = 29;
+  // Emoji reactions on page and record comments.
+  d.exec(`CREATE TABLE IF NOT EXISTS comment_reactions(comment_id TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,emoji TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(comment_id,user_id,emoji));`);
+  globalDb.flowplanSchema = 30;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

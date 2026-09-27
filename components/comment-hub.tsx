@@ -3,6 +3,7 @@ import { Select } from "./select";
 import { useCallback, useEffect, useState } from "react";
 import { ChatCircle, Quotes } from "@phosphor-icons/react";
 import { api, Avatar } from "./ui";
+import { Reactions } from "./reactions";
 import { pageLocationHash } from "@/lib/page-location";
 import type { Comment } from "@/lib/types";
 import type { InlineThread } from "@/lib/inline-comment-types";
@@ -114,6 +115,20 @@ export function CommentHub({
               <strong>{item.comment.name}</strong>
               <small>{time(item.comment.created_at)}</small>
               <p>{item.comment.body}</p>
+              {item.comment.author_id && (
+                <Reactions
+                  reactions={item.comment.reactions || []}
+                  onToggle={(emoji, active) =>
+                    act({
+                      action: "comment.react",
+                      pageId,
+                      commentId: item.comment.id,
+                      emoji,
+                      active,
+                    })
+                  }
+                />
+              )}
               {canResolve && (
                 <button
                   className="text-button"

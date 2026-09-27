@@ -12,6 +12,12 @@ Mehrere Personen schreiben gleichzeitig in derselben Seite, ohne sich zu übersc
 - Gäste mit Bearbeitungslink arbeiten ebenfalls live mit und sehen die Cursor der Mitglieder; Mitglieder sehen die Gäste als „Gast · <Linkname>“.
 - Auf Whiteboards gibt es zusätzlich [Live-Cursor](/docs/whiteboards#gemeinsam-arbeiten) wie in Miro.
 
+## Reaktionen
+
+- **Kommentare**: Unter jedem Seiten- und Eintragskommentar fügt das Smiley eine Reaktion hinzu (👍 ❤️ 🎉 😄 👀 ✅ 🙏 🔥). Ein Klick auf eine vorhandene Reaktion schließt sich an oder nimmt die eigene zurück; der Tooltip zeigt, wer reagiert hat. Reagieren kann jeder, der die Seite sehen darf.
+- **Absätze und Überschriften**: Steht der Cursor in einem Absatz, erscheint an seinem Ende ein Smiley. Die Reaktionen stehen als kleine Pillen am Block, werden im Dokument gespeichert und erscheinen bei allen sofort. Das geht für alle, die die Seite bearbeiten dürfen.
+- Textkommentare haben ihre eigenen Reaktionen im Thread.
+
 ## Seiten folgen
 
 Die Glocke oben auf einer Seite schaltet **Folgen** ein oder aus. Wer einer Seite folgt, bekommt eine Benachrichtigung, sobald jemand anderes sie ändert – eine pro Seite, bis du sie wieder angesehen hast. Mit E-Mail-Versand landet sie in der E-Mail-Zusammenfassung. Wer eine Seite anlegt, folgt ihr automatisch. Unter **Einstellungen → Benachrichtigungen** lässt sich die Art „Änderungen an Seiten, denen du folgst“ für Posteingang, Push und E-Mail einzeln abschalten.

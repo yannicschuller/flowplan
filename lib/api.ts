@@ -288,12 +288,14 @@ export function pageData(user: Identity, pid: string) {
     .filter((x) => pageRole(user, x) && x.html.includes("#page=" + p.id))
     .map((x) => ({ id: x.id, title: x.title, icon: x.icon }));
   const hidden = p.kind === "database" ? hiddenRowIds(user, p) : new Set();
-  const comments = all<{ row_id: string | null }>(
+  const comments = all<{ id: string; row_id: string | null }>(
     `SELECT c.*,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?
      UNION ALL SELECT id,page_id,row_id,NULL author_id,body,resolved,created_at,name || ' (Gast)' name FROM shared_comments WHERE page_id=? ORDER BY created_at`,
     pid,
     pid,
-  ).filter((c) => !c.row_id || !hidden.has(c.row_id));
+  )
+    .filter((c) => !c.row_id || !hidden.has(c.row_id))
+    .map((c) => ({ ...c, reactions: commentReactions(user, c.id) }));
   const snapshots = all(
     "SELECT id,title,created_at,kind FROM snapshots WHERE page_id=? ORDER BY created_at DESC LIMIT 50",
     pid,
@@ -1688,6 +1690,41 @@ export function command(
       case "thread.react":
         result = inlineCommentCommand(user, b);
         break;
+      case "comment.react": {
+        const p = requirePage(user, pid());
+        const commentId = uuid.parse(b.commentId);
+        const comment = one<{ row_id: string | null }>(
+          "SELECT row_id FROM comments WHERE id=? AND page_id=?",
+          commentId,
+          p.id,
+        );
+        if (!comment) throw new HttpError(404, "Kommentar nicht gefunden.");
+        if (comment.row_id) requireRow(user, p.id, comment.row_id);
+        const emoji = reactionEmoji.parse(b.emoji);
+        if (b.active === false)
+          run(
+            "DELETE FROM comment_reactions WHERE comment_id=? AND user_id=? AND emoji=?",
+            commentId,
+            user.id,
+            emoji,
+          );
+        else {
+          if (
+            Number(one<{ n: number }>("SELECT COUNT(DISTINCT emoji) n FROM comment_reactions WHERE comment_id=?", commentId)?.n || 0) >= 20 &&
+            !one("SELECT 1 FROM comment_reactions WHERE comment_id=? AND emoji=?", commentId, emoji)
+          )
+            throw new HttpError(400, "Zu viele verschiedene Reaktionen.");
+          run(
+            "INSERT OR IGNORE INTO comment_reactions(comment_id,user_id,emoji,created_at) VALUES(?,?,?,?)",
+            commentId,
+            user.id,
+            emoji,
+            Date.now(),
+          );
+        }
+        result = { reactions: commentReactions(user, commentId) };
+        break;
+      }
       case "comment.create": {
         const p = requirePage(user, pid());
         if (b.rowId) requireRow(user, p.id, uuid.parse(b.rowId));
@@ -2180,6 +2217,26 @@ export function command(
       console.error("Nachlauf eines Befehls fehlgeschlagen", error);
     }
   return result;
+}
+// One emoji (with modifiers and joiners), nothing else.
+const reactionEmoji = z
+  .string()
+  .max(32)
+  .regex(/^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u200d|\ufe0f)+$/u, "Nur ein Emoji.");
+export function commentReactions(user: Identity, commentId: string) {
+  const rows = all<{ emoji: string; user_id: string; name: string }>(
+    "SELECT r.emoji,r.user_id,u.name FROM comment_reactions r JOIN users u ON u.id=r.user_id WHERE r.comment_id=? ORDER BY r.created_at",
+    commentId,
+  );
+  const byEmoji = new Map<string, { emoji: string; count: number; mine: boolean; names: string[] }>();
+  for (const row of rows) {
+    const entry = byEmoji.get(row.emoji) || { emoji: row.emoji, count: 0, mine: false, names: [] };
+    entry.count++;
+    entry.names.push(row.name);
+    if (row.user_id === user.id) entry.mine = true;
+    byEmoji.set(row.emoji, entry);
+  }
+  return [...byEmoji.values()];
 }
 const editActions = new Set([
   "document.sync",

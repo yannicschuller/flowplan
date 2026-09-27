@@ -1,5 +1,6 @@
 "use client";
 import { TaskDue } from "@/lib/task-due-plugin";
+import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
@@ -215,6 +216,9 @@ export default function DocumentEditor({
     update: () => bytesTo64(Y.encodeStateAsUpdate(doc)),
     receive: (state) => Y.applyUpdate(doc, from64(state), "remote"),
   };
+  // Names for reaction tooltips (read by the reactions plugin).
+  const memberNames = useRef(new Map<string, string>());
+  memberNames.current = new Map(members.map((m) => [m.id, m.name]));
   const slashState = useRef(slash);
   slashState.current = slash;
   const slashActiveRef = useRef(slashActive);
@@ -262,6 +266,11 @@ export default function DocumentEditor({
         TaskList,
         FlowTaskItem.configure({ nested: true }),
         TaskDue,
+        BlockReactionAttribute,
+        BlockReactions.configure({
+          userId,
+          names: () => memberNames.current,
+        }),
         Table.configure({ resizable: true }),
         TableRow,
         TableCell,

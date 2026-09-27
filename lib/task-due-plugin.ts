@@ -105,7 +105,8 @@ function chip(view: EditorView, pos: number, node: PMNode, editable: boolean) {
   el.className = due
     ? `task-due task-due-${dueState(due, !!node.attrs.checked)}`
     : "task-due task-due-add";
-  el.textContent = due ? `📅 ${dueLabel(due)}` : "+ Datum";
+  // "+ Datum" is drawn by CSS, so it never becomes part of the text.
+  el.textContent = due ? `📅 ${dueLabel(due)}` : "";
   if (due) el.title = `Fällig am ${new Date(`${due}T00:00:00Z`).toLocaleDateString("de-DE", { timeZone: "UTC" })}${editable ? " – klicken zum Ändern oder Entfernen" : ""}`;
   if (editable && el instanceof HTMLButtonElement) {
     el.type = "button";

@@ -1,3 +1,4 @@
+import { BlockReactionAttribute } from "./block-reactions";
 import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -363,6 +364,7 @@ export const documentExtensions = [
   MermaidBlock,
   TaskList,
   FlowTaskItem.configure({ nested: true }),
+  BlockReactionAttribute,
   Table.configure({ resizable: true }),
   TableRow,
   TableCell,

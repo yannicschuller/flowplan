@@ -30,6 +30,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-checked",
         "data-journal-since",
         "data-due",
+        "data-reactions",
         "data-spoiler",
         "data-indent",
         "data-callout",
