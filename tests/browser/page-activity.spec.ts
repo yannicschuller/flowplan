@@ -56,9 +56,9 @@ test("follow a page, see changes since the last visit and recently viewed pages"
     pageId,
   );
   db.prepare("INSERT INTO page_edits(page_id,user_id,at) VALUES(?,?,?)").run(pageId, kim, Date.now());
-  await page.reload();
-  await expect(page.locator(".visited-section")).toContainText(title);
-  await page.locator(".visited-section button", { hasText: title }).click();
+  // Opened again (the start page lists only the eight latest visits, and
+  // this one was moved an hour back).
+  await page.goto(`/#page=${pageId}`);
   const banner = page.locator(".since-visit");
   await expect(banner).toContainText("Kim Weber");
   await banner.getByRole("button", { name: "Änderungen zeigen" }).click();

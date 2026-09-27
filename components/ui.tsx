@@ -261,16 +261,17 @@ export class ApiError extends Error {
 export async function api<T = Record<string, unknown>>(
   url: string,
   body?: unknown,
+  headers: Record<string, string> = {},
 ): Promise<T> {
   const r = await fetch(
     url,
     body
       ? {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...headers },
           body: JSON.stringify(body),
         }
-      : { cache: "no-store" },
+      : { cache: "no-store", headers },
   );
   const data = await r.json();
   if (!r.ok)

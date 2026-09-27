@@ -335,10 +335,11 @@ export async function GET(
       );
     if (path[0] === "pages" && path[2] === "rows" && path[3])
       return NextResponse.json(rowDocumentData(user, path[1], path[3]));
-    // Opening a page: records the visit (read receipts, changes since then).
+    // Opening a page (header X-Flowplan-Visit) records the visit: read
+    // receipts and changes since then. Reloads and embeds do not.
     if (path[0] === "pages" && path[1])
       return NextResponse.json(
-        withActivity(user, pageData(user, path[1]), url.searchParams.get("visit") === "1"),
+        withActivity(user, pageData(user, path[1]), req.headers.get("x-flowplan-visit") === "1"),
       );
     if (path[0] === "settings") {
       const wid = url.searchParams.get("workspace") || "";

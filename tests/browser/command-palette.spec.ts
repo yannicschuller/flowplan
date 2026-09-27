@@ -15,6 +15,8 @@ test("⌘K runs commands; focus mode counts words towards a goal", async ({ page
     ).json()
   ).id;
   await page.goto("/#home");
+  // The shortcut works once the app is running.
+  await expect(page.locator(".recent-section")).toBeVisible();
   await page.keyboard.press("ControlOrMeta+k");
   const input = page.getByLabel("Suchen oder Befehl");
   await input.fill("> aufgaben");

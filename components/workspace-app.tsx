@@ -396,7 +396,14 @@ export default function WorkspaceApp({
     }
     if (currentId.current && screenRef.current === "page") {
       const pid = currentId.current;
-      const p = await api<PageData>(`/api/pages/${pid}`);
+      // A page shown for the first time (e.g. opened by its link) counts
+      // as a visit; later reloads of the same page do not.
+      const first = dataRef.current?.page.id !== pid;
+      const p = await api<PageData>(
+        `/api/pages/${pid}`,
+        undefined,
+        first ? { "X-Flowplan-Visit": "1" } : {},
+      );
       if (
         pid === currentId.current &&
         version === navigationVersion.current &&
@@ -489,6 +496,18 @@ export default function WorkspaceApp({
     },
     [mutate, notify],
   );
+  // "Zuletzt angesehen" on the start page follows along without a reload.
+  const shownPage = data?.page.id;
+  useEffect(() => {
+    if (!shownPage || screenRef.current !== "page") return;
+    setBoot((b) => ({
+      ...b,
+      recentVisits: [
+        { pageId: shownPage, seenAt: Date.now() },
+        ...(b.recentVisits || []).filter((v) => v.pageId !== shownPage),
+      ].slice(0, 8),
+    }));
+  }, [shownPage]);
   // What changed since the last visit: kept for the page while it stays open
   // (later loads of the same page count as a new visit).
   const [since, setSince] = useState<{
@@ -518,7 +537,9 @@ export default function WorkspaceApp({
       const hash = pageLocationHash(target || { pageId: id });
       if (location.hash !== hash) location.hash = hash;
       try {
-        const p = await api<PageData>(`/api/pages/${id}?visit=1`);
+        const p = await api<PageData>(`/api/pages/${id}`, undefined, {
+          "X-Flowplan-Visit": "1",
+        });
         if (
           version !== navigationVersion.current ||
           screenRef.current !== "page"
@@ -581,6 +602,8 @@ export default function WorkspaceApp({
         setScreen(fragment as Screen);
         screenRef.current = fragment as Screen;
         setMobile(false);
+        // The start page shows recently opened and edited pages: current.
+        if (fragment === "home") void refresh().catch(() => {});
       }
     };
     navigate();
