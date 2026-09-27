@@ -9,6 +9,7 @@ import { WorkspaceLifecycle } from "./workspace-lifecycle";
 import { SpaceManager } from "./space-manager";
 import { IntegrationSettings } from "./integration-settings";
 import { useEffect, useState } from "react";
+import { ClipperSettings } from "./clipper-settings";
 import {
   GearSix,
   Users,
@@ -676,6 +677,25 @@ export default function Settings({
                   />
                 </label>
               </section>
+              <ClipperSettings
+                spaces={boot.spaces.filter((space) => !space.deleted_at)}
+                canWrite={boot.workspace.role !== "viewer" && !boot.workspace.guest}
+                onImport={async (spaceId, html) => {
+                  try {
+                    const result = (await mutate({
+                      action: "bookmarks.import",
+                      workspaceId: boot.workspace.id,
+                      spaceId,
+                      html,
+                    })) as { added: number; skipped: number };
+                    onError(
+                      `${result.added} Lesezeichen importiert${result.skipped ? `, ${result.skipped} übersprungen` : ""}.`,
+                    );
+                  } catch (err) {
+                    onError((err as Error).message);
+                  }
+                }}
+              />
               <section className="settings-section">
                 <h2>Notion-, AppFlowy- oder Markdown-Export importieren</h2>
                 <p>

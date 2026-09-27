@@ -59,6 +59,7 @@ import { withActivity } from "@/lib/page-activity";
 import { myTasks } from "@/lib/doc-tasks";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
+import { clipArticle } from "@/lib/web-clip";
 import { journalDate } from "@/lib/journal";
 import {
   calendarEvents,
@@ -690,6 +691,13 @@ export async function POST(
           headers: { "Cache-Control": "no-store" },
         },
       );
+    }
+    // Web clipper: the readable text of an article (server-side, SSRF-safe).
+    if (path.length === 1 && path[0] === "clip") {
+      if (user.demo)
+        throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
+      const body = z.object({ url: z.string().max(2000) }).parse(await req.json());
+      return NextResponse.json(await clipArticle(body.url));
     }
     if (path[0] === "command") {
       const text = await req.text();

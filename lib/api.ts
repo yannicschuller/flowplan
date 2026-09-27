@@ -8,6 +8,7 @@ import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { changeDocTask, dueTaskCount, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
+import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
 import {
   dayEntry,
   journalDayDetails,
@@ -2163,9 +2164,36 @@ export function command(
           shared.title?.trim() ||
           text.split("\n")[0].slice(0, 120) ||
           (safeLink ? new URL(safeLink).hostname : "Geteilt");
+        // Clipped article text (from /api/clip) follows the link.
+        const article = typeof b.article === "string" ? cleanHtml(b.article.slice(0, 250_000)) : "";
+        const body = article ? `${html}<hr>${article}` : html;
+        if (b.as === "bookmark") {
+          if (!safeLink) throw new HttpError(400, "Ein Lesezeichen braucht einen Link.");
+          const db = bookmarksDatabase(wid(), sid, user.id);
+          requirePage(user, db, true);
+          const saved = addBookmarks(db, user.id, [
+            { title: title.slice(0, 300), url: safeLink, note: text.slice(0, 2000), content: article },
+          ]);
+          if (!saved.added) throw new HttpError(409, "Dieser Link ist schon unter den Lesezeichen.");
+          result = { id: db, rowId: saved.ids[0] };
+          break;
+        }
         const created = createPage(wid(), sid, user.id, title.slice(0, 200), "document");
-        run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
+        run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), created);
         result = { id: created };
+        break;
+      }
+      case "bookmarks.import": {
+        requireMember(user, wid(), "editor");
+        const sid = uuid.parse(b.spaceId);
+        if (!one("SELECT 1 FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid()))
+          throw new HttpError(404, "Bereich nicht gefunden.");
+        const items = parseBookmarksHtml(z.string().max(20_000_000).parse(b.html));
+        if (!items.length) throw new HttpError(400, "In der Datei wurden keine Lesezeichen gefunden.");
+        const db = bookmarksDatabase(wid(), sid, user.id);
+        requirePage(user, db, true);
+        const saved = addBookmarks(db, user.id, items);
+        result = { id: db, added: saved.added, skipped: saved.skipped };
         break;
       }
       case "calendar.feed":

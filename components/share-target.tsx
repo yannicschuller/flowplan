@@ -17,7 +17,28 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
     [space, setSpace] = useState(""),
     [name, setName] = useState(title),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [as, setAs] = useState<"page" | "bookmark">("page"),
+    [withArticle, setWithArticle] = useState(false),
+    [article, setArticle] = useState<{ html: string; words: number; title: string } | null>(null),
+    [clipping, setClipping] = useState(false);
+  const link = url || text.match(/https?:\/\/\S+/)?.[0] || "";
+  async function loadArticle(on: boolean) {
+    setWithArticle(on);
+    if (!on || article || !link) return;
+    setClipping(true);
+    setError("");
+    try {
+      const clip = await api<{ html: string; words: number; title: string }>("/api/clip", { url: link });
+      setArticle(clip);
+      if (!name.trim() && clip.title) setName(clip.title);
+    } catch (e) {
+      setError((e as Error).message);
+      setWithArticle(false);
+    } finally {
+      setClipping(false);
+    }
+  }
   useEffect(() => {
     const query = workspace ? `?workspace=${workspace}` : "";
     void api<Boot>(`/api/bootstrap${query}`)
@@ -51,9 +72,17 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
                 spaceId: space,
                 title: name,
                 text,
-                url,
+                url: link,
+                as,
+                ...(withArticle && article ? { article: article.html } : {}),
               });
-              location.replace(`/#page=${r.id}`);
+              const target = r as { id: string; rowId?: string };
+              // Opened from the bookmarklet: close the small window again.
+              if (window.opener && window.name === "flowplan") {
+                window.close();
+                return;
+              }
+              location.replace(`/#page=${target.id}${target.rowId ? `&row=${target.rowId}` : ""}`);
             } catch (err) {
               setError((err as Error).message);
               setBusy(false);
@@ -64,6 +93,24 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
             Titel
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Wird aus dem Inhalt gebildet" maxLength={200} />
           </label>
+          {link && (
+            <div className="share-target-mode" role="radiogroup" aria-label="Speichern als">
+              <button type="button" role="radio" aria-checked={as === "page"} className={`chip${as === "page" ? " active" : ""}`} onClick={() => setAs("page")}>
+                Als Seite
+              </button>
+              <button type="button" role="radio" aria-checked={as === "bookmark"} className={`chip${as === "bookmark" ? " active" : ""}`} onClick={() => setAs("bookmark")}>
+                Als Lesezeichen
+              </button>
+            </div>
+          )}
+          {link && (
+            <label className="share-target-article">
+              <input type="checkbox" checked={withArticle} disabled={clipping} onChange={(e) => void loadArticle(e.target.checked)} />
+              Artikeltext übernehmen
+              {clipping && <small> wird geladen …</small>}
+              {withArticle && article && <small> {article.words.toLocaleString("de-DE")} Wörter</small>}
+            </label>
+          )}
           <div className="share-target-preview" aria-label="Geteilter Inhalt">
             {text && <p>{text}</p>}
             {url && <p className="share-target-link">{url}</p>}
@@ -94,7 +141,7 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
           </label>
           <div className="share-target-actions">
             <button className="button primary" disabled={busy || !space}>
-              {busy ? "Wird gespeichert …" : "Als Seite speichern"}
+              {busy ? "Wird gespeichert …" : as === "bookmark" ? "Als Lesezeichen speichern" : "Als Seite speichern"}
             </button>
             <a className="button" href="/">
               Abbrechen

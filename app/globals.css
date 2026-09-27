@@ -11724,3 +11724,33 @@ h3 .block-reactions {
   grid-column: 2;
   grid-row: 1 / span 2;
 }
+
+/* Web clipper. */
+.share-target-mode {
+  display: flex;
+  gap: 6px;
+}
+.share-target-article {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+.share-target-article small {
+  color: var(--muted);
+}
+.clipper-settings .bookmarklet {
+  width: fit-content;
+  cursor: grab;
+  border-style: dashed;
+}
+.clipper-settings h3 {
+  margin: 18px 0 4px;
+  font-size: 14px;
+}
+.clipper-import {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
