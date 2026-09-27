@@ -728,6 +728,52 @@ export default function WorkspaceApp({
     setTreeDrop(target && target.id !== drag.source ? target : null);
   }
   touchHoverRef.current = touchHover;
+  // Touch: holding a page for half a second opens its menu (phones have no
+  // right click); moving the finger scrolls instead.
+  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; opened: boolean } | null>(null);
+  const pressMenu = (p: Page) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType !== "touch" || (e.target as HTMLElement).closest(".nav-drag, .nav-add, .tree-toggle")) return;
+      const { clientX: x, clientY: y } = e;
+      clearTimeout(press.current?.timer);
+      press.current = {
+        x,
+        y,
+        opened: false,
+        timer: setTimeout(() => {
+          if (!press.current) return;
+          press.current.opened = true;
+          navigator.vibrate?.(10);
+          setPageMenu({ page: p, x, y });
+        }, 480),
+      };
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const state = press.current;
+      if (state && !state.opened && Math.hypot(e.clientX - state.x, e.clientY - state.y) > 8) {
+        clearTimeout(state.timer);
+        press.current = null;
+      }
+    },
+    onPointerUp: () => {
+      if (press.current && !press.current.opened) {
+        clearTimeout(press.current.timer);
+        press.current = null;
+      }
+    },
+    onPointerCancel: () => {
+      clearTimeout(press.current?.timer);
+      press.current = null;
+    },
+    // The tap that ends a long press must not also open the page.
+    onClickCapture: (e: React.MouseEvent) => {
+      if (press.current?.opened) {
+        e.preventDefault();
+        e.stopPropagation();
+        press.current = null;
+      }
+    },
+  });
   // Pages whose title matches the filter, plus all their parent pages.
   const filterMatches = (() => {
     const query = treeFilter.trim().toLocaleLowerCase("de");
@@ -774,6 +820,7 @@ export default function WorkspaceApp({
                 e.preventDefault();
                 setPageMenu({ page: p, x: e.clientX, y: e.clientY });
               }}
+              {...pressMenu(p)}
               draggable={canCreate}
               onDragStart={(e) => {
                 if ((e.target as HTMLElement).closest(".nav-drag")) {
@@ -1064,6 +1111,7 @@ export default function WorkspaceApp({
                     e.preventDefault();
                     setPageMenu({ page: p, x: e.clientX, y: e.clientY });
                   }}
+                  {...pressMenu(p)}
                 >
                   <PageIcon name={p.icon} />
                   <span>{p.title}</span>

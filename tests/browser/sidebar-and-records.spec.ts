@@ -137,3 +137,45 @@ test("the page filter in the sidebar finds nested pages and keeps their parents"
   for (const name of ["Vorlagen", "Medien", "Papierkorb", "Einstellungen"])
     await expect(sidebar.getByRole("button", { name, exact: true })).toBeVisible();
 });
+
+test("on phones a long press opens the page menu", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile", "Long press is for touch screens.");
+  const title = `Langdruck ${Date.now()}`;
+  const { host } = await setup(page, "document", title);
+  await page.goto("/#home");
+  await page.getByRole("button", { name: "Navigation öffnen" }).click();
+  const row = page.locator(`.page-nav[data-page-id="${host.id}"] .page-nav-title`);
+  await row.scrollIntoViewIfNeeded();
+  const box = (await row.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  const point = { x: box.x + 30, y: box.y + box.height / 2, id: 1 };
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+  await page.waitForTimeout(700);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(page.getByRole("menu", { name: `Aktionen für ${title}` })).toBeVisible();
+  // The page itself did not open.
+  await expect(page).not.toHaveURL(new RegExp(host.id));
+});
+
+test("text and links shared from another app become a page", async ({ page }) => {
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const stamp = Date.now();
+  const query = new URLSearchParams({
+    title: `Geteilt ${stamp}`,
+    text: "Schau dir das an:\nhttps://example.com/artikel",
+    url: "",
+  });
+  await page.goto(`/share-target?${query}`);
+  await expect(page.getByRole("heading", { name: "In Flowplan speichern" })).toBeVisible();
+  await expect(page.getByLabel("Geteilter Inhalt")).toContainText("example.com/artikel");
+  await page.getByRole("button", { name: "Als Seite speichern" }).click();
+  await expect(page).toHaveURL(/#page=/);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await expect(editor).toContainText("Schau dir das an:");
+  await expect(editor.locator('a[href="https://example.com/artikel"]')).toBeVisible();
+  await expect(page.locator(".page-title, h1").first()).toBeVisible();
+  // The manifest registers Flowplan as a share target.
+  const manifest = await (await page.request.get("/manifest.webmanifest")).json();
+  expect(manifest.share_target.action).toBe("/share-target");
+});

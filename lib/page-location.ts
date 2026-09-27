@@ -49,6 +49,9 @@ export function notificationUrl(notification: {
 /** OIDC return paths are limited to the application root and validated hash targets. */
 export function loginReturnPath(value: unknown): string {
   if (value === "/#inbox") return value;
+  // Content shared from another app waits for the sign-in.
+  if (typeof value === "string" && /^\/share-target\?[^#\\]{0,4000}$/.test(value) && !value.includes("//"))
+    return value;
   if (typeof value !== "string" || !value.startsWith("/#")) return "/";
   const target = parsePageLocation(value.slice(1));
   return target ? `/${pageLocationHash(target)}` : "/";

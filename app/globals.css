@@ -409,6 +409,13 @@ kbd,
 .page-nav:hover {
   background: var(--hover);
 }
+/* A long press opens the page menu instead of the system callout. */
+.page-nav,
+.favorite-nav {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .page-nav-title {
   overflow: hidden;
   justify-content: flex-start;
@@ -10019,4 +10026,51 @@ li[data-journal-since] > label::after {
 .integration-list small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.share-target {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 28px 16px 40px;
+}
+.share-target header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.share-target h1 {
+  font-size: 21px;
+  margin: 0;
+}
+.share-target form {
+  display: grid;
+  gap: 14px;
+}
+.share-target label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.share-target-preview {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40dvh;
+  overflow: auto;
+}
+.share-target-preview p {
+  margin: 0 0 8px;
+}
+.share-target-link {
+  color: var(--blue);
+}
+.share-target-actions {
+  display: flex;
+  gap: 8px;
 }

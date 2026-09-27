@@ -29,6 +29,10 @@ Unter **Einstellungen → Daten → Offline-Nutzung** speichert das Gerät zusä
 
 Die installierte App öffnet in einem eigenen Fenster ohne Browserleisten.
 
+### Teilen an Flowplan
+
+Ist Flowplan auf Android (Chrome) als App installiert, erscheint es im **Teilen**-Menü anderer Apps. Geteilte Texte und Links landen in einer Vorschau; **Als Seite speichern** legt daraus eine Seite im gewählten Bereich an. Ohne Anmeldung geht es erst zur Anmeldung und danach zurück zur Vorschau. iOS bietet Web-Apps dieses Menü nicht an.
+
 ## Desktop-App für macOS und Windows
 
 Eine schlanke Desktop-App umschließt deine Flowplan-Instanz. Beim ersten Start fragt sie nach der Adresse (z. B. `https://flowplan.example.com`); **Server wechseln …** im Menü ändert sie später.

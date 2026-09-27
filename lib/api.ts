@@ -1929,6 +1929,40 @@ export function command(
         result = applyPageTemplate(user, p, template);
         break;
       }
+      case "page.fromShare": {
+        // "Teilen an Flowplan": text and link from another app as a page.
+        requireMember(user, wid(), "editor");
+        const sid = uuid.parse(b.spaceId);
+        if (!one("SELECT 1 FROM spaces WHERE id=? AND workspace_id=? AND deleted_at IS NULL", sid, wid()))
+          throw new HttpError(404, "Bereich nicht gefunden.");
+        const shared = z
+          .object({
+            title: z.string().max(300).optional(),
+            text: z.string().max(20_000).optional(),
+            url: z.string().max(2000).optional(),
+          })
+          .parse(b);
+        const esc = (v: string) =>
+          v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        // Apps often put the link into the text as well.
+        const link = shared.url || shared.text?.match(/https?:\/\/\S+/)?.[0] || "";
+        const text = (shared.text || "").replace(link, "").trim();
+        const safeLink = /^https?:\/\//.test(link) ? link : "";
+        const html = cleanHtml(
+          [
+            ...text.split(/\n{2,}/).filter(Boolean).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`),
+            safeLink ? `<p><a href="${esc(safeLink)}">${esc(safeLink)}</a></p>` : "",
+          ].join(""),
+        );
+        const title =
+          shared.title?.trim() ||
+          text.split("\n")[0].slice(0, 120) ||
+          (safeLink ? new URL(safeLink).hostname : "Geteilt");
+        const created = createPage(wid(), sid, user.id, title.slice(0, 200), "document");
+        run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), created);
+        result = { id: created };
+        break;
+      }
       case "calendar.feed":
         result = createCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
         break;
@@ -2008,7 +2042,7 @@ export function command(
 // Webhooks for records and pages changed through commands.
 function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown) {
   const created = (result as { id?: unknown } | null)?.id;
-  if (action === "page.create" && typeof created === "string") {
+  if ((action === "page.create" || action === "page.fromShare") && typeof created === "string") {
     const page = one<{ workspace_id: string; title: string; kind: string; parent_id: string | null }>(
       "SELECT workspace_id,title,kind,parent_id FROM pages WHERE id=?",
       created,
