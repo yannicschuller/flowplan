@@ -36,7 +36,7 @@ test("a demo gets its own example workspace and cannot reach anyone outside it",
   const ws = workspaceOf(uid)!;
   assert.equal(ws.quota_mb, 25);
   const boot = bootstrap(me);
-  assert.ok(boot.pages.some((p: { title: string }) => p.title === "Produkt-Roadmap"), "example content");
+  assert.ok(boot.pages.some((p: { title: string }) => p.title === "Projekte"), "example content");
   assert.equal(boot.workspaces.length, 1);
   const pageId = boot.pages[0].id;
   // Writing inside is fine; reaching outside is not.

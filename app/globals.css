@@ -3829,10 +3829,53 @@ tr:hover .row-open {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 6px;
   text-align: left;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid var(--border);
+  border-radius: 10px;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+.template-grid > button:hover {
+  border-color: var(--blue);
+  background: var(--surface);
+}
+.template-grid small {
+  color: var(--secondary);
+  line-height: 1.45;
+}
+.template-grid .template-meta {
+  margin-top: auto;
+  color: var(--muted);
+}
+.template-emoji {
+  font-size: 24px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.template-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.template-categories button {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--secondary);
+}
+.template-categories button.selected {
+  border-color: transparent;
+}
+@media (max-width: 600px) {
+  .template-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .template-grid strong {
   font-size: 13px;

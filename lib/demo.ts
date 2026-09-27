@@ -9,6 +9,7 @@ import { HttpError } from "./auth";
 import { createWorkspace } from "./seed";
 import { instanceSettings } from "./instance-settings";
 import { purgeWorkspace } from "./workspace-lifecycle";
+import { seedDemoShowcase } from "./demo-content";
 
 export const DEMO_IDLE_MS = 45 * 60_000;
 export const DEMO_MAX_MS = 3 * 3600_000;
@@ -90,7 +91,16 @@ export function startDemo(address: string) {
     "",
     now + DEMO_MAX_MS,
   );
-  const workspace = createWorkspace(uid, "Demo-Arbeitsbereich", true);
+  const workspace = createWorkspace(uid, "Demo-Arbeitsbereich");
+  // Instead of the plain welcome page: pages that show every feature.
+  transaction(() => {
+    const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace)!.id;
+    for (const page of all<{ id: string }>("SELECT id FROM pages WHERE workspace_id=?", workspace)) {
+      run("DELETE FROM documents WHERE page_id=?", page.id);
+      run("DELETE FROM pages WHERE id=?", page.id);
+    }
+    seedDemoShowcase(workspace, space, uid);
+  });
   run("UPDATE workspaces SET quota_mb=? WHERE id=?", DEMO_QUOTA_MB, workspace);
   return uid;
 }

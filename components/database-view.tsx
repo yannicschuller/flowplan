@@ -1206,6 +1206,9 @@ export default function DatabaseView({
         return <RollupValue field={f} value={Number(v)} />;
       return formatNumber(Number(v), f.format, f.decimals);
     }
+    // Formulas with a number result take the chosen number format.
+    if (f.type === "formula" && typeof v === "number" && f.format)
+      return formatNumber(v, f.format, f.decimals);
     return cellText(v) || <span className="muted">—</span>;
   }
   const galleryConfig = view.gallery || defaultGallery;
@@ -3886,7 +3889,7 @@ export default function DatabaseView({
               />
             </label>
           )}
-          {fieldDraft.type === "number" && (
+          {(fieldDraft.type === "number" || fieldDraft.type === "formula") && (
             <label>
               Format
               <Select

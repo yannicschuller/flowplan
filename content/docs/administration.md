@@ -45,7 +45,7 @@ Leere Felder fallen auf die [Umgebungsvariablen](/docs/konfiguration) zurück.
 
 ## Demo
 
-Mit **Demo auf der Startseite anbieten** erscheint auf der Startseite neben Registrieren und Anmelden der Knopf **Demo ausprobieren**. Er legt ohne Konto einen Demo-Gast mit eigenem Beispiel-Arbeitsbereich an.
+Mit **Demo auf der Startseite anbieten** erscheint auf der Startseite neben Registrieren und Anmelden der Knopf **Demo ausprobieren**. Er legt ohne Konto einen Demo-Gast mit eigenem Beispiel-Arbeitsbereich an. Jede Demo bekommt frische Beispielseiten, die alle Funktionen zeigen: eine Willkommensseite, einen Editor-Rundgang mit allen Blöcken, eine Projektdatenbank mit Beziehung, Rollup, Formel, Wiederholung und allen Ansichten (Tabelle, Board, Kalender, Zeitleiste, Galerie, Liste, Feed, Diagramm, Formular), ein Whiteboard, ein Journal und ein kleines Wiki.
 
 - Die Demo endet mit **Demo beenden**, beim Abmelden, nach 45 Minuten ohne Aktivität, spätestens nach drei Stunden. Dann werden Konto, Arbeitsbereich, Seiten und Dateien vollständig gelöscht.
 - Demo-Gäste können nichts nach außen tragen: nicht veröffentlichen, keine Freigabelinks, keine Einladungen, keine weiteren Arbeitsbereiche, keine öffentlichen Formulare, keine Administration.

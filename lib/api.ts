@@ -82,6 +82,7 @@ import { configureRelation } from "./two-way-relations";
 import { relationPairs, restoreRelationPairs } from "./relation-sync";
 import { duplicatePageTree } from "./page-tree";
 import { applyStarterTemplate, starterTemplates } from "./starter-templates";
+import { templateKeys } from "./template-catalog";
 import {
   requireRow,
   rowTemplates,
@@ -758,9 +759,7 @@ export function command(
         if (b.starterTemplate && savedTemplate)
           throw new HttpError(400, "Nur eine Vorlage auswählen.");
         if (b.starterTemplate) {
-          const key = z
-            .enum(["meeting", "wiki", "project", "tasks"])
-            .parse(b.starterTemplate);
+          const key = z.enum(templateKeys).parse(b.starterTemplate);
           if (starterTemplates[key].kind !== kind)
             throw new HttpError(400, "Vorlage passt nicht zum Seitentyp.");
           applyStarterTemplate(created, user.id, key);

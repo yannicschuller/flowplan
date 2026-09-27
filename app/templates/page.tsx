@@ -1,6 +1,7 @@
 import { publicTemplates } from "@/lib/public-templates";
 import { templateCategories } from "@/lib/template-categories";
 import { PageIcon } from "@/components/ui";
+import { templateCatalog } from "@/lib/template-catalog";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Vorlagen · Flowplan" };
 
@@ -13,6 +14,8 @@ export default async function Templates({
   const { category } = await searchParams;
   const active = category && category in templateCategories ? category : "";
   const list = publicTemplates(active || undefined);
+  // Templates that come with Flowplan, then those admins published.
+  const builtIn = Object.entries(templateCatalog).filter(([, t]) => !active || t.category === active);
   return (
     <main className="public-page template-gallery-page">
       <a href="/" className="public-brand">
@@ -37,6 +40,18 @@ export default async function Templates({
         ))}
       </nav>
       <div className="template-cards">
+        {builtIn.map(([key, t]) => (
+          <a key={key} className="template-card" href={`/templates/starter-${key}`}>
+            <span className="template-emoji" aria-hidden="true">
+              {t.icon}
+            </span>
+            <strong>{t.name}</strong>
+            <small>{t.description}</small>
+            <small className="muted">
+              {t.kind === "database" ? "Datenbank" : "Dokument"} · {templateCategories[t.category]}
+            </small>
+          </a>
+        ))}
         {list.map((t) => (
           <a key={t.id} className="template-card" href={`/templates/${t.id}`}>
             <PageIcon
@@ -51,9 +66,7 @@ export default async function Templates({
             </small>
           </a>
         ))}
-        {!list.length && (
-          <p className="muted">Noch keine öffentlichen Vorlagen.</p>
-        )}
+
       </div>
       <footer className="home-footnote">Mit Flowplan veröffentlicht</footer>
     </main>

@@ -29,7 +29,8 @@ test("the demo button opens a throwaway workspace that is deleted on leaving", a
     await page.goto("/");
     await page.getByRole("button", { name: "Demo ausprobieren" }).first().click();
     await expect(page.locator(".demo-banner")).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator(".sidebar")).toContainText("Produkt-Roadmap");
+    await expect(page.locator(".sidebar")).toContainText("Willkommen in der Demo");
+    await expect(page.locator(".sidebar")).toContainText("Editor-Rundgang");
     const uid = (db.prepare("SELECT id FROM users WHERE demo_until IS NOT NULL ORDER BY rowid DESC LIMIT 1").get() as { id: string }).id;
     const ws = (db.prepare("SELECT workspace_id id FROM members WHERE user_id=?").get(uid) as { id: string }).id;
 

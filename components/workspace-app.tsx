@@ -116,6 +116,8 @@ import { ShareLinks } from "./share-links";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import type { ShareLink } from "@/lib/share-links";
+import { templateCatalog } from "@/lib/template-catalog";
+import { templateCategories } from "@/lib/template-categories";
 const EmojiPicker = dynamic(() => import("./emoji-picker"), {
   ssr: false,
   loading: () => <p>Emojis werden geladen …</p>,
@@ -241,6 +243,7 @@ export default function WorkspaceApp({
     );
   const [privateTemplate, setPrivateTemplate] = useState(false);
   const [starterTemplate, setStarterTemplate] = useState<string | null>(null);
+  const [galleryCategory, setGalleryCategory] = useState("all");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchKind, setSearchKind] = useState<SearchKind>("all");
   const [iconTab, setIconTab] = useState<"emoji" | "image" | "library">(
@@ -536,17 +539,31 @@ export default function WorkspaceApp({
     window.history.replaceState(null, "", location.pathname + location.hash);
     void (async () => {
       try {
+        const space = boot.spaces.find((s) =>
+          ["owner", "editor"].includes((s as { role?: string }).role || "editor"),
+        );
+        // A template that comes with Flowplan (public gallery).
+        if (useTemplate.startsWith("starter:")) {
+          const key = useTemplate.slice(8);
+          const builtIn = templateCatalog[key];
+          if (!builtIn) throw new Error("Diese Vorlage ist nicht mehr verfügbar.");
+          const created = await mutate({
+            action: "page.create",
+            workspaceId: boot.workspace.id,
+            spaceId: space?.id || boot.spaces[0]?.id,
+            title: builtIn.name,
+            kind: builtIn.kind,
+            starterTemplate: key,
+          });
+          if (created?.id) void openPage(String(created.id));
+          return;
+        }
         const list = await api<{ id: string; name: string; kind: string }[]>(
           `/api/templates?workspace=${boot.workspace.id}`,
         );
         const template = list.find((t) => t.id === useTemplate);
         if (!template)
           throw new Error("Diese Vorlage ist nicht mehr verfügbar.");
-        const space = boot.spaces.find((s) =>
-          ["owner", "editor"].includes(
-            (s as { role?: string }).role || "editor",
-          ),
-        );
         const created = await mutate({
           action: "page.create",
           workspaceId: boot.workspace.id,
@@ -3007,36 +3024,45 @@ export default function WorkspaceApp({
         <p className="muted">
           Starte mit einer Struktur oder verwende deine gespeicherten Vorlagen.
         </p>
-        <div className="template-grid">
-          {[
-            ["Meeting-Notizen", "document", "meeting"],
-            ["Projektplanung", "database", "project"],
-            ["Team-Wiki", "document", "wiki"],
-            ["Aufgabenliste", "database", "tasks"],
-          ].map(([name, kind, templateKey]) => (
+        <nav className="template-categories" aria-label="Kategorien">
+          {[["all", "Alle"], ...Object.entries(templateCategories)].map(([id, label]) => (
             <button
-              key={name}
-              onClick={() => {
-                setTemplates(false);
-                setNewTitle(name);
-                setStarterTemplate(templateKey);
-                setNewKind(kind as PageKind);
-                setParent(null);
-                setCreate(true);
-              }}
+              key={id}
+              type="button"
+              className={galleryCategory === id ? "selected" : ""}
+              aria-pressed={galleryCategory === id}
+              onClick={() => setGalleryCategory(id)}
             >
-              <PageIcon
-                name={kind === "database" ? "table" : "book"}
-                size={28}
-              />
-              <strong>{name}</strong>
-              <small>
-                {kind === "database"
-                  ? "Datenbank mit vorbereiteter Struktur"
-                  : "Dokument"}
-              </small>
+              {label}
             </button>
           ))}
+        </nav>
+        <div className="template-grid">
+          {Object.entries(templateCatalog)
+            .filter(([, t]) => galleryCategory === "all" || t.category === galleryCategory)
+            .map(([templateKey, t]) => (
+              <button
+                key={templateKey}
+                onClick={() => {
+                  setTemplates(false);
+                  setNewTitle(t.name);
+                  setStarterTemplate(templateKey);
+                  setNewKind(t.kind as PageKind);
+                  setParent(null);
+                  setCreate(true);
+                }}
+              >
+                <span className="template-emoji" aria-hidden="true">
+                  {t.icon}
+                </span>
+                <strong>{t.name}</strong>
+                <small>{t.description}</small>
+                <small className="template-meta">
+                  {t.kind === "database" ? "Datenbank" : "Dokument"} ·{" "}
+                  {templateCategories[t.category]}
+                </small>
+              </button>
+            ))}
         </div>
         <SavedTemplates
           workspaceId={boot.workspace.id}

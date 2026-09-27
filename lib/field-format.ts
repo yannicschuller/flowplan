@@ -119,7 +119,7 @@ export function displayText(
   value: unknown,
   zone?: string,
 ) {
-  if (field.type === "number" && typeof value === "number")
+  if ((field.type === "number" || (field.type === "formula" && field.format)) && typeof value === "number")
     return formatNumber(value, field.format, field.decimals);
   if (field.type === "date" && typeof value === "string" && value)
     return formatFieldDate(value, field, zone);

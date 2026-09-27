@@ -27,7 +27,7 @@ export default async function Home({
     <WorkspaceApp
       initial={bootstrap(user) as never}
       useTemplate={
-        useTemplate && /^[0-9a-f-]{36}$/i.test(useTemplate)
+        useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))
           ? useTemplate
           : undefined
       }
