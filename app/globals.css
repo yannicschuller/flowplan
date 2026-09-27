@@ -11813,3 +11813,134 @@ h3 .block-reactions {
 .voice-recorder .modal-actions {
   width: 100%;
 }
+
+/* Printing and "save as PDF": the page as a clean document on A4. */
+@page {
+  size: A4;
+  margin: 18mm 16mm 20mm;
+}
+@media print {
+  :root,
+  :root[data-theme="dark"] {
+    --bg: #ffffff;
+    --surface: #f6f6f4;
+    --text: #111111;
+    --secondary: #333333;
+    --muted: #666666;
+    --border: #d8d8d8;
+    --blue: #1f3fbf;
+    --blue-light: #eef0fb;
+    color-scheme: light;
+  }
+  body {
+    background: #fff;
+    font-size: 11pt;
+  }
+  .block-manager-trigger,
+  .block-handle-layer,
+  .code-block-toolbar,
+  .code-block-note,
+  .inline-comment-tools,
+  .inline-comment-panel,
+  .add-cover,
+  .page-top-actions,
+  .since-visit,
+  .focus-bar,
+  .unlinked-mentions,
+  .subpages,
+  .backlinks,
+  .table-tools,
+  .document-outline,
+  .block-reaction-add,
+  .task-due-add,
+  .synced-block-bar,
+  .journal-toolbar,
+  .journal-hint,
+  .readers-button,
+  .follow-button,
+  .offline-banner,
+  .demo-banner,
+  button.new-record,
+  .board-add-group,
+  .comment-hub,
+  .notification-count {
+    display: none !important;
+  }
+  .page-content {
+    font-size: 11pt;
+    line-height: 1.55;
+  }
+  .page-title {
+    font-size: 24pt;
+    border: 0;
+    padding: 0;
+  }
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+  p,
+  li,
+  blockquote,
+  pre,
+  table,
+  img,
+  figure,
+  aside[data-callout],
+  .math-block,
+  [data-mermaid],
+  .synced-block,
+  .journal-daybar {
+    break-inside: avoid;
+  }
+  pre,
+  code {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  img,
+  video {
+    max-width: 100% !important;
+    height: auto;
+  }
+  .ProseMirror a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    display: inline;
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    background: none;
+    mask: none;
+    -webkit-mask: none;
+    font-size: 0.85em;
+    color: var(--muted);
+    word-break: break-all;
+  }
+  .synced-block {
+    border: 0;
+    padding: 0;
+    background: none;
+  }
+  .block-editor-surface,
+  .block-editor-surface.with-block-handles,
+  .document-editor {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+  }
+  table {
+    border-collapse: collapse;
+  }
+  th,
+  td {
+    border: 1px solid var(--border);
+  }
+  .data-table-scroll,
+  .board {
+    overflow: visible !important;
+  }
+  .board {
+    flex-wrap: wrap;
+  }
+}
