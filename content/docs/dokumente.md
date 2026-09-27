@@ -29,9 +29,14 @@ Am Zeilenanfang oder nach einem Leerzeichen öffnet `/` das Blockmenü direkt an
 | Zwei Spalten | `/spalten` | Inhalte nebeneinander |
 | Einbetten | `/embed` | Player für YouTube, Vimeo, Loom, Spotify, Figma, CodePen; sonst Linkkarte |
 | Spoiler | `/spoiler` | Verdeckter Text, per Klick sichtbar |
+| Sprachnotiz | `/sprachnotiz` | Aufnehmen und als Audio, auf Wunsch auch als Text einfügen |
 | Synchronisierter Block | `/sync` | Inhalt, der auf mehreren Seiten gleich bleibt |
 | Synchronisierten Block einfügen | `/sync` | Einen bestehenden synchronisierten Block zeigen |
 | Trennlinie | `/hr` | Horizontale Linie |
+
+## Sprachnotizen
+
+`/sprachnotiz` öffnet die Aufnahme: Mikrofon antippen, sprechen, **Aufnahme beenden** (höchstens zehn Minuten). Die Aufnahme lässt sich anhören oder verwerfen; **Einfügen** legt sie als Audio in die Seite. Ist auf dem Server ein Whisper-Dienst eingerichtet (siehe [Konfiguration](/docs/konfiguration#sprachnotizen-whisper)), folgt darunter das Gesprochene als Text.
 
 ## Fokusmodus
 

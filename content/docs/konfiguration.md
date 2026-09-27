@@ -55,6 +55,29 @@ Den Versand prüfst du unter **Administration → Instanz → Test-E-Mail senden
 | --- | --- | --- |
 | `FLOWPLAN_WEBHOOK_ALLOW_PRIVATE` | *leer* | `true` erlaubt Webhooks an interne Adressen und `http://` – etwa Home Assistant oder n8n im selben Netz. Ohne diese Variable sind nur öffentliche HTTPS-Adressen erlaubt. |
 
+## Sprachnotizen (Whisper)
+
+Sprachnotizen im Editor werden immer als Audio gespeichert. Mit einem Whisper-Dienst im eigenen Netz macht Flowplan daraus zusätzlich Text; die Aufnahme verlässt dabei deinen Server nicht.
+
+| Variable | Standard | Bedeutung |
+| --- | --- | --- |
+| `WHISPER_URL` | *leer* | Adresse eines OpenAI-kompatiblen Whisper-Servers (`POST /v1/audio/transcriptions`), z. B. `http://whisper:8000`. Schaltet die Transkription ein. |
+| `WHISPER_MODEL` | `Systran/faster-whisper-small` | Modellname, wie ihn der Dienst erwartet. |
+| `WHISPER_LANGUAGE` | `de` | Sprache der Aufnahmen. |
+| `WHISPER_API_KEY` | *leer* | Nur falls der Dienst einen Schlüssel verlangt. |
+
+Beispiel mit [speaches](https://github.com/speaches-ai/speaches) (früher faster-whisper-server) im selben Compose-Projekt:
+
+```yaml
+  whisper:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    volumes:
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+    restart: unless-stopped
+```
+
+Bei Flowplan dann `WHISPER_URL=http://whisper:8000` setzen. Das Modell lädt der Dienst beim ersten Gebrauch; `small` braucht rund 1 GB Arbeitsspeicher und transkribiert auf einer normalen CPU etwa in Echtzeit.
+
 ## Push-Benachrichtigungen
 
 | Variable | Bedeutung |

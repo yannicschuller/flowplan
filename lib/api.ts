@@ -9,6 +9,7 @@ import { changeDocTask, dueTaskCount, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
+import { transcriptionEnabled } from "./transcribe";
 import {
   dayEntry,
   journalDayDetails,
@@ -229,6 +230,7 @@ export function bootstrap(user: Identity, wid?: string) {
       announcement: instanceSettings().announcement,
       allowWorkspaceCreation:
         instanceSettings().allowWorkspaceCreation || user.isAdmin,
+      transcription: transcriptionEnabled() && !user.demo,
     },
     // Favourite records of readable databases in this workspace.
     favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(

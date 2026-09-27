@@ -214,6 +214,8 @@ export type Bootstrap = {
     name: string;
     announcement: string;
     allowWorkspaceCreation: boolean;
+    // Voice notes can be turned into text (WHISPER_URL is set).
+    transcription?: boolean;
   };
   members: (User & { role: Role; guest?: number })[];
   notifications: {

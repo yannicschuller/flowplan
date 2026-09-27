@@ -2131,6 +2131,7 @@ export default function WorkspaceApp({
                       onStatus={setStatus}
                       onError={notify}
                       onHtml={setHtml}
+                      transcription={!!boot.instance?.transcription}
                     />
                     </>
                   )}

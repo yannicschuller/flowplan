@@ -11754,3 +11754,62 @@ h3 .block-reactions {
   gap: 8px;
   align-items: center;
 }
+
+/* Voice notes (components/voice-recorder.tsx). */
+.voice-recorder {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 12px 0 4px;
+  text-align: center;
+}
+.voice-recorder .voice-start {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--on-accent);
+  box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--blue) 70%, transparent);
+  transition: transform 0.15s var(--ease-out);
+}
+.voice-recorder .voice-start:hover {
+  transform: scale(1.05);
+}
+.voice-live {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #d92d20;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-live {
+    animation: none;
+  }
+}
+.voice-time {
+  font-size: 34px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.voice-recorder audio {
+  width: 100%;
+}
+.voice-option {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 400;
+}
+.voice-recorder .modal-actions {
+  width: 100%;
+}

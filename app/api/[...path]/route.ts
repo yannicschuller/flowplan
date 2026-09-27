@@ -60,6 +60,7 @@ import { myTasks } from "@/lib/doc-tasks";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
 import { clipArticle } from "@/lib/web-clip";
+import { transcribe } from "@/lib/transcribe";
 import { journalDate } from "@/lib/journal";
 import {
   calendarEvents,
@@ -691,6 +692,17 @@ export async function POST(
           headers: { "Cache-Control": "no-store" },
         },
       );
+    }
+    // Voice notes: the recording goes to the local Whisper service.
+    if (path.length === 1 && path[0] === "transcribe") {
+      if (user.demo || user.apiScope)
+        throw new HttpError(403, "Hier nicht verfügbar.");
+      const data = await req.formData();
+      requirePage(user, z.uuid().parse(data.get("pageId")), true);
+      const file = data.get("file");
+      if (!(file instanceof Blob) || !file.type.startsWith("audio/"))
+        throw new HttpError(400, "Keine Aufnahme.");
+      return NextResponse.json(await transcribe(file, file instanceof File ? file.name : undefined));
     }
     // Web clipper: the readable text of an article (server-side, SSRF-safe).
     if (path.length === 1 && path[0] === "clip") {

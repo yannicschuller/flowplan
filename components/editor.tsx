@@ -1,6 +1,7 @@
 "use client";
 import { TaskDue } from "@/lib/task-due-plugin";
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
+import { VoiceRecorder } from "./voice-recorder";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
@@ -94,6 +95,7 @@ import {
   TextAlignLeft,
   TextAlignCenter,
   ArrowsClockwise,
+  Microphone,
 } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
 import type { Page, User } from "@/lib/types";
@@ -130,7 +132,10 @@ export default function DocumentEditor({
   onError,
   onHtml,
   embedded = false,
+  transcription = false,
 }: {
+  // The server turns voice notes into text (Whisper).
+  transcription?: boolean;
   // Shown inside another document (synced block): no toolbar, outline,
   // block management or comment bar.
   embedded?: boolean;
@@ -187,6 +192,7 @@ export default function DocumentEditor({
     [embedUrl, setEmbedUrl] = useState("");
   const [boardPicker, setBoardPicker] = useState(false),
     [boardSearch, setBoardSearch] = useState("");
+  const [voice, setVoice] = useState(false);
   const [syncedPicker, setSyncedPicker] = useState<
     { id: string; preview: string; origin: string }[] | null
   >(null);
@@ -875,6 +881,13 @@ export default function DocumentEditor({
       },
     },
     {
+      name: "Sprachnotiz",
+      keywords: ["audio", "aufnahme", "mikrofon", "diktat", "voice", "sprache"],
+      description: transcription ? "Aufnehmen und als Text einfügen" : "Aufnehmen und als Audio einfügen",
+      icon: Microphone,
+      run: () => setVoice(true),
+    },
+    {
       name: "Synchronisierter Block",
       keywords: ["sync", "synced", "synchron", "wiederverwenden"],
       description: "Inhalt, der auf mehreren Seiten gleich bleibt",
@@ -1344,6 +1357,40 @@ export default function DocumentEditor({
           }
         />
       )}
+      <VoiceRecorder
+        open={voice}
+        transcription={transcription}
+        onClose={() => setVoice(false)}
+        onInsert={async (file, toText) => {
+          setVoice(false);
+          await upload(file);
+          if (!toText) return;
+          onStatus("Sprachnotiz wird in Text umgewandelt …");
+          try {
+            const form = new FormData();
+            form.set("pageId", pageId);
+            form.set("file", file);
+            const response = await fetch("/api/transcribe", { method: "POST", body: form });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error);
+            const paragraphs = String(data.text || "")
+              .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÄÖÜ])/)
+              .map((p) => p.trim())
+              .filter(Boolean);
+            if (paragraphs.length)
+              editor
+                ?.chain()
+                .focus()
+                .insertContent(paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })))
+                .run();
+            else onError("In der Aufnahme wurde keine Sprache erkannt.");
+          } catch (error) {
+            onError((error as Error).message);
+          } finally {
+            onStatus("Gespeichert");
+          }
+        }}
+      />
       <Modal
         open={!!syncedPicker}
         title="Synchronisierten Block einfügen"
