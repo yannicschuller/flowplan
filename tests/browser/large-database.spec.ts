@@ -17,7 +17,6 @@ test("large databases draw rows in steps and keep search over all records", asyn
   const data = await (await page.request.get(`/api/pages/${db}`)).json();
   expect(data.rows).toHaveLength(230);
   expect(data.related[db]).toEqual([]);
-  expect(data.rows[0].content).toBe("");
 
   await page.goto(`/#page=${db}`);
   const rows = page.locator(".data-table tbody tr:not(.more-rows-row)");

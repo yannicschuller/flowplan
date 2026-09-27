@@ -321,6 +321,8 @@ kbd,
   overflow: auto;
   flex: 1;
   min-height: 0;
+  /* Entries scrolled into view stay below the sticky filter field. */
+  scroll-padding-top: 46px;
   padding-bottom: 12px;
   overscroll-behavior: contain;
 }
@@ -478,7 +480,8 @@ kbd,
 }
 .page-selection-bar {
   position: sticky;
-  top: 0;
+  /* Below the sticky filter field. */
+  top: 40px;
   z-index: 3;
   box-shadow: 0 2px 8px #14244414;
   display: flex;

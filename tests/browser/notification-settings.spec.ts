@@ -20,12 +20,12 @@ test("notification kinds are switched per channel in the settings", async ({
   await push.uncheck();
   await expect
     .poll(async () => (await prefs()).reminder)
-    .toEqual({ inbox: true, push: false });
+    .toEqual({ inbox: true, push: false, email: true });
   await inbox.uncheck();
   await expect(push).toBeDisabled();
   await expect
     .poll(async () => (await prefs()).reminder)
-    .toEqual({ inbox: false, push: false });
+    .toEqual({ inbox: false, push: false, email: false });
   await page.reload();
   await page
     .getByRole("button", { name: "Benachrichtigungen", exact: true })
@@ -36,8 +36,9 @@ test("notification kinds are switched per channel in the settings", async ({
   // Restore the defaults for other tests.
   await page.getByLabel("Datums-Erinnerungen im Posteingang").check();
   await page.getByLabel("Datums-Erinnerungen als Push").check();
+  await page.getByLabel("Datums-Erinnerungen per E-Mail").check();
   await expect
     .poll(async () => (await prefs()).reminder)
-    .toEqual({ inbox: true, push: true });
+    .toEqual({ inbox: true, push: true, email: true });
   expect(errors).toEqual([]);
 });

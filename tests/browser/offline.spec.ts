@@ -5,6 +5,7 @@ import { test, expect } from "@playwright/test";
 test("offline use is opt-in per device and its copies are removable", async ({
   page,
 }, testInfo) => {
+  test.setTimeout(300_000);
   test.skip(
     testInfo.project.name !== "desktop",
     "One service-worker run covers the shared code path.",
@@ -41,8 +42,9 @@ test("offline use is opt-in per device and its copies are removable", async ({
   await page
     .getByRole("button", { name: "Auf diesem Gerät offline verfügbar machen" })
     .click();
+  // Every readable page of the (shared, growing) test account is stored.
   await expect(page.getByText(/offline verfügbar\./)).toBeVisible({
-    timeout: 30000,
+    timeout: 120_000,
   });
   const stored = await cached();
   expect(stored).toContain("/");
@@ -57,8 +59,9 @@ test("offline use is opt-in per device and its copies are removable", async ({
   await page
     .getByRole("button", { name: "Auf diesem Gerät offline verfügbar machen" })
     .click();
+  // Every readable page of the (shared, growing) test account is stored.
   await expect(page.getByText(/offline verfügbar\./)).toBeVisible({
-    timeout: 30000,
+    timeout: 120_000,
   });
   await page.getByRole("button", { name: "Kontomenü" }).click();
   await page.getByRole("menuitem", { name: "Abmelden" }).click();

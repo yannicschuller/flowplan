@@ -295,10 +295,8 @@ export function pageData(user: Identity, pid: string) {
       database: data,
       relationPairs: relationPairs(pid),
       // Each record carries the viewer's role; hidden ones are left out.
-      // The record document goes out once, as preview (content stays out).
       rows: visibleRows(user, p, rows(pid)).map((r) => ({
         ...r,
-        content: "",
         preview: documentPreview(documentHtml.get(r.id) ?? r.content ?? ""),
         ...(r.access !== "inherit" && canManageRow(user, p, r)
           ? { grants: rowGrants(r.id) }
