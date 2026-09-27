@@ -76,7 +76,13 @@ Beispiel mit [speaches](https://github.com/speaches-ai/speaches) (früher faster
     restart: unless-stopped
 ```
 
-Bei Flowplan dann `WHISPER_URL=http://whisper:8000` setzen. Das Modell lädt der Dienst beim ersten Gebrauch; `small` braucht rund 1 GB Arbeitsspeicher und transkribiert auf einer normalen CPU etwa in Echtzeit.
+Bei Flowplan dann `WHISPER_URL=http://whisper:8000` setzen. Neuere speaches-Versionen laden Modelle nicht selbst; einmalig herunterladen, etwa aus dem Flowplan-Container:
+
+```sh
+node -e "fetch('http://whisper:8000/v1/models/Systran/faster-whisper-small',{method:'POST'}).then(r=>console.log(r.status))"
+```
+
+`small` braucht rund 1 GB Arbeitsspeicher und transkribiert auf einer normalen CPU etwa in Echtzeit; `base` ist schneller und ungenauer, `medium` genauer und deutlich langsamer. Den Whisper-Dienst nicht öffentlich erreichbar machen – nur Flowplan spricht mit ihm.
 
 ## Push-Benachrichtigungen
 
