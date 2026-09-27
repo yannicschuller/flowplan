@@ -11944,3 +11944,257 @@ h3 .block-reactions {
     flex-wrap: wrap;
   }
 }
+
+/* Whiteboard: guides, laser, stamps, presenting, arrange, cards, media. */
+.wb-guide {
+  stroke: #e8590c;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+.wb-laser line {
+  stroke: #ff2d2d;
+  stroke-linecap: round;
+}
+.wb-laser circle {
+  fill: #ff2d2d;
+  filter: drop-shadow(0 0 6px #ff2d2dcc);
+}
+.wb-stamps {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  pointer-events: none;
+}
+.wb-stamps span {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 6px #1d1a1422;
+  font-size: 14px;
+  line-height: 1.3;
+  animation: reaction-pop 0.18s var(--ease-out);
+}
+.wb-stamps span.mine {
+  border-color: var(--blue);
+}
+.wb-stamps small {
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--secondary);
+}
+.wb-stamp-choice {
+  font-size: 18px;
+  line-height: 1;
+}
+.wb-menu-hint {
+  grid-column: 1 / -1;
+  padding: 2px 4px;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.wb-shape-menu .wb-check,
+.wb-panel .wb-check {
+  grid-column: 1 / -1;
+}
+.wb-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 2px;
+  font-size: 12.5px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.wb-presenting {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  animation: menu-in 0.18s var(--ease-out) both;
+}
+.wb-presenting button {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
+  color: inherit;
+  font-size: 12.5px;
+}
+.wb-presenting button:hover {
+  background: color-mix(in srgb, var(--bg) 30%, transparent);
+}
+.wb-arrange {
+  position: relative;
+  display: inline-flex;
+}
+.wb-arrange > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.wb-arrange-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  display: grid;
+  min-width: 210px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+.wb-arrange-menu small {
+  padding: 6px 6px 2px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wb-arrange-menu > button {
+  padding: 6px 8px;
+  border-radius: 7px;
+  text-align: left;
+  font-size: 12.5px;
+}
+.wb-arrange-menu > button:hover,
+.wb-arrange-row button:hover {
+  background: var(--hover);
+}
+.wb-arrange-row {
+  display: flex;
+  gap: 2px;
+}
+.wb-arrange-row button {
+  padding: 6px;
+  border-radius: 7px;
+}
+.wb-row-card strong {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.wb-row-props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+}
+.wb-row-props span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f3f5;
+  color: #495057;
+  font-size: 11px;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-card-rows {
+  border-style: dashed !important;
+}
+.wb-icon-glyph svg {
+  width: 90%;
+  height: 90%;
+}
+.wb-media-search .journal-layout {
+  margin-bottom: 10px;
+}
+.wb-media-query {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+}
+.wb-media-query input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--text);
+  padding: 2px 0;
+  min-height: 0;
+}
+.wb-media-note {
+  margin: 6px 0 10px;
+  font-size: 12px;
+}
+.wb-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+  max-height: 52vh;
+  overflow: auto;
+}
+.wb-media-grid button {
+  padding: 0;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.wb-media-grid button:hover {
+  outline: 2px solid var(--blue);
+}
+.wb-media-grid button.busy {
+  opacity: 0.5;
+}
+.wb-media-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.wb-icon-colors {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0;
+}
+.wb-icon-colors button {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.wb-icon-colors button.active {
+  box-shadow: 0 0 0 2px var(--text);
+}
+.wb-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 4px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.wb-icon-grid button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 8px;
+}
+.wb-icon-grid button:hover {
+  background: var(--hover);
+}

@@ -72,6 +72,14 @@ export type WhiteboardItem = {
   resolved?: boolean;
   // Votes by person (voting sessions).
   votes?: Record<string, boolean>;
+  // Stamps (quick reactions) by person: user id → emoji.
+  stamps?: Record<string, string>;
+  // Cards: a record of a database (pageId is the database) instead of a page.
+  rowId?: string;
+  // Pen strokes drawn with a stylus: pressure 0–1 per point.
+  pressures?: number[];
+  // Images from the image search: author and licence.
+  credit?: string;
 };
 export type WhiteboardMessage = {
   id: string;
@@ -82,7 +90,10 @@ export type WhiteboardMessage = {
 };
 // Board-wide state shared by everyone: voting session and timer.
 export type WhiteboardMeta = {
-  voting?: { active: boolean; max: number };
+  // hidden: everyone sees only their own votes until the vote ends.
+  voting?: { active: boolean; max: number; hidden?: boolean };
+  // "Folge mir": everyone follows this person's view.
+  presenter?: { userId: string; name: string; since: number };
   timer?: { endsAt: number | null; remaining: number; duration: number };
 };
 export const stickyColors = [

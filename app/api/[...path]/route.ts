@@ -60,6 +60,8 @@ import { myTasks } from "@/lib/doc-tasks";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
 import { clipArticle } from "@/lib/web-clip";
+import { downloadImage, searchImages } from "@/lib/image-search";
+import { whiteboardRowCards } from "@/lib/whiteboard-cards";
 import { transcribe } from "@/lib/transcribe";
 import { journalDate } from "@/lib/journal";
 import {
@@ -191,6 +193,27 @@ export async function GET(
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
       );
+    // Openly licensed images (Openverse) for boards and documents.
+    if (path.length === 2 && path[0] === "images" && path[1] === "search") {
+      if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
+      return NextResponse.json(
+        { results: await searchImages(url.searchParams.get("q") || "", Number(url.searchParams.get("page") || 1)) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    // Live data of database records shown as cards on a whiteboard.
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cards") {
+      requirePage(user, z.uuid().parse(path[1]));
+      const refs = (url.searchParams.get("rows") || "")
+        .split(",")
+        .filter(Boolean)
+        .slice(0, 200)
+        .map((ref) => {
+          const [pageId, rowId] = ref.split(":");
+          return { pageId: z.uuid().parse(pageId), rowId: z.uuid().parse(rowId) };
+        });
+      return NextResponse.json({ cards: whiteboardRowCards(user, refs) }, { headers: { "Cache-Control": "no-store" } });
+    }
     // Links between pages as a graph; texts naming a page without a link.
     if (path.length === 1 && path[0] === "graph") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -649,6 +672,15 @@ export async function POST(
         .object({
           x: z.number().finite().min(-1e7).max(1e7),
           y: z.number().finite().min(-1e7).max(1e7),
+          laser: z.boolean().optional(),
+          view: z
+            .object({
+              x: z.number().finite().min(-1e7).max(1e7),
+              y: z.number().finite().min(-1e7).max(1e7),
+              w: z.number().finite().min(1).max(1e6),
+              h: z.number().finite().min(1).max(1e6),
+            })
+            .optional(),
         })
         .nullable()
         .parse(await req.json());
@@ -692,6 +724,34 @@ export async function POST(
           headers: { "Cache-Control": "no-store" },
         },
       );
+    }
+    // An image from the image search, stored like an upload.
+    if (path.length === 2 && path[0] === "images" && path[1] === "import") {
+      if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z
+        .object({ pageId: z.uuid(), url: z.string().max(2000), credit: z.string().max(500).optional() })
+        .parse(await req.json());
+      const p = requirePage(user, body.pageId, true);
+      if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
+      const maxUpload = instanceSettings().maxUploadMb;
+      const image = await downloadImage(body.url, Math.min(maxUpload, 15) * 1024 * 1024);
+      enforceQuota(p.workspace_id, image.data.length);
+      const fid = id(),
+        dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+      await mkdir(dir, { recursive: true });
+      await writeFile(resolve(dir, fid), image.data);
+      const name = `${(body.credit || "Bild").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 80)}.${image.ext}`;
+      run(
+        "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
+        fid,
+        p.id,
+        name,
+        image.type,
+        image.data.length,
+        user.id,
+      );
+      audit(user.id, "file.upload", p.id, name);
+      return NextResponse.json({ id: fid, url: `/api/files/${fid}`, name, mime: image.type });
     }
     // Voice notes: the recording goes to the local Whisper service.
     if (path.length === 1 && path[0] === "transcribe") {

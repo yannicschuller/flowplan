@@ -389,7 +389,9 @@ test("comment pins, tables, voting, timer and full screen", async ({
   await page.keyboard.type("Option A");
   await page.keyboard.press("Escape");
   await wb.getByRole("button", { name: "Kommentar", exact: true }).click();
-  await page.mouse.click(cx + 60, cy + 150);
+  // Clicks above may have scrolled the page; measure the canvas again.
+  const now = (await canvas.boundingBox())!;
+  await page.mouse.click(now.x + now.width / 2 + 60, now.y + now.height / 2 + 150);
   const comment = wb.getByRole("dialog", { name: "Kommentar" });
   await comment.getByLabel("Kommentar schreiben").fill("Bitte prüfen");
   await comment.getByRole("button", { name: "Senden" }).click();

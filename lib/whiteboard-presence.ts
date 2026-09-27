@@ -1,12 +1,17 @@
 // Live cursors on whiteboards: positions go through memory and are pushed to
 // everyone on the same board (server-sent events), no database round trip.
 // Flowplan runs as a single process, so one hub reaches every viewer.
+export type BoardView = { x: number; y: number; w: number; h: number };
 export type BoardCursor = {
   userId: string;
   name: string;
   x: number;
   y: number;
   at: number;
+  // Laser pointer: the others draw a fading red trail.
+  laser?: boolean;
+  // The visible part of the board (sent while others follow this person).
+  view?: BoardView;
 };
 type Listener = { userId: string; send: (event: string) => void };
 type Board = { cursors: Map<string, BoardCursor>; listeners: Set<Listener> };
@@ -47,7 +52,7 @@ function sweep(pageId: string, b: Board) {
 export function moveCursor(
   pageId: string,
   user: { id: string; name: string },
-  point: { x: number; y: number } | null,
+  point: { x: number; y: number; laser?: boolean; view?: BoardView } | null,
 ) {
   const b = board(pageId);
   if (!point) {
@@ -60,6 +65,17 @@ export function moveCursor(
       x: Math.round(point.x),
       y: Math.round(point.y),
       at: Date.now(),
+      ...(point.laser ? { laser: true } : {}),
+      ...(point.view
+        ? {
+            view: {
+              x: Math.round(point.view.x),
+              y: Math.round(point.view.y),
+              w: Math.round(point.view.w),
+              h: Math.round(point.view.h),
+            },
+          }
+        : {}),
     };
     b.cursors.set(user.id, cursor);
     broadcast(b, { type: "cursor", ...cursor }, user.id);

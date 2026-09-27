@@ -46,6 +46,19 @@ import {
   CaretLeft,
   CaretRight,
   X,
+  Seal,
+  CursorClick,
+  UsersThree,
+  GridFour,
+  Rows,
+  AlignLeft,
+  AlignRight,
+  AlignTop,
+  AlignBottom,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  TreeStructure,
+  MagnifyingGlass,
 } from "@phosphor-icons/react";
 import { Modal, api } from "../ui";
 import { Select } from "../select";
@@ -61,6 +74,7 @@ import {
   shapePath,
   contentBounds,
   type PageRef,
+  type RowCard,
 } from "./render";
 import {
   fillColors,
@@ -76,12 +90,50 @@ import {
   emptyTable,
 } from "@/lib/whiteboard-model";
 import { compressImage } from "@/lib/image-compress";
+import { MediaSearch } from "./media-search";
+import {
+  alignItems,
+  boundsOf,
+  clusterItems,
+  distributeItems,
+  mindmapLayout,
+  mindmapRoot,
+  recognizeStroke,
+  snapBox,
+  stackItems,
+  type AlignMode,
+  type ClusterMode,
+  type Guide,
+} from "@/lib/whiteboard-tools";
 
 const EmojiPicker = dynamic(() => import("../emoji-picker"), {
   ssr: false,
   loading: () => <p className="muted">Emojis werden geladen …</p>,
 });
 const LOCAL = "local";
+const stampChoices = ["👍", "❤️", "⭐", "✅", "❓", "🔥", "💡", "🎉"];
+type Presence = {
+  user_id: string;
+  name: string;
+  x: number;
+  y: number;
+  laser?: boolean;
+  view?: { x: number; y: number; w: number; h: number };
+};
+type Trail = { x: number; y: number; t: number }[];
+const stored = (key: string, fallback: boolean) => {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === "1";
+  } catch {
+    return fallback;
+  }
+};
+const store = (key: string, value: boolean) => {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {}
+};
 const to64 = (bytes: Uint8Array) => {
   let text = "";
   for (let i = 0; i < bytes.length; i += 0x8000)
@@ -100,7 +152,9 @@ type Tool =
   | "pen"
   | "frame"
   | "table"
-  | "comment";
+  | "comment"
+  | "stamp"
+  | "laser";
 type View = { x: number; y: number; zoom: number };
 type Gesture =
   | { kind: "pan"; client: Point; view: View }
@@ -122,7 +176,7 @@ type Gesture =
   | { kind: "rotate"; id: string; center: Point }
   | { kind: "create"; id: string; start: Point }
   | { kind: "connector"; id: string }
-  | { kind: "pen"; id: string; points: Point[] };
+  | { kind: "pen"; id: string; points: Point[]; pressures: number[] | null };
 const shapeNames: Record<ShapeKind, string> = {
   rectangle: "Rechteck",
   rounded: "Abgerundet",
@@ -161,7 +215,10 @@ export default function Whiteboard({
   onOpenPage,
   userId = "",
   userName = "",
+  demo = false,
 }: {
+  // Demo guests cannot use the image search (it loads foreign servers).
+  demo?: boolean;
   userId?: string;
   userName?: string;
   pageId: string;
@@ -242,9 +299,18 @@ export default function Whiteboard({
     [editing, setEditing] = useState<string | null>(null),
     [view, setView] = useState<View>({ x: -80, y: -60, zoom: 1 }),
     [marquee, setMarquee] = useState<{ a: Point; b: Point } | null>(null),
-    [presence, setPresence] = useState<
-      { user_id: string; name: string; x: number; y: number }[]
-    >([]),
+    [presence, setPresence] = useState<Presence[]>([]),
+    [trails, setTrails] = useState<Map<string, Trail>>(new Map()),
+    [guides, setGuides] = useState<Guide[]>([]),
+    [snapGrid, setSnapGrid] = useState(() => stored("flowplan-board-snap", false)),
+    [recognize, setRecognize] = useState(() => stored("flowplan-board-recognize", false)),
+    [penColor, setPenColor] = useState(strokeColors[0]),
+    [stamp, setStamp] = useState(stampChoices[0]),
+    [following, setFollowing] = useState(true),
+    [arrangeOpen, setArrangeOpen] = useState(false),
+    [imagesOpen, setImagesOpen] = useState(false),
+    [rowCards, setRowCards] = useState<Map<string, RowCard>>(new Map()),
+    [cardDb, setCardDb] = useState<{ id: string; title: string; rows: { id: string; title: string }[] | null } | null>(null),
     [shapeMenu, setShapeMenu] = useState(false),
     [emojiOpen, setEmojiOpen] = useState(false),
     [cardOpen, setCardOpen] = useState(false),
@@ -262,9 +328,16 @@ export default function Whiteboard({
     dirty = useRef(false),
     lastVector = useRef<Uint8Array | null>(null),
     inflight = useRef(false),
-    cursor = useRef<Point | null | undefined>(undefined);
+    cursor = useRef<(Point & { laser?: boolean; view?: Presence["view"] }) | null | undefined>(undefined),
+    lastPointer = useRef<Point | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
+  // The element whose text editor is opening: keys typed before it shows
+  // still land there.
+  const editRef = useRef<string | null>(null);
+  useEffect(() => {
+    editRef.current = editing;
+  }, [editing]);
   // Board changes (own and remote) re-render once per frame.
   useEffect(() => {
     let frame = 0;
@@ -380,6 +453,28 @@ export default function Whiteboard({
 
   // Live cursors: own position goes out up to ~15 times a second, the others
   // arrive as a server-sent event stream (polling if a proxy blocks it).
+  // Laser pointer: recent points per person fade out after a moment.
+  const trailsRef = useRef(new Map<string, Trail>());
+  const trailFrame = useRef(0);
+  const addTrail = useCallback((key: string, p: Point) => {
+    const now = Date.now();
+    const list = (trailsRef.current.get(key) || []).filter((q) => now - q.t < 700);
+    list.push({ x: p.x, y: p.y, t: now });
+    trailsRef.current.set(key, list.slice(-40));
+    if (trailFrame.current) return;
+    const tick = () => {
+      const t = Date.now();
+      let any = false;
+      for (const [k, points] of trailsRef.current) {
+        const kept = points.filter((q) => t - q.t < 700);
+        if (kept.length) any = true;
+        trailsRef.current.set(k, kept);
+      }
+      setTrails(new Map(trailsRef.current));
+      trailFrame.current = any ? requestAnimationFrame(tick) : 0;
+    };
+    trailFrame.current = requestAnimationFrame(tick);
+  }, []);
   const sendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSent = useRef(0);
   const flushCursor = useCallback(() => {
@@ -396,7 +491,7 @@ export default function Whiteboard({
     }).catch(() => {});
   }, [pageId]);
   const queueCursor = useCallback(
-    (point: Point | null) => {
+    (point: (Point & { laser?: boolean; view?: Presence["view"] }) | null) => {
       cursor.current = point;
       if (sendTimer.current) return;
       const wait = point === null ? 0 : Math.max(0, 66 - (Date.now() - lastSent.current));
@@ -405,10 +500,12 @@ export default function Whiteboard({
     [flushCursor],
   );
   useEffect(() => {
-    const others = new Map<string, { user_id: string; name: string; x: number; y: number }>();
+    const others = new Map<string, Presence>();
     const publish = () => setPresence([...others.values()]);
-    const take = (c: { userId: string; name: string; x: number; y: number }) =>
-      others.set(c.userId, { user_id: c.userId, name: c.name, x: c.x, y: c.y });
+    const take = (c: { userId: string; name: string; x: number; y: number; laser?: boolean; view?: Presence["view"] }) => {
+      others.set(c.userId, { user_id: c.userId, name: c.name, x: c.x, y: c.y, laser: c.laser, view: c.view });
+      if (c.laser) addTrail(c.userId, { x: c.x, y: c.y });
+    };
     let source: EventSource | null = null,
       poll: ReturnType<typeof setInterval> | null = null,
       failures = 0;
@@ -416,7 +513,7 @@ export default function Whiteboard({
       if (poll) return;
       poll = setInterval(async () => {
         try {
-          const list = await api<{ userId: string; name: string; x: number; y: number }[]>(
+          const list = await api<{ userId: string; name: string; x: number; y: number; laser?: boolean; view?: Presence["view"] }[]>(
             `/api/whiteboards/${pageId}/cursors`,
           );
           others.clear();
@@ -546,6 +643,7 @@ export default function Whiteboard({
     });
   }
   const zoomAt = useCallback((factor: number, at?: Point) => {
+    stopFollowing.current();
     setView((v) => {
       const rect = svg.current?.getBoundingClientRect();
       const sx = at ? at.x : (rect?.width || 0) / 2,
@@ -609,6 +707,78 @@ export default function Whiteboard({
       if (value === undefined) metaMap.delete(key);
       else metaMap.set(key, value);
     }, LOCAL);
+  // "Folge mir": one person presents, the others see what they see.
+  const presenter = meta.presenter;
+  const amPresenter = !!presenter && presenter.userId === userId;
+  function visibleRect() {
+    const rect = svg.current?.getBoundingClientRect();
+    const v = viewRef.current;
+    return {
+      x: v.x,
+      y: v.y,
+      w: Math.max(1, (rect?.width || 800) / v.zoom),
+      h: Math.max(1, (rect?.height || 600) / v.zoom),
+    };
+  }
+  const stopFollowing = useRef(() => {});
+  stopFollowing.current = () => {
+    if (presenter && !amPresenter && following) setFollowing(false);
+  };
+  useEffect(() => {
+    setFollowing(true);
+  }, [presenter?.userId, presenter?.since]);
+  // The presenter's view goes out with the cursor, and at least every few
+  // seconds for those who join later.
+  useEffect(() => {
+    if (!amPresenter) return;
+    const send = () => {
+      const at = lastPointer.current || { x: view.x, y: view.y };
+      queueCursor({ x: Math.round(at.x), y: Math.round(at.y), view: visibleRect() });
+    };
+    const timer = setTimeout(send, 80);
+    const beat = setInterval(send, 4000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(beat);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amPresenter, view, queueCursor]);
+  const presenterCursor = presenter ? presence.find((p) => p.user_id === presenter.userId) : undefined;
+  useEffect(() => {
+    const target = presenterCursor?.view;
+    if (!target || amPresenter || !following) return;
+    const rect = svg.current?.getBoundingClientRect();
+    const w = rect?.width || 800,
+      h = rect?.height || 600;
+    const zoom = Math.max(0.1, Math.min(4, Math.min(w / target.w, h / target.h)));
+    setView({
+      zoom,
+      x: target.x + target.w / 2 - w / 2 / zoom,
+      y: target.y + target.h / 2 - h / 2 / zoom,
+    });
+  }, [presenterCursor?.view?.x, presenterCursor?.view?.y, presenterCursor?.view?.w, presenterCursor?.view?.h, following, amPresenter]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Database records on the board stay current.
+  const rowRefs = items
+    .filter((i) => i.type === "card" && i.rowId && i.pageId)
+    .map((i) => `${i.pageId}:${i.rowId}`)
+    .sort()
+    .join(",");
+  useEffect(() => {
+    if (!rowRefs) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const result = await api<{ cards: Record<string, RowCard> }>(`/api/whiteboards/${pageId}/cards?rows=${rowRefs}`);
+        if (alive) setRowCards(new Map(Object.entries(result.cards)));
+      } catch {}
+    };
+    void load();
+    const timer = setInterval(() => document.visibilityState === "visible" && void load(), 10_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [rowRefs, pageId]);
   function addMessage(id: string, text: string) {
     const map = itemsMap.get(id);
     if (!map || !text.trim()) return;
@@ -700,7 +870,9 @@ export default function Whiteboard({
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
   function setCell(id: string, r: number, c: number, text: string) {
-    const item = byId.get(id);
+    // The document, not the rendered state: that may lag a frame behind,
+    // and the other cells must not be written back with older text.
+    const item = itemsMap.get(id)?.toJSON() as WhiteboardItem | undefined;
     if (!item) return;
     const cells = (item.cells?.length ? item.cells : [[""]]).map((row) => [
       ...row,
@@ -709,7 +881,9 @@ export default function Whiteboard({
     cells[r][c] = text.slice(0, 2000);
     change(() => setProps(id, { cells }));
   }
-  function resizeTable(item: WhiteboardItem, rows: number, cols: number) {
+  function resizeTable(rendered: WhiteboardItem, rows: number, cols: number) {
+    const stored = itemsMap.get(rendered.id)?.toJSON() as WhiteboardItem | undefined;
+    const item = stored ? { ...stored, id: rendered.id } : rendered;
     const cells = item.cells?.length ? item.cells : [[""]];
     const oldCols = Math.max(1, ...cells.map((r) => r.length));
     const nextRows = Math.max(1, Math.min(50, cells.length + rows)),
@@ -806,6 +980,93 @@ export default function Whiteboard({
       for (const item of selected)
         setProps(item.id, { z: front ? ++next : --next });
     });
+  // Several elements: line up, spread evenly, stack or cluster.
+  function place(positions: { id: string; x: number; y: number }[]) {
+    change(() => {
+      for (const p of positions) {
+        const item = byId.get(p.id);
+        if (item && !item.locked) setProps(p.id, { x: Math.round(p.x), y: Math.round(p.y) });
+      }
+    });
+  }
+  const movable = () => selected.filter((i) => !["connector", "pen", "comment"].includes(i.type) && !i.locked);
+  function arrange(action: AlignMode | "hspread" | "vspread" | "row" | "column" | ClusterMode) {
+    const list = movable();
+    if (list.length < 2) return;
+    if (["left", "center", "right", "top", "middle", "bottom"].includes(action))
+      place(alignItems(list, action as AlignMode));
+    else if (action === "hspread") place(distributeItems(list, "x"));
+    else if (action === "vspread") place(distributeItems(list, "y"));
+    else if (action === "row") place(stackItems(list, "x"));
+    else if (action === "column") place(stackItems(list, "y"));
+    else {
+      const names = new Map(presence.map((p) => [p.user_id, p.name]));
+      if (userId) names.set(userId, userName || "Ich");
+      const { positions, labels } = clusterItems(list, action as ClusterMode, (id) => names.get(id) || "Unbekannt");
+      change(() => {
+        place(positions);
+        for (const label of labels)
+          addItem({ type: "text", x: label.x, y: label.y, w: 220, h: 32, text: label.text, fontSize: 18, bold: true, align: "left" });
+      });
+    }
+    setArrangeOpen(false);
+  }
+  // Mind maps: Tab adds a branch to the selected node, ⌥Enter a sibling;
+  // the tree then lays itself out to the right.
+  const treeEdges = () =>
+    read()
+      .filter((i) => i.type === "connector" && i.from?.id && i.to?.id)
+      .map((i) => ({ from: i.from!.id!, to: i.to!.id! }));
+  function layoutMindmap(anyId: string) {
+    const edges = treeEdges();
+    const root = mindmapRoot(anyId, edges);
+    const boxes = new Map(read().filter((i) => i.type !== "connector").map((i) => [i.id, { x: i.x, y: i.y, w: i.w, h: i.h }]));
+    const layout = mindmapLayout(root, boxes, edges);
+    change(() => {
+      for (const [id, p] of layout) if (!byId.get(id)?.locked) setProps(id, { x: p.x, y: p.y });
+    });
+  }
+  function addBranch(parentId: string, sibling = false) {
+    const edges = treeEdges();
+    const source = sibling ? edges.find((e) => e.to === parentId)?.from : parentId;
+    const parent = source ? itemsMap.get(source)?.toJSON() as WhiteboardItem | undefined : undefined;
+    if (!source || !parent) return;
+    let child = "";
+    change(() => {
+      child =
+        parent.type === "sticky"
+          ? addItem({ type: "sticky", x: parent.x + parent.w + 80, y: parent.y, w: 160, h: 120, fill: parent.fill || stickyColor, text: "" })
+          : addItem({
+              type: "shape",
+              shape: "rounded",
+              x: parent.x + parent.w + 80,
+              y: parent.y,
+              w: 160,
+              h: 56,
+              fill: parent.type === "shape" ? parent.fill || "#ffffff" : "#ffffff",
+              stroke: parent.type === "shape" ? parent.stroke || "#1f2937" : "#1f2937",
+              strokeWidth: 2,
+              text: "",
+            });
+      addItem({
+        type: "connector",
+        x: 0,
+        y: 0,
+        w: 0,
+        h: 0,
+        from: { id: source, x: parent.x + parent.w, y: parent.y + parent.h / 2 },
+        to: { id: child, x: parent.x + parent.w + 80, y: parent.y + 28 },
+        stroke: "#868e96",
+        strokeWidth: 2,
+        endArrow: false,
+        route: "curved",
+      });
+    });
+    layoutMindmap(child);
+    setSelection(new Set([child]));
+    editRef.current = child;
+    setEditing(child);
+  }
   function hitItem(p: Point, exclude?: string) {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
@@ -824,6 +1085,7 @@ export default function Whiteboard({
 
   // ---- pointer handling ----
   function beginPan(e: ReactPointerEvent) {
+    stopFollowing.current();
     gesture.current = {
       kind: "pan",
       client: { x: e.clientX, y: e.clientY },
@@ -860,6 +1122,7 @@ export default function Whiteboard({
       if (!e.shiftKey) setSelection(new Set());
       return;
     }
+    if (tool === "laser") return;
     create(tool, p, e);
   }
   function create(kind: Tool, p: Point, e: ReactPointerEvent) {
@@ -955,10 +1218,29 @@ export default function Whiteboard({
           w: 1,
           h: 1,
           points: [0, 0],
-          stroke: strokeColors[0],
+          stroke: penColor,
           strokeWidth: 3,
         });
+      else if (kind === "stamp") {
+        // A stamp on an element: one per person, the same one again takes it back.
+        const hit = hitItem(p);
+        const map = hit ? itemsMap.get(hit.id) : undefined;
+        if (map && userId) {
+          let stamps = map.get("stamps");
+          if (!(stamps instanceof Y.Map)) {
+            stamps = new Y.Map();
+            map.set("stamps", stamps);
+          }
+          const own = (stamps as Y.Map<string>).get(userId);
+          if (own === stamp) (stamps as Y.Map<string>).delete(userId);
+          else (stamps as Y.Map<string>).set(userId, stamp);
+        }
+      }
     });
+    if (kind === "stamp") {
+      gesture.current = null;
+      return;
+    }
     if (!id) return;
     if (kind === "table" || kind === "comment") {
       setTool("select");
@@ -970,12 +1252,19 @@ export default function Whiteboard({
     if (kind === "sticky" || kind === "text") {
       setTool("select");
       setSelection(new Set([id]));
+      editRef.current = id;
       setEditing(id);
       gesture.current = null;
       return;
     }
     if (kind === "connector") gesture.current = { kind: "connector", id };
-    else if (kind === "pen") gesture.current = { kind: "pen", id, points: [p] };
+    else if (kind === "pen")
+      gesture.current = {
+        kind: "pen",
+        id,
+        points: [p],
+        pressures: e.pointerType === "pen" ? [Math.round((e.pressure || 0.5) * 100) / 100] : null,
+      };
     else gesture.current = { kind: "create", id, start: p };
     void e;
   }
@@ -1065,7 +1354,15 @@ export default function Whiteboard({
   }
   function onMove(e: ReactPointerEvent<SVGSVGElement>) {
     const p = toWorld(e.clientX, e.clientY);
-    queueCursor({ x: Math.round(p.x), y: Math.round(p.y) });
+    lastPointer.current = p;
+    const laser = tool === "laser";
+    queueCursor({
+      x: Math.round(p.x),
+      y: Math.round(p.y),
+      ...(laser ? { laser: true } : {}),
+      ...(amPresenter ? { view: visibleRect() } : {}),
+    });
+    if (laser) addTrail("me", p);
     if (e.pointerType === "touch" && pointers.current.has(e.pointerId)) {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pinch.current && pointers.current.size >= 2) {
@@ -1106,6 +1403,29 @@ export default function Whiteboard({
       if (!g.moved && Math.hypot(dx, dy) * view.zoom < 3) return;
       g.moved = true;
       if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0);
+      // Edges and centres snap to other elements (Alt turns it off), else
+      // to the grid when that is switched on.
+      const boxes = [...g.origins]
+        .map(([id, o]) => ({ item: byId.get(id), o }))
+        .filter(({ item }) => item && item.type !== "connector" && item.type !== "pen")
+        .map(({ item, o }) => ({ x: o.x + dx, y: o.y + dy, w: item!.w, h: item!.h }));
+      if (boxes.length && !e.altKey) {
+        const box = boundsOf(boxes);
+        const view0 = visibleRect();
+        const others = items.filter(
+          (i) =>
+            !g.origins.has(i.id) &&
+            !["connector", "pen", "comment"].includes(i.type) &&
+            i.x < view0.x + view0.w &&
+            i.x + i.w > view0.x &&
+            i.y < view0.y + view0.h &&
+            i.y + i.h > view0.y,
+        );
+        const snapped = snapBox(box, others, 6 / view.zoom, snapGrid ? 24 : 0);
+        dx += snapped.dx;
+        dy += snapped.dy;
+        setGuides(snapped.guides);
+      } else setGuides([]);
       change(() => {
         for (const [id, o] of g.origins) {
           const item = byId.get(id);
@@ -1184,6 +1504,7 @@ export default function Whiteboard({
       );
     } else if (g.kind === "pen") {
       g.points.push(p);
+      if (g.pressures) g.pressures.push(Math.round((e.pressure || 0.5) * 100) / 100);
       const xs = g.points.map((q) => q.x),
         ys = g.points.map((q) => q.y);
       const x = Math.min(...xs),
@@ -1200,6 +1521,7 @@ export default function Whiteboard({
             Math.round(((q.x - x) / w) * 1000) / 1000,
             Math.round(((q.y - y) / h) * 1000) / 1000,
           ]),
+          ...(g.pressures ? { pressures: g.pressures } : {}),
         }),
       );
     }
@@ -1209,7 +1531,49 @@ export default function Whiteboard({
     if (pointers.current.size < 2) pinch.current = null;
     const g = gesture.current;
     gesture.current = null;
+    setGuides([]);
     if (!g) return;
+    if (g.kind === "pen") {
+      // Drawn lines, rectangles, ellipses, triangles and diamonds become
+      // clean shapes (switch off in the pen menu).
+      const shape = recognize && !e.altKey ? recognizeStroke(g.points) : null;
+      const pen = byId.get(g.id) || itemsMap.get(g.id)?.toJSON();
+      if (shape && pen) {
+        let id = "";
+        change(() => {
+          itemsMap.delete(g.id);
+          id =
+            shape.kind === "line"
+              ? addItem({
+                  type: "connector",
+                  x: 0,
+                  y: 0,
+                  w: 0,
+                  h: 0,
+                  from: { x: Math.round(shape.from.x), y: Math.round(shape.from.y) },
+                  to: { x: Math.round(shape.to.x), y: Math.round(shape.to.y) },
+                  stroke: pen.stroke || penColor,
+                  strokeWidth: pen.strokeWidth ?? 3,
+                  endArrow: false,
+                  route: "straight",
+                })
+              : addItem({
+                  type: "shape",
+                  shape: shape.shape,
+                  x: Math.round(shape.box.x),
+                  y: Math.round(shape.box.y),
+                  w: Math.round(shape.box.w),
+                  h: Math.round(shape.box.h),
+                  fill: "transparent",
+                  stroke: pen.stroke || penColor,
+                  strokeWidth: pen.strokeWidth ?? 3,
+                  text: "",
+                });
+        });
+        setSelection(new Set([id]));
+      }
+      return;
+    }
     if (g.kind === "move" && !g.moved && g.clicked) {
       if (byId.get(g.clicked)?.type === "comment") setCommentOpen(g.clicked);
     }
@@ -1286,6 +1650,10 @@ export default function Whiteboard({
       .find(Boolean)
       ?.getAttribute("data-item");
     const item = target ? byId.get(target) : undefined;
+    if (item?.type === "card" && item.pageId && item.rowId) {
+      location.hash = `page=${item.pageId}&row=${item.rowId}`;
+      return;
+    }
     if (item?.type === "card" && item.pageId) return onOpenPage(item.pageId);
     if (!editable) return;
     if (item?.type === "table" && !item.locked) {
@@ -1316,6 +1684,7 @@ export default function Whiteboard({
       ["sticky", "text", "shape", "frame", "connector"].includes(item.type)
     ) {
       setSelection(new Set([item.id]));
+      editRef.current = item.id;
       setEditing(item.id);
       return;
     }
@@ -1333,6 +1702,7 @@ export default function Whiteboard({
         });
       });
       setSelection(new Set([id]));
+      editRef.current = id;
       setEditing(id);
     }
   }
@@ -1340,7 +1710,9 @@ export default function Whiteboard({
   // ---- keyboard, clipboard, files ----
   function onKeyDown(e: React.KeyboardEvent) {
     if (
-      editing ||
+      // While the editor is still opening (the new element arrives with the
+      // next frame), keys go on below and land in the element.
+      (editing && editingItem) ||
       (e.target as HTMLElement).closest(
         "input, textarea, select, [contenteditable=true]",
       )
@@ -1410,6 +1782,44 @@ export default function Whiteboard({
       setTool("select");
       return;
     }
+    const opening = editRef.current ? (itemsMap.get(editRef.current)?.toJSON() as WhiteboardItem | undefined) : undefined;
+    const only = opening
+      ? { ...opening, id: editRef.current! }
+      : selection.size === 1
+        ? byId.get([...selection][0])
+        : undefined;
+    // Typing on a selected note, text or shape starts editing it with that
+    // character (also when the editor is about to open after a double click).
+    if (
+      editable &&
+      only &&
+      !only.locked &&
+      !only.covered &&
+      ["sticky", "text", "shape"].includes(only.type) &&
+      e.key.length === 1 &&
+      !mod &&
+      !e.altKey &&
+      e.key !== " "
+    ) {
+      e.preventDefault();
+      const map = itemsMap.get(only.id);
+      const current = typeof map?.get("text") === "string" ? (map.get("text") as string) : "";
+      change(() => setProps(only.id, { text: (current + e.key).slice(0, 10000) }));
+      editRef.current = only.id;
+      setEditing(only.id);
+      return;
+    }
+    if (
+      editable &&
+      only &&
+      !only.locked &&
+      ["sticky", "shape", "text", "card", "emoji", "image"].includes(only.type) &&
+      (e.key === "Tab" || (e.key === "Enter" && e.altKey))
+    ) {
+      e.preventDefault();
+      addBranch(only.id, e.key === "Enter");
+      return;
+    }
     if (e.key === "Enter" && selection.size === 1 && editable) {
       e.preventDefault();
       if (!byId.get([...selection][0])?.covered)
@@ -1453,9 +1863,11 @@ export default function Whiteboard({
       f: "frame",
       g: "table",
       c: "comment",
+      e: "stamp",
+      k: "laser",
     };
     const next = keys[e.key.toLowerCase()];
-    if (next && (editable || next === "select" || next === "hand"))
+    if (next && (editable || next === "select" || next === "hand" || next === "laser"))
       setTool(next);
   }
   async function upload(original: File) {
@@ -1799,6 +2211,52 @@ export default function Whiteboard({
               </button>
             </>
           )}
+          {movable().length >= 2 && (
+            <>
+              <span className="wb-sep" />
+              <span className="wb-arrange">
+                <button
+                  aria-label="Anordnen"
+                  aria-expanded={arrangeOpen}
+                  title="Ausrichten, verteilen, stapeln, gruppieren"
+                  onClick={() => setArrangeOpen(!arrangeOpen)}
+                >
+                  <Rows size={16} /> Anordnen
+                </button>
+                {arrangeOpen && (
+                  <span className="wb-arrange-menu" role="menu">
+                    <small>Ausrichten</small>
+                    <span className="wb-arrange-row">
+                      <button role="menuitem" title="Links" aria-label="Links ausrichten" onClick={() => arrange("left")}><AlignLeft size={16} /></button>
+                      <button role="menuitem" title="Mitte" aria-label="Horizontal zentrieren" onClick={() => arrange("center")}><AlignCenterHorizontal size={16} /></button>
+                      <button role="menuitem" title="Rechts" aria-label="Rechts ausrichten" onClick={() => arrange("right")}><AlignRight size={16} /></button>
+                      <button role="menuitem" title="Oben" aria-label="Oben ausrichten" onClick={() => arrange("top")}><AlignTop size={16} /></button>
+                      <button role="menuitem" title="Mitte" aria-label="Vertikal zentrieren" onClick={() => arrange("middle")}><AlignCenterVertical size={16} /></button>
+                      <button role="menuitem" title="Unten" aria-label="Unten ausrichten" onClick={() => arrange("bottom")}><AlignBottom size={16} /></button>
+                    </span>
+                    <button role="menuitem" onClick={() => arrange("hspread")}>Horizontal verteilen</button>
+                    <button role="menuitem" onClick={() => arrange("vspread")}>Vertikal verteilen</button>
+                    <button role="menuitem" onClick={() => arrange("row")}>Als Zeile stapeln</button>
+                    <button role="menuitem" onClick={() => arrange("column")}>Als Spalte stapeln</button>
+                    <small>Zettel sortieren</small>
+                    <button role="menuitem" onClick={() => arrange("color")}>Nach Farbe gruppieren</button>
+                    <button role="menuitem" onClick={() => arrange("author")}>Nach Person gruppieren</button>
+                    <button role="menuitem" onClick={() => arrange("votes")}>Nach Stimmen sortieren</button>
+                    <button role="menuitem" onClick={() => arrange("grid")}>Als Raster anordnen</button>
+                  </span>
+                )}
+              </span>
+            </>
+          )}
+          {selected.length === 1 &&
+            treeEdges().some((e) => e.from === first.id || e.to === first.id) && (
+              <>
+                <span className="wb-sep" />
+                <button aria-label="Mindmap anordnen" title="Mindmap anordnen (Tab: neuer Zweig, ⌥Enter: Geschwister)" onClick={() => layoutMindmap(first.id)}>
+                  <TreeStructure size={16} />
+                </button>
+              </>
+            )}
           <span className="wb-sep" />
           <button
             aria-label="Nach vorne"
@@ -1899,7 +2357,15 @@ export default function Whiteboard({
         <textarea
           className={`wb-editor wb-editor-${it.type}`}
           aria-label="Text bearbeiten"
-          autoFocus
+          ref={(el) => {
+            if (!el || el.dataset.ready) return;
+            el.dataset.ready = "1";
+            // Characters typed while it opened are already in the document.
+            const fresh = itemsMap.get(it.id)?.get("text");
+            if (typeof fresh === "string" && fresh !== el.value) el.value = fresh;
+            el.focus({ preventScroll: true });
+            el.setSelectionRange(el.value.length, el.value.length);
+          }}
           style={{
             left: s.x,
             top: s.y,
@@ -1929,15 +2395,19 @@ export default function Whiteboard({
               setProps(it.id, { text: e.target.value.slice(0, 10000) }),
             )
           }
-          onBlur={() => setEditing(null)}
+          onBlur={() => {
+            editRef.current = null;
+            setEditing(null);
+          }}
           onKeyDown={(e) => {
             if (
               e.key === "Escape" ||
               (e.key === "Enter" && (e.metaKey || e.ctrlKey))
             ) {
               e.preventDefault();
+              editRef.current = null;
               setEditing(null);
-              container.current?.focus();
+              container.current?.focus({ preventScroll: true });
             }
             e.stopPropagation();
           }}
@@ -1962,8 +2432,10 @@ export default function Whiteboard({
           ["frame", "Rahmen", <FrameCorners key="f" size={18} />, "F"],
           ["table", "Tabelle", <Table key="g" size={18} />, "G"],
           ["comment", "Kommentar", <ChatCircle key="c" size={18} />, "C"],
+          ["stamp", "Stempel", <Seal key="e" size={18} />, "E"],
         ] as [Tool, string, React.ReactNode, string][])
       : []),
+    ["laser", "Laserpointer", <CursorClick key="k" size={18} />, "K"],
   ];
   const cardPages = pages
     .filter(
@@ -2038,6 +2510,7 @@ export default function Whiteboard({
                   items={byId}
                   pages={pages}
                   editing={editing === item.id ? "" : undefined}
+                  cards={rowCards}
                 />
               </g>
             ))}
@@ -2120,6 +2593,39 @@ export default function Whiteboard({
               strokeWidth={1 / view.zoom}
             />
           )}
+          {guides.map((g, i) => (
+            <line
+              key={`guide-${i}`}
+              data-ui
+              className="wb-guide"
+              x1={g.axis === "x" ? g.at : g.from}
+              x2={g.axis === "x" ? g.at : g.to}
+              y1={g.axis === "y" ? g.at : g.from}
+              y2={g.axis === "y" ? g.at : g.to}
+              strokeWidth={1 / view.zoom}
+            />
+          ))}
+          {[...trails].map(([key, points]) => {
+            if (!points.length) return null;
+            const now = Date.now();
+            const last = points[points.length - 1];
+            return (
+              <g key={`trail-${key}`} data-ui className="wb-laser" pointerEvents="none">
+                {points.slice(1).map((q, i) => (
+                  <line
+                    key={i}
+                    x1={points[i].x}
+                    y1={points[i].y}
+                    x2={q.x}
+                    y2={q.y}
+                    strokeWidth={(6 * (1 - (now - q.t) / 700)) / view.zoom + 0.5 / view.zoom}
+                    opacity={Math.max(0, 1 - (now - q.t) / 700)}
+                  />
+                ))}
+                <circle cx={last.x} cy={last.y} r={6 / view.zoom} opacity={Math.max(0.2, 1 - (now - last.t) / 700)} />
+              </g>
+            );
+          })}
         </g>
       </svg>
       {presence.map((p) => {
@@ -2226,7 +2732,7 @@ export default function Whiteboard({
                 if (e.key === "Escape") {
                   e.preventDefault();
                   setCellEdit(null);
-                  container.current?.focus();
+                  container.current?.focus({ preventScroll: true });
                 } else if (e.key === "Tab") {
                   e.preventDefault();
                   const last = cellEdit.c >= cols - 1;
@@ -2367,7 +2873,9 @@ export default function Whiteboard({
             ].includes(i.type),
           )
           .map((item) => {
-            const count = Object.keys(item.votes || {}).length;
+            const hiddenVote = !!(meta.voting?.active && meta.voting.hidden);
+            const mineOnly = !!item.votes?.[userId];
+            const count = hiddenVote ? (mineOnly ? 1 : 0) : Object.keys(item.votes || {}).length;
             if (!meta.voting?.active && !count) return null;
             const s = toScreen({ x: item.x + item.w, y: item.y });
             const mine = !!item.votes?.[userId];
@@ -2387,6 +2895,61 @@ export default function Whiteboard({
               </button>
             );
           })}
+      {items
+        .filter((i) => i.stamps && Object.keys(i.stamps).length && (showComments || true))
+        .map((item) => {
+          const counts = new Map<string, number>();
+          for (const emoji of Object.values(item.stamps || {})) counts.set(emoji, (counts.get(emoji) || 0) + 1);
+          const s = toScreen({ x: item.x, y: item.y + item.h });
+          const mine = item.stamps?.[userId];
+          return (
+            <div
+              key={`stamps-${item.id}`}
+              className="wb-stamps"
+              style={{ left: s.x + 4, top: s.y - 14 }}
+              aria-label={`Stempel: ${[...counts].map(([e, n]) => `${e} ${n}`).join(", ")}`}
+            >
+              {[...counts].map(([emoji, n]) => (
+                <span key={emoji} className={emoji === mine ? "mine" : ""}>
+                  {emoji}
+                  {n > 1 && <small>{n}</small>}
+                </span>
+              ))}
+            </div>
+          );
+        })}
+      {presenter && (
+        <div className="wb-presenting" role="status" onPointerDown={(e) => e.stopPropagation()}>
+          <UsersThree size={16} />
+          {amPresenter ? (
+            <>
+              <span>Alle folgen dir</span>
+              <button type="button" onClick={() => setMetaValue("presenter", undefined)}>
+                Beenden
+              </button>
+            </>
+          ) : following ? (
+            <>
+              <span>Du folgst {presenter.name}</span>
+              <button type="button" onClick={() => setFollowing(false)}>
+                Nicht mehr folgen
+              </button>
+            </>
+          ) : (
+            <>
+              <span>{presenter.name} präsentiert</span>
+              <button type="button" onClick={() => setFollowing(true)}>
+                Folgen
+              </button>
+              {editable && !presenterCursor && (
+                <button type="button" onClick={() => setMetaValue("presenter", undefined)}>
+                  Beenden
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
       {timer && (
         <div
           className={`wb-timer${remaining === 0 ? " done" : ""}`}
@@ -2481,7 +3044,8 @@ export default function Whiteboard({
                       ) as HTMLSelectElement
                     ).value,
                   ) || 3;
-                setMetaValue("voting", { active: true, max });
+                const hidden = (e.currentTarget.elements.namedItem("hidden") as HTMLInputElement).checked;
+                setMetaValue("voting", { active: true, max, hidden });
               }}
             >
               <label>
@@ -2498,10 +3062,16 @@ export default function Whiteboard({
                   ))}
                 </Select>
               </label>
+              <label className="wb-check">
+                <input type="checkbox" name="hidden" />
+                Verdeckt abstimmen – Zahlen erst nach dem Ende
+              </label>
               <button className="button primary">Abstimmung starten</button>
             </form>
           )}
-          {items.some((i) => i.votes && Object.keys(i.votes).length) && (
+          {meta.voting?.active && meta.voting.hidden ? (
+            <p className="muted">Verdeckte Abstimmung: Das Ergebnis erscheint, sobald sie beendet ist.</p>
+          ) : items.some((i) => i.votes && Object.keys(i.votes).length) && (
             <>
               <ol className="wb-results" aria-label="Ergebnis">
                 {items
@@ -2621,6 +3191,13 @@ export default function Whiteboard({
               onClick={() => fileInput.current?.click()}
             >
               <ImageSquare size={18} />
+            </button>
+            <button
+              aria-label="Bilder und Symbole suchen"
+              title="Bilder (Openverse) und Symbole"
+              onClick={() => setImagesOpen(true)}
+            >
+              <MagnifyingGlass size={18} />
             </button>
             <button
               aria-label="Emoji"
@@ -2744,6 +3321,51 @@ export default function Whiteboard({
           ))}
         </div>
       )}
+      {editable && tool === "stamp" && (
+        <div className="wb-shape-menu" aria-label="Stempel wählen" onPointerDown={(e) => e.stopPropagation()}>
+          {stampChoices.map((c) => (
+            <button
+              key={c}
+              className={`wb-stamp-choice${stamp === c ? " active" : ""}`}
+              aria-label={`Stempel ${c}`}
+              aria-pressed={stamp === c}
+              onClick={() => setStamp(c)}
+            >
+              {c}
+            </button>
+          ))}
+          <span className="wb-menu-hint">Auf Elemente klicken</span>
+        </div>
+      )}
+      {editable && tool === "pen" && (
+        <div className="wb-shape-menu" aria-label="Stift" onPointerDown={(e) => e.stopPropagation()}>
+          {strokeColors.map((c) => (
+            <button
+              key={c}
+              className={`wb-swatch line${penColor === c ? " active" : ""}`}
+              style={{ background: c }}
+              aria-label={`Stiftfarbe ${c}`}
+              onClick={() => setPenColor(c)}
+            />
+          ))}
+          <label className="wb-check">
+            <input
+              type="checkbox"
+              checked={recognize}
+              onChange={(e) => {
+                setRecognize(e.target.checked);
+                store("flowplan-board-recognize", e.target.checked);
+              }}
+            />
+            Formen erkennen
+          </label>
+        </div>
+      )}
+      {tool === "laser" && (
+        <div className="wb-shape-menu" onPointerDown={(e) => e.stopPropagation()}>
+          <span className="wb-menu-hint">Laserpointer: alle sehen deine Spur</span>
+        </div>
+      )}
       <div className="wb-zoom" onPointerDown={(e) => e.stopPropagation()}>
         <span className="wb-status" aria-live="polite">
           {status}
@@ -2761,6 +3383,27 @@ export default function Whiteboard({
         <button aria-label="Vergrößern" onClick={() => zoomAt(1.2)}>
           <Plus size={16} />
         </button>
+        <button
+          aria-label="Am Raster ausrichten"
+          aria-pressed={snapGrid}
+          title="Am Raster ausrichten (Hilfslinien gibt es immer; ⌥ beim Ziehen schaltet beides ab)"
+          className={snapGrid ? "active" : ""}
+          onClick={() => {
+            setSnapGrid(!snapGrid);
+            store("flowplan-board-snap", !snapGrid);
+          }}
+        >
+          <GridFour size={16} />
+        </button>
+        {editable && !presenter && (
+          <button
+            aria-label="Folge mir"
+            title="Folge mir: alle sehen deinen Ausschnitt"
+            onClick={() => setMetaValue("presenter", { userId, name: userName || "Jemand", since: Date.now() })}
+          >
+            <UsersThree size={16} />
+          </button>
+        )}
         <button
           aria-label="Alles anzeigen"
           title="Alles anzeigen (⇧1)"
@@ -2907,9 +3550,45 @@ export default function Whiteboard({
           allowSymbols={false}
         />
       </Modal>
+      {imagesOpen && (
+        <MediaSearch
+          open
+          canSearchImages={!demo}
+          onClose={() => setImagesOpen(false)}
+          onImage={async (result) => {
+            const saved = await api<{ url: string }>("/api/images/import", {
+              pageId,
+              url: result.url,
+              credit: result.credit,
+            });
+            const at = center();
+            const ratio = result.width && result.height ? result.width / result.height : 4 / 3;
+            const w = ratio >= 1 ? 400 : Math.round(400 * ratio);
+            const h = Math.round(w / ratio);
+            let id = "";
+            change(() => {
+              id = addItem({ type: "image", src: saved.url, x: at.x - w / 2, y: at.y - h / 2, w, h, credit: result.credit });
+            });
+            setSelection(new Set([id]));
+            setImagesOpen(false);
+          }}
+          onIcon={(value) => {
+            const at = center();
+            let id = "";
+            change(() => {
+              id = addItem({ type: "emoji", emoji: value, x: at.x - 48, y: at.y - 48, w: 96, h: 96 });
+            });
+            setSelection(new Set([id]));
+            setImagesOpen(false);
+          }}
+        />
+      )}
       <Modal
         open={cardOpen}
-        onClose={() => setCardOpen(false)}
+        onClose={() => {
+          setCardOpen(false);
+          setCardDb(null);
+        }}
         title="Seite verknüpfen"
         onCloseAutoFocus={(e) => {
           e.preventDefault();
@@ -2924,6 +3603,39 @@ export default function Whiteboard({
           onChange={(e) => setCardQuery(e.target.value)}
           className="wb-card-search"
         />
+        {cardDb ? (
+          <div className="wb-card-list">
+            <button type="button" className="text-button" onClick={() => setCardDb(null)}>
+              ← Zurück zu den Seiten
+            </button>
+            <p className="muted">Einträge aus „{cardDb.title}“ – sie bleiben auf dem Board aktuell.</p>
+            {!cardDb.rows ? (
+              <p className="muted">Einträge werden geladen …</p>
+            ) : (
+              cardDb.rows
+                .filter((r) => !cardQuery.trim() || r.title.toLocaleLowerCase("de").includes(cardQuery.trim().toLocaleLowerCase("de")))
+                .slice(0, 100)
+                .map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => {
+                      const at = center();
+                      let id = "";
+                      change(() => {
+                        id = addItem({ type: "card", pageId: cardDb.id, rowId: r.id, x: at.x - 130, y: at.y - 55, w: 260, h: 110, fill: "#e0782c" });
+                      });
+                      setSelection(new Set([id]));
+                      setCardOpen(false);
+                      setCardDb(null);
+                    }}
+                  >
+                    {r.title || "Ohne Titel"}
+                    <small>Eintrag</small>
+                  </button>
+                ))
+            )}
+          </div>
+        ) : (
         <div className="wb-card-list">
           {cardPages.map((p) => (
             <button
@@ -2964,7 +3676,36 @@ export default function Whiteboard({
           {!cardPages.length && (
             <p className="muted">Keine passenden Seiten.</p>
           )}
+          {cardPages
+            .filter((p) => p.kind === "database")
+            .slice(0, 8)
+            .map((p) => (
+              <button
+                key={`rows-${p.id}`}
+                className="wb-card-rows"
+                onClick={async () => {
+                  setCardDb({ id: p.id, title: p.title, rows: null });
+                  setCardQuery("");
+                  try {
+                    const data = await api<{ database: { fields: { id: string }[] }; rows: { id: string; cells: Record<string, unknown> }[] }>(`/api/pages/${p.id}`);
+                    const titleField = data.database.fields[0]?.id || "";
+                    setCardDb({
+                      id: p.id,
+                      title: p.title,
+                      rows: data.rows.map((r) => ({ id: r.id, title: String(r.cells[titleField] ?? "") })),
+                    });
+                  } catch (e) {
+                    onError((e as Error).message);
+                    setCardDb(null);
+                  }
+                }}
+              >
+                Eintrag aus „{p.title || "Ohne Titel"}“ …
+                <small>Datenbankeintrag als Karte</small>
+              </button>
+            ))}
         </div>
+        )}
       </Modal>
     </div>
   );

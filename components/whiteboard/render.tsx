@@ -1,4 +1,6 @@
 "use client";
+import { pressureOutline } from "@/lib/whiteboard-tools";
+import { LibraryIcon } from "../library-icons";
 import type { CSSProperties, ReactNode } from "react";
 import {
   connectorPoint,
@@ -161,16 +163,24 @@ function CoveredShape({
     </g>
   );
 }
+export type RowCard = {
+  title: string;
+  database: string;
+  props: { name: string; value: string }[];
+};
 export function WhiteboardShape({
   item,
   items,
   pages,
   editing,
+  cards,
 }: {
   item: WhiteboardItem;
   items: Map<string, WhiteboardItem>;
   pages: PageRef[];
   editing?: ReactNode;
+  // Live data of database records shown as cards.
+  cards?: Map<string, RowCard>;
 }) {
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${item.rotation} ${item.w / 2} ${item.h / 2})` : ""}`;
   const text = editing ?? undefined;
@@ -239,6 +249,21 @@ export function WhiteboardShape({
       );
     case "pen": {
       const pts = item.points || [];
+      // Stylus strokes: a filled outline whose width follows the pressure.
+      if (item.pressures?.length && item.pressures.length * 2 === pts.length) {
+        const points = item.pressures.map((pressure, i) => ({
+          x: item.x + pts[i * 2] * item.w,
+          y: item.y + pts[i * 2 + 1] * item.h,
+          p: pressure,
+        }));
+        return (
+          <path
+            d={pressureOutline(points, (item.strokeWidth ?? 3) * 1.6)}
+            fill={item.stroke || "#1f2937"}
+            stroke="none"
+          />
+        );
+      }
       let d = "";
       for (let i = 0; i + 1 < pts.length; i += 2)
         d += `${i ? " L" : "M"} ${item.x + pts[i] * item.w} ${item.y + pts[i + 1] * item.h}`;
@@ -292,6 +317,7 @@ export function WhiteboardShape({
     case "image":
       return (
         <g transform={transform}>
+          {item.credit && <title>{item.credit}</title>}
           {safeImageSource(item.src) ? (
             <image
               href={item.src}
@@ -306,6 +332,29 @@ export function WhiteboardShape({
       );
     case "card": {
       const page = pages.find((p) => p.id === item.pageId);
+      const row = item.rowId ? cards?.get(item.rowId) : undefined;
+      if (item.rowId)
+        return (
+          <g transform={transform}>
+            <rect width={item.w} height={item.h} rx={10} fill="#ffffff" stroke="#dee2e6" filter="url(#wb-shadow)" />
+            <rect width={6} height={item.h} rx={3} fill={item.fill || "#e0782c"} />
+            <foreignObject x={14} y={0} width={Math.max(1, item.w - 20)} height={item.h}>
+              <div className="wb-card-body wb-row-card">
+                <small>{row?.database || page?.title || "Datenbank"}</small>
+                <strong>{row?.title ?? "Eintrag nicht verfügbar"}</strong>
+                {!!row?.props.length && (
+                  <span className="wb-row-props">
+                    {row.props.map((p) => (
+                      <span key={p.name} title={p.name}>
+                        {p.value}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
+            </foreignObject>
+          </g>
+        );
       return (
         <g transform={transform}>
           <rect
@@ -416,12 +465,18 @@ export function WhiteboardShape({
             width={Math.max(1, item.w)}
             height={Math.max(1, item.h)}
           >
-            <div
-              className="wb-emoji-glyph"
-              style={{ fontSize: Math.min(item.w, item.h) * 0.8 }}
-            >
-              {item.emoji}
-            </div>
+            {item.emoji?.startsWith("icon:") ? (
+              <div className="wb-emoji-glyph wb-icon-glyph" style={{ color: item.stroke || "#1f2937" }}>
+                <LibraryIcon value={item.emoji} size={Math.min(item.w, item.h) * 0.9} />
+              </div>
+            ) : (
+              <div
+                className="wb-emoji-glyph"
+                style={{ fontSize: Math.min(item.w, item.h) * 0.8 }}
+              >
+                {item.emoji}
+              </div>
+            )}
           </foreignObject>
         </g>
       );

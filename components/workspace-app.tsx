@@ -2105,6 +2105,7 @@ export default function WorkspaceApp({
                       onOpenPage={(id) => void openPage(id)}
                       userId={boot.user.id}
                       userName={boot.user.name}
+                      demo={!!boot.user.demo}
                     />
                   ) : (
                     <>
