@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 26) return;
+  if (globalDb.flowplanSchema === 27) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -382,7 +382,11 @@ function migrate(d: DatabaseSync) {
   // Last sign-in, for inactive accounts in the administration.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "last_login_at"))
     d.exec("ALTER TABLE users ADD COLUMN last_login_at INTEGER");
-  globalDb.flowplanSchema = 26;
+  // Journals: template, trackers, calendar link and PIN; values per day.
+  d.exec(`CREATE TABLE IF NOT EXISTS journal_settings(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,template TEXT NOT NULL DEFAULT '',trackers TEXT NOT NULL DEFAULT '[]',lock_hash TEXT,ics_url TEXT);
+    CREATE TABLE IF NOT EXISTS journal_entries(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,data TEXT NOT NULL DEFAULT '{}',place TEXT NOT NULL DEFAULT '',lat REAL,lon REAL,updated_at INTEGER);
+    CREATE TABLE IF NOT EXISTS journal_unlocks(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,until INTEGER NOT NULL,PRIMARY KEY(user_id,page_id));`);
+  globalDb.flowplanSchema = 27;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

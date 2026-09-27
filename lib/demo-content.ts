@@ -17,6 +17,14 @@ const day = (offset: number) => {
   d.setDate(d.getDate() + offset);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+// The same day a month ago (the last day of a shorter month).
+const monthAgo = () => {
+  const d = new Date();
+  const target = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(d.getDate(), last));
+  return Math.round((target.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 864e5);
+};
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const link = (pageId: string, text: string) => `<a href="/#page=${pageId}">${text}</a>`;
 const task = (text: string, done = false) =>
@@ -194,6 +202,35 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
       task("Entwurf für die Preisseite skizzieren") +
       "</ul>",
   );
+  // Template, trackers and a few earlier days: streak, heatmap, trends and
+  // "An diesem Tag" have something to show.
+  run(
+    "INSERT INTO journal_settings(page_id,template,trackers) VALUES(?,?,?)",
+    journal,
+    "<h3>Dankbar für</h3><p></p><h3>Fokus heute</h3><p></p><h3>Rückblick am Abend</h3><p></p>",
+    JSON.stringify([
+      { id: "mood", name: "Stimmung", kind: "mood" },
+      { id: "sleep", name: "Schlaf", kind: "number", unit: "h" },
+      { id: "sport", name: "Sport", kind: "check" },
+    ]),
+  );
+  const entry = (pageId: string, values: Record<string, unknown>, place = "") =>
+    run("INSERT INTO journal_entries(page_id,data,place,updated_at) VALUES(?,?,?,?)", pageId, JSON.stringify(values), place, Date.now());
+  entry(yesterday, { mood: 4, sleep: 7, sport: true }, "Büro");
+  const earlier: [number, string, Record<string, unknown>, string][] = [
+    [-2, "<h3>Dankbar für</h3><p>Den Kaffee mit Jana und die ruhige Zugfahrt.</p><h3>Rückblick am Abend</h3><p>Die Roadmap steht, das Team ist zufrieden.</p>", { mood: 5, sleep: 8, sport: false }, "Hamburg"],
+    [-3, "<p>Langer Workshop-Tag. Viele Ideen auf dem Whiteboard gesammelt.</p>", { mood: 3, sleep: 6, sport: true }, "Büro"],
+    [-4, "<p>Kurzer Tag, abends Laufen an der Alster.</p>", { mood: 4, sleep: 7.5, sport: true }, ""],
+    [-7, "<p>Wochenstart: Prioritäten sortiert, drei Kundengespräche.</p>", { mood: 3, sleep: 6.5 }, ""],
+    [-9, "<p>Erster Entwurf der Preisseite, Feedback eingeholt.</p>", { mood: 4, sleep: 7 }, ""],
+    [monthAgo(), "<p>Kick-off für das neue Projekt. Aufregend!</p>", { mood: 5, sleep: 8, sport: true }, "Berlin"],
+  ];
+  for (const [offset, html, values, place] of earlier) {
+    const past = createPage(workspace, space, user, dayTitle(day(offset)), "document", journal);
+    run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", day(offset), -Number(day(offset).replaceAll("-", "")), past);
+    setDocument(past, html);
+    entry(past, values, place);
+  }
 
   // ---- Knowledge with sub pages from templates -----------------------------
   const knowledge = createPage(workspace, space, user, "Wissen", "document");

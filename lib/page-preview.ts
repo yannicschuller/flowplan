@@ -1,3 +1,4 @@
+import { journalLocked } from "./journal-extras";
 import { one } from "./db";
 import { requirePage } from "./permissions";
 import { htmlText } from "./search-index";
@@ -13,7 +14,7 @@ export function pagePreview(
     page.space_id,
   );
   const html =
-    page.kind === "document"
+    page.kind === "document" && !journalLocked(user, page)
       ? one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
           page.id,

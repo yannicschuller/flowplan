@@ -115,6 +115,12 @@ import Admin from "./admin";
 import { ShareLinks } from "./share-links";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
+import {
+  JournalDayBar,
+  JournalLockScreen,
+  type DayEntry,
+  type JournalSettings,
+} from "./journal-parts";
 import type { ShareLink } from "@/lib/share-links";
 import { templateCatalog } from "@/lib/template-catalog";
 import { templateCategories } from "@/lib/template-categories";
@@ -132,7 +138,15 @@ const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
 });
 type PageData = DatabaseData & {
   whiteboard?: { state: string; generation: string };
-  journal?: { days: JournalDay[] };
+  journal?: { days: JournalDay[]; settings?: JournalSettings };
+  journalDay?: {
+    journalId: string;
+    date: string;
+    trackers: JournalSettings["trackers"];
+    entry: DayEntry;
+  };
+  // Behind a journal PIN that was not entered yet.
+  locked?: { journalId: string };
   shareLinks?: ShareLink[];
   publication?: {
     includeChildren: boolean;
@@ -1866,13 +1880,21 @@ export default function WorkspaceApp({
                         onError={notify}
                       />
                     </>
+                  ) : data.locked ? (
+                    <JournalLockScreen
+                      journalId={data.locked.journalId}
+                      onUnlocked={refresh}
+                    />
                   ) : data.page.kind === "journal" && data.journal ? (
                     <JournalView
                       pageId={data.page.id}
                       days={data.journal.days}
+                      settings={data.journal.settings}
                       editable={editable}
                       onOpen={(id) => void openPage(id)}
                       onRoll={rollJournal}
+                      onChanged={refresh}
+                      onError={notify}
                     />
                   ) : data.page.kind === "whiteboard" && data.whiteboard ? (
                     <Whiteboard
@@ -1894,6 +1916,17 @@ export default function WorkspaceApp({
                       userName={boot.user.name}
                     />
                   ) : (
+                    <>
+                    {data.journalDay && (
+                      <JournalDayBar
+                        key={data.page.id}
+                        pageId={data.page.id}
+                        trackers={data.journalDay.trackers}
+                        entry={data.journalDay.entry}
+                        editable={editable}
+                        onError={notify}
+                      />
+                    )}
                     <DocumentEditor
                       key={`${data.page.id}-${data.generation}-${epoch}`}
                       generation={data.generation}
@@ -1908,6 +1941,7 @@ export default function WorkspaceApp({
                       onError={notify}
                       onHtml={setHtml}
                     />
+                    </>
                   )}
                   <div className="backlinks">
                     {data.backlinks?.length > 0 && (

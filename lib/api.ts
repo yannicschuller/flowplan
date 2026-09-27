@@ -3,7 +3,25 @@ import {
   syncWhiteboard,
   whiteboardData,
 } from "./whiteboard";
-import { journalDate, journalDays, rollJournal, rollJournals } from "./journal";
+import { journalDate, rollJournal, rollJournals } from "./journal";
+import {
+  dayEntry,
+  journalDayDetails,
+  journalLocked,
+  journalOf,
+  journalSettings,
+  lockJournalNow,
+  pinSchema,
+  requireUnlocked,
+  saveDayEntry,
+  setJournalCalendar,
+  setJournalLock,
+  setJournalTemplate,
+  setJournalTrackers,
+  templateFromDay,
+  trackerSchema,
+  unlockJournal,
+} from "./journal-extras";
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
 import { validWorkspaceIcon } from "./workspace-icon";
@@ -242,6 +260,22 @@ export function bootstrap(user: Identity, wid?: string) {
 export function pageData(user: Identity, pid: string) {
   const p = requirePage(user, pid);
   const role = pageRole(user, p);
+  // Behind a journal PIN: only what the lock screen needs.
+  if (journalLocked(user, p))
+    return {
+      page: p,
+      role,
+      locked: { journalId: journalOf(p)!.id },
+      comments: [],
+      snapshots: [],
+      present: [],
+      backlinks: [],
+      images: [],
+      shareLinks: [],
+      html: "",
+      state: null,
+      generation: "1",
+    };
   const backlinks = all<Page & { html: string }>(
     "SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.id!=?",
     p.workspace_id,
@@ -360,7 +394,27 @@ export function pageData(user: Identity, pid: string) {
     snapshots,
     present,
     backlinks,
-    ...(p.kind === "journal" ? { journal: { days: journalDays(p.id) } } : {}),
+    ...(p.kind === "journal"
+      ? {
+          journal: {
+            days: journalDayDetails(p.id),
+            settings: (({ icsUrl, ...rest }) =>
+              role === "viewer" ? rest : { ...rest, icsUrl })(
+              journalSettings(p.id),
+            ),
+          },
+        }
+      : {}),
+    ...(p.journal_date && journalOf(p)
+      ? {
+          journalDay: {
+            journalId: p.parent_id,
+            date: p.journal_date,
+            trackers: journalSettings(p.parent_id!).trackers,
+            entry: dayEntry(p.id),
+          },
+        }
+      : {}),
     state: doc?.state ? Buffer.from(doc.state).toString("base64") : null,
     html: doc?.html || "",
     generation: doc?.generation || "1",
@@ -409,6 +463,7 @@ export function command(
   const wid = () => uuid.parse(b.workspaceId);
   const write = () => {
     const p = requirePage(user, pid(), true);
+    requireUnlocked(user, p);
     if (
       p.locked &&
       !["page.update", "page.delete", "page.snapshot"].includes(action)
@@ -941,6 +996,55 @@ export function command(
         siblings.forEach((sibling, i) =>
           run("UPDATE pages SET position=? WHERE id=?", i, sibling),
         );
+        break;
+      }
+      case "journal.settings": {
+        const journal = write();
+        if (journal.kind !== "journal")
+          throw new HttpError(400, "Diese Seite ist kein Journal.");
+        if (typeof b.template === "string") setJournalTemplate(journal, b.template);
+        if (b.templateFromDay) templateFromDay(journal, uuid.parse(b.templateFromDay));
+        if (b.trackers !== undefined)
+          setJournalTrackers(journal, z.array(trackerSchema).parse(b.trackers));
+        if (b.icsUrl !== undefined) {
+          // The server would load foreign addresses for anonymous guests.
+          if (user.demo)
+            throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
+          setJournalCalendar(journal, z.string().parse(b.icsUrl));
+        }
+        result = journalSettings(journal.id);
+        break;
+      }
+      case "journal.lock": {
+        const journal = write();
+        if (journal.kind !== "journal")
+          throw new HttpError(400, "Diese Seite ist kein Journal.");
+        setJournalLock(
+          user,
+          journal,
+          b.pin === null ? null : pinSchema.parse(b.pin),
+          typeof b.current === "string" ? b.current : undefined,
+        );
+        break;
+      }
+      case "journal.unlock": {
+        const journal = requirePage(user, pid());
+        if (journal.kind !== "journal")
+          throw new HttpError(400, "Diese Seite ist kein Journal.");
+        unlockJournal(user, journal, z.string().max(20).parse(b.pin));
+        break;
+      }
+      case "journal.relock": {
+        const journal = requirePage(user, pid());
+        lockJournalNow(user, journal);
+        break;
+      }
+      case "journal.entry": {
+        const day = write();
+        const journal = journalOf(day);
+        if (!journal || day.kind === "journal")
+          throw new HttpError(400, "Diese Seite ist kein Journaltag.");
+        result = saveDayEntry(journal, day, b.entry);
         break;
       }
       case "journal.roll": {

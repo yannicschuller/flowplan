@@ -18,6 +18,12 @@ import { pageRole } from "./permissions";
 import { HttpError } from "./auth";
 import type { Identity, Page } from "./types";
 import { documentChanged } from "./document-live";
+import {
+  hasEntryData,
+  onlyTemplate,
+  templateNodes,
+  templateTaskTexts,
+} from "./journal-extras";
 
 // One schema instance: nodes of different instances cannot be combined.
 let cachedSchema: ReturnType<typeof documentSchema> | undefined;
@@ -59,9 +65,13 @@ export function openTasks(doc: PMNode) {
 }
 // The document without its open tasks; lists and containers that end up
 // empty are dropped or refilled so the document stays valid.
-export function withoutOpenTasks(doc: PMNode): PMNode {
+export function withoutOpenTasks(
+  doc: PMNode,
+  keep: (task: PMNode) => boolean = () => false,
+): PMNode {
   const strip = (node: PMNode): PMNode | null => {
-    if (node.type.name === "taskItem" && !node.attrs.checked) return null;
+    if (node.type.name === "taskItem" && !node.attrs.checked && !keep(node))
+      return null;
     if (node.isLeaf || node.isTextblock) return node;
     const children: PMNode[] = [];
     node.forEach((child) => {
@@ -108,11 +118,12 @@ export function carryTasks(tasks: PMNode[], from: string) {
     ),
   );
 }
-export function dayDocument(tasks: PMNode[]) {
+// Carried tasks first, then the journal's template (if any).
+export function dayDocument(tasks: PMNode[], template: PMNode[] = []) {
   const s = schema();
   return s.node("doc", null, [
     ...(tasks.length ? [s.node("taskList", null, tasks)] : []),
-    s.node("paragraph"),
+    ...(template.length ? template : [s.node("paragraph")]),
   ]);
 }
 
@@ -147,7 +158,12 @@ function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
 // A page nobody touched: no own text, same title, no icon or cover set, no
 // comments, no sub pages and no files.
 function untouched(page: Page, doc: PMNode) {
-  if (hasOwnEntry(doc, page.journal_date!)) return false;
+  if (
+    hasOwnEntry(doc, page.journal_date!) &&
+    !onlyTemplate(page.parent_id!, doc, page.journal_date!)
+  )
+    return false;
+  if (hasEntryData(page.id)) return false;
   if (page.title !== dayTitle(page.journal_date!)) return false;
   if (page.icon !== "day" || page.cover) return false;
   const used = (sql: string) => !!one(sql, page.id);
@@ -209,12 +225,21 @@ export function rollJournal(
     today,
   );
   let carried: PMNode[] = [];
+  const daily = templateTaskTexts(journal.id);
   if (previous) {
     const { ydoc, doc } = loadDocument(previous.id);
-    carried = carryTasks(openTasks(doc), previous.journal_date!);
+    // Tasks of the template come back by themselves and stay where they were.
+    carried = carryTasks(
+      openTasks(doc).filter((task) => !daily.has(task.textContent.trim())),
+      previous.journal_date!,
+    );
     if (untouched(previous, doc)) removeDay(previous);
     else if (carried.length)
-      storeDocument(previous.id, ydoc, withoutOpenTasks(doc));
+      storeDocument(
+        previous.id,
+        ydoc,
+        withoutOpenTasks(doc, (task) => daily.has(task.textContent.trim())),
+      );
     ydoc.destroy();
   }
   const dayId = createPage(
@@ -225,7 +250,7 @@ export function rollJournal(
     "document",
     journal.id,
   );
-  const doc = dayDocument(carried);
+  const doc = dayDocument(carried, templateNodes(journal.id, schema()));
   const ydoc = prosemirrorJSONToYDoc(schema(), doc.toJSON(), "default");
   // Newest day first in the page tree.
   run(

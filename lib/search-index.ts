@@ -1,3 +1,4 @@
+import { lockedPageIds } from "./journal-extras";
 import { all, one, run, transaction } from "./db";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -207,8 +208,11 @@ export function searchWorkspace(
     .slice(0, 200);
   const kind = options.kind || "all";
   const roles = new Map<string, boolean>();
+  // Journals behind a PIN stay out of the results until unlocked.
+  const locked = lockedPageIds(user, workspaceId);
   const allowed = (page: Page) => {
-    if (!roles.has(page.id)) roles.set(page.id, !!pageRole(user, page));
+    if (!roles.has(page.id))
+      roles.set(page.id, !locked.has(page.id) && !!pageRole(user, page));
     return roles.get(page.id)!;
   };
   const hitKind = (page: Page, key: string) =>

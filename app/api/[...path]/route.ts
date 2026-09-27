@@ -55,6 +55,13 @@ import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
+import { journalDate } from "@/lib/journal";
+import {
+  calendarEvents,
+  databaseEvents,
+  journalReview,
+  requireUnlocked,
+} from "@/lib/journal-extras";
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { exportTemplate, importTemplate } from "@/lib/template-exchange";
@@ -178,6 +185,35 @@ export async function GET(
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
       );
+    // Journal: review of a period, appointments of a day.
+    if (path.length === 3 && path[0] === "journals" && path[2] === "review") {
+      const journal = requirePage(user, z.uuid().parse(path[1]));
+      if (journal.kind !== "journal") throw new HttpError(400, "Kein Journal.");
+      requireUnlocked(user, journal);
+      return NextResponse.json(
+        journalReview(
+          journal,
+          journalDate.parse(url.searchParams.get("from")),
+          journalDate.parse(url.searchParams.get("to")),
+        ),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path.length === 3 && path[0] === "journals" && path[2] === "events") {
+      const day = requirePage(user, z.uuid().parse(path[1]));
+      if (!day.journal_date || !day.parent_id) throw new HttpError(400, "Kein Journaltag.");
+      requireUnlocked(user, day);
+      const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
+      const events = databaseEvents(user, day.workspace_id, day.journal_date, zone);
+      let calendarError = "";
+      try {
+        if (!user.demo) events.push(...(await calendarEvents(day.parent_id, day.journal_date, zone)));
+      } catch (e) {
+        calendarError = e instanceof HttpError ? e.message : "Der Kalender konnte nicht geladen werden.";
+      }
+      events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
+      return NextResponse.json({ events, calendarError }, { headers: { "Cache-Control": "no-store" } });
+    }
     if (path[0] === "pages" && path[1] && path[2] === "preview")
       return NextResponse.json(pagePreview(user, z.uuid().parse(path[1])), {
         headers: { "Cache-Control": "no-store" },
@@ -353,8 +389,11 @@ export async function GET(
       const clientId = z.uuid().parse(url.searchParams.get("client"));
       const check = () => {
         if (rowId) requireRow(user, pageId, rowId);
-        else if (requirePage(user, pageId).kind !== "document")
-          throw new HttpError(400, "Kein Dokument.");
+        else {
+          const page = requirePage(user, pageId);
+          if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+          requireUnlocked(user, page);
+        }
       };
       check();
       const allowed = streamGuard(
@@ -500,7 +539,7 @@ export async function GET(
         mime: string;
       }>("SELECT * FROM files WHERE id=?", path[1]);
       if (!file) throw new HttpError(404, "Datei fehlt.");
-      requirePage(user, file.page_id);
+      requireUnlocked(user, requirePage(user, file.page_id));
       return await fileResponse(req, file);
     }
     if (path[0] === "export") {
