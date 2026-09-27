@@ -31,6 +31,10 @@ Eine Datenbank ist eine Sammlung von Einträgen mit Eigenschaften. Dieselben Ein
 
 Relationen, Rollups und Formeln sind unter [Eigenschaften, Formeln und Rollups](/docs/eigenschaften-und-formeln) beschrieben.
 
+## Große Datenbanken
+
+Tabellen, Listen und Galerien zeigen zuerst 100 Einträge; beim Scrollen folgen die nächsten 100, Gruppen und Board-Spalten haben **Weitere anzeigen**. Suche, Filter, Sortierung und Spaltenberechnungen gelten trotzdem immer für alle Einträge. So öffnen sich auch Datenbanken mit Tausenden Einträgen in Sekundenbruchteilen.
+
 ## Filtern, sortieren, gruppieren
 
 Jede Ansicht hat eigene Einstellungen:

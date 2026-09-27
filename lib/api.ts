@@ -273,6 +273,8 @@ export function pageData(user: Identity, pid: string) {
   if (p.kind === "database") {
     const data = database(pid);
     const relations = relatedData(user, p);
+    // This database's own rows are already in rows (the client adds them).
+    relations.related[pid] = [];
     const documentHtml = new Map(
       all<{ row_id: string; html: string }>(
         "SELECT d.row_id,d.html FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.page_id=?",
@@ -293,8 +295,10 @@ export function pageData(user: Identity, pid: string) {
       database: data,
       relationPairs: relationPairs(pid),
       // Each record carries the viewer's role; hidden ones are left out.
+      // The record document goes out once, as preview (content stays out).
       rows: visibleRows(user, p, rows(pid)).map((r) => ({
         ...r,
+        content: "",
         preview: documentPreview(documentHtml.get(r.id) ?? r.content ?? ""),
         ...(r.access !== "inherit" && canManageRow(user, p, r)
           ? { grants: rowGrants(r.id) }

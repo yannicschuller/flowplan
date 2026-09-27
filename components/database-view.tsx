@@ -238,8 +238,17 @@ export default function DatabaseView({
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
   onError: (s: string) => void;
 }) {
+  // The server sends this database's rows once (as rows); relations to
+  // itself and rollups read them from here.
+  const related = useMemo(
+    () => ({ ...data.related, [page.id]: data.rows }),
+    [data.related, data.rows, page.id],
+  );
   const [viewId, setViewId] = useState(data.database.views[0].id),
     [query, setQuery] = useState(""),
+    // Large databases: rows are drawn in steps (see MoreRows).
+    [rowLimit, setRowLimit] = useState(ROW_STEP),
+    [groupLimits, setGroupLimits] = useState<Record<string, number>>({}),
     [config, setConfig] = useState(false),
     [filterOpen, setFilterOpen] = useState(false),
     [newField, setNewField] = useState(false),
@@ -454,6 +463,10 @@ export default function DatabaseView({
       );
     }
   }
+  useEffect(() => {
+    setRowLimit(ROW_STEP);
+    setGroupLimits({});
+  }, [viewId, query]);
   const filterNow = useFilterClock(
     hasRelativeFilters(effectiveFilterGroup(view)) ||
       hasClockFormulas(fields, data.relatedSchemas),
@@ -465,7 +478,7 @@ export default function DatabaseView({
         fields,
         view,
         query,
-        data.related,
+        related,
         data.relatedSchemas,
         new Date(filterNow),
       ),
@@ -502,7 +515,7 @@ export default function DatabaseView({
   const dateField =
     fields.find((f) => f.id === view.dateField) ||
     fields.find((f) => f.type === "date");
-  const allGroups = databaseGroups(shown, groupField, data.related, members);
+  const allGroups = databaseGroups(shown, groupField, related, members);
   const groups = configuredGroups(allGroups, view);
   const grouped = !!groupField && ["table", "list"].includes(view.type);
   const groupSettings = view.groupSettings || {
@@ -521,7 +534,7 @@ export default function DatabaseView({
       : undefined;
   const lanes =
     view.type === "board" && subField
-      ? databaseGroups(shown, subField, data.related, members).filter(
+      ? databaseGroups(shown, subField, related, members).filter(
           (lane) => lane.rows.length,
         )
       : null;
@@ -531,7 +544,7 @@ export default function DatabaseView({
     subField
       ? groups.map((g) => [
           g.key,
-          databaseSubgroups(g, subField, data.related, members),
+          databaseSubgroups(g, subField, related, members),
         ])
       : [],
   );
@@ -1156,7 +1169,7 @@ export default function DatabaseView({
       return (
         <span className="relation-links">
           {ids.map((rid) => {
-            const target = data.related[f.relationPage || ""]?.find(
+            const target = related[f.relationPage || ""]?.find(
               (x) => x.id === rid,
             );
             return target && f.relationPage ? (
@@ -1565,7 +1578,24 @@ export default function DatabaseView({
     table: boolean,
   ) {
     const list = subgroups.get(group.key);
-    if (!list) return group.rows.map((r) => render(r, group.key));
+    if (!list) {
+      const limit = groupLimits[group.key] ?? ROW_STEP;
+      return (
+        <>
+          {group.rows.slice(0, limit).map((r) => render(r, group.key))}
+          {group.rows.length > limit && (
+            <MoreRows
+              table={table}
+              colSpan={Math.max(1, visibleFields.length + (editable ? 2 : 0))}
+              remaining={group.rows.length - limit}
+              onMore={() =>
+                setGroupLimits((current) => ({ ...current, [group.key]: limit + ROW_STEP }))
+              }
+            />
+          )}
+        </>
+      );
+    }
     return list.map((sg) => {
       const key = nestedKey(group.key, sg.key),
         header = subgroupHeader(group, sg);
@@ -1599,7 +1629,7 @@ export default function DatabaseView({
   ): ReactNode {
     const field = deeperFields[path.length - 2];
     if (!field) return rows.map((r) => render(r, key));
-    return databaseGroups(rows, field, data.related, members)
+    return databaseGroups(rows, field, related, members)
       .filter((g) => g.rows.length)
       .map((g) => {
         const keys = [...path.map((p) => p.key), g.key],
@@ -1690,7 +1720,7 @@ export default function DatabaseView({
   ): ReactNode {
     const field = deeperFields[path.length - 2];
     if (!field) return rows.map((r) => card(r, key));
-    return databaseGroups(rows, field, data.related, members)
+    return databaseGroups(rows, field, related, members)
       .filter((g) => g.rows.length)
       .map((g) => {
         const keys = [...path.map((p) => p.key), g.key],
@@ -1898,7 +1928,7 @@ export default function DatabaseView({
                   field={f}
                   value={r.cells[f.id]}
                   members={members}
-                  related={data.related}
+                  related={related}
                   onChange={(v) => updateCell(r, f, v)}
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
@@ -2355,7 +2385,18 @@ export default function DatabaseView({
                 </tbody>
               ))
             ) : (
-              <tbody>{shown.map((r) => tableRow(r))}</tbody>
+              <tbody>
+                {shown.slice(0, rowLimit).map((r) => tableRow(r))}
+                {shown.length > rowLimit && (
+                  <MoreRows
+                    table
+                    auto
+                    colSpan={Math.max(1, visibleFields.length + (editable ? 2 : 0))}
+                    remaining={shown.length - rowLimit}
+                    onMore={() => setRowLimit((l) => l + ROW_STEP)}
+                  />
+                )}
+              </tbody>
             )}
 
             <tfoot>
@@ -2675,7 +2716,19 @@ export default function DatabaseView({
                   </button>
                 )}
               </header>
-              {!collapsed(g.key) && g.rows.map((r) => card(r, g.key))}
+              {!collapsed(g.key) &&
+                g.rows.slice(0, groupLimits[g.key] ?? ROW_STEP).map((r) => card(r, g.key))}
+              {!collapsed(g.key) && g.rows.length > (groupLimits[g.key] ?? ROW_STEP) && (
+                <MoreRows
+                  remaining={g.rows.length - (groupLimits[g.key] ?? ROW_STEP)}
+                  onMore={() =>
+                    setGroupLimits((current) => ({
+                      ...current,
+                      [g.key]: (current[g.key] ?? ROW_STEP) + ROW_STEP,
+                    }))
+                  }
+                />
+              )}
               {editable && !collapsed(g.key) && (
                 <button
                   className="new-record"
@@ -2729,7 +2782,7 @@ export default function DatabaseView({
                         field={f}
                         value={r.cells[f.id]}
                         members={members}
-                        related={data.related}
+                        related={related}
                         onChange={(v) => updateCell(r, f, v)}
                         upload={uploadFile}
                         files={data.files}
@@ -2758,7 +2811,10 @@ export default function DatabaseView({
       )}
       {view.type === "gallery" && (
         <div className={`gallery gallery-size-${galleryConfig.size}`}>
-          {shown.map((r) => card(r))}
+          {shown.slice(0, rowLimit).map((r) => card(r))}
+          {shown.length > rowLimit && (
+            <MoreRows auto remaining={shown.length - rowLimit} onMore={() => setRowLimit((l) => l + ROW_STEP)} />
+          )}
         </div>
       )}
       {view.type === "list" && (
@@ -2775,7 +2831,17 @@ export default function DatabaseView({
                     nestedRows(g, (r, key) => listRow(r, key), false)}
                 </section>
               ))
-            : shown.map((r) => listRow(r))}
+            : [
+                ...shown.slice(0, rowLimit).map((r) => listRow(r)),
+                shown.length > rowLimit && (
+                  <MoreRows
+                    key="more"
+                    auto
+                    remaining={shown.length - rowLimit}
+                    onMore={() => setRowLimit((l) => l + ROW_STEP)}
+                  />
+                ),
+              ]}
         </div>
       )}
       {view.type === "calendar" && (
@@ -2816,7 +2882,7 @@ export default function DatabaseView({
           version={data.database.version}
           fields={fields}
           rows={shown}
-          related={data.related}
+          related={related}
           members={members}
           editable={viewEditable}
           onOpenRow={setRowId}
@@ -2841,7 +2907,7 @@ export default function DatabaseView({
           act={act}
           members={members}
           related={
-            data.related as unknown as Record<
+            related as unknown as Record<
               string,
               { id: string; cells: { title: string } }[]
             >
@@ -2914,7 +2980,7 @@ export default function DatabaseView({
             version={data.database.version}
             fields={fields}
             rows={data.rows}
-            related={data.related}
+            related={related}
             relatedSchemas={data.relatedSchemas}
             members={members}
             editable={viewEditable}
@@ -3517,7 +3583,7 @@ export default function DatabaseView({
                   field={fields.find((f) => f.id === bulkField)!}
                   value={bulkValue}
                   members={members}
-                  related={data.related}
+                  related={related}
                   onChange={setBulkValue}
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
@@ -3978,7 +4044,7 @@ export default function DatabaseView({
               field={fieldDraft}
               fields={fields}
               rows={data.rows}
-              related={data.related}
+              related={related}
               schemas={data.relatedSchemas || {}}
               disabled={!editable || !allowFieldChanges || schemaBusy}
               onChange={(formula) => setFieldDraft((f) => ({ ...f, formula }))}
@@ -4587,7 +4653,7 @@ export default function DatabaseView({
                               cells: computedCells(
                                 selected,
                                 fields,
-                                data.related,
+                                related,
                                 data.relatedSchemas,
                               ),
                             },
@@ -4599,7 +4665,7 @@ export default function DatabaseView({
                           field={f}
                           value={selected.cells[f.id]}
                           members={members}
-                          related={data.related}
+                          related={related}
                           disabled={!selectedEditable}
                           onChange={(v) => updateCell(selected, f, v)}
                           upload={selectedEditable ? uploadFile : undefined}
@@ -4793,6 +4859,49 @@ export default function DatabaseView({
     </div>
   );
 }
+// Rows drawn at once; more follow on scrolling or with the button, so a
+// database with thousands of entries opens as fast as a small one.
+const ROW_STEP = 100;
+function MoreRows({
+  remaining,
+  onMore,
+  table = false,
+  colSpan = 1,
+  auto = false,
+}: {
+  remaining: number;
+  onMore: () => void;
+  table?: boolean;
+  colSpan?: number;
+  auto?: boolean;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const more = useRef(onMore);
+  more.current = onMore;
+  useEffect(() => {
+    const el = ref.current;
+    if (!auto || !el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => entries.some((e) => e.isIntersecting) && more.current(),
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [auto, remaining]);
+  const button = (
+    <button ref={ref} type="button" className="text-button more-rows" onClick={() => onMore()}>
+      Weitere {Math.min(remaining, ROW_STEP)} von {remaining} anzeigen
+    </button>
+  );
+  return table ? (
+    <tr className="more-rows-row">
+      <td colSpan={colSpan}>{button}</td>
+    </tr>
+  ) : (
+    button
+  );
+}
+
 function tagColor(s: string) {
   if (["Erledigt", "Niedrig"].includes(s)) return "green";
   if (["In Arbeit", "Design"].includes(s)) return "blue";
