@@ -244,6 +244,41 @@ export function PublishedPage({
           }
           recordLink={(r) => `${href(page.id)}?row=${r.id}`}
         />
+      ) : d && !record && activeView?.type === "feed" ? (
+        <div className="public-feed">
+          {records.slice(0, 50).map((r) => {
+            const body = String(
+              one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", r.id)?.html || r.content || "",
+            );
+            return (
+              <article key={r.id} className="public-feed-entry">
+                <h2>
+                  <a href={`${href(page.id)}?row=${r.id}`}>
+                    {cellText(r.cells[d.fields[0]?.id]) || "Ohne Titel"}
+                  </a>
+                </h2>
+                <p className="public-feed-meta">
+                  {(visible || [])
+                    .filter((f) => f.id !== d.fields[0]?.id && r.cells[f.id] != null && r.cells[f.id] !== "")
+                    .slice(0, 4)
+                    .map((f) => (
+                      <span key={f.id}>
+                        {f.name}: {displayText(f, r.cells[f.id], "UTC")}
+                      </span>
+                    ))}
+                </p>
+                {body.trim() && (
+                  <ReadOnlyDocument
+                    html={withPublicEmbeds(publishedHtml(body, token, pages), body, token, pages)}
+                  />
+                )}
+              </article>
+            );
+          })}
+          {records.length > 50 && (
+            <p className="muted">{records.length - 50} weitere Einträge – in der Tabelle oder Liste zu sehen.</p>
+          )}
+        </div>
       ) : d && !record && activeView?.type === "chart" ? (
         <PublicChart records={records} fields={d.fields} view={activeView} />
       ) : d && !record && activeView?.type === "board" ? (

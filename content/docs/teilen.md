@@ -34,7 +34,7 @@ Unter **Links mit eigenen Berechtigungen** entstehen beliebig viele benannte Lin
 
 - **Aktuell vorhandene Unterseiten mit veröffentlichen**; später lassen sich neue Unterseiten zur Auswahl hinzufügen.
 - **Besucher dürfen eine Kopie in ihren Arbeitsbereich** übernehmen – nur das, was die Veröffentlichung zeigt.
-- Datenbanken erscheinen mit ihren Ansichten, Einträgen und Eintragsdokumenten. Personen-Eigenschaften, Relationen, Formeln, Rollups und interne Kommentare bleiben privat.
+- Datenbanken erscheinen mit ihren Ansichten – Tabelle, Board, Galerie, Liste, Feed, Kalender, Timeline und Diagramm (auch mit Datenreihen und weiteren Werten) –, Einträgen und Eintragsdokumenten. Eine Ansicht wird nur veröffentlicht, wenn alle Eigenschaften, die sie braucht, öffentlich sind. Personen-Eigenschaften, Relationen, Formeln, Rollups und interne Kommentare bleiben privat.
 - Dateien, die in veröffentlichten Seiten verlinkt sind, sind öffentlich; andere Uploads nicht.
 - Ausschalten, Löschen oder Verschieben aus dem veröffentlichten Baum entzieht den Zugriff sofort, auch auf Dateien.
 

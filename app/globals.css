@@ -10084,3 +10084,70 @@ li[data-journal-since] > label::after {
   padding: 4px 0;
   background: none;
 }
+
+.chart-measures {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+}
+.chart-measures legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+.chart-measure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.public-bar-stack {
+  display: grid;
+  gap: 3px;
+}
+.public-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--secondary);
+}
+.public-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.public-chart-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.public-feed {
+  display: grid;
+  gap: 28px;
+}
+.public-feed-entry {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 24px;
+}
+.public-feed-entry h2 {
+  margin: 0 0 4px;
+  font-size: 19px;
+}
+.public-feed-entry h2 a {
+  color: inherit;
+  text-decoration: none;
+}
+.public-feed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}

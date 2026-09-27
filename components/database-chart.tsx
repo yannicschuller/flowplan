@@ -744,6 +744,7 @@ function ChartSettings({
           Datenreihen
           <Select
             aria-label="Datenreihen"
+            disabled={!!draft.measures?.length}
             value={draft.seriesField || ""}
             onChange={(e) =>
               patch({ seriesField: e.target.value || undefined })
@@ -759,6 +760,79 @@ function ChartSettings({
               ))}
           </Select>
         </label>
+        {!draft.seriesField && draft.kind !== "donut" && (
+          <fieldset className="chart-measures">
+            <legend>Weitere Werte</legend>
+            {(draft.measures || []).map((m, i) => (
+              <div key={i} className="chart-measure">
+                <Select
+                  aria-label={`Weiterer Wert ${i + 1}: Berechnung`}
+                  value={m.aggregate}
+                  onChange={(e) =>
+                    patch({
+                      measures: (draft.measures || []).map((x, j) =>
+                        j === i ? { ...x, aggregate: e.target.value as typeof m.aggregate } : x,
+                      ),
+                    })
+                  }
+                >
+                  {(["sum", "average", "min", "max"] as const).map((a) => (
+                    <option key={a} value={a}>
+                      {chartAggregates[a]}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  aria-label={`Weiterer Wert ${i + 1}: Eigenschaft`}
+                  value={m.field}
+                  onChange={(e) =>
+                    patch({
+                      measures: (draft.measures || []).map((x, j) =>
+                        j === i ? { ...x, field: e.target.value } : x,
+                      ),
+                    })
+                  }
+                >
+                  {fields.filter(chartNumberField).map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </Select>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Weiteren Wert ${i + 1} entfernen`}
+                  onClick={() => {
+                    const next = (draft.measures || []).filter((_, j) => j !== i);
+                    patch({ measures: next.length ? next : undefined });
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {(draft.measures?.length || 0) < 4 && fields.some(chartNumberField) && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() =>
+                  patch({
+                    measures: [
+                      ...(draft.measures || []),
+                      { aggregate: "sum", field: fields.find(chartNumberField)!.id },
+                    ],
+                  })
+                }
+              >
+                + Wert hinzufügen
+              </button>
+            )}
+            {!fields.some(chartNumberField) && (
+              <small className="muted">Braucht eine Zahl-, Formel- oder Rollup-Eigenschaft.</small>
+            )}
+          </fieldset>
+        )}
         {draft.seriesField &&
           draft.kind !== "line" &&
           draft.kind !== "donut" && (
@@ -781,7 +855,7 @@ function ChartSettings({
               </Select>
             </label>
           )}
-        {draft.seriesField && (
+        {(draft.seriesField || !!draft.measures?.length) && (
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -992,6 +1066,8 @@ export default function DatabaseChart({
     [points, fields, config, related, members],
   );
   const withSeries = series.length > 0 && config.kind !== "donut";
+  // Further values: series are measures, a total across them means nothing.
+  const measured = !!config.measures?.length && series.length > 0;
   // Selections address a group or a group/series pair.
   const [selectedGroup, selectedSeries] = (selected || "").split(SEP);
   const groupPoint = points.find((p) => p.key === selectedGroup);
@@ -1052,7 +1128,8 @@ export default function DatabaseChart({
                           ]),
                         )
                       : {}),
-                    [withSeries ? "Gesamt" : "Wert"]: p.value,
+                    // With further values the main value is already a column.
+                    ...(measured ? {} : { [withSeries ? "Gesamt" : "Wert"]: p.value }),
                     Einträge: p.rows.length,
                   })),
                   { escapeFormulae: true },
@@ -1129,7 +1206,7 @@ export default function DatabaseChart({
                   {series.map((x) => (
                     <th key={x.key}>{x.label}</th>
                   ))}
-                  <th>{series.length ? "Gesamt" : "Wert"}</th>
+                  {!measured && <th>{series.length ? "Gesamt" : "Wert"}</th>}
                   <th>Einträge</th>
                 </tr>
               </thead>
@@ -1157,7 +1234,7 @@ export default function DatabaseChart({
                         </button>
                       </td>
                     ))}
-                    <td>{format(p.value)}</td>
+                    {!measured && <td>{format(p.value)}</td>}
                     <td>{p.rows.length}</td>
                   </tr>
                 ))}

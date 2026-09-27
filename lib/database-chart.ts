@@ -14,6 +14,17 @@ export const chartSchema = z.object({
   // Optional breakdown of every group into data series.
   seriesField: z.string().min(1).max(500).optional(),
   seriesMode: z.enum(["grouped", "stacked"]).optional(),
+  // Further values next to the main one (e.g. costs beside revenue): each
+  // becomes a series. Not combined with seriesField.
+  measures: z
+    .array(
+      z.object({
+        field: z.string().min(1).max(500),
+        aggregate: z.enum(["sum", "average", "min", "max"]),
+      }),
+    )
+    .max(4)
+    .optional(),
   showLegend: z.boolean().optional(),
   palette: z.enum(["default", "warm", "cool", "pastel", "mono"]).optional(),
   showGrid: z.boolean().optional(),
@@ -157,6 +168,12 @@ export function chartConfigError(
       !fields.some((f) => f.id === config.seriesField && chartGroupField(f)))
   )
     return "Die Eigenschaft für Datenreihen fehlt, ist ungeeignet oder entspricht der Gruppierung.";
+  if (config.measures?.length) {
+    if (config.seriesField)
+      return "Weitere Werte und Datenreihen lassen sich nicht kombinieren.";
+    if (config.measures.some((m) => !fields.some((f) => f.id === m.field && chartNumberField(f))))
+      return "Weitere Werte brauchen Zahl-, Formel- oder Rollup-Eigenschaften.";
+  }
   return null;
 }
 export type ChartPoint = {
@@ -316,9 +333,35 @@ export type ChartSeries = { key: string; label: string };
 export type SeriesValue = { value: number | null; rows: Row[] };
 // Stacking only adds up for counts and sums.
 export const canStack = (config: ChartConfig) =>
-  config.aggregate === "count" || config.aggregate === "sum";
+  !config.measures?.length && (config.aggregate === "count" || config.aggregate === "sum");
 // Splits every group into series. The largest MAX_SERIES - 1 series stay
 // separate, the remainder is merged into "Weitere".
+// Name of one value: "Summe von Umsatz", "Anzahl Einträge".
+export function measureLabel(aggregate: ChartConfig["aggregate"], fieldId: string | undefined, fields: Field[]) {
+  return aggregate === "count"
+    ? chartAggregates.count
+    : `${chartAggregates[aggregate]} von ${fields.find((f) => f.id === fieldId)?.name || "?"}`;
+}
+// Main value plus the further values, each as a series.
+function measureSeries(points: ChartPoint[], fields: Field[], config: ChartConfig) {
+  const measures = [
+    { aggregate: config.aggregate, field: config.yField },
+    ...(config.measures || []).map((m) => ({ aggregate: m.aggregate, field: m.field as string | undefined })),
+  ];
+  const series = measures.map((m, i) => ({ key: `m${i}`, label: measureLabel(m.aggregate, m.field, fields) }));
+  const values = new Map<string, Map<string, SeriesValue>>();
+  for (const point of points)
+    values.set(
+      point.key,
+      new Map(
+        measures.map((m, i) => [
+          `m${i}`,
+          { value: aggregateRows(point.rows, { ...config, aggregate: m.aggregate, yField: m.field }).value, rows: point.rows },
+        ]),
+      ),
+    );
+  return { series, values };
+}
 export function chartSeries(
   points: ChartPoint[],
   fields: Field[],
@@ -326,6 +369,8 @@ export function chartSeries(
   related: Record<string, Row[]> = {},
   members: Pick<User, "id" | "name">[] = [],
 ) {
+  if (config.measures?.length && !chartConfigError(config, fields))
+    return measureSeries(points, fields, config);
   const field = fields.find((f) => f.id === config.seriesField);
   if (!field || chartConfigError(config, fields))
     return {

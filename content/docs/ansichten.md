@@ -60,6 +60,9 @@ Einträge samt Dokumentinhalt untereinander, wie ein Blog oder ein Protokoll. Ti
 
 **Diagramm konfigurieren** wählt Säulen, Balken, Linie oder Donut, die Gruppierung und die Berechnung – Anzahl, Summe, Mittelwert, Minimum, Maximum. Datumswerte lassen sich nach Tag, Woche, Monat oder Jahr zusammenfassen. Ein Klick auf einen Datenpunkt zeigt die zugehörigen Einträge; **Auswertung als CSV** exportiert alle Werte.
 
+- **Datenreihen** teilen jede Gruppe nach einer weiteren Eigenschaft auf, nebeneinander oder gestapelt.
+- **Weitere Werte** stellen bis zu vier zusätzliche Berechnungen neben den Hauptwert, etwa „Summe von Kosten“ neben „Summe von Umsatz“ je Monat. Jeder Wert wird eine eigene Reihe mit Legende; beides zusammen – Datenreihen und weitere Werte – geht nicht.
+
 ## Formular
 
 Sammelt Einträge über ein Formular, auch von Personen ohne Konto. Siehe [Formulare](/docs/formulare).

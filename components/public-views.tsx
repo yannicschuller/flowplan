@@ -8,6 +8,7 @@ import {
   chartConfigError,
   chartPalettes,
   chartPoints,
+  chartSeries,
   defaultChart,
 } from "@/lib/database-chart";
 import { scheduleFields } from "@/lib/database-timeline";
@@ -52,10 +53,12 @@ export function publicLayout(view: View, fields: Field[]) {
     return (
       !chartConfigError(config, fields) &&
       (!config.xField || visible(config.xField)) &&
-      (config.aggregate === "count" || visible(config.yField))
+      (config.aggregate === "count" || visible(config.yField)) &&
+      (!config.seriesField || visible(config.seriesField)) &&
+      (config.measures || []).every((m) => visible(m.field))
     );
   }
-  return ["table", "board", "gallery", "list"].includes(view.type);
+  return ["table", "board", "gallery", "list", "feed"].includes(view.type);
 }
 
 type Span = { row: Row; start: string; end: string; occurrence: boolean };
@@ -279,6 +282,12 @@ export function PublicChart({
 }) {
   const config = view.chart || defaultChart(fields);
   const points = chartPoints(records, fields, config).slice(0, 100);
+  // Series (by a property or further values): one bar per series and group.
+  const { series, values } = config.kind === "donut" ? { series: [], values: new Map() } : chartSeries(points, fields, config);
+  const seriesMax = Math.max(
+    0,
+    ...[...values.values()].flatMap((row) => [...row.values()].map((v) => Math.abs(v.value || 0))),
+  );
   const max = Math.max(0, ...points.map((p) => Math.abs(p.value || 0)));
   const colors = chartPalettes[config.palette || "default"];
   const format = (value: number | null) =>
@@ -312,7 +321,38 @@ export function PublicChart({
         />
       ) : (
         <div className="public-bars" role="img" aria-label={measure}>
-          {points.map((p, i) => (
+          {series.length > 0 && (
+            <p className="public-chart-legend">
+              {series.map((sr: { key: string; label: string }, i: number) => (
+                <span key={sr.key}>
+                  <i style={{ background: colors[i % colors.length] }} />
+                  {sr.label}
+                </span>
+              ))}
+            </p>
+          )}
+          {series.length > 0 && points.map((p) => (
+            <div key={p.key} className="public-bar-row">
+              <span className="public-bar-label">{p.label}</span>
+              <span className="public-bar-stack">
+                {series.map((sr: { key: string; label: string }, i: number) => {
+                  const v = values.get(p.key)?.get(sr.key)?.value ?? null;
+                  return (
+                    <span key={sr.key} className="public-bar-track" title={`${sr.label}: ${format(v)}`}>
+                      <span
+                        className="public-bar"
+                        style={{
+                          width: `${seriesMax ? (Math.abs(v || 0) / seriesMax) * 100 : 0}%`,
+                          background: colors[i % colors.length],
+                        }}
+                      />
+                    </span>
+                  );
+                })}
+              </span>
+            </div>
+          ))}
+          {!series.length && points.map((p, i) => (
             <div key={p.key} className="public-bar-row">
               <span className="public-bar-label">{p.label}</span>
               <span className="public-bar-track">
@@ -337,7 +377,11 @@ export function PublicChart({
         <thead>
           <tr>
             <th>Gruppe</th>
-            <th>Wert</th>
+            {series.length ? (
+              series.map((sr: { key: string; label: string }) => <th key={sr.key}>{sr.label}</th>)
+            ) : (
+              <th>Wert</th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -352,7 +396,13 @@ export function PublicChart({
                 )}
                 {p.label}
               </td>
-              <td>{format(p.value)}</td>
+              {series.length ? (
+                series.map((sr: { key: string; label: string }) => (
+                  <td key={sr.key}>{format(values.get(p.key)?.get(sr.key)?.value ?? null)}</td>
+                ))
+              ) : (
+                <td>{format(p.value)}</td>
+              )}
             </tr>
           ))}
         </tbody>
