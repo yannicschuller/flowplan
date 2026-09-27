@@ -5,6 +5,7 @@ import {
 } from "./whiteboard";
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
+import { changeDocTask, dueTaskCount, syncDocTasks } from "./doc-tasks";
 import {
   dayEntry,
   journalDayDetails,
@@ -217,6 +218,7 @@ export function bootstrap(user: Identity, wid?: string) {
     ).map((f) => f.page_id),
     savedSearches: savedSearches(user, workspace.id),
     recentVisits: recentVisits(user, workspace.id, 8),
+    dueTasks: dueTaskCount(user, workspace.id),
     notificationPrefs: notificationPrefs(user),
     instance: {
       name: instanceSettings().name,
@@ -1000,6 +1002,11 @@ export function command(
         );
         break;
       }
+      case "task.update": {
+        afterCommit.push(changeDocTask(user, b));
+        if (typeof b.pageId === "string") recordPageEdit(user, b.pageId);
+        break;
+      }
       case "page.follow": {
         const page = requirePage(user, pid());
         setFollowing(user, page.id, z.boolean().parse(b.follow));
@@ -1153,10 +1160,13 @@ export function command(
           Y.applyUpdate(d, Buffer.from(update, "base64"));
           const merged = Y.encodeStateAsUpdate(d),
             canonical = stateHtml(d);
+          // Tasks: people given a task are told once (not also as mention).
+          const assigned = syncDocTasks(user, p, null, d);
           for (const match of canonical.matchAll(/data-mention="([^"]+)"/g)) {
             const uid = match[1];
             if (
               uid !== user.id &&
+              !assigned.has(uid) &&
               !existing?.html.includes('data-mention="' + uid + '"') &&
               pageRole({ ...user, id: uid }, p)
             )
@@ -1512,6 +1522,18 @@ export function command(
           b.generation,
           b.update,
         ) as { state: string };
+        {
+          const stored = one<{ state: Uint8Array }>(
+            "SELECT state FROM row_documents WHERE row_id=?",
+            uuid.parse(b.rowId),
+          );
+          if (stored) {
+            const rowDoc = new Y.Doc();
+            Y.applyUpdate(rowDoc, stored.state);
+            syncDocTasks(user, requirePage(user, pid()), uuid.parse(b.rowId), rowDoc);
+            rowDoc.destroy();
+          }
+        }
         result = { ...synced, state: liveDiff(synced.state, b.vector) };
         const key = documentKey(pid(), uuid.parse(b.rowId), String(b.generation));
         const update = String(b.update);

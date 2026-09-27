@@ -116,6 +116,7 @@ import Admin from "./admin";
 import { ShareLinks } from "./share-links";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
+import { MyTasks } from "./my-tasks";
 import {
   FollowButton,
   ReadersButton,
@@ -182,7 +183,14 @@ type PageData = DatabaseData & {
   present: { id: string; name: string }[];
 };
 type Screen =
-  "home" | "page" | "trash" | "inbox" | "media" | "settings" | "admin";
+  | "home"
+  | "page"
+  | "trash"
+  | "inbox"
+  | "tasks"
+  | "media"
+  | "settings"
+  | "admin";
 export default function WorkspaceApp({
   initial,
   useTemplate,
@@ -540,7 +548,7 @@ export default function WorkspaceApp({
         if (currentId.current !== target.pageId || screenRef.current !== "page")
           void openPage(target.pageId, target);
       } else if (
-        ["home", "inbox", "trash", "media", "settings", "admin"].includes(
+        ["home", "inbox", "tasks", "trash", "media", "settings", "admin"].includes(
           fragment,
         )
       ) {
@@ -1139,6 +1147,18 @@ export default function WorkspaceApp({
                 </span>
               )}
             </button>
+            <button
+              className={screen === "tasks" ? "selected" : ""}
+              onClick={() => go("tasks")}
+            >
+              <CheckSquare size={19} />
+              Meine Aufgaben
+              {!!boot.dueTasks && (
+                <span className="notification-count" title="Heute fällig oder überfällig">
+                  {boot.dueTasks}
+                </span>
+              )}
+            </button>
           </nav>
           <div className="tree-filter">
             <MagnifyingGlass size={14} aria-hidden="true" />
@@ -1440,6 +1460,7 @@ export default function WorkspaceApp({
                     home: "Startseite",
                     trash: "Papierkorb",
                     inbox: "Posteingang",
+                    tasks: "Meine Aufgaben",
                     media: "Medien",
                     settings: "Einstellungen",
                     admin: "Administration",
@@ -1711,7 +1732,8 @@ export default function WorkspaceApp({
                     ))}
                 </div>
               </section>
-              {(boot.recentVisits || []).some((v) =>
+              {clock !== null &&
+                (boot.recentVisits || []).some((v) =>
                 activePages.some((p) => p.id === v.pageId),
               ) && (
                 <section className="visited-section">
@@ -1731,7 +1753,7 @@ export default function WorkspaceApp({
                             >
                               <PageIcon name={p.icon} size={16} />
                               <span>{p.title || "Ohne Titel"}</span>
-                              <small>{ago(visit.seenAt, clock || Date.now())}</small>
+                              <small>{ago(visit.seenAt, clock)}</small>
                             </button>,
                           ]
                         : [];
@@ -2177,6 +2199,16 @@ export default function WorkspaceApp({
             <MediaLibrary
               workspaceId={boot.workspace.id}
               onOpen={(id) => void openPage(id)}
+            />
+          )}
+          {screen === "tasks" && (
+            <MyTasks
+              workspaceId={boot.workspace.id}
+              onOpen={(pageId, rowId) => {
+                location.hash = rowId ? `page=${pageId}&row=${rowId}` : `page=${pageId}`;
+              }}
+              onError={notify}
+              onChanged={() => void refresh()}
             />
           )}
           {screen === "inbox" && (

@@ -31,6 +31,12 @@ Am Zeilenanfang oder nach einem Leerzeichen öffnet `/` das Blockmenü direkt an
 | Spoiler | `/spoiler` | Verdeckter Text, per Klick sichtbar |
 | Trennlinie | `/hr` | Horizontale Linie |
 
+## Aufgaben mit Person und Datum
+
+Eine Aufgabe (`/todo` oder `[]` + Leerzeichen) mit einer Erwähnung wie `@Anna` ist Anna zugewiesen: Sie bekommt eine Benachrichtigung und findet die Aufgabe unter **Meine Aufgaben** in der Seitenleiste. Steht der Cursor in einer Aufgabe, bietet das Ende der Zeile **+ Datum** an; das Fälligkeitsdatum erscheint dann als Chip (heute hervorgehoben, überfällig rot). Ein Klick auf den Chip ändert das Datum oder entfernt es mit **Datum entfernen**.
+
+**Meine Aufgaben** sammelt alle Aufgaben, die dir gegeben wurden, dazu deine eigenen Aufgaben mit Datum – gruppiert nach Überfällig, Heute, Nächste 7 Tage, Später und Ohne Datum. Abhaken und Datum ändern wirkt direkt im Dokument, auch bei anderen, die es gerade geöffnet haben. Am Fälligkeitstag kommt morgens eine Erinnerung; die Zahl neben „Meine Aufgaben“ zeigt, wie viele heute fällig oder überfällig sind.
+
 ## Markdown-Kürzel
 
 Beim Tippen wandelt der Editor um:

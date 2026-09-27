@@ -115,6 +115,22 @@ export default function DateInput({
         aria-invalid={!!error}
         onChange={(e) => update(e.target.value)}
       />
+      {draft && !disabled && (
+        <button
+          type="button"
+          className="date-clear"
+          aria-label={`${name} entfernen`}
+          title="Datum entfernen"
+          onClick={async () => {
+            setDraft("");
+            setError("");
+            changed.current = false;
+            if (value) await onChange("");
+          }}
+        >
+          Datum entfernen
+        </button>
+      )}
       <label className="checkbox-label">
         <input
           type="checkbox"

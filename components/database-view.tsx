@@ -2754,6 +2754,24 @@ export default function DatabaseView({
               )}
             </section>
           ))}
+          {viewEditable &&
+            groupField &&
+            (groupField.type === "select" ||
+              groupField.type === "multiselect") && (
+              <AddBoardGroup
+                disabled={schemaBusy}
+                existing={groupField.options || []}
+                onAdd={(name) =>
+                  updateSchema(
+                    fields.map((f) =>
+                      f.id === groupField.id
+                        ? { ...f, options: [...(f.options || []), name] }
+                        : f,
+                    ),
+                  )
+                }
+              />
+            )}
         </div>
       )}
       {view.type === "feed" && (
@@ -5028,5 +5046,87 @@ function RelationBacklinks({
         ))}
       </ul>
     </section>
+  );
+}
+
+// A new status (option of the grouping property) straight from the board:
+// it becomes its own column.
+function AddBoardGroup({
+  existing,
+  disabled,
+  onAdd,
+}: {
+  existing: string[];
+  disabled: boolean;
+  onAdd: (name: string) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const submit = async () => {
+    const value = name.trim();
+    if (!value) return setOpen(false);
+    if (existing.some((o) => o.toLocaleLowerCase("de") === value.toLocaleLowerCase("de")))
+      return setError("Diese Gruppe gibt es schon.");
+    const result = await onAdd(value);
+    if (result === null) return;
+    setName("");
+    setError("");
+    setOpen(false);
+  };
+  return open ? (
+    <form
+      className="board-add-group open"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <input
+        autoFocus
+        aria-label="Name der neuen Gruppe"
+        placeholder="Name der Gruppe"
+        value={name}
+        maxLength={100}
+        disabled={disabled}
+        onChange={(e) => {
+          setName(e.target.value);
+          setError("");
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            setName("");
+            setError("");
+          }
+        }}
+      />
+      {error && (
+        <span className="error" role="alert">
+          {error}
+        </span>
+      )}
+      <div className="board-add-group-actions">
+        <button type="submit" className="button primary compact" disabled={disabled || !name.trim()}>
+          Hinzufügen
+        </button>
+        <button
+          type="button"
+          className="button compact"
+          onClick={() => {
+            setOpen(false);
+            setName("");
+            setError("");
+          }}
+        >
+          Abbrechen
+        </button>
+      </div>
+    </form>
+  ) : (
+    <button type="button" className="board-add-group" onClick={() => setOpen(true)}>
+      <Plus size={16} />
+      Gruppe hinzufügen
+    </button>
   );
 }

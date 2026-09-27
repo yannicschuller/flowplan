@@ -188,6 +188,16 @@ export const FlowTaskItem = TaskItem.extend({
             ? { "data-journal-since": attributes.journalSince }
             : {},
       },
+      // Due date of the task (YYYY-MM-DD), shown as a chip in the editor.
+      due: {
+        default: null,
+        parseHTML: (element) => {
+          const value = element.getAttribute("data-due");
+          return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+        },
+        renderHTML: (attributes) =>
+          attributes.due ? { "data-due": attributes.due } : {},
+      },
     };
   },
 });

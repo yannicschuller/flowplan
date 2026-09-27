@@ -56,6 +56,7 @@ import { importZip } from "@/lib/zip-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
+import { myTasks } from "@/lib/doc-tasks";
 import { journalDate } from "@/lib/journal";
 import {
   calendarEvents,
@@ -186,6 +187,15 @@ export async function GET(
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
       );
+    // Tasks in documents assigned to the person ("Meine Aufgaben").
+    if (path.length === 1 && path[0] === "tasks") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      requireMember(user, wid);
+      return NextResponse.json(
+        { tasks: myTasks(user, wid, url.searchParams.get("done") === "1") },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     // Journal: review of a period, appointments of a day.
     if (path.length === 3 && path[0] === "journals" && path[2] === "review") {
       const journal = requirePage(user, z.uuid().parse(path[1]));

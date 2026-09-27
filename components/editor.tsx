@@ -1,4 +1,5 @@
 "use client";
+import { TaskDue } from "@/lib/task-due-plugin";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
@@ -260,6 +261,7 @@ export default function DocumentEditor({
         PlainNewLine,
         TaskList,
         FlowTaskItem.configure({ nested: true }),
+        TaskDue,
         Table.configure({ resizable: true }),
         TableRow,
         TableCell,

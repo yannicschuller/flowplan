@@ -4,7 +4,7 @@ Relationen verbinden Datenbanken, Rollups rechnen über verknüpfte Einträge, F
 
 ## Eigenschaften bearbeiten
 
-Ein Klick auf den Spaltenkopf oder **Ansicht und Eigenschaften** öffnet den Eigenschaftsdialog: Name, Typ, Optionen und Format. Typwechsel übernehmen vorhandene Werte, soweit sie passen. Formate für Zahlen umfassen Währungen, Prozent, Dezimalstellen und Tausendertrennzeichen und gelten auch für Formeln mit Zahlenergebnis; Datumsfelder zeigen kurz, lang oder ISO und optional Uhrzeiten.
+Ein Klick auf den Spaltenkopf oder **Ansicht und Eigenschaften** öffnet den Eigenschaftsdialog: Name, Typ, Optionen und Format. Typwechsel übernehmen vorhandene Werte, soweit sie passen. Formate für Zahlen umfassen Währungen, Prozent, Dezimalstellen und Tausendertrennzeichen und gelten auch für Formeln mit Zahlenergebnis; Datumsfelder zeigen kurz, lang oder ISO und optional Uhrzeiten; **Datum entfernen** unter dem Feld leert es wieder.
 
 ## Relationen
 

@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 28) return;
+  if (globalDb.flowplanSchema === 29) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -391,7 +391,13 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS page_visits_page ON page_visits(page_id,seen_at);
     CREATE TABLE IF NOT EXISTS page_edits(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,at INTEGER NOT NULL,PRIMARY KEY(page_id,user_id));
     CREATE TABLE IF NOT EXISTS page_follows(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,PRIMARY KEY(user_id,page_id));`);
-  globalDb.flowplanSchema = 28;
+  // Tasks in documents (assignee, due date) and their morning reminders.
+  d.exec(`CREATE TABLE IF NOT EXISTS doc_tasks(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL DEFAULT '',idx INTEGER NOT NULL,text TEXT NOT NULL,checked INTEGER NOT NULL DEFAULT 0,assignee TEXT,due TEXT,workspace_id TEXT NOT NULL,updated_by TEXT,updated_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS doc_tasks_document ON doc_tasks(page_id,row_id);
+    CREATE INDEX IF NOT EXISTS doc_tasks_assignee ON doc_tasks(workspace_id,assignee,checked);
+    CREATE INDEX IF NOT EXISTS doc_tasks_due ON doc_tasks(due,checked);
+    CREATE TABLE IF NOT EXISTS task_reminders(user_id TEXT NOT NULL,page_id TEXT NOT NULL,text TEXT NOT NULL,due TEXT NOT NULL,PRIMARY KEY(user_id,page_id,text,due));`);
+  globalDb.flowplanSchema = 29;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
