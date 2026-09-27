@@ -83,7 +83,7 @@ test("the demo workspace shows every part of Flowplan", () => {
     assert.ok(byTitle(title), title);
   // Editor tour: every block kind survives the schema.
   const tour = html(byTitle("Editor-Rundgang").id);
-  for (const marker of ["data-mermaid", "data-math", "data-spoiler", "data-columns", "data-linked-database", "data-whiteboard", "data-callout", "<details", "language-typescript", "data-type=\"taskList\"", "<table", "<iframe", "<sup>", "data-mention"])
+  for (const marker of ["data-mermaid", "data-math", "data-spoiler", "data-columns", "data-linked-database", "data-whiteboard", "data-callout", "<details", "language-typescript", "data-type=\"taskList\"", "<table", "<iframe", "<sup>", "data-mention", "data-due", "data-reactions", "data-suggestion=\"insert\"", "data-suggestion=\"delete\"", "data-synced-block"])
     assert.ok(tour.includes(marker), `tour keeps ${marker}`);
   // Projects: all nine views, a relation with rollup and a formula.
   const projects = byTitle("Projekte").id;
@@ -103,8 +103,14 @@ test("the demo workspace shows every part of Flowplan", () => {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, board.state);
   const items = whiteboardItems(doc);
-  assert.equal(items.length, 12);
+  assert.equal(items.length, 22);
   assert.ok(items.some((i) => i.covered));
+  assert.ok(items.some((i) => i.stamps && Object.keys(i.stamps).length), "stamps");
+  assert.ok(items.some((i) => i.type === "card" && i.rowId), "record card");
+  assert.ok(items.some((i) => i.emoji?.startsWith("icon:")), "symbol");
+  // The synced block appears on the tour and the welcome page, its tasks in "Meine Aufgaben".
+  assert.ok(html(byTitle("Willkommen in der Demo").id).includes("data-synced-block"));
+  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM doc_tasks WHERE page_id=? AND assignee=?", byTitle("Editor-Rundgang").id, demo)!.n, 1);
   const connector = items.find((i) => i.type === "connector")!;
   assert.ok(items.some((i) => i.id === connector.from?.id), "connectors point at shapes");
   const identity = session(demo);

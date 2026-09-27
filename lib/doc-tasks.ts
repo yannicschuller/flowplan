@@ -249,6 +249,22 @@ function localToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+// Tasks of a document written directly (seeded content, imports).
+export function indexPageTasks(pageId: string) {
+  const page = one<Page & { state: Uint8Array | null; html: string }>(
+    "SELECT p.*,d.state,d.html FROM pages p JOIN documents d ON d.page_id=p.id WHERE p.id=?",
+    pageId,
+  );
+  if (!page) return;
+  const ydoc = new Y.Doc();
+  try {
+    Y.applyUpdate(ydoc, page.state || htmlState(page.html));
+    const system = { id: page.created_by, name: "", groups: [], isAdmin: false } as unknown as Identity;
+    syncDocTasks(system, page, null, ydoc);
+  } finally {
+    ydoc.destroy();
+  }
+}
 // Documents written before tasks were collected: indexed once.
 export function backfillDocTasks() {
   if (one("SELECT 1 FROM instance_state WHERE key='doc_tasks_indexed'")) return;

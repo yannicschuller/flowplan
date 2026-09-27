@@ -9,6 +9,7 @@ import { createPage } from "./seed";
 import { writeWhiteboard } from "./whiteboard";
 import { applyStarterTemplate } from "./starter-templates";
 import { dayTitle } from "./journal";
+import { indexPageTasks } from "./doc-tasks";
 import type { Field, View } from "./types";
 import type { WhiteboardItem } from "./whiteboard-model";
 
@@ -187,7 +188,19 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     { id: "c1", type: "connector", x: 0, y: 0, w: 0, h: 0, from: { id: "s1", x: 0, y: 0 }, to: { id: "s2", x: 0, y: 0 }, endArrow: true, route: "curved" },
     { id: "c2", type: "connector", x: 0, y: 0, w: 0, h: 0, from: { id: "s2", x: 0, y: 0 }, to: { id: "s3", x: 0, y: 0 }, endArrow: true, route: "elbow" },
     { id: "t1", type: "text", x: 0, y: 460, w: 700, h: 60, text: "Tipp: V wählt aus, N setzt Zettel, L verbindet – und die Cursor der anderen siehst du live.", fontSize: 18 },
-    { id: "e1", type: "emoji", x: 1120, y: 20, w: 80, h: 80, emoji: "🎯" },
+    { id: "e1", type: "emoji", x: 1120, y: 20, w: 80, h: 80, emoji: "🎯", stamps: { [user]: "⭐" } },
+    // Stamps on a note, a mind map (Tab adds branches), a symbol and a live
+    // record card.
+    { id: "m0", type: "shape", shape: "rounded", x: 0, y: 600, w: 180, h: 64, text: "Launch", fill: "#dbe4ff", stroke: "#1f2937", strokeWidth: 2 },
+    { id: "m1", type: "shape", shape: "rounded", x: 260, y: 520, w: 160, h: 56, text: "Marketing", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2 },
+    { id: "m2", type: "shape", shape: "rounded", x: 260, y: 600, w: 160, h: 56, text: "Support", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2 },
+    { id: "m3", type: "shape", shape: "rounded", x: 260, y: 680, w: 160, h: 56, text: "Dokumentation", fill: "#ffffff", stroke: "#1f2937", strokeWidth: 2 },
+    { id: "k1", type: "connector", x: 0, y: 0, w: 0, h: 0, from: { id: "m0", x: 180, y: 632 }, to: { id: "m1", x: 260, y: 548 }, endArrow: false, route: "curved", stroke: "#868e96" },
+    { id: "k2", type: "connector", x: 0, y: 0, w: 0, h: 0, from: { id: "m0", x: 180, y: 632 }, to: { id: "m2", x: 260, y: 628 }, endArrow: false, route: "curved", stroke: "#868e96" },
+    { id: "k3", type: "connector", x: 0, y: 0, w: 0, h: 0, from: { id: "m0", x: 180, y: 632 }, to: { id: "m3", x: 260, y: 708 }, endArrow: false, route: "curved", stroke: "#868e96" },
+    { id: "i1", type: "emoji", x: 480, y: 580, w: 90, h: 90, emoji: "icon:Rocket:#337ea9" },
+    { id: "r1", type: "card", x: 640, y: 560, w: 280, h: 120, pageId: projects, rowId: projectIds[0], fill: "#e0782c" },
+    { id: "t2", type: "text", x: 0, y: 780, w: 900, h: 60, text: "Mindmap: Element wählen und Tab drücken. ⭐ = Stempel (E), K = Laserpointer, „Folge mir“ unten rechts.", fontSize: 16 },
   ]);
 
   // ---- Journal with yesterday's open tasks --------------------------------
@@ -246,6 +259,10 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
 
   // ---- Editor tour: every block ---------------------------------------------
   const tour = createPage(workspace, space, user, "Editor-Rundgang", "document");
+  // A synced block: the same content here and on the welcome page.
+  const synced = createPage(workspace, space, user, "Synchronisierter Block", "document", tour);
+  run("UPDATE pages SET synced=1 WHERE id=?", synced);
+  setDocument(synced, "<p>📌 <strong>Synchronisiert:</strong> Dieser Hinweis steht im Editor-Rundgang und auf der Willkommensseite. Ändere ihn an einer Stelle – er ändert sich überall.</p>");
   const linkedViews = JSON.stringify([view("linked-board", "Board", "board", { groupBy: "status" })]);
   setDocument(
     tour,
@@ -258,7 +275,14 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
       "<h2>Listen und Aufgaben</h2>",
       "<ul><li><p>Aufzählung</p><ul><li><p>verschachtelt</p></li></ul></li><li><p>zweiter Punkt</p></li></ul>",
       "<ol><li><p>Nummeriert</p></li><li><p>zweitens</p></li></ol>",
-      `<ul data-type="taskList">${task("Erledigte Aufgabe", true)}${task("Offene Aufgabe")}</ul>`,
+      `<ul data-type="taskList">${task("Erledigte Aufgabe", true)}${task("Offene Aufgabe")}` +
+        `<li data-type="taskItem" data-checked="false" data-due="${day(1)}"><label><input type="checkbox"></label><div><p>Aufgabe mit Datum für <span data-mention="${esc(user)}" class="mention">@Demo-Gast</span> – steht unter „Meine Aufgaben“</p></div></li>` +
+        `<li data-type="taskItem" data-checked="false" data-due="${day(-2)}"><label><input type="checkbox"></label><div><p>Überfällige Aufgabe</p></div></li></ul>`,
+      `<p data-reactions='${JSON.stringify({ "👍": [user], "🎉": [user] })}'>Auf Absätze lässt sich reagieren – Cursor in einen Absatz setzen und rechts auf das Smiley tippen.</p>`,
+      "<h2>Vorschläge</h2>",
+      `<p>Im Vorschlagsmodus (Stift in der Werkzeugleiste) wird aus Änderungen ein Vorschlag: Das Treffen ist am <span data-suggestion="delete" data-suggestion-id="demo1" data-suggestion-author="${esc(user)}" data-suggestion-name="Demo-Gast" data-suggestion-at="${Date.now()}">Montag</span><span data-suggestion="insert" data-suggestion-id="demo1" data-suggestion-author="${esc(user)}" data-suggestion-name="Demo-Gast" data-suggestion-at="${Date.now()}">Dienstag</span> um 10 Uhr.</p>`,
+      "<h2>Synchronisierter Block</h2>",
+      `<div data-synced-block="${synced}"></div>`,
       "<h2>Hervorheben und Aufklappen</h2>",
       '<aside data-callout="true"><p>💡 Ein Hinweis-Block für Wichtiges.</p></aside>',
       "<blockquote><p>Ein Zitat.</p></blockquote>",
@@ -288,6 +312,7 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
   setDocument(
     welcome,
     `<p>Das ist dein eigener Demo-Arbeitsbereich. Probiere alles aus – er wird gelöscht, sobald du die Demo beendest.</p>` +
+      `<div data-synced-block="${synced}"></div>` +
       `<aside data-callout="true"><p>👉 Lieblingsstellen: ${link(tour, "Editor-Rundgang")}, ${link(projects, "Projekte")} (neun Ansichten), ${link(board, "Whiteboard")} und ${link(journal, "Journal")}.</p></aside>` +
       "<h2>Was du hier findest</h2>" +
       `<ul><li><p>${link(tour, "Editor-Rundgang")} – alle Blöcke: Aufgaben, Code, Formeln, Diagramme, Spalten, Spoiler, Einbettungen.</p></li>` +
@@ -303,5 +328,7 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
       "</ul>",
     "👋",
   );
+  // "Meine Aufgaben" shows the tasks of the tour right away.
+  indexPageTasks(tour);
   return welcome;
 }

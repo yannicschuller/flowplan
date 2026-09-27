@@ -1228,7 +1228,9 @@ export default function Whiteboard({
         if (map && userId) {
           let stamps = map.get("stamps");
           if (!(stamps instanceof Y.Map)) {
-            stamps = new Y.Map();
+            // Stamps written as a plain object (e.g. demo content) carry over.
+            const previous = stamps && typeof stamps === "object" ? Object.entries(stamps as Record<string, string>) : [];
+            stamps = new Y.Map<string>(previous);
             map.set("stamps", stamps);
           }
           const own = (stamps as Y.Map<string>).get(userId);
