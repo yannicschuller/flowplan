@@ -66,6 +66,7 @@ test("admins configure the instance; stored values override the environment", ()
     name: "Muster GmbH",
     announcement: "Wartung am Samstag",
     allowWorkspaceCreation: false,
+    transcription: false,
   });
   assert.throws(
     () => command(person, { action: "workspace.create", name: "Noch einer" }),
