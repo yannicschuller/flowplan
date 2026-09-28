@@ -61,7 +61,7 @@ export const BlockReactionAttribute = Extension.create({
 
 type Options = { userId: string; names: () => Map<string, string> };
 
-function setReactions(view: EditorView, pos: number, emoji: string, userId: string) {
+export function setReactions(view: EditorView, pos: number, emoji: string, userId: string) {
   const node = view.state.doc.nodeAt(pos);
   if (!node || !types.includes(node.type.name)) return;
   const next = toggleReaction(parseReactions(node.attrs.reactions), emoji, userId);
@@ -142,7 +142,8 @@ export const BlockReactions = Extension.create<Options>({
               if (!types.includes(node.type.name)) return true;
               const has = !!node.attrs.reactions;
               // Offer reacting on a block with text, where the cursor rests.
-              const showAdd = editable && empty && pos === current && node.content.size > 0;
+              // Adding goes through the text menu (select or right-click).
+              const showAdd = false;
               if (has || showAdd)
                 decorations.push(
                   Decoration.widget(
@@ -164,3 +165,11 @@ export const BlockReactions = Extension.create<Options>({
     ];
   },
 });
+
+// The paragraph or heading around a position (for reacting from a menu).
+export function reactionBlockAt(doc: import("@tiptap/pm/model").Node, pos: number) {
+  const $pos = doc.resolve(Math.max(0, Math.min(doc.content.size, pos)));
+  for (let d = $pos.depth; d > 0; d--)
+    if (types.includes($pos.node(d).type.name)) return $pos.before(d);
+  return null;
+}

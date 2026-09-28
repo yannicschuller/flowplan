@@ -8,6 +8,7 @@ import {
 } from "@/lib/suggestions";
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
 import { VoiceRecorder } from "./voice-recorder";
+import { TextMenu } from "./text-menu";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
@@ -1444,6 +1445,17 @@ export default function DocumentEditor({
           container={
             editor?.view.dom.closest<HTMLElement>('[role="dialog"]') || null
           }
+        />
+      )}
+      {!embedded && (
+        <TextMenu
+          editor={editor}
+          userId={userId}
+          editable={editable}
+          onLink={() => {
+            setLinkUrl(editor?.getAttributes("link").href || "");
+            setLink(true);
+          }}
         />
       )}
       <VoiceRecorder

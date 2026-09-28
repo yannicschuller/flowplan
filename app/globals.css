@@ -12566,3 +12566,108 @@ h3 .block-reactions {
 .js-tabs button.active {
   color: var(--blue);
 }
+
+/* Text menu (components/text-menu.tsx): after selecting or on right click. */
+.text-menu {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 12px 32px -8px #1d1a1440, 0 2px 6px #1d1a1418;
+  animation: menu-in 0.12s var(--ease-out) both;
+}
+.text-menu.selection {
+  translate: -50% calc(-100% - 10px);
+}
+.text-menu.context {
+  translate: 2px 2px;
+}
+.text-menu-reactions,
+.text-menu-format {
+  display: flex;
+  gap: 1px;
+}
+.text-menu-reactions {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.text-menu-reactions button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 17px;
+  transition: transform 0.12s var(--ease-out);
+}
+.text-menu-reactions button:hover {
+  background: var(--hover);
+  transform: scale(1.15);
+}
+.text-menu-reactions button.active {
+  background: var(--blue-light);
+}
+.text-menu-format button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  color: var(--secondary);
+}
+.text-menu-format button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.text-menu-format button.active {
+  color: var(--blue);
+  background: var(--blue-light);
+}
+.text-menu-actions {
+  display: flex;
+  gap: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.text-menu.selection .text-menu-actions {
+  border-top: 0;
+  padding-top: 0;
+}
+.text-menu-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.text-menu-actions button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.text-menu.selection {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: min(560px, calc(100vw - 16px));
+}
+.text-menu.selection .text-menu-reactions {
+  padding: 0 4px 0 0;
+  border-bottom: 0;
+  border-right: 1px solid var(--border);
+}
+@media (max-width: 700px) {
+  .text-menu.selection {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .text-menu.selection .text-menu-reactions {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 4px;
+  }
+}
