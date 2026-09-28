@@ -535,10 +535,10 @@ const STEPS: {
     title: "Dokumente",
     lead: "Schreiben in Blöcken: Text, Aufgaben, Tabellen, Formeln und Diagramme auf einer Seite.",
     points: [
-      "Befehle mit „/“, Blöcke per Griff verschieben",
-      "Spalten, Hinweise, Aufklapper, Code und Mermaid",
-      "Formeln mit KaTeX, Bilder, Einbettungen, Linkkarten",
-      "Versionen jeder Seite zum Zurückholen",
+      "Befehle mit „/“, Blöcke per Griff, Sprachnotizen",
+      "Aufgaben mit @Person und Fälligkeit",
+      "Vorschläge machen, annehmen oder ablehnen",
+      "Synchronisierte Blöcke und Versionen jeder Seite",
     ],
   },
   {
@@ -557,10 +557,10 @@ const STEPS: {
     title: "Whiteboards",
     lead: "Eine unendliche Fläche für Workshops: Notizen, Formen, Verbindungen und Verweise auf eure Seiten.",
     points: [
-      "Abstimmungen und Timer für die Moderation",
-      "Kommentar-Pins direkt am Objekt",
-      "Tabellen, Rahmen, Freihand und Bilder",
-      "In Dokumente einbetten, live gemeinsam",
+      "Mindmaps mit Tab, Hilfslinien und Anordnen",
+      "Laserpointer und „Folge mir“ beim Präsentieren",
+      "Abstimmungen – auch verdeckt – und Timer",
+      "Datenbank-Einträge als Karten, die aktuell bleiben",
     ],
   },
   {
@@ -568,9 +568,10 @@ const STEPS: {
     title: "Journal",
     lead: "Jeden Tag eine neue Seite. Was gestern offen blieb, steht heute oben.",
     points: [
+      "Tagesvorlage und Tracker für Stimmung, Schlaf oder Sport",
       "Offene Aufgaben wandern automatisch in den neuen Tag",
-      "Tage ohne Eintrag verschwinden wieder",
-      "Tagebuch, Arbeitsprotokoll oder Aufgabenliste",
+      "Serie, Heatmap und „An diesem Tag“",
+      "Wochen- und Monatsrückblick, auf Wunsch mit PIN",
     ],
   },
 ];
@@ -685,9 +686,13 @@ const INDEX: { title: string; items: string[] }[] = [
       "Formeln mit KaTeX",
       "Bilder, Dateien, Einbettungen, Linkkarten",
       "Erwähnungen von Personen und Seiten",
+      "Aufgaben mit Person und Fälligkeit",
+      "Synchronisierte Blöcke",
+      "Vorschlagsmodus",
+      "Sprachnotizen mit Transkription",
+      "Fokusmodus mit Wortziel",
       "Versionen und Wiederherstellung",
-      "Symbol, Cover, Serif- oder Mono-Schrift",
-      "Seiten sperren",
+      "Druck- und PDF-Layout",
     ],
   },
   {
@@ -697,6 +702,7 @@ const INDEX: { title: string; items: string[] }[] = [
       "19 Feldtypen, darunter Formel, Relation, Rollup",
       "Filtergruppen und Sortierung",
       "Gruppen in drei Ebenen, Swimlanes",
+      "Eigene Status-Spalten direkt im Board",
       "Berechnungen je Spalte",
       "Wiederholungen und Erinnerungen",
       "Datensatzseiten mit eigenem Layout",
@@ -708,29 +714,36 @@ const INDEX: { title: string; items: string[] }[] = [
   {
     title: "Whiteboards",
     items: [
-      "Notizen, Formen, Text, Freihand",
-      "Verbindungen, Rahmen, Tabellen",
-      "Verweise und Links auf Seiten",
-      "Abstimmungen und Timer",
-      "Kommentar-Pins",
-      "Vorlagen für Workshops",
-      "Vollbild und Einbetten in Dokumente",
+      "Notizen, Formen, Text, Freihand mit Stiftdruck",
+      "Mindmaps mit automatischer Anordnung",
+      "Hilfslinien, Raster, Ausrichten und Stapeln",
+      "Zettel nach Farbe, Person oder Stimmen sortieren",
+      "Stempel, Laserpointer, „Folge mir“",
+      "Abstimmungen, auch verdeckt, und Timer",
+      "Bildersuche und Symbole",
+      "Seiten und Datenbank-Einträge als Karten",
+      "Vorlagen für Workshops, Kommentar-Pins",
     ],
   },
   {
     title: "Journal",
     items: [
       "Automatisch eine Seite pro Tag",
+      "Tagesvorlage und Tracker",
       "Offene Aufgaben wandern mit",
-      "Leere Tage verschwinden",
-      "Übersicht nach Monaten",
+      "Ort, Fotos und Termine des Tages",
+      "Serie, Heatmap, „An diesem Tag“",
+      "Wochen- und Monatsrückblick",
+      "Sperre mit PIN",
     ],
   },
   {
     title: "Zusammenarbeit",
     items: [
       "Gleichzeitig bearbeiten mit Live-Cursorn",
-      "Kommentare am Text und an Einträgen",
+      "Kommentare und Reaktionen",
+      "Seiten folgen, gelesen von …",
+      "Änderungen seit dem letzten Besuch",
       "Posteingang und Push-Benachrichtigungen",
       "Gastlinks: lesen, kommentieren, live bearbeiten",
       "Öffentliche Seiten, auch zum Kopieren",
@@ -743,19 +756,22 @@ const INDEX: { title: string; items: string[] }[] = [
       "Arbeitsbereiche und Bereiche",
       "Gruppen und Seitenrechte",
       "Suche, auch in Dateien und Scans",
-      "Gespeicherte Suchen",
-      "Favoriten und Papierkorb",
-      "Markdown-Export",
+      "Befehle und Suche mit ⌘K",
+      "Meine Aufgaben über alle Seiten",
+      "Graph der Verlinkungen",
+      "Web-Clipper und Lesezeichen",
+      "Favoriten, Papierkorb, Markdown-Export",
     ],
   },
   {
-    title: "Betrieb",
+    title: "Sicherheit",
     items: [
-      "Ein Container, eine SQLite-Datei",
-      "Anmeldung über euren OIDC-Anbieter",
-      "Administration mit Protokoll",
-      "Sicherungen und Wiederherstellung",
-      "Archiv-Export und -Import",
+      "Server in Deutschland",
+      "Verschlüsselte Verbindungen",
+      "Anmeldung per Single Sign-on",
+      "Rechte pro Bereich, Seite und Eintrag",
+      "Regelmäßige Sicherungen",
+      "Kein Tracking, keine KI-Auswertung",
       "Offline-Modus, Web-App fürs iPhone",
       "Desktop-Apps für macOS und Windows",
     ],
@@ -827,7 +843,7 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
     ["ansichten", "Ansichten"],
     ["zusammenarbeit", "Zusammenarbeit"],
     ["funktionen", "Alle Funktionen"],
-    ["betrieb", "Betrieb"],
+    ["sicherheit", "Sicherheit"],
   ];
   return (
     <div className={s.root} ref={root}>
@@ -870,12 +886,13 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
             <h1 className={s.rise} style={{ "--d": 1 } as React.CSSProperties}>
               Alles, woran ihr arbeitet.
               <br />
-              <em>Auf eurem Server.</em>
+              <em>Betrieben in Deutschland.</em>
             </h1>
             <p className={s.rise} style={{ "--d": 2 } as React.CSSProperties}>
               Flowplan verbindet Dokumente, Datenbanken, Whiteboards und ein
               tägliches Journal in einem Seitenbaum. Ihr bearbeitet alles
-              gleichzeitig, die Daten bleiben bei euch.
+              gleichzeitig – auf Servern in Deutschland, verschlüsselt und
+              ohne Tracking.
             </p>
             <div className={`${s.heroCtas} ${s.rise}`} style={{ "--d": 3 } as React.CSSProperties}>
               <a className={s.primaryLarge} href={registerHref}>
@@ -887,7 +904,7 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
               {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
             <ul className={`${s.facts} ${s.rise}`} style={{ "--d": 4 } as React.CSSProperties}>
-              <li>Selbst gehostet</li>
+              <li>Server in Deutschland</li>
               <li>Anmeldung per SSO</li>
               <li>Keine KI</li>
               <li>Kein Tracking</li>
@@ -971,33 +988,35 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
           </a>
         </section>
 
-        <section className={s.ops} id="betrieb">
+        <section className={s.ops} id="sicherheit">
           <div className={s.opsInner}>
             <Reveal className={s.opsText}>
-              <span className={s.eyebrow}>Betrieb</span>
+              <span className={s.eyebrow}>Sicherheit</span>
               <h2>
-                Euer Server.
+                In Deutschland.
                 <br />
                 Eure Daten.
               </h2>
               <p>
-                Flowplan läuft als ein Container mit einer SQLite-Datei.
-                Angemeldet wird über euren bestehenden OIDC-Anbieter, die
-                Admin-Gruppe verwaltet Konten, Speicher und Sicherungen.
+                Flowplan läuft auf Servern in Deutschland. Verbindungen sind
+                verschlüsselt, angemeldet wird per Single Sign-on, und jeder
+                Bereich, jede Seite und jeder Eintrag hat eigene Rechte. Eure
+                Inhalte werden regelmäßig gesichert – und von niemandem
+                ausgewertet.
               </p>
               <div className={s.never}>
                 <span>
-                  <LockSimple size={16} /> Keine KI-Funktionen
+                  <LockSimple size={16} /> Keine KI-Auswertung
                 </span>
                 <span>
                   <LockSimple size={16} /> Kein Tracking
                 </span>
                 <span>
-                  <LockSimple size={16} /> Keine Cloud des Herstellers
+                  <LockSimple size={16} /> Keine Weitergabe an Dritte
                 </span>
               </div>
-              <a className={s.docsLink} href="/docs/installation">
-                Anleitung zum Selbst-Hosten <ArrowRight size={16} />
+              <a className={s.docsLink} href="/docs">
+                Alles zur Nutzung in der Dokumentation <ArrowRight size={16} />
               </a>
             </Reveal>
             <Reveal className={s.terminal}>
@@ -1005,24 +1024,27 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
                 <i />
                 <i />
                 <i />
-                <span>.env</span>
+                <span>Sicherheit</span>
               </div>
               <pre>
                 <code>
                   <span className={s.tl}>
-                    <b>APP_URL</b>=https://flowplan.firma.de
+                    <b>Standort</b> Rechenzentrum in Deutschland
                   </span>
                   <span className={s.tl}>
-                    <b>OIDC_ISSUER</b>=https://login.firma.de
+                    <b>Verbindung</b> HTTPS, verschlüsselt
                   </span>
                   <span className={s.tl}>
-                    <b>OIDC_CLIENT_ID</b>=flowplan
+                    <b>Anmeldung</b> Single Sign-on
                   </span>
                   <span className={s.tl}>
-                    <b>FLOWPLAN_DATA_DIR</b>=/data
+                    <b>Rechte</b> pro Bereich, Seite und Eintrag
+                  </span>
+                  <span className={s.tl}>
+                    <b>Sicherung</b> regelmäßig, wiederherstellbar
                   </span>
                   <span className={`${s.tl} ${s.tlOk}`}>
-                    ✓ Bereit auf Port 3000
+                    ✓ Kein Tracking, keine Werbung
                   </span>
                 </code>
               </pre>
@@ -1066,10 +1088,9 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
           <BrandMark size={20} />
           <span>flowplan</span>
         </span>
-        <span>Dokumente, Datenbanken, Whiteboards und Journal. Selbst gehostet.</span>
+        <span>Dokumente, Datenbanken, Whiteboards und Journal. Betrieben in Deutschland.</span>
         <nav className={s.footerNav} aria-label="Weiteres">
           <a href="/docs">Dokumentation</a>
-          <a href="/docs/installation">Selbst hosten</a>
           <a href="/templates">Vorlagen</a>
         </nav>
       </footer>

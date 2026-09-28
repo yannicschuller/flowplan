@@ -38,7 +38,7 @@ Enthalten: zugängliche Seiten samt Papierkorb, Datenbanken mit Ansichten und Ei
 - Ein fehlerhafter Import wird vollständig zurückgerollt.
 - Grenzen: 2 GB ZIP, 500 Seiten, 20.000 Dateien, 5.000 Einträge je Datenbank.
 
-Konten, Sitzungen und Anmeldung gehören nicht dazu – dafür gibt es die [Instanzsicherung](/docs/speicher-und-sicherung#sicherungen).
+Konten, Sitzungen und Anmeldung gehören nicht dazu – die sichert der Betrieb täglich mit der gesamten Instanz.
 
 ## Versionsverlauf
 

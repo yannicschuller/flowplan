@@ -7,7 +7,7 @@ test("visitors get the product page with sign-in and sign-up; deep links still a
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText(
-    "Auf eurem Server.",
+    "Betrieben in Deutschland.",
   );
   // Both actions are always reachable (header and hero).
   await expect(page.getByRole("link", { name: /Registrieren/ }).first()).toBeVisible();
@@ -19,8 +19,10 @@ test("visitors get the product page with sign-in and sign-up; deep links still a
   // The database scene switches views when a tab is chosen.
   await page.locator("#ansichten").scrollIntoViewIfNeeded();
   await page.locator("#funktionen").scrollIntoViewIfNeeded();
-  await page.locator("#betrieb").scrollIntoViewIfNeeded();
-  await expect(page.getByText("OIDC_ISSUER")).toBeVisible();
+  await page.locator("#sicherheit").scrollIntoViewIfNeeded();
+  await expect(page.getByText("Rechenzentrum in Deutschland")).toBeVisible();
+  // Not open source, not self-hosted: no such promises on the page.
+  await expect(page.getByText(/selbst gehostet|selbst hosten|auf eurem server/i)).toHaveCount(0);
   if (process.env.LANDING_SHOTS)
     await page.screenshot({ path: `${process.env.LANDING_SHOTS}/${info.project.name}-ops.png` });
   // Anmelden leads to the sign-in card.
@@ -37,8 +39,8 @@ test("reduced motion shows every scene in its final state", async ({ browser }) 
   const context = await browser.newContext({ reducedMotion: "reduce" });
   const page = await context.newPage();
   await page.goto(process.env.TEST_BASE_URL || "http://127.0.0.1:3000");
-  await page.locator("#betrieb").scrollIntoViewIfNeeded();
-  await expect(page.getByText("Bereit auf Port 3000")).toBeVisible();
+  await page.locator("#sicherheit").scrollIntoViewIfNeeded();
+  await expect(page.getByText("Kein Tracking, keine Werbung")).toBeVisible();
   const hidden = await page.evaluate(
     () =>
       [...document.querySelectorAll("[data-reveal]")].filter(

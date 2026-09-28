@@ -54,4 +54,4 @@ Push-Nachrichten öffnen die betroffene Seite. Auf dem Sperrbildschirm erscheine
 > [!NOTE]
 > **iPhone und iPad** (ab iOS 16.4): Flowplan in Safari über HTTPS öffnen, **Zum Home-Bildschirm** hinzufügen und aus diesem Symbol starten. Erst dort lässt sich Push aktivieren.
 
-Abmelden, Sitzungsende oder eine Kontosperre beenden das Push-Abonnement; nach dem nächsten Anmelden bei Bedarf wieder aktivieren. Voraussetzungen auf dem Server: siehe [Konfiguration](/docs/konfiguration#push-benachrichtigungen).
+Abmelden, Sitzungsende oder eine Kontosperre beenden das Push-Abonnement; nach dem nächsten Anmelden bei Bedarf wieder aktivieren.

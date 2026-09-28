@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { docGroups, docSearchIndex, docSlugs, loadDoc } from "../lib/docs";
+import { adminDocSlugs, docGroups, docGroupsFor, docSearchIndex, docSlugs, loadDoc } from "../lib/docs";
 
 test("every documentation page loads with title, lead and content", () => {
   assert.ok(docSlugs.length >= 20);
@@ -31,9 +31,25 @@ test("links between documentation pages point at existing pages and sections", (
 });
 
 test("the search index covers section text", () => {
-  const index = docSearchIndex();
+  const index = docSearchIndex(true);
   const storage = index.find((p) => p.slug === "speicher-und-sicherung")!;
   assert.ok(storage.sections.some((s) => s.text === "Garage" && s.body.includes("garage bucket create")));
   const config = index.find((p) => p.slug === "konfiguration")!;
   assert.match(config.sections.find((s) => s.id === "s3-und-datenbanksicherung")!.body, /S3_BUCKET \S/);
+});
+
+test("running the instance is documented for administrators only", () => {
+  for (const slug of ["installation", "konfiguration", "speicher-und-sicherung", "coolify-und-proxy", "betrieb", "anmeldung-oidc", "administration"])
+    assert.ok(adminDocSlugs.has(slug), slug);
+  const publicSlugs = docGroupsFor(false).flatMap((g) => g.pages.map((p) => p.slug));
+  assert.ok(publicSlugs.includes("erste-schritte"));
+  assert.ok(!publicSlugs.some((slug) => adminDocSlugs.has(slug)));
+  assert.ok(!docSearchIndex().some((p) => adminDocSlugs.has(p.slug)), "public search");
+  // Public pages neither link to nor page on to administrator pages.
+  for (const slug of publicSlugs) {
+    const doc = loadDoc(slug, false)!;
+    for (const [, target] of doc.html.matchAll(/href="\/docs\/([a-z-]+)/g))
+      assert.ok(!adminDocSlugs.has(target), `${slug} links to ${target}`);
+    for (const near of [doc.prev, doc.next]) assert.ok(!near || !adminDocSlugs.has(near.slug), `${slug} pages to ${near?.slug}`);
+  }
 });

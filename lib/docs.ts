@@ -5,25 +5,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Marked, type Tokens } from "marked";
 
-export type DocGroup = { title: string; pages: { slug: string; title: string }[] };
+export type DocGroup = { title: string; admin?: boolean; pages: { slug: string; title: string }[] };
 
-const groups: { title: string; pages: [slug: string, title: string][] }[] = [
+// Groups marked admin describe running the instance: only signed-in
+// administrators see them (navigation, search and the pages themselves).
+const groups: { title: string; admin?: boolean; pages: [slug: string, title: string][] }[] = [
   {
     title: "Einstieg",
     pages: [
       ["erste-schritte", "Erste Schritte"],
       ["seiten-und-bereiche", "Seiten und Bereiche"],
-    ],
-  },
-  {
-    title: "Selbst hosten",
-    pages: [
-      ["installation", "Installation mit Docker"],
-      ["anmeldung-oidc", "Anmeldung mit OIDC"],
-      ["konfiguration", "Konfiguration"],
-      ["speicher-und-sicherung", "Speicher, S3 und Sicherung"],
-      ["coolify-und-proxy", "Coolify und Reverse Proxy"],
-      ["betrieb", "Betrieb und Fehlersuche"],
     ],
   },
   {
@@ -48,18 +39,33 @@ const groups: { title: string; pages: [slug: string, title: string][] }[] = [
   },
   {
     title: "Verwaltung",
+    pages: [["arbeitsbereiche-und-rechte", "Arbeitsbereiche, Mitglieder und Rechte"]],
+  },
+  {
+    title: "Betrieb der Instanz",
+    admin: true,
     pages: [
-      ["arbeitsbereiche-und-rechte", "Arbeitsbereiche, Mitglieder und Rechte"],
       ["administration", "Administration der Instanz"],
+      ["installation", "Installation mit Docker"],
+      ["anmeldung-oidc", "Anmeldung mit OIDC"],
+      ["konfiguration", "Konfiguration"],
+      ["speicher-und-sicherung", "Speicher, S3 und Sicherung"],
+      ["coolify-und-proxy", "Coolify und Reverse Proxy"],
+      ["betrieb", "Betrieb und Fehlersuche"],
     ],
   },
 ];
 
 export const docGroups: DocGroup[] = groups.map((g) => ({
   title: g.title,
+  ...(g.admin ? { admin: true } : {}),
   pages: g.pages.map(([slug, title]) => ({ slug, title })),
 }));
 export const docSlugs = docGroups.flatMap((g) => g.pages.map((p) => p.slug));
+export const adminDocSlugs = new Set(docGroups.filter((g) => g.admin).flatMap((g) => g.pages.map((p) => p.slug)));
+// What a reader may see: everything for administrators, the rest for all.
+export const docGroupsFor = (admin: boolean) => docGroups.filter((g) => admin || !g.admin);
+const slugsFor = (admin: boolean) => docGroupsFor(admin).flatMap((g) => g.pages.map((p) => p.slug));
 
 export type TocEntry = { id: string; text: string; depth: number };
 export type Doc = {
@@ -168,12 +174,14 @@ function read(slug: string) {
   return { title, lead, body: cut < 0 ? "" : rest.slice(cut) };
 }
 
-export function loadDoc(slug: string): Doc | null {
+export function loadDoc(slug: string, admin = adminDocSlugs.has(slug)): Doc | null {
   if (!docSlugs.includes(slug)) return null;
+  // Previous and next only lead to pages this reader may open.
+  const order = slugsFor(admin);
   const { title, lead, body } = read(slug);
   const { html, toc } = render(body);
   const leadHtml = new Marked({ gfm: true }).parseInline(lead, { async: false }) as string;
-  const index = docSlugs.indexOf(slug);
+  const index = order.indexOf(slug);
   const find = (s: string | undefined) =>
     s ? docGroups.flatMap((g) => g.pages).find((p) => p.slug === s) : undefined;
   return {
@@ -184,8 +192,8 @@ export function loadDoc(slug: string): Doc | null {
     group: docGroups.find((g) => g.pages.some((p) => p.slug === slug))?.title || "",
     html,
     toc,
-    prev: index > 0 ? find(docSlugs[index - 1]) : undefined,
-    next: index >= 0 ? find(docSlugs[index + 1]) : find(docSlugs[0]),
+    prev: index > 0 ? find(order[index - 1]) : undefined,
+    next: index >= 0 ? find(order[index + 1]) : find(order[0]),
   };
 }
 
@@ -198,9 +206,9 @@ const blockText = (html: string) =>
 
 // Search index: every page with its sections and their plain text, so the
 // search box also finds words that only appear in the body.
-export function docSearchIndex() {
-  return docSlugs.map((slug) => {
-    const doc = loadDoc(slug)!;
+export function docSearchIndex(admin = false) {
+  return slugsFor(admin).map((slug) => {
+    const doc = loadDoc(slug, admin)!;
     const parts = doc.html.split(/(?=<h[23] id=")/);
     const intro = parts[0].startsWith("<h") ? "" : parts.shift()!;
     return {

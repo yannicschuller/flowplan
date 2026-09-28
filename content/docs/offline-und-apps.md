@@ -51,7 +51,7 @@ Eine schlanke Desktop-App umschließt deine Flowplan-Instanz. Beim ersten Start 
 - Die App merkt sich Fenstergröße und -position, bietet deutsche Menüs und öffnet externe Links im Standardbrowser.
 - Ohne Verbindung zeigt sie eine eigene Offline-Seite; die Offline-Nutzung der Web-App funktioniert wie im Browser.
 
-Gebaut wird die App aus dem Ordner `desktop/` im Quellcode (`npm run dist:mac`, `npm run dist:win`). Ohne Zertifikate sind die Builds unsigniert: macOS fragt beim ersten Öffnen nach (Rechtsklick → Öffnen), Windows zeigt SmartScreen.
+Die Installationsdateien bekommst du von deiner Administration. Solange sie nicht signiert sind, fragt macOS beim ersten Öffnen nach (Rechtsklick → Öffnen) und Windows zeigt SmartScreen.
 
 ## Hell und dunkel
 

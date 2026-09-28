@@ -36,7 +36,7 @@ Am Zeilenanfang oder nach einem Leerzeichen öffnet `/` das Blockmenü direkt an
 
 ## Sprachnotizen
 
-`/sprachnotiz` öffnet die Aufnahme: Mikrofon antippen, sprechen, **Aufnahme beenden** (höchstens zehn Minuten). Die Aufnahme lässt sich anhören oder verwerfen; **Einfügen** legt sie als Audio in die Seite. Ist auf dem Server ein Whisper-Dienst eingerichtet (siehe [Konfiguration](/docs/konfiguration#sprachnotizen-whisper)), folgt darunter das Gesprochene als Text.
+`/sprachnotiz` öffnet die Aufnahme: Mikrofon antippen, sprechen, **Aufnahme beenden** (höchstens zehn Minuten). Die Aufnahme lässt sich anhören oder verwerfen; **Einfügen** legt sie als Audio in die Seite. Ist die Spracherkennung eingerichtet, folgt darunter das Gesprochene als Text; sonst bietet der Dialog nur das Audio an.
 
 ## Fokusmodus
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { docSlugs, loadDoc } from "@/lib/docs";
+import { adminDocSlugs, docSlugs, loadDoc } from "@/lib/docs";
+import { currentUser } from "@/lib/auth";
 import s from "@/components/docs/docs.module.css";
 
 export const dynamicParams = false;
@@ -12,12 +13,18 @@ export async function generateMetadata({
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
-  const doc = loadDoc((await params).slug);
+  const slug = (await params).slug;
+  if (adminDocSlugs.has(slug) && !(await currentUser().catch(() => null))?.isAdmin) return {};
+  const doc = loadDoc(slug);
   return doc ? { title: doc.title, description: doc.summary } : {};
 }
 
 export default async function DocPage({ params }: { params: Promise<{ slug: string }> }) {
-  const doc = loadDoc((await params).slug);
+  const slug = (await params).slug;
+  const admin = !!(await currentUser().catch(() => null))?.isAdmin;
+  // Running the instance: not public.
+  if (adminDocSlugs.has(slug) && !admin) notFound();
+  const doc = loadDoc(slug, admin);
   if (!doc) notFound();
   return (
     <main className={s.main} id="inhalt">

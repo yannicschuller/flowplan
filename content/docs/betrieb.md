@@ -60,3 +60,8 @@ Ohne gesetztes Token ist der Endpunkt abgeschaltet.
 | Push kommt nicht an | `WEB_PUSH_SUBJECT` fehlt, Schlüssel haben sich geändert oder ausgehendes HTTPS ist gesperrt. |
 | Hohe CPU-Last nach Uploads | Texterkennung gescannter PDFs; bei Bedarf `FLOWPLAN_OCR=0`. |
 | Änderungen anderer oder Live-Cursor kommen nur verzögert an | Proxy puffert Server-Sent Events (`/api/documents/live`, `/api/whiteboards/…/cursors`); Pufferung abschalten. Ohne den Kanal gleicht Flowplan weiter im Abstand von Sekunden ab. |
+
+## Desktop-App bauen
+
+Die Desktop-App für macOS und Windows entsteht aus dem Ordner `desktop/` im Quellcode: `npm run dist:mac` bzw. `npm run dist:win`. Ohne Zertifikate sind die Builds unsigniert – macOS fragt beim ersten Öffnen nach (Rechtsklick → Öffnen), Windows zeigt SmartScreen. Die Dateien gibst du an die Mitglieder weiter.
+
