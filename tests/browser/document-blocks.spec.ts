@@ -224,8 +224,9 @@ test("record and guest editors reorder blocks while guest duplication preserves 
   });
   const readRow = async () =>
     (await page.request.get(`/api/pages/${f.host.id}/rows/${row.id}`)).json();
-  const { htmlState } = await import("../../lib/document-server");
-  const blockId = crypto.randomUUID();
+  const { htmlState, escaped } = await import("../../lib/document-server");
+  const blockId = crypto.randomUUID(),
+    views = escaped(JSON.stringify((await f.read()).database.views));
   await f.command({
     action: "row.document.sync",
     pageId: f.host.id,
@@ -233,7 +234,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
     generation: (await readRow()).generation,
     update: Buffer.from(
       htmlState(
-        `<p>First</p><p>Second</p><div data-linked-database="${blockId}" data-linked-source="${f.host.id}" data-linked-views="[]" data-linked-version="1">Linked</div>`,
+        `<p>First</p><p>Second</p><div data-linked-database="${blockId}" data-linked-source="${f.host.id}" data-linked-views="${views}" data-linked-version="1">Linked</div>`,
       ),
     ).toString("base64"),
   });

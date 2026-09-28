@@ -512,3 +512,65 @@ test("archived database templates retain self-relations after the source page is
   assert.match(html, new RegExp(`href="/#page=${target.id}"`));
   assert.match(html, new RegExp(`Original source: ${source.id}`));
 });
+test("archives with unusable linked database blocks restore them as placeholders", async () => {
+  const sourceWorkspace = createWorkspace(owner.id, "Broken linked blocks");
+  const space = one<{ id: string }>(
+    "SELECT id FROM spaces WHERE workspace_id=?",
+    sourceWorkspace,
+  )!;
+  const source = command(owner, {
+    action: "page.create",
+    workspaceId: sourceWorkspace,
+    spaceId: space.id,
+    title: "Linked source",
+    kind: "database",
+  }) as { id: string };
+  const row = command(owner, {
+    action: "row.create",
+    pageId: source.id,
+    cells: { title: "Row with embed" },
+  }) as { id: string };
+  const doc = command(owner, {
+    action: "page.create",
+    workspaceId: sourceWorkspace,
+    spaceId: space.id,
+    title: "Host",
+  }) as { id: string };
+  const block = (views: string) =>
+    `<div data-linked-database="${id()}" data-linked-source="${source.id}" data-linked-views="${views}" data-linked-version="1">Linked</div>`;
+  const valid = JSON.stringify(database(source.id).views).replaceAll(
+    '"',
+    "&quot;",
+  );
+  // An empty views list, as a block without stored views is parsed.
+  replaceRowDocument(row.id, `<p>Row text</p>${block("[]")}`, owner.id);
+  command(owner, {
+    action: "document.sync",
+    pageId: doc.id,
+    generation: (pageData(owner, doc.id) as { generation: string }).generation,
+    update: Buffer.from(
+      htmlState(`<p>Host text</p>${block("[")}${block(valid)}`),
+    ).toString("base64"),
+  });
+  const target = createWorkspace(owner.id, "Broken linked destination");
+  const result = await importArchive(
+    owner,
+    target,
+    await exportArchive(owner, sourceWorkspace),
+  );
+  const newSource = result.pageIds[source.id],
+    newDoc = result.pageIds[doc.id];
+  const host = (pageData(owner, newDoc) as { html: string }).html;
+  assert.match(host, /Host text/);
+  const blocks = [...host.matchAll(/<div[^>]*data-linked-database[^>]*>/g)].map(
+    (m) => m[0],
+  );
+  assert.equal(blocks.length, 2);
+  assert.doesNotMatch(blocks[0], /data-linked-source|data-linked-views/);
+  assert.match(blocks[1], new RegExp(`data-linked-source="${newSource}"`));
+  const restoredRow = rows(newSource)[0];
+  const rowHtml = rowDocumentData(owner, newSource, restoredRow.id).html;
+  assert.match(rowHtml, /Row text/);
+  assert.match(rowHtml, /data-linked-database/);
+  assert.doesNotMatch(rowHtml, new RegExp(source.id));
+});
