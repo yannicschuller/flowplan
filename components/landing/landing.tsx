@@ -476,7 +476,7 @@ function HeroWindow() {
         <i />
         <i />
         <i />
-        <span>flowplan.firma.de</span>
+        <span>flowplan.org</span>
       </div>
       <div className={s.windowBody}>
         <aside className={s.windowSide}>
