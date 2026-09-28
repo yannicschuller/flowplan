@@ -448,6 +448,8 @@ test("content archives download and restore through settings with files intact",
       .click();
   await page.locator(".workspace-switch").click();
   await page.getByRole("menuitem", { name: new RegExp(title) }).click();
+  // The export covers the workspace shown in the switcher.
+  await expect(page.locator(".workspace-switch")).toContainText(title);
   if (testInfo.project.name === "mobile")
     await page
       .getByRole("button", { name: "Navigation öffnen", exact: true })

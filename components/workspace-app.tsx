@@ -724,16 +724,31 @@ export default function WorkspaceApp({
     setNewTitle("");
     setCreate(true);
   }
+  // The shell stays inert until the other workspace has loaded, so settings,
+  // exports and new pages cannot act on the one being left.
+  const [switching, setSwitching] = useState(false);
+  const latestSwitch = useRef(0);
   async function switchWorkspace(id: string) {
+    const version = ++navigationVersion.current;
+    latestSwitch.current = version;
+    navigationPending.current = true;
+    setSwitching(true);
     try {
       const b = await api<Bootstrap>(`/api/bootstrap?workspace=${id}`);
+      if (version !== navigationVersion.current) return;
+      currentWorkspace.current = b.workspace.id;
       setBoot(b);
       setPageId(null);
+      currentId.current = null;
       setData(null);
       go("home");
       setSpaceId(b.spaces[0]?.id || "");
     } catch (e) {
-      notify((e as Error).message);
+      if (version === navigationVersion.current) notify((e as Error).message);
+    } finally {
+      if (version === navigationVersion.current)
+        navigationPending.current = false;
+      if (version === latestSwitch.current) setSwitching(false);
     }
   }
   // Pages in sidebar order, e.g. for range selection and move targets.
@@ -1158,6 +1173,8 @@ export default function WorkspaceApp({
   return (
     <div
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}`}
+      inert={switching}
+      aria-busy={switching}
     >
       {focusMode && screen === "page" && data && (
         <FocusBar
