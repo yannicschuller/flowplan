@@ -103,6 +103,7 @@ import type {
   User,
   Role,
   Space,
+  Row,
 } from "@/lib/types";
 import { PageExportDialog } from "./page-export";
 import {
@@ -422,6 +423,9 @@ export default function WorkspaceApp({
   });
   const dataRef = useRef(data);
   dataRef.current = data;
+  const [pendingCells, setPendingCells] = useState<
+    { pageId: string; rowId: string; cells: Record<string, unknown> }[]
+  >([]);
   const mutate = useCallback(
     async (b: Record<string, unknown>) => {
       const rows = () =>
@@ -432,17 +436,35 @@ export default function WorkspaceApp({
         );
       if (isQueueable(b) && !navigator.onLine)
         return offlineQueue.enqueue(b, rows());
-      let result;
+      // Changed cells show at once; the reloaded page replaces them (or
+      // the old values come back when the change fails).
+      const shown =
+        b.action === "row.update" &&
+        typeof b.rowId === "string" &&
+        b.cells &&
+        typeof b.cells === "object"
+          ? {
+              pageId: String(b.pageId),
+              rowId: b.rowId,
+              cells: b.cells as Record<string, unknown>,
+            }
+          : null;
+      if (shown) setPendingCells((list) => [...list, shown]);
       try {
-        result = await api("/api/command", b);
-      } catch (e) {
-        // A failed request without a response means the network is gone.
-        if (isQueueable(b) && e instanceof TypeError)
-          return offlineQueue.enqueue(b, rows());
-        throw e;
+        let result;
+        try {
+          result = await api("/api/command", b);
+        } catch (e) {
+          // A failed request without a response means the network is gone.
+          if (isQueueable(b) && e instanceof TypeError)
+            return offlineQueue.enqueue(b, rows());
+          throw e;
+        }
+        await refresh();
+        return result;
+      } finally {
+        if (shown) setPendingCells((list) => list.filter((x) => x !== shown));
       }
-      await refresh();
-      return result;
     },
     [refresh, offlineQueue],
   );
@@ -2099,9 +2121,13 @@ export default function WorkspaceApp({
                         onRefresh={refresh}
                         data={{
                           ...data,
-                          rows: applyQueue(
-                            data.rows,
-                            offlineQueue.queue,
+                          rows: withPendingCells(
+                            applyQueue(
+                              data.rows,
+                              offlineQueue.queue,
+                              data.page.id,
+                            ),
+                            pendingCells,
                             data.page.id,
                           ),
                         }}
@@ -3777,4 +3803,20 @@ function RowTrash({
       ))}
     </section>
   );
+}
+
+// Cell changes on their way to the server, shown in the views meanwhile.
+function withPendingCells(
+  rows: Row[],
+  pending: { pageId: string; rowId: string; cells: Record<string, unknown> }[],
+  pageId: string,
+) {
+  const mine = pending.filter((p) => p.pageId === pageId);
+  if (!mine.length) return rows;
+  return rows.map((r) => {
+    const changes = mine.filter((p) => p.rowId === r.id);
+    return changes.length
+      ? { ...r, cells: Object.assign({}, r.cells, ...changes.map((c) => c.cells)) }
+      : r;
+  });
 }
