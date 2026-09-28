@@ -216,8 +216,10 @@ export const FlowTaskItem = TaskItem.extend({
             : {},
       },
       // Due date of the task (YYYY-MM-DD), shown as a chip in the editor.
+      // A new task made with Enter starts without one.
       due: {
         default: null,
+        keepOnSplit: false,
         parseHTML: (element) => {
           const value = element.getAttribute("data-due");
           return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;

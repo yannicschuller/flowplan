@@ -1,5 +1,5 @@
 "use client";
-import { TaskDue } from "@/lib/task-due-plugin";
+import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -106,6 +106,7 @@ import {
   PencilLine,
   Check,
   X,
+  CalendarBlank,
 } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
 import type { Page, User } from "@/lib/types";
@@ -1254,6 +1255,16 @@ export default function DocumentEditor({
             >
               <CheckSquare />
             </button>
+            {editor?.isActive("taskItem") && (
+              <button
+                title="Fälligkeit setzen"
+                aria-label="Fälligkeit setzen"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => editor && pickTaskDue(editor.view, e.currentTarget)}
+              >
+                <CalendarBlank />
+              </button>
+            )}
             <button
               title="Zentrieren"
               onClick={() =>

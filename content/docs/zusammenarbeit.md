@@ -25,7 +25,7 @@ Der Stift-Knopf **Vorschlagen** in der Werkzeugleiste schaltet den Vorschlagsmod
 ## Reaktionen
 
 - **Kommentare**: Unter jedem Seiten- und Eintragskommentar fügt das Smiley eine Reaktion hinzu (👍 ❤️ 🎉 😄 👀 ✅ 🙏 🔥). Ein Klick auf eine vorhandene Reaktion schließt sich an oder nimmt die eigene zurück; der Tooltip zeigt, wer reagiert hat. Reagieren kann jeder, der die Seite sehen darf.
-- **Absätze und Überschriften**: Text markieren oder mit der rechten Maustaste in den Text klicken öffnet das Textmenü. Oben stehen die Reaktionen für den Absatz, darunter Formatierung (fett, kursiv, unterstrichen, durchgestrichen, markieren, Code, Link), **Kommentieren** und **Kopieren**. Die Reaktionen stehen als kleine Pillen am Block, werden im Dokument gespeichert und erscheinen bei allen sofort; ein Klick auf die eigene nimmt sie zurück. Das geht für alle, die die Seite bearbeiten dürfen. Mit <kbd>Umschalt</kbd> + Rechtsklick kommt das Menü des Browsers.
+- **Absätze und Überschriften**: Text markieren oder mit der rechten Maustaste in den Text klicken öffnet das Textmenü. Oben stehen die Reaktionen für den Absatz, darunter Formatierung (fett, kursiv, unterstrichen, durchgestrichen, markieren, Code, Link), **Kommentieren** und **Kopieren**, in Aufgaben auch **Fälligkeit**. Die Reaktionen stehen als kleine Pillen am Block, werden im Dokument gespeichert und erscheinen bei allen sofort; ein Klick auf die eigene nimmt sie zurück. Das geht für alle, die die Seite bearbeiten dürfen. Mit <kbd>Umschalt</kbd> + Rechtsklick kommt das Menü des Browsers.
 - Textkommentare haben ihre eigenen Reaktionen im Thread.
 
 ## Seiten folgen

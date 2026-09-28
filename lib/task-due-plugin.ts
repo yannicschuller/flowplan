@@ -1,6 +1,7 @@
-// Due dates on tasks: a chip at the end of the task line. Tasks with a date
-// always show it (red when overdue, highlighted today); the task the cursor
-// is in offers "+ Datum". Clicking opens the browser's date picker.
+// Due dates on tasks: a chip at the right of the task line, outside the
+// text so the caret never lands behind it (red when overdue, highlighted
+// today). A date is set from the text menu or the toolbar (pickTaskDue);
+// clicking the chip changes or removes it.
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
@@ -98,14 +99,26 @@ function pickDate(view: EditorView, pos: number, current: string | null, anchor:
   }
 }
 
+// The task around the cursor, if any.
+export function taskAtSelection(view: EditorView) {
+  const { $from } = view.state.selection;
+  for (let d = $from.depth; d > 0; d--)
+    if ($from.node(d).type.name === "taskItem") return { pos: $from.before(d), node: $from.node(d) };
+  return null;
+}
+// Opens the date picker for the task around the cursor, below `anchor`.
+export function pickTaskDue(view: EditorView, anchor: HTMLElement) {
+  const task = taskAtSelection(view);
+  if (!task) return false;
+  pickDate(view, task.pos, (task.node.attrs.due as string | null) || null, anchor);
+  return true;
+}
+
 function chip(view: EditorView, pos: number, node: PMNode, editable: boolean) {
   const due = node.attrs.due as string | null;
   const el = document.createElement(editable ? "button" : "span");
   el.contentEditable = "false";
-  el.className = due
-    ? `task-due task-due-${dueState(due, !!node.attrs.checked)}`
-    : "task-due task-due-add";
-  // "+ Datum" is drawn by CSS, so it never becomes part of the text.
+  el.className = `task-due task-due-${due ? dueState(due, !!node.attrs.checked) : "later"}`;
   el.textContent = due ? `📅 ${dueLabel(due)}` : "";
   if (due) el.title = `Fällig am ${new Date(`${due}T00:00:00Z`).toLocaleDateString("de-DE", { timeZone: "UTC" })}${editable ? " – klicken zum Ändern oder Entfernen" : ""}`;
   if (editable && el instanceof HTMLButtonElement) {
@@ -130,25 +143,17 @@ export const TaskDue = Extension.create({
         props: {
           decorations(state) {
             const decorations: Decoration[] = [];
-            const { $from } = state.selection;
-            let current = -1;
-            for (let d = $from.depth; d > 0; d--)
-              if ($from.node(d).type.name === "taskItem") {
-                current = $from.before(d);
-                break;
-              }
             state.doc.descendants((node, pos) => {
               if (node.type.name !== "taskItem") return true;
               const first = node.firstChild;
-              if (!first || !first.isTextblock) return true;
-              const showAdd = pos === current && editable();
-              if (!node.attrs.due && !showAdd) return true;
-              const end = pos + 1 + first.nodeSize - 1;
+              if (!first || !first.isTextblock || !node.attrs.due) return true;
+              // After the task's first line, not inside its text.
+              const after = pos + 1 + first.nodeSize;
               decorations.push(
-                Decoration.widget(end, (view) => chip(view, pos, node, editable()), {
-                  side: 1,
+                Decoration.widget(after, (view) => chip(view, pos, node, editable()), {
+                  side: -1,
                   ignoreSelection: true,
-                  key: `due-${pos}-${node.attrs.due || "add"}-${node.attrs.checked}-${editable()}`,
+                  key: `due-${pos}-${node.attrs.due}-${node.attrs.checked}-${editable()}`,
                 }),
               );
               return true;

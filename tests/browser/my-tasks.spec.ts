@@ -18,14 +18,37 @@ test("a task gets a due date in the editor and is ticked off in Meine Aufgaben",
   await editor.click();
   const taskText = `Rechnung prüfen ${info.project.name} ${Date.now()}`;
   await page.keyboard.type(`[] ${taskText}`);
-  // The task under the cursor offers a date.
-  const add = editor.getByRole("button", { name: "Fälligkeit setzen" });
+  // Nothing sits in the task line until a date is set.
+  await expect(editor.locator(".task-due")).toHaveCount(0);
+  // The toolbar offers a date while the cursor is in a task.
+  const add = page.getByRole("button", { name: "Fälligkeit setzen" });
   await expect(add).toBeVisible();
   await add.click();
   const picker = page.locator(".task-due-picker");
   await picker.fill("2020-01-01");
   const chip = editor.locator(".task-due-overdue");
   await expect(chip).toBeVisible();
+  // The chip is outside the text: typing goes on at the end of the task.
+  await editor.getByText(taskText, { exact: true }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.type("!");
+  await expect(editor.locator("li p", { hasText: `${taskText}!` })).toHaveCount(1);
+  await page.keyboard.press("Backspace");
+  // Enter makes a new task without the date.
+  await page.keyboard.press("Enter");
+  await expect(editor.locator("li[data-checked]")).toHaveCount(2);
+  await expect(editor.locator(".task-due")).toHaveCount(1);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await expect(editor.locator("li[data-checked]")).toHaveCount(1);
+  // The text menu changes the date too (right click on desktop).
+  if (info.project.name === "desktop") {
+    await editor.getByText(taskText, { exact: true }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Fälligkeit ändern" }).click();
+    await expect(picker).toHaveValue("2020-01-01");
+    await page.mouse.click(5, 500);
+    await expect(picker).toHaveCount(0);
+  }
   // Wait until the document with the task is stored.
   await expect
     .poll(

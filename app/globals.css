@@ -10295,11 +10295,22 @@ label.task-due {
   opacity: 0.55;
   border-style: dashed;
 }
-button.task-due-add:empty::before {
-  content: "+ Datum";
-}
 .task-due-add:hover {
   opacity: 1;
+}
+/* In the editor the chip sits at the right of the task's first line. */
+.document-editor ul[data-type="taskList"] li > div {
+  position: relative;
+}
+.document-editor li > div > .task-due {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  margin: 0;
+  text-decoration: none;
+}
+.document-editor li:has(> div > .task-due) > div > :first-child {
+  padding-right: 96px;
 }
 .task-due-today {
   color: #b45309;

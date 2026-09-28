@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
+  CalendarBlank,
   ChatCircle,
   Code,
   Copy,
@@ -16,6 +17,7 @@ import {
   TextUnderline,
 } from "@phosphor-icons/react";
 import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-reactions";
+import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
 
 const reactions = ["👍", "❤️", "🎉", "😄", "👀", "✅", "🙏", "🔥"];
 type Place = { x: number; y: number; mode: "selection" | "context" };
@@ -129,6 +131,7 @@ export function TextMenu({
       .filter(([, ids]) => ids.includes(userId))
       .map(([emoji]) => emoji),
   );
+  const task = editable ? taskAtSelection(editor.view) : null;
   const run = (fn: () => void) => () => {
     fn();
     close();
@@ -192,6 +195,19 @@ export function TextMenu({
         </div>
       )}
       <div className="text-menu-actions" role="group">
+        {task && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={(e) => {
+              // The picker opens where the menu was (read before it closes).
+              pickTaskDue(editor.view, e.currentTarget);
+              close();
+            }}
+          >
+            <CalendarBlank size={15} /> {task.node.attrs.due ? "Fälligkeit ändern" : "Fälligkeit"}
+          </button>
+        )}
         <button
           type="button"
           role="menuitem"
