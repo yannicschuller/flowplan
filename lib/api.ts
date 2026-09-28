@@ -22,6 +22,7 @@ import {
   saveDayEntry,
   setJournalCalendar,
   setJournalLock,
+  setJournalOptions,
   setJournalTemplate,
   setJournalTrackers,
   templateFromDay,
@@ -424,6 +425,7 @@ export function pageData(user: Identity, pid: string) {
             journalId: p.parent_id,
             date: p.journal_date,
             trackers: journalSettings(p.parent_id!).trackers,
+            options: journalSettings(p.parent_id!).options,
             entry: dayEntry(p.id),
           },
         }
@@ -1056,6 +1058,7 @@ export function command(
         if (journal.kind !== "journal")
           throw new HttpError(400, "Diese Seite ist kein Journal.");
         if (typeof b.template === "string") setJournalTemplate(journal, b.template);
+        if (b.options !== undefined) setJournalOptions(journal, b.options);
         if (b.templateFromDay) templateFromDay(journal, uuid.parse(b.templateFromDay));
         if (b.trackers !== undefined)
           setJournalTrackers(journal, z.array(trackerSchema).parse(b.trackers));
@@ -1105,7 +1108,7 @@ export function command(
         const date = journalDate.parse(b.date);
         if (b.pageId) {
           const journal = write();
-          result = rollJournal(user, journal, date);
+          result = rollJournal(user, journal, date, undefined, b.recreate === true);
         } else {
           requireMember(user, wid());
           result = { changed: rollJournals(user, wid(), date) };

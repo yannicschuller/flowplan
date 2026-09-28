@@ -12317,3 +12317,252 @@ h3 .block-reactions {
   background: color-mix(in srgb, #d92d20 12%, transparent);
   color: #b42318;
 }
+
+/* Journal: today's page is in the trash. */
+.journal-trashed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: -12px;
+  padding: 10px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  font-size: 13.5px;
+  color: var(--secondary);
+}
+.journal-trashed span {
+  flex: 1;
+  min-width: 180px;
+}
+
+/* Journal settings: tabs with one topic each. */
+.journal-settings.modal {
+  width: min(680px, calc(100vw - 24px));
+}
+.js-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.js-tabs button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--secondary);
+}
+.js-tabs button.active {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px #1d1a1418;
+}
+.js-panel {
+  display: grid;
+  gap: 12px;
+  min-height: 260px;
+  align-content: start;
+}
+.journal-settings .js-panel {
+  padding: 0;
+  border: 0;
+}
+.js-intro {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--secondary);
+  line-height: 1.5;
+}
+.js-label {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.js-current {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.js-current-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13.5px;
+}
+.js-current-actions {
+  display: inline-flex;
+  gap: 12px;
+}
+.js-current .journal-template-preview {
+  background: var(--bg);
+  border-style: solid;
+}
+.js-trackers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.js-trackers li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px 96px auto;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.js-trackers input,
+.js-trackers select {
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--surface);
+}
+.js-trackers input:focus,
+.js-trackers select:focus {
+  border-color: var(--blue);
+  outline: none;
+}
+.js-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.js-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 400;
+}
+.js-switch span {
+  display: grid;
+  gap: 1px;
+}
+.js-switch small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.js-switch input {
+  appearance: none;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--hover);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.js-switch input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px #0003;
+  transition: translate 0.15s var(--ease-out);
+}
+.js-switch input:checked {
+  background: var(--blue);
+}
+.js-switch input:checked::after {
+  translate: 16px 0;
+}
+.js-switch input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.js-field {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.js-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-weight: 550;
+}
+.js-pin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.js-pin input {
+  flex: 1;
+  min-width: 130px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  letter-spacing: 0.2em;
+}
+@media (max-width: 700px) {
+  .js-tabs button {
+    padding: 7px 4px;
+    font-size: 12.5px;
+  }
+  .js-trackers li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .js-trackers select,
+  .js-trackers .js-unit {
+    grid-column: 1;
+  }
+  .js-trackers .js-unit:empty {
+    display: none;
+  }
+  .js-trackers .icon-button {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+.js-tabs button:not(.active) {
+  background: transparent;
+  box-shadow: none;
+  font-weight: 400;
+}
+.js-tabs button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.js-tabs button.active {
+  color: var(--blue);
+}

@@ -99,9 +99,15 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   const settings = page.getByRole("dialog", { name: "Journal einrichten" });
   await settings.getByRole("button", { name: /Arbeitslog/ }).click();
   await expect(settings.locator(".journal-template-preview")).toContainText("Blockiert");
+  await settings.getByRole("tab", { name: "Tracker" }).click();
   await settings.getByRole("button", { name: "Sport" }).click();
   await settings.getByRole("button", { name: "Tracker speichern" }).click();
   await expect(page.locator(".toast, [role=status]").filter({ hasText: "Tracker gespeichert" }).first()).toBeVisible();
+  // The place can be switched off for the whole journal.
+  await settings.getByRole("tab", { name: "Tagesleiste" }).click();
+  await settings.getByRole("switch", { name: /Ort/ }).uncheck();
+  await expect(settings.getByRole("switch", { name: /Ort/ })).not.toBeChecked();
+  await settings.getByRole("tab", { name: "Sperre" }).click();
   await settings.getByLabel("Neue PIN").fill("2468");
   await settings.getByLabel("PIN wiederholen").fill("2468");
   await settings.getByRole("button", { name: "Sperren" }).click();
@@ -116,5 +122,19 @@ test("journal: statistics, memories, trackers, template, review and PIN", async 
   await page.getByLabel("PIN").fill("2468");
   await page.getByRole("button", { name: "Entsperren" }).click();
   await expect(page.locator(".journal-today")).toBeVisible();
+  // Without the place, today's bar has no place field.
+  await page.locator(".journal-today").click();
+  await expect(page.locator(".journal-daybar")).toBeVisible();
+  await expect(page.locator(".journal-daybar").getByLabel("Ort", { exact: true })).toHaveCount(0);
+
+  // Deleting today's page: the journal says so and makes a new one on request.
+  const todayId = boot.pages ? (await (await page.request.get(`/api/pages/${journalId}`)).json()).journal.days[0].id : "";
+  await command({ action: "page.delete", pageId: todayId });
+  await page.goto(`/#page=${journalId}`);
+  const trashed = page.locator(".journal-trashed");
+  await expect(trashed).toContainText("gelöscht");
+  await trashed.getByRole("button", { name: "Neu anlegen" }).click();
+  await expect(page.locator(".journal-today")).toBeEnabled();
+  await expect(trashed).toHaveCount(0);
   expect(errors, info.project.name).toEqual([]);
 });

@@ -143,7 +143,7 @@ export function JournalView({
   settings?: JournalSettings;
   editable: boolean;
   onOpen: (id: string) => void;
-  onRoll: (pageId: string, date: string) => Promise<unknown>;
+  onRoll: (pageId: string, date: string, recreate?: boolean) => Promise<unknown>;
   onChanged: () => Promise<unknown> | void;
   onError: (message: string) => void;
 }) {
@@ -151,11 +151,17 @@ export function JournalView({
   const current = days.find((d) => d.journal_date === today);
   // Opening the journal makes sure today's page exists.
   const rolled = useRef("");
+  // Today's page was deleted: say so instead of waiting for it.
+  const [trashed, setTrashed] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!editable || current || rolled.current === `${pageId}:${today}`)
       return;
     rolled.current = `${pageId}:${today}`;
-    void onRoll(pageId, today);
+    void onRoll(pageId, today).then((result) => {
+      const r = result as { trashed?: boolean; dayId?: string } | null;
+      setTrashed(r?.trashed && r.dayId ? r.dayId : null);
+    });
   }, [editable, current, pageId, today, onRoll]);
   const [layout, setLayout] = useState<"list" | "calendar">(() => {
     try {
@@ -263,9 +269,11 @@ export function JournalView({
           <span>
             {current
               ? current.excerpt || "Schreib auf, was ansteht und was passiert ist."
-              : editable
-                ? "Die Seite für heute wird angelegt …"
-                : "Für heute gibt es noch keinen Eintrag."}
+              : trashed
+                ? "Die Seite für heute liegt im Papierkorb."
+                : editable
+                  ? "Die Seite für heute wird angelegt …"
+                  : "Für heute gibt es noch keinen Eintrag."}
           </span>
         </span>
         {current && (
@@ -275,6 +283,49 @@ export function JournalView({
         )}
       </button>
 
+      {!current && trashed && editable && (
+        <div className="journal-trashed" role="status">
+          <span>Du hast die heutige Seite gelöscht.</span>
+          <button
+            type="button"
+            className="button primary compact"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onRoll(pageId, today, true);
+                setTrashed(null);
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Neu anlegen
+          </button>
+          <button
+            type="button"
+            className="button compact"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const { api } = await import("./ui");
+                await api("/api/command", { action: "page.restore", pageId: trashed });
+                setTrashed(null);
+                await onChanged();
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Aus dem Papierkorb holen
+          </button>
+        </div>
+      )}
       {days.length > 0 && (
         <section className="journal-stats" aria-label="Schreibstatistik">
           <div className="journal-stat">

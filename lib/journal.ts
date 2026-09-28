@@ -206,6 +206,8 @@ export function rollJournal(
   journal: Page,
   today: string,
   now = new Date().toISOString().slice(0, 10),
+  // Today's page is in the trash and a fresh one is wanted.
+  recreate = false,
 ) {
   if (journal.kind !== "journal")
     throw new HttpError(400, "Diese Seite ist kein Journal.");
@@ -218,7 +220,11 @@ export function rollJournal(
     journal.id,
     today,
   );
-  if (existing) return { dayId: existing.id, changed: false };
+  if (existing && existing.deleted_at && recreate) {
+    // The deleted page stays in the trash as an ordinary page.
+    run("UPDATE pages SET journal_date=NULL WHERE id=?", existing.id);
+  } else if (existing)
+    return { dayId: existing.id, changed: false, trashed: !!existing.deleted_at };
   const previous = one<Page>(
     "SELECT * FROM pages WHERE parent_id=? AND journal_date<? AND deleted_at IS NULL ORDER BY journal_date DESC LIMIT 1",
     journal.id,

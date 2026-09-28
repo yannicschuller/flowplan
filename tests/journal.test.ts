@@ -167,3 +167,17 @@ test("the command rolls every journal of the workspace for today", () => {
     /Datum/,
   );
 });
+
+test("a deleted day is reported and can be created anew", () => {
+  const day = "2026-11-02";
+  const first = roll(day).dayId;
+  run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", first);
+  const again = rollJournal(user, journal(), day, day) as { dayId: string; changed: boolean; trashed?: boolean };
+  assert.equal(again.trashed, true);
+  assert.equal(again.dayId, first);
+  const fresh = rollJournal(user, journal(), day, day, true) as { dayId: string; changed: boolean };
+  assert.equal(fresh.changed, true);
+  assert.notEqual(fresh.dayId, first);
+  // The deleted page stays in the trash as an ordinary page.
+  assert.equal(one<{ journal_date: string | null }>("SELECT journal_date FROM pages WHERE id=?", first)!.journal_date, null);
+});

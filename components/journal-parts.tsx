@@ -30,6 +30,7 @@ export type JournalSettings = {
   trackers: Tracker[];
   locked: boolean;
   icsUrl?: string;
+  options?: { place: boolean; events: boolean };
 };
 export type DayEntry = {
   values: Record<string, number | boolean>;
@@ -82,6 +83,21 @@ export const templatePresets: { name: string; description: string; html: string 
 
 // ---- Settings ----
 
+type SettingsTab = "template" | "trackers" | "bar" | "lock";
+const trackerSuggestions: Omit<Tracker, "id">[] = [
+  { name: "Stimmung", kind: "mood" },
+  { name: "Schlaf", kind: "number", unit: "h" },
+  { name: "Sport", kind: "check" },
+  { name: "Energie", kind: "scale" },
+  { name: "Wasser", kind: "number", unit: "Gläser" },
+];
+const kindNames: Record<Tracker["kind"], string> = {
+  mood: "Stimmung 😞–😄",
+  scale: "Skala 1–5",
+  number: "Zahl",
+  check: "Ja / Nein",
+};
+
 export function JournalSettingsDialog({
   pageId,
   settings,
@@ -97,6 +113,7 @@ export function JournalSettingsDialog({
   onChanged: () => Promise<unknown> | void;
   onError: (message: string) => void;
 }) {
+  const [tab, setTab] = useState<SettingsTab>("template");
   const [current, setCurrent] = useState(settings);
   const [trackers, setTrackers] = useState<Tracker[]>(settings.trackers);
   const [ics, setIcs] = useState(settings.icsUrl || "");
@@ -104,22 +121,28 @@ export function JournalSettingsDialog({
   const [pinAgain, setPinAgain] = useState("");
   const [oldPin, setOldPin] = useState("");
   const [busy, setBusy] = useState(false);
+  const options = current.options || { place: true, events: true };
+  const trackersChanged = JSON.stringify(trackers) !== JSON.stringify(current.trackers);
   const save = async (body: Record<string, unknown>, done?: string) => {
     setBusy(true);
     try {
-      const next = await api<JournalSettings>("/api/command", {
-        action: "journal.settings",
-        pageId,
-        ...body,
-      });
+      const next = await api<JournalSettings>("/api/command", { action: "journal.settings", pageId, ...body });
       setCurrent(next);
       await onChanged();
       if (done) onError(done);
+      return true;
     } catch (e) {
       onError(message(e));
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+  // Switches move at once; a failed save puts them back.
+  const setOption = async (key: "place" | "events", value: boolean) => {
+    const before = current;
+    setCurrent({ ...current, options: { ...options, [key]: value } });
+    if (!(await save({ options: { [key]: value } }))) setCurrent(before);
   };
   const lock = async (next: string | null) => {
     if (next !== null && next !== pinAgain) return onError("Die PINs stimmen nicht überein.");
@@ -150,248 +173,277 @@ export function JournalSettingsDialog({
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 30) || "tracker") + "-" + Math.random().toString(36).slice(2, 6);
+  const tabs: [SettingsTab, string][] = [
+    ["template", "Vorlage"],
+    ["trackers", "Tracker"],
+    ["bar", "Tagesleiste"],
+    ["lock", "Sperre"],
+  ];
   return (
     <Modal open onClose={onClose} title="Journal einrichten" wide className="journal-settings">
-      <section>
-        <h3>Tagesvorlage</h3>
-        <p className="muted">
-          Jeder neue Tag beginnt mit diesem Inhalt. Aufgaben aus der Vorlage
-          kommen jeden Tag neu und werden nicht zusätzlich übernommen.
-        </p>
-        {current.template ? (
-          <div
-            className="journal-template-preview"
-            // Stored templates are sanitized by the server's document schema.
-            dangerouslySetInnerHTML={{ __html: current.template }}
-          />
-        ) : (
-          <p className="journal-template-empty">Keine Vorlage – neue Tage beginnen leer.</p>
-        )}
-        <div className="journal-presets">
-          {templatePresets.map((preset) => (
-            <button
-              key={preset.name}
-              type="button"
-              className="journal-preset"
-              disabled={busy}
-              onClick={() => void save({ template: preset.html }, `Vorlage „${preset.name}“ gesetzt.`)}
-            >
-              <strong>{preset.name}</strong>
-              <span>{preset.description}</span>
-            </button>
-          ))}
-        </div>
-        <div className="modal-actions start">
-          {todayId && (
-            <button
-              type="button"
-              className="button"
-              disabled={busy}
-              onClick={() => void save({ templateFromDay: todayId }, "Der heutige Tag ist jetzt die Vorlage.")}
-            >
-              Heutigen Tag als Vorlage
-            </button>
-          )}
-          {current.template && (
-            <button
-              type="button"
-              className="button"
-              disabled={busy}
-              onClick={() => void save({ template: "" }, "Vorlage entfernt.")}
-            >
-              Vorlage entfernen
-            </button>
-          )}
-        </div>
-      </section>
+      <div className="js-tabs" role="tablist" aria-label="Bereiche">
+        {tabs.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={tab === key ? "active" : ""}
+            onClick={() => setTab(key)}
+          >
+            {label}
+            {key === "lock" && current.locked && <LockKey size={12} weight="fill" />}
+          </button>
+        ))}
+      </div>
 
-      <section>
-        <h3>Tracker</h3>
-        <p className="muted">Werte, die du jeden Tag festhältst – der Verlauf erscheint auf der Journalseite.</p>
-        <div className="journal-tracker-list">
-          {trackers.map((tracker, i) => (
-            <div className="journal-tracker-row" key={tracker.id}>
-              <input
-                aria-label="Name des Trackers"
-                value={tracker.name}
-                maxLength={40}
-                onChange={(e) =>
-                  setTrackers(trackers.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))
-                }
-              />
-              <select
-                aria-label="Art"
-                value={tracker.kind}
-                onChange={(e) =>
-                  setTrackers(
-                    trackers.map((t, j) =>
-                      j === i ? { ...t, kind: e.target.value as Tracker["kind"] } : t,
-                    ),
-                  )
-                }
-              >
-                <option value="mood">Stimmung (😞–😄)</option>
-                <option value="scale">Skala 1–5</option>
-                <option value="number">Zahl</option>
-                <option value="check">Ja / Nein</option>
-              </select>
-              <input
-                aria-label="Einheit"
-                placeholder="Einheit"
-                value={tracker.unit || ""}
-                maxLength={12}
-                disabled={tracker.kind !== "number"}
-                onChange={(e) =>
-                  setTrackers(trackers.map((t, j) => (j === i ? { ...t, unit: e.target.value } : t)))
-                }
-              />
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={`${tracker.name} entfernen`}
-                onClick={() => setTrackers(trackers.filter((_, j) => j !== i))}
-              >
-                <Trash size={16} />
-              </button>
+      {tab === "template" && (
+        <section className="js-panel" role="tabpanel" aria-label="Vorlage">
+          <p className="js-intro">Jeder neue Tag beginnt mit diesem Inhalt. Aufgaben aus der Vorlage kommen jeden Tag neu.</p>
+          <div className="js-current">
+            <div className="js-current-head">
+              <strong>Aktuelle Vorlage</strong>
+              <span className="js-current-actions">
+                {todayId && (
+                  <button type="button" className="text-button" disabled={busy} onClick={() => void save({ templateFromDay: todayId }, "Der heutige Tag ist jetzt die Vorlage.")}>
+                    Heutigen Tag übernehmen
+                  </button>
+                )}
+                {current.template && (
+                  <button type="button" className="text-button" disabled={busy} onClick={() => void save({ template: "" }, "Vorlage entfernt.")}>
+                    Entfernen
+                  </button>
+                )}
+              </span>
             </div>
-          ))}
-        </div>
-        <div className="journal-tracker-add">
-          {[
-            { name: "Stimmung", kind: "mood" as const },
-            { name: "Schlaf", kind: "number" as const, unit: "h" },
-            { name: "Sport", kind: "check" as const },
-            { name: "Energie", kind: "scale" as const },
-            { name: "Wasser", kind: "number" as const, unit: "Gläser" },
-          ]
-            .filter((suggestion) => !trackers.some((t) => t.name === suggestion.name))
-            .map((suggestion) => (
+            {current.template ? (
+              <div
+                className="journal-template-preview"
+                // Stored templates are sanitized by the server's document schema.
+                dangerouslySetInnerHTML={{ __html: current.template }}
+              />
+            ) : (
+              <p className="journal-template-empty">Keine Vorlage – neue Tage beginnen leer.</p>
+            )}
+          </div>
+          <strong className="js-label">Fertige Vorlagen</strong>
+          <div className="journal-presets">
+            {templatePresets.map((preset) => (
               <button
-                key={suggestion.name}
+                key={preset.name}
                 type="button"
-                className="chip"
-                disabled={trackers.length >= 12}
-                onClick={() => setTrackers([...trackers, { ...suggestion, id: idFor(suggestion.name) }])}
+                className="journal-preset"
+                disabled={busy}
+                onClick={() => void save({ template: preset.html }, `Vorlage „${preset.name}“ gesetzt.`)}
               >
-                <Plus size={12} /> {suggestion.name}
+                <strong>{preset.name}</strong>
+                <span>{preset.description}</span>
               </button>
             ))}
-          <button
-            type="button"
-            className="chip"
-            disabled={trackers.length >= 12}
-            onClick={() => setTrackers([...trackers, { id: idFor("tracker"), name: "Neuer Tracker", kind: "scale" }])}
-          >
-            <Plus size={12} /> Eigener
-          </button>
-        </div>
-        <div className="modal-actions start">
-          <button
-            type="button"
-            className="button primary"
-            disabled={busy || trackers.some((t) => !t.name.trim())}
-            onClick={() =>
-              void save(
-                {
-                  trackers: trackers.map((t) => ({
-                    ...t,
-                    name: t.name.trim(),
-                    ...(t.kind === "number" && t.unit?.trim() ? { unit: t.unit.trim() } : { unit: undefined }),
-                  })),
-                },
-                "Tracker gespeichert.",
-              )
-            }
-          >
-            Tracker speichern
-          </button>
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
-      <section>
-        <h3>Kalender</h3>
-        <p className="muted">
-          Termine aus Datenbanken mit Datum erscheinen automatisch auf dem Tag.
-          Zusätzlich kannst du einen Kalender per iCal-Link einbinden (z. B.
-          „Geheime Adresse im iCal-Format“ aus Google Kalender).
-        </p>
-        <div className="journal-inline-form">
-          <input
-            type="url"
-            placeholder="https://… .ics"
-            value={ics}
-            onChange={(e) => setIcs(e.target.value)}
-            aria-label="iCal-Adresse"
-          />
-          <button
-            type="button"
-            className="button"
-            disabled={busy || ics === (current.icsUrl || "")}
-            onClick={() => void save({ icsUrl: ics.trim() }, ics.trim() ? "Kalender verbunden." : "Kalender entfernt.")}
-          >
-            Speichern
-          </button>
-        </div>
-      </section>
+      {tab === "trackers" && (
+        <section className="js-panel" role="tabpanel" aria-label="Tracker">
+          <p className="js-intro">Werte, die du jeden Tag festhältst. Der Verlauf erscheint auf der Journalseite.</p>
+          {trackers.length ? (
+            <ul className="js-trackers">
+              {trackers.map((tracker, i) => (
+                <li key={tracker.id}>
+                  <input
+                    aria-label="Name des Trackers"
+                    value={tracker.name}
+                    maxLength={40}
+                    onChange={(e) => setTrackers(trackers.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
+                  />
+                  <select
+                    aria-label="Art"
+                    value={tracker.kind}
+                    onChange={(e) => setTrackers(trackers.map((t, j) => (j === i ? { ...t, kind: e.target.value as Tracker["kind"] } : t)))}
+                  >
+                    {(Object.keys(kindNames) as Tracker["kind"][]).map((kind) => (
+                      <option key={kind} value={kind}>
+                        {kindNames[kind]}
+                      </option>
+                    ))}
+                  </select>
+                  {tracker.kind === "number" ? (
+                    <input
+                      aria-label="Einheit"
+                      placeholder="Einheit"
+                      value={tracker.unit || ""}
+                      maxLength={12}
+                      className="js-unit"
+                      onChange={(e) => setTrackers(trackers.map((t, j) => (j === i ? { ...t, unit: e.target.value } : t)))}
+                    />
+                  ) : (
+                    <span className="js-unit" aria-hidden="true" />
+                  )}
+                  <button type="button" className="icon-button" aria-label={`${tracker.name} entfernen`} onClick={() => setTrackers(trackers.filter((_, j) => j !== i))}>
+                    <Trash size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="journal-template-empty">Noch keine Tracker.</p>
+          )}
+          <div className="journal-tracker-add">
+            {trackerSuggestions
+              .filter((suggestion) => !trackers.some((t) => t.name === suggestion.name))
+              .map((suggestion) => (
+                <button
+                  key={suggestion.name}
+                  type="button"
+                  className="chip"
+                  disabled={trackers.length >= 12}
+                  onClick={() => setTrackers([...trackers, { ...suggestion, id: idFor(suggestion.name) }])}
+                >
+                  <Plus size={12} /> {suggestion.name}
+                </button>
+              ))}
+            <button
+              type="button"
+              className="chip"
+              disabled={trackers.length >= 12}
+              onClick={() => setTrackers([...trackers, { id: idFor("tracker"), name: "Neuer Tracker", kind: "scale" }])}
+            >
+              <Plus size={12} /> Eigener
+            </button>
+          </div>
+          <div className="js-footer">
+            {trackersChanged && <span className="muted">Nicht gespeichert</span>}
+            <button
+              type="button"
+              className="button primary"
+              disabled={busy || !trackersChanged || trackers.some((t) => !t.name.trim())}
+              onClick={() =>
+                void save(
+                  {
+                    trackers: trackers.map((t) => ({
+                      ...t,
+                      name: t.name.trim(),
+                      ...(t.kind === "number" && t.unit?.trim() ? { unit: t.unit.trim() } : { unit: undefined }),
+                    })),
+                  },
+                  "Tracker gespeichert.",
+                )
+              }
+            >
+              Tracker speichern
+            </button>
+          </div>
+        </section>
+      )}
 
-      <section>
-        <h3>PIN-Sperre</h3>
-        <p className="muted">
-          Mit einer PIN zeigt das Journal seine Tage erst nach Eingabe – für
-          alle, die es öffnen dürfen. Nach 15 Minuten sperrt es sich wieder.
-          Die Sperre schützt vor Blicken, ersetzt aber keine Verschlüsselung:
-          Admins mit Zugriff auf Sicherungen sehen die Inhalte weiterhin.
-        </p>
-        <div className="journal-inline-form">
-          {current.locked && (
+      {tab === "bar" && (
+        <section className="js-panel" role="tabpanel" aria-label="Tagesleiste">
+          <p className="js-intro">Die Leiste über jedem Tag. Tracker stehen immer darin, sobald es welche gibt.</p>
+          <label className="js-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={options.place}
+              onChange={(e) => setOption("place", e.target.checked)}
+            />
+            <span>
+              <strong>Ort</strong>
+              <small>Ortsangabe und Standort pro Tag</small>
+            </span>
+          </label>
+          <label className="js-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={options.events}
+              onChange={(e) => setOption("events", e.target.checked)}
+            />
+            <span>
+              <strong>Termine</strong>
+              <small>Einträge aus Datenbanken mit Datum und aus einem Kalender</small>
+            </span>
+          </label>
+          {options.events && (
+            <div className="js-field">
+              <strong className="js-label">Kalender einbinden (optional)</strong>
+              <small className="muted">
+                iCal-Link, z. B. die „Geheime Adresse im iCal-Format“ aus Google Kalender.
+              </small>
+              <div className="journal-inline-form">
+                <input type="url" placeholder="https://… .ics" value={ics} onChange={(e) => setIcs(e.target.value)} aria-label="iCal-Adresse" />
+                <button
+                  type="button"
+                  className="button"
+                  disabled={busy || ics === (current.icsUrl || "")}
+                  onClick={() => void save({ icsUrl: ics.trim() }, ics.trim() ? "Kalender verbunden." : "Kalender entfernt.")}
+                >
+                  Speichern
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {tab === "lock" && (
+        <section className="js-panel" role="tabpanel" aria-label="Sperre">
+          <p className="js-status">
+            <LockKey size={18} weight={current.locked ? "fill" : "regular"} />
+            {current.locked ? "Das Journal ist mit einer PIN geschützt." : "Das Journal ist nicht gesperrt."}
+          </p>
+          <p className="js-intro">
+            Mit PIN zeigt das Journal seine Tage erst nach Eingabe – für alle, die es öffnen dürfen. Nach 15 Minuten sperrt es
+            sich wieder. Das schützt vor Blicken, ist aber keine Verschlüsselung.
+          </p>
+          <div className="js-pin">
+            {current.locked && (
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="Bisherige PIN"
+                aria-label="Bisherige PIN"
+                value={oldPin}
+                onChange={(e) => setOldPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+              />
+            )}
             <input
               type="password"
               inputMode="numeric"
-              autoComplete="off"
-              placeholder="Bisherige PIN"
-              aria-label="Bisherige PIN"
-              value={oldPin}
-              onChange={(e) => setOldPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+              autoComplete="new-password"
+              placeholder={current.locked ? "Neue PIN" : "PIN (4–8 Ziffern)"}
+              aria-label="Neue PIN"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
             />
-          )}
-          <input
-            type="password"
-            inputMode="numeric"
-            autoComplete="new-password"
-            placeholder={current.locked ? "Neue PIN" : "PIN (4–8 Ziffern)"}
-            aria-label="Neue PIN"
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
-          />
-          <input
-            type="password"
-            inputMode="numeric"
-            autoComplete="new-password"
-            placeholder="PIN wiederholen"
-            aria-label="PIN wiederholen"
-            value={pinAgain}
-            onChange={(e) => setPinAgain(e.target.value.replace(/\D/g, "").slice(0, 8))}
-          />
-          <button
-            type="button"
-            className="button primary"
-            disabled={busy || pin.length < 4 || (current.locked && oldPin.length < 4)}
-            onClick={() => void lock(pin)}
-          >
-            {current.locked ? "PIN ändern" : "Sperren"}
-          </button>
-          {current.locked && (
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              placeholder="PIN wiederholen"
+              aria-label="PIN wiederholen"
+              value={pinAgain}
+              onChange={(e) => setPinAgain(e.target.value.replace(/\D/g, "").slice(0, 8))}
+            />
+          </div>
+          <div className="js-footer">
+            {current.locked && (
+              <button type="button" className="button" disabled={busy || oldPin.length < 4} onClick={() => void lock(null)}>
+                Sperre entfernen
+              </button>
+            )}
             <button
               type="button"
-              className="button"
-              disabled={busy || oldPin.length < 4}
-              onClick={() => void lock(null)}
+              className="button primary"
+              disabled={busy || pin.length < 4 || (current.locked && oldPin.length < 4)}
+              onClick={() => void lock(pin)}
             >
-              Sperre entfernen
+              {current.locked ? "PIN ändern" : "Sperren"}
             </button>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
     </Modal>
   );
 }
@@ -618,7 +670,10 @@ export function JournalDayBar({
   entry,
   editable,
   onError,
+  options = { place: true, events: true },
 }: {
+  // Which parts the journal shows (set up in the journal's settings).
+  options?: { place: boolean; events: boolean };
   pageId: string;
   trackers: Tracker[];
   entry: DayEntry;
@@ -638,6 +693,7 @@ export function JournalDayBar({
     setCoords(entry.lat !== null && entry.lon !== null ? { lat: entry.lat, lon: entry.lon } : null);
   }, [entry]);
   useEffect(() => {
+    if (!options.events) return setEvents([]);
     let live = true;
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     api<{ events: DayEvent[]; calendarError: string }>(
@@ -652,7 +708,7 @@ export function JournalDayBar({
     return () => {
       live = false;
     };
-  }, [pageId]);
+  }, [pageId, options.events]);
   const save = useCallback(
     async (patch: Partial<Omit<DayEntry, "values">> & { values?: Record<string, number | boolean | null> }) => {
       try {
@@ -687,6 +743,8 @@ export function JournalDayBar({
   };
   const eventTime = (event: DayEvent) =>
     event.timed ? time.format(new Date(event.start)) : "Ganztägig";
+  // Nothing switched on and no appointments: no bar at all.
+  if (!trackers.length && !options.place && !(events?.length || calendarError)) return null;
   return (
     <div className="journal-daybar">
       {trackers.length > 0 && (
@@ -750,6 +808,7 @@ export function JournalDayBar({
           })}
         </div>
       )}
+      {options.place && (
       <div className="journal-daybar-place">
         <MapPin size={15} />
         <input
@@ -791,6 +850,7 @@ export function JournalDayBar({
           )
         )}
       </div>
+      )}
       {(events?.length || calendarError) ? (
         <div className="journal-daybar-events" aria-label="Termine">
           <CalendarBlank size={15} />

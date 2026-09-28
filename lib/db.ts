@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 31) return;
+  if (globalDb.flowplanSchema === 32) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -402,7 +402,10 @@ function migrate(d: DatabaseSync) {
   // Synced blocks: document pages outside the page tree, embedded elsewhere.
   if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "synced"))
     d.exec("ALTER TABLE pages ADD COLUMN synced INTEGER NOT NULL DEFAULT 0");
-  globalDb.flowplanSchema = 31;
+  // Journals: which parts the bar above a day shows (place, appointments).
+  if (!(d.prepare("PRAGMA table_info(journal_settings)").all() as { name: string }[]).some((c) => c.name === "options"))
+    d.exec("ALTER TABLE journal_settings ADD COLUMN options TEXT NOT NULL DEFAULT '{}'");
+  globalDb.flowplanSchema = 32;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

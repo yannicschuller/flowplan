@@ -161,6 +161,7 @@ type PageData = DatabaseData & {
     journalId: string;
     date: string;
     trackers: JournalSettings["trackers"];
+    options?: { place: boolean; events: boolean };
     entry: DayEntry;
   };
   // Behind a journal PIN that was not entered yet.
@@ -451,12 +452,13 @@ export default function WorkspaceApp({
     (page) => page.kind === "journal" && !page.deleted_at,
   );
   const rollJournal = useCallback(
-    async (pageId: string | null, date: string) => {
+    async (pageId: string | null, date: string, recreate = false) => {
       const result = await api<{ changed?: boolean }>("/api/command", {
         action: "journal.roll",
         workspaceId: boot.workspace.id,
         ...(pageId ? { pageId } : {}),
         date,
+        ...(recreate ? { recreate: true } : {}),
       });
       if (result?.changed) await refresh();
       return result;
@@ -2138,6 +2140,7 @@ export default function WorkspaceApp({
                         pageId={data.page.id}
                         trackers={data.journalDay.trackers}
                         entry={data.journalDay.entry}
+                        options={data.journalDay.options}
                         editable={editable}
                         onError={notify}
                       />

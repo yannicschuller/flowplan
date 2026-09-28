@@ -46,7 +46,14 @@ type SettingsRow = {
   trackers: string;
   lock_hash: string | null;
   ics_url: string | null;
+  options: string;
 };
+// What the bar above each day shows.
+export const journalOptionsSchema = z.object({
+  place: z.boolean().default(true),
+  events: z.boolean().default(true),
+});
+export type JournalOptions = z.infer<typeof journalOptionsSchema>;
 function settingsRow(journalId: string) {
   return one<SettingsRow>(
     "SELECT * FROM journal_settings WHERE page_id=?",
@@ -59,12 +66,22 @@ export function journalSettings(journalId: string) {
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers));
   } catch {}
+  let options: JournalOptions = { place: true, events: true };
+  try {
+    options = journalOptionsSchema.parse(JSON.parse(row?.options || "{}"));
+  } catch {}
   return {
     template: row?.template || "",
     trackers,
     locked: !!row?.lock_hash,
     icsUrl: row?.ics_url || "",
+    options,
   };
+}
+export function setJournalOptions(journal: Page, input: unknown) {
+  ensureSettings(journal.id);
+  const options = journalOptionsSchema.parse({ ...journalSettings(journal.id).options, ...(input as object) });
+  run("UPDATE journal_settings SET options=? WHERE page_id=?", JSON.stringify(options), journal.id);
 }
 function ensureSettings(journalId: string) {
   run(
