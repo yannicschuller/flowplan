@@ -12,6 +12,14 @@ type Grant = { userId?: string; groupId?: string; role: "viewer" | "editor" };
 
 // Record permissions: read-only or private records with exceptions for
 // people and groups. Shown to database owners and the record's creator.
+export const rowAccessSummary = (row: Row) =>
+  (row.access || "inherit") === "inherit"
+    ? "Rechte wie Datenbank"
+    : row.access === "private"
+      ? "Privater Eintrag"
+      : "Schreibgeschützter Eintrag";
+
+// The panel; the button that opens it sits in the record's header.
 export function RowAccess({
   row,
   members,
@@ -23,8 +31,7 @@ export function RowAccess({
   groups: { id: string; name: string }[];
   act: (b: Record<string, unknown>) => Promise<unknown>;
 }) {
-  const [open, setOpen] = useState(false),
-    [busy, setBusy] = useState(false),
+  const [busy, setBusy] = useState(false),
     [access, setAccess] = useState<RowAccessMode>(row.access || "inherit"),
     [grants, setGrants] = useState<Grant[]>(
       (row.grants || []).map((g) => ({
@@ -58,23 +65,9 @@ export function RowAccess({
     setBusy(false);
     if (result) setStatus("Rechte gespeichert");
   }
-  const summary =
-    (row.access || "inherit") === "inherit"
-      ? "Rechte wie Datenbank"
-      : row.access === "private"
-        ? "Privater Eintrag"
-        : "Schreibgeschützter Eintrag";
   return (
     <div className="row-access">
-      <button
-        type="button"
-        className="text-button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        {summary} · Rechte des Eintrags
-      </button>
-      {open && (
+      {(
         <div
           className="row-access-panel"
           role="group"

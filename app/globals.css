@@ -4041,17 +4041,6 @@ tr:hover .row-open {
   height: 100%;
   object-fit: cover;
 }
-.row-appearance-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  font-size: 12px;
-  min-height: 4px;
-}
-.row-appearance-actions > * {
-  white-space: nowrap;
-}
 .row-title-icon {
   margin-right: 10px;
   vertical-align: -4px;
@@ -7550,14 +7539,6 @@ img.inline-comment-mark {
   transform: none;
   border-radius: 0;
 }
-.record-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.record-mode :is(select, .fp-select) {
-  width: auto;
-}
 .record-layout {
   display: grid;
   gap: 8px;
@@ -8176,17 +8157,6 @@ textarea {
     translate: none;
   }
 }
-/* Record page toolbar: the presentation choice looks like the text actions. */
-.record-mode .fp-select {
-  border-color: transparent;
-  background: none;
-  padding: 3px 6px;
-  font-size: 12px;
-  color: var(--secondary);
-}
-.record-mode .fp-select:hover {
-  background: var(--hover);
-}
 .recurrence-choice > .fp-select {
   min-width: 160px;
 }
@@ -8236,12 +8206,6 @@ textarea {
 .multi-options .checkbox-label:has(input:disabled) {
   opacity: 0.6;
   cursor: default;
-}
-.row-appearance-actions > label.record-mode {
-  display: inline-flex;
-  align-items: center;
-  margin: 0;
-  gap: 0;
 }
 /* ---------- Whiteboard ---------- */
 .whiteboard {
@@ -12669,5 +12633,135 @@ h3 .block-reactions {
     border-right: 0;
     border-bottom: 1px solid var(--border);
     padding: 0 0 4px;
+  }
+}
+
+/* Record header: how it opens, favorite, permissions and layout as quiet
+   icon buttons next to the close button. */
+.modal-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  min-width: 0;
+}
+.modal-heading:has(.modal-heading-actions) > .icon-button {
+  order: 1;
+  margin-left: 2px;
+}
+.modal-heading-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--border);
+}
+.modal-heading-actions .icon-button {
+  width: 32px;
+  height: 32px;
+  color: var(--secondary);
+  border-radius: 7px;
+}
+.modal-heading-actions .icon-button:hover {
+  color: var(--text);
+}
+.record-open-modes {
+  display: inline-flex;
+  padding: 2px;
+  gap: 1px;
+  border-radius: 9px;
+  background: var(--surface);
+}
+.record-open-modes .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.record-open-modes .icon-button[aria-pressed="true"] {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px #1724391f;
+}
+.record-star.active {
+  color: #d99a06;
+}
+.modal-heading-actions .record-access-button.restricted {
+  width: auto;
+  gap: 5px;
+  padding: 0 9px 0 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--blue);
+  background: var(--blue-light);
+}
+.modal-heading-actions .icon-button[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+/* Symbol and cover appear with the pointer over the title. */
+.row-title-tools {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 2px -6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.row-title-tools .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--secondary);
+  border-radius: 6px;
+}
+.row-title-tools .text-button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.row-detail:has(> h2:hover) .row-title-tools,
+.row-title-tools:hover,
+.row-title-tools:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .row-title-tools {
+    opacity: 1;
+  }
+}
+.row-cover {
+  position: relative;
+}
+.row-cover .cover-change {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.row-cover:hover .cover-change,
+.row-cover .cover-change:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .row-cover .cover-change {
+    opacity: 1;
+  }
+}
+.row-access {
+  margin: 0 0 12px;
+}
+.row-access .row-access-panel {
+  margin-top: 0;
+}
+@media (max-width: 600px) {
+  .modal-heading-divider,
+  .modal-heading-actions .record-access-button span {
+    display: none;
+  }
+  .modal-heading-actions .record-access-button.restricted {
+    width: 32px;
+    padding: 0;
+  }
+  .modal-heading-actions .icon-button {
+    width: 30px;
+  }
+  .modal-heading:has(.modal-heading-actions) {
+    gap: 4px;
   }
 }

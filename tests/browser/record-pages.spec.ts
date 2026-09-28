@@ -32,13 +32,14 @@ test("records open as full pages, can be favourited and restored from the trash"
   const mobile = testInfo.project.name === "mobile";
   await page.goto(`/#page=${p.id}&row=${row.id}`);
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  await entry.getByLabel("Eintrag öffnen als").selectOption("full");
+  const modes = entry.getByRole("group", { name: "Eintrag öffnen als" });
+  await modes.getByRole("button", { name: "Als ganze Seite öffnen" }).click();
   await expect(entry).toHaveClass(/modal-full/);
   await entry.getByRole("button", { name: "Zu Favoriten" }).click();
   await expect(
     entry.getByRole("button", { name: "Aus Favoriten entfernen" }),
   ).toBeVisible();
-  await entry.getByLabel("Eintrag öffnen als").selectOption("");
+  await modes.getByRole("button", { name: "Als Dialog öffnen (Standard)" }).click();
   await expect(entry).not.toHaveClass(/modal-full/);
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   if (mobile)

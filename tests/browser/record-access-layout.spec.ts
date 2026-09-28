@@ -102,13 +102,17 @@ test("record pages get their own permissions and layout options", async ({
       hidden: ["intern"],
     });
   // A personal choice overrides the database default.
-  await entry.getByLabel("Eintrag öffnen als").selectOption("center");
+  const modes = entry.getByRole("group", { name: "Eintrag öffnen als" });
+  await modes.getByRole("button", { name: /Als Dialog öffnen/ }).click();
+  await expect(modes.getByRole("button", { name: /Als Dialog öffnen/ })).toHaveAttribute("aria-pressed", "true");
   await expect(entry).not.toHaveClass(/modal-side/);
   await page.reload();
   await expect(entry).toBeVisible();
   await expect(entry).not.toHaveClass(/modal-side/);
-  await entry.getByLabel("Eintrag öffnen als").selectOption("");
+  // Choosing the default again drops the personal choice.
+  await modes.getByRole("button", { name: "In der Seitenleiste öffnen (Standard)" }).click();
   await expect(entry).toHaveClass(/modal-side/);
+  expect(await page.evaluate(() => localStorage.getItem("flowplan-record-mode"))).toBeNull();
   await expect(entry.locator(".row-properties")).not.toContainText("Intern");
   // Page width stays within the viewport.
   expect(

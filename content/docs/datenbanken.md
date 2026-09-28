@@ -10,6 +10,7 @@ Eine Datenbank ist eine Sammlung von Einträgen mit Eigenschaften. Dieselben Ein
 
 - **Neu** unten in der Tabelle oder oben rechts legt einen Eintrag an und öffnet ihn mit markiertem Titel – einfach lostippen, <kbd>Enter</kbd> speichert.
 - Ein Klick auf den Titel öffnet den Eintrag als Seite: oben der Titel zum direkten Bearbeiten, darunter die Eigenschaften, darunter ein vollständiges Dokument mit demselben Editor wie jede andere Seite – samt Kommentaren, Versionsverlauf und gemeinsamer Bearbeitung.
+- Oben rechts im Eintrag: wie er sich öffnet (als Dialog, in der Seitenleiste oder als ganze Seite – die Wahl gilt für dich in diesem Browser; die Voreinstellung der Datenbank ist mit „Standard“ markiert), der Stern für die Favoriten, das Schloss für die Rechte des Eintrags und die Regler für das Layout aller Einträge. **Symbol** und **Cover** erscheinen, wenn der Mauszeiger über dem Titel steht.
 - **Datensatzvorlagen** geben neuen Einträgen Eigenschaften und Inhalt vor. Eine Vorlage kann Standard für neue Einträge sein.
 - Mehrere Einträge auswählen (Kästchen links) und gemeinsam bearbeiten, duplizieren oder löschen – bis zu 500 auf einmal. Vorher sichert Flowplan einen Stand, der sich über den Versionsverlauf wiederherstellen lässt.
 - Gelöschte Einträge liegen im Papierkorb der Datenbank und lassen sich zurückholen.
@@ -55,7 +56,7 @@ Im Eintrag kann jede Person für jedes gefüllte Datumsfeld eine persönliche Er
 
 ## Rechte pro Eintrag
 
-Unter **Eintragsrechte** lässt sich ein Eintrag über die Rechte der Datenbank hinaus einschränken:
+Über das Rechte-Symbol oben im Eintrag lässt sich ein Eintrag über die Rechte der Datenbank hinaus einschränken:
 
 - **Rechte wie Datenbank**: Standard.
 - **Schreibgeschützter Eintrag**: nur die Verwaltenden (Seiteneigentümer und die Person, die den Eintrag angelegt hat) und ausdrücklich Freigegebene ändern ihn.

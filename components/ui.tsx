@@ -101,8 +101,10 @@ export function Modal({
   wide = false,
   onCloseAutoFocus,
   className = "",
+  actions,
 }: {
   className?: string;
+  actions?: ReactNode;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -126,6 +128,9 @@ export function Modal({
             <Dialog.Close className="icon-button" aria-label="Schließen">
               <X size={20} />
             </Dialog.Close>
+            {/* After the close button in the DOM, so opening focuses that
+                one as before; CSS puts the actions in front of it. */}
+            {actions && <div className="modal-heading-actions">{actions}</div>}
           </div>
           {children}
         </Dialog.Content>

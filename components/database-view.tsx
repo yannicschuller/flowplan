@@ -1,6 +1,6 @@
 "use client";
 import { Select } from "./select";
-import { RowAccess } from "./row-access";
+import { RowAccess, rowAccessSummary } from "./row-access";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
   defaultRecordLayout,
@@ -106,6 +106,15 @@ import {
   DotsSixVertical,
   CaretUp,
   CaretDown,
+  Star,
+  AppWindow,
+  SquareHalf,
+  ArrowsOut,
+  LockSimple,
+  LockSimpleOpen,
+  UsersThree,
+  Smiley,
+  Image as ImageIcon,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
 import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
@@ -362,7 +371,8 @@ export default function DatabaseView({
     "",
   );
   const [showEmpty, setShowEmpty] = useState(false),
-    [layoutOpen, setLayoutOpen] = useState(false);
+    [layoutOpen, setLayoutOpen] = useState(false),
+    [accessOpen, setAccessOpen] = useState(false);
   useEffect(() => {
     try {
       const stored = localStorage.getItem("flowplan-record-mode") || "";
@@ -376,6 +386,16 @@ export default function DatabaseView({
     } catch {}
   }, []);
   const recordMode = recordModeChoice || recordLayout.open;
+  // A personal choice equal to the database default is no choice.
+  const chooseRecordMode = (mode: RecordOpenMode) => {
+    const choice = mode === recordLayout.open ? "" : mode;
+    setRecordModeChoice(choice);
+    try {
+      if (choice) localStorage.setItem("flowplan-record-mode", choice);
+      else localStorage.removeItem("flowplan-record-mode");
+      localStorage.removeItem("flowplan-record-full");
+    } catch {}
+  };
   const [rowIconPicker, setRowIconPicker] = useState(false),
     [rowIconTab, setRowIconTab] = useState<"emoji" | "image">("emoji"),
     [rowCoverPicker, setRowCoverPicker] = useState(false);
@@ -487,6 +507,96 @@ export default function DatabaseView({
   );
   const selected = data.rows.find((r) => r.id === rowId);
   const selectedEditable = editable && selected?.role !== "viewer";
+  // Another record: its permissions panel starts closed.
+  const [accessFor, setAccessFor] = useState(selected?.id);
+  if (accessFor !== selected?.id) {
+    setAccessFor(selected?.id);
+    setAccessOpen(false);
+  }
+  const canManageAccess = (row: Row) =>
+    editable && (data.role === "owner" || row.created_by === userId);
+  const recordModeIcons = { center: AppWindow, side: SquareHalf, full: ArrowsOut };
+  const recordModeLabels = {
+    center: "Als Dialog öffnen",
+    side: "In der Seitenleiste öffnen",
+    full: "Als ganze Seite öffnen",
+  };
+  // The record's header: how it opens, favorite, permissions, layout.
+  const recordActions = (row: Row) => {
+    const starred = favoriteRows.some((f) => f.rowId === row.id);
+    const access = row.access || "inherit";
+    const AccessIcon =
+      access === "inherit" ? UsersThree : access === "private" ? LockSimple : LockSimpleOpen;
+    return (
+      <>
+        <div className="record-open-modes" role="group" aria-label="Eintrag öffnen als">
+          {recordOpenModes.map((mode) => {
+            const Icon = recordModeIcons[mode];
+            const label = `${recordModeLabels[mode]}${mode === recordLayout.open ? " (Standard)" : ""}`;
+            return (
+              <button
+                key={mode}
+                type="button"
+                className="icon-button"
+                aria-pressed={recordMode === mode}
+                aria-label={label}
+                title={label}
+                onClick={() => chooseRecordMode(mode)}
+              >
+                <Icon size={17} />
+              </button>
+            );
+          })}
+        </div>
+        <span className="modal-heading-divider" aria-hidden="true" />
+        <button
+          type="button"
+          className={`icon-button record-star${starred ? " active" : ""}`}
+          aria-pressed={starred}
+          aria-label={starred ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+          title={starred ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+          onClick={() =>
+            act({ action: "favorite.row", rowId: row.id, value: !starred })
+          }
+        >
+          <Star size={17} weight={starred ? "fill" : "regular"} />
+        </button>
+        {canManageAccess(row) && (
+          <button
+            type="button"
+            className={`icon-button record-access-button${access !== "inherit" ? " restricted" : ""}`}
+            aria-expanded={accessOpen}
+            aria-label={`${rowAccessSummary(row)} · Rechte des Eintrags`}
+            title={`${rowAccessSummary(row)} · Rechte des Eintrags`}
+            onClick={() => {
+              setAccessOpen((v) => !v);
+              setLayoutOpen(false);
+            }}
+          >
+            <AccessIcon size={17} />
+            {access !== "inherit" && (
+              <span>{access === "private" ? "Privat" : "Nur lesen"}</span>
+            )}
+          </button>
+        )}
+        {editable && allowFieldChanges && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-expanded={layoutOpen}
+            aria-label="Layout anpassen"
+            title="Layout anpassen"
+            onClick={() => {
+              setLayoutOpen((v) => !v);
+              setAccessOpen(false);
+            }}
+          >
+            <SlidersHorizontal size={17} />
+          </button>
+        )}
+      </>
+    );
+  };
   // Properties shown on the record page (layout: hidden and empty ones).
   const layoutFields = fields.filter(
     (f, i) => i === 0 || !recordLayout.hidden.includes(f.id),
@@ -4469,6 +4579,7 @@ export default function DatabaseView({
         onClose={() => setRowId(null)}
         title="Eintrag"
         wide
+        actions={selected && recordActions(selected)}
         className={
           recordMode === "full"
             ? "modal-full"
@@ -4547,75 +4658,16 @@ export default function DatabaseView({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={selected.cover} alt="" />
                 )}
-              </div>
-            )}
-            <div className="row-appearance-actions">
-              <button
-                className="text-button"
-                aria-pressed={favoriteRows.some((f) => f.rowId === selected.id)}
-                onClick={() =>
-                  act({
-                    action: "favorite.row",
-                    rowId: selected.id,
-                    value: !favoriteRows.some((f) => f.rowId === selected.id),
-                  })
-                }
-              >
-                {favoriteRows.some((f) => f.rowId === selected.id)
-                  ? "Aus Favoriten entfernen"
-                  : "Zu Favoriten"}
-              </button>
-              <label className="record-mode">
-                <Select
-                  aria-label="Eintrag öffnen als"
-                  value={recordModeChoice}
-                  onChange={(e) => {
-                    const mode = e.target.value as RecordOpenMode | "";
-                    setRecordModeChoice(mode);
-                    try {
-                      if (mode)
-                        localStorage.setItem("flowplan-record-mode", mode);
-                      else localStorage.removeItem("flowplan-record-mode");
-                      localStorage.removeItem("flowplan-record-full");
-                    } catch {}
-                  }}
-                >
-                  <option value="">
-                    Standard ({recordOpenLabels[recordLayout.open]})
-                  </option>
-                  {recordOpenModes.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {recordOpenLabels[mode]}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-              {editable && allowFieldChanges && (
-                <button
-                  className="text-button"
-                  aria-expanded={layoutOpen}
-                  onClick={() => setLayoutOpen((v) => !v)}
-                >
-                  Layout anpassen
-                </button>
-              )}
-              {selectedEditable && (
-                <>
+                {selectedEditable && (
                   <button
-                    className="text-button"
-                    onClick={() => setRowIconPicker(true)}
-                  >
-                    {selected.icon ? "Symbol ändern" : "Symbol hinzufügen"}
-                  </button>
-                  <button
-                    className="text-button"
+                    className="button compact cover-change"
                     onClick={() => setRowCoverPicker(true)}
                   >
-                    {selected.cover ? "Cover ändern" : "Cover hinzufügen"}
+                    Cover ändern
                   </button>
-                </>
-              )}
-            </div>
+                )}
+              </div>
+            )}
             {layoutOpen && editable && allowFieldChanges && (
               <RecordLayoutEditor
                 layout={recordLayout}
@@ -4630,8 +4682,7 @@ export default function DatabaseView({
                 Dieser Eintrag ist für dich schreibgeschützt.
               </p>
             )}
-            {editable &&
-              (data.role === "owner" || selected.created_by === userId) && (
+            {accessOpen && canManageAccess(selected) && (
                 <RowAccess
                   key={`access-${selected.id}`}
                   row={selected}
@@ -4640,6 +4691,25 @@ export default function DatabaseView({
                   act={act}
                 />
               )}
+            {selectedEditable && (
+              <div className="row-title-tools">
+                <button
+                  className="text-button"
+                  onClick={() => setRowIconPicker(true)}
+                >
+                  <Smiley size={15} />{" "}
+                  {selected.icon ? "Symbol ändern" : "Symbol hinzufügen"}
+                </button>
+                {!selected.cover && (
+                  <button
+                    className="text-button"
+                    onClick={() => setRowCoverPicker(true)}
+                  >
+                    <ImageIcon size={15} /> Cover hinzufügen
+                  </button>
+                )}
+              </div>
+            )}
             <h2>
               {selected.icon && (
                 <PageIcon
