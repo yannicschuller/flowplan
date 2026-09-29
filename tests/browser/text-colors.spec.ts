@@ -35,13 +35,13 @@ test("text gets colours, highlight colours and super/subscript", async ({
     .getByRole("button", { name: "Text- und Hintergrundfarbe" })
     .click();
   await page.getByRole("menuitem", { name: "Textfarbe Rot" }).click();
-  await expect.poll(html).toMatch(/color: ?#d44c47/);
+  await expect.poll(html).toMatch(/color: ?#e03131/);
   // The text stays selected after applying a colour.
   await toolbar
     .getByRole("button", { name: "Text- und Hintergrundfarbe" })
     .click();
   await page.getByRole("menuitem", { name: "Hintergrund Blau" }).click();
-  await expect.poll(html).toMatch(/background-color: ?#e7f3f8/);
+  await expect.poll(html).toMatch(/background-color: ?#c5e0fa/);
   await expect(content.locator("span[style*='color']")).toHaveText("Wichtig");
   // Superscript on the last character.
   await content.click();

@@ -3373,13 +3373,13 @@ tr:hover .row-open {
 }
 .color-swatches {
   display: grid;
-  grid-template-columns: repeat(9, 22px);
-  gap: 4px;
-  margin-bottom: 6px;
+  grid-template-columns: repeat(9, 26px);
+  gap: 5px;
+  margin-bottom: 8px;
 }
 .color-swatch {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3392,6 +3392,21 @@ tr:hover .row-open {
 }
 .color-swatch[data-highlighted] {
   border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+.color-swatches .color-swatch {
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--bg);
+}
+/* Highlighted text stays dark on its light tint, also in the dark theme. */
+.color-swatches .color-swatch[style*="background"],
+mark[data-color] {
+  color: #1d1c22 !important;
+}
+mark[data-color] {
+  border-radius: 3px;
+  padding: 0 1px;
 }
 /* Resizable images in the editor. */
 .document-editor [data-resize-container] {
@@ -10379,7 +10394,7 @@ label.task-due {
   font-weight: 400;
   color: var(--secondary);
 }
-.my-tasks-group h2 {
+.my-tasks-group :is(h2, h3) {
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -12857,4 +12872,16 @@ h3 .block-reactions {
     opacity: 0;
     translate: 0 8px;
   }
+}
+/* Tasks of the other workspaces, below the current one's. */
+.my-tasks-others {
+  margin-top: 36px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.my-tasks-others > h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text);
 }

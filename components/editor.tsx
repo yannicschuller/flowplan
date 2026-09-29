@@ -1130,7 +1130,7 @@ export default function DocumentEditor({
               </Dropdown.Trigger>
               <Dropdown.Portal>
                 <Dropdown.Content
-                  className="dropdown-content color-menu"
+                  className="dropdown color-menu"
                   sideOffset={6}
                   onCloseAutoFocus={(event) => event.preventDefault()}
                 >

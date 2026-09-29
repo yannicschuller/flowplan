@@ -1,27 +1,29 @@
 import { Mark } from "@tiptap/core";
 
-// Colours as in AppFlowy: text colours and lighter highlight colours.
+// Text colours strong enough to stand out on the light and the dark
+// background; highlight colours clearly tinted (the text on them stays
+// dark, also in the dark theme – see globals.css).
 export const textColors = [
-  ["Grau", "#787774"],
-  ["Braun", "#9f6b53"],
-  ["Orange", "#d9730d"],
-  ["Gelb", "#cb912f"],
-  ["Grün", "#448361"],
-  ["Blau", "#337ea9"],
-  ["Lila", "#9065b0"],
-  ["Pink", "#c14c8a"],
-  ["Rot", "#d44c47"],
+  ["Grau", "#8b8a92"],
+  ["Braun", "#b5703c"],
+  ["Orange", "#ec6c0e"],
+  ["Gelb", "#d9a400"],
+  ["Grün", "#2f9e44"],
+  ["Blau", "#1c7ed6"],
+  ["Lila", "#8f4ad9"],
+  ["Pink", "#d6336c"],
+  ["Rot", "#e03131"],
 ] as const;
 export const highlightColors = [
-  ["Grau", "#f1f1ef"],
-  ["Braun", "#f4eeee"],
-  ["Orange", "#fbecdd"],
-  ["Gelb", "#fbf3db"],
-  ["Grün", "#edf3ec"],
-  ["Blau", "#e7f3f8"],
-  ["Lila", "#f6f3f9"],
-  ["Pink", "#faf1f5"],
-  ["Rot", "#fdebec"],
+  ["Grau", "#e2e1dd"],
+  ["Braun", "#efd9c7"],
+  ["Orange", "#ffd8a8"],
+  ["Gelb", "#ffec99"],
+  ["Grün", "#c3eecb"],
+  ["Blau", "#c5e0fa"],
+  ["Lila", "#e3d3fa"],
+  ["Pink", "#fcc9dc"],
+  ["Rot", "#ffcaca"],
 ] as const;
 const HEX = /^#[0-9a-f]{6}$/i;
 function styleColor(element: HTMLElement) {
