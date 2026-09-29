@@ -18,6 +18,7 @@ import { pageRole } from "./permissions";
 import { HttpError } from "./auth";
 import type { Identity, Page } from "./types";
 import { documentChanged } from "./document-live";
+import { indexPageTasks } from "./doc-tasks";
 import {
   hasEntryData,
   onlyTemplate,
@@ -240,12 +241,15 @@ export function rollJournal(
       previous.journal_date!,
     );
     if (untouched(previous, doc)) removeDay(previous);
-    else if (carried.length)
+    else if (carried.length) {
       storeDocument(
         previous.id,
         ydoc,
         withoutOpenTasks(doc, (task) => daily.has(task.textContent.trim())),
       );
+      // The moved tasks now live in the new day ("Meine Aufgaben").
+      indexPageTasks(previous.id, false);
+    }
     ydoc.destroy();
   }
   const dayId = createPage(
@@ -273,6 +277,7 @@ export function rollJournal(
   );
   documentChanged(dayId);
   ydoc.destroy();
+  indexPageTasks(dayId, false);
   return { dayId, changed: true };
 }
 // All journals of a workspace the user may edit.

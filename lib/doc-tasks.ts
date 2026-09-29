@@ -66,6 +66,7 @@ export function syncDocTasks(
   page: Page,
   rowId: string | null,
   ydoc: Y.Doc,
+  notify = true,
 ) {
   const tasks = extractTasks(yDocToProsemirrorJSON(ydoc, "default") as JsonNode);
   const previous = all<{ text: string; assignee: string | null }>(
@@ -95,6 +96,7 @@ export function syncDocTasks(
         Date.now(),
       );
       if (
+        notify &&
         assignee &&
         assignee !== user.id &&
         !task.checked &&
@@ -120,27 +122,41 @@ export function syncDocTasks(
   return assignees;
 }
 
-// Tasks for "Meine Aufgaben": assigned to the person, or unassigned ones in
-// pages they created (their own to-dos), in pages they may still read.
-export function myTasks(user: Identity, workspaceId: string, includeDone = false) {
-  const rows = all<{
-    page_id: string;
-    row_id: string;
-    idx: number;
-    text: string;
-    checked: number;
-    assignee: string | null;
-    due: string | null;
-    updated_at: number;
-    title: string;
-    icon: string;
-  }>(
-    `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.assignee,t.due,t.updated_at,p.title,p.icon
+// Tasks for "Meine Aufgaben": assigned to the person, unassigned ones with
+// a date in pages they created (their own to-dos), and every unassigned
+// task in the days of their journals – in pages they may still read.
+// `workspaceId` null: all workspaces the person belongs to.
+type TaskRow = {
+  page_id: string;
+  row_id: string;
+  idx: number;
+  text: string;
+  checked: number;
+  assignee: string | null;
+  due: string | null;
+  updated_at: number;
+  title: string;
+  icon: string;
+  workspace_id: string;
+  journal: number;
+};
+function taskRows(user: Identity, workspaceId: string | null, includeDone: boolean) {
+  const rows = all<TaskRow>(
+    `SELECT t.page_id,t.row_id,t.idx,t.text,t.checked,t.assignee,t.due,t.updated_at,p.title,p.icon,t.workspace_id,
+       (j.id IS NOT NULL) AS journal
      FROM doc_tasks t JOIN pages p ON p.id=t.page_id
-     WHERE t.workspace_id=? AND p.deleted_at IS NULL AND (t.assignee=? OR (t.assignee IS NULL AND p.created_by=? AND t.due IS NOT NULL))
+     LEFT JOIN pages j ON j.id=p.parent_id AND j.kind='journal' AND p.journal_date IS NOT NULL
+       AND t.row_id='' AND (j.created_by=? OR p.created_by=?)
+     WHERE ${workspaceId ? "t.workspace_id=?" : "t.workspace_id IN (SELECT workspace_id FROM members WHERE user_id=?)"}
+       AND p.deleted_at IS NULL
+       AND (t.assignee=?
+         OR (t.assignee IS NULL AND p.created_by=? AND t.due IS NOT NULL)
+         OR (t.assignee IS NULL AND j.id IS NOT NULL))
      ${includeDone ? "" : "AND t.checked=0"}
-     ORDER BY CASE WHEN t.due IS NULL THEN 1 ELSE 0 END, t.due, t.updated_at DESC LIMIT 500`,
-    workspaceId,
+     ORDER BY CASE WHEN t.due IS NULL THEN 1 ELSE 0 END, t.due, t.updated_at DESC LIMIT 1000`,
+    user.id,
+    user.id,
+    workspaceId || user.id,
     user.id,
     user.id,
   );
@@ -161,9 +177,29 @@ export function myTasks(user: Identity, workspaceId: string, includeDone = false
       checked: !!row.checked,
       due: row.due,
       assigned: row.assignee === user.id,
+      journal: !!row.journal,
       title: row.title,
       icon: row.icon,
+      workspaceId: row.workspace_id,
     }));
+}
+export function myTasks(user: Identity, workspaceId: string, includeDone = false) {
+  return taskRows(user, workspaceId, includeDone).slice(0, 500);
+}
+// The person's tasks in their other workspaces, per workspace.
+export function otherWorkspaceTasks(user: Identity, workspaceId: string, includeDone = false) {
+  const names = new Map(
+    all<{ id: string; name: string }>(
+      "SELECT w.id,w.name FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? AND w.id<>? ORDER BY w.name COLLATE NOCASE",
+      user.id,
+      workspaceId,
+    ).map((w) => [w.id, w.name]),
+  );
+  if (!names.size) return [];
+  const tasks = taskRows(user, null, includeDone).filter((t) => names.has(t.workspaceId));
+  return [...names]
+    .map(([id, name]) => ({ workspaceId: id, name, tasks: tasks.filter((t) => t.workspaceId === id).slice(0, 200) }))
+    .filter((w) => w.tasks.length);
 }
 
 // Changes one task (checked, due date) in the stored document and sends the
@@ -249,8 +285,10 @@ function localToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-// Tasks of a document written directly (seeded content, imports).
-export function indexPageTasks(pageId: string) {
+// Tasks of a document written directly (seeded content, imports, journal
+// days). `notify` false: only the list is updated (tasks moved between
+// journal days are not new).
+export function indexPageTasks(pageId: string, notify = true) {
   const page = one<Page & { state: Uint8Array | null; html: string }>(
     "SELECT p.*,d.state,d.html FROM pages p JOIN documents d ON d.page_id=p.id WHERE p.id=?",
     pageId,
@@ -260,7 +298,7 @@ export function indexPageTasks(pageId: string) {
   try {
     Y.applyUpdate(ydoc, page.state || htmlState(page.html));
     const system = { id: page.created_by, name: "", groups: [], isAdmin: false } as unknown as Identity;
-    syncDocTasks(system, page, null, ydoc);
+    syncDocTasks(system, page, null, ydoc, notify);
   } finally {
     ydoc.destroy();
   }
@@ -326,7 +364,8 @@ export function startTaskWorker(onFired: () => void) {
   tick();
 }
 
-// Badge in the sidebar: open tasks given to the person, due today or earlier.
+// Badge in the sidebar: open tasks given to the person or in their journal,
+// due today or earlier.
 export function dueTaskCount(user: Identity, workspaceId: string, today = localToday()) {
-  return myTasks(user, workspaceId).filter((task) => task.assigned && task.due && task.due <= today).length;
+  return myTasks(user, workspaceId).filter((task) => (task.assigned || task.journal) && task.due && task.due <= today).length;
 }

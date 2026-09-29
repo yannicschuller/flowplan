@@ -56,7 +56,7 @@ import { importZip } from "@/lib/zip-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
-import { myTasks } from "@/lib/doc-tasks";
+import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
 import { clipArticle } from "@/lib/web-clip";
@@ -235,8 +235,9 @@ export async function GET(
     if (path.length === 1 && path[0] === "tasks") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
       requireMember(user, wid);
+      const done = url.searchParams.get("done") === "1";
       return NextResponse.json(
-        { tasks: myTasks(user, wid, url.searchParams.get("done") === "1") },
+        { tasks: myTasks(user, wid, done), others: otherWorkspaceTasks(user, wid, done) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }

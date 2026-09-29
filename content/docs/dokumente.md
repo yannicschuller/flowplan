@@ -55,7 +55,7 @@ Ein synchronisierter Block (`/sync` → **Synchronisierter Block**) ist Inhalt, 
 
 Eine Aufgabe (`/todo` oder `[]` + Leerzeichen) mit einer Erwähnung wie `@Anna` ist Anna zugewiesen: Sie bekommt eine Benachrichtigung und findet die Aufgabe unter **Meine Aufgaben** in der Seitenleiste. Ein Datum setzt du, während der Cursor in der Aufgabe steht, mit dem Kalender-Knopf in der Werkzeugleiste oder über das Textmenü (Text markieren oder Rechtsklick → **Fälligkeit**). Das Datum erscheint als Chip rechts in der Zeile (heute hervorgehoben, überfällig rot); ein Klick darauf ändert es oder entfernt es mit **Datum entfernen**. Eine neue Aufgabe per <kbd>Enter</kbd> beginnt ohne Datum.
 
-**Meine Aufgaben** sammelt alle Aufgaben, die dir gegeben wurden, dazu deine eigenen Aufgaben mit Datum – gruppiert nach Überfällig, Heute, Nächste 7 Tage, Später und Ohne Datum. Abhaken und Datum ändern wirkt direkt im Dokument, auch bei anderen, die es gerade geöffnet haben. Am Fälligkeitstag kommt morgens eine Erinnerung; die Zahl neben „Meine Aufgaben“ zeigt, wie viele heute fällig oder überfällig sind.
+**Meine Aufgaben** sammelt alle Aufgaben, die dir gegeben wurden, deine eigenen Aufgaben mit Datum und alle Aufgaben aus deinen Journalen (auch ohne @Name und ohne Datum) – gruppiert nach Überfällig, Heute, Nächste 7 Tage, Später und Ohne Datum. Darunter folgen unter **Aus anderen Arbeitsbereichen** deine Aufgaben aus den übrigen Arbeitsbereichen, je Arbeitsbereich; ein Klick auf die Seite wechselt dorthin. Abhaken und Datum ändern wirkt direkt im Dokument, auch bei anderen, die es gerade geöffnet haben. Am Fälligkeitstag kommt morgens eine Erinnerung; die Zahl neben „Meine Aufgaben“ zeigt, wie viele heute fällig oder überfällig sind.
 
 ## Markdown-Kürzel
 

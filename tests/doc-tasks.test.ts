@@ -9,7 +9,7 @@ const { run, id, all, one } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
 const { htmlState } = await import("../lib/document-server");
-const { myTasks, processDueTasks, backfillDocTasks } = await import("../lib/doc-tasks");
+const { myTasks, otherWorkspaceTasks, processDueTasks, backfillDocTasks } = await import("../lib/doc-tasks");
 
 const person = (name: string) => {
   const uid = id();
@@ -94,4 +94,53 @@ test("tasks written before indexing are picked up once", () => {
   run("DELETE FROM instance_state WHERE key='doc_tasks_indexed'");
   backfillDocTasks();
   assert.equal(myTasks(ben, wid, true).length, 1);
+});
+
+const syncPage = (user: Identity, workspaceId: string, target: string, html: string) => {
+  const generation = String(one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", target)!.generation);
+  command(user, {
+    action: "document.sync",
+    workspaceId,
+    pageId: target,
+    generation,
+    update: Buffer.from(htmlState(html)).toString("base64"),
+  });
+};
+
+test("tasks in the own journal count without @mention and without a date", async () => {
+  const journal = (command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title: "Tagebuch", kind: "journal" }) as { id: string }).id;
+  const { dayId } = command(anna, { action: "journal.roll", workspaceId: wid, pageId: journal, date: today }) as { dayId: string };
+  syncPage(anna, wid, dayId, `<ul data-type="taskList">${task("Zahnarzt anrufen")}${task("Blumen gießen", ` data-due="${today}"`)}</ul>`);
+  const mine = myTasks(anna, wid).filter((t) => t.journal);
+  assert.deepEqual(mine.map((t) => t.text).sort(), ["Blumen gießen", "Zahnarzt anrufen"]);
+  // Only for the journal's person, and they count for the badge.
+  assert.equal(myTasks(ben, wid).some((t) => t.journal), false);
+  assert.equal((bootstrap(anna, wid) as { dueTasks: number }).dueTasks, 1);
+  // The next day takes the open tasks along; each is listed once, in the new day.
+  const { rollJournal } = await import("../lib/journal");
+  const next = new Date(`${today}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  const tomorrow = next.toISOString().slice(0, 10);
+  const journalPage = one<import("../lib/types").Page>("SELECT * FROM pages WHERE id=?", journal)!;
+  const { dayId: nextDay } = rollJournal(anna, journalPage, tomorrow);
+  const moved = myTasks(anna, wid).filter((t) => t.journal);
+  assert.deepEqual(moved.map((t) => t.text).sort(), ["Blumen gießen", "Zahnarzt anrufen"]);
+  assert.ok(moved.every((t) => t.pageId === nextDay));
+  // Moving tasks tells nobody anything.
+  assert.equal(all("SELECT 1 FROM notifications WHERE user_id=? AND kind='mention'", anna.id).length, 0);
+});
+
+test("tasks of the other workspaces come separately, per workspace", () => {
+  const other = createWorkspace(anna.id, "Privat");
+  const otherSpace = bootstrap(anna, other).spaces[0].id;
+  const note = (command(anna, { action: "page.create", workspaceId: other, spaceId: otherSpace, title: "Umzug", kind: "document" }) as { id: string }).id;
+  syncPage(anna, other, note, `<ul data-type="taskList">${task("Kartons kaufen", ' data-due="2026-12-01"')}</ul>`);
+  assert.equal(myTasks(anna, wid).some((t) => t.text === "Kartons kaufen"), false);
+  const groups = otherWorkspaceTasks(anna, wid);
+  assert.deepEqual(groups.map((g) => g.name), ["Privat"]);
+  assert.deepEqual(groups[0].tasks.map((t) => t.text), ["Kartons kaufen"]);
+  // Seen from "Privat", the team's tasks are the other ones.
+  assert.equal(otherWorkspaceTasks(anna, other)[0].name, "Team");
+  // Ben is not in "Privat".
+  assert.deepEqual(otherWorkspaceTasks(ben, wid), []);
 });

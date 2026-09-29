@@ -5,7 +5,7 @@ import {
 } from "./whiteboard";
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
-import { changeDocTask, dueTaskCount, syncDocTasks } from "./doc-tasks";
+import { changeDocTask, dueTaskCount, indexPageTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
@@ -558,6 +558,8 @@ export function command(
           htmlState(html),
           np,
         );
+        // Tasks in the imported text appear under "Meine Aufgaben".
+        indexPageTasks(np);
         result = { id: np };
         break;
       }

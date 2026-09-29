@@ -78,3 +78,37 @@ test("a task gets a due date in the editor and is ticked off in Meine Aufgaben",
   await expect(task.locator(".task-due")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("tasks of other workspaces follow in their own section", async ({ page }, info) => {
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const command = async (data: Record<string, unknown>) => {
+    const response = await page.request.post("/api/command", { headers: { origin }, data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  const name = `Privat ${info.project.name} ${Date.now()}`;
+  const other = await command({ action: "workspace.create", name });
+  const otherBoot = await (await page.request.get(`/api/bootstrap?workspace=${other.id}`)).json();
+  const text = `Kartons kaufen ${Date.now()}`;
+  await command({
+    action: "page.import",
+    workspaceId: other.id,
+    spaceId: otherBoot.spaces[0].id,
+    title: "Umzug",
+    content: `<ul data-type="taskList"><li data-type="taskItem" data-checked="false" data-due="2020-01-01"><p>${text}</p></li></ul>`,
+    format: "html",
+  });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  test.skip(boot.workspace.id === other.id, "The new workspace became the current one.");
+  await page.goto("/#tasks");
+  const others = page.locator(".my-tasks-others");
+  await expect(others.getByRole("heading", { name: "Aus anderen Arbeitsbereichen" })).toBeVisible();
+  const group = others.getByRole("region", { name });
+  await expect(group).toContainText(text);
+  // Not among the tasks of the current workspace.
+  await expect(page.locator(".my-tasks > .my-tasks-group", { hasText: text })).toHaveCount(0);
+  // Opening it switches to that workspace.
+  await group.locator("li", { hasText: text }).getByRole("button", { name: "Umzug" }).click();
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText(text);
+});

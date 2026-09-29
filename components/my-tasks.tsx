@@ -1,7 +1,8 @@
 "use client";
-// "Meine Aufgaben": tasks from documents given to me (@me in the task) and
-// my own dated to-dos, grouped by due date. Ticking one off changes the
-// document it lives in.
+// "Meine Aufgaben": tasks from documents given to me (@me in the task), my
+// own dated to-dos and the tasks in my journals, grouped by due date; those
+// of my other workspaces follow in their own section. Ticking one off
+// changes the document it lives in.
 import { useCallback, useEffect, useState } from "react";
 import { CheckSquare, X } from "@phosphor-icons/react";
 import { api, PageIcon } from "./ui";
@@ -15,9 +16,12 @@ type Task = {
   checked: boolean;
   due: string | null;
   assigned: boolean;
+  journal?: boolean;
   title: string;
   icon: string;
+  workspaceId?: string;
 };
+type Others = { workspaceId: string; name: string; tasks: Task[] }[];
 const shift = (day: string, days: number) => {
   const d = new Date(`${day}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -57,12 +61,16 @@ export function MyTasks({
   onChanged: () => void;
 }) {
   const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [others, setOthers] = useState<Others>([]);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState("");
   const load = useCallback(async () => {
     try {
-      const result = await api<{ tasks: Task[] }>(`/api/tasks?workspace=${workspaceId}${done ? "&done=1" : ""}`);
+      const result = await api<{ tasks: Task[]; others?: Others }>(
+        `/api/tasks?workspace=${workspaceId}${done ? "&done=1" : ""}`,
+      );
       setTasks(result.tasks);
+      setOthers(result.others || []);
     } catch (e) {
       onError((e as Error).message);
     }
@@ -74,12 +82,11 @@ export function MyTasks({
     const key = `${task.pageId}:${task.rowId}:${task.index}`;
     setBusy(key);
     // Show the change at once; the reload below brings the stored state.
-    setTasks((list) =>
-      list?.map((t) =>
-        t.pageId === task.pageId && t.rowId === task.rowId && t.index === task.index
-          ? { ...t, ...patch }
-          : t,
-      ) || null,
+    const same = (t: Task) =>
+      t.pageId === task.pageId && t.rowId === task.rowId && t.index === task.index;
+    setTasks((list) => list?.map((t) => (same(t) ? { ...t, ...patch } : t)) || null);
+    setOthers((list) =>
+      list.map((w) => ({ ...w, tasks: w.tasks.map((t) => (same(t) ? { ...t, ...patch } : t)) })),
     );
     try {
       await api("/api/command", {
@@ -99,14 +106,55 @@ export function MyTasks({
       setBusy("");
     }
   };
+  const item = (task: Task) => {
+    const key = `${task.pageId}:${task.rowId}:${task.index}`;
+    return (
+      <li key={`${key}:${task.text}`} className={task.checked ? "checked" : ""}>
+        <input
+          type="checkbox"
+          aria-label={`${task.text} erledigt`}
+          checked={task.checked}
+          disabled={busy === key}
+          onChange={(e) => void change(task, { checked: e.target.checked })}
+        />
+        <span className="my-task-text">{task.text || "Ohne Text"}</span>
+        <button type="button" className="my-task-page" onClick={() => onOpen(task.pageId, task.rowId)}>
+          <PageIcon name={task.icon} size={14} />
+          {task.title || "Ohne Titel"}
+        </button>
+        <label className={`task-due ${task.due ? `task-due-${dueState(task.due, task.checked)}` : "task-due-add"}`}>
+          {task.due ? `📅 ${dueLabel(task.due)}` : "+ Datum"}
+          <input
+            type="date"
+            aria-label={`Fälligkeit von ${task.text}`}
+            value={task.due || ""}
+            disabled={busy === key}
+            onChange={(e) => void change(task, { due: e.target.value || null })}
+          />
+        </label>
+        {task.due && (
+          <button
+            type="button"
+            className="icon-button my-task-clear"
+            aria-label={`Fälligkeit von ${task.text} entfernen`}
+            title="Datum entfernen"
+            disabled={busy === key}
+            onClick={() => void change(task, { due: null })}
+          >
+            <X size={13} />
+          </button>
+        )}
+      </li>
+    );
+  };
   return (
     <div className="utility-content my-tasks">
       <div className="utility-title">
         <CheckSquare size={30} />
         <h1>Meine Aufgaben</h1>
         <p>
-          Aufgaben aus allen Seiten, die dir mit @Name gegeben wurden, und deine
-          eigenen mit Datum.
+          Aufgaben, die dir mit @Name gegeben wurden, deine eigenen mit Datum
+          und alle Aufgaben aus deinen Journalen.
         </p>
       </div>
       <label className="my-tasks-done">
@@ -119,9 +167,10 @@ export function MyTasks({
         <div className="empty-state">
           <CheckSquare size={28} />
           <p>
-            Keine offenen Aufgaben. Schreib in einem Dokument eine Aufgabe mit
-            <code>[]</code> und erwähne jemanden mit <code>@</code>, um sie zu
-            vergeben; das Datum setzt du am Ende der Zeile.
+            Keine offenen Aufgaben in diesem Arbeitsbereich. Schreib in einem
+            Dokument eine Aufgabe mit <code>[]</code> und erwähne jemanden mit{" "}
+            <code>@</code>, um sie zu vergeben; das Datum setzt du mit dem
+            Kalender-Knopf in der Werkzeugleiste.
           </p>
         </div>
       ) : (
@@ -131,50 +180,23 @@ export function MyTasks({
               {name} <small>{list.length}</small>
             </h2>
             <ul>
-              {list.map((task) => {
-                const key = `${task.pageId}:${task.rowId}:${task.index}`;
-                return (
-                  <li key={`${key}:${task.text}`} className={task.checked ? "checked" : ""}>
-                    <input
-                      type="checkbox"
-                      aria-label={`${task.text} erledigt`}
-                      checked={task.checked}
-                      disabled={busy === key}
-                      onChange={(e) => void change(task, { checked: e.target.checked })}
-                    />
-                    <span className="my-task-text">{task.text || "Ohne Text"}</span>
-                    <button type="button" className="my-task-page" onClick={() => onOpen(task.pageId, task.rowId)}>
-                      <PageIcon name={task.icon} size={14} />
-                      {task.title || "Ohne Titel"}
-                    </button>
-                    <label className={`task-due ${task.due ? `task-due-${dueState(task.due, task.checked)}` : "task-due-add"}`}>
-                      {task.due ? `📅 ${dueLabel(task.due)}` : "+ Datum"}
-                      <input
-                        type="date"
-                        aria-label={`Fälligkeit von ${task.text}`}
-                        value={task.due || ""}
-                        disabled={busy === key}
-                        onChange={(e) => void change(task, { due: e.target.value || null })}
-                      />
-                    </label>
-                    {task.due && (
-                      <button
-                        type="button"
-                        className="icon-button my-task-clear"
-                        aria-label={`Fälligkeit von ${task.text} entfernen`}
-                        title="Datum entfernen"
-                        disabled={busy === key}
-                        onClick={() => void change(task, { due: null })}
-                      >
-                        <X size={13} />
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
+              {list.map(item)}
             </ul>
           </section>
         ))
+      )}
+      {others.length > 0 && (
+        <section className="my-tasks-others" aria-labelledby="my-tasks-others">
+          <h2 id="my-tasks-others">Aus anderen Arbeitsbereichen</h2>
+          {others.map((w) => (
+            <section key={w.workspaceId} className="my-tasks-group" aria-label={w.name}>
+              <h3>
+                {w.name} <small>{w.tasks.length}</small>
+              </h3>
+              <ul>{w.tasks.map(item)}</ul>
+            </section>
+          ))}
+        </section>
       )}
     </div>
   );
