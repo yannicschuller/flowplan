@@ -102,10 +102,11 @@ test("nested moves support list siblings and columns while preserving schema and
   let s = state(list("A", "B", "C"), p("End"));
   let blocks = documentBlocks(s.doc),
     items = blocks.filter((b) => b.node.type.name === "listItem");
-  // A list item dropped outside its list turns back into its paragraph.
+  // A list item dropped outside its list stays an item of that list kind.
   const out = changeBlocks(s, [items[0].pos], "move", blocks.at(-1)!.end).doc;
-  assert.equal(out.lastChild!.type.name, "paragraph");
+  assert.equal(out.lastChild!.type.name, "bulletList");
   assert.equal(out.lastChild!.textContent, "A");
+  out.check();
   s = s.apply(changeBlocks(s, [items[2].pos], "move", items[0].pos));
   assert.equal(s.doc.textContent, "CABEnd");
   s.doc.check();
@@ -201,7 +202,7 @@ test("duplication retains rich content and creates independent IDs for nested li
   const moved = changeBlocks(s, [0], "move", s.doc.content.size);
   assert.equal(moved.doc.lastChild!.child(1).attrs.id, "original");
 });
-test("moved blocks adapt to task lists: paragraphs become tasks, tasks become text outside, items switch list kinds", () => {
+test("moved blocks adapt to task lists: paragraphs become tasks, tasks stay tasks outside, items switch list kinds", () => {
   const task = (text: string, checked = false) =>
     schema.nodes.taskItem.create({ checked }, p(text));
   const tasks = (...items: import("@tiptap/pm/model").Node[]) =>
@@ -219,11 +220,11 @@ test("moved blocks adapt to task lists: paragraphs become tasks, tasks become te
     ["Eins", "Intro", "Zwei"],
   );
   assert.equal(list0.child(1).type.name, "taskItem");
-  // A task dropped before the first paragraph-level block becomes a paragraph.
+  // A task dropped before the first paragraph-level block stays a task.
   s = state(p("Intro"), tasks(task("Eins", true), task("Zwei")), list("Punkt"));
   blocks = documentBlocks(s.doc);
   tr = changeBlocks(s, [find("Zwei", "taskItem").pos], "move", find("Intro", "paragraph").pos);
-  assert.equal(tr.doc.child(0).type.name, "paragraph");
+  assert.equal(tr.doc.child(0).type.name, "taskList");
   assert.equal(tr.doc.child(0).textContent, "Zwei");
   // A checked task moved into a bullet list becomes a bullet; back keeps text.
   tr = changeBlocks(s, [find("Eins", "taskItem").pos], "move", find("Punkt", "listItem").end);
@@ -234,4 +235,40 @@ test("moved blocks adapt to task lists: paragraphs become tasks, tasks become te
     ["listItem", "listItem"],
   );
   assert.equal(bullets.lastChild!.textContent, "Eins");
+});
+
+test("a numbered item moved out of its list keeps its number and joins a neighbouring list", () => {
+  const ol = (start: number, ...texts: string[]) =>
+    schema.nodes.orderedList.create(
+      { start },
+      texts.map((text) => schema.nodes.listItem.create(null, p(text))),
+    );
+  let s = state(ol(1, "Plus", "Minus"), p("Plus mal Minus"), p("Binomisch"));
+  let blocks = documentBlocks(s.doc);
+  const minus = blocks.find((b) => b.node.type.name === "listItem" && b.node.textContent === "Minus")!;
+  const binomisch = blocks.find((b) => b.node.textContent === "Binomisch")!;
+  s = s.apply(changeBlocks(s, [minus.pos], "move", binomisch.pos));
+  s.doc.check();
+  const moved = s.doc.child(2);
+  assert.equal(moved.type.name, "orderedList");
+  assert.equal(moved.attrs.start, 2);
+  assert.equal(moved.textContent, "Minus");
+  // Back right after the first list: it joins it again.
+  blocks = documentBlocks(s.doc);
+  const item = blocks.find((b) => b.node.type.name === "listItem" && b.node.textContent === "Minus")!;
+  s = s.apply(changeBlocks(s, [item.pos], "move", s.doc.child(0).nodeSize));
+  s.doc.check();
+  assert.equal(s.doc.child(0).type.name, "orderedList");
+  assert.equal(s.doc.child(0).childCount, 2);
+  assert.equal(s.doc.child(0).textContent, "PlusMinus");
+  assert.equal(s.doc.childCount, 3);
+  // Tasks keep their checkbox outside the list, too.
+  const task = schema.nodes.taskItem.create({ checked: true }, p("Erledigt"));
+  s = state(schema.nodes.taskList.create(null, [task, schema.nodes.taskItem.create(null, p("Offen"))]), p("Ende"));
+  blocks = documentBlocks(s.doc);
+  const done = blocks.find((b) => b.node.type.name === "taskItem" && b.node.textContent === "Erledigt")!;
+  s = s.apply(changeBlocks(s, [done.pos], "move", s.doc.content.size));
+  s.doc.check();
+  assert.equal(s.doc.lastChild!.type.name, "taskList");
+  assert.equal(s.doc.lastChild!.firstChild!.attrs.checked, true);
 });

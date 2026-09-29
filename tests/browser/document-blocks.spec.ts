@@ -493,9 +493,10 @@ test("handles stay centred on large headings after a move and tasks adapt when d
   await expect(page.getByText("An dieser Position kann der Block nicht abgelegt werden.")).toHaveCount(0);
   await expect(editor.locator('li:has(input[type=checkbox])')).toHaveCount(3);
   await expect(editor.locator('li:has(input[type=checkbox])', { hasText: "Omega" })).toHaveCount(1);
-  // A task dropped onto a paragraph becomes a paragraph again.
+  // A task dropped onto a paragraph stays a task, in a list of its own.
   await dragBlock(page, handleFor("Eins"), editor.locator(":scope > p", { hasText: "Alpha" }), false);
-  await expect(editor.locator(":scope > p", { hasText: "Eins" })).toHaveCount(1);
-  await expect(editor.locator('li:has(input[type=checkbox])')).toHaveCount(2);
+  await expect(editor.locator(":scope > p", { hasText: "Eins" })).toHaveCount(0);
+  await expect(editor.locator('li:has(input[type=checkbox])', { hasText: "Eins" })).toHaveCount(1);
+  await expect(editor.locator('li:has(input[type=checkbox])')).toHaveCount(3);
   expect(errors).toEqual([]);
 });

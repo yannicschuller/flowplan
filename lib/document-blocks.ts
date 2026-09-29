@@ -163,22 +163,59 @@ export function changeBlocks(
     !documentBlocks(state.doc).some((b) => b.pos === target || b.end === target)
   )
     throw new Error("Das Ziel muss vor oder nach einem Block liegen.");
+  // List items moved out of their list keep it: the list they came from
+  // (kind, attributes; a numbered item its number).
+  const $from = state.doc.resolve(range.from);
+  const source = range.blocks.every((b) => LIST_ITEMS.includes(b.node.type.name))
+    ? $from.parent
+    : null;
+  const origin = source
+    ? source.type.create(
+        source.type.name === "orderedList"
+          ? { ...source.attrs, start: (Number(source.attrs.start) || 1) + $from.index() }
+          : source.attrs,
+      )
+    : null;
   const tr = state.tr.deleteRange(range.from, range.to),
     mapped = tr.mapping.map(target, target < range.from ? -1 : 1),
     $target = tr.doc.resolve(mapped);
-  const content = fitBlocks($target.parent, $target.index(), range.content);
+  const content = fitBlocks($target.parent, $target.index(), range.content, origin);
   if (!content)
     throw new Error("Diese Blocktypen passen nicht an den gewählten Zielort.");
-  return finish(tr.insert(mapped, content), mapped, content).setMeta(
-    BLOCK_MOVE_META,
-    { from: range.from, to: range.to },
-  );
+  tr.insert(mapped, content);
+  const wrapped =
+    origin && content.childCount === 1 && content.firstChild!.type === origin.type
+      ? content.firstChild!
+      : null;
+  if (!wrapped)
+    return finish(tr, mapped, content).setMeta(BLOCK_MOVE_META, {
+      from: range.from,
+      to: range.to,
+    });
+  // Next to a list of the same kind it joins that list (numbering goes on).
+  const after = tr.doc.resolve(mapped + wrapped.nodeSize).nodeAfter;
+  if (after?.type === wrapped.type) tr.join(mapped + wrapped.nodeSize);
+  const before = tr.doc.resolve(mapped).nodeBefore;
+  const joined = before?.type === wrapped.type;
+  if (joined) tr.join(mapped);
+  // The moved items: inside the new list, or where the joined list ended.
+  const itemsStart = joined ? mapped - 1 : mapped + 1;
+  return finish(tr, itemsStart, wrapped.content).setMeta(BLOCK_MOVE_META, {
+    from: range.from,
+    to: range.to,
+  });
 }
 const LIST_ITEMS = ["listItem", "taskItem"];
 // Moved blocks adapt to where they land, like in a word processor: a
-// paragraph dropped into a task list becomes a task, a task dropped between
-// paragraphs becomes its text again, and items switch between list kinds.
-export function fitBlocks(parent: Node, index: number, content: Fragment) {
+// paragraph dropped into a task list becomes a task, items switch between
+// list kinds, and items dropped outside any list stay items of a list of
+// their former kind (`origin`); only where that cannot go they become text.
+export function fitBlocks(
+  parent: Node,
+  index: number,
+  content: Fragment,
+  origin?: Node | null,
+) {
   const fits = (f: Fragment) => parent.canReplace(index, index, f);
   if (fits(content)) return content;
   const nodes: Node[] = [];
@@ -187,6 +224,12 @@ export function fitBlocks(parent: Node, index: number, content: Fragment) {
   const itemType = LIST_ITEMS.map((name) => parent.type.schema.nodes[name])
     .filter(Boolean)
     .find((type) => parent.type.contentMatch.matchType(type));
+  // Out of the list: in a list of the kind they came from.
+  if (!itemType && origin && nodes.every((n) => LIST_ITEMS.includes(n.type.name)))
+    try {
+      const list = Fragment.from(origin.type.createChecked(origin.attrs, nodes));
+      if (fits(list)) return list;
+    } catch {}
   const unwrapped = nodes.flatMap((n) =>
     LIST_ITEMS.includes(n.type.name) ? (n.content.content as Node[]) : [n],
   );

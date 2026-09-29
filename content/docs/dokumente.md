@@ -92,6 +92,8 @@ Verdeckter Text bleibt auch beim Schreiben verdeckt. Ein Klick auf die Fläche d
 
 Links neben jedem Block erscheint beim Überfahren ein Griff (`⋮⋮`). Ziehen zeigt eine Einfügelinie; nach dem Loslassen gleitet der Block an die neue Stelle. Ein Klick auf den Griff öffnet **Blöcke verwalten**: verschieben – auch in Hinweise oder Spalten –, duplizieren oder löschen, einzeln oder mehrere benachbarte Blöcke.
 
+Listenpunkte und Aufgaben bleiben beim Verschieben, was sie sind: Außerhalb ihrer Liste bilden sie eine eigene Liste derselben Art, ein nummerierter Punkt behält seine Nummer. Direkt neben einer passenden Liste werden sie Teil davon; in einer anderen Listenart passen sie sich an.
+
 <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>↑</kbd>/<kbd>↓</kbd> verschiebt den aktuellen Block unter seinen Nachbarn. Jede Blockaktion lässt sich einzeln rückgängig machen.
 
 ## Bilder, Dateien und Einbettungen
