@@ -413,8 +413,22 @@ export function DocumentBlockControls({
       return;
     }
     drag.target = valid.after ? valid.block.end : valid.block.pos;
+    // "After one block" and "before the next" are the same place: the line
+    // always sits in the middle of the gap between them, so it does not
+    // jump while the pointer crosses the gap.
+    const edge = valid.after
+      ? valid.block.top + valid.block.height
+      : valid.block.top;
+    const neighbour = geometry.current.find((b) =>
+      valid.after ? b.pos === valid.block.end : b.end === valid.block.pos,
+    );
+    const top = neighbour
+      ? valid.after
+        ? (edge + neighbour.top) / 2
+        : (neighbour.top + neighbour.height + edge) / 2
+      : edge;
     setDrop({
-      top: valid.after ? valid.block.top + valid.block.height : valid.block.top,
+      top,
       left: valid.block.left,
       width: valid.block.width,
     });

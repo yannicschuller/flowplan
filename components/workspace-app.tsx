@@ -114,6 +114,7 @@ import {
   api,
   download,
   ApiError,
+  isTransient,
   PageSkeleton,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
@@ -456,7 +457,7 @@ export default function WorkspaceApp({
           result = await api("/api/command", b);
         } catch (e) {
           // A failed request without a response means the network is gone.
-          if (isQueueable(b) && e instanceof TypeError)
+          if (isQueueable(b) && isTransient(e))
             return offlineQueue.enqueue(b, rows());
           throw e;
         }

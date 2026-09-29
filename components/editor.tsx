@@ -108,7 +108,7 @@ import {
   X,
   CalendarBlank,
 } from "@phosphor-icons/react";
-import { api, Modal } from "./ui";
+import { api, isTransient, Modal } from "./ui";
 import type { Page, User } from "@/lib/types";
 import {
   mathNodeViews,
@@ -527,10 +527,17 @@ export default function DocumentEditor({
     } catch (e) {
       dirty.current = true;
       sendAll.current = true;
+      // Server briefly away (e.g. restarting): the changes stay here and
+      // go out with the next try, without an error message.
+      const away = !navigator.onLine || isTransient(e);
       onStatus(
-        navigator.onLine ? "Speichern fehlgeschlagen" : "Offline gespeichert",
+        !navigator.onLine
+          ? "Offline gespeichert"
+          : away
+            ? "Verbindung unterbrochen – wird wiederholt …"
+            : "Speichern fehlgeschlagen",
       );
-      if (navigator.onLine) onError((e as Error).message);
+      if (!away) onError((e as Error).message);
     } finally {
       inflight.current = false;
       // Typing went on during the request: send the rest right away.

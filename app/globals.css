@@ -6788,6 +6788,9 @@ tr.order-drop-after > td {
 .document-block-drop {
   position: absolute;
   height: 3px;
+  margin-top: -1.5px;
+  border-radius: 3px;
+  transition: top 0.08s ease-out;
   background: var(--blue);
   z-index: 3;
   pointer-events: none;

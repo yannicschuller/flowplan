@@ -259,10 +259,18 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    // No answer from Flowplan itself (e.g. the proxy's error page while the
+    // server restarts): worth trying again shortly.
+    readonly transient = false,
   ) {
     super(message);
   }
 }
+export const unavailableMessage =
+  "Der Server ist gerade nicht erreichbar. Bitte gleich noch einmal versuchen.";
+// A request that did not reach Flowplan or got no answer from it.
+export const isTransient = (e: unknown) =>
+  e instanceof TypeError || (e instanceof ApiError && e.transient);
 export async function api<T = Record<string, unknown>>(
   url: string,
   body?: unknown,
@@ -278,9 +286,19 @@ export async function api<T = Record<string, unknown>>(
         }
       : { cache: "no-store", headers },
   );
-  const data = await r.json();
+  let data;
+  try {
+    data = await r.json();
+  } catch {
+    // An HTML page instead of JSON: a proxy or gateway answered.
+    throw new ApiError(unavailableMessage, r.ok ? 502 : r.status, true);
+  }
   if (!r.ok)
-    throw new ApiError(data.error || "Anfrage fehlgeschlagen", r.status);
+    throw new ApiError(
+      data?.error || "Anfrage fehlgeschlagen",
+      r.status,
+      [502, 503, 504].includes(r.status),
+    );
   return data;
 }
 export function download(name: string, content: string, type = "text/plain") {
