@@ -39,3 +39,23 @@ test("the documentation is linked from the start page, navigable and searchable"
   expect(width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(errors).toEqual([]);
 });
+
+test("English browsers read the documentation in English and can switch", async ({ browser }) => {
+  const context = await browser.newContext({ locale: "en-US" });
+  const page = await context.newPage();
+  const base = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.goto(`${base}/docs`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Flowplan, step by step.");
+  for (const group of ["Getting started", "Working with Flowplan", "Administration", "Self-hosting"])
+    await expect(page.getByRole("heading", { name: group, level: 2 })).toBeVisible();
+  await page.goto(`${base}/docs/anmeldung-oidc`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign-in: password, passkeys and OIDC");
+  await expect(page.getByRole("navigation", { name: "Continue reading" })).toContainText("Next");
+  const search = page.getByRole("searchbox", { name: "Search the documentation" });
+  await search.fill("passkey");
+  await expect(page.getByRole("option").first()).toContainText(/passkey/i);
+  // Switching to German keeps the page.
+  await page.getByRole("group", { name: "Language" }).getByRole("button", { name: "DE" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Anmeldung: Passwort, Passkeys und OIDC");
+  await context.close();
+});

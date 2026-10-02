@@ -10,7 +10,7 @@
 
 Flowplan is a workspace for knowledge and projects in the spirit of Notion and AppFlowy: pages in a tree, a block editor, databases with many views, whiteboards and a journal – with real-time collaboration, fine-grained permissions and single sign-on. It runs as **one container with SQLite**: no Postgres, no Redis, no external search service. There is no AI and no tracking.
 
-> The documentation is currently written in German; an English translation is in progress.
+The interface, the start page and the documentation are available in English and German.
 
 ## Features
 

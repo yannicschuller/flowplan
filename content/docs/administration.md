@@ -1,6 +1,6 @@
 # Administration der Instanz
 
-Mitglieder der Admin-Gruppe aus `OIDC_ADMIN_GROUP` sehen **Administration** in der Seitenleiste. Dort verwalten sie Konten, Arbeitsbereiche, Betrieb, Einstellungen der Instanz und das Aktivitätsprotokoll.
+Wer die Instanz verwaltet, sieht **Administration** in der Seitenleiste: das erste Konto der Instanz und alle, denen es das Admin-Recht gibt – bei Single Sign-on zusätzlich die Mitglieder der Gruppe aus `OIDC_ADMIN_GROUP`. Dort verwalten sie Konten, Arbeitsbereiche, Betrieb, Einstellungen der Instanz und das Aktivitätsprotokoll.
 
 ## Benutzer
 
@@ -9,7 +9,9 @@ Alle Konten der Instanz mit ihrer letzten Anmeldung.
 - **Sitzungen beenden** meldet eine Person auf allen Geräten ab.
 - **Deaktivieren** sperrt ein Konto sofort und beendet alle Sitzungen; **Aktivieren** gibt es wieder frei.
 
-Konten selbst entstehen beim ersten Anmelden über OIDC und werden dort verwaltet.
+- Bei Konten mit E-Mail und Passwort: **Zum Admin machen** bzw. **Admin entziehen** (eine Person verwaltet die Instanz immer) und **Link zum Zurücksetzen** – ein zwei Stunden gültiger Link für ein neues Passwort, zum Weitergeben, wenn die Instanz keine E-Mails verschickt.
+
+Konten mit E-Mail und Passwort entstehen über **Konto erstellen** (siehe [Anmeldung](/docs/anmeldung-oidc)); SSO-Konten beim ersten Anmelden über OIDC, ihr Admin-Recht kommt aus der Gruppe beim Anbieter.
 
 ## Arbeitsbereiche
 

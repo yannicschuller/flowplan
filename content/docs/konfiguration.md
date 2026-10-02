@@ -113,8 +113,9 @@ Unter **Administration → Instanz** stellen Admins ein:
 - Standard-Speicherkontingent und Aufbewahrung von Versionen,
 - maximale Uploadgröße,
 - ob alle Personen eigene Arbeitsbereiche anlegen dürfen,
+- ob sich jede Person mit E-Mail und Passwort registrieren darf,
 - tägliche Datenbanksicherung und wie viele Kopien bleiben,
 - nach wie vielen Tagen ohne Anmeldung Konten gesperrt werden,
-- ob die Startseite eine **Demo** anbietet (laufende und insgesamt gestartete Demos zeigt **Administration → Betrieb**).
+- auf flowplan.org: ob die Startseite eine **Demo** anbietet (laufende und insgesamt gestartete Demos zeigt **Administration → Betrieb**).
 
 Leere Felder fallen auf die Umgebungsvariablen zurück.

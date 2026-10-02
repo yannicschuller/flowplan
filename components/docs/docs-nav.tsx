@@ -3,16 +3,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { List, MagnifyingGlass, X } from "@phosphor-icons/react";
 import type { DocGroup, DocSearchEntry } from "@/lib/docs";
+import { useT } from "../i18n";
 import s from "./docs.module.css";
 
 // Sidebar of the documentation; on small screens it folds into a menu.
 export function DocsNav({ groups }: { groups: DocGroup[] }) {
+  const t = useT();
   const path = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [path]);
   const current = groups.flatMap((g) => g.pages).find((p) => path === `/docs/${p.slug}`);
   return (
-    <nav className={s.nav} aria-label="Dokumentation" data-open={open}>
+    <nav className={s.nav} aria-label={t("Dokumentation", "Documentation")} data-open={open}>
       <button
         type="button"
         className={s.navToggle}
@@ -20,11 +22,11 @@ export function DocsNav({ groups }: { groups: DocGroup[] }) {
         onClick={() => setOpen(!open)}
       >
         {open ? <X size={18} /> : <List size={18} />}
-        <span>{current?.title || "Übersicht"}</span>
+        <span>{current?.title || t("Übersicht", "Overview")}</span>
       </button>
       <div className={s.navList}>
         <a href="/docs" aria-current={path === "/docs" ? "page" : undefined}>
-          Übersicht
+          {t("Übersicht", "Overview")}
         </a>
         {groups.map((group) => (
           <div key={group.title} className={s.navGroup}>
@@ -54,6 +56,7 @@ const fold = (text: string) =>
 
 // Search over page titles, summaries and section headings. "/" focuses it.
 export function DocsSearch({ index }: { index: DocSearchEntry[] }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -122,8 +125,8 @@ export function DocsSearch({ index }: { index: DocSearchEntry[] }) {
       <input
         ref={input}
         type="search"
-        placeholder="Doku durchsuchen"
-        aria-label="Dokumentation durchsuchen"
+        placeholder={t("Doku durchsuchen", "Search docs")}
+        aria-label={t("Dokumentation durchsuchen", "Search the documentation")}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -154,7 +157,7 @@ export function DocsSearch({ index }: { index: DocSearchEntry[] }) {
               </li>
             ))
           ) : (
-            <li className={s.noHits}>Nichts gefunden.</li>
+            <li className={s.noHits}>{t("Nichts gefunden.", "Nothing found.")}</li>
           )}
         </ul>
       )}

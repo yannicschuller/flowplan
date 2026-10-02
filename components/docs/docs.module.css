@@ -757,3 +757,44 @@
     transition: none !important;
   }
 }
+/* DE · EN in the header, after the search. */
+.lang {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+}
+.lang + .back {
+  margin-left: 8px;
+}
+.lang button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.lang button[aria-pressed="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+/* Phones: the logo leads home, so the extra link makes room for DE · EN;
+   the search takes the remaining width. */
+@media (max-width: 520px) {
+  .back {
+    display: none;
+  }
+  .search {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+}

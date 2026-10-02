@@ -3,68 +3,68 @@
 // with "# Title" and a one-line summary as its first paragraph.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { Marked, type Tokens } from "marked";
+import type { Locale } from "./i18n";
 
-export type DocGroup = { title: string; admin?: boolean; pages: { slug: string; title: string }[] };
+export type DocGroup = { title: string; pages: { slug: string; title: string }[] };
 
-// Groups marked admin describe running the instance: only signed-in
-// administrators see them (navigation, search and the pages themselves).
-const groups: { title: string; admin?: boolean; pages: [slug: string, title: string][] }[] = [
+// Page order and titles in both languages. English pages live in
+// content/docs/en with the same file name; a missing one falls back to
+// German.
+const groups: { title: [de: string, en: string]; pages: [slug: string, de: string, en: string][] }[] = [
   {
-    title: "Einstieg",
+    title: ["Einstieg", "Getting started"],
     pages: [
-      ["erste-schritte", "Erste Schritte"],
-      ["seiten-und-bereiche", "Seiten und Bereiche"],
+      ["erste-schritte", "Erste Schritte", "First steps"],
+      ["seiten-und-bereiche", "Seiten und Bereiche", "Pages and spaces"],
     ],
   },
   {
-    title: "Arbeiten mit Flowplan",
+    title: ["Arbeiten mit Flowplan", "Working with Flowplan"],
     pages: [
-      ["dokumente", "Dokumente und Editor"],
-      ["datenbanken", "Datenbanken"],
-      ["ansichten", "Ansichten"],
-      ["eigenschaften-und-formeln", "Eigenschaften, Formeln und Rollups"],
-      ["formulare", "Formulare"],
-      ["whiteboards", "Whiteboards"],
-      ["journal", "Journal"],
-      ["zusammenarbeit", "Zusammenarbeit und Kommentare"],
-      ["teilen", "Teilen und Veröffentlichen"],
-      ["vorlagen", "Vorlagen"],
-      ["suche-und-benachrichtigungen", "Suche, Posteingang und Push"],
-      ["import-export-versionen", "Import, Export und Versionen"],
-      ["offline-und-apps", "Offline, Web-App und Desktop"],
-      ["api-und-webhooks", "API und Webhooks"],
-      ["tastenkuerzel", "Tastenkürzel"],
+      ["dokumente", "Dokumente und Editor", "Documents and the editor"],
+      ["datenbanken", "Datenbanken", "Databases"],
+      ["ansichten", "Ansichten", "Views"],
+      ["eigenschaften-und-formeln", "Eigenschaften, Formeln und Rollups", "Properties, formulas and rollups"],
+      ["formulare", "Formulare", "Forms"],
+      ["whiteboards", "Whiteboards", "Whiteboards"],
+      ["journal", "Journal", "Journal"],
+      ["zusammenarbeit", "Zusammenarbeit und Kommentare", "Collaboration and comments"],
+      ["teilen", "Teilen und Veröffentlichen", "Sharing and publishing"],
+      ["vorlagen", "Vorlagen", "Templates"],
+      ["suche-und-benachrichtigungen", "Suche, Posteingang und Push", "Search, inbox and push"],
+      ["import-export-versionen", "Import, Export und Versionen", "Import, export and versions"],
+      ["offline-und-apps", "Offline, Web-App und Desktop", "Offline, web app and desktop"],
+      ["api-und-webhooks", "API und Webhooks", "API and webhooks"],
+      ["tastenkuerzel", "Tastenkürzel", "Keyboard shortcuts"],
     ],
   },
   {
-    title: "Verwaltung",
-    pages: [["arbeitsbereiche-und-rechte", "Arbeitsbereiche, Mitglieder und Rechte"]],
+    title: ["Verwaltung", "Administration"],
+    pages: [["arbeitsbereiche-und-rechte", "Arbeitsbereiche, Mitglieder und Rechte", "Workspaces, members and permissions"]],
   },
   {
-    title: "Selbst hosten",
+    title: ["Selbst hosten", "Self-hosting"],
     pages: [
-      ["installation", "Installation mit Docker"],
-      ["administration", "Administration der Instanz"],
-      ["anmeldung-oidc", "Anmeldung: Passwort, Passkeys und OIDC"],
-      ["konfiguration", "Konfiguration"],
-      ["speicher-und-sicherung", "Speicher, S3 und Sicherung"],
-      ["coolify-und-proxy", "Coolify und Reverse Proxy"],
-      ["betrieb", "Betrieb und Fehlersuche"],
+      ["installation", "Installation mit Docker", "Installation with Docker"],
+      ["administration", "Administration der Instanz", "Administering the instance"],
+      ["anmeldung-oidc", "Anmeldung: Passwort, Passkeys und OIDC", "Sign-in: password, passkeys and OIDC"],
+      ["konfiguration", "Konfiguration", "Configuration"],
+      ["speicher-und-sicherung", "Speicher, S3 und Sicherung", "Storage, S3 and backups"],
+      ["coolify-und-proxy", "Coolify und Reverse Proxy", "Coolify and reverse proxies"],
+      ["betrieb", "Betrieb und Fehlersuche", "Operations and troubleshooting"],
     ],
   },
 ];
-
-export const docGroups: DocGroup[] = groups.map((g) => ({
-  title: g.title,
-  ...(g.admin ? { admin: true } : {}),
-  pages: g.pages.map(([slug, title]) => ({ slug, title })),
-}));
-export const docSlugs = docGroups.flatMap((g) => g.pages.map((p) => p.slug));
-export const adminDocSlugs = new Set(docGroups.filter((g) => g.admin).flatMap((g) => g.pages.map((p) => p.slug)));
-// What a reader may see: everything for administrators, the rest for all.
-export const docGroupsFor = (admin: boolean) => docGroups.filter((g) => admin || !g.admin);
-const slugsFor = (admin: boolean) => docGroupsFor(admin).flatMap((g) => g.pages.map((p) => p.slug));
+const pick = (locale: Locale, [de, en]: [string, string]) => (locale === "en" ? en : de);
+export function docGroups(locale: Locale = "de"): DocGroup[] {
+  return groups.map((g) => ({
+    title: pick(locale, g.title),
+    pages: g.pages.map(([slug, de, en]) => ({ slug, title: pick(locale, [de, en]) })),
+  }));
+}
+export const docSlugs = groups.flatMap((g) => g.pages.map(([slug]) => slug));
 
 export type TocEntry = { id: string; text: string; depth: number };
 export type Doc = {
@@ -102,13 +102,12 @@ const plain = (html: string) =>
 const escape = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const callouts: Record<string, string> = {
-  NOTE: "Hinweis",
-  TIP: "Tipp",
-  WARNING: "Achtung",
+const callouts: Record<Locale, Record<string, string>> = {
+  de: { NOTE: "Hinweis", TIP: "Tipp", WARNING: "Achtung" },
+  en: { NOTE: "Note", TIP: "Tip", WARNING: "Warning" },
 };
 
-function render(markdown: string) {
+function render(markdown: string, locale: Locale) {
   const toc: TocEntry[] = [];
   const used = new Set<string>();
   const marked = new Marked({ gfm: true });
@@ -116,7 +115,7 @@ function render(markdown: string) {
     renderer: {
       heading({ tokens, depth }: Tokens.Heading) {
         const inner = this.parser.parseInline(tokens);
-        let id = headingId(inner) || "abschnitt";
+        let id = headingId(inner) || (locale === "en" ? "section" : "abschnitt");
         for (let n = 2; used.has(id); n++) id = `${headingId(inner)}-${n}`;
         used.add(id);
         if (depth === 2 || depth === 3) toc.push({ id, text: plain(inner), depth });
@@ -139,7 +138,7 @@ function render(markdown: string) {
         if (!match) return `<blockquote>${body}</blockquote>\n`;
         body = body.replace(match[0], "<p>");
         const kind = match[1];
-        return `<aside class="callout" data-kind="${kind.toLowerCase()}"><strong class="callout-label">${callouts[kind]}</strong>${body}</aside>\n`;
+        return `<aside class="callout" data-kind="${kind.toLowerCase()}"><strong class="callout-label">${callouts[locale][kind]}</strong>${body}</aside>\n`;
       },
       table(token: Tokens.Table) {
         const head = token.header
@@ -162,9 +161,13 @@ function render(markdown: string) {
 }
 
 const directory = () => join(process.cwd(), "content", "docs");
+const fileOf = (slug: string, locale: Locale) => {
+  const english = join(directory(), "en", `${slug}.md`);
+  return locale === "en" && existsSync(english) ? english : join(directory(), `${slug}.md`);
+};
 
-function read(slug: string) {
-  const text = readFileSync(join(directory(), `${slug}.md`), "utf8");
+function read(slug: string, locale: Locale) {
+  const text = readFileSync(fileOf(slug, locale), "utf8");
   const title = text.match(/^# (.+)$/m)?.[1]?.trim() || slug;
   const rest = text.replace(/^[\s\S]*?^# .+\n+/m, "");
   // The first paragraph is the lead, the rest the article.
@@ -173,26 +176,24 @@ function read(slug: string) {
   return { title, lead, body: cut < 0 ? "" : rest.slice(cut) };
 }
 
-export function loadDoc(slug: string, admin = adminDocSlugs.has(slug)): Doc | null {
+export function loadDoc(slug: string, locale: Locale = "de"): Doc | null {
   if (!docSlugs.includes(slug)) return null;
-  // Previous and next only lead to pages this reader may open.
-  const order = slugsFor(admin);
-  const { title, lead, body } = read(slug);
-  const { html, toc } = render(body);
+  const { title, lead, body } = read(slug, locale);
+  const { html, toc } = render(body, locale);
   const leadHtml = new Marked({ gfm: true }).parseInline(lead, { async: false }) as string;
-  const index = order.indexOf(slug);
-  const find = (s: string | undefined) =>
-    s ? docGroups.flatMap((g) => g.pages).find((p) => p.slug === s) : undefined;
+  const all = docGroups(locale);
+  const pages = all.flatMap((g) => g.pages);
+  const index = docSlugs.indexOf(slug);
   return {
     slug,
     title,
     summary: plain(leadHtml),
     leadHtml,
-    group: docGroups.find((g) => g.pages.some((p) => p.slug === slug))?.title || "",
+    group: all.find((g) => g.pages.some((p) => p.slug === slug))?.title || "",
     html,
     toc,
-    prev: index > 0 ? find(order[index - 1]) : undefined,
-    next: index >= 0 ? find(order[index + 1]) : find(order[0]),
+    prev: index > 0 ? pages[index - 1] : undefined,
+    next: pages[index + 1],
   };
 }
 
@@ -205,9 +206,9 @@ const blockText = (html: string) =>
 
 // Search index: every page with its sections and their plain text, so the
 // search box also finds words that only appear in the body.
-export function docSearchIndex(admin = false) {
-  return slugsFor(admin).map((slug) => {
-    const doc = loadDoc(slug, admin)!;
+export function docSearchIndex(locale: Locale = "de") {
+  return docSlugs.map((slug) => {
+    const doc = loadDoc(slug, locale)!;
     const parts = doc.html.split(/(?=<h[23] id=")/);
     const intro = parts[0].startsWith("<h") ? "" : parts.shift()!;
     return {

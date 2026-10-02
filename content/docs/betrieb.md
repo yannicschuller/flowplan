@@ -40,7 +40,7 @@ Ohne gesetztes Token ist der Endpunkt abgeschaltet.
 
 - `/api/health` liefert `200`.
 - Die Anmeldung funktioniert und landet wieder in Flowplan.
-- Ein Mitglied der Admin-Gruppe sieht **Administration**.
+- Das erste Konto (bei SSO: ein Mitglied der Admin-Gruppe) sieht **Administration**.
 - Eine Datei hochladen, den Container neu starten, die Datei wieder öffnen – dann ist das Volume richtig eingebunden.
 - Mit S3: `objectStorage.pending` sinkt auf `0`; im Bucket liegen `flowplan/uploads/` und `flowplan/db/`; das Log zeigt beim Start Zeilen von `litestream`.
 
@@ -50,7 +50,7 @@ Ohne gesetztes Token ist der Endpunkt abgeschaltet.
 | --- | --- |
 | Login endet mit Fehler zur Redirect-URI | URI beim Anbieter ≠ `APP_URL` + `/api/auth/callback`. |
 | „Ungültiger Anfrageursprung“ beim Speichern | `APP_URL` weicht von der aufgerufenen Adresse ab. |
-| Keine Administration sichtbar | Gruppe fehlt im Token; `OIDC_SCOPES`, `OIDC_GROUPS_CLAIM`, `OIDC_ADMIN_GROUP` prüfen und neu anmelden. |
+| Keine Administration sichtbar | Bei SSO fehlt die Gruppe im Token: `OIDC_SCOPES`, `OIDC_GROUPS_CLAIM`, `OIDC_ADMIN_GROUP` prüfen und neu anmelden. Bei E-Mail-Konten gibt ein Admin das Recht unter **Benutzer**. |
 | Nach Neustart ist alles leer | Volume ist nicht auf `/app/data` eingehängt. |
 | `SQLITE_READONLY` oder `EACCES` im Log | Host-Ordner gehört nicht UID 1000. |
 | Container „degraded“ in Coolify | Healthcheck-Port leer (= 80); `3000` eintragen. |

@@ -21,7 +21,7 @@ Beim **Verlassen** muss ein letzter Eigentümer vorher jemand anderen zum Eigent
 
 ## Mitglieder einladen
 
-**Einstellungen → Mitglieder → Mitglied einladen**: E-Mail-Adresse und Rolle eingeben. Flowplan verschickt keine E-Mails – die Einladung wird zugeordnet, sobald sich die Person mit dieser bestätigten Adresse anmeldet. Sag ihr also selbst Bescheid und schick ihr die Adresse der Instanz.
+**Einstellungen → Mitglieder → Mitglied einladen**: E-Mail-Adresse und Rolle eingeben. Ist auf der Instanz E-Mail eingerichtet, bekommt die Person eine Einladung. Sie legt mit dieser Adresse ein Konto an – auch wenn die Registrierung sonst geschlossen ist – oder meldet sich per SSO an; der Arbeitsbereich erscheint, sobald die Adresse bestätigt ist. Ohne E-Mail-Versand sag ihr selbst Bescheid und schick ihr die Adresse der Instanz.
 
 Bestehende Mitglieder lassen sich **Zum Gast machen** und umgekehrt **Zum Mitglied machen**.
 

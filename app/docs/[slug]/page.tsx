@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { adminDocSlugs, docSlugs, loadDoc } from "@/lib/docs";
-import { currentUser } from "@/lib/auth";
+import { docSlugs, loadDoc } from "@/lib/docs";
+import { requestLocale } from "@/lib/i18n-server";
+import { translate } from "@/lib/i18n";
 import s from "@/components/docs/docs.module.css";
 
 export const dynamicParams = false;
@@ -14,17 +15,15 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const slug = (await params).slug;
-  if (adminDocSlugs.has(slug) && !(await currentUser().catch(() => null))?.isAdmin) return {};
-  const doc = loadDoc(slug);
+  const doc = loadDoc(slug, await requestLocale());
   return doc ? { title: doc.title, description: doc.summary } : {};
 }
 
 export default async function DocPage({ params }: { params: Promise<{ slug: string }> }) {
   const slug = (await params).slug;
-  const admin = !!(await currentUser().catch(() => null))?.isAdmin;
-  // Running the instance: not public.
-  if (adminDocSlugs.has(slug) && !admin) notFound();
-  const doc = loadDoc(slug, admin);
+  const locale = await requestLocale();
+  const t = translate(locale);
+  const doc = loadDoc(slug, locale);
   if (!doc) notFound();
   return (
     <main className={s.main} id="inhalt">
@@ -33,10 +32,10 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
         <h1 className={s.title}>{doc.title}</h1>
         <p className={s.lead} dangerouslySetInnerHTML={{ __html: doc.leadHtml }} />
         <div className={s.prose} dangerouslySetInnerHTML={{ __html: doc.html }} />
-        <nav className={s.pager} aria-label="Weiterlesen">
+        <nav className={s.pager} aria-label={t("Weiterlesen", "Continue reading")}>
           {doc.prev ? (
             <a href={`/docs/${doc.prev.slug}`} data-dir="prev">
-              <small>Zurück</small>
+              <small>{t("Zurück", "Previous")}</small>
               {doc.prev.title}
             </a>
           ) : (
@@ -44,15 +43,15 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
           )}
           {doc.next && (
             <a href={`/docs/${doc.next.slug}`} data-dir="next">
-              <small>Weiter</small>
+              <small>{t("Weiter", "Next")}</small>
               {doc.next.title}
             </a>
           )}
         </nav>
       </article>
       {doc.toc.length > 2 && (
-        <aside className={s.toc} aria-label="Auf dieser Seite">
-          <p>Auf dieser Seite</p>
+        <aside className={s.toc} aria-label={t("Auf dieser Seite", "On this page")}>
+          <p>{t("Auf dieser Seite", "On this page")}</p>
           <ol>
             {doc.toc.map((entry) => (
               <li key={entry.id} data-depth={entry.depth}>

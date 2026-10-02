@@ -1,38 +1,50 @@
 import type { Metadata } from "next";
 import { BrandMark } from "@/components/brand-mark";
 import { DocsNav, DocsSearch } from "@/components/docs/docs-nav";
-import { docGroupsFor, docSearchIndex } from "@/lib/docs";
-import { currentUser } from "@/lib/auth";
+import { docGroups, docSearchIndex } from "@/lib/docs";
+import { requestLocale } from "@/lib/i18n-server";
+import { translate } from "@/lib/i18n";
+import { LanguageSwitch } from "@/components/i18n";
 import s from "@/components/docs/docs.module.css";
 
-export const metadata: Metadata = {
-  title: { template: "%s · Flowplan-Dokumentation", default: "Dokumentation · Flowplan" },
-  description: "Alle Funktionen von Flowplan erklärt: Dokumente, Datenbanken, Whiteboards, Journal und Zusammenarbeit.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = translate(await requestLocale());
+  return {
+    title: {
+      template: t("%s · Flowplan-Dokumentation", "%s · Flowplan documentation"),
+      default: t("Dokumentation · Flowplan", "Documentation · Flowplan"),
+    },
+    description: t(
+      "Alle Funktionen von Flowplan erklärt: Dokumente, Datenbanken, Whiteboards, Journal und Zusammenarbeit.",
+      "Every feature of Flowplan explained: documents, databases, whiteboards, journal and collaboration.",
+    ),
+  };
+}
 
 // Public documentation: readable without an account, same paper and ink as
 // the start page, calmer (DESIGN.md).
 export default async function DocsLayout({ children }: { children: React.ReactNode }) {
-  // Pages about running the instance are for administrators only.
-  const admin = !!(await currentUser().catch(() => null))?.isAdmin;
-  const index = docSearchIndex(admin);
+  const locale = await requestLocale();
+  const t = translate(locale);
+  const index = docSearchIndex(locale);
   return (
     <div className={s.root}>
       <header className={s.header}>
-        <a href="/" className={s.brand} aria-label="Flowplan, zur Startseite">
+        <a href="/" className={s.brand} aria-label={t("Flowplan, zur Startseite", "Flowplan, to the start page")}>
           <BrandMark size={26} />
           <span>flowplan</span>
         </a>
         <a href="/docs" className={s.section}>
-          Dokumentation
+          {t("Dokumentation", "Documentation")}
         </a>
         <DocsSearch index={index} />
+        <LanguageSwitch className={s.lang} />
         <a href="/" className={s.back}>
-          Zur Startseite
+          {t("Zur Startseite", "Start page")}
         </a>
       </header>
       <div className={s.shell}>
-        <DocsNav groups={docGroupsFor(admin)} />
+        <DocsNav groups={docGroups(locale)} />
         {children}
       </div>
     </div>

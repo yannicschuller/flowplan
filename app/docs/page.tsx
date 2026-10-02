@@ -1,50 +1,55 @@
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
-import { docGroupsFor, loadDoc } from "@/lib/docs";
-import { currentUser } from "@/lib/auth";
+import { docGroups, loadDoc } from "@/lib/docs";
+import { requestLocale } from "@/lib/i18n-server";
+import { translate } from "@/lib/i18n";
 import s from "@/components/docs/docs.module.css";
 
-
-const intros: Record<string, string> = {
-  Einstieg: "Konto, erster Arbeitsbereich, Seitenbaum.",
-  "Selbst hosten": "Flowplan auf dem eigenen Server: Docker, Anmeldung, Speicher, Sicherung und Betrieb.",
-  "Arbeiten mit Flowplan": "Jede Funktion, Schritt für Schritt.",
-  Verwaltung: "Mitglieder, Rechte und die Instanz.",
-};
+// One line under each group, in the order of the groups.
+const intros: [string, string][] = [
+  ["Konto, erster Arbeitsbereich, Seitenbaum.", "Account, first workspace, page tree."],
+  ["Jede Funktion, Schritt für Schritt.", "Every feature, step by step."],
+  ["Mitglieder, Rechte und Arbeitsbereiche.", "Members, permissions and workspaces."],
+  [
+    "Flowplan auf dem eigenen Server: Docker, Anmeldung, Speicher, Sicherung und Betrieb.",
+    "Flowplan on your own server: Docker, sign-in, storage, backups and operations.",
+  ],
+];
 
 export default async function DocsHome() {
-  const admin = !!(await currentUser().catch(() => null))?.isAdmin;
+  const locale = await requestLocale();
+  const t = translate(locale);
   return (
     <main className={s.main} id="inhalt">
       <article className={s.article}>
-        <p className={s.eyebrow}>Dokumentation</p>
-        <h1 className={s.title}>Flowplan Schritt für Schritt.</h1>
+        <p className={s.eyebrow}>{t("Dokumentation", "Documentation")}</p>
+        <h1 className={s.title}>{t("Flowplan Schritt für Schritt.", "Flowplan, step by step.")}</h1>
         <p className={s.lead}>
-          Flowplan ist ein Arbeitsbereich für Dokumente, Datenbanken,
-          Whiteboards und ein tägliches Journal – Open Source, gehostet in
-          Deutschland oder auf deinem eigenen Server. Diese Dokumentation
-          erklärt jede Funktion und den Betrieb einer eigenen Instanz.
+          {t(
+            "Flowplan ist ein Arbeitsbereich für Dokumente, Datenbanken, Whiteboards und ein tägliches Journal – Open Source, gehostet in Deutschland oder auf deinem eigenen Server. Diese Dokumentation erklärt jede Funktion und den Betrieb einer eigenen Instanz.",
+            "Flowplan is a workspace for documents, databases, whiteboards and a daily journal – open source, hosted in Germany or on your own server. This documentation explains every feature and how to run your own instance.",
+          )}
         </p>
         <div className={s.paths}>
           <a href="/docs/erste-schritte" className={s.path}>
-            <span>Ich arbeite mit Flowplan</span>
-            <strong>Erste Schritte</strong>
-            <small>Anmelden, erste Seite, Seitenbaum und Suche.</small>
+            <span>{t("Ich arbeite mit Flowplan", "I work with Flowplan")}</span>
+            <strong>{t("Erste Schritte", "First steps")}</strong>
+            <small>{t("Anmelden, erste Seite, Seitenbaum und Suche.", "Sign in, first page, page tree and search.")}</small>
             <ArrowRight size={18} />
           </a>
           <a href="/docs/installation" className={s.path}>
-            <span>Ich betreibe Flowplan selbst</span>
-            <strong>Installation mit Docker</strong>
-            <small>Container starten, Anmeldung, Speicher und Updates.</small>
+            <span>{t("Ich betreibe Flowplan selbst", "I run Flowplan myself")}</span>
+            <strong>{t("Installation mit Docker", "Installation with Docker")}</strong>
+            <small>{t("Container starten, Anmeldung, Speicher und Updates.", "Start the container, sign-in, storage and updates.")}</small>
             <ArrowRight size={18} />
           </a>
         </div>
-        {docGroupsFor(admin).map((group) => (
+        {docGroups(locale).map((group, i) => (
           <section key={group.title} className={s.groupBlock}>
             <h2>{group.title}</h2>
-            <p className={s.groupIntro}>{intros[group.title]}</p>
+            <p className={s.groupIntro}>{t(...intros[i])}</p>
             <ul className={s.cards}>
               {group.pages.map((page) => {
-                const doc = loadDoc(page.slug, admin)!;
+                const doc = loadDoc(page.slug, locale)!;
                 return (
                   <li key={page.slug}>
                     <a href={`/docs/${page.slug}`}>
