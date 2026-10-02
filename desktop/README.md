@@ -25,8 +25,8 @@ Beim ersten Start fragt die App nach der Adresse der Instanz (HTTPS, für
 lokale Tests auch `http://localhost:3000`). Ändern: Menü „Server wechseln …“.
 Vorgeben lässt sich die Adresse mit `--server=<URL>` oder `FLOWPLAN_SERVER`.
 
-Ausführlich (Signieren, Verteilen, CI, Fehlersuche):
-[docs/DEPLOYMENT-DESKTOP.md](../docs/DEPLOYMENT-DESKTOP.md).
+Mehr dazu in der Dokumentation:
+[Betrieb und Fehlersuche → Desktop-App bauen](https://flowplan.org/docs/betrieb#desktop-app-bauen).
 
 ## Bauen
 
@@ -42,8 +42,7 @@ setzen, für macOS zusätzlich `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` und
 `APPLE_TEAM_ID` (Notarisierung).
 
 Der Windows-Installer braucht NSIS; auf Apple-Silicon-Macs dafür Rosetta
-(`softwareupdate --install-rosetta`) oder den CI-Job `desktop-windows`,
-die unter Linux mit Wine baut.
+(`softwareupdate --install-rosetta`) oder einen Linux-Rechner mit Wine.
 
 ## Prüfen
 
