@@ -50,7 +50,7 @@
     "@tiptap/y-tiptap": "^3.0.9",
     "aws4fetch": "^1.0.20",
     "emojibase-data": "^17.0.0",
-    "katex": "^0.18.7",
+    "katex": "^0.18.9",
     "lowlight": "^3.3.0",
     "marked": "^16.4.2",
     "mermaid": "^11.17.2",
