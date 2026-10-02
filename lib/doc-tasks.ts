@@ -223,11 +223,14 @@ export function changeDocTask(user: Identity, input: unknown) {
   let found = false;
   const result = rewriteDocument(page.id, rowId, user.id, (doc) => {
     let index = -1;
-    const edit = (node: PMNode): PMNode => {
+    // Ticking a task off ticks off its subtasks too.
+    const edit = (node: PMNode, tickAll = false): PMNode => {
       if (node.isText || node.isLeaf) return node;
       let attrs = node.attrs;
+      let tick = tickAll;
       if (node.type.name === "taskItem") {
         index++;
+        if (tickAll) attrs = { ...node.attrs, checked: true };
         if (index === change.index) {
           const json = node.toJSON() as JsonNode;
           if (lineOf(json).text !== change.text)
@@ -238,10 +241,11 @@ export function changeDocTask(user: Identity, input: unknown) {
             ...(change.checked !== undefined ? { checked: change.checked } : {}),
             ...(change.due !== undefined ? { due: change.due } : {}),
           };
+          if (change.checked === true) tick = true;
         }
       }
       const children: PMNode[] = [];
-      node.forEach((child) => children.push(edit(child)));
+      node.forEach((child) => children.push(edit(child, tick)));
       return node.type.create(attrs, children, node.marks);
     };
     const next = edit(doc);

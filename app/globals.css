@@ -1137,7 +1137,8 @@ kbd,
 .document-editor ul[data-type="taskList"] li > div {
   flex: 1;
 }
-.document-editor li[data-checked="true"] > div {
+/* Only the done task's own text: its subtasks show their own state. */
+.document-editor li[data-checked="true"] > div > :not(ul, ol) {
   color: var(--muted);
   text-decoration: line-through;
 }

@@ -144,3 +144,13 @@ test("tasks of the other workspaces come separately, per workspace", () => {
   // Ben is not in "Privat".
   assert.deepEqual(otherWorkspaceTasks(ben, wid), []);
 });
+
+test("ticking a task off in the list ticks off its subtasks", () => {
+  const nested = (command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title: "Umzug", kind: "document" }) as { id: string }).id;
+  syncPage(anna, wid, nested, `<ul data-type="taskList"><li data-type="taskItem" data-checked="false" data-due="2026-12-01"><p>Umziehen</p><ul data-type="taskList">${task("Kartons")}</ul></li>${task("Danach")}</ul>`);
+  const parent = myTasks(anna, wid).find((t) => t.text === "Umziehen")!;
+  command(anna, { action: "task.update", pageId: nested, index: parent.index, text: parent.text, checked: true });
+  const html = String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", nested)!.html);
+  assert.equal((html.match(/data-checked="true"/g) || []).length, 2);
+  assert.match(html, /data-checked="false"[^>]*>(<label[^]*?)?<div><p>Danach/);
+});

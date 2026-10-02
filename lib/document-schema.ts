@@ -7,6 +7,7 @@ import { embedProvider } from "./embed-providers";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { subtasksPlugin } from "./task-subtasks";
 import {
   Table,
   TableCell,
@@ -204,11 +205,47 @@ export const SyncedBlock = Node.create({
 // Tasks remember the day they were first carried over in a journal, so a day
 // that only holds carried tasks counts as untouched.
 export const FlowTaskItem = TaskItem.extend({
+  // Ticking a task off ticks off its subtasks (lib/task-subtasks.ts).
+  addProseMirrorPlugins() {
+    return [...(this.parent?.() || []), subtasksPlugin()];
+  },
+  // Enter at the very start of a task adds an empty task above it; the task
+  // itself keeps its date and its carried-over mark (splitting would hand
+  // them to the empty line).
+  addKeyboardShortcuts() {
+    const parent = this.parent?.() || {};
+    return {
+      ...parent,
+      Enter: (props) => {
+        const { state, view } = this.editor;
+        const { $from, empty } = state.selection;
+        const depth = $from.depth - 1;
+        if (
+          empty &&
+          depth > 0 &&
+          $from.parentOffset === 0 &&
+          $from.parent.content.size > 0 &&
+          $from.node(depth).type.name === this.name &&
+          $from.index(depth) === 0
+        ) {
+          const item = this.type.createAndFill();
+          if (item) {
+            view.dispatch(state.tr.insert($from.before(depth), item).scrollIntoView());
+            return true;
+          }
+        }
+        return parent.Enter ? parent.Enter(props) : false;
+      },
+    };
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
+      // Only tasks really carried over keep it: a new task made with Enter
+      // from a carried one starts without (and without the ↻ badge).
       journalSince: {
         default: null,
+        keepOnSplit: false,
         parseHTML: (element) => element.getAttribute("data-journal-since"),
         renderHTML: (attributes) =>
           attributes.journalSince
