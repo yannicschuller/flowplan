@@ -74,7 +74,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/katex": "^0.16.8",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@types/nodemailer": "^8.0.2",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.3.0",
