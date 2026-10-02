@@ -38,7 +38,6 @@ export function TextMenu({
   const close = useCallback(() => setPlace(null), []);
   useEffect(() => {
     if (!editor) return;
-    const dom = editor.view.dom;
     // After selecting with the mouse or keyboard: above the selection.
     const showForSelection = () => {
       const { empty, from, to } = editor.state.selection;
@@ -48,16 +47,21 @@ export function TextMenu({
       const end = editor.view.coordsAtPos(to);
       setPlace({ x: (start.left + end.right) / 2, y: Math.min(start.top, end.top), mode: "selection" });
     };
+    // The browser reports a new selection shortly after the mouse or key is
+    // released; the editor knows it only then.
+    const later = () => setTimeout(showForSelection, 40);
     // Not for clicks in the menu itself (it closes after an action).
     const onMouseUp = (event: MouseEvent) => {
       if ((event.target as HTMLElement | null)?.closest?.(".text-menu")) return;
-      setTimeout(showForSelection, 0);
+      later();
     };
+    // In this editor (its element can be replaced while the editor lives).
+    const inEditor = (event: Event) => editor.view.dom.contains(event.target as Node);
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.shiftKey && event.key.startsWith("Arrow")) showForSelection();
+      if (inEditor(event) && event.shiftKey && event.key.startsWith("Arrow")) later();
     };
     const onContext = (event: MouseEvent) => {
-      if (event.shiftKey) return;
+      if (event.shiftKey || !inEditor(event)) return;
       event.preventDefault();
       // Right click outside the selection moves the caret there first.
       const at = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -70,13 +74,13 @@ export function TextMenu({
     };
     // On the document: layers over the text (block handles) may take the event.
     document.addEventListener("mouseup", onMouseUp);
-    dom.addEventListener("keyup", onKeyUp);
-    dom.addEventListener("contextmenu", onContext);
+    document.addEventListener("keyup", onKeyUp);
+    document.addEventListener("contextmenu", onContext);
     editor.on("selectionUpdate", onSelection);
     return () => {
       document.removeEventListener("mouseup", onMouseUp);
-      dom.removeEventListener("keyup", onKeyUp);
-      dom.removeEventListener("contextmenu", onContext);
+      document.removeEventListener("keyup", onKeyUp);
+      document.removeEventListener("contextmenu", onContext);
       editor.off("selectionUpdate", onSelection);
     };
   }, [editor]);

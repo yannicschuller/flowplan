@@ -49,7 +49,11 @@ test("react to a comment and to a paragraph", async ({ page }, info) => {
   await expect(editor.locator(".block-reaction")).toHaveCount(0);
   // Right click opens the same menu at the pointer; formatting works from there.
   if (info.project.name === "desktop") {
-    await select();
+    // Selecting with the keyboard opens it too.
+    await editor.getByText("Wir starten im Oktober").click();
+    await page.keyboard.press("End");
+    for (let i = 0; i < 7; i++) await page.keyboard.press("Shift+ArrowLeft");
+    await expect(menu).toBeVisible();
     await menu.getByRole("menuitemcheckbox", { name: "Fett" }).click();
     await expect(editor.locator("strong")).toHaveCount(1);
     await page.keyboard.press("End");
