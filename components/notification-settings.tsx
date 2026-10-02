@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   notificationKinds,
   type NotificationKind,
@@ -18,12 +18,18 @@ export function NotificationSettings({
   ) => void;
 }) {
   // Checkboxes react at once; the saved state arrives with the next refresh.
+  // While someone is clicking, an answer to an earlier click must not undo
+  // later ones: the saved state is taken over only after a quiet moment.
   const [local, setLocal] = useState(prefs);
-  useEffect(() => setLocal(prefs), [prefs]);
+  const lastChange = useRef(0);
+  useEffect(() => {
+    if (Date.now() - lastChange.current > 3000) setLocal(prefs);
+  }, [prefs]);
   const change = (
     kind: NotificationKind,
     value: { inbox: boolean; push: boolean; email: boolean },
   ) => {
+    lastChange.current = Date.now();
     setLocal((current) => ({ ...current, [kind]: value }));
     onChange(kind, value);
   };
