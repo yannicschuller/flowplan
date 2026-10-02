@@ -12901,3 +12901,29 @@ h3 .block-reactions {
   font-weight: 650;
   color: var(--text);
 }
+/* DE · EN on the sign-in page (components/i18n.tsx). */
+.language-switch {
+  display: inline-flex;
+  margin-left: 12px;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+.language-switch button {
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.language-switch button[aria-pressed="true"] {
+  background: var(--hover);
+  color: var(--text);
+}

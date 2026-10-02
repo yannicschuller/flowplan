@@ -1616,6 +1616,110 @@
   color: var(--secondary);
 }
 
+/* ---------- Open source: hosted or self-hosted ---------- */
+.selfHost {
+  padding: clamp(90px, 14vh, 160px) var(--gutter);
+  max-width: var(--max);
+  margin: 0 auto;
+}
+.selfHost h2 em {
+  font-style: italic;
+  color: var(--blue);
+}
+.hostGrid {
+  margin-top: 56px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(16px, 2.4vw, 28px);
+}
+.hostCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: clamp(24px, 3vw, 36px);
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.hostCard .checks {
+  margin: 14px 0 22px;
+}
+.hostCard > a:last-child,
+.hostLinks {
+  margin-top: auto;
+}
+.hostIcon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.hostNote {
+  font-size: 14px;
+  color: var(--muted);
+}
+.hostCode {
+  width: 100%;
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #0f0e13;
+  color: #ecebf1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-x: auto;
+}
+.hostCode span {
+  display: block;
+}
+.hostCode span::before {
+  content: "$ ";
+  color: #8e8a98;
+}
+.hostLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+/* DE · EN */
+.lang {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+}
+.lang button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.lang button[aria-pressed="true"] {
+  background: var(--hover);
+  color: var(--text);
+  cursor: default;
+}
+.lang button:hover {
+  color: var(--text);
+}
+.actions .lang {
+  align-self: center;
+}
+
 /* ---------- Operations ---------- */
 .ops {
   padding: clamp(80px, 12vh, 140px) var(--gutter);
@@ -1829,6 +1933,7 @@
 @media (max-width: 900px) {
   .tourGrid,
   .collabGrid,
+  .hostGrid,
   .opsInner {
     grid-template-columns: 1fr;
   }

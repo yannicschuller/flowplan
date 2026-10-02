@@ -22,9 +22,17 @@ import {
   SquaresFour,
   Table,
   Timer,
+  GithubLogo,
+  Cloud,
+  HardDrives,
 } from "@phosphor-icons/react";
 import { BrandMark } from "../brand-mark";
+import { LanguageSwitch, useLocale } from "../i18n";
+import { GITHUB_URL, landingCopy } from "./copy";
 import s from "./landing.module.css";
+
+// The page's texts in the reader's language.
+const useCopy = () => landingCopy[useLocale()];
 
 type Props = {
   loginHref: string;
@@ -34,7 +42,8 @@ type Props = {
 };
 
 // "Demo ausprobieren": a throwaway account, deleted after leaving.
-function DemoButton({ className, label = "Demo ausprobieren" }: { className: string; label?: string }) {
+function DemoButton({ className, short = false }: { className: string; short?: boolean }) {
+  const c = useCopy().demo;
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   return (
@@ -51,11 +60,11 @@ function DemoButton({ className, label = "Demo ausprobieren" }: { className: str
             location.assign("/");
             return;
           }
-          setError(((await response.json().catch(() => ({}))) as { error?: string }).error || "Die Demo konnte nicht starten.");
+          setError(((await response.json().catch(() => ({}))) as { error?: string }).error || c.failed);
           setBusy(false);
         }}
       >
-        {busy ? "Demo wird vorbereitet …" : label}
+        {busy ? c.busy : short ? c.short : c.try}
       </button>
       {error && (
         <span role="alert" className={s.demoError}>
@@ -67,15 +76,10 @@ function DemoButton({ className, label = "Demo ausprobieren" }: { className: str
 }
 
 const TYPES = [
-  { key: "doc", label: "Dokumente", icon: FileText, page: "Projekt-Kickoff" },
-  { key: "db", label: "Datenbanken", icon: Table, page: "Website-Relaunch" },
-  {
-    key: "board",
-    label: "Whiteboards",
-    icon: PresentationChart,
-    page: "Workshop Q4",
-  },
-  { key: "journal", label: "Journal", icon: Notebook, page: "Mein Journal" },
+  { key: "doc", icon: FileText },
+  { key: "db", icon: Table },
+  { key: "board", icon: PresentationChart },
+  { key: "journal", icon: Notebook },
 ] as const;
 
 /* ---------- Motion helpers ---------- */
@@ -125,71 +129,71 @@ function useReplay(ms: number, run: boolean) {
 /* ---------- Scenes ---------- */
 
 function DocScene({ run }: { run: boolean }) {
+  const c = useCopy().docScene;
   const round = useReplay(11000, run);
   return (
     <div className={s.doc} key={round} data-run={run}>
-      <div className={s.docTitle}>Projekt-Kickoff</div>
+      <div className={s.docTitle}>{c.title}</div>
       <div className={s.docMeta}>
         <span className={s.avatar} style={{ background: "#f0663a" }}>
           M
         </span>
-        Mara · heute bearbeitet
+        {c.meta}
       </div>
-      <p className={`${s.docLine} ${s.typing}`}>
-        Ziel: die neue Website bis 30. Oktober live.
-      </p>
+      <p className={`${s.docLine} ${s.typing}`}>{c.line}</p>
       <div className={s.slash}>
-        <span className={s.slashInput}>/auf</span>
+        <span className={s.slashInput}>{c.slash}</span>
         <ul>
           <li className={s.slashActive}>
-            <CheckSquare size={14} /> Aufgabenliste
+            <CheckSquare size={14} /> {c.slashItems[0]}
           </li>
           <li>
-            <Table size={14} /> Tabelle
+            <Table size={14} /> {c.slashItems[1]}
           </li>
           <li>
-            <ChartBar size={14} /> Diagramm
+            <ChartBar size={14} /> {c.slashItems[2]}
           </li>
         </ul>
       </div>
       <ul className={s.docTasks}>
         <li className={s.taskDone}>
           <span className={s.check} />
-          Texte finalisieren
+          {c.tasks[0]}
         </li>
         <li>
           <span className={s.check} />
-          Bilder auswählen
+          {c.tasks[1]}
         </li>
       </ul>
       <div className={s.docCols}>
         <div className={s.callout}>
-          <strong>Entscheidung</strong>
-          Wir starten mit Deutsch und Englisch.
+          <strong>{c.calloutTitle}</strong>
+          {c.callout}
         </div>
         <div className={s.formula}>
-          <span>Budget</span>
-          12 × 2.400 € = <b>28.800 €</b>
+          <span>{c.formulaLabel}</span>
+          {c.formula}
+          <b>{c.formulaResult}</b>
         </div>
       </div>
     </div>
   );
 }
 
+// Positions of the example records; their titles come from the copy.
 const RECORDS = [
-  { t: "Startseite gestalten", st: 1, day: 1, start: 0, len: 3 },
-  { t: "Texte schreiben", st: 0, day: 3, start: 2, len: 3 },
-  { t: "Bilder auswählen", st: 2, day: 0, start: 0, len: 2 },
-  { t: "Übersetzungen", st: 0, day: 4, start: 4, len: 3 },
-  { t: "Launch planen", st: 1, day: 2, start: 3, len: 4 },
-  { t: "Feedback sammeln", st: 2, day: 4, start: 6, len: 2 },
+  { st: 1, day: 1, start: 0, len: 3 },
+  { st: 0, day: 3, start: 2, len: 3 },
+  { st: 2, day: 0, start: 0, len: 2 },
+  { st: 0, day: 4, start: 4, len: 3 },
+  { st: 1, day: 2, start: 3, len: 4 },
+  { st: 2, day: 4, start: 6, len: 2 },
 ];
-const STATUS = ["Offen", "In Arbeit", "Erledigt"];
 const LAYOUTS = [
-  { key: "table", label: "Tabelle", icon: Table },
-  { key: "board", label: "Board", icon: Kanban },
-  { key: "calendar", label: "Kalender", icon: CalendarBlank },
-  { key: "timeline", label: "Zeitleiste", icon: ChartBarHorizontal },
+  { key: "table", icon: Table },
+  { key: "board", icon: Kanban },
+  { key: "calendar", icon: CalendarBlank },
+  { key: "timeline", icon: ChartBarHorizontal },
 ] as const;
 type Layout = (typeof LAYOUTS)[number]["key"];
 // Where each record sits in each view: left/width in %, top/height in px.
@@ -208,11 +212,12 @@ function place(layout: Layout, i: number) {
   return { left: r.start * 12.5, width: r.len * 12.5 - 1, top: 34 + i * 38, height: 28 };
 }
 function DbScene({ run }: { run: boolean }) {
+  const c = useCopy().dbScene;
   const [index, setIndex] = useCycle(LAYOUTS.length, 2600, run);
   const layout = LAYOUTS[index].key;
   return (
     <div className={s.db} data-layout={layout}>
-      <div className={s.dbTabs} role="tablist" aria-label="Ansicht">
+      <div className={s.dbTabs} role="tablist" aria-label={c.views}>
         {LAYOUTS.map((l, i) => (
           <button
             key={l.key}
@@ -223,30 +228,30 @@ function DbScene({ run }: { run: boolean }) {
             onClick={() => setIndex(i)}
           >
             <l.icon size={14} />
-            {l.label}
+            {c.layouts[i]}
           </button>
         ))}
       </div>
       <div className={s.dbStage}>
         <div className={s.dbHeads} data-for="table">
-          <span>Aufgabe</span>
-          <span>Status</span>
-          <span>Fällig</span>
+          {c.heads.map((h) => (
+            <span key={h}>{h}</span>
+          ))}
         </div>
         <div className={s.dbHeads} data-for="board">
-          {STATUS.map((st, i) => (
+          {c.status.map((st, i) => (
             <span key={st} data-status={i}>
               {st}
             </span>
           ))}
         </div>
         <div className={s.dbHeads} data-for="calendar">
-          {["Mo 12", "Di 13", "Mi 14", "Do 15", "Fr 16"].map((d) => (
+          {c.days.map((d) => (
             <span key={d}>{d}</span>
           ))}
         </div>
         <div className={s.dbHeads} data-for="timeline">
-          {["KW 42", "KW 43", "KW 44", "KW 45"].map((d) => (
+          {c.weeks.map((d) => (
             <span key={d}>{d}</span>
           ))}
         </div>
@@ -254,7 +259,7 @@ function DbScene({ run }: { run: boolean }) {
           const p = place(layout, i);
           return (
             <div
-              key={r.t}
+              key={i}
               className={s.record}
               data-status={r.st}
               style={{
@@ -265,9 +270,9 @@ function DbScene({ run }: { run: boolean }) {
                 transitionDelay: `${i * 35}ms`,
               }}
             >
-              <span className={s.recordTitle}>{r.t}</span>
-              <span className={s.recordStatus}>{STATUS[r.st]}</span>
-              <span className={s.recordDate}>{12 + r.day}. Okt.</span>
+              <span className={s.recordTitle}>{c.records[i]}</span>
+              <span className={s.recordStatus}>{c.status[r.st]}</span>
+              <span className={s.recordDate}>{c.date(12 + r.day)}</span>
             </div>
           );
         })}
@@ -277,6 +282,7 @@ function DbScene({ run }: { run: boolean }) {
 }
 
 function BoardScene({ run }: { run: boolean }) {
+  const c = useCopy().boardScene;
   const round = useReplay(9000, run);
   const [seconds, setSeconds] = useState(300);
   useEffect(() => {
@@ -293,7 +299,7 @@ function BoardScene({ run }: { run: boolean }) {
         <path d="M280 120 C 320 90, 330 70, 330 58" />
       </svg>
       <div className={`${s.sticky} ${s.stickyA}`}>
-        Onboarding kürzen
+        {c.stickies[0]}
         <span className={s.votes}>
           <i />
           <i />
@@ -301,20 +307,20 @@ function BoardScene({ run }: { run: boolean }) {
         </span>
       </div>
       <div className={`${s.sticky} ${s.stickyB}`}>
-        Demo-Video
+        {c.stickies[1]}
         <span className={s.votes}>
           <i />
         </span>
       </div>
       <div className={`${s.sticky} ${s.stickyC}`}>
-        Preise klarer
+        {c.stickies[2]}
         <span className={s.votes}>
           <i />
           <i />
         </span>
       </div>
       <div className={s.wbRef}>
-        <FileText size={13} /> Projekt-Kickoff
+        <FileText size={13} /> {c.page}
       </div>
       <div className={s.wbPin}>
         <ChatCircle size={13} weight="fill" /> 2
@@ -350,42 +356,38 @@ function Pointer({ color }: { color: string }) {
 }
 
 function JournalScene({ run }: { run: boolean }) {
+  const c = useCopy().journalScene;
   const round = useReplay(8000, run);
   return (
     <div className={s.jr} key={round} data-run={run}>
       <div className={`${s.jrPage} ${s.jrFri}`}>
-        <small>Freitag</small>
-        <strong>16. Oktober</strong>
-        <p>Guter Termin mit dem Kunden, Entwurf ist abgenommen.</p>
+        <small>{c.yesterday}</small>
+        <strong>{c.yesterdayDate}</strong>
+        <p>{c.note}</p>
         <ul>
           <li className={s.taskDone}>
             <span className={s.check} />
-            Entwurf präsentieren
+            {c.done}
           </li>
-          <li className={s.jrLeaving}>
-            <span className={s.check} />
-            Rechnung schreiben
-          </li>
-          <li className={s.jrLeaving}>
-            <span className={s.check} />
-            Mails beantworten
-          </li>
+          {c.open.map((task) => (
+            <li key={task} className={s.jrLeaving}>
+              <span className={s.check} />
+              {task}
+            </li>
+          ))}
         </ul>
       </div>
       <div className={`${s.jrPage} ${s.jrSat}`}>
-        <small>Heute</small>
-        <strong>Samstag, 17. Oktober</strong>
+        <small>{c.today}</small>
+        <strong>{c.todayDate}</strong>
         <ul>
-          <li className={s.jrArriving}>
-            <span className={s.check} />
-            Rechnung schreiben
-            <ArrowsClockwise size={12} className={s.jrCarried} />
-          </li>
-          <li className={s.jrArriving}>
-            <span className={s.check} />
-            Mails beantworten
-            <ArrowsClockwise size={12} className={s.jrCarried} />
-          </li>
+          {c.open.map((task) => (
+            <li key={task} className={s.jrArriving}>
+              <span className={s.check} />
+              {task}
+              <ArrowsClockwise size={12} className={s.jrCarried} />
+            </li>
+          ))}
         </ul>
         <p className={s.jrCaret}>
           <span />
@@ -396,12 +398,13 @@ function JournalScene({ run }: { run: boolean }) {
 }
 
 function CollabScene({ run }: { run: boolean }) {
+  const c = useCopy().collabScene;
   const round = useReplay(9000, run);
   return (
     <div className={s.collab} key={round} data-run={run}>
       <div className={s.collabDoc}>
         <div className={s.collabHead}>
-          <span className={s.docTitleSmall}>Pressemitteilung</span>
+          <span className={s.docTitleSmall}>{c.title}</span>
           <span className={s.faces}>
             <span className={s.avatar} style={{ background: "#3b3fd8" }}>
               M
@@ -415,10 +418,9 @@ function CollabScene({ run }: { run: boolean }) {
           </span>
         </div>
         <p>
-          Ab Montag gibt es die neue Website
+          {c.first}
           <span className={s.liveA}>
-            {" "}
-            in zwei Sprachen
+            {c.firstLive}
             <i className={s.caret} style={{ background: "#3b3fd8" }}>
               <b style={{ background: "#3b3fd8" }}>Mara</b>
             </i>
@@ -426,10 +428,10 @@ function CollabScene({ run }: { run: boolean }) {
           .
         </p>
         <p>
-          <mark className={s.commented}>Alle Preise</mark> stehen direkt auf
-          der Startseite
+          <mark className={s.commented}>{c.secondMarked}</mark>
+          {c.second}
           <span className={s.liveB}>
-            , ohne Formular
+            {c.secondLive}
             <i className={s.caret} style={{ background: "#f0663a" }}>
               <b style={{ background: "#f0663a" }}>Jonas</b>
             </i>
@@ -444,21 +446,21 @@ function CollabScene({ run }: { run: boolean }) {
         <div>
           <strong>Aylin</strong>
           <span>
-            <b className={s.mention}>@Jonas</b> auch die Jahrespreise?
+            <b className={s.mention}>@Jonas</b> {c.comment}
           </span>
         </div>
       </div>
       <div className={s.toast}>
         <Bell size={14} weight="fill" />
-        Aylin hat dich in „Pressemitteilung“ erwähnt
+        {c.toast}
       </div>
       <div className={s.share}>
         <LinkIcon size={14} />
-        <span>Gastlink</span>
+        <span>{c.guestLink}</span>
         <span className={s.shareModes}>
-          <i>Lesen</i>
-          <i>Kommentieren</i>
-          <i>Live bearbeiten</i>
+          {c.modes.map((m) => (
+            <i key={m}>{m}</i>
+          ))}
         </span>
       </div>
     </div>
@@ -468,6 +470,7 @@ function CollabScene({ run }: { run: boolean }) {
 /* ---------- Hero window ---------- */
 
 function HeroWindow() {
+  const c = useCopy();
   const [ref, inView] = useInView<HTMLDivElement>();
   const [active, setActive] = useCycle(TYPES.length, 3400, inView);
   return (
@@ -483,7 +486,7 @@ function HeroWindow() {
           <div className={s.windowBrand}>
             <BrandMark size={18} /> flowplan
           </div>
-          <span className={s.sideLabel}>Team</span>
+          <span className={s.sideLabel}>{c.window.team}</span>
           {TYPES.map((t, i) => (
             <button
               key={t.key}
@@ -493,7 +496,7 @@ function HeroWindow() {
               onClick={() => setActive(i)}
             >
               <t.icon size={14} />
-              {t.page}
+              {c.types[t.key].page}
             </button>
           ))}
           <span className={s.sideGhost} />
@@ -524,58 +527,8 @@ function HeroWindow() {
 
 /* ---------- Page types (sticky tour) ---------- */
 
-const STEPS: {
-  key: (typeof TYPES)[number]["key"];
-  title: string;
-  lead: string;
-  points: string[];
-}[] = [
-  {
-    key: "doc",
-    title: "Dokumente",
-    lead: "Schreiben in Blöcken: Text, Aufgaben, Tabellen, Formeln und Diagramme auf einer Seite.",
-    points: [
-      "Befehle mit „/“, Blöcke per Griff, Sprachnotizen",
-      "Aufgaben mit @Person und Fälligkeit",
-      "Vorschläge machen, annehmen oder ablehnen",
-      "Synchronisierte Blöcke und Versionen jeder Seite",
-    ],
-  },
-  {
-    key: "db",
-    title: "Datenbanken",
-    lead: "Dieselben Einträge als Tabelle, Board, Kalender oder Zeitleiste – umschalten, nichts kopieren.",
-    points: [
-      "Filter in Gruppen, Sortierung, drei Gruppierungsebenen",
-      "Formeln, Relationen und Rollups",
-      "Wiederkehrende Einträge und Erinnerungen",
-      "Jeder Eintrag ist auch eine eigene Seite",
-    ],
-  },
-  {
-    key: "board",
-    title: "Whiteboards",
-    lead: "Eine unendliche Fläche für Workshops: Notizen, Formen, Verbindungen und Verweise auf eure Seiten.",
-    points: [
-      "Mindmaps mit Tab, Hilfslinien und Anordnen",
-      "Laserpointer und „Folge mir“ beim Präsentieren",
-      "Abstimmungen – auch verdeckt – und Timer",
-      "Datenbank-Einträge als Karten, die aktuell bleiben",
-    ],
-  },
-  {
-    key: "journal",
-    title: "Journal",
-    lead: "Jeden Tag eine neue Seite. Was gestern offen blieb, steht heute oben.",
-    points: [
-      "Tagesvorlage und Tracker für Stimmung, Schlaf oder Sport",
-      "Offene Aufgaben wandern automatisch in den neuen Tag",
-      "Serie, Heatmap und „An diesem Tag“",
-      "Wochen- und Monatsrückblick, auf Wunsch mit PIN",
-    ],
-  },
-];
 function Tour() {
+  const c = useCopy().tour;
   const [active, setActive] = useState(0);
   const [stageRef, stageInView] = useInView<HTMLDivElement>();
   const steps = useRef<(HTMLElement | null)[]>([]);
@@ -594,17 +547,17 @@ function Tour() {
   return (
     <section className={s.tour} id="seitentypen">
       <div className={s.sectionHead} data-reveal>
-        <span className={s.eyebrow}>Vier Seitentypen, ein Seitenbaum</span>
-        <h2>Jede Idee bekommt die Form, die sie braucht.</h2>
+        <span className={s.eyebrow}>{c.eyebrow}</span>
+        <h2>{c.title}</h2>
       </div>
       <div className={s.tourGrid}>
         <div className={s.tourSteps}>
-          {STEPS.map((step, i) => {
-            const Icon = TYPES[i].icon;
+          {TYPES.map(({ key, icon: Icon }, i) => {
+            const step = c.steps[key];
             return (
               <article
-                key={step.key}
-                id={step.key === "journal" ? "journal" : undefined}
+                key={key}
+                id={key === "journal" ? "journal" : undefined}
                 ref={(el) => {
                   steps.current[i] = el;
                 }}
@@ -623,7 +576,7 @@ function Tour() {
                   ))}
                 </ul>
                 <div className={s.stepScene}>
-                  <SceneFor kind={step.key} run={i === active} />
+                  <SceneFor kind={key} run={i === active} />
                 </div>
               </article>
             );
@@ -631,13 +584,13 @@ function Tour() {
         </div>
         <div className={s.tourStage} ref={stageRef} aria-hidden="true">
           <div className={s.stageCard}>
-            {STEPS.map((step, i) => (
+            {TYPES.map(({ key }, i) => (
               <div
-                key={step.key}
+                key={key}
                 className={s.stageScene}
                 data-active={i === active}
               >
-                <SceneFor kind={step.key} run={stageInView && i === active} />
+                <SceneFor kind={key} run={stageInView && i === active} />
               </div>
             ))}
           </div>
@@ -661,122 +614,8 @@ function SceneFor({
 
 /* ---------- Views strip ---------- */
 
-const VIEWS = [
-  { icon: Table, label: "Tabelle" },
-  { icon: Kanban, label: "Board" },
-  { icon: CalendarBlank, label: "Kalender" },
-  { icon: ChartBarHorizontal, label: "Zeitleiste" },
-  { icon: SquaresFour, label: "Galerie" },
-  { icon: List, label: "Liste" },
-  { icon: Rows, label: "Feed" },
-  { icon: ChartBar, label: "Diagramm" },
-  { icon: ClipboardText, label: "Formular" },
-];
-
-/* ---------- Feature index ---------- */
-
-const INDEX: { title: string; items: string[] }[] = [
-  {
-    title: "Dokumente",
-    items: [
-      "Blockeditor mit „/“-Befehlen",
-      "Aufgabenlisten, Hinweise, Aufklapper",
-      "Spalten bis drei nebeneinander",
-      "Code mit Hervorhebung, Mermaid-Diagramme",
-      "Formeln mit KaTeX",
-      "Bilder, Dateien, Einbettungen, Linkkarten",
-      "Erwähnungen von Personen und Seiten",
-      "Aufgaben mit Person und Fälligkeit",
-      "Synchronisierte Blöcke",
-      "Vorschlagsmodus",
-      "Sprachnotizen mit Transkription",
-      "Fokusmodus mit Wortziel",
-      "Versionen und Wiederherstellung",
-      "Druck- und PDF-Layout",
-    ],
-  },
-  {
-    title: "Datenbanken",
-    items: [
-      "Neun Ansichten auf dieselben Daten",
-      "19 Feldtypen, darunter Formel, Relation, Rollup",
-      "Filtergruppen und Sortierung",
-      "Gruppen in drei Ebenen, Swimlanes",
-      "Eigene Status-Spalten direkt im Board",
-      "Berechnungen je Spalte",
-      "Wiederholungen und Erinnerungen",
-      "Datensatzseiten mit eigenem Layout",
-      "Rechte pro Datensatz",
-      "Formulare, auch für Gäste",
-      "CSV-Import und -Export",
-    ],
-  },
-  {
-    title: "Whiteboards",
-    items: [
-      "Notizen, Formen, Text, Freihand mit Stiftdruck",
-      "Mindmaps mit automatischer Anordnung",
-      "Hilfslinien, Raster, Ausrichten und Stapeln",
-      "Zettel nach Farbe, Person oder Stimmen sortieren",
-      "Stempel, Laserpointer, „Folge mir“",
-      "Abstimmungen, auch verdeckt, und Timer",
-      "Bildersuche und Symbole",
-      "Seiten und Datenbank-Einträge als Karten",
-      "Vorlagen für Workshops, Kommentar-Pins",
-    ],
-  },
-  {
-    title: "Journal",
-    items: [
-      "Automatisch eine Seite pro Tag",
-      "Tagesvorlage und Tracker",
-      "Offene Aufgaben wandern mit",
-      "Ort, Fotos und Termine des Tages",
-      "Serie, Heatmap, „An diesem Tag“",
-      "Wochen- und Monatsrückblick",
-      "Sperre mit PIN",
-    ],
-  },
-  {
-    title: "Zusammenarbeit",
-    items: [
-      "Gleichzeitig bearbeiten mit Live-Cursorn",
-      "Kommentare und Reaktionen",
-      "Seiten folgen, gelesen von …",
-      "Änderungen seit dem letzten Besuch",
-      "Posteingang und Push-Benachrichtigungen",
-      "Gastlinks: lesen, kommentieren, live bearbeiten",
-      "Öffentliche Seiten, auch zum Kopieren",
-      "Vorlagengalerie",
-    ],
-  },
-  {
-    title: "Ordnung",
-    items: [
-      "Arbeitsbereiche und Bereiche",
-      "Gruppen und Seitenrechte",
-      "Suche, auch in Dateien und Scans",
-      "Befehle und Suche mit ⌘K",
-      "Meine Aufgaben über alle Seiten",
-      "Graph der Verlinkungen",
-      "Web-Clipper und Lesezeichen",
-      "Favoriten, Papierkorb, Markdown-Export",
-    ],
-  },
-  {
-    title: "Sicherheit",
-    items: [
-      "Server in Deutschland",
-      "Verschlüsselte Verbindungen",
-      "Anmeldung per Single Sign-on",
-      "Rechte pro Bereich, Seite und Eintrag",
-      "Regelmäßige Sicherungen",
-      "Kein Tracking, keine KI-Auswertung",
-      "Offline-Modus, Web-App fürs iPhone",
-      "Desktop-Apps für macOS und Windows",
-    ],
-  },
-];
+const VIEW_ICONS = [Table, Kanban, CalendarBlank, ChartBarHorizontal, SquaresFour, List, Rows, ChartBar, ClipboardText];
+const PLATFORM_ICONS = [Desktop, SquaresFour, Bell, ArrowsClockwise];
 
 /* ---------- Page ---------- */
 
@@ -789,6 +628,7 @@ function Reveal({ children, className }: { children: ReactNode; className?: stri
 }
 
 export default function Landing({ loginHref, registerHref, instanceName, demoEnabled }: Props) {
+  const c = useCopy();
   const root = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
   const [section, setSection] = useState("");
@@ -838,36 +678,31 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
     };
   }, []);
   const [collabRef, collabInView] = useInView<HTMLDivElement>();
-  const nav = [
-    ["seitentypen", "Seitentypen"],
-    ["ansichten", "Ansichten"],
-    ["zusammenarbeit", "Zusammenarbeit"],
-    ["funktionen", "Alle Funktionen"],
-    ["sicherheit", "Sicherheit"],
-  ];
+  const nav = Object.entries(c.nav);
   return (
     <div className={s.root} ref={root}>
       <header className={s.header} data-scrolled={scrolled}>
-        <a href="#top" className={s.brand} aria-label="Flowplan, nach oben">
+        <a href="#top" className={s.brand} aria-label={c.header.home}>
           <BrandMark size={28} />
           <span>flowplan</span>
           {instanceName && <small>{instanceName}</small>}
         </a>
-        <nav className={s.nav} aria-label="Abschnitte">
+        <nav className={s.nav} aria-label={c.header.sections}>
           {nav.map(([id, label]) => (
             <a key={id} href={`#${id}`} data-active={section === id}>
               {label}
             </a>
           ))}
-          <a href="/docs">Doku</a>
+          <a href="/docs">{c.header.docs}</a>
         </nav>
         <div className={s.actions}>
-          {demoEnabled && <DemoButton className={s.ghost} label="Demo" />}
+          <LanguageSwitch className={s.lang} />
+          {demoEnabled && <DemoButton className={s.ghost} short />}
           <a className={s.ghost} href={loginHref}>
-            Anmelden
+            {c.header.login}
           </a>
           <a className={s.primary} href={registerHref}>
-            Registrieren
+            {c.header.register}
           </a>
         </div>
       </header>
@@ -881,33 +716,29 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
           </div>
           <div className={s.heroText}>
             <span className={`${s.eyebrow} ${s.rise}`} style={{ "--d": 0 } as React.CSSProperties}>
-              Dokumente · Datenbanken · Whiteboards · Journal
+              {c.hero.eyebrow}
             </span>
             <h1 className={s.rise} style={{ "--d": 1 } as React.CSSProperties}>
-              Alles, woran ihr arbeitet.
+              {c.hero.title}
               <br />
-              <em>Betrieben in Deutschland.</em>
+              <em>{c.hero.titleEm}</em>
             </h1>
             <p className={s.rise} style={{ "--d": 2 } as React.CSSProperties}>
-              Flowplan verbindet Dokumente, Datenbanken, Whiteboards und ein
-              tägliches Journal in einem Seitenbaum. Ihr bearbeitet alles
-              gleichzeitig – auf Servern in Deutschland, verschlüsselt und
-              ohne Tracking.
+              {c.hero.text}
             </p>
             <div className={`${s.heroCtas} ${s.rise}`} style={{ "--d": 3 } as React.CSSProperties}>
               <a className={s.primaryLarge} href={registerHref}>
-                Registrieren <ArrowRight size={18} />
+                {c.header.register} <ArrowRight size={18} />
               </a>
               <a className={s.secondaryLarge} href={loginHref}>
-                Anmelden
+                {c.header.login}
               </a>
               {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
             <ul className={`${s.facts} ${s.rise}`} style={{ "--d": 4 } as React.CSSProperties}>
-              <li>Server in Deutschland</li>
-              <li>Anmeldung per SSO</li>
-              <li>Keine KI</li>
-              <li>Kein Tracking</li>
+              {c.hero.facts.map((fact) => (
+                <li key={fact}>{fact}</li>
+              ))}
             </ul>
           </div>
           <div className={s.heroVisual}>
@@ -919,40 +750,35 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
 
         <section className={s.views} id="ansichten">
           <Reveal className={s.sectionHead}>
-            <span className={s.eyebrow}>Datenbanken</span>
-            <h2>Neun Ansichten. Dieselben Daten.</h2>
-            <p>
-              Jede Ansicht hat eigene Filter, Sortierung und Gruppen. Eine
-              Änderung im Board steht sofort auch im Kalender.
-            </p>
+            <span className={s.eyebrow}>{c.views.eyebrow}</span>
+            <h2>{c.views.title}</h2>
+            <p>{c.views.text}</p>
           </Reveal>
           <ul className={s.viewGrid}>
-            {VIEWS.map((v, i) => (
-              <li key={v.label} data-reveal style={{ "--i": i } as React.CSSProperties}>
-                <span>
-                  <v.icon size={26} />
-                </span>
-                {v.label}
-              </li>
-            ))}
+            {c.views.labels.map((label, i) => {
+              const Icon = VIEW_ICONS[i];
+              return (
+                <li key={label} data-reveal style={{ "--i": i } as React.CSSProperties}>
+                  <span>
+                    <Icon size={26} />
+                  </span>
+                  {label}
+                </li>
+              );
+            })}
           </ul>
         </section>
 
         <section className={s.collabSection} id="zusammenarbeit">
           <div className={s.collabGrid}>
             <Reveal className={s.collabText}>
-              <span className={s.eyebrow}>Zusammenarbeit</span>
-              <h2>Gemeinsam an derselben Zeile.</h2>
-              <p>
-                Mehrere Personen schreiben gleichzeitig, jede mit eigenem
-                Cursor. Kommentare hängen am Text, Erwähnungen landen im
-                Posteingang und als Push auf dem Handy.
-              </p>
+              <span className={s.eyebrow}>{c.collab.eyebrow}</span>
+              <h2>{c.collab.title}</h2>
+              <p>{c.collab.text}</p>
               <ul className={s.checks}>
-                <li>Live-Bearbeitung in Dokumenten, Datenbanken und Whiteboards</li>
-                <li>Kommentare, Reaktionen und Erwähnungen</li>
-                <li>Gastlinks zum Lesen, Kommentieren oder Mitbearbeiten</li>
-                <li>Öffentliche Seiten und Formulare ohne Konto</li>
+                {c.collab.checks.map((check) => (
+                  <li key={check}>{check}</li>
+                ))}
               </ul>
             </Reveal>
             <div className={s.collabStage} ref={collabRef} data-reveal>
@@ -963,11 +789,11 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
 
         <section className={s.index} id="funktionen">
           <Reveal className={s.sectionHead}>
-            <span className={s.eyebrow}>Alle Funktionen</span>
-            <h2>Was drin ist.</h2>
+            <span className={s.eyebrow}>{c.index.eyebrow}</span>
+            <h2>{c.index.title}</h2>
           </Reveal>
           <div className={s.indexGrid}>
-            {INDEX.map((group, i) => (
+            {c.index.groups.map((group, i) => (
               <div
                 key={group.title}
                 className={s.indexGroup}
@@ -984,39 +810,84 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
             ))}
           </div>
           <a className={s.docsLink} href="/docs">
-            Jede Funktion Schritt für Schritt in der Dokumentation <ArrowRight size={16} />
+            {c.index.docs} <ArrowRight size={16} />
           </a>
+        </section>
+
+        <section className={s.selfHost} id="selbst-hosten">
+          <Reveal className={s.sectionHead}>
+            <span className={s.eyebrow}>{c.selfHost.eyebrow}</span>
+            <h2>
+              {c.selfHost.title}
+              <br />
+              <em>{c.selfHost.titleEm}</em>
+            </h2>
+            <p>{c.selfHost.text}</p>
+          </Reveal>
+          <div className={s.hostGrid}>
+            <Reveal className={s.hostCard}>
+              <span className={s.hostIcon}>
+                <Cloud size={22} />
+              </span>
+              <h3>{c.selfHost.hosted.title}</h3>
+              <span className={s.hostNote}>{c.selfHost.hosted.note}</span>
+              <ul className={s.checks}>
+                {c.selfHost.hosted.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+              <a className={s.primaryLarge} href={registerHref}>
+                {c.header.register} <ArrowRight size={18} />
+              </a>
+            </Reveal>
+            <Reveal className={s.hostCard}>
+              <span className={s.hostIcon}>
+                <HardDrives size={22} />
+              </span>
+              <h3>{c.selfHost.self.title}</h3>
+              <span className={s.hostNote}>{c.selfHost.self.note}</span>
+              <ul className={s.checks}>
+                {c.selfHost.self.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+              <pre className={s.hostCode}>
+                <code>
+                  <span>curl -O …/compose.yaml</span>
+                  <span>docker compose up -d</span>
+                </code>
+              </pre>
+              <div className={s.hostLinks}>
+                <a className={s.secondaryLarge} href="/docs/installation">
+                  {c.selfHost.guide}
+                </a>
+                <a className={s.secondaryLarge} href={GITHUB_URL} rel="noopener">
+                  <GithubLogo size={18} /> {c.selfHost.github}
+                </a>
+              </div>
+            </Reveal>
+          </div>
         </section>
 
         <section className={s.ops} id="sicherheit">
           <div className={s.opsInner}>
             <Reveal className={s.opsText}>
-              <span className={s.eyebrow}>Sicherheit</span>
+              <span className={s.eyebrow}>{c.security.eyebrow}</span>
               <h2>
-                In Deutschland.
+                {c.security.title}
                 <br />
-                Eure Daten.
+                {c.security.titleEm}
               </h2>
-              <p>
-                Flowplan läuft auf Servern in Deutschland. Verbindungen sind
-                verschlüsselt, angemeldet wird per Single Sign-on, und jeder
-                Bereich, jede Seite und jeder Eintrag hat eigene Rechte. Eure
-                Inhalte werden regelmäßig gesichert – und von niemandem
-                ausgewertet.
-              </p>
+              <p>{c.security.text}</p>
               <div className={s.never}>
-                <span>
-                  <LockSimple size={16} /> Keine KI-Auswertung
-                </span>
-                <span>
-                  <LockSimple size={16} /> Kein Tracking
-                </span>
-                <span>
-                  <LockSimple size={16} /> Keine Weitergabe an Dritte
-                </span>
+                {c.security.never.map((item) => (
+                  <span key={item}>
+                    <LockSimple size={16} /> {item}
+                  </span>
+                ))}
               </div>
               <a className={s.docsLink} href="/docs">
-                Alles zur Nutzung in der Dokumentation <ArrowRight size={16} />
+                {c.security.docs} <ArrowRight size={16} />
               </a>
             </Reveal>
             <Reveal className={s.terminal}>
@@ -1024,58 +895,44 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
                 <i />
                 <i />
                 <i />
-                <span>Sicherheit</span>
+                <span>{c.security.terminal}</span>
               </div>
               <pre>
                 <code>
-                  <span className={s.tl}>
-                    <b>Standort</b> Rechenzentrum in Deutschland
-                  </span>
-                  <span className={s.tl}>
-                    <b>Verbindung</b> HTTPS, verschlüsselt
-                  </span>
-                  <span className={s.tl}>
-                    <b>Anmeldung</b> Single Sign-on
-                  </span>
-                  <span className={s.tl}>
-                    <b>Rechte</b> pro Bereich, Seite und Eintrag
-                  </span>
-                  <span className={s.tl}>
-                    <b>Sicherung</b> regelmäßig, wiederherstellbar
-                  </span>
-                  <span className={`${s.tl} ${s.tlOk}`}>
-                    ✓ Kein Tracking, keine Werbung
-                  </span>
+                  {c.security.rows.map(([key, value]) => (
+                    <span key={key} className={s.tl}>
+                      <b>{key}</b> {value}
+                    </span>
+                  ))}
+                  <span className={`${s.tl} ${s.tlOk}`}>{c.security.ok}</span>
                 </code>
               </pre>
             </Reveal>
           </div>
           <ul className={s.platforms}>
-            {[
-              { icon: Desktop, label: "macOS und Windows", note: "Desktop-App" },
-              { icon: SquaresFour, label: "Browser", note: "Desktop und Mobil" },
-              { icon: Bell, label: "iPhone", note: "Web-App mit Push" },
-              { icon: ArrowsClockwise, label: "Offline", note: "pro Gerät zuschaltbar" },
-            ].map((p, i) => (
-              <li key={p.label} data-reveal style={{ "--i": i } as React.CSSProperties}>
-                <p.icon size={22} />
-                <strong>{p.label}</strong>
-                <span>{p.note}</span>
-              </li>
-            ))}
+            {c.security.platforms.map((p, i) => {
+              const Icon = PLATFORM_ICONS[i];
+              return (
+                <li key={p.label} data-reveal style={{ "--i": i } as React.CSSProperties}>
+                  <Icon size={22} />
+                  <strong>{p.label}</strong>
+                  <span>{p.note}</span>
+                </li>
+              );
+            })}
           </ul>
         </section>
 
         <section className={s.final}>
           <Reveal>
             <BrandMark size={56} />
-            <h2>Fang mit einer leeren Seite an.</h2>
+            <h2>{c.final.title}</h2>
             <div className={s.heroCtas}>
               <a className={s.primaryLarge} href={registerHref}>
-                Registrieren <ArrowRight size={18} />
+                {c.header.register} <ArrowRight size={18} />
               </a>
               <a className={s.secondaryLarge} href={loginHref}>
-                Anmelden
+                {c.header.login}
               </a>
               {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
@@ -1088,10 +945,14 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
           <BrandMark size={20} />
           <span>flowplan</span>
         </span>
-        <span>Dokumente, Datenbanken, Whiteboards und Journal. Betrieben in Deutschland.</span>
-        <nav className={s.footerNav} aria-label="Weiteres">
-          <a href="/docs">Dokumentation</a>
-          <a href="/templates">Vorlagen</a>
+        <span>{c.footer.tagline}</span>
+        <nav className={s.footerNav} aria-label={c.footer.more}>
+          <a href="/docs">{c.footer.docs}</a>
+          <a href="/templates">{c.footer.templates}</a>
+          <a href={GITHUB_URL} rel="noopener">
+            {c.footer.github}
+          </a>
+          <LanguageSwitch className={s.lang} />
         </nav>
       </footer>
     </div>

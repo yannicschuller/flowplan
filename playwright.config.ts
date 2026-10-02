@@ -10,6 +10,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.TEST_BASE_URL || "http://127.0.0.1:3000",
     headless: true,
+    // The tests read German texts; English is tested explicitly.
+    locale: "de-DE",
     screenshot: "only-on-failure",
   },
   projects: [
