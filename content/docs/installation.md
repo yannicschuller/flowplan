@@ -6,7 +6,7 @@ Flowplan läuft als ein einziger Container mit SQLite und einem Datenverzeichnis
 
 - Ein Server mit Docker und einem dauerhaften Volume. Die Texterkennung gescannter PDFs braucht beim Hochladen kurzzeitig spürbar CPU.
 - Eine Domain mit HTTPS über einen Reverse Proxy (Traefik, Caddy, nginx, Coolify, Pangolin …).
-- Ein OpenID-Connect-Anbieter für die Anmeldung, siehe [Anmeldung mit OIDC](/docs/anmeldung-oidc).
+- Optional ein OpenID-Connect-Anbieter für Single Sign-on. Ohne ihn melden sich Personen mit E-Mail und Passwort oder Passkey an, siehe [Anmeldung](/docs/anmeldung-oidc).
 - Optional: ein S3-kompatibler Speicher für Dateien und die laufende Datenbanksicherung, siehe [Speicher, S3 und Sicherung](/docs/speicher-und-sicherung).
 
 ## Mit Docker Compose
@@ -26,15 +26,13 @@ curl -O https://raw.githubusercontent.com/yannicschuller/flowplan/main/compose.y
 curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env.example
 ```
 
-In `.env` mindestens diese Werte setzen:
+In `.env` mindestens die öffentliche Adresse setzen:
 
 ```dotenv
 APP_URL=https://flowplan.example.com
-OIDC_ISSUER=https://id.example.com/realms/company
-OIDC_CLIENT_ID=flowplan
-OIDC_CLIENT_SECRET=geheim
-OIDC_ADMIN_GROUP=flowplan-admins
 ```
+
+Für Single Sign-on zusätzlich `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` und `OIDC_ADMIN_GROUP` (siehe [Anmeldung](/docs/anmeldung-oidc)); für E-Mails (Einladungen, Passwort vergessen) die `SMTP_*`-Werte aus der [Konfiguration](/docs/konfiguration#e-mail-smtp).
 
 ```bash
 docker compose up -d
@@ -71,8 +69,8 @@ Das Image enthält Node, Litestream für die S3-Sicherung und `curl` für den He
 ## Erster Start
 
 1. `https://flowplan.example.com/api/health` aufrufen – die Antwort ist `200` mit `"status":"ok"`.
-2. Auf der Startseite **Anmelden** wählen und beim Login-Anbieter anmelden.
-3. Ist dein Konto Mitglied der Gruppe aus `OIDC_ADMIN_GROUP`, erscheint **Administration** in der Seitenleiste. Dort Instanzname, Upload-Grenze und die [weiteren Einstellungen](/docs/administration) setzen.
+2. Die Adresse im Browser öffnen: Eine neue Instanz bietet **Konto erstellen** an. Dieses erste Konto verwaltet die Instanz. (Mit Single Sign-on: **Mit SSO anmelden**; Admin ist, wer in der Gruppe aus `OIDC_ADMIN_GROUP` ist.)
+3. In der Seitenleiste unter **Administration** Instanzname, Upload-Grenze, Registrierung und die [weiteren Einstellungen](/docs/administration) setzen.
 
 > [!WARNING]
 > Flowplan ist für **genau eine laufende Instanz** gebaut. Mehrere Replikate würden dieselbe SQLite-Datei beschreiben. Nicht horizontal skalieren; bei Updates den alten Container vor dem neuen stoppen.
@@ -98,7 +96,7 @@ npm run build
 FLOWPLAN_DATA_DIR=/var/lib/flowplan npm start
 ```
 
-Für die lokale Entwicklung reicht `npm run dev`. Ohne OIDC-Konfiguration bietet nur der Entwicklungsmodus **Lokalen Arbeitsbereich öffnen** an; im Produktionsmodus gibt es diesen Zugang nicht.
+Für die lokale Entwicklung reicht `npm run dev`. Der Entwicklungsmodus bietet zusätzlich **Lokalen Arbeitsbereich öffnen** an, ein gemeinsames Beispielkonto; im Produktionsmodus gibt es diesen Zugang nicht.
 
 ## Weiter
 

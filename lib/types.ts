@@ -197,6 +197,7 @@ export type Comment = {
 export type Reaction = { emoji: string; count: number; mine: boolean; names: string[] };
 export type Bootstrap = {
   user: Identity;
+  localAccount?: boolean;
   workspaces: Workspace[];
   workspace: Workspace;
   spaces: Space[];

@@ -3,10 +3,9 @@ import { useEffect, useState } from "react";
 import { parsePageLocation } from "@/lib/page-location";
 import Login from "../login";
 import Landing from "./landing";
+import type { LoginOptions } from "@/lib/local-auth";
 
-type Props = {
-  demo: boolean;
-  configured: boolean;
+type Props = LoginOptions & {
   error?: string;
   instanceName: string;
   demoEnabled?: boolean;
@@ -27,8 +26,8 @@ export default function PublicHome(props: Props) {
   if (signIn) return <Login {...props} />;
   return (
     <Landing
-      loginHref={props.configured ? "/api/auth/login" : "/login"}
-      registerHref={props.configured ? "/api/auth/login?register=1" : "/login"}
+      loginHref={props.localLogin || !props.configured ? "/login" : "/api/auth/login"}
+      registerHref={props.localLogin ? "/register" : props.configured ? "/api/auth/login?register=1" : "/login"}
       instanceName={props.instanceName}
       demoEnabled={props.demoEnabled}
     />

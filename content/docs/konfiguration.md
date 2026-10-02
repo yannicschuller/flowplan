@@ -6,12 +6,19 @@ Alle Umgebungsvariablen auf einen Blick. Viele Werte lassen sich zusätzlich in 
 
 | Variable | Beispiel | Bedeutung |
 | --- | --- | --- |
-| `APP_URL` | `https://flowplan.example.com` | Öffentliche Adresse genau so, wie sie im Browser steht – Schema, Host, ggf. Port, ohne Schrägstrich am Ende. Grundlage für Login-Weiterleitung, Cookies, Links in Push-Nachrichten und die Origin-Prüfung. |
-| `OIDC_ISSUER` | `https://id.example.com/realms/company` | Login-Anbieter. |
-| `OIDC_CLIENT_ID` | `flowplan` | Client-ID. |
-| `OIDC_CLIENT_SECRET` | *geheim* | Client-Secret. Nie ins Image oder ins Git. |
+| `APP_URL` | `https://flowplan.example.com` | Öffentliche Adresse genau so, wie sie im Browser steht – Schema, Host, ggf. Port, ohne Schrägstrich am Ende. Grundlage für Login-Weiterleitung, Cookies, Passkeys, Links in E-Mails und Push-Nachrichten und die Origin-Prüfung. |
 
-Die übrigen Anmelde-Variablen stehen unter [Anmeldung mit OIDC](/docs/anmeldung-oidc).
+## Anmeldung
+
+| Variable | Standard | Bedeutung |
+| --- | --- | --- |
+| `FLOWPLAN_LOCAL_LOGIN` | an | `false` schaltet E-Mail, Passwort und Passkeys ab; dann bleibt nur Single Sign-on. |
+| `OIDC_ISSUER` | *leer* | Login-Anbieter für Single Sign-on. Ohne ihn gibt es nur E-Mail, Passwort und Passkeys. |
+| `OIDC_CLIENT_ID` | – | Client-ID. |
+| `OIDC_CLIENT_SECRET` | – | Client-Secret. Nie ins Image oder ins Git. |
+| `SESSION_HOURS` | `8` | Dauer einer Sitzung in Stunden (1–24). |
+
+Die übrigen OIDC-Variablen und alles zu Passwörtern und Passkeys stehen unter [Anmeldung](/docs/anmeldung-oidc).
 
 ## Betrieb
 

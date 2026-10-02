@@ -31,6 +31,7 @@ import {
 } from "./journal-extras";
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
+import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import {
@@ -203,6 +204,8 @@ export function bootstrap(user: Identity, wid?: string) {
   const visibleSpaceIds = new Set(pages.map((p) => p.space_id));
   return {
     user,
+    // Signs in with e-mail and password (and passkeys) rather than SSO.
+    localAccount: isLocalAccount(user.id),
     workspaces,
     workspace,
     pages,
@@ -2242,6 +2245,19 @@ export function command(
         setWorkspaceQuota(uuid.parse(b.workspaceId), quota);
         break;
       }
+      // Accounts with e-mail and password: admin right, reset link.
+      case "admin.localAdmin": {
+        requireAdmin(user);
+        const uid = uuid.parse(b.userId);
+        if (uid === user.id && !b.admin)
+          throw new HttpError(400, "Das eigene Admin-Recht kann nur eine andere Person entziehen.");
+        setLocalAdmin(uid, b.admin === true);
+        break;
+      }
+      case "admin.resetLink":
+        requireAdmin(user);
+        result = { url: adminResetLink(uuid.parse(b.userId)) };
+        break;
       case "admin.revoke":
         requireAdmin(user);
         run("DELETE FROM sessions WHERE user_id=?", uuid.parse(b.userId));

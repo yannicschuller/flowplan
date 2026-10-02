@@ -12927,3 +12927,153 @@ h3 .block-reactions {
   background: var(--hover);
   color: var(--text);
 }
+/* Sign-in form (components/login.tsx). */
+.login-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  text-align: left;
+}
+.login-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--secondary);
+}
+.login-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+}
+.login-form input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.login-form label small {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.login-form .button {
+  margin-top: 4px;
+}
+.login-card .login-link {
+  justify-self: center;
+  font-size: 13px;
+}
+.login-card > .button + .button,
+.login-card > .button + a.button {
+  margin-top: 10px;
+}
+.login-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.login-or::before,
+.login-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.login-card .login-switch {
+  margin: 18px 0 0;
+  font-size: 13px;
+}
+.login-switch .text-button {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+}
+.login-notice {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--blue-light);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+/* Settings → profile: name, password, passkeys (components/account-security.tsx). */
+.account-security {
+  display: grid;
+  gap: 12px;
+  max-width: 460px;
+  margin-top: 14px;
+}
+.account-security h3 {
+  margin: 14px 0 0;
+  font-size: 15px;
+}
+.account-form {
+  display: grid;
+  gap: 10px;
+}
+.account-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.account-form .button {
+  justify-self: start;
+}
+.account-status {
+  color: var(--blue);
+  font-size: 13px;
+}
+.passkey-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.passkey-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.passkey-list li span {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.passkey-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.member-row .reset-link {
+  flex-basis: 100%;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.member-row .reset-link input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.member-row:has(.reset-link) {
+  flex-wrap: wrap;
+}
+/* The language switch stays in the footer on phones too. */
+.login footer span.language-switch {
+  display: inline-flex;
+}

@@ -22,6 +22,46 @@ import { one, run } from "@/lib/db";
 import { ensureWorkspace } from "@/lib/seed";
 export const runtime = "nodejs";
 import { oidcConfig as config } from "@/lib/oidc";
+import {
+  changePassword,
+  updateLocalProfile,
+  deletePasskey,
+  finishPasskeyRegistration,
+  listPasskeys,
+  passkeyLogin,
+  passkeyLoginOptions,
+  passkeyRegistrationOptions,
+  passwordLogin,
+  register,
+  requestPasswordReset,
+  resetPassword,
+  verifyEmail,
+} from "@/lib/local-auth";
+import { requestLocale } from "@/lib/i18n-server";
+
+// The pending passkey ceremony of this browser (5 minutes).
+const WEBAUTHN_COOKIE = "flowplan_webauthn";
+async function rememberChallenge(token: string) {
+  (await cookies()).set(WEBAUTHN_COOKIE, token, {
+    httpOnly: true,
+    secure: appUrl().startsWith("https:"),
+    sameSite: "strict",
+    path: "/api/auth",
+    maxAge: 300,
+  });
+}
+async function takeChallengeCookie() {
+  const jar = await cookies();
+  const token = jar.get(WEBAUTHN_COOKIE)?.value;
+  jar.delete(WEBAUTHN_COOKIE);
+  return token;
+}
+async function signIn(userId: string, groups: string[]) {
+  const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
+  if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
+  ensureWorkspace(userId);
+  await issueSession(userId, groups);
+}
 import { clientAddress } from "@/lib/client-address";
 export async function GET(
   req: Request,
@@ -71,6 +111,14 @@ export async function GET(
           nonce,
           ...(register ? { prompt: "create" } : {}),
         }),
+      );
+    }
+    // Link from the confirmation e-mail.
+    if (action === "verify") {
+      const token = new URL(req.url).searchParams.get("token") || "";
+      const ok = verifyEmail(token);
+      return NextResponse.redirect(
+        new URL(ok ? "/?verified=1" : `/?authError=${encodeURIComponent((await requestLocale()) === "de" ? "Der Bestätigungslink ist abgelaufen." : "The confirmation link has expired.")}`, appUrl()),
       );
     }
     if (action === "callback") {
@@ -177,6 +225,56 @@ export async function POST(
       if (user?.demo) endDemo(user.id);
       (await cookies()).delete(cookieName);
       return NextResponse.json({ ok: true });
+    }
+    const locale = await requestLocale();
+    const body = () => req.json().catch(() => ({}));
+    // ---- E-mail and password ----
+    if (action === "register") {
+      const { user, groups } = await register(await body(), locale);
+      await signIn(user.id, groups);
+      return NextResponse.json({ ok: true });
+    }
+    if (action === "password") {
+      const { userId, groups } = await passwordLogin(await body(), clientAddress(req.headers), locale);
+      await signIn(userId, groups);
+      return NextResponse.json({ ok: true });
+    }
+    if (action === "reset-request") {
+      requestPasswordReset(await body(), locale);
+      return NextResponse.json({ ok: true });
+    }
+    if (action === "reset") {
+      await resetPassword(await body(), locale);
+      return NextResponse.json({ ok: true });
+    }
+    // ---- Passkeys: sign in ----
+    if (action === "passkey-options") {
+      const { options, token } = await passkeyLoginOptions();
+      await rememberChallenge(token);
+      return NextResponse.json(options);
+    }
+    if (action === "passkey") {
+      const { userId, groups } = await passkeyLogin(await takeChallengeCookie(), await body(), clientAddress(req.headers), locale);
+      await signIn(userId, groups);
+      return NextResponse.json({ ok: true });
+    }
+    // ---- The signed-in person's password and passkeys ----
+    if (["profile", "password-change", "passkey-register-options", "passkey-register", "passkey-delete", "passkeys"].includes(action)) {
+      const user = await currentUser();
+      if (!user || user.demo) throw new HttpError(401, locale === "de" ? "Bitte melde dich an." : "Please sign in.");
+      if (action === "profile") updateLocalProfile(user.id, await body(), locale);
+      else if (action === "password-change") await changePassword(user.id, await body(), locale);
+      else if (action === "passkey-register-options") {
+        const { options, token } = await passkeyRegistrationOptions(user, locale);
+        await rememberChallenge(token);
+        return NextResponse.json(options);
+      } else if (action === "passkey-register")
+        await finishPasskeyRegistration(user, await takeChallengeCookie(), await body(), locale);
+      else if (action === "passkey-delete") {
+        const { id } = (await body()) as { id?: unknown };
+        if (typeof id === "string") deletePasskey(user.id, id);
+      }
+      return NextResponse.json({ ok: true, passkeys: listPasskeys(user.id) });
     }
     if (action === "logout") {
       const demoUser = await currentUser();

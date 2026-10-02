@@ -7,18 +7,16 @@ import { instanceSettings } from "@/lib/instance-settings";
 import { serverT } from "@/lib/i18n-server";
 export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: (await serverT())("Anmelden · Flowplan", "Sign in · Flowplan") };
+  return { title: (await serverT())("Konto erstellen · Flowplan", "Create account · Flowplan") };
 }
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ authError?: string }>;
-}) {
+// Creating an account; where sign-ups are closed the page offers signing in.
+export default async function RegisterPage() {
   if (await currentUser()) redirect("/");
+  const options = loginOptions();
   return (
     <Login
-      {...loginOptions()}
-      error={(await searchParams).authError}
+      {...options}
+      mode={options.signupOpen ? "register" : "signin"}
       instanceName={instanceSettings().name}
     />
   );

@@ -55,6 +55,8 @@ type AdminData = {
   }[];
   settings: InstanceSettings;
   publicSite?: boolean;
+  localLogin?: boolean;
+  localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number }>;
   mail: {
     configured: boolean;
     host: string | null;
@@ -159,12 +161,15 @@ export default function Admin({
   }, []);
   async function act(b: Record<string, unknown>) {
     try {
-      await mutate(b);
+      const result = await mutate(b);
       await load();
+      return result;
     } catch (e) {
       onError((e as Error).message);
     }
   }
+  // A reset link for an account with e-mail and password, to hand over.
+  const [resetLink, setResetLink] = useState<{ userId: string; url: string } | null>(null);
   if (!data)
     return <div className="loading-content">Administration wird geladen …</div>;
   return (
@@ -277,6 +282,33 @@ export default function Admin({
                           Deaktiviert
                         </span>
                       )}
+                      {data.localAccounts?.[u.id] && (
+                        <span className="status-chip muted-chip" title="Meldet sich mit E-Mail und Passwort an">
+                          {data.localAccounts[u.id].admin ? "Admin · E-Mail" : "E-Mail"}
+                          {data.localAccounts[u.id].passkeys ? ` · ${data.localAccounts[u.id].passkeys} Passkey` : ""}
+                        </span>
+                      )}
+                      {data.localAccounts?.[u.id] && (
+                        <>
+                          <button
+                            className="button compact"
+                            onClick={() =>
+                              act({ action: "admin.localAdmin", userId: u.id, admin: !data.localAccounts![u.id].admin })
+                            }
+                          >
+                            {data.localAccounts[u.id].admin ? "Admin entziehen" : "Zum Admin machen"}
+                          </button>
+                          <button
+                            className="button compact"
+                            onClick={async () => {
+                              const result = (await act({ action: "admin.resetLink", userId: u.id })) as { url?: string } | undefined;
+                              if (result?.url) setResetLink({ userId: u.id, url: result.url });
+                            }}
+                          >
+                            Link zum Zurücksetzen
+                          </button>
+                        </>
+                      )}
                       <button
                         className="button compact"
                         onClick={() =>
@@ -297,6 +329,12 @@ export default function Admin({
                       >
                         {u.disabled ? "Aktivieren" : "Deaktivieren"}
                       </button>
+                      {resetLink?.userId === u.id && (
+                        <label className="reset-link">
+                          Zwei Stunden gültig – an {u.name} weitergeben:
+                          <input readOnly value={resetLink.url} onFocus={(e) => e.currentTarget.select()} />
+                        </label>
+                      )}
                     </div>
                   ))}
               </div>
@@ -387,9 +425,10 @@ export default function Admin({
               <InstanceSettingsForm
                 initial={data.settings}
                 publicSite={!!data.publicSite}
-                onSave={(settings) =>
-                  act({ action: "admin.settings", settings })
-                }
+                localLogin={!!data.localLogin}
+                onSave={async (settings) => {
+                  await act({ action: "admin.settings", settings });
+                }}
               />
               <MailAndBackup
                 mail={data.mail}
@@ -519,10 +558,12 @@ export default function Admin({
 function InstanceSettingsForm({
   initial,
   publicSite,
+  localLogin,
   onSave,
 }: {
   initial: InstanceSettings;
   publicSite: boolean;
+  localLogin: boolean;
   onSave: (settings: InstanceSettings) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(initial),
@@ -617,6 +658,22 @@ function InstanceSettingsForm({
         />
         Alle Personen dürfen Arbeitsbereiche anlegen
       </label>
+      {localLogin && (
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={!!draft.allowSignup}
+            onChange={(e) => setDraft({ ...draft, allowSignup: e.target.checked })}
+          />
+          <span>
+            Registrierung mit E-Mail und Passwort erlauben
+            <small className="muted">
+              Ohne diese Einstellung legen nur eingeladene Adressen ein Konto
+              an. Das erste Konto einer Instanz verwaltet sie.
+            </small>
+          </span>
+        </label>
+      )}
       {publicSite && (
       <label className="checkbox-label">
         <input

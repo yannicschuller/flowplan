@@ -6,6 +6,7 @@ import PublicHome from "@/components/landing/public-home";
 import { instanceSettings } from "@/lib/instance-settings";
 import { publicSite } from "@/lib/site";
 import Login from "@/components/login";
+import { loginOptions } from "@/lib/local-auth";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -17,8 +18,7 @@ export default async function Home({
   if (!user && !publicSite())
     return (
       <Login
-        demo={process.env.NODE_ENV !== "production"}
-        configured={!!process.env.OIDC_ISSUER}
+        {...loginOptions()}
         error={(await searchParams).authError}
         instanceName={instanceSettings().name}
       />
@@ -26,8 +26,7 @@ export default async function Home({
   if (!user)
     return (
       <PublicHome
-        demo={process.env.NODE_ENV !== "production"}
-        configured={!!process.env.OIDC_ISSUER}
+        {...loginOptions()}
         error={(await searchParams).authError}
         instanceName={instanceSettings().name}
         demoEnabled={instanceSettings().publicDemo}

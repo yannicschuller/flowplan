@@ -10,6 +10,9 @@ export const instanceSettingsSchema = z.object({
   retentionDays: z.number().int().min(0).max(36500).nullable(),
   maxUploadMb: z.number().int().min(1).max(1024),
   allowWorkspaceCreation: z.boolean(),
+  // Anyone may create an account with e-mail and password (the first
+  // account of an instance always may; invited addresses always may).
+  allowSignup: z.boolean().default(false),
   // "Demo ausprobieren" on the start page: throwaway accounts for visitors.
   publicDemo: z.boolean().default(false),
   // Daily database copy (S3 bucket or backups/ in the data folder).
@@ -26,6 +29,7 @@ const defaults: InstanceSettings = {
   retentionDays: null,
   maxUploadMb: 10,
   allowWorkspaceCreation: true,
+  allowSignup: false,
   publicDemo: false,
   backupSchedule: true,
   backupKeep: 7,

@@ -4,9 +4,9 @@ Vom ersten Anmelden bis zur ersten eigenen Seite: was du in den ersten zehn Minu
 
 ## Anmelden oder registrieren
 
-Flowplan meldet dich über den Login deiner Organisation an (OpenID Connect, etwa Keycloak, Authentik, Zitadel oder Entra ID). Auf der Startseite führt **Anmelden** direkt dorthin. **Registrieren** öffnet, sofern der Anbieter das unterstützt, gleich dessen Registrierungsseite; sonst entsteht dein Konto beim ersten Anmelden.
+Du meldest dich mit E-Mail und Passwort an, mit einem Passkey (Fingerabdruck, Gesicht oder Geräte-PIN) oder – wenn deine Organisation das eingerichtet hat – über **Mit SSO anmelden** beim Login deiner Organisation (OpenID Connect, etwa Keycloak, Authentik, Zitadel oder Entra ID). Ein Konto legst du mit **Konto erstellen** an, sofern die Instanz die Registrierung erlaubt oder du eingeladen wurdest. Passkeys richtest du danach unter **Einstellungen → Allgemein → Dein Profil** ein. Alles Weitere unter [Anmeldung](/docs/anmeldung-oidc).
 
-Beim ersten Anmelden legt Flowplan einen privaten Arbeitsbereich mit Beispielseiten an. Name, E-Mail-Adresse und – falls vorhanden – das Profilbild kommen vom Login-Anbieter.
+Beim ersten Anmelden legt Flowplan einen privaten Arbeitsbereich mit Beispielseiten an. Bei Single Sign-on kommen Name, E-Mail-Adresse und – falls vorhanden – das Profilbild vom Login-Anbieter.
 
 > [!TIP]
 > Bietet die Instanz eine **Demo** an, kannst du Flowplan ohne Konto ausprobieren. Die Demo bekommt einen eigenen Beispiel-Arbeitsbereich und wird beim Beenden, beim Abmelden oder nach 45 Minuten ohne Aktivität vollständig gelöscht.

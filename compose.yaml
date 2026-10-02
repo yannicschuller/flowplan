@@ -1,6 +1,6 @@
 # Flowplan with Docker Compose.
 #
-#   cp .env.example .env      # then fill in APP_URL and the OIDC values
+#   cp .env.example .env      # then set APP_URL (OIDC and SMTP optional)
 #   docker compose up -d
 #
 # Uses the prebuilt image from GitHub. To build from this checkout instead:

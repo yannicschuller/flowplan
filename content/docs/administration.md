@@ -29,6 +29,7 @@ Zustand der Instanz: Größe von Datenbank und Uploads, Warteschlangen, Suchinde
 | Aufbewahrung von Versionen | Tage, nach denen automatische Versionen gelöscht werden. |
 | Maximale Uploadgröße | Grenze je Datei in MB. |
 | Arbeitsbereiche anlegen | Ob alle Personen eigene Arbeitsbereiche erstellen dürfen. |
+| Registrierung mit E-Mail und Passwort erlauben | Jede Person darf ein Konto anlegen. Ohne diese Einstellung nur eingeladene Adressen (und das erste Konto der Instanz). |
 | Demo auf der Startseite anbieten | Nur auf flowplan.org, siehe unten. |
 
 Leere Felder fallen auf die [Umgebungsvariablen](/docs/konfiguration) zurück.

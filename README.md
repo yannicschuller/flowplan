@@ -21,21 +21,24 @@ Flowplan is a workspace for knowledge and projects in the spirit of Notion and A
 - **Collaboration** – live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, inbox, e-mail digests and Web Push.
 - **Sharing** – public pages, guest links for reading, commenting or editing, forms for anonymous answers.
 - **Search, import and export** – full-text search including OCR for scanned PDFs, Markdown/HTML/CSV/Notion import, Markdown and ZIP export, version history and restorable content archives.
-- **Administration** – OIDC sign-in with groups, workspaces and spaces, quotas, session management, backups to S3 with Litestream, Prometheus metrics, API tokens and webhooks.
+- **Sign-in** – e-mail and password, passkeys (WebAuthn) and optional single sign-on with OpenID Connect and groups.
+- **Administration** – workspaces and spaces, quotas, audit log, session management, backups to S3 with Litestream, Prometheus metrics, API tokens and webhooks.
 - **Apps** – installable web app with offline support; a desktop app (Electron) can be built from `desktop/`.
 
 ## Quick start (Docker)
 
-You need Docker, a domain with HTTPS in front (Caddy, Traefik, nginx, Coolify …) and an OpenID Connect provider (Keycloak, Authentik, Zitadel, Microsoft Entra ID, Google …).
+You need Docker and a domain with HTTPS in front (Caddy, Traefik, nginx, Coolify …). Single sign-on with an OpenID Connect provider (Keycloak, Authentik, Zitadel, Microsoft Entra ID, Google …) is optional.
 
 ```sh
 curl -O https://raw.githubusercontent.com/yannicschuller/flowplan/main/compose.yaml
 curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env.example
-# edit .env: APP_URL and the OIDC_* values
+# edit .env: at least APP_URL (optionally OIDC_* and SMTP_*)
 docker compose up -d
 ```
 
-At your OIDC provider, register a confidential web client with the redirect URI `https://<your-domain>/api/auth/callback`. Members of the group in `OIDC_ADMIN_GROUP` administer the instance.
+Open your domain: a new instance offers **Create account** – the first account administers the instance. Others sign up when you allow it, or when you invite them. Passkeys are added in the profile settings.
+
+For single sign-on, register a confidential web client at your OIDC provider with the redirect URI `https://<your-domain>/api/auth/callback`; members of the group in `OIDC_ADMIN_GROUP` administer the instance.
 
 The image is published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`:
 
@@ -49,7 +52,7 @@ All data lives in the volume on `/app/data`. Run **exactly one** container per d
 More in the documentation:
 
 - [Installation with Docker](https://flowplan.org/docs/installation)
-- [Sign-in with OIDC](https://flowplan.org/docs/anmeldung-oidc)
+- [Sign-in: password, passkeys and OIDC](https://flowplan.org/docs/anmeldung-oidc)
 - [Configuration (all environment variables)](https://flowplan.org/docs/konfiguration)
 - [Storage, S3 and backups](https://flowplan.org/docs/speicher-und-sicherung)
 - [Coolify and reverse proxies](https://flowplan.org/docs/coolify-und-proxy)
@@ -67,7 +70,7 @@ cp .env.example .env.local
 npm run dev        # http://127.0.0.1:3000
 ```
 
-Without an OIDC configuration, development mode offers **Open local workspace**, a shared local example account. Production mode has no such access.
+Development mode also offers **Open local workspace**, a shared local example account. Production mode has no such access.
 
 | Command | What it does |
 | --- | --- |

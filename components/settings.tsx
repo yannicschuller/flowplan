@@ -10,6 +10,7 @@ import { SpaceManager } from "./space-manager";
 import { IntegrationSettings } from "./integration-settings";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
+import { AccountSecurity } from "./account-security";
 import {
   GearSix,
   Users,
@@ -296,12 +297,16 @@ export default function Settings({
                     {boot.user.name}
                     <small>{boot.user.email}</small>
                   </span>
-                  <span className="tag tag-blue">SSO</span>
+                  <span className="tag tag-blue">{boot.localAccount ? "E-Mail" : "SSO"}</span>
                 </div>
-                <p className="muted">
-                  Name und E-Mail werden von deinem Identitätsanbieter
-                  übernommen.
-                </p>
+                {boot.localAccount ? (
+                  <AccountSecurity name={boot.user.name} onRenamed={onRefresh} />
+                ) : (
+                  <p className="muted">
+                    Name und E-Mail werden von deinem Identitätsanbieter
+                    übernommen.
+                  </p>
+                )}
               </section>
               <section className="settings-section">
                 <h2>Tastenkürzel</h2>

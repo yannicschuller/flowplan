@@ -89,6 +89,20 @@ export function queueMail(to: string, subject: string, text: string, html: strin
   return true;
 }
 
+// Account e-mails with one link: confirm the address, reset the password.
+export function queueLinkMail(input: {
+  to: string;
+  subject: string;
+  title: string;
+  lines: string[];
+  label: string;
+  url: string;
+}) {
+  const text = `${input.lines.join("\n\n")}\n\n${input.url}\n`;
+  const html = layout(input.title, input.lines.map(escape), { label: input.label, url: input.url });
+  return queueMail(input.to, input.subject, text, html);
+}
+
 export function queueInviteMail(input: {
   email: string;
   inviter: string;

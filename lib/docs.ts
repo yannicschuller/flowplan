@@ -46,7 +46,7 @@ const groups: { title: string; admin?: boolean; pages: [slug: string, title: str
     pages: [
       ["installation", "Installation mit Docker"],
       ["administration", "Administration der Instanz"],
-      ["anmeldung-oidc", "Anmeldung mit OIDC"],
+      ["anmeldung-oidc", "Anmeldung: Passwort, Passkeys und OIDC"],
       ["konfiguration", "Konfiguration"],
       ["speicher-und-sicherung", "Speicher, S3 und Sicherung"],
       ["coolify-und-proxy", "Coolify und Reverse Proxy"],
