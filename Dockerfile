@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -10,7 +10,7 @@ RUN chmod -R a+rX /app
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 FROM litestream/litestream:0.5.17 AS litestream
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 LABEL org.opencontainers.image.title="Flowplan" \
   org.opencontainers.image.description="Documents, databases, whiteboards and a daily journal for teams – self-hosted." \
   org.opencontainers.image.source="https://github.com/yannicschuller/flowplan" \
