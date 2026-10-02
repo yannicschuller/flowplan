@@ -59,7 +59,7 @@ Every instance also serves the documentation itself under `/docs`.
 
 ## Development
 
-Node.js 22.13 or newer (Node 24 LTS recommended).
+Node.js 22.13 or newer (the Docker image and CI use Node 26).
 
 ```sh
 npm ci
