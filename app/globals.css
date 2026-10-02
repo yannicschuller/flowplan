@@ -1081,6 +1081,18 @@ kbd,
 .document-editor li p {
   margin: 0;
 }
+/* Lists inside a list item sit close to it: the large gap is for lists
+   between paragraphs, not below a subtask. */
+.document-editor li :is(ul, ol) {
+  margin: 0;
+}
+/* Tasks keep their usual 5px between rows. */
+.document-editor li ul[data-type="taskList"] {
+  margin-top: 5px;
+}
+.document-editor li :is(ul, ol) > li:last-child {
+  margin-bottom: 0;
+}
 .document-editor blockquote {
   border-left: 3px solid #b9ccec;
   margin: 22px 0;
