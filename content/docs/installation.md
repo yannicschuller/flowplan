@@ -11,7 +11,22 @@ Flowplan läuft als ein einziger Container mit SQLite und einem Datenverzeichnis
 
 ## Mit Docker Compose
 
-Im Quellcode liegt eine `compose.yaml`. Mit einer `.env.local` daneben:
+Flowplan ist Open Source (AGPL-3.0). Das fertige Image liegt in der GitHub Container Registry, für `linux/amd64` und `linux/arm64`:
+
+| Tag | Inhalt |
+| --- | --- |
+| `ghcr.io/yannicschuller/flowplan:latest` | Neuester Stand von `main` |
+| `ghcr.io/yannicschuller/flowplan:1.2.3` | Feste Version (Git-Tag `v1.2.3`) |
+
+Compose-Datei und Beispielkonfiguration herunterladen:
+
+```bash
+mkdir flowplan && cd flowplan
+curl -O https://raw.githubusercontent.com/yannicschuller/flowplan/main/compose.yaml
+curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env.example
+```
+
+In `.env` mindestens diese Werte setzen:
 
 ```dotenv
 APP_URL=https://flowplan.example.com
@@ -22,19 +37,32 @@ OIDC_ADMIN_GROUP=flowplan-admins
 ```
 
 ```bash
-docker compose --env-file .env.local up --build -d
+docker compose up -d
 ```
 
-Der Container lauscht auf Port `3000` (in der Compose-Datei nur an `127.0.0.1` gebunden, damit der Proxy davor sitzt). Das Volume `flowplan-data` auf `/app/data` hält alle Inhalte unabhängig vom Container.
+Der Container lauscht auf Port `3000` (in der Compose-Datei nur an `127.0.0.1` gebunden, damit der Proxy davor sitzt). Das Volume `flowplan-data` auf `/app/data` hält alle Inhalte unabhängig vom Container. Eine feste Version wählst du mit `FLOWPLAN_VERSION=1.2.3` in der `.env`.
+
+> [!NOTE]
+> Eine selbst gehostete Instanz öffnet direkt mit der Anmeldung. Die Produkt-Webseite und die öffentliche Demo gehören nur zu [flowplan.org](https://flowplan.org).
 
 ## Image selbst bauen
+
+Aus dem Quellcode ([github.com/yannicschuller/flowplan](https://github.com/yannicschuller/flowplan)):
+
+```bash
+git clone https://github.com/yannicschuller/flowplan.git && cd flowplan
+cp .env.example .env
+docker compose up -d --build
+```
+
+Oder ohne Compose:
 
 ```bash
 docker build -t flowplan:latest .
 docker run -d --name flowplan \
   -p 127.0.0.1:3000:3000 \
   -v flowplan-data:/app/data \
-  --env-file .env.local \
+  --env-file .env \
   flowplan:latest
 ```
 
@@ -52,9 +80,11 @@ Das Image enthält Node, Litestream für die S3-Sicherung und `curl` für den He
 ## Aktualisieren
 
 ```bash
-git pull
-docker compose --env-file .env.local up --build -d
+docker compose pull
+docker compose up -d
 ```
+
+Beim selbst gebauten Image stattdessen `git pull` und `docker compose up -d --build`.
 
 Beim Start migriert Flowplan die Datenbank selbst. Vorher eine Sicherung anlegen (siehe [Speicher, S3 und Sicherung](/docs/speicher-und-sicherung)); ein Zurückgehen auf eine ältere Version nach einer Migration ist nicht vorgesehen.
 

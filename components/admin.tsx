@@ -54,6 +54,7 @@ type AdminData = {
     effectiveQuotaMb: number;
   }[];
   settings: InstanceSettings;
+  publicSite?: boolean;
   mail: {
     configured: boolean;
     host: string | null;
@@ -385,6 +386,7 @@ export default function Admin({
             <>
               <InstanceSettingsForm
                 initial={data.settings}
+                publicSite={!!data.publicSite}
                 onSave={(settings) =>
                   act({ action: "admin.settings", settings })
                 }
@@ -516,9 +518,11 @@ export default function Admin({
 // Instance-wide settings; empty numbers fall back to the environment.
 function InstanceSettingsForm({
   initial,
+  publicSite,
   onSave,
 }: {
   initial: InstanceSettings;
+  publicSite: boolean;
   onSave: (settings: InstanceSettings) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(initial),
@@ -613,6 +617,7 @@ function InstanceSettingsForm({
         />
         Alle Personen dürfen Arbeitsbereiche anlegen
       </label>
+      {publicSite && (
       <label className="checkbox-label">
         <input
           type="checkbox"
@@ -629,6 +634,7 @@ function InstanceSettingsForm({
           </small>
         </span>
       </label>
+      )}
       <label className="checkbox-label">
         <input
           type="checkbox"

@@ -11,6 +11,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 FROM litestream/litestream:0.5.17 AS litestream
 FROM node:24-bookworm-slim AS runtime
+LABEL org.opencontainers.image.title="Flowplan" \
+  org.opencontainers.image.description="Documents, databases, whiteboards and a daily journal for teams – self-hosted." \
+  org.opencontainers.image.source="https://github.com/yannicschuller/flowplan" \
+  org.opencontainers.image.url="https://flowplan.org" \
+  org.opencontainers.image.documentation="https://flowplan.org/docs/installation" \
+  org.opencontainers.image.licenses="AGPL-3.0-only"
 WORKDIR /app
 # Certificates for HTTPS to the S3 endpoint (Litestream is a static binary);
 # curl for Coolify's HTTP healthcheck, which runs inside the container.

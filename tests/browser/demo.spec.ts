@@ -46,7 +46,7 @@ test("the demo button opens a throwaway workspace that is deleted on leaving", a
     expect(embed.status()).toBe(403);
 
     await page.getByRole("button", { name: "Demo beenden" }).click();
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Auf eurem Server.");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Betrieben in Deutschland.");
     expect(db.prepare("SELECT 1 FROM users WHERE id=?").get(uid)).toBeUndefined();
     expect(db.prepare("SELECT 1 FROM workspaces WHERE id=?").get(ws)).toBeUndefined();
     expect(errors).toEqual([]);

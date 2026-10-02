@@ -38,18 +38,11 @@ test("the search index covers section text", () => {
   assert.match(config.sections.find((s) => s.id === "s3-und-datenbanksicherung")!.body, /S3_BUCKET \S/);
 });
 
-test("running the instance is documented for administrators only", () => {
-  for (const slug of ["installation", "konfiguration", "speicher-und-sicherung", "coolify-und-proxy", "betrieb", "anmeldung-oidc", "administration"])
-    assert.ok(adminDocSlugs.has(slug), slug);
+test("self-hosting is documented for everyone", () => {
   const publicSlugs = docGroupsFor(false).flatMap((g) => g.pages.map((p) => p.slug));
-  assert.ok(publicSlugs.includes("erste-schritte"));
-  assert.ok(!publicSlugs.some((slug) => adminDocSlugs.has(slug)));
-  assert.ok(!docSearchIndex().some((p) => adminDocSlugs.has(p.slug)), "public search");
-  // Public pages neither link to nor page on to administrator pages.
-  for (const slug of publicSlugs) {
-    const doc = loadDoc(slug, false)!;
-    for (const [, target] of doc.html.matchAll(/href="\/docs\/([a-z-]+)/g))
-      assert.ok(!adminDocSlugs.has(target), `${slug} links to ${target}`);
-    for (const near of [doc.prev, doc.next]) assert.ok(!near || !adminDocSlugs.has(near.slug), `${slug} pages to ${near?.slug}`);
-  }
+  for (const slug of ["installation", "konfiguration", "speicher-und-sicherung", "coolify-und-proxy", "betrieb", "anmeldung-oidc", "administration"])
+    assert.ok(publicSlugs.includes(slug), slug);
+  assert.equal(adminDocSlugs.size, 0);
+  assert.ok(docSearchIndex().some((p) => p.slug === "installation"), "public search");
+  assert.match(loadDoc("installation", false)!.html, /ghcr\.io\/yannicschuller\/flowplan/);
 });

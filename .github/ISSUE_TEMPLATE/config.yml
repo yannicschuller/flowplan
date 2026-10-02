@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://flowplan.org/docs
+    about: Guides for using and self-hosting Flowplan.
+  - name: Security issue
+    url: https://github.com/yannicschuller/flowplan/security/advisories/new
+    about: Please report vulnerabilities privately.

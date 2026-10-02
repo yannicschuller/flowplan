@@ -29,7 +29,7 @@ Zustand der Instanz: Größe von Datenbank und Uploads, Warteschlangen, Suchinde
 | Aufbewahrung von Versionen | Tage, nach denen automatische Versionen gelöscht werden. |
 | Maximale Uploadgröße | Grenze je Datei in MB. |
 | Arbeitsbereiche anlegen | Ob alle Personen eigene Arbeitsbereiche erstellen dürfen. |
-| Demo auf der Startseite anbieten | Siehe unten. |
+| Demo auf der Startseite anbieten | Nur auf flowplan.org, siehe unten. |
 
 Leere Felder fallen auf die [Umgebungsvariablen](/docs/konfiguration) zurück.
 
@@ -44,6 +44,8 @@ Leere Felder fallen auf die [Umgebungsvariablen](/docs/konfiguration) zurück.
 **Sicherung herunterladen** erzeugt im laufenden Betrieb eine geprüfte Kopie von Datenbank und Dateien. Eine hochgeladene Sicherung wird geprüft und beim nächsten Neustart übernommen; der vorherige Stand bleibt als `pre-restore-…` im Datenverzeichnis.
 
 ## Demo
+
+Die Demo gehört zur Produkt-Webseite und gibt es nur auf der offiziellen Instanz flowplan.org (`FLOWPLAN_PUBLIC_SITE=true`); selbst gehostete Instanzen zeigen die Einstellung nicht.
 
 Mit **Demo auf der Startseite anbieten** erscheint auf der Startseite neben Registrieren und Anmelden der Knopf **Demo ausprobieren**. Er legt ohne Konto einen Demo-Gast mit eigenem Beispiel-Arbeitsbereich an. Jede Demo bekommt frische Beispielseiten, die alle Funktionen zeigen: eine Willkommensseite, einen Editor-Rundgang mit allen Blöcken, eine Projektdatenbank mit Beziehung, Rollup, Formel, Wiederholung und allen Ansichten (Tabelle, Board, Kalender, Zeitleiste, Galerie, Liste, Feed, Diagramm, Formular), ein Whiteboard, ein Journal und ein kleines Wiki.
 

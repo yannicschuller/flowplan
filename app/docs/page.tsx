@@ -6,7 +6,7 @@ import s from "@/components/docs/docs.module.css";
 
 const intros: Record<string, string> = {
   Einstieg: "Konto, erster Arbeitsbereich, Seitenbaum.",
-  "Betrieb der Instanz": "Nur für Admins: Administration, Installation, Anmeldung und Sicherung.",
+  "Selbst hosten": "Flowplan auf dem eigenen Server: Docker, Anmeldung, Speicher, Sicherung und Betrieb.",
   "Arbeiten mit Flowplan": "Jede Funktion, Schritt für Schritt.",
   Verwaltung: "Mitglieder, Rechte und die Instanz.",
 };
@@ -20,22 +20,21 @@ export default async function DocsHome() {
         <h1 className={s.title}>Flowplan Schritt für Schritt.</h1>
         <p className={s.lead}>
           Flowplan ist ein Arbeitsbereich für Dokumente, Datenbanken,
-          Whiteboards und ein tägliches Journal – betrieben in Deutschland.
-          Diese Dokumentation erklärt jede Funktion der Oberfläche.
+          Whiteboards und ein tägliches Journal – Open Source, gehostet in
+          Deutschland oder auf deinem eigenen Server. Diese Dokumentation
+          erklärt jede Funktion und den Betrieb einer eigenen Instanz.
         </p>
         <div className={s.paths}>
-          {admin && (
-            <a href="/docs/administration" className={s.path}>
-              <span>Ich verwalte die Instanz</span>
-              <strong>Administration der Instanz</strong>
-              <small>Konten, Speicher, Sicherungen und Betrieb.</small>
-              <ArrowRight size={18} />
-            </a>
-          )}
           <a href="/docs/erste-schritte" className={s.path}>
             <span>Ich arbeite mit Flowplan</span>
             <strong>Erste Schritte</strong>
             <small>Anmelden, erste Seite, Seitenbaum und Suche.</small>
+            <ArrowRight size={18} />
+          </a>
+          <a href="/docs/installation" className={s.path}>
+            <span>Ich betreibe Flowplan selbst</span>
+            <strong>Installation mit Docker</strong>
+            <small>Container starten, Anmeldung, Speicher und Updates.</small>
             <ArrowRight size={18} />
           </a>
         </div>

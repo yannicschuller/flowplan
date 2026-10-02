@@ -1,0 +1,11 @@
+name: Feature request
+description: Suggest an idea for Flowplan
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the problem or the use case first, then your idea.
+    validations:
+      required: true

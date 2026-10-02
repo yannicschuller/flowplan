@@ -4,6 +4,8 @@ import { ensureWorkspace } from "@/lib/seed";
 import WorkspaceApp from "@/components/workspace-app";
 import PublicHome from "@/components/landing/public-home";
 import { instanceSettings } from "@/lib/instance-settings";
+import { publicSite } from "@/lib/site";
+import Login from "@/components/login";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -11,6 +13,16 @@ export default async function Home({
   searchParams: Promise<{ authError?: string; useTemplate?: string }>;
 }) {
   const user = await currentUser();
+  // Self-hosted: straight to signing in; the website is flowplan.org's.
+  if (!user && !publicSite())
+    return (
+      <Login
+        demo={process.env.NODE_ENV !== "production"}
+        configured={!!process.env.OIDC_ISSUER}
+        error={(await searchParams).authError}
+        instanceName={instanceSettings().name}
+      />
+    );
   if (!user)
     return (
       <PublicHome

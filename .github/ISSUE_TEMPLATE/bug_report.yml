@@ -1,0 +1,30 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Steps to reproduce, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Image tag or commit (e.g. ghcr.io/yannicschuller/flowplan:1.2.3), or "flowplan.org".
+  - type: dropdown
+    id: hosting
+    attributes:
+      label: Where does it run?
+      options: [flowplan.org, Self-hosted with Docker, Self-hosted without Docker, Development]
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      render: text

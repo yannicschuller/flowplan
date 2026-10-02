@@ -1,18 +1,22 @@
+# Flowplan with Docker Compose.
+#
+#   cp .env.example .env      # then fill in APP_URL and the OIDC values
+#   docker compose up -d
+#
+# Uses the prebuilt image from GitHub. To build from this checkout instead:
+#   docker compose up -d --build
+# Put a reverse proxy with HTTPS in front (Caddy, Traefik, nginx, Coolify …):
+# the port is bound to 127.0.0.1 only. Run exactly one instance (SQLite).
 services:
   flowplan:
+    image: ghcr.io/yannicschuller/flowplan:${FLOWPLAN_VERSION:-latest}
     build: .
+    pull_policy: missing
+    env_file: .env
+    environment:
+      FLOWPLAN_DATA_DIR: /app/data
     ports:
       - "127.0.0.1:3000:3000"
-    environment:
-      APP_URL: ${APP_URL:-http://localhost:3000}
-      OIDC_ISSUER: ${OIDC_ISSUER}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
-      OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email groups}
-      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-groups}
-      OIDC_ADMIN_GROUP: ${OIDC_ADMIN_GROUP:-flowplan-admins}
-      OIDC_ALLOWED_GROUP: ${OIDC_ALLOWED_GROUP:-}
-      SESSION_HOURS: ${SESSION_HOURS:-8}
     volumes:
       - flowplan-data:/app/data
     restart: unless-stopped
@@ -28,5 +32,15 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  # Optional: speech-to-text for voice notes. Uncomment and set
+  # WHISPER_URL=http://whisper:8000 in .env (see the docs on configuration).
+  # whisper:
+  #   image: ghcr.io/speaches-ai/speaches:latest-cpu
+  #   volumes:
+  #     - whisper-models:/home/ubuntu/.cache/huggingface/hub
+  #   restart: unless-stopped
+
 volumes:
   flowplan-data:
+  # whisper-models:

@@ -2,6 +2,16 @@
   "name": "flowplan",
   "version": "0.1.0",
   "private": true,
+  "description": "Documents, databases, whiteboards and a daily journal for teams – self-hosted.",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://flowplan.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yannicschuller/flowplan.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yannicschuller/flowplan/issues"
+  },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",

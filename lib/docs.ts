@@ -42,11 +42,10 @@ const groups: { title: string; admin?: boolean; pages: [slug: string, title: str
     pages: [["arbeitsbereiche-und-rechte", "Arbeitsbereiche, Mitglieder und Rechte"]],
   },
   {
-    title: "Betrieb der Instanz",
-    admin: true,
+    title: "Selbst hosten",
     pages: [
-      ["administration", "Administration der Instanz"],
       ["installation", "Installation mit Docker"],
+      ["administration", "Administration der Instanz"],
       ["anmeldung-oidc", "Anmeldung mit OIDC"],
       ["konfiguration", "Konfiguration"],
       ["speicher-und-sicherung", "Speicher, S3 und Sicherung"],

@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
+process.env.FLOWPLAN_PUBLIC_SITE = "true"; // the demo belongs to the website
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-demo-"));
 const { run, one, all } = await import("../lib/db");
 const { startDemo, endDemo, cleanupDemos, demoAllows } = await import("../lib/demo");
@@ -26,6 +27,10 @@ test("the demo is off until an admin switches it on", () => {
   assert.equal(instanceSettings().publicDemo, false);
   assert.throws(() => startDemo("1.2.3.4"), /ausgeschaltet/);
   saveInstanceSettings({ ...instanceSettings(), publicDemo: true });
+  // Self-hosted instances (no public website) never offer it.
+  process.env.FLOWPLAN_PUBLIC_SITE = "";
+  assert.throws(() => startDemo("1.2.3.4"), /ausgeschaltet/);
+  process.env.FLOWPLAN_PUBLIC_SITE = "true";
 });
 
 test("a demo gets its own example workspace and cannot reach anyone outside it", () => {

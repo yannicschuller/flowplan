@@ -23,6 +23,7 @@ Die übrigen Anmelde-Variablen stehen unter [Anmeldung mit OIDC](/docs/anmeldung
 | `FLOWPLAN_OCR` | an | `0` schaltet die Texterkennung für gescannte PDFs und Bilder ab. |
 | `FLOWPLAN_METRICS_TOKEN` | *leer* | Mindestens 16 Zeichen; aktiviert `/api/metrics` im Prometheus-Format. |
 | `FLOWPLAN_TRUSTED_PROXIES` | `1` | Anzahl der Proxys vor Flowplan (Traefik allein: `1`, Pangolin vor Traefik: `2`). Bestimmt, welcher Eintrag in `X-Forwarded-For` die echte Adresse ist – für die Begrenzung von Demo-Starts und anonymen Formularantworten. Frei erfundene Einträge des Browsers werden so ignoriert. |
+| `FLOWPLAN_PUBLIC_SITE` | *leer* | Nur für die offizielle Instanz flowplan.org: `true` zeigt Besuchern die Produkt-Webseite und erlaubt die öffentliche Demo. Selbst gehostete Instanzen lassen sie leer und öffnen mit der Anmeldung. |
 
 ## S3 und Datenbanksicherung
 

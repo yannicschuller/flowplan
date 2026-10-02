@@ -57,6 +57,7 @@ import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
+import { publicSite } from "@/lib/site";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
 import { clipArticle } from "@/lib/web-clip";
@@ -576,6 +577,7 @@ export async function GET(
         metrics: instanceMetrics(),
         usage: workspaceUsage(),
         settings: instanceSettings(),
+        publicSite: publicSite(),
         restorePending: pendingRestore(),
       });
     }
