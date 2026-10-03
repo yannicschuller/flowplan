@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -251,7 +252,7 @@ export default function FormulaEditor({
         </p>
       ) : syntax ? (
         <p className="error formula-diagnostic" role="alert">
-          {syntax.message}{" "}
+          {serverMessage(syntax.message)}{" "}
           <button
             type="button"
             onClick={() => {
@@ -300,7 +301,7 @@ export default function FormulaEditor({
           <p className="muted">{t("Behebe zuerst den Formelfehler.", "Fix the formula error first.")}</p>
         ) : error ? (
           <p role="alert" className="error">
-            {error.code}: {error.message}
+            {error.code}: {serverMessage(error.message)}
           </p>
         ) : (
           <output aria-label={t("Formelergebnis", "Formula result")}>
