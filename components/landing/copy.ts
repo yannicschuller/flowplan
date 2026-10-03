@@ -13,10 +13,7 @@ const de = {
     register: "Registrieren",
   },
   nav: {
-    seitentypen: "Seitentypen",
-    ansichten: "Ansichten",
-    zusammenarbeit: "Zusammenarbeit",
-    funktionen: "Alle Funktionen",
+    seitentypen: "Funktionen",
     "selbst-hosten": "Selbst hosten",
     sicherheit: "Sicherheit",
   } as Record<string, string>,
@@ -29,8 +26,8 @@ const de = {
   hero: {
     eyebrow: "Dokumente · Datenbanken · Whiteboards · Journal",
     title: "Alles, woran ihr arbeitet.",
-    titleEm: "Open Source. In Deutschland oder bei euch.",
-    text: "Flowplan verbindet Dokumente, Datenbanken, Whiteboards und ein tägliches Journal in einem Seitenbaum. Ihr bearbeitet alles gleichzeitig – auf flowplan.org mit Servern in Deutschland oder auf eurem eigenen Server.",
+    titleEm: "Open Source – bei uns oder bei euch.",
+    text: "Dokumente, Datenbanken, Whiteboards und Journal in einem Seitenbaum – gemeinsam und live.",
     facts: ["Open Source (AGPL)", "Server in Deutschland", "Selbst hostbar", "Kein Tracking"],
   },
   window: { team: "Team" },
@@ -137,13 +134,13 @@ const de = {
   views: {
     eyebrow: "Datenbanken",
     title: "Neun Ansichten. Dieselben Daten.",
-    text: "Jede Ansicht hat eigene Filter, Sortierung und Gruppen. Eine Änderung im Board steht sofort auch im Kalender.",
+    text: "Eine Änderung im Board steht sofort auch im Kalender.",
     labels: ["Tabelle", "Board", "Kalender", "Zeitleiste", "Galerie", "Liste", "Feed", "Diagramm", "Formular"],
   },
   collab: {
     eyebrow: "Zusammenarbeit",
     title: "Gemeinsam an derselben Zeile.",
-    text: "Mehrere Personen schreiben gleichzeitig, jede mit eigenem Cursor. Kommentare hängen am Text, Erwähnungen landen im Posteingang und als Push auf dem Handy.",
+    text: "Mehrere Personen schreiben gleichzeitig, Kommentare hängen direkt am Text.",
     checks: [
       "Live-Bearbeitung in Dokumenten, Datenbanken und Whiteboards",
       "Kommentare, Reaktionen und Erwähnungen",
@@ -262,7 +259,7 @@ const de = {
     eyebrow: "Open Source",
     title: "Bei uns in Deutschland.",
     titleEm: "Oder auf eurem Server.",
-    text: "Flowplan ist freie Software unter der AGPL-3.0. Nutzt es fertig auf flowplan.org – oder betreibt es selbst: ein Container, eine Datenbankdatei, eure Anmeldung.",
+    text: "Freie Software unter der AGPL-3.0: fertig auf flowplan.org oder als ein Container auf eurem Server.",
     hosted: {
       title: "flowplan.org",
       note: "Fertig eingerichtet",
@@ -284,7 +281,7 @@ const de = {
     eyebrow: "Sicherheit",
     title: "In Deutschland.",
     titleEm: "Eure Daten.",
-    text: "Auf flowplan.org läuft Flowplan auf Servern in Deutschland. Verbindungen sind verschlüsselt, angemeldet wird mit Passkey, Passwort oder Single Sign-on, und jeder Bereich, jede Seite und jeder Eintrag hat eigene Rechte. Eure Inhalte werden regelmäßig gesichert – und von niemandem ausgewertet.",
+    text: "Server in Deutschland, verschlüsselte Verbindungen, Rechte bis auf den einzelnen Eintrag. Gesichert – und von niemandem ausgewertet.",
     never: ["Keine KI-Auswertung", "Kein Tracking", "Keine Weitergabe an Dritte"],
     docs: "Alles zur Nutzung in der Dokumentation",
     terminal: "Sicherheit",
@@ -324,10 +321,7 @@ const en: LandingCopy = {
     register: "Sign up",
   },
   nav: {
-    seitentypen: "Page types",
-    ansichten: "Views",
-    zusammenarbeit: "Collaboration",
-    funktionen: "All features",
+    seitentypen: "Features",
     "selbst-hosten": "Self-hosting",
     sicherheit: "Security",
   },
@@ -340,8 +334,8 @@ const en: LandingCopy = {
   hero: {
     eyebrow: "Documents · Databases · Whiteboards · Journal",
     title: "Everything you work on.",
-    titleEm: "Open source. Hosted in Germany or by you.",
-    text: "Flowplan brings documents, databases, whiteboards and a daily journal together in one page tree. Work on everything at the same time – on flowplan.org with servers in Germany, or on your own server.",
+    titleEm: "Open source – hosted by us or by you.",
+    text: "Documents, databases, whiteboards and a journal in one page tree – together and live.",
     facts: ["Open source (AGPL)", "Servers in Germany", "Self-hostable", "No tracking"],
   },
   window: { team: "Team" },
@@ -448,13 +442,13 @@ const en: LandingCopy = {
   views: {
     eyebrow: "Databases",
     title: "Nine views. The same data.",
-    text: "Every view has its own filters, sorting and groups. A change on the board shows up in the calendar right away.",
+    text: "A change on the board shows up in the calendar right away.",
     labels: ["Table", "Board", "Calendar", "Timeline", "Gallery", "List", "Feed", "Chart", "Form"],
   },
   collab: {
     eyebrow: "Collaboration",
     title: "Together on the same line.",
-    text: "Several people write at the same time, each with their own cursor. Comments stick to the text, mentions land in the inbox and as a push notification on the phone.",
+    text: "Several people write at the same time, comments stick right to the text.",
     checks: [
       "Live editing in documents, databases and whiteboards",
       "Comments, reactions and mentions",
@@ -573,7 +567,7 @@ const en: LandingCopy = {
     eyebrow: "Open source",
     title: "Hosted by us in Germany.",
     titleEm: "Or on your own server.",
-    text: "Flowplan is free software under the AGPL-3.0. Use it ready to go on flowplan.org – or run it yourself: one container, one database file, your sign-in.",
+    text: "Free software under the AGPL-3.0: ready to go on flowplan.org, or as one container on your server.",
     hosted: {
       title: "flowplan.org",
       note: "Ready to use",
@@ -595,7 +589,7 @@ const en: LandingCopy = {
     eyebrow: "Security",
     title: "In Germany.",
     titleEm: "Your data.",
-    text: "On flowplan.org, Flowplan runs on servers in Germany. Connections are encrypted, you sign in with a passkey, a password or single sign-on, and every space, page and record has its own permissions. Your content is backed up regularly – and analysed by no one.",
+    text: "Servers in Germany, encrypted connections, permissions down to a single record. Backed up – and analysed by no one.",
     never: ["No AI analysis", "No tracking", "No sharing with third parties"],
     docs: "Everything about using Flowplan in the documentation",
     terminal: "Security",

@@ -7,7 +7,7 @@ test("visitors get the product page with sign-in and sign-up; deep links still a
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText(
-    "Open Source. In Deutschland oder bei euch.",
+    "Open Source – bei uns oder bei euch.",
   );
   // Both actions are always reachable (header and hero).
   await expect(page.getByRole("link", { name: /Registrieren/ }).first()).toBeVisible();

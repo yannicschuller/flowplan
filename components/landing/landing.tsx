@@ -571,7 +571,7 @@ function Tour() {
                 <h3>{step.title}</h3>
                 <p>{step.lead}</p>
                 <ul>
-                  {step.points.map((p) => (
+                  {step.points.slice(0, 3).map((p) => (
                     <li key={p}>{p}</li>
                   ))}
                 </ul>
@@ -715,9 +715,6 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
             <i />
           </div>
           <div className={s.heroText}>
-            <span className={`${s.eyebrow} ${s.rise}`} style={{ "--d": 0 } as React.CSSProperties}>
-              {c.hero.eyebrow}
-            </span>
             <h1 className={s.rise} style={{ "--d": 1 } as React.CSSProperties}>
               {c.hero.title}
               <br />
@@ -802,7 +799,7 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
               >
                 <h3>{group.title}</h3>
                 <ul>
-                  {group.items.map((item) => (
+                  {group.items.slice(0, 5).map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
