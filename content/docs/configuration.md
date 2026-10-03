@@ -18,7 +18,7 @@ Alle Umgebungsvariablen auf einen Blick. Viele Werte lassen sich zusätzlich in 
 | `OIDC_CLIENT_SECRET` | – | Client-Secret. Nie ins Image oder ins Git. |
 | `SESSION_HOURS` | `8` | Dauer einer Sitzung in Stunden (1–24). |
 
-Die übrigen OIDC-Variablen und alles zu Passwörtern und Passkeys stehen unter [Anmeldung](/docs/anmeldung-oidc).
+Die übrigen OIDC-Variablen und alles zu Passwörtern und Passkeys stehen unter [Anmeldung](/docs/sign-in).
 
 ## Betrieb
 
@@ -43,7 +43,7 @@ Die übrigen OIDC-Variablen und alles zu Passwörtern und Passkeys stehen unter 
 | `S3_PREFIX` | `flowplan` | Ordner im Bucket; Dateien unter `<Präfix>/uploads/`, Datenbank unter `<Präfix>/db/`. |
 | `FLOWPLAN_LITESTREAM` | an | `off`: nur Dateien spiegeln, Datenbank nicht sichern. |
 
-Details: [Speicher, S3 und Sicherung](/docs/speicher-und-sicherung).
+Details: [Speicher, S3 und Sicherung](/docs/storage-and-backups).
 
 ## E-Mail (SMTP)
 

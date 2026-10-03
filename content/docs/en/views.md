@@ -66,7 +66,7 @@ Records including their document content one below the other, like a blog or a l
 
 ## Form
 
-Collects records through a form, also from people without an account. See [Forms](/docs/formulare).
+Collects records through a form, also from people without an account. See [Forms](/docs/forms).
 
 ## Linked databases
 

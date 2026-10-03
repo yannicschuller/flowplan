@@ -12,8 +12,8 @@ Everything in Flowplan is a page in a tree. Spaces structure the tree, workspace
 
 ## Page types
 
-- **Document**: text made of blocks – headings, lists, tasks, tables, code, formulas, diagrams, embeds. See [Documents and the editor](/docs/dokumente).
-- **Database**: records with properties, shown as a table, board, calendar, timeline, gallery, list, feed, chart or form. See [Databases](/docs/datenbanken).
+- **Document**: text made of blocks – headings, lists, tasks, tables, code, formulas, diagrams, embeds. See [Documents and the editor](/docs/documents).
+- **Database**: records with properties, shown as a table, board, calendar, timeline, gallery, list, feed, chart or form. See [Databases](/docs/databases).
 - **Whiteboard**: an infinite canvas with sticky notes, shapes, connectors, pen and frames. See [Whiteboards](/docs/whiteboards).
 - **Journal**: one page per day, open tasks move along. See [Journal](/docs/journal).
 
@@ -29,8 +29,8 @@ The `…` menu at the top right of every page offers:
 | Lock page | Protects against accidental changes until someone unlocks it. |
 | Duplicate | A copy including sub-pages, databases and files; internal links point to the copies. |
 | Move | Below another page, into another space or workspace. |
-| Save as template | See [Templates](/docs/vorlagen). |
-| Export, print / PDF | See [Import, export and versions](/docs/import-export-versionen). |
+| Save as template | See [Templates](/docs/templates). |
+| Export, print / PDF | See [Import, export and versions](/docs/import-export-versions). |
 | Version history | Compare and restore earlier states. |
 | Move to trash | Removes the page with its sub-pages; restorable. |
 

@@ -65,4 +65,4 @@ const valid = timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers["x-
 
 ## Kalender-Abos
 
-Kalenderansichten lassen sich als iCalendar-Link abonnieren, siehe [Ansichten](/docs/ansichten#kalender-abonnieren).
+Kalenderansichten lassen sich als iCalendar-Link abonnieren, siehe [Ansichten](/docs/views#kalender-abonnieren).

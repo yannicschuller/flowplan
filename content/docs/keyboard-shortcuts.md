@@ -32,7 +32,7 @@ Alle Kürzel auf einen Blick. Auf Windows und Linux steht <kbd>Strg</kbd> für <
 | <kbd>⌘</kbd> <kbd>Z</kbd> / <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Z</kbd> | Rückgängig / Wiederholen |
 | <kbd>⌘</kbd> <kbd>Enter</kbd> | Kommentar senden |
 
-Markdown-Kürzel wie `##`, `-`, `[]` oder ` ``` ` stehen unter [Dokumente und Editor](/docs/dokumente#markdown-kuerzel).
+Markdown-Kürzel wie `##`, `-`, `[]` oder ` ``` ` stehen unter [Dokumente und Editor](/docs/documents#markdown-kuerzel).
 
 ## Whiteboard
 

@@ -65,4 +65,4 @@ const valid = timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers["x-
 
 ## Calendar subscriptions
 
-Calendar views can be subscribed to as an iCalendar link, see [Views](/docs/ansichten#subscribe-to-a-calendar).
+Calendar views can be subscribed to as an iCalendar link, see [Views](/docs/views#subscribe-to-a-calendar).

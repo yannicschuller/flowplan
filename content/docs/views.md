@@ -66,7 +66,7 @@ Einträge samt Dokumentinhalt untereinander, wie ein Blog oder ein Protokoll. Ti
 
 ## Formular
 
-Sammelt Einträge über ein Formular, auch von Personen ohne Konto. Siehe [Formulare](/docs/formulare).
+Sammelt Einträge über ein Formular, auch von Personen ohne Konto. Siehe [Formulare](/docs/forms).
 
 ## Verknüpfte Datenbanken
 

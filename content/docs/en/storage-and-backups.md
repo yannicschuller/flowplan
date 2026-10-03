@@ -13,7 +13,7 @@ All data lives in one directory. With S3 storage, files are mirrored and the dat
 
 ## Turn on S3 storage
 
-With `S3_BUCKET` and credentials (see [Configuration](/docs/konfiguration#s3-and-database-backup)):
+With `S3_BUCKET` and credentials (see [Configuration](/docs/configuration#s3-and-database-backup)):
 
 - **Files**: every uploaded file goes into the bucket right after saving, and deleted files are removed there. `uploads/` stays the working copy. If a file is missing there – a new host, a lost volume –, Flowplan fetches it from the bucket: right away when requested, all others in the background.
 - **Database**: [Litestream](https://litestream.io) transfers changes to the SQLite file to `<prefix>/db` about every second. If the container starts without a database, Litestream first restores it from the bucket.

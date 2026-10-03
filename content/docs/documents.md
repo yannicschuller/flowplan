@@ -120,5 +120,5 @@ Listenpunkte und Aufgaben bleiben beim Verschieben, was sie sind: Außerhalb ihr
 
 - **Inhaltsverzeichnis**: listet die Überschriften der Seite und springt per Klick dorthin.
 - **Zwei Spalten**: Blöcke nebeneinander; auf dem Smartphone untereinander.
-- **Verknüpfte Datenbank**: eine Ansicht einer vorhandenen Datenbank mit eigenen Filtern und Sortierungen; Änderungen an Einträgen landen in der Quelle. Siehe [Ansichten](/docs/ansichten#verknuepfte-datenbanken).
+- **Verknüpfte Datenbank**: eine Ansicht einer vorhandenen Datenbank mit eigenen Filtern und Sortierungen; Änderungen an Einträgen landen in der Quelle. Siehe [Ansichten](/docs/views#verknuepfte-datenbanken).
 - **Whiteboard**: ein Whiteboard direkt im Dokument; der Knopf oben rechts öffnet es groß.

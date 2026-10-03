@@ -18,7 +18,7 @@ All environment variables at a glance. Many values can also be set in the interf
 | `OIDC_CLIENT_SECRET` | – | Client secret. Never put it into the image or into Git. |
 | `SESSION_HOURS` | `8` | How long a session lasts in hours (1–24). |
 
-The other OIDC variables and everything about passwords and passkeys are described under [Sign-in](/docs/anmeldung-oidc).
+The other OIDC variables and everything about passwords and passkeys are described under [Sign-in](/docs/sign-in).
 
 ## Operations
 
@@ -43,7 +43,7 @@ The other OIDC variables and everything about passwords and passkeys are describ
 | `S3_PREFIX` | `flowplan` | Folder in the bucket; files under `<prefix>/uploads/`, the database under `<prefix>/db/`. |
 | `FLOWPLAN_LITESTREAM` | on | `off`: only mirror files, do not back up the database. |
 
-Details: [Storage, S3 and backups](/docs/speicher-und-sicherung).
+Details: [Storage, S3 and backups](/docs/storage-and-backups).
 
 ## E-mail (SMTP)
 

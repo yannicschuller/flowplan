@@ -11,7 +11,7 @@ Alle Konten der Instanz mit ihrer letzten Anmeldung.
 
 - Bei Konten mit E-Mail und Passwort: **Zum Admin machen** bzw. **Admin entziehen** (eine Person verwaltet die Instanz immer) und **Link zum Zurücksetzen** – ein zwei Stunden gültiger Link für ein neues Passwort, zum Weitergeben, wenn die Instanz keine E-Mails verschickt.
 
-Konten mit E-Mail und Passwort entstehen über **Konto erstellen** (siehe [Anmeldung](/docs/anmeldung-oidc)); SSO-Konten beim ersten Anmelden über OIDC, ihr Admin-Recht kommt aus der Gruppe beim Anbieter.
+Konten mit E-Mail und Passwort entstehen über **Konto erstellen** (siehe [Anmeldung](/docs/sign-in)); SSO-Konten beim ersten Anmelden über OIDC, ihr Admin-Recht kommt aus der Gruppe beim Anbieter.
 
 ## Arbeitsbereiche
 
@@ -19,7 +19,7 @@ Alle Arbeitsbereiche mit Mitgliederzahl, Belegung und Speicherkontingent. Das Ko
 
 ## Betrieb
 
-Zustand der Instanz: Größe von Datenbank und Uploads, Warteschlangen, Suchindex, Versionen und Laufzeit, dazu die Speicherübersicht mit S3-Verbindung, Datenbanksicherung und Inhaltszahlen. Details unter [Betrieb und Fehlersuche](/docs/betrieb).
+Zustand der Instanz: Größe von Datenbank und Uploads, Warteschlangen, Suchindex, Versionen und Laufzeit, dazu die Speicherübersicht mit S3-Verbindung, Datenbanksicherung und Inhaltszahlen. Details unter [Betrieb und Fehlersuche](/docs/operations).
 
 ## Instanz
 
@@ -34,7 +34,7 @@ Zustand der Instanz: Größe von Datenbank und Uploads, Warteschlangen, Suchinde
 | Registrierung mit E-Mail und Passwort erlauben | Jede Person darf ein Konto anlegen. Ohne diese Einstellung nur eingeladene Adressen (und das erste Konto der Instanz). |
 | Demo auf der Startseite anbieten | Nur auf flowplan.org, siehe unten. |
 
-Leere Felder fallen auf die [Umgebungsvariablen](/docs/konfiguration) zurück.
+Leere Felder fallen auf die [Umgebungsvariablen](/docs/configuration) zurück.
 
 ### E-Mail-Versand und geplante Sicherung
 

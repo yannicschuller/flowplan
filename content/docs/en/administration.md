@@ -10,7 +10,7 @@ All accounts of the instance with their last sign-in.
 - **Deactivate** locks an account immediately and ends all sessions; **Activate** releases it again.
 - For accounts with e-mail and password: **Make admin** or **Remove admin** (someone always administers the instance) and **Reset link** – a link for a new password, valid for two hours, to hand over when the instance does not send e-mails.
 
-Accounts with e-mail and password are created with **Create account** (see [Sign-in](/docs/anmeldung-oidc)); SSO accounts on their first sign-in via OIDC, and their admin right comes from the group at the provider.
+Accounts with e-mail and password are created with **Create account** (see [Sign-in](/docs/sign-in)); SSO accounts on their first sign-in via OIDC, and their admin right comes from the group at the provider.
 
 ## Workspaces
 
@@ -18,7 +18,7 @@ All workspaces with their number of members, usage and storage quota. The quota 
 
 ## Operations
 
-The state of the instance: size of the database and uploads, queues, search index, versions and uptime, plus the storage overview with the S3 connection, database backup and content figures. Details under [Operations and troubleshooting](/docs/betrieb).
+The state of the instance: size of the database and uploads, queues, search index, versions and uptime, plus the storage overview with the S3 connection, database backup and content figures. Details under [Operations and troubleshooting](/docs/operations).
 
 ## Instance
 
@@ -33,7 +33,7 @@ The state of the instance: size of the database and uploads, queues, search inde
 | Allow sign-ups with e-mail and password | Anyone may create an account. Without this setting only invited addresses (and the instance's first account). |
 | Offer a demo on the start page | Only on flowplan.org, see below. |
 
-Empty fields fall back to the [environment variables](/docs/konfiguration).
+Empty fields fall back to the [environment variables](/docs/configuration).
 
 ### E-mail and scheduled backup
 

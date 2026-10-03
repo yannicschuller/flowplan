@@ -48,7 +48,7 @@ test("English browsers read the documentation in English and can switch", async 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Flowplan, step by step.");
   for (const group of ["Getting started", "Working with Flowplan", "Administration", "Self-hosting"])
     await expect(page.getByRole("heading", { name: group, level: 2 })).toBeVisible();
-  await page.goto(`${base}/docs/anmeldung-oidc`);
+  await page.goto(`${base}/docs/sign-in`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign-in: password, passkeys and OIDC");
   await expect(page.getByRole("navigation", { name: "Continue reading" })).toContainText("Next");
   const search = page.getByRole("searchbox", { name: "Search the documentation" });

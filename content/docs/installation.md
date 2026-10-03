@@ -6,8 +6,8 @@ Flowplan läuft als ein einziger Container mit SQLite und einem Datenverzeichnis
 
 - Ein Server mit Docker und einem dauerhaften Volume. Die Texterkennung gescannter PDFs braucht beim Hochladen kurzzeitig spürbar CPU.
 - Eine Domain mit HTTPS über einen Reverse Proxy (Traefik, Caddy, nginx, Coolify, Pangolin …).
-- Optional ein OpenID-Connect-Anbieter für Single Sign-on. Ohne ihn melden sich Personen mit E-Mail und Passwort oder Passkey an, siehe [Anmeldung](/docs/anmeldung-oidc).
-- Optional: ein S3-kompatibler Speicher für Dateien und die laufende Datenbanksicherung, siehe [Speicher, S3 und Sicherung](/docs/speicher-und-sicherung).
+- Optional ein OpenID-Connect-Anbieter für Single Sign-on. Ohne ihn melden sich Personen mit E-Mail und Passwort oder Passkey an, siehe [Anmeldung](/docs/sign-in).
+- Optional: ein S3-kompatibler Speicher für Dateien und die laufende Datenbanksicherung, siehe [Speicher, S3 und Sicherung](/docs/storage-and-backups).
 
 ## Mit Docker Compose
 
@@ -32,7 +32,7 @@ In `.env` mindestens die öffentliche Adresse setzen:
 APP_URL=https://flowplan.example.com
 ```
 
-Für Single Sign-on zusätzlich `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` und `OIDC_ADMIN_GROUP` (siehe [Anmeldung](/docs/anmeldung-oidc)); für E-Mails (Einladungen, Passwort vergessen) die `SMTP_*`-Werte aus der [Konfiguration](/docs/konfiguration#e-mail-smtp).
+Für Single Sign-on zusätzlich `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` und `OIDC_ADMIN_GROUP` (siehe [Anmeldung](/docs/sign-in)); für E-Mails (Einladungen, Passwort vergessen) die `SMTP_*`-Werte aus der [Konfiguration](/docs/configuration#e-mail-smtp).
 
 ```bash
 docker compose up -d
@@ -84,7 +84,7 @@ docker compose up -d
 
 Beim selbst gebauten Image stattdessen `git pull` und `docker compose up -d --build`.
 
-Beim Start migriert Flowplan die Datenbank selbst. Vorher eine Sicherung anlegen (siehe [Speicher, S3 und Sicherung](/docs/speicher-und-sicherung)); ein Zurückgehen auf eine ältere Version nach einer Migration ist nicht vorgesehen.
+Beim Start migriert Flowplan die Datenbank selbst. Vorher eine Sicherung anlegen (siehe [Speicher, S3 und Sicherung](/docs/storage-and-backups)); ein Zurückgehen auf eine ältere Version nach einer Migration ist nicht vorgesehen.
 
 ## Ohne Docker
 
@@ -100,5 +100,5 @@ Für die lokale Entwicklung reicht `npm run dev`. Der Entwicklungsmodus bietet z
 
 ## Weiter
 
-- [Konfiguration](/docs/konfiguration): alle Umgebungsvariablen.
-- [Coolify und Reverse Proxy](/docs/coolify-und-proxy): Betrieb hinter Traefik, Coolify oder Pangolin.
+- [Konfiguration](/docs/configuration): alle Umgebungsvariablen.
+- [Coolify und Reverse Proxy](/docs/coolify-and-proxy): Betrieb hinter Traefik, Coolify oder Pangolin.

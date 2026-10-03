@@ -51,7 +51,7 @@ A slim desktop app wraps your Flowplan instance. On first start it asks for the 
 - The app remembers the window size and position and opens external links in the default browser.
 - Without a connection it shows an offline page of its own; offline use of the web app works as in the browser.
 
-You get the installation files from your administrators. As long as they are not signed, macOS asks on first opening (right-click → Open) and Windows shows SmartScreen. How to build them is described under [Operations and troubleshooting](/docs/betrieb#build-the-desktop-app).
+You get the installation files from your administrators. As long as they are not signed, macOS asks on first opening (right-click → Open) and Windows shows SmartScreen. How to build them is described under [Operations and troubleshooting](/docs/operations#build-the-desktop-app).
 
 ## Light and dark
 

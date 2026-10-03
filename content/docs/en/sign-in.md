@@ -7,9 +7,9 @@ Flowplan signs people in with e-mail and password, optionally with passkeys. In 
 Without further setup, the sign-in page shows a form for e-mail and password.
 
 - **The first account** of a new instance administers it: the sign-in page then offers **Create account** right away. This account sees the **Administration**.
-- **Further accounts** are created when the administrators open sign-ups under **Instance → Allow sign-ups with e-mail and password** – or for addresses with an [invitation](/docs/arbeitsbereiche-und-rechte). Workspaces someone was invited to appear as soon as the address is confirmed via the e-mail link.
+- **Further accounts** are created when the administrators open sign-ups under **Instance → Allow sign-ups with e-mail and password** – or for addresses with an [invitation](/docs/workspaces-and-permissions). Workspaces someone was invited to appear as soon as the address is confirmed via the e-mail link.
 - **Passwords** have at least 10 characters and are stored with scrypt. After 8 failed attempts for an address (or 30 from one IP address) there is a 15-minute pause.
-- **Forgot password**: with [e-mail delivery](/docs/konfiguration#e-mail-smtp) set up, the sign-in page sends a link that is valid for two hours. Without e-mail, the administrators create a link to hand over under **Users → Reset link**. After a reset all previous sessions are ended.
+- **Forgot password**: with [e-mail delivery](/docs/configuration#e-mail-smtp) set up, the sign-in page sends a link that is valid for two hours. Without e-mail, the administrators create a link to hand over under **Users → Reset link**. After a reset all previous sessions are ended.
 - **Admin right**: under **Users**, the administrators pass it on (**Make admin**) or take it away; someone always has to administer the instance.
 - Everyone changes their name and password under **Settings → General → Your profile**.
 

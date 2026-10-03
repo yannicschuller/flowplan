@@ -27,7 +27,7 @@ Existing members can be turned into guests with **Make guest** and back with **M
 
 ## Guests
 
-Guests are people outside the team, such as customers or freelancers. They only see pages and spaces shared with them, including sub-pages, and cannot create pages, invite anyone or change settings. For people without any account there are [links with their own permissions](/docs/teilen#links-with-their-own-permissions) instead.
+Guests are people outside the team, such as customers or freelancers. They only see pages and spaces shared with them, including sub-pages, and cannot create pages, invite anyone or change settings. For people without any account there are [links with their own permissions](/docs/sharing#links-with-their-own-permissions) instead.
 
 ## Groups
 
@@ -37,7 +37,7 @@ Guests are people outside the team, such as customers or freelancers. They only 
 
 1. The **space** sets the basis: open to all members or private for the people it is shared with.
 2. **Pages** inherit the permissions of their space and parent pages; under **Share**, people or groups are added.
-3. **Records** of a database can be made read-only or private (see [Databases](/docs/datenbanken#permissions-per-record)).
+3. **Records** of a database can be made read-only or private (see [Databases](/docs/databases#permissions-per-record)).
 4. Linked databases, mentions and links never grant additional permissions: whoever may not read the source does not see it embedded either.
 
 Owners of a workspace also manage other members' spaces, but do not get read access to their private pages that way.

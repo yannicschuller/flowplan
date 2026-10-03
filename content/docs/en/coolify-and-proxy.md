@@ -8,7 +8,7 @@ Flowplan only needs an HTTPS proxy in front of it. WebSockets are not needed: co
 2. **Ports Exposes**: `3000`.
 3. Enter the domain, e.g. `https://flowplan.example.com`. Coolify gets the certificate via Traefik.
 4. **Persistent Storage**: a volume with the target `/app/data`.
-5. Set the environment variables from the [configuration](/docs/konfiguration).
+5. Set the environment variables from the [configuration](/docs/configuration).
 6. Deploy. After about 20 seconds the health check reports the container as healthy.
 
 ### Health check

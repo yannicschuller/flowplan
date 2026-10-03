@@ -6,8 +6,8 @@ Flowplan runs as a single container with SQLite and a data directory. Postgres, 
 
 - A server with Docker and a persistent volume. Text recognition for scanned PDFs briefly needs noticeable CPU when uploading.
 - A domain with HTTPS behind a reverse proxy (Traefik, Caddy, nginx, Coolify, Pangolin …).
-- Optionally an OpenID Connect provider for single sign-on. Without one, people sign in with e-mail and password or a passkey, see [Sign-in](/docs/anmeldung-oidc).
-- Optionally an S3-compatible storage for files and the continuous database backup, see [Storage, S3 and backups](/docs/speicher-und-sicherung).
+- Optionally an OpenID Connect provider for single sign-on. Without one, people sign in with e-mail and password or a passkey, see [Sign-in](/docs/sign-in).
+- Optionally an S3-compatible storage for files and the continuous database backup, see [Storage, S3 and backups](/docs/storage-and-backups).
 
 ## With Docker Compose
 
@@ -32,7 +32,7 @@ In `.env`, set at least the public address:
 APP_URL=https://flowplan.example.com
 ```
 
-For single sign-on also set `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `OIDC_ADMIN_GROUP` (see [Sign-in](/docs/anmeldung-oidc)); for e-mails (invitations, forgotten passwords) the `SMTP_*` values from the [configuration](/docs/konfiguration#e-mail-smtp).
+For single sign-on also set `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `OIDC_ADMIN_GROUP` (see [Sign-in](/docs/sign-in)); for e-mails (invitations, forgotten passwords) the `SMTP_*` values from the [configuration](/docs/configuration#e-mail-smtp).
 
 ```bash
 docker compose up -d
@@ -84,7 +84,7 @@ docker compose up -d
 
 With a self-built image, use `git pull` and `docker compose up -d --build` instead.
 
-On start, Flowplan migrates the database itself. Make a backup beforehand (see [Storage, S3 and backups](/docs/speicher-und-sicherung)); going back to an older version after a migration is not supported.
+On start, Flowplan migrates the database itself. Make a backup beforehand (see [Storage, S3 and backups](/docs/storage-and-backups)); going back to an older version after a migration is not supported.
 
 ## Without Docker
 
@@ -100,5 +100,5 @@ For local development, `npm run dev` is enough. Development mode also offers **O
 
 ## Next
 
-- [Configuration](/docs/konfiguration): all environment variables.
-- [Coolify and reverse proxies](/docs/coolify-und-proxy): running behind Traefik, Coolify or Pangolin.
+- [Configuration](/docs/configuration): all environment variables.
+- [Coolify and reverse proxies](/docs/coolify-and-proxy): running behind Traefik, Coolify or Pangolin.

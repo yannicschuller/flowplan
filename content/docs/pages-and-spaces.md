@@ -12,8 +12,8 @@ Alles in Flowplan ist eine Seite in einem Baum. Bereiche gliedern den Baum, Arbe
 
 ## Seitentypen
 
-- **Dokument**: Text mit Blöcken – Überschriften, Listen, Aufgaben, Tabellen, Code, Formeln, Diagramme, Einbettungen. Siehe [Dokumente und Editor](/docs/dokumente).
-- **Datenbank**: Einträge mit Eigenschaften, gezeigt als Tabelle, Board, Kalender, Timeline, Galerie, Liste, Feed, Diagramm oder Formular. Siehe [Datenbanken](/docs/datenbanken).
+- **Dokument**: Text mit Blöcken – Überschriften, Listen, Aufgaben, Tabellen, Code, Formeln, Diagramme, Einbettungen. Siehe [Dokumente und Editor](/docs/documents).
+- **Datenbank**: Einträge mit Eigenschaften, gezeigt als Tabelle, Board, Kalender, Timeline, Galerie, Liste, Feed, Diagramm oder Formular. Siehe [Datenbanken](/docs/databases).
 - **Whiteboard**: unendliche Fläche mit Notizzetteln, Formen, Verbindungen, Stift und Rahmen. Siehe [Whiteboards](/docs/whiteboards).
 - **Journal**: eine Seite pro Tag, offene Aufgaben wandern mit. Siehe [Journal](/docs/journal).
 
@@ -29,8 +29,8 @@ Das Menü `…` oben rechts auf jeder Seite bietet:
 | Seite sperren | Schützt vor versehentlichen Änderungen, bis jemand entsperrt. |
 | Duplizieren | Kopie samt Unterseiten, Datenbanken und Dateien; interne Links zeigen auf die Kopien. |
 | Verschieben | Unter eine andere Seite, in einen anderen Bereich oder Arbeitsbereich. |
-| Als Vorlage speichern | Siehe [Vorlagen](/docs/vorlagen). |
-| Exportieren, Drucken / PDF | Siehe [Import, Export und Versionen](/docs/import-export-versionen). |
+| Als Vorlage speichern | Siehe [Vorlagen](/docs/templates). |
+| Exportieren, Drucken / PDF | Siehe [Import, Export und Versionen](/docs/import-export-versions). |
 | Versionsverlauf | Frühere Stände vergleichen und wiederherstellen. |
 | In den Papierkorb | Seite samt Unterseiten entfernen, wiederherstellbar. |
 

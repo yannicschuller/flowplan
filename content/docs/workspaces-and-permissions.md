@@ -27,7 +27,7 @@ Bestehende Mitglieder lassen sich **Zum Gast machen** und umgekehrt **Zum Mitgli
 
 ## Gäste
 
-Gäste sind Personen außerhalb des Teams, etwa Kunden oder Freelancer. Sie sehen nur Seiten und Bereiche, die für sie freigegeben wurden, samt Unterseiten, und können keine Seiten anlegen, niemanden einladen und keine Einstellungen ändern. Für Personen ganz ohne Konto gibt es stattdessen [Links mit eigenen Berechtigungen](/docs/teilen#links-mit-eigenen-berechtigungen).
+Gäste sind Personen außerhalb des Teams, etwa Kunden oder Freelancer. Sie sehen nur Seiten und Bereiche, die für sie freigegeben wurden, samt Unterseiten, und können keine Seiten anlegen, niemanden einladen und keine Einstellungen ändern. Für Personen ganz ohne Konto gibt es stattdessen [Links mit eigenen Berechtigungen](/docs/sharing#links-mit-eigenen-berechtigungen).
 
 ## Gruppen
 
@@ -37,7 +37,7 @@ Gäste sind Personen außerhalb des Teams, etwa Kunden oder Freelancer. Sie sehe
 
 1. Der **Bereich** gibt die Grundlage: öffentlich für alle Mitglieder oder privat für Freigegebene.
 2. **Seiten** erben die Rechte ihres Bereichs und ihrer übergeordneten Seiten; unter **Teilen** kommen Personen oder Gruppen dazu.
-3. **Einträge** einer Datenbank lassen sich schreibgeschützt oder privat stellen (siehe [Datenbanken](/docs/datenbanken#rechte-pro-eintrag)).
+3. **Einträge** einer Datenbank lassen sich schreibgeschützt oder privat stellen (siehe [Datenbanken](/docs/databases#rechte-pro-eintrag)).
 4. Verknüpfte Datenbanken, Erwähnungen und Links geben nie zusätzliche Rechte: Wer die Quelle nicht lesen darf, sieht sie auch eingebettet nicht.
 
 Eigentümer eines Arbeitsbereichs verwalten auch Bereiche anderer Mitglieder, erhalten dadurch aber keinen Lesezugriff auf deren private Seiten.

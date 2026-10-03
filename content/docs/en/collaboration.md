@@ -64,4 +64,4 @@ Text comments exist in documents and in the contents of database records, also i
 
 ## Inbox
 
-The **Inbox** in the sidebar collects mentions, comments and replies, date reminders as well as comments and records from guests. Unread items are marked; a click jumps to the spot – for text comments straight into the thread. You choose which events arrive as push notifications under **Settings → Notifications** (see [Search, inbox and push](/docs/suche-und-benachrichtigungen)).
+The **Inbox** in the sidebar collects mentions, comments and replies, date reminders as well as comments and records from guests. Unread items are marked; a click jumps to the spot – for text comments straight into the thread. You choose which events arrive as push notifications under **Settings → Notifications** (see [Search, inbox and push](/docs/search-and-notifications)).

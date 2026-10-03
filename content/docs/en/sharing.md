@@ -11,7 +11,7 @@ Pages inherit the permissions of their space and parent pages (**Inherited**). I
 | **View** | Read and comment |
 | **Edit** | Change content, records and views |
 
-Private spaces and pages are only visible to the people they are shared with. Guests only see what has been explicitly shared with them (see [Workspaces, members and permissions](/docs/arbeitsbereiche-und-rechte)).
+Private spaces and pages are only visible to the people they are shared with. Guests only see what has been explicitly shared with them (see [Workspaces, members and permissions](/docs/workspaces-and-permissions)).
 
 ## Links with their own permissions
 
@@ -43,4 +43,4 @@ Under **Links with their own permissions** you create as many named links as you
 
 ## Forms
 
-Forms have a link of their own, see [Forms](/docs/formulare#share-a-form).
+Forms have a link of their own, see [Forms](/docs/forms#share-a-form).

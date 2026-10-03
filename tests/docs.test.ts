@@ -48,17 +48,17 @@ for (const locale of LOCALES)
 
 test("the search index covers section text", () => {
   const index = docSearchIndex("de");
-  const storage = index.find((p) => p.slug === "speicher-und-sicherung")!;
+  const storage = index.find((p) => p.slug === "storage-and-backups")!;
   assert.ok(storage.sections.some((s) => s.text === "Garage" && s.body.includes("garage bucket create")));
-  const config = index.find((p) => p.slug === "konfiguration")!;
+  const config = index.find((p) => p.slug === "configuration")!;
   assert.match(config.sections.find((s) => s.id === "s3-und-datenbanksicherung")!.body, /S3_BUCKET \S/);
-  const english = docSearchIndex("en").find((p) => p.slug === "konfiguration")!;
+  const english = docSearchIndex("en").find((p) => p.slug === "configuration")!;
   assert.equal(english.title, "Configuration");
 });
 
 test("self-hosting is documented for everyone, in both languages", () => {
   const selfHosting = docGroups("en").find((g) => g.title === "Self-hosting")!.pages.map((p) => p.slug);
-  for (const slug of ["installation", "konfiguration", "speicher-und-sicherung", "coolify-und-proxy", "betrieb", "anmeldung-oidc", "administration"])
+  for (const slug of ["installation", "configuration", "storage-and-backups", "coolify-and-proxy", "operations", "sign-in", "administration"])
     assert.ok(selfHosting.includes(slug), slug);
   for (const locale of LOCALES)
     assert.match(loadDoc("installation", locale)!.html, /ghcr\.io\/yannicschuller\/flowplan/);

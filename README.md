@@ -2,7 +2,7 @@
 
 **Documents, databases, whiteboards and a daily journal for teams – open source, self-hosted or hosted in Germany.**
 
-[Website](https://flowplan.org) · [Documentation](https://flowplan.org/docs) · [Self-hosting guide](https://flowplan.org/docs/installation) · [Configuration](https://flowplan.org/docs/konfiguration) · [Changelog](https://github.com/yannicschuller/flowplan/commits/main)
+[Website](https://flowplan.org) · [Documentation](https://flowplan.org/docs) · [Self-hosting guide](https://flowplan.org/docs/installation) · [Configuration](https://flowplan.org/docs/configuration) · [Changelog](https://github.com/yannicschuller/flowplan/commits/main)
 
 [![CI](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml/badge.svg)](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml)
 [![Docker image](https://github.com/yannicschuller/flowplan/actions/workflows/docker.yml/badge.svg)](https://github.com/yannicschuller/flowplan/pkgs/container/flowplan)
@@ -52,11 +52,11 @@ All data lives in the volume on `/app/data`. Run **exactly one** container per d
 More in the documentation:
 
 - [Installation with Docker](https://flowplan.org/docs/installation)
-- [Sign-in: password, passkeys and OIDC](https://flowplan.org/docs/anmeldung-oidc)
-- [Configuration (all environment variables)](https://flowplan.org/docs/konfiguration)
-- [Storage, S3 and backups](https://flowplan.org/docs/speicher-und-sicherung)
-- [Coolify and reverse proxies](https://flowplan.org/docs/coolify-und-proxy)
-- [Operations and troubleshooting](https://flowplan.org/docs/betrieb)
+- [Sign-in: password, passkeys and OIDC](https://flowplan.org/docs/sign-in)
+- [Configuration (all environment variables)](https://flowplan.org/docs/configuration)
+- [Storage, S3 and backups](https://flowplan.org/docs/storage-and-backups)
+- [Coolify and reverse proxies](https://flowplan.org/docs/coolify-and-proxy)
+- [Operations and troubleshooting](https://flowplan.org/docs/operations)
 
 Every instance also serves the documentation itself under `/docs`.
 

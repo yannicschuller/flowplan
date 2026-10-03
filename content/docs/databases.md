@@ -4,7 +4,7 @@ Eine Datenbank ist eine Sammlung von Einträgen mit Eigenschaften. Dieselben Ein
 
 ## Datenbank anlegen
 
-**Neue Seite → Datenbank** legt eine Datenbank mit einer Tabellenansicht an. Alternativ eine [Vorlage](/docs/vorlagen) verwenden, etwa „Aufgaben“ oder „Projekte“, oder eine CSV-Datei importieren (siehe [Import, Export und Versionen](/docs/import-export-versionen)).
+**Neue Seite → Datenbank** legt eine Datenbank mit einer Tabellenansicht an. Alternativ eine [Vorlage](/docs/templates) verwenden, etwa „Aufgaben“ oder „Projekte“, oder eine CSV-Datei importieren (siehe [Import, Export und Versionen](/docs/import-export-versions)).
 
 ## Einträge
 
@@ -30,7 +30,7 @@ Eine Datenbank ist eine Sammlung von Einträgen mit Eigenschaften. Dieselben Ein
 | Formel | Berechneter Wert aus anderen Eigenschaften |
 | Erstellt am/von, Bearbeitet am/von | Werden automatisch gepflegt |
 
-Relationen, Rollups und Formeln sind unter [Eigenschaften, Formeln und Rollups](/docs/eigenschaften-und-formeln) beschrieben.
+Relationen, Rollups und Formeln sind unter [Eigenschaften, Formeln und Rollups](/docs/properties-and-formulas) beschrieben.
 
 ## Große Datenbanken
 

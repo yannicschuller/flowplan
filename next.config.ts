@@ -1,4 +1,28 @@
 import type { NextConfig } from "next";
+
+const renamedDocs = [
+  ["anmeldung-oidc", "sign-in"],
+  ["ansichten", "views"],
+  ["api-und-webhooks", "api-and-webhooks"],
+  ["arbeitsbereiche-und-rechte", "workspaces-and-permissions"],
+  ["betrieb", "operations"],
+  ["coolify-und-proxy", "coolify-and-proxy"],
+  ["datenbanken", "databases"],
+  ["dokumente", "documents"],
+  ["eigenschaften-und-formeln", "properties-and-formulas"],
+  ["erste-schritte", "first-steps"],
+  ["formulare", "forms"],
+  ["import-export-versionen", "import-export-versions"],
+  ["konfiguration", "configuration"],
+  ["offline-und-apps", "offline-and-apps"],
+  ["seiten-und-bereiche", "pages-and-spaces"],
+  ["speicher-und-sicherung", "storage-and-backups"],
+  ["suche-und-benachrichtigungen", "search-and-notifications"],
+  ["tastenkuerzel", "keyboard-shortcuts"],
+  ["teilen", "sharing"],
+  ["vorlagen", "templates"],
+  ["zusammenarbeit", "collaboration"],
+];
 const config: NextConfig = {
   output: "standalone",
   // A second development server (e.g. for isolated browser tests) needs its
@@ -29,6 +53,14 @@ const config: NextConfig = {
       "./node_modules/pdfjs-dist/standard_fonts/*",
       "./node_modules/pdfjs-dist/wasm/*",
     ],
+  },
+  // The docs moved to English addresses; old links keep working.
+  async redirects() {
+    return renamedDocs.map(([from, to]) => ({
+      source: `/docs/${from}`,
+      destination: `/docs/${to}`,
+      permanent: true,
+    }));
   },
   async headers() {
     return [

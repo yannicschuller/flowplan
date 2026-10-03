@@ -4,7 +4,7 @@ Vom ersten Anmelden bis zur ersten eigenen Seite: was du in den ersten zehn Minu
 
 ## Anmelden oder registrieren
 
-Du meldest dich mit E-Mail und Passwort an, mit einem Passkey (Fingerabdruck, Gesicht oder Geräte-PIN) oder – wenn deine Organisation das eingerichtet hat – über **Mit SSO anmelden** beim Login deiner Organisation (OpenID Connect, etwa Keycloak, Authentik, Zitadel oder Entra ID). Ein Konto legst du mit **Konto erstellen** an, sofern die Instanz die Registrierung erlaubt oder du eingeladen wurdest. Passkeys richtest du danach unter **Einstellungen → Allgemein → Dein Profil** ein. Alles Weitere unter [Anmeldung](/docs/anmeldung-oidc).
+Du meldest dich mit E-Mail und Passwort an, mit einem Passkey (Fingerabdruck, Gesicht oder Geräte-PIN) oder – wenn deine Organisation das eingerichtet hat – über **Mit SSO anmelden** beim Login deiner Organisation (OpenID Connect, etwa Keycloak, Authentik, Zitadel oder Entra ID). Ein Konto legst du mit **Konto erstellen** an, sofern die Instanz die Registrierung erlaubt oder du eingeladen wurdest. Passkeys richtest du danach unter **Einstellungen → Allgemein → Dein Profil** ein. Alles Weitere unter [Anmeldung](/docs/sign-in).
 
 Beim ersten Anmelden legt Flowplan einen privaten Arbeitsbereich mit Beispielseiten an. Bei Single Sign-on kommen Name, E-Mail-Adresse und – falls vorhanden – das Profilbild vom Login-Anbieter.
 
@@ -25,14 +25,14 @@ Auf dem Smartphone klappt die Seitenleiste ein; das Menüsymbol oben links öffn
 2. Den Typ wählen: **Dokument**, **Datenbank**, **Whiteboard** oder **Journal**.
 3. Einen Titel eingeben und losschreiben. Gespeichert wird automatisch, auch ohne Verbindung.
 
-Im Dokument öffnet `/` das Blockmenü: `/h2`, `/todo` oder `/tabelle` tippen und mit Enter einfügen. Wie der Editor im Detail funktioniert, steht unter [Dokumente und Editor](/docs/dokumente).
+Im Dokument öffnet `/` das Blockmenü: `/h2`, `/todo` oder `/tabelle` tippen und mit Enter einfügen. Wie der Editor im Detail funktioniert, steht unter [Dokumente und Editor](/docs/documents).
 
 ## Finden statt suchen
 
-<kbd>⌘</kbd> <kbd>K</kbd> (Windows/Linux: <kbd>Strg</kbd> <kbd>K</kbd>) öffnet die Schnellsuche über Titel, Texte, Datenbankeinträge, Kommentare und sogar den Inhalt hochgeladener PDFs und Office-Dateien. Mehr dazu unter [Suche, Posteingang und Push](/docs/suche-und-benachrichtigungen).
+<kbd>⌘</kbd> <kbd>K</kbd> (Windows/Linux: <kbd>Strg</kbd> <kbd>K</kbd>) öffnet die Schnellsuche über Titel, Texte, Datenbankeinträge, Kommentare und sogar den Inhalt hochgeladener PDFs und Office-Dateien. Mehr dazu unter [Suche, Posteingang und Push](/docs/search-and-notifications).
 
 ## Wie es weitergeht
 
-- [Seiten und Bereiche](/docs/seiten-und-bereiche): Seitenbaum, Favoriten, Verschieben und Papierkorb.
-- [Datenbanken](/docs/datenbanken): Tabellen, Boards, Kalender und mehr aus denselben Einträgen.
-- [Zusammenarbeit und Kommentare](/docs/zusammenarbeit): gemeinsam schreiben, kommentieren, erwähnen.
+- [Seiten und Bereiche](/docs/pages-and-spaces): Seitenbaum, Favoriten, Verschieben und Papierkorb.
+- [Datenbanken](/docs/databases): Tabellen, Boards, Kalender und mehr aus denselben Einträgen.
+- [Zusammenarbeit und Kommentare](/docs/collaboration): gemeinsam schreiben, kommentieren, erwähnen.

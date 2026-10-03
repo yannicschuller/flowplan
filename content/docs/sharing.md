@@ -11,7 +11,7 @@ Seiten erben die Rechte ihres Bereichs und ihrer übergeordneten Seiten (**Geerb
 | **Ansehen** | Lesen und kommentieren |
 | **Bearbeiten** | Inhalte, Einträge und Ansichten ändern |
 
-Private Bereiche und Seiten sind nur für Freigegebene sichtbar. Gäste sehen ausschließlich, was ihnen ausdrücklich freigegeben wurde (siehe [Arbeitsbereiche, Mitglieder und Rechte](/docs/arbeitsbereiche-und-rechte)).
+Private Bereiche und Seiten sind nur für Freigegebene sichtbar. Gäste sehen ausschließlich, was ihnen ausdrücklich freigegeben wurde (siehe [Arbeitsbereiche, Mitglieder und Rechte](/docs/workspaces-and-permissions)).
 
 ## Links mit eigenen Berechtigungen
 
@@ -43,4 +43,4 @@ Unter **Links mit eigenen Berechtigungen** entstehen beliebig viele benannte Lin
 
 ## Formulare
 
-Formulare haben einen eigenen Link, siehe [Formulare](/docs/formulare#formular-teilen).
+Formulare haben einen eigenen Link, siehe [Formulare](/docs/forms#formular-teilen).

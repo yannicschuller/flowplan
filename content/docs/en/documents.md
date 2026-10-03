@@ -120,5 +120,5 @@ List items and tasks stay what they are when moved: outside their list they form
 
 - **Table of contents**: lists the headings of the page and jumps there on click.
 - **Two columns**: blocks side by side; stacked on a phone.
-- **Linked database**: a view of an existing database with its own filters and sorting; changes to records go to the source. See [Views](/docs/ansichten#linked-databases).
+- **Linked database**: a view of an existing database with its own filters and sorting; changes to records go to the source. See [Views](/docs/views#linked-databases).
 - **Whiteboard**: a whiteboard right in the document; the button at the top right opens it large.

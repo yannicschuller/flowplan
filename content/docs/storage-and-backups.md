@@ -13,7 +13,7 @@ Alle Daten liegen in einem Verzeichnis. Mit einem S3-Speicher werden Dateien ges
 
 ## S3-Speicher einschalten
 
-Mit `S3_BUCKET` und Zugangsdaten (siehe [Konfiguration](/docs/konfiguration#s3-und-datenbanksicherung)):
+Mit `S3_BUCKET` und Zugangsdaten (siehe [Konfiguration](/docs/configuration#s3-und-datenbanksicherung)):
 
 - **Dateien**: Jede hochgeladene Datei geht direkt nach dem Speichern in den Bucket, gelöschte Dateien werden dort entfernt. `uploads/` bleibt Arbeitskopie. Fehlt dort eine Datei – neuer Host, verlorenes Volume –, holt Flowplan sie aus dem Bucket: beim Abruf sofort, alle übrigen im Hintergrund.
 - **Datenbank**: [Litestream](https://litestream.io) überträgt Änderungen der SQLite-Datei etwa im Sekundentakt nach `<Präfix>/db`. Startet der Container ohne Datenbank, stellt Litestream sie zuerst aus dem Bucket wieder her.

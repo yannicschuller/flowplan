@@ -4,7 +4,7 @@ A database is a collection of records with properties. The same records can be s
 
 ## Create a database
 
-**New page → Database** creates a database with a table view. Alternatively use a [template](/docs/vorlagen), such as "Tasks" or "Projects", or import a CSV file (see [Import, export and versions](/docs/import-export-versionen)).
+**New page → Database** creates a database with a table view. Alternatively use a [template](/docs/templates), such as "Tasks" or "Projects", or import a CSV file (see [Import, export and versions](/docs/import-export-versions)).
 
 ## Records
 
@@ -30,7 +30,7 @@ A database is a collection of records with properties. The same records can be s
 | Formula | A value calculated from other properties |
 | Created time/by, edited time/by | Maintained automatically |
 
-Relations, rollups and formulas are described under [Properties, formulas and rollups](/docs/eigenschaften-und-formeln).
+Relations, rollups and formulas are described under [Properties, formulas and rollups](/docs/properties-and-formulas).
 
 ## Large databases
 

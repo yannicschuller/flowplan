@@ -30,7 +30,7 @@ export default async function DocsHome() {
           )}
         </p>
         <div className={s.paths}>
-          <a href="/docs/erste-schritte" className={s.path}>
+          <a href="/docs/first-steps" className={s.path}>
             <span>{t("Ich arbeite mit Flowplan", "I work with Flowplan")}</span>
             <strong>{t("Erste Schritte", "First steps")}</strong>
             <small>{t("Anmelden, erste Seite, Seitenbaum und Suche.", "Sign in, first page, page tree and search.")}</small>

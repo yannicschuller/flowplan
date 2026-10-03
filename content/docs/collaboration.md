@@ -64,4 +64,4 @@ Textkommentare gibt es in Dokumenten und in den Inhalten von Datenbankeinträgen
 
 ## Posteingang
 
-Der **Posteingang** in der Seitenleiste sammelt Erwähnungen, Kommentare und Antworten, Datums-Erinnerungen sowie Kommentare und Einträge von Gästen. Ungelesenes ist markiert; ein Klick springt zur Stelle – bei Textkommentaren direkt in den Thread. Welche Ereignisse als Push-Nachricht kommen, stellst du unter **Einstellungen → Benachrichtigungen** ein (siehe [Suche, Posteingang und Push](/docs/suche-und-benachrichtigungen)).
+Der **Posteingang** in der Seitenleiste sammelt Erwähnungen, Kommentare und Antworten, Datums-Erinnerungen sowie Kommentare und Einträge von Gästen. Ungelesenes ist markiert; ein Klick springt zur Stelle – bei Textkommentaren direkt in den Thread. Welche Ereignisse als Push-Nachricht kommen, stellst du unter **Einstellungen → Benachrichtigungen** ein (siehe [Suche, Posteingang und Push](/docs/search-and-notifications)).

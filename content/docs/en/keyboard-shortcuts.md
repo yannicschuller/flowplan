@@ -32,7 +32,7 @@ All shortcuts at a glance. On Windows and Linux, <kbd>Ctrl</kbd> stands for <kbd
 | <kbd>⌘</kbd> <kbd>Z</kbd> / <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Z</kbd> | Undo / redo |
 | <kbd>⌘</kbd> <kbd>Enter</kbd> | Send a comment |
 
-Markdown shortcuts such as `##`, `-`, `[]` or ` ``` ` are listed under [Documents and the editor](/docs/dokumente#markdown-shortcuts).
+Markdown shortcuts such as `##`, `-`, `[]` or ` ``` ` are listed under [Documents and the editor](/docs/documents#markdown-shortcuts).
 
 ## Whiteboard
 
