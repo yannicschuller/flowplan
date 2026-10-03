@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useState } from "react";
 import { Check } from "@phosphor-icons/react";
 import { api } from "./ui";
@@ -24,6 +25,7 @@ export default function FormClient({
   anonymous: boolean;
   config: FormConfig;
 }) {
+  const t = useT();
   const [values, setValues] = useState<Record<string, unknown>>({}),
     [done, setDone] = useState(false),
     [error, setError] = useState(""),
@@ -40,8 +42,8 @@ export default function FormClient({
           {config.description && <p>{config.description}</p>}
           <p className="muted">
             {anonymous
-              ? "Dieses Formular erfasst keine Benutzeridentität."
-              : "Deine Antwort wird deinem angemeldeten Konto zugeordnet."}
+              ? t("Dieses Formular erfasst keine Benutzeridentität.", "This form does not record who you are.")
+              : t("Deine Antwort wird deinem angemeldeten Konto zugeordnet.", "Your answer is linked to your signed-in account.")}
           </p>
         </div>
         {done ? (
@@ -95,7 +97,7 @@ export default function FormClient({
                   if (!response.ok)
                     throw new Error(
                       (await response.json().catch(() => ({}))).error ||
-                        "Antwort konnte nicht gespeichert werden.",
+                        t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."),
                     );
                 }
                 setDone(true);
@@ -125,7 +127,7 @@ export default function FormClient({
               </p>
             )}
             <button className="button primary" disabled={busy}>
-              {busy ? "Wird gesendet …" : config.submitLabel}
+              {busy ? t("Wird gesendet …", "Sending …") : config.submitLabel}
             </button>
           </form>
         )}

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useState } from "react";
 import type { Editor, Node } from "@tiptap/core";
 import { MathBlock, MathInline } from "@/lib/document-schema";
@@ -74,13 +75,14 @@ export function MathEditorDialog({
   target: MathTarget;
   onClose: () => void;
 }) {
+  const t = useT();
   const [expression, setExpression] = useState(target.expression);
   const [conflict, setConflict] = useState("");
   const inline = target.type === "mathInline";
   const error = mathError(expression, inline);
   function apply(remove = false) {
     if (!editor?.isEditable) {
-      setConflict("Das Dokument kann nicht bearbeitet werden.");
+      setConflict(t("Das Dokument kann nicht bearbeitet werden.", "The document cannot be edited."));
       return;
     }
     if (target.getPos) {
@@ -93,7 +95,7 @@ export function MathEditorDialog({
         current.attrs.expression !== target.expression
       ) {
         setConflict(
-          "Diese Formel wurde inzwischen geändert oder gelöscht. Dein Entwurf bleibt hier erhalten. Öffne die aktuelle Formel erneut, um sie zu bearbeiten.",
+          t("Diese Formel wurde inzwischen geändert oder gelöscht. Dein Entwurf bleibt hier erhalten. Öffne die aktuelle Formel erneut, um sie zu bearbeiten.", "This formula was changed or deleted in the meantime. Your draft is kept here. Open the current formula again to edit it."),
         );
         return;
       }
@@ -116,7 +118,7 @@ export function MathEditorDialog({
   return (
     <Modal
       open
-      title={inline ? "Inline-Formel" : "Mathematische Formel"}
+      title={inline ? t("Inline-Formel", "Inline formula") : t("Mathematische Formel", "Math formula")}
       onClose={onClose}
       onCloseAutoFocus={(event) => {
         event.preventDefault();
@@ -130,9 +132,9 @@ export function MathEditorDialog({
         }}
       >
         <label>
-          LaTeX-Formel
+          {t("LaTeX-Formel", "LaTeX formula")}
           <textarea
-            aria-label="LaTeX-Formel"
+            aria-label={t("LaTeX-Formel", "LaTeX formula")}
             autoFocus
             rows={3}
             value={expression}
@@ -143,12 +145,12 @@ export function MathEditorDialog({
         </label>
         <p className="muted">
           {inline
-            ? "Die Formel steht direkt im Satz."
-            : "Die Formel steht in einem eigenen Absatz."}
+            ? t("Die Formel steht direkt im Satz.", "The formula sits inside the sentence.")
+            : t("Die Formel steht in einem eigenen Absatz.", "The formula sits in its own paragraph.")}
         </p>
         <div
           className="math-preview"
-          aria-label="Formelvorschau"
+          aria-label={t("Formelvorschau", "Formula preview")}
           dangerouslySetInnerHTML={{ __html: renderMath(expression, inline) }}
         />
         {error && expression && (
@@ -168,14 +170,14 @@ export function MathEditorDialog({
               className="button"
               onClick={() => apply(true)}
             >
-              Formel löschen
+              {t("Formel löschen", "Delete formula")}
             </button>
           )}
           <button type="button" className="button" onClick={onClose}>
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
           <button className="button primary" disabled={!!error}>
-            {target.getPos ? "Speichern" : "Einfügen"}
+            {target.getPos ? t("Speichern", "Save") : t("Einfügen", "Insert")}
           </button>
         </div>
       </form>

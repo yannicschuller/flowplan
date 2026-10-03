@@ -1,6 +1,7 @@
 "use client";
 // Writing without distraction: sidebar and page chrome fade away, a small
 // bar counts words towards an optional goal (kept per page on this device).
+import { useT } from "./i18n";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useEffect, useState } from "react";
 import { X } from "@phosphor-icons/react";
@@ -23,6 +24,7 @@ export function FocusBar({
   html: () => string;
   onClose: () => void;
 }) {
+  const t = useT();
   const key = `flowplan:word-goal:${pageId}`;
   const [words, setWords] = useState(() => countWords(html()));
   const [start] = useState(() => countWords(html()));
@@ -51,20 +53,20 @@ export function FocusBar({
   };
   const progress = goal ? Math.min(1, words / goal) : 0;
   return (
-    <div className="focus-bar" role="status" aria-label="Fokusmodus">
+    <div className="focus-bar" role="status" aria-label={t("Fokusmodus", "Focus mode")}>
       <span className="focus-count">
-        <strong>{words.toLocaleString(LOCALE_TAG)}</strong> Wörter
-        {words - start > 0 && <small>+{(words - start).toLocaleString(LOCALE_TAG)} in dieser Sitzung</small>}
+        <strong>{words.toLocaleString(LOCALE_TAG)}</strong> {t("Wörter", "words")}
+        {words - start > 0 && <small>+{(words - start).toLocaleString(LOCALE_TAG)} {t("in dieser Sitzung", "in this session")}</small>}
       </span>
       <label className="focus-goal">
-        Ziel
+        {t("Ziel", "Goal")}
         <input
           type="number"
           min={0}
           max={100000}
           step={50}
           inputMode="numeric"
-          aria-label="Wortziel"
+          aria-label={t("Wortziel", "Word goal")}
           value={goal || ""}
           placeholder="—"
           onChange={(e) => saveGoal(Math.max(0, Math.min(100000, Number(e.target.value) || 0)))}
@@ -75,8 +77,8 @@ export function FocusBar({
           <i style={{ width: `${progress * 100}%` }} />
         </span>
       )}
-      {goal > 0 && progress >= 1 && <span className="focus-done">Ziel erreicht 🎉</span>}
-      <button type="button" className="icon-button" aria-label="Fokusmodus beenden" onClick={onClose}>
+      {goal > 0 && progress >= 1 && <span className="focus-done">{t("Ziel erreicht 🎉", "Goal reached 🎉")}</span>}
+      <button type="button" className="icon-button" aria-label={t("Fokusmodus beenden", "Exit focus mode")} onClick={onClose}>
         <X size={16} />
       </button>
     </div>

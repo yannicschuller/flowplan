@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { WhiteboardEmbedView } from "./whiteboard/embed";
@@ -14,6 +15,7 @@ export function ReadOnlyDocument({
   html: string;
   className?: string;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = ref.current;
@@ -47,14 +49,14 @@ export function ReadOnlyDocument({
       wrapper.className = "code-block-view";
       toolbar.className = "code-block-toolbar";
       label.textContent = languageLabel(language);
-      copy.textContent = "Kopieren";
+      copy.textContent = t("Kopieren", "Copy");
       copy.type = "button";
       copy.onclick = async () => {
         try {
           await navigator.clipboard.writeText(text);
-          copy.textContent = "Code kopiert";
+          copy.textContent = t("Code kopiert", "Code copied");
         } catch {
-          copy.textContent = "Kopieren fehlgeschlagen";
+          copy.textContent = t("Kopieren fehlgeschlagen", "Copying failed");
         }
       };
       toolbar.append(label, copy);
@@ -70,7 +72,7 @@ export function ReadOnlyDocument({
       const rows = Array.from(body.querySelectorAll("tr"));
       const search = document.createElement("input");
       search.type = "search";
-      search.placeholder = "In dieser Ansicht suchen …";
+      search.placeholder = t("In dieser Ansicht suchen …", "Search in this view …");
       search.setAttribute("aria-label", "Eingebettete Ansicht durchsuchen");
       search.className = "public-embed-search";
       search.addEventListener("input", () => {

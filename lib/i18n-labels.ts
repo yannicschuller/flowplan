@@ -114,6 +114,13 @@ const labels: Record<string, string> = {
   Donut: "Donut",
   "Anzahl Einträge": "Number of records",
   Mittelwert: "Mean",
+  // template categories
+  Projekte: "Projects",
+  Meetings: "Meetings",
+  "Wissen & Dokumentation": "Knowledge & documentation",
+  "Planung & Ziele": "Planning & goals",
+  Persönlich: "Personal",
+  Sonstiges: "Other",
   // number, date and time formats
   Zahl: "Number",
   "Zahl ohne Tausendertrennzeichen": "Number without thousands separator",

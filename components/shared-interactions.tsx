@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useRef, useState } from "react";
 import { useSharedLive } from "./shared-live";
 import { useRouter } from "next/navigation";
@@ -31,6 +32,7 @@ export function SharedInteractions({
   token: string;
   initial: Content;
 }) {
+  const t = useT();
   const router = useRouter();
   const [data, setData] = useState(initial),
     [editing, setEditing] = useState(false),
@@ -130,26 +132,26 @@ export function SharedInteractions({
   return (
     <section className="shared-interactions">
       <p className="shared-permission">
-        Dein Link:{" "}
+        {t("Dein Link:", "Your link:")}{" "}
         {data.role === "viewer"
-          ? "Lesen"
+          ? t("Lesen", "Read")
           : data.role === "commenter"
-            ? "Lesen und kommentieren"
-            : "Lesen, kommentieren und bearbeiten"}
-        {data.locked && " · Seite gesperrt"}
+            ? t("Lesen und kommentieren", "Read and comment")
+            : t("Lesen, kommentieren und bearbeiten", "Read, comment and edit")}
+        {data.locked && t(" · Seite gesperrt", " · page locked")}
       </p>
       {data.role === "editor" && !data.locked && !editing && (
         <button className="button" disabled={busy} onClick={startEdit}>
-          Inhalt bearbeiten
+          {t("Inhalt bearbeiten", "Edit content")}
         </button>
       )}
       {editing && (
         <div className="shared-edit-form">
           {!data.rowId && (
             <label>
-              Seitentitel
+              {t("Seitentitel", "Page title")}
               <input
-                aria-label="Seitentitel"
+                aria-label={t("Seitentitel", "Page title")}
                 maxLength={500}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -171,7 +173,7 @@ export function SharedInteractions({
                   files={[...(data.files || []), ...uploaded]}
                   upload={async (file) => {
                     const result = await upload(file);
-                    if (!result) throw new Error("Upload fehlgeschlagen.");
+                    if (!result) throw new Error(t("Upload fehlgeschlagen.", "Upload failed."));
                     return result.url;
                   }}
                   disabled={busy}
@@ -194,14 +196,14 @@ export function SharedInteractions({
                 />
                 <p className="shared-live-status" aria-live="polite">
                   {live.state === "error"
-                    ? `Live-Bearbeitung: ${live.error}`
+                    ? t(`Live-Bearbeitung: ${live.error}`, `Live editing: ${live.error}`)
                     : live.state === "saving"
-                      ? "Live · wird gespeichert …"
-                      : "Live · Inhalt gespeichert, Änderungen anderer erscheinen automatisch"}
+                      ? t("Live · wird gespeichert …", "Live · saving …")
+                      : t("Live · Inhalt gespeichert, Änderungen anderer erscheinen automatisch", "Live · content saved, changes by others appear automatically")}
                 </p>
               </>
             ) : (
-              <p className="muted">Live-Bearbeitung wird verbunden …</p>
+              <p className="muted">{t("Live-Bearbeitung wird verbunden …", "Connecting live editing …")}</p>
             ))}
           <div className="shared-actions">
             <button
@@ -241,19 +243,19 @@ export function SharedInteractions({
                       });
                 if (result) {
                   setEditing(false);
-                  setStatus("Änderungen gespeichert");
+                  setStatus(t("Änderungen gespeichert", "Changes saved"));
                   router.refresh();
                 }
               }}
             >
-              Änderungen speichern
+              {t("Änderungen speichern", "Save changes")}
             </button>
             <button
               className="button"
               disabled={busy}
               onClick={() => setEditing(false)}
             >
-              Abbrechen
+              {t("Abbrechen", "Cancel")}
             </button>
           </div>
         </div>
@@ -276,9 +278,9 @@ export function SharedInteractions({
           }}
         >
           <label>
-            Neuer Eintrag
+            {t("Neuer Eintrag", "New record")}
             <input
-              aria-label="Name des neuen Eintrags"
+              aria-label={t("Name des neuen Eintrags", "Name of the new record")}
               maxLength={500}
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
@@ -288,13 +290,13 @@ export function SharedInteractions({
             className="button primary"
             disabled={busy || !newTitle.trim()}
           >
-            Eintrag anlegen
+            {t("Eintrag anlegen", "Create record")}
           </button>
         </form>
       )}
-      <h2>Kommentare zur Freigabe</h2>
+      <h2>{t("Kommentare zur Freigabe", "Comments on this share")}</h2>
       {data.comments.length === 0 && (
-        <p className="muted">Noch keine Gastkommentare.</p>
+        <p className="muted">{t("Noch keine Gastkommentare.", "No guest comments yet.")}</p>
       )}
       {data.comments.map((c) => (
         <article className="shared-comment" key={c.id}>
@@ -312,14 +314,14 @@ export function SharedInteractions({
             const result = await send({ action: "comment", name, body });
             if (result) {
               setBody("");
-              setStatus("Kommentar veröffentlicht");
+              setStatus(t("Kommentar veröffentlicht", "Comment published"));
             }
           }}
         >
           <label>
-            Dein Name
+            {t("Dein Name", "Your name")}
             <input
-              aria-label="Dein Name"
+              aria-label={t("Dein Name", "Your name")}
               required
               maxLength={80}
               value={name}
@@ -327,9 +329,9 @@ export function SharedInteractions({
             />
           </label>
           <label>
-            Kommentar
+            {t("Kommentar", "Comment")}
             <textarea
-              aria-label="Kommentar"
+              aria-label={t("Kommentar", "Comment")}
               required
               maxLength={5000}
               value={body}
@@ -340,7 +342,7 @@ export function SharedInteractions({
             className="button primary"
             disabled={busy || !body.trim() || !name.trim()}
           >
-            Kommentar veröffentlichen
+            {t("Kommentar veröffentlichen", "Publish comment")}
           </button>
         </form>
       )}

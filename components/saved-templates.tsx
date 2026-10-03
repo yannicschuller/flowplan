@@ -1,4 +1,6 @@
 "use client";
+import { tr } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useState, useCallback } from "react";
 import { api, Modal, PageIcon } from "./ui";
@@ -18,10 +20,10 @@ type Template = {
   shared?: boolean;
 };
 const visibilityLabels = {
-  private: "Nur für mich",
-  workspace: "Arbeitsbereich",
-  instance: "Alle Arbeitsbereiche",
-  public: "Öffentliche Galerie",
+  private: tr("Nur für mich", "Only me"),
+  workspace: tr("Arbeitsbereich", "Workspace"),
+  instance: tr("Alle Arbeitsbereiche", "All workspaces"),
+  public: tr("Öffentliche Galerie", "Public gallery"),
 };
 export default function SavedTemplates({
   workspaceId,
@@ -36,6 +38,7 @@ export default function SavedTemplates({
   onUse: (t: Template) => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [items, setItems] = useState<Template[]>([]),
     [deleted, setDeleted] = useState(false),
     [busy, setBusy] = useState(false),
@@ -96,7 +99,7 @@ export default function SavedTemplates({
       });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result.error || "Import fehlgeschlagen.");
+        throw new Error(result.error || t("Import fehlgeschlagen.", "Import failed."));
       await refresh();
     } catch (e) {
       onError((e as Error).message);
@@ -106,50 +109,50 @@ export default function SavedTemplates({
   }
   return (
     <section className="saved-templates">
-      <h3>Deine Vorlagen</h3>
+      <h3>{t("Deine Vorlagen", "Your templates")}</h3>
       <p className="muted">
         <a href="/templates" target="_blank" rel="noopener">
-          Öffentliche Vorlagengalerie öffnen
+          {t("Öffentliche Vorlagengalerie öffnen", "Open the public template gallery")}
         </a>
       </p>
       <div className="template-filters">
         <input
           type="search"
-          aria-label="Vorlagen durchsuchen"
-          placeholder="Vorlagen suchen …"
+          aria-label={t("Vorlagen durchsuchen", "Search templates")}
+          placeholder={t("Vorlagen suchen …", "Search templates …")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <Select
-          aria-label="Vorlagentyp"
+          aria-label={t("Vorlagentyp", "Template type")}
           value={kind}
           onChange={(e) => setKind(e.target.value as typeof kind)}
         >
-          <option value="all">Alle</option>
-          <option value="document">Dokumente</option>
-          <option value="database">Datenbanken</option>
+          <option value="all">{t("Alle", "All")}</option>
+          <option value="document">{t("Dokumente", "Documents")}</option>
+          <option value="database">{t("Datenbanken", "Databases")}</option>
         </Select>
         <Select
-          aria-label="Vorlagenkategorie"
+          aria-label={t("Vorlagenkategorie", "Template category")}
           value={category}
           onChange={(e) => setCategory(e.target.value as typeof category)}
         >
-          <option value="all">Alle Kategorien</option>
+          <option value="all">{t("Alle Kategorien", "All categories")}</option>
           {Object.entries(templateCategories).map(([id, label]) => (
             <option key={id} value={id}>
-              {label}
+              {t(label)}
             </option>
           ))}
-          <option value="">Ohne Kategorie</option>
+          <option value="">{t("Ohne Kategorie", "No category")}</option>
         </Select>
         {canCreate && (
           <label className="button compact">
-            Vorlage importieren
+            {t("Vorlage importieren", "Import template")}
             <input
               type="file"
               accept=".zip,application/zip"
               hidden
-              aria-label="Vorlagendatei importieren"
+              aria-label={t("Vorlagendatei importieren", "Import template file")}
               disabled={busy}
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -166,28 +169,28 @@ export default function SavedTemplates({
           checked={deleted}
           onChange={(e) => setDeleted(e.target.checked)}
         />
-        Vorlagen-Papierkorb ({items.filter((t) => t.deleted_at).length})
+        {t("Vorlagen-Papierkorb (", "Template trash (")}{items.filter((item) => item.deleted_at).length})
       </label>
       {loading ? (
-        <p className="muted">Vorlagen werden geladen …</p>
+        <p className="muted">{t("Vorlagen werden geladen …", "Loading templates …")}</p>
       ) : shown.length === 0 ? (
         <p className="muted">
           {deleted
-            ? "Keine gelöschten Vorlagen."
-            : "Noch keine gespeicherten Vorlagen."}
+            ? t("Keine gelöschten Vorlagen.", "No deleted templates.")
+            : t("Noch keine gespeicherten Vorlagen.", "No saved templates yet.")}
         </p>
       ) : (
-        shown.map((t) => (
-          <div className="utility-row saved-template-row" key={t.id}>
-            <PageIcon name={t.kind === "database" ? "table" : "file"} />
+        shown.map((template) => (
+          <div className="utility-row saved-template-row" key={template.id}>
+            <PageIcon name={template.kind === "database" ? "table" : "file"} />
             <div className="saved-template-name">
-              <strong>{t.name}</strong>
+              <strong>{template.name}</strong>
               <small>
-                {t.shared
-                  ? "Instanzvorlage"
-                  : visibilityLabels[t.visibility] ||
+                {template.shared
+                  ? t("Instanzvorlage", "Instance template")
+                  : visibilityLabels[template.visibility] ||
                     visibilityLabels.workspace}
-                {t.category && ` · ${templateCategories[t.category]}`}
+                {template.category && ` · ${t(templateCategories[template.category])}`}
               </small>
             </div>
             <div className="saved-template-actions">
@@ -198,51 +201,51 @@ export default function SavedTemplates({
                   onClick={async () => {
                     setBusy(true);
                     try {
-                      await onUse(t);
+                      await onUse(template);
                     } finally {
                       setBusy(false);
                     }
                   }}
                 >
-                  Verwenden
+                  {t("Verwenden", "Use")}
                 </button>
               )}
               {!deleted && (
                 <a
                   className="button compact"
-                  aria-label={`${t.name} exportieren`}
-                  href={`/api/templates/${t.id}/export?workspace=${workspaceId}`}
+                  aria-label={`${template.name} exportieren`}
+                  href={`/api/templates/${template.id}/export?workspace=${workspaceId}`}
                   download
                 >
-                  Exportieren
+                  {t("Exportieren", "Export")}
                 </a>
               )}
-              {t.can_manage &&
+              {template.can_manage &&
                 (deleted ? (
                   <button
                     className="button compact"
                     disabled={busy}
-                    onClick={() => change(t, "template.restore")}
+                    onClick={() => change(template, "template.restore")}
                   >
-                    Wiederherstellen
+                    {t("Wiederherstellen", "Restore")}
                   </button>
                 ) : (
                   <>
                     <button
                       className="button compact"
-                      aria-label={`${t.name} bearbeiten`}
+                      aria-label={t(`${template.name} bearbeiten`, `Edit ${template.name}`)}
                       disabled={busy}
-                      onClick={() => setEditing({ ...t })}
+                      onClick={() => setEditing({ ...template })}
                     >
-                      Bearbeiten
+                      {t("Bearbeiten", "Edit")}
                     </button>
                     <button
                       className="button compact danger"
-                      aria-label={`${t.name} löschen`}
+                      aria-label={t(`${template.name} löschen`, `Delete ${template.name}`)}
                       disabled={busy}
-                      onClick={() => setRemoving(t)}
+                      onClick={() => setRemoving(template)}
                     >
-                      Löschen
+                      {t("Löschen", "Delete")}
                     </button>
                   </>
                 ))}
@@ -253,7 +256,7 @@ export default function SavedTemplates({
       <Modal
         open={!!editing}
         onClose={() => !busy && setEditing(null)}
-        title="Vorlage bearbeiten"
+        title={t("Vorlage bearbeiten", "Edit template")}
       >
         {editing && (
           <form
@@ -263,7 +266,7 @@ export default function SavedTemplates({
             }}
           >
             <label>
-              Name
+              {t("Name", "Name")}
               <input
                 required
                 maxLength={500}
@@ -274,7 +277,7 @@ export default function SavedTemplates({
               />
             </label>
             <label>
-              Kategorie
+              {t("Kategorie", "Category")}
               <Select
                 value={editing.category || ""}
                 onChange={(e) =>
@@ -284,16 +287,16 @@ export default function SavedTemplates({
                   })
                 }
               >
-                <option value="">Ohne Kategorie</option>
+                <option value="">{t("Ohne Kategorie", "No category")}</option>
                 {Object.entries(templateCategories).map(([id, label]) => (
                   <option key={id} value={id}>
-                    {label}
+                    {t(label)}
                   </option>
                 ))}
               </Select>
             </label>
             <label>
-              Sichtbar für
+              {t("Sichtbar für", "Visible to")}
               <Select
                 value={editing.visibility}
                 onChange={(e) =>
@@ -312,20 +315,19 @@ export default function SavedTemplates({
                 )}
                 {(isAdmin || editing.visibility === "public") && (
                   <option value="public" disabled={!isAdmin}>
-                    {visibilityLabels.public} – auch ohne Anmeldung (Admin)
+                    {visibilityLabels.public} {t("– auch ohne Anmeldung (Admin)", "– also without signing in (admin)")}
                   </option>
                 )}
               </Select>
             </label>
             <p className="muted">
-              Gespeicherte Inhalte und Anhänge bleiben erhalten. Bereits
-              erstellte Seiten werden nicht verändert.
+              {t("Gespeicherte Inhalte und Anhänge bleiben erhalten. Bereits erstellte Seiten werden nicht verändert.", "Saved content and attachments are kept. Pages already created are not changed.")}
             </p>
             <button
               className="button primary"
               disabled={busy || !editing.name.trim()}
             >
-              Änderungen speichern
+              {t("Änderungen speichern", "Save changes")}
             </button>
           </form>
         )}
@@ -333,19 +335,17 @@ export default function SavedTemplates({
       <Modal
         open={!!removing}
         onClose={() => !busy && setRemoving(null)}
-        title="Vorlage löschen"
+        title={t("Vorlage löschen", "Delete template")}
       >
         <p>
-          „{removing?.name}“ in den Vorlagen-Papierkorb verschieben? Die Vorlage
-          kann wiederhergestellt werden. Bereits erstellte Seiten bleiben
-          erhalten.
+          „{removing?.name}{t("“ in den Vorlagen-Papierkorb verschieben? Die Vorlage kann wiederhergestellt werden. Bereits erstellte Seiten bleiben erhalten.", "” to the template trash? The template can be restored. Pages already created are kept.")}
         </p>
         <button
           className="button danger"
           disabled={busy}
           onClick={() => removing && change(removing, "template.delete")}
         >
-          In den Papierkorb
+          {t("In den Papierkorb", "Move to trash")}
         </button>
       </Modal>
     </section>

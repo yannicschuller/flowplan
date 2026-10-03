@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import {
   disableOffline,
@@ -17,6 +18,7 @@ export function OfflineSettings({
   workspaceId: string;
   pageIds: string[];
 }) {
+  const t = useT();
   const [supported, setSupported] = useState(true),
     [enabled, setEnabled] = useState(false),
     [busy, setBusy] = useState(false),
@@ -38,7 +40,7 @@ export function OfflineSettings({
       );
       setEnabled(true);
       setMessage(
-        `${pageIds.length} ${pageIds.length === 1 ? "Seite ist" : "Seiten sind"} auf diesem Gerät offline verfügbar.`,
+        t(`${pageIds.length} ${pageIds.length === 1 ? "Seite ist" : "Seiten sind"} auf diesem Gerät offline verfügbar.`, `${pageIds.length} ${pageIds.length === 1 ? "page is" : "pages are"} available offline on this device.`),
       );
     } catch (error) {
       setMessage((error as Error).message);
@@ -52,42 +54,38 @@ export function OfflineSettings({
     try {
       await disableOffline();
       setEnabled(false);
-      setMessage("Offline-Kopien auf diesem Gerät wurden entfernt.");
+      setMessage(t("Offline-Kopien auf diesem Gerät wurden entfernt.", "Offline copies on this device were removed."));
     } finally {
       setBusy(false);
     }
   }
   return (
     <section className="settings-section">
-      <h2>Offline-Nutzung</h2>
+      <h2>{t("Offline-Nutzung", "Offline use")}</h2>
       <p>
-        Speichert die App und den aktuellen Stand der Seiten dieses
-        Arbeitsbereichs auf diesem Gerät, damit du sie ohne Verbindung öffnen
-        kannst. Nur auf eigenen Geräten aktivieren: Die Kopien bleiben bis zum
-        Abmelden oder Ausschalten erhalten.
+        {t("Speichert die App und den aktuellen Stand der Seiten dieses Arbeitsbereichs auf diesem Gerät, damit du sie ohne Verbindung öffnen kannst. Nur auf eigenen Geräten aktivieren: Die Kopien bleiben bis zum Abmelden oder Ausschalten erhalten.", "Stores the app and the current state of this workspace's pages on this device so you can open them without a connection. Only enable on your own devices: the copies stay until you sign out or turn this off.")}
       </p>
       {!supported ? (
         <p className="muted">
-          Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung
-          und Service Worker erforderlich).
+          {t("Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).", "This browser does not support offline use (secure connection and service worker required).")}
         </p>
       ) : enabled ? (
         <div className="archive-actions">
           <button className="button" disabled={busy} onClick={enable}>
-            Offline-Stand aktualisieren
+            {t("Offline-Stand aktualisieren", "Update offline copy")}
           </button>
           <button className="button danger" disabled={busy} onClick={disable}>
-            Offline-Kopien entfernen
+            {t("Offline-Kopien entfernen", "Remove offline copies")}
           </button>
         </div>
       ) : (
         <button className="button primary" disabled={busy} onClick={enable}>
-          Auf diesem Gerät offline verfügbar machen
+          {t("Auf diesem Gerät offline verfügbar machen", "Make available offline on this device")}
         </button>
       )}
       {progress && (
         <p role="status">
-          Wird gespeichert … {progress[0]} von {progress[1]}
+          {t("Wird gespeichert …", "Saving …")}{" "}{progress[0]} {t("von", "of")}{" "}{progress[1]}
         </p>
       )}
       {message && !progress && <p role="status">{message}</p>}

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import {
@@ -14,15 +15,16 @@ import {
   MAX_HIGHLIGHT_LENGTH,
 } from "@/lib/code-highlight";
 function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
+  const t = useT();
   const [copyStatus, setCopyStatus] = useState("");
   const language = String(node.attrs.language || "plaintext");
   return (
     <NodeViewWrapper className="code-block-view" data-language={language}>
       <div className="code-block-toolbar" contentEditable={false}>
         <label>
-          Sprache
+          {t("Sprache", "Language")}
           <Select
-            aria-label="Code-Sprache"
+            aria-label={t("Code-Sprache", "Code language")}
             value={language}
             disabled={!editor.isEditable}
             onChange={(event) =>
@@ -47,22 +49,22 @@ function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
           disabled={!editor.isEditable}
           onClick={() => updateAttributes({ wrap: !node.attrs.wrap })}
         >
-          Zeilenumbruch
+          {t("Zeilenumbruch", "Line wrap")}
         </button>
         <button
           type="button"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(node.textContent);
-              setCopyStatus("Code kopiert");
+              setCopyStatus(t("Code kopiert", "Code copied"));
             } catch {
               setCopyStatus(
-                "Kopieren fehlgeschlagen. Bitte den Code markieren und kopieren.",
+                t("Kopieren fehlgeschlagen. Bitte den Code markieren und kopieren.", "Copying failed. Please select the code and copy it."),
               );
             }
           }}
         >
-          Kopieren
+          {t("Kopieren", "Copy")}
         </button>
       </div>
       <NodeViewContent<"pre">
@@ -73,7 +75,7 @@ function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
       />
       {node.textContent.length > MAX_HIGHLIGHT_LENGTH && (
         <p className="code-block-note" contentEditable={false}>
-          Langer Codeblock: Hervorhebung ausgeschaltet.
+          {t("Langer Codeblock: Hervorhebung ausgeschaltet.", "Long code block: highlighting turned off.")}
         </p>
       )}
       <span role="status" className="sr-only" contentEditable={false}>

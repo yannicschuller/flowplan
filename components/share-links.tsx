@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import type { ShareLink } from "@/lib/share-links";
@@ -11,15 +12,16 @@ export function ShareLinks({
   links: ShareLink[];
   act: (input: Record<string, unknown>) => Promise<unknown>;
 }) {
+  const t = useT();
   const [name, setName] = useState(""),
     [role, setRole] = useState("viewer"),
     [children, setChildren] = useState(false),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   const labels = {
-    viewer: "Lesen",
-    commenter: "Kommentieren",
-    editor: "Bearbeiten",
+    viewer: t("Lesen", "Read"),
+    commenter: t("Kommentieren", "Comment"),
+    editor: t("Bearbeiten", "Edit"),
   };
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -40,23 +42,20 @@ export function ShareLinks({
   }
   return (
     <section className="settings-section share-links">
-      <h3>Links mit eigenen Berechtigungen</h3>
+      <h3>{t("Links mit eigenen Berechtigungen", "Links with their own permissions")}</h3>
       <p>
-        Jeder mit einem Link erhält dessen Rechte, auch ohne Anmeldung.
-        Bearbeiten erlaubt Änderungen an Titel, Dokumenten und sichtbaren
-        Datensatzeigenschaften. Gastkommentare sind über alle Links dieser Seite
-        sichtbar.
+        {t("Jeder mit einem Link erhält dessen Rechte, auch ohne Anmeldung. Bearbeiten erlaubt Änderungen an Titel, Dokumenten und sichtbaren Datensatzeigenschaften. Gastkommentare sind über alle Links dieser Seite sichtbar.", "Everyone with a link gets its permissions, even without signing in. Edit allows changes to the title, documents and visible record properties. Guest comments are visible through all links of this page.")}
       </p>
       {links.map((link) => (
         <div className="share-link" key={link.token}>
           <strong>{link.name}</strong>
           <span>
             {labels[link.role]} · {link.count}{" "}
-            {link.count === 1 ? "Seite" : "Seiten"}
+            {link.count === 1 ? t("Seite", "page") : t("Seiten", "pages")}
           </span>
           <div className="copy-link">
             <input
-              aria-label={`Link ${link.name}`}
+              aria-label={t(`Link ${link.name}`, `Link ${link.name}`)}
               readOnly
               value={`${location.origin}/share/${link.token}`}
             />
@@ -67,13 +66,13 @@ export function ShareLinks({
                   await navigator.clipboard.writeText(
                     `${location.origin}/share/${link.token}`,
                   );
-                  setMessage("Link kopiert");
+                  setMessage(t("Link kopiert", "Link copied"));
                 } catch {
-                  setMessage("Bitte den Link im Textfeld kopieren.");
+                  setMessage(t("Bitte den Link im Textfeld kopieren.", "Please copy the link in the text field."));
                 }
               }}
             >
-              Kopieren
+              {t("Kopieren", "Copy")}
             </button>
           </div>
           <button
@@ -92,32 +91,32 @@ export function ShareLinks({
               }
             }}
           >
-            Widerrufen: {link.name}
+            {t("Widerrufen:", "Revoke:")}{" "}{link.name}
           </button>
         </div>
       ))}
       <form onSubmit={create}>
         <label>
-          Linkname
+          {t("Linkname", "Link name")}
           <input
-            aria-label="Linkname"
+            aria-label={t("Linkname", "Link name")}
             required
             maxLength={100}
-            placeholder="Zum Beispiel Feedback vom Kunden"
+            placeholder={t("Zum Beispiel Feedback vom Kunden", "For example customer feedback")}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         <label>
-          Berechtigung
+          {t("Berechtigung", "Permission")}
           <Select
-            aria-label="Linkberechtigung"
+            aria-label={t("Linkberechtigung", "Link permission")}
             value={role}
             onChange={(e) => setRole(e.target.value)}
           >
-            <option value="viewer">Lesen</option>
-            <option value="commenter">Lesen und kommentieren</option>
-            <option value="editor">Lesen, kommentieren und bearbeiten</option>
+            <option value="viewer">{t("Lesen", "Read")}</option>
+            <option value="commenter">{t("Lesen und kommentieren", "Read and comment")}</option>
+            <option value="editor">{t("Lesen, kommentieren und bearbeiten", "Read, comment and edit")}</option>
           </Select>
         </label>
         <label className="checkbox-label">
@@ -126,14 +125,13 @@ export function ShareLinks({
             checked={children}
             onChange={(e) => setChildren(e.target.checked)}
           />
-          Aktuell vorhandene Unterseiten einschließen
+          {t("Aktuell vorhandene Unterseiten einschließen", "Include current sub-pages")}
         </label>
         <p className="muted">
-          Neue Unterseiten werden nicht automatisch freigegeben. Jeder Link
-          lässt sich einzeln widerrufen.
+          {t("Neue Unterseiten werden nicht automatisch freigegeben. Jeder Link lässt sich einzeln widerrufen.", "New sub-pages are not shared automatically. Every link can be revoked on its own.")}
         </p>
         <button className="button primary" disabled={busy || !name.trim()}>
-          Freigabelink erstellen
+          {t("Freigabelink erstellen", "Create share link")}
         </button>
       </form>
       <p role="status">{message}</p>

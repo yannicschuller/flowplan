@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -27,6 +28,7 @@ export default function DateInput({
   onChange: (value: string) => void | Promise<unknown>;
   commit?: "blur" | "change";
 }) {
+  const t = useT();
   const zone = timeZone || browserZone();
   const [draft, setDraft] = useState(() => localValue(value, zone)),
     [timed, setTimed] = useState(isTimed(value)),
@@ -53,7 +55,7 @@ export default function DateInput({
     if (!text) return "";
     if (!mode) {
       if (!validDateValue(text))
-        throw new Error("Bitte ein gültiges Datum eingeben.");
+        throw new Error(t("Bitte ein gültiges Datum eingeben.", "Please enter a valid date."));
       return text;
     }
     // An unchanged local value retains the exact offset of an existing fold occurrence.
@@ -86,7 +88,7 @@ export default function DateInput({
         const result = await onChange(next);
         if (result === null || result === false)
           throw new Error(
-            "Datum konnte nicht gespeichert werden. Bitte erneut versuchen.",
+            t("Datum konnte nicht gespeichert werden. Bitte erneut versuchen.", "The date could not be saved. Please try again."),
           );
       }
       setError("");
@@ -119,8 +121,8 @@ export default function DateInput({
         <button
           type="button"
           className="date-clear"
-          aria-label={`${name} entfernen`}
-          title="Datum entfernen"
+          aria-label={t(`${name} entfernen`, `Remove ${name}`)}
+          title={t("Datum entfernen", "Remove date")}
           onClick={async () => {
             setDraft("");
             setError("");
@@ -128,7 +130,7 @@ export default function DateInput({
             if (value) await onChange("");
           }}
         >
-          Datum entfernen
+          {t("Datum entfernen", "Remove date")}
         </button>
       )}
       <label className="checkbox-label">
@@ -148,7 +150,7 @@ export default function DateInput({
         />
         {name}: Uhrzeit
       </label>
-      {timed && <small>Zeitzone: {zone}</small>}
+      {timed && <small>{t("Zeitzone:", "Time zone:")}{" "}{zone}</small>}
       {timed && (
         <Select
           aria-label={`${name}: Zeitumstellung`}
@@ -156,9 +158,9 @@ export default function DateInput({
           value={choice}
           onChange={(e) => update(draft, timed, e.target.value as TimeChoice)}
         >
-          <option value="reject">Doppelte Uhrzeit: nachfragen</option>
-          <option value="earlier">Erstes Vorkommen</option>
-          <option value="later">Zweites Vorkommen</option>
+          <option value="reject">{t("Doppelte Uhrzeit: nachfragen", "Repeated time: ask")}</option>
+          <option value="earlier">{t("Erstes Vorkommen", "First occurrence")}</option>
+          <option value="later">{t("Zweites Vorkommen", "Second occurrence")}</option>
         </Select>
       )}
       {error && (

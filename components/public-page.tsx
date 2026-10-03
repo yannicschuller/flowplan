@@ -1,3 +1,4 @@
+import { serverT } from "@/lib/i18n-server";
 import { imageFileId } from "@/lib/page-appearance";
 import { ReadOnlyDocument } from "./read-only-document";
 import { WhiteboardStatic } from "./whiteboard/render";
@@ -35,7 +36,7 @@ import {
   publicMonth,
 } from "./public-views";
 
-export function PublishedPage({
+export async function PublishedPage({
   token,
   pageId,
   rowId,
@@ -48,6 +49,7 @@ export function PublishedPage({
   viewId?: string;
   month?: string;
 }) {
+  const t = await serverT();
   let context;
   try {
     context = publicPage(token, pageId);
@@ -133,7 +135,7 @@ export function PublishedPage({
       : undefined;
   const date = (value: string | null | undefined) =>
     value
-      ? new Date(value.replace(" ", "T") + "Z").toLocaleDateString("de-DE", {
+      ? new Date(value.replace(" ", "T") + "Z").toLocaleDateString(t("de-DE", "en-GB"), {
           day: "numeric",
           month: "long",
           year: "numeric",
@@ -152,8 +154,8 @@ export function PublishedPage({
         <div className="publication-meta">
           <span className="muted">
             {publication.published_at &&
-              `Veröffentlicht am ${date(publication.published_at)} · `}
-            Zuletzt geändert am {date(page.updated_at)}
+              t(`Veröffentlicht am ${date(publication.published_at)} · `, `Published on ${date(publication.published_at)} · `)}
+            {t("Zuletzt geändert am", "Last changed on")}{" "}{date(page.updated_at)}
           </span>
           {!!publication.allow_copy && <PublicationCopy token={token} />}
         </div>
@@ -182,7 +184,7 @@ export function PublishedPage({
           {coverUrl && (
             <img
               src={coverUrl}
-              alt="Seiten-Cover"
+              alt={t("Seiten-Cover", "Page cover")}
               style={{ objectPosition: `50% ${page.cover_position ?? 50}%` }}
             />
           )}
@@ -191,7 +193,7 @@ export function PublishedPage({
       {!record && <PageIcon name={iconUrl} size={40} />}
       <h1>{record ? cellText(record.cells["title"]) : page.title}</h1>
       {d && !record && publicViews.length > 1 && (
-        <nav className="public-views" aria-label="Ansichten">
+        <nav className="public-views" aria-label={t("Ansichten", "Views")}>
           {publicViews.map((v) => (
             <a
               key={v.id}
@@ -254,7 +256,7 @@ export function PublishedPage({
               <article key={r.id} className="public-feed-entry">
                 <h2>
                   <a href={`${href(page.id)}?row=${r.id}`}>
-                    {cellText(r.cells[d.fields[0]?.id]) || "Ohne Titel"}
+                    {cellText(r.cells[d.fields[0]?.id]) || t("Ohne Titel", "Untitled")}
                   </a>
                 </h2>
                 <p className="public-feed-meta">
@@ -276,7 +278,7 @@ export function PublishedPage({
             );
           })}
           {records.length > 50 && (
-            <p className="muted">{records.length - 50} weitere Einträge – in der Tabelle oder Liste zu sehen.</p>
+            <p className="muted">{records.length - 50} {t("weitere Einträge – in der Tabelle oder Liste zu sehen.", "more records – visible in the table or list.")}</p>
           )}
         </div>
       ) : d && !record && activeView?.type === "chart" ? (
@@ -308,7 +310,7 @@ export function PublishedPage({
                   </span>
                 )}
                 <strong>
-                  {cellText(r.cells[d.fields[0]?.id]) || "Ohne Titel"}
+                  {cellText(r.cells[d.fields[0]?.id]) || t("Ohne Titel", "Untitled")}
                 </strong>
                 <span className="card-properties">
                   {(visible || [])
@@ -337,7 +339,7 @@ export function PublishedPage({
               className="record-list-item"
               href={`${href(page.id)}?row=${r.id}`}
             >
-              <span>{cellText(r.cells[d.fields[0]?.id]) || "Ohne Titel"}</span>
+              <span>{cellText(r.cells[d.fields[0]?.id]) || t("Ohne Titel", "Untitled")}</span>
               <span>
                 {(visible || [])
                   .filter((f) => f.id !== d.fields[0]?.id)
@@ -368,7 +370,7 @@ export function PublishedPage({
                     <td key={f.id}>
                       {f.id === "title" ? (
                         <a href={`${href(page.id)}?row=${r.id}`}>
-                          {cellText(r.cells[f.id]) || "Ohne Titel"}
+                          {cellText(r.cells[f.id]) || t("Ohne Titel", "Untitled")}
                         </a>
                       ) : (
                         displayText(f, r.cells[f.id], "UTC")
@@ -422,8 +424,8 @@ export function PublishedPage({
         </>
       )}
       {!record && children.length > 0 && (
-        <nav className="public-children" aria-label="Unterseiten">
-          <h2>Unterseiten</h2>
+        <nav className="public-children" aria-label={t("Unterseiten", "Sub-pages")}>
+          <h2>{t("Unterseiten", "Sub-pages")}</h2>
           {children.map((p) => (
             <a key={p.id} href={href(p.id)}>
               <PageIcon name={p.icon} /> {p.title}
@@ -437,11 +439,11 @@ export function PublishedPage({
         token={token}
         initial={sharedContent(token, page.id, rowId)}
       />
-      <footer className="home-footnote">Mit Flowplan veröffentlicht</footer>
+      <footer className="home-footnote">{t("Mit Flowplan veröffentlicht", "Published with Flowplan")}</footer>
     </main>
   );
 }
-function PublicBoard({
+async function PublicBoard({
   records,
   fields,
   view,
@@ -454,19 +456,20 @@ function PublicBoard({
   visible: Field[];
   link: (row: Row) => string;
 }) {
+  const t = await serverT();
   const field = groupingField(fields, view);
   // Groups by people or relations would reveal hidden data.
   const groups =
     field && visible.some((f) => f.id === field.id)
       ? configuredGroups(databaseGroups(records, field, {}), view)
-      : [{ key: "all", label: "Alle Einträge", value: null, rows: records }];
+      : [{ key: "all", label: t("Alle Einträge", "All records"), value: null, rows: records }];
   return (
     <div className="board public-board">
       {groups.map((g) => (
         <section
           className="board-column"
           key={g.key}
-          aria-label={`Gruppe ${g.label}`}
+          aria-label={t(`Gruppe ${g.label}`, `Group ${g.label}`)}
         >
           <header>
             <span className="tag tag-gray">{g.label}</span>
@@ -475,7 +478,7 @@ function PublicBoard({
           {g.rows.map((r) => (
             <a key={r.id} className="record-card" href={link(r)}>
               <strong>
-                {cellText(r.cells[fields[0]?.id]) || "Ohne Titel"}
+                {cellText(r.cells[fields[0]?.id]) || t("Ohne Titel", "Untitled")}
               </strong>
               <span className="card-properties">
                 {visible
@@ -497,7 +500,7 @@ function PublicBoard({
 }
 
 // Related records of a shared database, linked to their public pages.
-function PublicRelation({
+async function PublicRelation({
   ids,
   target,
   link,
@@ -506,13 +509,14 @@ function PublicRelation({
   target: string;
   link: (pageId: string, rowId: string) => string;
 }) {
+  const t = await serverT();
   const list = Array.isArray(ids) ? (ids as string[]).slice(0, 50) : [];
   if (!list.length) return <>—</>;
   const fields = database(target).fields;
   const titles = new Map(
     rows(target).map((r) => [
       r.id,
-      cellText(r.cells[fields[0]?.id]) || "Ohne Titel",
+      cellText(r.cells[fields[0]?.id]) || t("Ohne Titel", "Untitled"),
     ]),
   );
   return (

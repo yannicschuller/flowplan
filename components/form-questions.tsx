@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useState } from "react";
 import { CellInput } from "./cell-input";
@@ -36,6 +37,7 @@ export default function FormQuestions({
   errors?: Record<string, string>;
   disabled?: boolean;
 }) {
+  const t = useT();
   return (
     <>
       {orderedFormFields(fields, config, internal).map((f) => (
@@ -43,7 +45,7 @@ export default function FormQuestions({
           <legend>
             {f.name}
             {config.requiredFields.includes(f.id) && (
-              <span aria-label="Pflichtfeld"> *</span>
+              <span aria-label={t("Pflichtfeld", "Required")}> *</span>
             )}
           </legend>
           {config.descriptions[f.id] && (
@@ -140,6 +142,7 @@ function FormFiles({
   disabled: boolean;
   onChange: (files: File[]) => void;
 }) {
+  const t = useT();
   const files = Array.isArray(value)
     ? value.filter((v): v is File => v instanceof File)
     : [];
@@ -156,7 +159,7 @@ function FormFiles({
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label={`${file.name} entfernen`}
+                  aria-label={t(`${file.name} entfernen`, `Remove ${file.name}`)}
                   onClick={() => onChange(files.filter((_, j) => j !== i))}
                 >
                   ×
@@ -168,19 +171,19 @@ function FormFiles({
       )}
       {files.length < FORM_FILES_PER_QUESTION && (
         <label className="button compact">
-          Dateien auswählen
+          {t("Dateien auswählen", "Choose files")}
           <input
             type="file"
             multiple
             hidden
             disabled={disabled}
-            aria-label={`${name}: Dateien auswählen`}
+            aria-label={t(`${name}: Dateien auswählen`, `${name}: choose files`)}
             onChange={(event) => {
               const chosen = [...(event.target.files || [])];
               event.target.value = "";
               const tooLarge = chosen.find((f) => f.size > FORM_FILE_BYTES);
               setError(
-                tooLarge ? `${tooLarge.name}: maximal 10 MB pro Datei.` : "",
+                tooLarge ? t(`${tooLarge.name}: maximal 10 MB pro Datei.`, `${tooLarge.name}: at most 10 MB per file.`) : "",
               );
               onChange(
                 [
@@ -193,7 +196,7 @@ function FormFiles({
         </label>
       )}
       <small className="muted">
-        Bis zu {FORM_FILES_PER_QUESTION} Dateien, je maximal 10 MB.
+        {t("Bis zu", "Up to")}{" "}{FORM_FILES_PER_QUESTION} {t("Dateien, je maximal 10 MB.", "files, at most 10 MB each.")}
       </small>
       {error && (
         <p className="error" role="alert">

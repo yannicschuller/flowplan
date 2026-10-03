@@ -1,6 +1,7 @@
 "use client";
 // Web clipper: a bookmarklet for the browser's bookmarks bar and importing
 // the bookmarks file browsers export.
+import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { BookmarkSimple, UploadSimple } from "@phosphor-icons/react";
 import { Select } from "./select";
@@ -21,6 +22,7 @@ export function ClipperSettings({
   canWrite: boolean;
   onImport: (spaceId: string, html: string) => Promise<unknown>;
 }) {
+  const t = useT();
   const [origin, setOrigin] = useState("");
   const [space, setSpace] = useState(spaces[0]?.id || "");
   const link = useRef<HTMLAnchorElement>(null);
@@ -33,12 +35,9 @@ export function ClipperSettings({
   }, [origin]);
   return (
     <section className="settings-section clipper-settings">
-      <h2>Web-Clipper und Lesezeichen</h2>
+      <h2>{t("Web-Clipper und Lesezeichen", "Web clipper and bookmarks")}</h2>
       <p>
-        Zieh diesen Knopf in die Lesezeichenleiste deines Browsers. Ein Klick
-        darauf speichert die geöffnete Webseite in Flowplan – als Seite (auf
-        Wunsch mit dem Artikeltext) oder als Lesezeichen. Markierter Text wird
-        mitgenommen. Auf dem Handy geht das über „Teilen“ → Flowplan.
+        {t("Zieh diesen Knopf in die Lesezeichenleiste deines Browsers. Ein Klick darauf speichert die geöffnete Webseite in Flowplan – als Seite (auf Wunsch mit dem Artikeltext) oder als Lesezeichen. Markierter Text wird mitgenommen. Auf dem Handy geht das über „Teilen“ → Flowplan.", "Drag this button to your browser's bookmarks bar. A click on it saves the open web page to Flowplan – as a page (with the article text if you like) or as a bookmark. Selected text comes along. On the phone use “Share” → Flowplan.")}
       </p>
       {origin && (
         <a
@@ -46,20 +45,17 @@ export function ClipperSettings({
           className="button bookmarklet"
           onClick={(e) => e.preventDefault()}
           draggable
-          title="In die Lesezeichenleiste ziehen"
+          title={t("In die Lesezeichenleiste ziehen", "Drag to the bookmarks bar")}
         >
-          <BookmarkSimple /> In Flowplan speichern
+          <BookmarkSimple /> {t("In Flowplan speichern", "Save to Flowplan")}
         </a>
       )}
-      <h3>Browser-Lesezeichen importieren</h3>
+      <h3>{t("Browser-Lesezeichen importieren", "Import browser bookmarks")}</h3>
       <p>
-        Exportiere deine Lesezeichen als HTML-Datei (Chrome, Edge, Firefox,
-        Safari: „Lesezeichen exportieren“). Sie landen in der Datenbank
-        „Lesezeichen“ des gewählten Bereichs, mit Ordnern und Datum; doppelte
-        Links werden übersprungen.
+        {t("Exportiere deine Lesezeichen als HTML-Datei (Chrome, Edge, Firefox, Safari: „Lesezeichen exportieren“). Sie landen in der Datenbank „Lesezeichen“ des gewählten Bereichs, mit Ordnern und Datum; doppelte Links werden übersprungen.", "Export your bookmarks as an HTML file (Chrome, Edge, Firefox, Safari: “Export bookmarks”). They land in the “Lesezeichen” database of the chosen space, with folders and dates; duplicate links are skipped.")}
       </p>
       <div className="clipper-import">
-        <Select aria-label="Bereich für Lesezeichen" value={space} onChange={(e) => setSpace(e.target.value)}>
+        <Select aria-label={t("Bereich für Lesezeichen", "Space for bookmarks")} value={space} onChange={(e) => setSpace(e.target.value)}>
           {spaces.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -68,7 +64,7 @@ export function ClipperSettings({
         </Select>
         <label className={`button file-label${canWrite ? "" : " disabled"}`}>
           <UploadSimple />
-          Lesezeichen-Datei wählen
+          {t("Lesezeichen-Datei wählen", "Choose bookmarks file")}
           <input
             type="file"
             accept=".html,.htm"

@@ -2,6 +2,7 @@
 // A synced block inside a document: the content of its synced page, edited
 // right here with its own live editor. Changes show up on every page that
 // shows the block.
+import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
@@ -32,6 +33,7 @@ type Loaded = {
 };
 
 function SyncedView({ node, deleteNode, extension, editor, selected }: NodeViewProps) {
+  const t = useT();
   const context = (extension.options as { context: () => SyncedContext }).context();
   const pageId = String(node.attrs.pageId || "");
   const [data, setData] = useState<Loaded | null>(null);
@@ -45,10 +47,10 @@ function SyncedView({ node, deleteNode, extension, editor, selected }: NodeViewP
         if (!response.ok)
           throw new Error(
             response.status === 404
-              ? "Dieser synchronisierte Block wurde gelöscht."
+              ? t("Dieser synchronisierte Block wurde gelöscht.", "This synced block was deleted.")
               : response.status === 403
-                ? "Du hast keinen Zugriff auf diesen synchronisierten Block."
-                : body.error || "Nicht verfügbar",
+                ? t("Du hast keinen Zugriff auf diesen synchronisierten Block.", "You have no access to this synced block.")
+                : body.error || t("Nicht verfügbar", "Not available"),
           );
         if (alive) {
           setData(body);
@@ -70,20 +72,20 @@ function SyncedView({ node, deleteNode, extension, editor, selected }: NodeViewP
       <div className="synced-block-bar" contentEditable={false}>
         <ArrowsClockwise size={13} />
         <span>
-          Synchronisiert
-          {others > 0 && ` · auf ${others + 1} Seiten`}
+          {t("Synchronisiert", "Synced")}
+          {others > 0 && t(` · auf ${others + 1} Seiten`, ` · on ${others + 1} pages`)}
         </span>
         {data?.syncedUsage?.origin && (
-          <a href={`/#page=${data.syncedUsage.origin.id}`} title="Seite, auf der der Block entstanden ist">
-            <ArrowSquareOut size={13} /> {data.syncedUsage.origin.title || "Ohne Titel"}
+          <a href={`/#page=${data.syncedUsage.origin.id}`} title={t("Seite, auf der der Block entstanden ist", "Page where the block was created")}>
+            <ArrowSquareOut size={13} /> {data.syncedUsage.origin.title || t("Ohne Titel", "Untitled")}
           </a>
         )}
         {editor.isEditable && (
           <button
             type="button"
             className="icon-button"
-            aria-label="Synchronisierten Block hier entfernen"
-            title="Nur hier entfernen – der Inhalt bleibt an den anderen Stellen"
+            aria-label={t("Synchronisierten Block hier entfernen", "Remove synced block here")}
+            title={t("Nur hier entfernen – der Inhalt bleibt an den anderen Stellen", "Remove only here – the content stays in the other places")}
             onClick={() => deleteNode()}
           >
             <Trash size={13} />
@@ -93,7 +95,7 @@ function SyncedView({ node, deleteNode, extension, editor, selected }: NodeViewP
       {error ? (
         <p className="synced-block-error">{error}</p>
       ) : !data ? (
-        <p className="muted synced-block-loading">Wird geladen …</p>
+        <p className="muted synced-block-loading">{t("Wird geladen …", "Loading …")}</p>
       ) : (
         <DocumentEditor
           key={`${pageId}-${data.generation}`}

@@ -1,3 +1,4 @@
+import { serverT } from "@/lib/i18n-server";
 import type { CSSProperties } from "react";
 import { Temporal } from "@/lib/date-values";
 import { weekdayLabels } from "@/lib/database-calendar";
@@ -31,8 +32,8 @@ export function publicMonth(value: string | undefined) {
 }
 const shiftMonth = (month: string, by: number) =>
   Temporal.PlainYearMonth.from(month).add({ months: by }).toString();
-const monthLabel = (month: string) =>
-  new Date(`${month}-01T00:00:00Z`).toLocaleDateString("de-DE", {
+const monthLabel = (month: string, tag: string) =>
+  new Date(`${month}-01T00:00:00Z`).toLocaleDateString(tag, {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
@@ -116,29 +117,30 @@ function spans(
   );
 }
 
-function MonthNav({
+async function MonthNav({
   month,
   link,
 }: {
   month: string;
   link: (month: string) => string;
 }) {
+  const t = await serverT();
   return (
-    <nav className="public-month" aria-label="Zeitraum">
-      <a href={link(shiftMonth(month, -1))} aria-label="Vorheriger Monat">
+    <nav className="public-month" aria-label={t("Zeitraum", "Period")}>
+      <a href={link(shiftMonth(month, -1))} aria-label={t("Vorheriger Monat", "Previous month")}>
         ←
       </a>
-      <strong>{monthLabel(month)}</strong>
-      <a href={link(shiftMonth(month, 1))} aria-label="Nächster Monat">
+      <strong>{monthLabel(month, t("de-DE", "en-GB"))}</strong>
+      <a href={link(shiftMonth(month, 1))} aria-label={t("Nächster Monat", "Next month")}>
         →
       </a>
     </nav>
   );
 }
-const title = (row: Row, fields: Field[]) =>
-  cellText(row.cells[fields[0]?.id]) || "Ohne Titel";
+const title = (row: Row, fields: Field[], untitled: string) =>
+  cellText(row.cells[fields[0]?.id]) || untitled;
 
-export function PublicCalendar({
+export async function PublicCalendar({
   records,
   fields,
   view,
@@ -160,6 +162,7 @@ export function PublicCalendar({
   token?: string;
   pageId?: string;
 }) {
+  const t = await serverT();
   const schedule = scheduleFields(fields, view);
   const first = Temporal.PlainDate.from(`${month}-01`);
   const config = view.calendar || { mode: "month", timeZone: "UTC" };
@@ -179,7 +182,7 @@ export function PublicCalendar({
     if (weekends || d.dayOfWeek < 6) days.push(d.toString());
   const entries = spans(records, fields, view, days[0], days[days.length - 1]);
   return (
-    <section className="public-calendar" aria-label="Kalender">
+    <section className="public-calendar" aria-label={t("Kalender", "Calendar")}>
       <MonthNav month={month} link={monthLink} />
       <PublicCalendarGrid
         days={days}
@@ -193,7 +196,7 @@ export function PublicCalendar({
         endField={schedule.end?.id}
         entries={entries.map((e) => ({
           rowId: e.row.id,
-          title: title(e.row, fields),
+          title: title(e.row, fields, t("Ohne Titel", "Untitled")),
           href: recordLink(e.row),
           start: e.start,
           end: e.end,
@@ -204,7 +207,7 @@ export function PublicCalendar({
   );
 }
 
-export function PublicTimeline({
+export async function PublicTimeline({
   records,
   fields,
   view,
@@ -219,6 +222,7 @@ export function PublicTimeline({
   monthLink: (month: string) => string;
   recordLink: (row: Row) => string;
 }) {
+  const t = await serverT();
   const first = Temporal.PlainDate.from(`${month}-01`);
   const last = first.add({ months: 1 }).subtract({ days: 1 });
   const total = last.day;
@@ -235,10 +239,10 @@ export function PublicTimeline({
       Math.max(0, first.until(Temporal.PlainDate.from(date)).days),
     );
   return (
-    <section className="public-timeline" aria-label="Timeline">
+    <section className="public-timeline" aria-label={t("Timeline", "Timeline")}>
       <MonthNav month={month} link={monthLink} />
       {!entries.length && (
-        <p className="muted">Keine Einträge in diesem Monat.</p>
+        <p className="muted">{t("Keine Einträge in diesem Monat.", "No records in this month.")}</p>
       )}
       <ol className="public-timeline-rows">
         {entries.map((e) => {
@@ -248,7 +252,7 @@ export function PublicTimeline({
             );
           return (
             <li key={`${e.row.id}:${e.start}`}>
-              <a href={recordLink(e.row)}>{title(e.row, fields)}</a>
+              <a href={recordLink(e.row)}>{title(e.row, fields, t("Ohne Titel", "Untitled"))}</a>
               <span className="public-timeline-track">
                 <span
                   className="public-timeline-bar"
@@ -271,7 +275,7 @@ export function PublicTimeline({
   );
 }
 
-export function PublicChart({
+export async function PublicChart({
   records,
   fields,
   view,
@@ -280,6 +284,7 @@ export function PublicChart({
   fields: Field[];
   view: View;
 }) {
+  const t = await serverT();
   const config = view.chart || defaultChart(fields);
   const points = chartPoints(records, fields, config).slice(0, 100);
   // Series (by a property or further values): one bar per series and group.
@@ -297,7 +302,7 @@ export function PublicChart({
   const measure =
     config.aggregate === "count"
       ? chartAggregates.count
-      : `${chartAggregates[config.aggregate]} von ${fields.find((f) => f.id === config.yField)?.name || ""}`;
+      : t(`${chartAggregates[config.aggregate]} von ${fields.find((f) => f.id === config.yField)?.name || ""}`, `${t(chartAggregates[config.aggregate])} of ${fields.find((f) => f.id === config.yField)?.name || ""}`);
   const total = points.reduce((sum, p) => sum + Math.max(0, p.value || 0), 0);
   let angle = 0;
   const donut =
@@ -311,7 +316,7 @@ export function PublicChart({
           .join(", ")})`
       : undefined;
   return (
-    <section className="public-chart" aria-label={`Diagramm: ${measure}`}>
+    <section className="public-chart" aria-label={t(`Diagramm: ${measure}`, `Chart: ${measure}`)}>
       {donut ? (
         <div
           className="public-donut"
@@ -376,11 +381,11 @@ export function PublicChart({
         <caption className="muted">{measure}</caption>
         <thead>
           <tr>
-            <th>Gruppe</th>
+            <th>{t("Gruppe", "Group")}</th>
             {series.length ? (
               series.map((sr: { key: string; label: string }) => <th key={sr.key}>{sr.label}</th>)
             ) : (
-              <th>Wert</th>
+              <th>{t("Wert", "Value")}</th>
             )}
           </tr>
         </thead>

@@ -1,11 +1,13 @@
 "use client";
+import { tr } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { spaceColors } from "@/lib/space-appearance";
 import { PageIcon } from "./ui";
 const EmojiPicker = dynamic(() => import("./emoji-picker"), {
-  loading: () => <p>Emojis werden geladen …</p>,
+  loading: () => <p>{tr("Emojis werden geladen …", "Loading emojis …")}</p>,
 });
 export function SpaceIcon({
   icon,
@@ -34,10 +36,11 @@ export function SpaceAppearance({
   onChange: (icon: string, color: string) => void;
   disabled?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <fieldset className="space-appearance" disabled={disabled}>
-      <legend>Bereichssymbol</legend>
+      <legend>{t("Bereichssymbol", "Space icon")}</legend>
       <div className="space-appearance-controls">
         <button
           type="button"
@@ -45,10 +48,10 @@ export function SpaceAppearance({
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
-          <SpaceIcon icon={icon} color={color} /> Symbol auswählen
+          <SpaceIcon icon={icon} color={color} /> {t("Symbol auswählen", "Choose icon")}
         </button>
         <label>
-          Hintergrundfarbe
+          {t("Hintergrundfarbe", "Background colour")}
           <Select
             value={color}
             onChange={(event) => onChange(icon, event.target.value)}

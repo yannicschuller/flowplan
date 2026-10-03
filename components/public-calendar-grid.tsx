@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
@@ -45,6 +46,7 @@ export function PublicCalendarGrid({
   startField: string;
   endField?: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -171,7 +173,7 @@ export function PublicCalendarGrid({
           }}
         >
           <label>
-            Neuer Beginn
+            {t("Neuer Beginn", "New start")}
             <input
               type="date"
               name="day"
@@ -180,14 +182,14 @@ export function PublicCalendarGrid({
             />
           </label>
           <button className="button primary" disabled={busy}>
-            Verschieben
+            {t("Verschieben", "Move")}
           </button>
           <button
             type="button"
             className="button"
             onClick={() => setMoving(null)}
           >
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
         </form>
       )}

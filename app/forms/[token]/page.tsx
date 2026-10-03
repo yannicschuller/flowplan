@@ -1,3 +1,4 @@
+import { serverT } from "@/lib/i18n-server";
 import { currentUser, HttpError } from "@/lib/auth";
 import { getForm } from "@/lib/forms";
 import FormClient from "@/components/form-client";
@@ -7,6 +8,7 @@ export default async function FormPage({
 }: {
   params: Promise<{ token: string }>;
 }) {
+  const t = await serverT();
   const { token } = await params;
   try {
     const form = getForm(token, await currentUser());
@@ -28,15 +30,15 @@ export default async function FormPage({
         <a className="public-brand" href="/">
           flowplan
         </a>
-        <h1>Formular</h1>
+        <h1>{t("Formular", "Form")}</h1>
         <p>
           {e instanceof HttpError
             ? e.message
-            : "Formular konnte nicht geladen werden."}
+            : t("Formular konnte nicht geladen werden.", "The form could not be loaded.")}
         </p>
         {e instanceof HttpError && e.status === 401 && (
           <a className="button primary" href="/api/auth/login">
-            Mit SSO anmelden
+            {t("Mit SSO anmelden", "Sign in with SSO")}
           </a>
         )}
       </main>

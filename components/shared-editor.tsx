@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -38,6 +39,7 @@ export default function SharedEditor({
   // Live cursors with members and other guests (edit links).
   presence?: { token: string; pageId: string; rowId?: string; clientId: string };
 }) {
+  const t = useT();
   const [diagram, setDiagram] = useState<DiagramTarget | null>(null);
   const [math, setMath] = useState<MathTarget | null>(null);
   const editor = useEditor({
@@ -86,7 +88,7 @@ export default function SharedEditor({
                         loading: "lazy",
                       },
                     ];
-                  return ["p", {}, "Medium nicht verfügbar"];
+                  return ["p", {}, t("Medium nicht verfügbar", "Media not available")];
                 },
               })
             : e,
@@ -98,7 +100,7 @@ export default function SharedEditor({
     editable: !disabled,
     editorProps: {
       attributes: {
-        "aria-label": "Geteilten Inhalt bearbeiten",
+        "aria-label": t("Geteilten Inhalt bearbeiten", "Edit shared content"),
         role: "textbox",
         "aria-multiline": "true",
       },
@@ -113,7 +115,7 @@ export default function SharedEditor({
       <div
         className="shared-actions"
         role="toolbar"
-        aria-label="Textformatierung"
+        aria-label={t("Textformatierung", "Text formatting")}
       >
         <button
           className="button"
@@ -121,7 +123,7 @@ export default function SharedEditor({
           disabled={disabled}
           onClick={() => editor?.chain().focus().toggleBold().run()}
         >
-          Fett
+          {t("Fett", "Bold")}
         </button>
         <button
           className="button"
@@ -129,7 +131,7 @@ export default function SharedEditor({
           disabled={disabled}
           onClick={() => editor?.chain().focus().toggleItalic().run()}
         >
-          Kursiv
+          {t("Kursiv", "Italic")}
         </button>
         <button
           className="button"
@@ -139,7 +141,7 @@ export default function SharedEditor({
             editor?.chain().focus().toggleHeading({ level: 2 }).run()
           }
         >
-          Überschrift
+          {t("Überschrift", "Heading")}
         </button>
         <button
           className="button"
@@ -147,7 +149,7 @@ export default function SharedEditor({
           disabled={disabled}
           onClick={() => editor?.chain().focus().toggleBulletList().run()}
         >
-          Liste
+          {t("Liste", "List")}
         </button>
         <button
           className="button"
@@ -155,7 +157,7 @@ export default function SharedEditor({
           disabled={disabled}
           onClick={() => editor?.chain().focus().toggleTaskList().run()}
         >
-          Checkliste
+          {t("Checkliste", "Checklist")}
         </button>
         <button
           className="button"
@@ -163,7 +165,7 @@ export default function SharedEditor({
           disabled={disabled}
           onClick={() => setMath({ type: "mathInline", expression: "" })}
         >
-          Inline-Formel
+          {t("Inline-Formel", "Inline formula")}
         </button>
         <button
           className="button"
@@ -171,15 +173,15 @@ export default function SharedEditor({
           disabled={disabled}
           onClick={() => setDiagram({ source: DEFAULT_DIAGRAM })}
         >
-          Mermaid-Diagramm
+          {t("Mermaid-Diagramm", "Mermaid diagram")}
         </button>
         {upload && (
           <label className={`button${disabled ? " disabled" : ""}`}>
-            Datei einfügen
+            {t("Datei einfügen", "Insert file")}
             <input
               type="file"
               hidden
-              aria-label="Datei einfügen"
+              aria-label={t("Datei einfügen", "Insert file")}
               accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain"
               disabled={disabled}
               onChange={async (e) => {

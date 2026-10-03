@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, api } from "./ui";
 import { Select } from "./select";
@@ -26,6 +27,7 @@ export function MovePageDialog({
   current: Place;
   onMove: (move: { spaceId: string; parentId: string | null; workspaceId: string }) => Promise<boolean>;
 }) {
+  const t = useT();
   const writable = workspaces.filter((w) => !w.guest && ["owner", "editor"].includes(w.role));
   const [workspaceId, setWorkspaceId] = useState(currentWorkspace),
     [spaceId, setSpaceId] = useState(page?.space_id || ""),
@@ -74,11 +76,11 @@ export function MovePageDialog({
     (p) => p.space_id === spaceId && !p.deleted_at && !excluded.has(p.id) && !p.journal_date,
   );
   return (
-    <Modal open={open} onClose={onClose} title="Seite verschieben">
+    <Modal open={open} onClose={onClose} title={t("Seite verschieben", "Move page")}>
       <div className="move-page-dialog">
         {writable.length > 1 && (
           <label>
-            Arbeitsbereich
+            {t("Arbeitsbereich", "Workspace")}
             <Select value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)}>
               {writable.map((w) => (
                 <option key={w.id} value={w.id}>
@@ -90,7 +92,7 @@ export function MovePageDialog({
           </label>
         )}
         <label>
-          Bereich
+          {t("Bereich", "Space")}
           <Select
             value={spaceId}
             disabled={!place}
@@ -109,22 +111,19 @@ export function MovePageDialog({
           </Select>
         </label>
         <label>
-          Übergeordnete Seite
+          {t("Übergeordnete Seite", "Parent page")}
           <Select value={parentId} disabled={!place} onChange={(e) => setParentId(e.target.value)}>
-            <option value="">Auf oberste Ebene</option>
+            <option value="">{t("Auf oberste Ebene", "To the top level")}</option>
             {parents.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.title || "Ohne Titel"}
+                {p.title || t("Ohne Titel", "Untitled")}
               </option>
             ))}
           </Select>
         </label>
         {foreign && (
           <p className="callout move-page-note">
-            Die Seite und ihre Unterseiten wechseln den Arbeitsbereich. Rechte
-            für Gruppen und Personen, die dort nicht Mitglied sind, entfallen;
-            Datenbanken mit Relationen zu zurückbleibenden Datenbanken lassen
-            sich erst nach dem Lösen der Relation verschieben.
+            {t("Die Seite und ihre Unterseiten wechseln den Arbeitsbereich. Rechte für Gruppen und Personen, die dort nicht Mitglied sind, entfallen; Datenbanken mit Relationen zu zurückbleibenden Datenbanken lassen sich erst nach dem Lösen der Relation verschieben.", "The page and its sub-pages change workspace. Permissions for groups and people who are not members there are dropped; databases with relations to databases staying behind can only be moved after removing the relation.")}
           </p>
         )}
         <button
@@ -137,7 +136,7 @@ export function MovePageDialog({
             if (ok) onClose();
           }}
         >
-          {busy ? "Wird verschoben …" : "Verschieben"}
+          {busy ? t("Wird verschoben …", "Moving …") : t("Verschieben", "Move")}
         </button>
       </div>
     </Modal>

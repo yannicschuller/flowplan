@@ -1,4 +1,6 @@
 "use client";
+import { tr } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/core";
 import { MermaidBlock } from "@/lib/mermaid-node";
@@ -24,7 +26,7 @@ export function mermaidNodeView(onEdit: (target: DiagramTarget) => void) {
           dom.setAttribute("role", editor.isEditable ? "button" : "figure");
           dom.setAttribute(
             "aria-label",
-            editor.isEditable ? "Diagramm bearbeiten" : "Mermaid-Diagramm",
+            editor.isEditable ? tr("Diagramm bearbeiten", "Edit diagram") : tr("Mermaid-Diagramm", "Mermaid diagram"),
           );
           dom.tabIndex = editor.isEditable ? 0 : -1;
           cancel = mountDiagram(dom, current.attrs.source);
@@ -71,6 +73,7 @@ export function DiagramEditorDialog({
   target: DiagramTarget;
   onClose: () => void;
 }) {
+  const t = useT();
   const [source, setSource] = useState(target.source);
   const [validated, setValidated] = useState<string | null>(null);
   const [conflict, setConflict] = useState("");
@@ -94,7 +97,7 @@ export function DiagramEditorDialog({
   }, [source]);
   function apply(remove = false) {
     if (!editor?.isEditable) {
-      setConflict("Das Dokument kann nicht bearbeitet werden.");
+      setConflict(t("Das Dokument kann nicht bearbeitet werden.", "The document cannot be edited."));
       return;
     }
     if (target.getPos) {
@@ -107,7 +110,7 @@ export function DiagramEditorDialog({
         current.attrs.source !== target.source
       ) {
         setConflict(
-          "Dieses Diagramm wurde inzwischen geändert oder gelöscht. Dein Entwurf bleibt hier erhalten. Öffne das aktuelle Diagramm erneut, um es zu bearbeiten.",
+          t("Dieses Diagramm wurde inzwischen geändert oder gelöscht. Dein Entwurf bleibt hier erhalten. Öffne das aktuelle Diagramm erneut, um es zu bearbeiten.", "This diagram was changed or deleted in the meantime. Your draft is kept here. Open the current diagram again to edit it."),
         );
         return;
       }
@@ -130,7 +133,7 @@ export function DiagramEditorDialog({
   return (
     <Modal
       open
-      title="Mermaid-Diagramm"
+      title={t("Mermaid-Diagramm", "Mermaid diagram")}
       onClose={onClose}
       onCloseAutoFocus={(event) => {
         event.preventDefault();
@@ -144,9 +147,9 @@ export function DiagramEditorDialog({
         }}
       >
         <label>
-          Mermaid-Quelltext
+          {t("Mermaid-Quelltext", "Mermaid source")}
           <textarea
-            aria-label="Mermaid-Quelltext"
+            aria-label={t("Mermaid-Quelltext", "Mermaid source")}
             autoFocus
             spellCheck={false}
             rows={7}
@@ -158,7 +161,7 @@ export function DiagramEditorDialog({
         <div
           ref={preview}
           className="mermaid-preview"
-          aria-label="Diagrammvorschau"
+          aria-label={t("Diagrammvorschau", "Diagram preview")}
           role="status"
         />
         {conflict && (
@@ -173,14 +176,14 @@ export function DiagramEditorDialog({
               className="button"
               onClick={() => apply(true)}
             >
-              Diagramm löschen
+              {t("Diagramm löschen", "Delete diagram")}
             </button>
           )}
           <button type="button" className="button" onClick={onClose}>
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
           <button className="button primary" disabled={validated !== source}>
-            {target.getPos ? "Speichern" : "Einfügen"}
+            {target.getPos ? t("Speichern", "Save") : t("Einfügen", "Insert")}
           </button>
         </div>
       </form>

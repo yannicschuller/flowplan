@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, PageIcon } from "./ui";
 import { parsePageLocation } from "@/lib/page-location";
@@ -47,6 +48,7 @@ export function LinkPreview({
 }: {
   members: { id: string; name: string; email: string }[];
 }) {
+  const t = useT();
   const [card, setCard] = useState<Card | null>(null);
   const cache = useRef(new Map<string, Preview | string>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,7 +98,7 @@ export function LinkPreview({
           if (current.current === target)
             setCard({ kind: "page", rect, preview });
         } catch (e) {
-          const message = (e as Error).message || "Nicht verfügbar";
+          const message = (e as Error).message || t("Nicht verfügbar", "Not available");
           cache.current.set(location.pageId, message);
           if (current.current === target)
             setCard({ kind: "page", rect, preview: null, error: message });
@@ -188,13 +190,13 @@ export function LinkPreview({
           <small>
             {card.preview.space}
             {card.preview.kind === "database"
-              ? ` · ${card.preview.rows} Einträge`
+              ? t(` · ${card.preview.rows} Einträge`, ` · ${card.preview.rows} records`)
               : ""}
           </small>
           {card.preview.excerpt && <p>{card.preview.excerpt}</p>}
         </>
       ) : (
-        <small>{card.error || "Vorschau wird geladen …"}</small>
+        <small>{card.error || t("Vorschau wird geladen …", "Loading preview …")}</small>
       )}
     </div>
   );

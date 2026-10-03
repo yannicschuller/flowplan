@@ -1,5 +1,6 @@
 "use client";
-import { LOCALE_TAG } from "@/lib/locale-tag";
+import { useT } from "./i18n";
+import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Trash } from "@phosphor-icons/react";
 import { api } from "./ui";
@@ -23,7 +24,7 @@ type Hook = {
   last: { status: number | null; error: string | null; delivered_at: number | null } | null;
 };
 const when = (ms: number | null) =>
-  ms ? new Date(ms).toLocaleString(LOCALE_TAG, { dateStyle: "short", timeStyle: "short" }) : "nie";
+  ms ? new Date(ms).toLocaleString(LOCALE_TAG, { dateStyle: "short", timeStyle: "short" }) : tr("nie", "never");
 
 // Settings → API & Webhooks: personal tokens for everyone, webhooks for
 // workspace owners (lib/api-tokens.ts, lib/webhooks.ts).
@@ -38,6 +39,7 @@ export function IntegrationSettings({
   pages: { id: string; title: string; kind: string }[];
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [tokens, setTokens] = useState<Token[]>([]),
     [tokenName, setTokenName] = useState(""),
     [scope, setScope] = useState<"read" | "write">("read"),
@@ -66,11 +68,10 @@ export function IntegrationSettings({
   return (
     <>
       <section className="settings-section">
-        <h2>Persönliche API-Tokens</h2>
+        <h2>{t("Persönliche API-Tokens", "Personal API tokens")}</h2>
         <p className="muted">
-          Für Skripte, n8n oder Home Assistant: Anfragen mit{" "}
-          <code>Authorization: Bearer fp_…</code> handeln mit deinen Rechten.
-          Lese-Tokens können nichts ändern. Beispiel:{" "}
+          {t("Für Skripte, n8n oder Home Assistant: Anfragen mit", "For scripts, n8n or Home Assistant: requests with")}{" "}
+          <code>Authorization: Bearer fp_…</code> {t("handeln mit deinen Rechten. Lese-Tokens können nichts ändern. Beispiel:", "act with your permissions. Read tokens cannot change anything. Example:")}{" "}
           <code>curl -H &quot;Authorization: Bearer fp_…&quot; {origin}/api/bootstrap</code>
         </p>
         <form
@@ -83,7 +84,7 @@ export function IntegrationSettings({
                 name: tokenName,
                 scope,
               });
-              setFresh({ label: `Token „${tokenName}“`, value: r.token });
+              setFresh({ label: t(`Token „${tokenName}“`, `Token “${tokenName}”`), value: r.token });
               setTokenName("");
               await load();
             } catch (error) {
@@ -96,43 +97,43 @@ export function IntegrationSettings({
             maxLength={80}
             value={tokenName}
             onChange={(e) => setTokenName(e.target.value)}
-            placeholder="Name, z. B. Home Assistant"
-            aria-label="Name des Tokens"
+            placeholder={t("Name, z. B. Home Assistant", "Name, e.g. Home Assistant")}
+            aria-label={t("Name des Tokens", "Token name")}
           />
-          <Select value={scope} onChange={(e) => setScope(e.target.value as "read" | "write")} aria-label="Rechte des Tokens">
-            <option value="read">Nur lesen</option>
-            <option value="write">Lesen und schreiben</option>
+          <Select value={scope} onChange={(e) => setScope(e.target.value as "read" | "write")} aria-label={t("Rechte des Tokens", "Token permissions")}>
+            <option value="read">{t("Nur lesen", "Read only")}</option>
+            <option value="write">{t("Lesen und schreiben", "Read and write")}</option>
           </Select>
-          <button className="button primary">Token erstellen</button>
+          <button className="button primary">{t("Token erstellen", "Create token")}</button>
         </form>
         {fresh && (
           <div className="integration-secret" role="status">
-            <strong>{fresh.label} – nur jetzt sichtbar:</strong>
+            <strong>{fresh.label} {t("– nur jetzt sichtbar:", "– visible only now:")}</strong>
             <code>{fresh.value}</code>
             <button
               className="button compact"
               onClick={() => void navigator.clipboard.writeText(fresh.value).catch(() => {})}
             >
-              <Copy size={14} /> Kopieren
+              <Copy size={14} /> {t("Kopieren", "Copy")}
             </button>
           </div>
         )}
         <ul className="integration-list">
-          {tokens.map((t) => (
-            <li key={t.id}>
+          {tokens.map((token) => (
+            <li key={token.id}>
               <span>
-                <strong>{t.name}</strong>
+                <strong>{token.name}</strong>
                 <small>
-                  {t.prefix}… · {t.scope === "read" ? "nur lesen" : "lesen und schreiben"} · zuletzt benutzt:{" "}
-                  {when(t.last_used_at)}
+                  {token.prefix}… · {token.scope === "read" ? t("nur lesen", "read only") : t("lesen und schreiben", "read and write")} · {t("zuletzt benutzt:", "last used:")}{" "}
+                  {when(token.last_used_at)}
                 </small>
               </span>
               <button
                 className="icon-button"
-                aria-label={`Token ${t.name} widerrufen`}
-                title="Widerrufen"
+                aria-label={t(`Token ${token.name} widerrufen`, `Revoke token ${token.name}`)}
+                title={t("Widerrufen", "Revoke")}
                 onClick={async () => {
-                  await api("/api/command", { action: "token.revoke", id: t.id }).catch((e) =>
+                  await api("/api/command", { action: "token.revoke", id: token.id }).catch((e) =>
                     onError((e as Error).message),
                   );
                   await load();
@@ -142,18 +143,15 @@ export function IntegrationSettings({
               </button>
             </li>
           ))}
-          {!tokens.length && <li className="muted">Noch keine Tokens.</li>}
+          {!tokens.length && <li className="muted">{t("Noch keine Tokens.", "No tokens yet.")}</li>}
         </ul>
       </section>
       {owner && (
         <section className="settings-section">
-          <h2>Webhooks</h2>
+          <h2>{t("Webhooks", "Webhooks")}</h2>
           <p className="muted">
-            Flowplan schickt bei den gewählten Ereignissen ein JSON per POST an
-            die Adresse. Die Kopfzeile <code>X-Flowplan-Signature</code> enthält{" "}
-            <code>sha256=</code> und die HMAC-Signatur des Inhalts mit dem
-            geheimen Schlüssel des Webhooks. Fehlgeschlagene Zustellungen werden
-            wiederholt.
+            {t("Flowplan schickt bei den gewählten Ereignissen ein JSON per POST an die Adresse. Die Kopfzeile", "On the chosen events Flowplan sends a JSON POST to the address. The header")}{" "}<code>X-Flowplan-Signature</code> {t("enthält", "contains")}{" "}
+            <code>sha256=</code> {t("und die HMAC-Signatur des Inhalts mit dem geheimen Schlüssel des Webhooks. Fehlgeschlagene Zustellungen werden wiederholt.", "and the HMAC signature of the content with the webhook's secret key. Failed deliveries are retried.")}
           </p>
           <form
             className="integration-form hooks"
@@ -166,7 +164,7 @@ export function IntegrationSettings({
                   events: hookEvents,
                   pageId: hookPage || null,
                 });
-                setFresh({ label: "Geheimer Schlüssel des Webhooks", value: r.secret });
+                setFresh({ label: t("Geheimer Schlüssel des Webhooks", "Webhook secret key"), value: r.secret });
                 setHookUrl("");
                 await load();
               } catch (error) {
@@ -180,20 +178,20 @@ export function IntegrationSettings({
               value={hookUrl}
               onChange={(e) => setHookUrl(e.target.value)}
               placeholder="https://n8n.example.com/webhook/…"
-              aria-label="Adresse des Webhooks"
+              aria-label={t("Adresse des Webhooks", "Webhook address")}
             />
-            <Select value={hookPage} onChange={(e) => setHookPage(e.target.value)} aria-label="Nur für Datenbank">
-              <option value="">Alle Seiten und Datenbanken</option>
+            <Select value={hookPage} onChange={(e) => setHookPage(e.target.value)} aria-label={t("Nur für Datenbank", "Only for database")}>
+              <option value="">{t("Alle Seiten und Datenbanken", "All pages and databases")}</option>
               {pages
                 .filter((p) => p.kind === "database")
                 .map((p) => (
                   <option key={p.id} value={p.id}>
-                    Nur {p.title || "Ohne Titel"}
+                    {t("Nur", "Only")}{" "}{p.title || t("Ohne Titel", "Untitled")}
                   </option>
                 ))}
             </Select>
             <fieldset>
-              <legend>Ereignisse</legend>
+              <legend>{t("Ereignisse", "Events")}</legend>
               {Object.entries(events).map(([id, label]) => (
                 <label key={id} className="checkbox-label">
                   <input
@@ -210,7 +208,7 @@ export function IntegrationSettings({
               ))}
             </fieldset>
             <button className="button primary" disabled={!hookEvents.length}>
-              Webhook anlegen
+              {t("Webhook anlegen", "Create webhook")}
             </button>
           </form>
           <ul className="integration-list">
@@ -222,15 +220,15 @@ export function IntegrationSettings({
                     {h.events.join(", ")} ·{" "}
                     {h.last
                       ? h.last.delivered_at
-                        ? `zuletzt zugestellt ${when(h.last.delivered_at)}`
-                        : `Fehler: ${h.last.error || h.last.status}`
-                      : "noch nichts gesendet"}
+                        ? t(`zuletzt zugestellt ${when(h.last.delivered_at)}`, `last delivered ${when(h.last.delivered_at)}`)
+                        : t(`Fehler: ${h.last.error || h.last.status}`, `Error: ${h.last.error || h.last.status}`)
+                      : t("noch nichts gesendet", "nothing sent yet")}
                   </small>
                 </span>
                 <button
                   className="icon-button"
-                  aria-label={`Webhook ${h.url} löschen`}
-                  title="Löschen"
+                  aria-label={t(`Webhook ${h.url} löschen`, `Delete webhook ${h.url}`)}
+                  title={t("Löschen", "Delete")}
                   onClick={async () => {
                     await api("/api/command", { action: "webhook.delete", workspaceId, id: h.id }).catch((e) =>
                       onError((e as Error).message),
@@ -242,7 +240,7 @@ export function IntegrationSettings({
                 </button>
               </li>
             ))}
-            {!hooks.length && <li className="muted">Noch keine Webhooks.</li>}
+            {!hooks.length && <li className="muted">{t("Noch keine Webhooks.", "No webhooks yet.")}</li>}
           </ul>
         </section>
       )}

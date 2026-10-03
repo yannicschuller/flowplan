@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useState } from "react";
 export function GalleryCover({
   url,
@@ -9,6 +10,7 @@ export function GalleryCover({
   fit: "cover" | "contain";
   color?: string;
 }) {
+  const t = useT();
   const [failed, setFailed] = useState(false);
   return (
     <span
@@ -30,7 +32,7 @@ export function GalleryCover({
           onError={() => setFailed(true)}
         />
       ) : (
-        !color && <span className="muted">Kein Bild</span>
+        !color && <span className="muted">{t("Kein Bild", "No image")}</span>
       )}
     </span>
   );

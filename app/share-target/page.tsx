@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { ShareTarget } from "@/components/share-target";
+import { serverT } from "@/lib/i18n-server";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "In Flowplan speichern" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await serverT())("In Flowplan speichern", "Save to Flowplan") };
+}
 
 // Target of "Teilen" on phones (manifest share_target). Only shows what
 // arrived; saving is a normal, origin-checked command.

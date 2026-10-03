@@ -1,14 +1,15 @@
-import { LOCALE_TAG } from "@/lib/locale-tag";
+import { useT } from "./i18n";
+import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import type { Field } from "@/lib/types";
 import { cellText } from "@/lib/database";
 import { percentAggregate } from "@/lib/rollups";
 import { formatNumber, ratingMax } from "@/lib/field-format";
 const errors: Record<string, string> = {
-  "#ACCESS": "Kein Zugriff auf die verknüpfte Datenbank",
-  "#PROPERTY": "Verknüpfte Eigenschaft fehlt",
-  "#RELATION": "Relation fehlt",
-  "#CYCLE": "Zirkuläre Berechnung",
-  "#LIMIT": "Berechnung zu komplex",
+  "#ACCESS": tr("Kein Zugriff auf die verknüpfte Datenbank", "No access to the linked database"),
+  "#PROPERTY": tr("Verknüpfte Eigenschaft fehlt", "Linked property missing"),
+  "#RELATION": tr("Relation fehlt", "Relation missing"),
+  "#CYCLE": tr("Zirkuläre Berechnung", "Circular calculation"),
+  "#LIMIT": tr("Berechnung zu komplex", "Calculation too complex"),
 };
 export function RollupValue({
   field,
@@ -17,6 +18,7 @@ export function RollupValue({
   field: Field;
   value: unknown;
 }) {
+  const t = useT();
   if (typeof value === "string" && errors[value])
     return (
       <span className="rollup-error" title={errors[value]}>
@@ -44,7 +46,7 @@ export function RollupValue({
       <span
         className="rating-value"
         role="img"
-        aria-label={`${stars} von ${max} Sternen`}
+        aria-label={t(`${stars} von ${max} Sternen`, `${stars} of ${max} stars`)}
       >
         {Array.from({ length: max }, (_, i) => (
           <span key={i} className={i < stars ? "on" : ""} aria-hidden="true">

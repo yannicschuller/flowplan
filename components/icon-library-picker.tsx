@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useState } from "react";
 import {
   iconColors,
@@ -16,6 +17,7 @@ export function IconLibraryPicker({
   current: string;
   onSelect: (icon: string) => void;
 }) {
+  const t = useT();
   const selected = parseLibraryIcon(current);
   const [color, setColor] = useState<string>(
     selected?.color || iconColors[1][1],
@@ -32,26 +34,26 @@ export function IconLibraryPicker({
     <div className="icon-library">
       <input
         type="search"
-        aria-label="Symbole durchsuchen"
-        placeholder="Symbol suchen, z. B. Ziel, Team, Kalender …"
+        aria-label={t("Symbole durchsuchen", "Search icons")}
+        placeholder={t("Symbol suchen, z. B. Ziel, Team, Kalender …", "Search icon, e.g. target, team, calendar …")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      <div className="icon-colors" role="radiogroup" aria-label="Symbolfarbe">
+      <div className="icon-colors" role="radiogroup" aria-label={t("Symbolfarbe", "Icon colour")}>
         {iconColors.map(([label, value]) => (
           <button
             key={value}
             type="button"
             role="radio"
             aria-checked={color === value}
-            aria-label={`Farbe ${label}`}
+            aria-label={t(`Farbe ${label}`, `Colour ${label}`)}
             className="icon-color"
             style={{ background: value }}
             onClick={() => setColor(value)}
           />
         ))}
       </div>
-      <div className="icon-grid" role="listbox" aria-label="Symbole">
+      <div className="icon-grid" role="listbox" aria-label={t("Symbole", "Icons")}>
         {names.map((name) => {
           const Symbol = libraryIcons[name];
           const value = libraryIconValue(name, color);
@@ -61,7 +63,7 @@ export function IconLibraryPicker({
               type="button"
               role="option"
               aria-selected={current === value}
-              aria-label={`Symbol ${name}`}
+              aria-label={t(`Symbol ${name}`, `Icon ${name}`)}
               title={iconLibrary[name]}
               onClick={() => onSelect(value)}
             >
@@ -69,7 +71,7 @@ export function IconLibraryPicker({
             </button>
           );
         })}
-        {!names.length && <p className="muted">Kein Symbol gefunden.</p>}
+        {!names.length && <p className="muted">{t("Kein Symbol gefunden.", "No icon found.")}</p>}
       </div>
     </div>
   );

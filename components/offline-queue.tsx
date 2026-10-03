@@ -1,4 +1,6 @@
 "use client";
+import { tr } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   mergeChange,
@@ -27,12 +29,12 @@ async function post(body: Record<string, unknown>) {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new HttpFailure(result.error || "Fehler", response.status);
+    throw new HttpFailure(result.error || tr("Fehler", "Error"), response.status);
   return result;
 }
 async function currentRows(pageId: string): Promise<Row[]> {
   const response = await fetch(`/api/pages/${pageId}`, { cache: "no-store" });
-  if (!response.ok) throw new HttpFailure("Seite fehlt.", response.status);
+  if (!response.ok) throw new HttpFailure(tr("Seite fehlt.", "Page missing."), response.status);
   return (await response.json()).rows || [];
 }
 const read = (key: string): QueuedChange[] => {
@@ -69,7 +71,7 @@ export function useOfflineQueue({
         localStorage.setItem(key, JSON.stringify(next));
       } catch {
         notify(
-          "Offline-Änderungen konnten auf diesem Gerät nicht gesichert werden.",
+          tr("Offline-Änderungen konnten auf diesem Gerät nicht gesichert werden.", "Offline changes could not be stored on this device."),
         );
       }
     },
@@ -189,7 +191,7 @@ export function useOfflineQueue({
           }
         } catch (e) {
           if (offline(e)) break;
-          notify(`Offline-Änderung verworfen: ${(e as Error).message}`);
+          notify(tr(`Offline-Änderung verworfen: ${(e as Error).message}`, `Offline change discarded: ${(e as Error).message}`));
         }
         store(queueRef.current.slice(1));
       }
@@ -256,6 +258,7 @@ export function OfflineConflicts({
   fields: (pageId: string) => Field[];
   resolve: (conflict: Conflict, keepMine: boolean) => Promise<void>;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const conflict = conflicts[0];
   if (!conflict) return null;
@@ -264,7 +267,7 @@ export function OfflineConflicts({
   const title =
     cellText(
       conflict.change.cells[names[0]?.id] ?? conflict.change.base[names[0]?.id],
-    ) || "Eintrag";
+    ) || t("Eintrag", "Record");
   const act = async (keepMine: boolean) => {
     setBusy(true);
     try {
@@ -277,19 +280,19 @@ export function OfflineConflicts({
     <Modal
       open
       onClose={() => undefined}
-      title="Konflikt mit Offline-Änderungen"
+      title={t("Konflikt mit Offline-Änderungen", "Conflict with offline changes")}
     >
       <p>
-        „{title}“ wurde geändert, während du offline warst
-        {conflicts.length > 1 ? ` (1 von ${conflicts.length} Konflikten)` : ""}.
+        „{title}{t("“ wurde geändert, während du offline warst", "” was changed while you were offline")}
+        {conflicts.length > 1 ? t(` (1 von ${conflicts.length} Konflikten)`, ` (1 of ${conflicts.length} conflicts)`) : ""}.
       </p>
       {conflict.current ? (
         <table className="offline-conflict">
           <thead>
             <tr>
-              <th>Eigenschaft</th>
-              <th>Deine Änderung</th>
-              <th>Aktueller Wert</th>
+              <th>{t("Eigenschaft", "Property")}</th>
+              <th>{t("Deine Änderung", "Your change")}</th>
+              <th>{t("Aktueller Wert", "Current value")}</th>
             </tr>
           </thead>
           <tbody>
@@ -303,11 +306,11 @@ export function OfflineConflicts({
           </tbody>
         </table>
       ) : (
-        <p>Der Eintrag wurde inzwischen gelöscht.</p>
+        <p>{t("Der Eintrag wurde inzwischen gelöscht.", "The record has been deleted in the meantime.")}</p>
       )}
       <div className="modal-actions">
         <button className="button" disabled={busy} onClick={() => act(false)}>
-          {conflict.current ? "Aktuellen Wert behalten" : "Änderung verwerfen"}
+          {conflict.current ? t("Aktuellen Wert behalten", "Keep current value") : t("Änderung verwerfen", "Discard change")}
         </button>
         <button
           className="button primary"
@@ -315,8 +318,8 @@ export function OfflineConflicts({
           onClick={() => act(true)}
         >
           {conflict.current
-            ? "Meine Änderung übernehmen"
-            : "Als neuen Eintrag anlegen"}
+            ? t("Meine Änderung übernehmen", "Apply my change")
+            : t("Als neuen Eintrag anlegen", "Create as a new record")}
         </button>
       </div>
     </Modal>

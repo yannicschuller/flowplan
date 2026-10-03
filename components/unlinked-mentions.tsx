@@ -1,6 +1,7 @@
 "use client";
 // Pages that name this page without linking to it; "Verlinken" turns the
 // first mention there into a link.
+import { useT } from "./i18n";
 import { useCallback, useEffect, useState } from "react";
 import { CaretDown, CaretRight, LinkSimple } from "@phosphor-icons/react";
 import { api, PageIcon } from "./ui";
@@ -20,6 +21,7 @@ export function UnlinkedMentions({
   onLinked: () => void;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
@@ -38,7 +40,7 @@ export function UnlinkedMentions({
     <section className="unlinked-mentions">
       <button type="button" className="unlinked-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
         {open ? <CaretDown size={13} /> : <CaretRight size={13} />}
-        Nicht verlinkte Erwähnungen <small>{mentions.length}</small>
+        {t("Nicht verlinkte Erwähnungen", "Unlinked mentions")}{" "}<small>{mentions.length}</small>
       </button>
       {open && (
         <ul>
@@ -67,7 +69,7 @@ export function UnlinkedMentions({
                     }
                   }}
                 >
-                  <LinkSimple size={14} /> Verlinken
+                  <LinkSimple size={14} /> {t("Verlinken", "Link")}
                 </button>
               )}
             </li>

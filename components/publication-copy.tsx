@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import { api } from "./ui";
@@ -6,6 +7,7 @@ import type { Bootstrap } from "@/lib/types";
 
 // Lets signed-in visitors copy a publication into one of their workspaces.
 export function PublicationCopy({ token }: { token: string }) {
+  const t = useT();
   const [open, setOpen] = useState(false),
     [boot, setBoot] = useState<Bootstrap | null>(null),
     [signedOut, setSignedOut] = useState(false),
@@ -23,7 +25,7 @@ export function PublicationCopy({ token }: { token: string }) {
       return;
     }
     if (!response.ok) {
-      setError("Arbeitsbereiche konnten nicht geladen werden.");
+      setError(t("Arbeitsbereiche konnten nicht geladen werden.", "Workspaces could not be loaded."));
       return;
     }
     const next = (await response.json()) as Bootstrap;
@@ -45,14 +47,14 @@ export function PublicationCopy({ token }: { token: string }) {
             void load();
           }}
         >
-          In meinen Arbeitsbereich kopieren
+          {t("In meinen Arbeitsbereich kopieren", "Copy to my workspace")}
         </button>
       ) : signedOut ? (
         <a
           className="button primary"
           href={`/api/auth/login?returnTo=${encodeURIComponent(`/share/${token}`)}`}
         >
-          Anmelden, um zu kopieren
+          {t("Anmelden, um zu kopieren", "Sign in to copy")}
         </a>
       ) : boot ? (
         <form
@@ -75,7 +77,7 @@ export function PublicationCopy({ token }: { token: string }) {
           }}
         >
           <label>
-            Arbeitsbereich
+            {t("Arbeitsbereich", "Workspace")}
             <Select
               value={workspace}
               disabled={busy}
@@ -91,7 +93,7 @@ export function PublicationCopy({ token }: { token: string }) {
             </Select>
           </label>
           <label>
-            Bereich
+            {t("Bereich", "Space")}
             <Select
               value={space}
               disabled={busy}
@@ -105,16 +107,14 @@ export function PublicationCopy({ token }: { token: string }) {
             </Select>
           </label>
           <button className="button primary" disabled={busy || !space}>
-            {busy ? "Wird kopiert …" : "Kopie anlegen"}
+            {busy ? t("Wird kopiert …", "Copying …") : t("Kopie anlegen", "Create copy")}
           </button>
           <p className="muted">
-            Kopiert werden die veröffentlichten Seiten, sichtbare Eigenschaften
-            und veröffentlichte Dateien. Kommentare, Versionen und Freigaben
-            bleiben beim Original.
+            {t("Kopiert werden die veröffentlichten Seiten, sichtbare Eigenschaften und veröffentlichte Dateien. Kommentare, Versionen und Freigaben bleiben beim Original.", "The published pages, visible properties and published files are copied. Comments, versions and shares stay with the original.")}
           </p>
         </form>
       ) : (
-        !error && <p className="muted">Arbeitsbereiche werden geladen …</p>
+        !error && <p className="muted">{t("Arbeitsbereiche werden geladen …", "Loading workspaces …")}</p>
       )}
       {error && (
         <p role="alert" className="error">

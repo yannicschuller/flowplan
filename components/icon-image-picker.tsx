@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useState } from "react";
 import { imageAccept, type PageImage } from "@/lib/page-appearance";
 import { compressImage } from "@/lib/image-compress";
@@ -16,6 +17,7 @@ export function IconImagePicker({
   images: PageImage[];
   onSelect: (icon: string) => Promise<void>;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [uploads, setUploads] = useState<PageImage[]>([]);
@@ -34,7 +36,7 @@ export function IconImagePicker({
   return (
     <div className="icon-image-picker">
       <label className="button">
-        Bild hochladen
+        {t("Bild hochladen", "Upload image")}
         <input
           type="file"
           accept={imageAccept}
@@ -46,7 +48,7 @@ export function IconImagePicker({
             if (!picked) return;
             const file = await compressImage(picked);
             if (file.size > 10 * 1024 * 1024) {
-              setError("Maximal 10 MB pro Bild.");
+              setError(t("Maximal 10 MB pro Bild.", "At most 10 MB per image."));
               return;
             }
             setBusy(true);
@@ -62,7 +64,7 @@ export function IconImagePicker({
               });
               const result = await response.json();
               if (!response.ok)
-                throw new Error(result.error || "Upload fehlgeschlagen.");
+                throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
               setUploads((prior) => [...prior, result]);
               await onSelect(result.url);
             } catch (e) {
@@ -74,21 +76,20 @@ export function IconImagePicker({
         />
       </label>
       <p className="muted">
-        Quadratische Bilder wirken am besten · PNG, JPEG, GIF, WebP oder AVIF ·
-        maximal 10 MB
+        {t("Quadratische Bilder wirken am besten · PNG, JPEG, GIF, WebP oder AVIF · maximal 10 MB", "Square images work best · PNG, JPEG, GIF, WebP or AVIF · at most 10 MB")}
       </p>
       {all.length > 0 && (
         <div
           className="icon-image-grid"
           role="listbox"
-          aria-label="Bilder dieser Seite"
+          aria-label={t("Bilder dieser Seite", "Images on this page")}
         >
           {all.map((image) => (
             <button
               key={image.url}
               role="option"
               aria-selected={current === image.url}
-              aria-label={`${image.name} als Seitensymbol`}
+              aria-label={t(`${image.name} als Seitensymbol`, `${image.name} as page icon`)}
               disabled={busy}
               onClick={() => void choose(image.url)}
             >

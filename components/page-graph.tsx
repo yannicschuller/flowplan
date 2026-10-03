@@ -2,6 +2,7 @@
 // The workspace as a graph: pages are dots, links between them are lines.
 // A small force layout places linked pages close together; drag to pan,
 // scroll or pinch to zoom, click a page to open it.
+import { useT } from "./i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Graph, MagnifyingGlass } from "@phosphor-icons/react";
 import { api } from "./ui";
@@ -92,6 +93,7 @@ export function PageGraph({
   onOpen: (id: string) => void;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] } | null>(null);
   const [parents, setParents] = useState(false);
   const [orphans, setOrphans] = useState(true);
@@ -153,39 +155,39 @@ export function PageGraph({
     <div className="utility-content page-graph">
       <div className="utility-title">
         <Graph size={30} />
-        <h1>Graph</h1>
-        <p>Wie deine Seiten miteinander verlinkt sind. Größere Punkte haben mehr Verbindungen.</p>
+        <h1>{t("Graph", "Graph")}</h1>
+        <p>{t("Wie deine Seiten miteinander verlinkt sind. Größere Punkte haben mehr Verbindungen.", "How your pages link to each other. Bigger dots have more connections.")}</p>
       </div>
       <div className="graph-toolbar">
         <label className="graph-search">
           <MagnifyingGlass size={15} />
           <input
-            aria-label="Seiten im Graph hervorheben"
-            placeholder="Hervorheben …"
+            aria-label={t("Seiten im Graph hervorheben", "Highlight pages in the graph")}
+            placeholder={t("Hervorheben …", "Highlight …")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
         </label>
         <label className="graph-option">
           <input type="checkbox" checked={parents} onChange={(e) => setParents(e.target.checked)} />
-          Unterseiten verbinden
+          {t("Unterseiten verbinden", "Connect sub-pages")}
         </label>
         <label className="graph-option">
           <input type="checkbox" checked={orphans} onChange={(e) => setOrphans(e.target.checked)} />
-          Seiten ohne Verbindung
+          {t("Seiten ohne Verbindung", "Pages without connections")}
         </label>
         <span className="graph-count">
-          {nodes.length} Seiten · {edges.filter((e) => e.kind === "link").length} Links
+          {nodes.length} {t("Seiten ·", "pages ·")}{" "}{edges.filter((e) => e.kind === "link").length} {t("Links", "links")}
         </span>
       </div>
       {!graph ? (
-        <p className="muted">Graph wird berechnet …</p>
+        <p className="muted">{t("Graph wird berechnet …", "Computing graph …")}</p>
       ) : (
         <svg
           ref={svg}
           className="graph-canvas"
           role="img"
-          aria-label={`Graph mit ${nodes.length} Seiten`}
+          aria-label={t(`Graph mit ${nodes.length} Seiten`, `Graph with ${nodes.length} pages`)}
           onWheel={(e) => {
             const rect = svg.current!.getBoundingClientRect();
             zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - rect.left, e.clientY - rect.top);

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import {
   notificationKinds,
@@ -17,6 +18,7 @@ export function NotificationSettings({
     value: { inbox: boolean; push: boolean; email: boolean },
   ) => void;
 }) {
+  const t = useT();
   // Checkboxes react at once; the saved state arrives with the next refresh.
   // While someone is clicking, an answer to an earlier click must not undo
   // later ones: the saved state is taken over only after a quiet moment.
@@ -35,18 +37,16 @@ export function NotificationSettings({
   };
   return (
     <section className="settings-section">
-      <h2>Benachrichtigungsarten</h2>
+      <h2>{t("Benachrichtigungsarten", "Notification kinds")}</h2>
       <p className="muted">
-        Ausgeschaltete Arten erscheinen weder im Posteingang noch als Push.
-        Per E-Mail kommt eine Zusammenfassung, wenn eine Benachrichtigung zehn
-        Minuten ungelesen bleibt – sofern die Instanz E-Mails versenden kann.
+        {t("Ausgeschaltete Arten erscheinen weder im Posteingang noch als Push. Per E-Mail kommt eine Zusammenfassung, wenn eine Benachrichtigung zehn Minuten ungelesen bleibt – sofern die Instanz E-Mails versenden kann.", "Kinds turned off appear neither in the inbox nor as push. By email you get a digest when a notification stays unread for ten minutes – if the instance can send email.")}
       </p>
       <table className="notification-prefs">
         <thead>
           <tr>
-            <th>Art</th>
-            <th>Posteingang</th>
-            <th>Push</th>
+            <th>{t("Art", "Kind")}</th>
+            <th>{t("Posteingang", "Inbox")}</th>
+            <th>{t("Push", "Push")}</th>
             <th>E-Mail</th>
           </tr>
         </thead>
@@ -54,11 +54,11 @@ export function NotificationSettings({
           {(Object.keys(notificationKinds) as NotificationKind[]).map(
             (kind) => (
               <tr key={kind}>
-                <td>{notificationKinds[kind]}</td>
+                <td>{t(notificationKinds[kind])}</td>
                 <td>
                   <input
                     type="checkbox"
-                    aria-label={`${notificationKinds[kind]} im Posteingang`}
+                    aria-label={t(`${notificationKinds[kind]} im Posteingang`, `${t(notificationKinds[kind])} in the inbox`)}
                     checked={local[kind].inbox}
                     onChange={(e) =>
                       change(kind, {
@@ -72,7 +72,7 @@ export function NotificationSettings({
                 <td>
                   <input
                     type="checkbox"
-                    aria-label={`${notificationKinds[kind]} als Push`}
+                    aria-label={t(`${notificationKinds[kind]} als Push`, `${t(notificationKinds[kind])} as push`)}
                     checked={local[kind].push}
                     disabled={!local[kind].inbox}
                     onChange={(e) =>
@@ -87,7 +87,7 @@ export function NotificationSettings({
                 <td>
                   <input
                     type="checkbox"
-                    aria-label={`${notificationKinds[kind]} per E-Mail`}
+                    aria-label={t(`${notificationKinds[kind]} per E-Mail`, `${t(notificationKinds[kind])} by email`)}
                     checked={local[kind].email}
                     disabled={!local[kind].inbox}
                     onChange={(e) =>

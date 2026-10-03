@@ -1,4 +1,6 @@
 "use client";
+import { tr } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import {
   NodeViewWrapper,
@@ -12,7 +14,7 @@ import type { DatabaseData } from "./database-view";
 import { api } from "./ui";
 const DatabaseView = dynamic(() => import("./database-view"), {
   ssr: false,
-  loading: () => <p>Ansicht wird geöffnet …</p>,
+  loading: () => <p>{tr("Ansicht wird geöffnet …", "Opening view …")}</p>,
 });
 export type LinkedEditorContext = {
   pageId: string;
@@ -38,6 +40,7 @@ function LinkedDatabaseView({
   deleteNode,
   editor,
 }: NodeViewProps) {
+  const t = useT();
   const context = () =>
     (extension.options.context as () => LinkedEditorContext)();
   const host = context().pageId,
@@ -82,7 +85,7 @@ function LinkedDatabaseView({
     };
   }, [host, hostRow, block]);
   async function mutate(mutation: Record<string, unknown>) {
-    if (!data) throw new Error("Datenquelle wird geladen.");
+    if (!data) throw new Error(t("Datenquelle wird geladen.", "Loading data source."));
     busy.current = true;
     ++sequence.current;
     setError("");
@@ -117,9 +120,9 @@ function LinkedDatabaseView({
       contentEditable={false}
     >
       <header className="linked-database-header">
-        <span>Verknüpfte Datenbank</span>
+        <span>{t("Verknüpfte Datenbank", "Linked database")}</span>
         {data && (
-          <a href={`/#page=${data.page.id}`} title="Datenquelle öffnen">
+          <a href={`/#page=${data.page.id}`} title={t("Datenquelle öffnen", "Open data source")}>
             {data.page.title} ↗
           </a>
         )}
@@ -128,9 +131,9 @@ function LinkedDatabaseView({
             type="button"
             className="text-button"
             onClick={deleteNode}
-            title="Einbettung entfernen"
+            title={t("Einbettung entfernen", "Remove embed")}
           >
-            Entfernen
+            {t("Entfernen", "Remove")}
           </button>
         )}
       </header>
@@ -138,11 +141,11 @@ function LinkedDatabaseView({
         <div className="linked-database-error" role="status">
           {error}
           <button className="button compact" onClick={() => void load()}>
-            Erneut laden
+            {t("Erneut laden", "Reload")}
           </button>
         </div>
       )}
-      {!data && !error && <p>Einbettung wird gespeichert und geladen …</p>}
+      {!data && !error && <p>{t("Einbettung wird gespeichert und geladen …", "Saving and loading embed …")}</p>}
       {data && (
         <div className="linked-database-body">
           <DatabaseView

@@ -1,4 +1,6 @@
 "use client";
+import { tr } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ImageSquare, Smiley, Trash } from "@phosphor-icons/react";
@@ -11,7 +13,7 @@ import {
 
 const EmojiPicker = dynamic(() => import("./emoji-picker"), {
   ssr: false,
-  loading: () => <p className="muted">Emojis werden geladen …</p>,
+  loading: () => <p className="muted">{tr("Emojis werden geladen …", "Loading emojis …")}</p>,
 });
 
 export function WorkspaceIcon({
@@ -43,7 +45,7 @@ export function WorkspaceIcon({
 // Scales an image to a square of 128 px (cropped to the centre).
 async function squareImage(file: File) {
   const bitmap = await createImageBitmap(file).catch(() => {
-    throw new Error("Das Bild konnte nicht gelesen werden.");
+    throw new Error(tr("Das Bild konnte nicht gelesen werden.", "The image could not be read."));
   });
   const size = 128,
     canvas = document.createElement("canvas");
@@ -70,7 +72,7 @@ async function squareImage(file: File) {
   }
   const png = canvas.toDataURL("image/png");
   if (png.length > MAX_WORKSPACE_IMAGE)
-    throw new Error("Das Bild ist zu groß.");
+    throw new Error(tr("Das Bild ist zu groß.", "The image is too large."));
   return png;
 }
 
@@ -85,6 +87,7 @@ export function WorkspaceIconPicker({
   disabled: boolean;
   save: (icon: string) => Promise<unknown>;
 }) {
+  const t = useT();
   const [emoji, setEmoji] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -106,7 +109,7 @@ export function WorkspaceIconPicker({
         <WorkspaceIcon name={name} icon={icon} />
       </span>
       <div className="workspace-icon-actions">
-        <span className="muted">Symbol des Arbeitsbereichs</span>
+        <span className="muted">{t("Symbol des Arbeitsbereichs", "Workspace icon")}</span>
         <div>
           <button
             type="button"
@@ -114,7 +117,7 @@ export function WorkspaceIconPicker({
             disabled={disabled || busy}
             onClick={() => setEmoji(true)}
           >
-            <Smiley size={16} /> Emoji oder Symbol
+            <Smiley size={16} /> {t("Emoji oder Symbol", "Emoji or icon")}
           </button>
           <button
             type="button"
@@ -122,7 +125,7 @@ export function WorkspaceIconPicker({
             disabled={disabled || busy}
             onClick={() => file.current?.click()}
           >
-            <ImageSquare size={16} /> Bild hochladen
+            <ImageSquare size={16} /> {t("Bild hochladen", "Upload image")}
           </button>
           {!workspaceLetterIcon(icon) && (
             <button
@@ -131,7 +134,7 @@ export function WorkspaceIconPicker({
               disabled={disabled || busy}
               onClick={() => void apply("")}
             >
-              <Trash size={16} /> Entfernen
+              <Trash size={16} /> {t("Entfernen", "Remove")}
             </button>
           )}
         </div>
@@ -139,7 +142,7 @@ export function WorkspaceIconPicker({
           ref={file}
           type="file"
           hidden
-          aria-label="Bild für den Arbeitsbereich"
+          aria-label={t("Bild für den Arbeitsbereich", "Image for the workspace")}
           accept="image/png,image/jpeg,image/webp,image/gif"
           onChange={async (e) => {
             const chosen = e.target.files?.[0];
@@ -161,7 +164,7 @@ export function WorkspaceIconPicker({
       <Modal
         open={emoji}
         onClose={() => setEmoji(false)}
-        title="Symbol für den Arbeitsbereich"
+        title={t("Symbol für den Arbeitsbereich", "Icon for the workspace")}
       >
         <EmojiPicker
           selected={icon || undefined}

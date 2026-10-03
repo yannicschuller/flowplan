@@ -1,6 +1,7 @@
 "use client";
 // Emoji reactions under a comment (or on a block): existing reactions as
 // buttons, and a small picker with frequent emojis.
+import { useT } from "./i18n";
 import { useState } from "react";
 import { Smiley } from "@phosphor-icons/react";
 import type { Reaction } from "@/lib/types";
@@ -11,13 +12,14 @@ export function Reactions({
   reactions,
   disabled,
   onToggle,
-  label = "Reaktion hinzufügen",
+  label,
 }: {
   reactions: Reaction[];
   disabled?: boolean;
   onToggle: (emoji: string, active: boolean) => void | Promise<unknown>;
   label?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <div className="reactions">
@@ -28,7 +30,7 @@ export function Reactions({
           className="reaction-button"
           aria-pressed={r.mine}
           title={r.names.join(", ")}
-          aria-label={`${r.emoji} ${r.count} ${r.count === 1 ? "Reaktion" : "Reaktionen"}`}
+          aria-label={`${r.emoji} ${r.count} ${r.count === 1 ? t("Reaktion", "reaction") : t("Reaktionen", "reactions")}`}
           disabled={disabled}
           onClick={() => void onToggle(r.emoji, !r.mine)}
         >
@@ -39,7 +41,7 @@ export function Reactions({
         <button
           type="button"
           className="icon-button"
-          aria-label={label}
+          aria-label={label ?? t("Reaktion hinzufügen", "Add reaction")}
           aria-expanded={open}
           disabled={disabled}
           onClick={() => setOpen(!open)}
@@ -47,12 +49,12 @@ export function Reactions({
           <Smiley size={16} />
         </button>
         {open && (
-          <span className="reaction-picker" role="group" aria-label="Emoji wählen">
+          <span className="reaction-picker" role="group" aria-label={t("Emoji wählen", "Choose emoji")}>
             {quickReactions.map((emoji) => (
               <button
                 type="button"
                 key={emoji}
-                aria-label={`Mit ${emoji} reagieren`}
+                aria-label={t(`Mit ${emoji} reagieren`, `React with ${emoji}`)}
                 onClick={() => {
                   setOpen(false);
                   const existing = reactions.find((r) => r.emoji === emoji);

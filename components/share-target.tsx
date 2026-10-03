@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useEffect, useState } from "react";
 import { BrandMark } from "./brand-mark";
@@ -13,6 +14,7 @@ type Boot = {
 
 // Preview of shared text or link with a choice where it goes.
 export function ShareTarget({ title, text, url }: { title: string; text: string; url: string }) {
+  const t = useT();
   const [boot, setBoot] = useState<Boot | null>(null),
     [workspace, setWorkspace] = useState(""),
     [space, setSpace] = useState(""),
@@ -56,10 +58,10 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
     <main className="share-target">
       <header>
         <BrandMark size={28} />
-        <h1>In Flowplan speichern</h1>
+        <h1>{t("In Flowplan speichern", "Save to Flowplan")}</h1>
       </header>
       {nothing ? (
-        <p className="muted">Es wurde nichts geteilt. Teile einen Text oder Link aus einer anderen App an Flowplan.</p>
+        <p className="muted">{t("Es wurde nichts geteilt. Teile einen Text oder Link aus einer anderen App an Flowplan.", "Nothing was shared. Share a text or link from another app to Flowplan.")}</p>
       ) : (
         <form
           onSubmit={async (e) => {
@@ -91,34 +93,34 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
           }}
         >
           <label>
-            Titel
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Wird aus dem Inhalt gebildet" maxLength={200} />
+            {t("Titel", "Title")}
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Wird aus dem Inhalt gebildet", "Taken from the content")} maxLength={200} />
           </label>
           {link && (
-            <div className="share-target-mode" role="radiogroup" aria-label="Speichern als">
+            <div className="share-target-mode" role="radiogroup" aria-label={t("Speichern als", "Save as")}>
               <button type="button" role="radio" aria-checked={as === "page"} className={`chip${as === "page" ? " active" : ""}`} onClick={() => setAs("page")}>
-                Als Seite
+                {t("Als Seite", "As a page")}
               </button>
               <button type="button" role="radio" aria-checked={as === "bookmark"} className={`chip${as === "bookmark" ? " active" : ""}`} onClick={() => setAs("bookmark")}>
-                Als Lesezeichen
+                {t("Als Lesezeichen", "As a bookmark")}
               </button>
             </div>
           )}
           {link && (
             <label className="share-target-article">
               <input type="checkbox" checked={withArticle} disabled={clipping} onChange={(e) => void loadArticle(e.target.checked)} />
-              Artikeltext übernehmen
-              {clipping && <small> wird geladen …</small>}
-              {withArticle && article && <small> {article.words.toLocaleString(LOCALE_TAG)} Wörter</small>}
+              {t("Artikeltext übernehmen", "Include article text")}
+              {clipping && <small> {t("wird geladen …", "loading …")}</small>}
+              {withArticle && article && <small> {article.words.toLocaleString(LOCALE_TAG)} {t("Wörter", "words")}</small>}
             </label>
           )}
-          <div className="share-target-preview" aria-label="Geteilter Inhalt">
+          <div className="share-target-preview" aria-label={t("Geteilter Inhalt", "Shared content")}>
             {text && <p>{text}</p>}
             {url && <p className="share-target-link">{url}</p>}
           </div>
           {writable.length > 1 && (
             <label>
-              Arbeitsbereich
+              {t("Arbeitsbereich", "Workspace")}
               <Select value={workspace} onChange={(e) => setWorkspace(e.target.value)}>
                 {writable.map((w) => (
                   <option key={w.id} value={w.id}>
@@ -129,7 +131,7 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
             </label>
           )}
           <label>
-            Bereich
+            {t("Bereich", "Space")}
             <Select value={space} onChange={(e) => setSpace(e.target.value)} disabled={!boot}>
               {(boot?.spaces || [])
                 .filter((s) => !s.deleted_at)
@@ -142,10 +144,10 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
           </label>
           <div className="share-target-actions">
             <button className="button primary" disabled={busy || !space}>
-              {busy ? "Wird gespeichert …" : as === "bookmark" ? "Als Lesezeichen speichern" : "Als Seite speichern"}
+              {busy ? t("Wird gespeichert …", "Saving …") : as === "bookmark" ? t("Als Lesezeichen speichern", "Save as bookmark") : t("Als Seite speichern", "Save as page")}
             </button>
             <a className="button" href="/">
-              Abbrechen
+              {t("Abbrechen", "Cancel")}
             </a>
           </div>
         </form>

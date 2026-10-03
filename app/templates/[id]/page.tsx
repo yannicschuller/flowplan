@@ -1,3 +1,4 @@
+import { serverT } from "@/lib/i18n-server";
 import { notFound } from "next/navigation";
 import { publicTemplate } from "@/lib/public-templates";
 import { ReadOnlyDocument } from "@/components/read-only-document";
@@ -16,6 +17,7 @@ export default async function TemplatePreview({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const t = await serverT();
   const { id } = await params;
   // Templates that come with Flowplan: "starter-<key>".
   const builtIn = id.startsWith("starter-") ? templateCatalog[id.slice(8)] : undefined;
@@ -32,19 +34,19 @@ export default async function TemplatePreview({
           flowplan <span className="muted">/ Vorlagen</span>
         </a>
         <p className="muted">
-          {builtIn.kind === "database" ? "Datenbank" : "Dokument"} · {templateCategories[builtIn.category]}
+          {builtIn.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")} · {templateCategories[builtIn.category]}
         </p>
         <h1>
           <span aria-hidden="true">{builtIn.icon}</span> {builtIn.name}
         </h1>
         <p>{builtIn.description}</p>
         <a className="button primary" href={`/?useTemplate=starter:${encodeURIComponent(id.slice(8))}`}>
-          In meinem Arbeitsbereich verwenden
+          {t("In meinem Arbeitsbereich verwenden", "Use in my workspace")}
         </a>
         {builtIn.kind === "database" ? (
           <>
             <p className="muted">
-              Ansichten: {(builtIn.views || []).map((v) => v.name).join(" · ")}
+              {t("Ansichten:", "Views:")}{" "}{(builtIn.views || []).map((v) => v.name).join(" · ")}
             </p>
             <div className="data-table-scroll">
               <table className="data-table">
@@ -89,7 +91,7 @@ export default async function TemplatePreview({
         flowplan <span className="muted">/ Vorlagen</span>
       </a>
       <p className="muted">
-        {template.kind === "database" ? "Datenbank" : "Dokument"}
+        {template.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")}
         {template.categoryLabel && ` · ${template.categoryLabel}`}
       </p>
       <h1>{template.name}</h1>
@@ -98,7 +100,7 @@ export default async function TemplatePreview({
         className="button primary"
         href={`/?useTemplate=${encodeURIComponent(template.id)}`}
       >
-        In meinem Arbeitsbereich verwenden
+        {t("In meinem Arbeitsbereich verwenden", "Use in my workspace")}
       </a>
       {template.kind === "database" ? (
         <div className="data-table-scroll">

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useRef, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 
@@ -36,6 +37,7 @@ export function SlashMenu({
   onHover: (index: number) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const box = useRef<HTMLDivElement>(null);
   // The chosen entry stays visible while moving with the arrow keys.
   useEffect(() => {
@@ -71,7 +73,7 @@ export function SlashMenu({
       ref={box}
       className="slash-menu"
       style={style}
-      aria-label="Block hinzufügen"
+      aria-label={t("Block hinzufügen", "Add block")}
       role="dialog"
       // Clicks keep the caret in the text.
       onMouseDown={(event) => {
@@ -82,8 +84,8 @@ export function SlashMenu({
       {search !== undefined && (
         <input
           autoFocus
-          aria-label="Block suchen"
-          placeholder="Block suchen …"
+          aria-label={t("Block suchen", "Search block")}
+          placeholder={t("Block suchen …", "Search block …")}
           value={search}
           onChange={(event) => onSearch?.(event.target.value)}
           onKeyDown={onKey}
@@ -111,7 +113,7 @@ export function SlashMenu({
             </button>
           ))
         ) : (
-          <p className="slash-menu-empty">Kein passender Block</p>
+          <p className="slash-menu-empty">{t("Kein passender Block", "No matching block")}</p>
         )}
       </div>
     </div>,
