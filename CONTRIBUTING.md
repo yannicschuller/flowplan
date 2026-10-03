@@ -31,4 +31,4 @@ By contributing you agree that your contributions are licensed under the [AGPL-3
 
 ## Releases
 
-Maintainers release from GitHub: **Actions → Release → Run workflow**, then choose `patch`, `minor` or `major`. The workflow raises the version in `package.json`, tags `v1.2.3`, writes the release notes from the merged changes and publishes the image as `latest`, `1.2.3`, `1.2` and `1`. Every other push builds `beta`.
+Maintainers release from GitHub: **Actions → Release → Run workflow**, then choose `patch`, `minor` or `major`. The workflow raises the version in `package.json`, tags `v1.2.3`, writes the release notes and `CHANGELOG.md` from the commit messages since the last release (so write them as clear English sentences) and publishes the image as `latest`, `1.2.3`, `1.2` and `1`. Every other push builds `beta`.

@@ -1,6 +1,7 @@
 # A release at the push of a button: Actions → Release → Run workflow.
 # Raises the version in package.json (patch, minor or major), commits it on
-# main, tags v1.2.3, creates the GitHub release with generated notes and
+# main together with CHANGELOG.md, tags v1.2.3, creates the GitHub release
+# with the commits since the last release (scripts/release-notes.mjs) and
 # publishes the image as :latest, :1.2.3, :1.2 and :1 (docker.yml).
 name: Release
 
@@ -38,18 +39,21 @@ jobs:
         run: |
           npm version "${{ inputs.bump }}" --no-git-tag-version
           echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+      - name: Changelog from the commits since the last release
+        run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" --changelog > "$RUNNER_TEMP/notes.md"
       - name: Commit, tag and push
         run: |
           version="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "Release v$version"
+          git add package.json package-lock.json CHANGELOG.md
+          git commit -m "Release v$version"
           git tag "v$version"
           git push origin main "v$version"
       - name: GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "v${{ steps.version.outputs.version }}" --generate-notes --title "v${{ steps.version.outputs.version }}"
+        run: gh release create "v${{ steps.version.outputs.version }}" --notes-file "$RUNNER_TEMP/notes.md" --title "v${{ steps.version.outputs.version }}"
 
   image:
     needs: release
