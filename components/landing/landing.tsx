@@ -36,7 +36,8 @@ const useCopy = () => landingCopy[useLocale()];
 
 type Props = {
   loginHref: string;
-  registerHref: string;
+  // Missing while sign-up is closed (administration): then only signing in.
+  registerHref?: string;
   instanceName?: string;
   demoEnabled?: boolean;
 };
@@ -698,12 +699,14 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
         <div className={s.actions}>
           <LanguageSwitch className={s.lang} />
           {demoEnabled && <DemoButton className={s.ghost} short />}
-          <a className={s.ghost} href={loginHref}>
+          <a className={registerHref ? s.ghost : s.primary} href={loginHref}>
             {c.header.login}
           </a>
-          <a className={s.primary} href={registerHref}>
-            {c.header.register}
-          </a>
+          {registerHref && (
+            <a className={s.primary} href={registerHref}>
+              {c.header.register}
+            </a>
+          )}
         </div>
       </header>
 
@@ -724,12 +727,20 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
               {c.hero.text}
             </p>
             <div className={`${s.heroCtas} ${s.rise}`} style={{ "--d": 3 } as React.CSSProperties}>
-              <a className={s.primaryLarge} href={registerHref}>
-                {c.header.register} <ArrowRight size={18} />
-              </a>
-              <a className={s.secondaryLarge} href={loginHref}>
-                {c.header.login}
-              </a>
+              {registerHref ? (
+                <>
+                  <a className={s.primaryLarge} href={registerHref}>
+                    {c.header.register} <ArrowRight size={18} />
+                  </a>
+                  <a className={s.secondaryLarge} href={loginHref}>
+                    {c.header.login}
+                  </a>
+                </>
+              ) : (
+                <a className={s.primaryLarge} href={loginHref}>
+                  {c.header.login} <ArrowRight size={18} />
+                </a>
+              )}
               {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
             <ul className={`${s.facts} ${s.rise}`} style={{ "--d": 4 } as React.CSSProperties}>
@@ -833,8 +844,8 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
                   <li key={point}>{point}</li>
                 ))}
               </ul>
-              <a className={s.primaryLarge} href={registerHref}>
-                {c.header.register} <ArrowRight size={18} />
+              <a className={s.primaryLarge} href={registerHref || loginHref}>
+                {registerHref ? c.header.register : c.header.login} <ArrowRight size={18} />
               </a>
             </Reveal>
             <Reveal className={s.hostCard}>
@@ -925,12 +936,20 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
             <BrandMark size={56} />
             <h2>{c.final.title}</h2>
             <div className={s.heroCtas}>
-              <a className={s.primaryLarge} href={registerHref}>
-                {c.header.register} <ArrowRight size={18} />
-              </a>
-              <a className={s.secondaryLarge} href={loginHref}>
-                {c.header.login}
-              </a>
+              {registerHref ? (
+                <>
+                  <a className={s.primaryLarge} href={registerHref}>
+                    {c.header.register} <ArrowRight size={18} />
+                  </a>
+                  <a className={s.secondaryLarge} href={loginHref}>
+                    {c.header.login}
+                  </a>
+                </>
+              ) : (
+                <a className={s.primaryLarge} href={loginHref}>
+                  {c.header.login} <ArrowRight size={18} />
+                </a>
+              )}
               {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
           </Reveal>

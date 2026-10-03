@@ -1,10 +1,24 @@
 import { test, expect } from "@playwright/test";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
+
+// Sign-up is an instance setting; without it only signing in is offered.
+const setSignup = (on: boolean) => {
+  const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
+  db.exec("PRAGMA busy_timeout=5000;");
+  db.prepare(
+    "INSERT INTO instance_settings(key,value) VALUES('allowSignup',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+  ).run(JSON.stringify(on));
+  db.close();
+};
 
 test("visitors get the product page with sign-in and sign-up; deep links still ask to sign in", async ({
   page,
 }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  setSignup(true);
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText(
     "Open Source – bei uns oder bei euch.",
@@ -71,4 +85,17 @@ test("English browsers get the page in English; the choice can be switched and i
   await page.goto(`${base}/login`);
   await expect(page.getByRole("link", { name: /Mit SSO anmelden/ }).or(page.getByText("Lokalen Arbeitsbereich öffnen"))).toBeVisible();
   await context.close();
+});
+
+test("with sign-up closed the start page offers signing in only", async ({ page }, info) => {
+  test.skip(!process.env.FLOWPLAN_DATA_DIR, "Needs the test server data directory.");
+  test.skip(info.project.name !== "desktop", "Instance setting is global.");
+  setSignup(false);
+  try {
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: /Anmelden/ }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /Registrieren/ })).toHaveCount(0);
+  } finally {
+    setSignup(true);
+  }
 });

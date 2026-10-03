@@ -234,6 +234,14 @@ export default function Admin({
           <p className="settings-intro">
             {(([de, en]) => t(de, en))(adminTabs.find(([id]) => id === tab)![3])}
           </p>
+          {tab === "users" && data.localLogin && (
+            <SignupSwitch
+              open={!!data.settings.allowSignup}
+              onChange={(allowSignup) =>
+                act({ action: "admin.settings", settings: { ...data.settings, allowSignup } })
+              }
+            />
+          )}
           {tab === "users" && (
             <section className="settings-section">
               <div className="settings-list-head">
@@ -555,6 +563,39 @@ export default function Admin({
         </div>
       </div>
     </div>
+  );
+}
+
+// Whether people can create an account themselves; saved right away.
+function SignupSwitch({ open, onChange }: { open: boolean; onChange: (open: boolean) => Promise<unknown> }) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="settings-section signup-switch" aria-label={t("Registrierung", "Sign-up")}>
+      <label className="js-switch">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={open}
+          disabled={busy}
+          onChange={async (e) => {
+            setBusy(true);
+            await onChange(e.target.checked);
+            setBusy(false);
+          }}
+        />
+        <span>
+          <strong>
+            {t("Registrierung", "Sign-up")}: {open ? t("offen", "open") : t("geschlossen", "closed")}
+          </strong>
+          <small>
+            {open
+              ? t("Jede Person kann sich mit E-Mail und Passwort ein Konto anlegen.", "Anyone can create an account with email and password.")
+              : t("Nur eingeladene Adressen können ein Konto anlegen. Der Knopf „Registrieren“ ist ausgeblendet.", "Only invited addresses can create an account. The “Sign up” button is hidden.")}
+          </small>
+        </span>
+      </label>
+    </section>
   );
 }
 

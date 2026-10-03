@@ -27,7 +27,15 @@ export default function PublicHome(props: Props) {
   return (
     <Landing
       loginHref={props.localLogin || !props.configured ? "/login" : "/api/auth/login"}
-      registerHref={props.localLogin ? "/register" : props.configured ? "/api/auth/login?register=1" : "/login"}
+      registerHref={
+        props.localLogin
+          ? props.signupOpen
+            ? "/register"
+            : undefined
+          : props.configured
+            ? "/api/auth/login?register=1"
+            : undefined
+      }
       instanceName={props.instanceName}
       demoEnabled={props.demoEnabled}
     />
