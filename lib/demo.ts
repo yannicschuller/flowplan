@@ -8,6 +8,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { all, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { createWorkspace } from "./seed";
+import { ct } from "./content-locale";
 import { instanceSettings } from "./instance-settings";
 import { purgeWorkspace } from "./workspace-lifecycle";
 import { seedDemoShowcase } from "./demo-content";
@@ -89,11 +90,11 @@ export function startDemo(address: string) {
     "INSERT INTO users(id,subject,name,email,demo_until) VALUES(?,?,?,?,?)",
     uid,
     `demo:${uid}`,
-    "Demo-Gast",
+    ct("Demo-Gast", "Demo guest"),
     "",
     now + DEMO_MAX_MS,
   );
-  const workspace = createWorkspace(uid, "Demo-Arbeitsbereich");
+  const workspace = createWorkspace(uid, ct("Demo-Arbeitsbereich", "Demo workspace"));
   // Instead of the plain welcome page: pages that show every feature.
   transaction(() => {
     const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", workspace)!.id;

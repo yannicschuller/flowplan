@@ -70,3 +70,22 @@ test("the English template catalog matches the German one", async () => {
         assert.ok(en.fields!.some((x) => x.name === name), `${key}: ${name}`);
   }
 });
+
+test("the demo workspace is in English for English visitors", async () => {
+  const { createWorkspace } = await import("../lib/seed");
+  const { seedDemoShowcase } = await import("../lib/demo-content");
+  const uid = user("Guest");
+  withContentLocale("en", () => {
+    const wid = createWorkspace(uid, "Demo workspace");
+    const space = one<{ id: string }>("SELECT id FROM spaces WHERE workspace_id=?", wid)!.id;
+    seedDemoShowcase(wid, space, uid);
+  });
+  const docs = all<{ title: string; html: string }>(
+    "SELECT p.title, d.html FROM pages p JOIN documents d ON d.page_id=p.id JOIN members m ON m.workspace_id=p.workspace_id WHERE m.user_id=?",
+    uid,
+  );
+  assert.ok(docs.some((d) => d.title === "Editor tour"));
+  assert.ok(docs.some((d) => d.title === "Welcome to the demo"));
+  const german = /\b(und|der|die|das|nicht|Aufgabe|Seite)\b|[äöüß]/;
+  for (const doc of docs) assert.ok(!german.test(doc.html.replace(/<[^>]+>/g, " ")), `${doc.title}: ${doc.html.slice(0, 200)}`);
+});

@@ -281,67 +281,116 @@ export function seedDemoShowcase(workspace: string, space: string, user: string)
     ),
   );
   const linkedViews = JSON.stringify([view("linked-board", "Board", "board", { groupBy: "status" })]);
+  const guest = ct("Demo-Gast", "Demo guest");
+  const suggestion = (kind: "delete" | "insert", text: string) =>
+    `<span data-suggestion="${kind}" data-suggestion-id="demo1" data-suggestion-author="${esc(user)}" data-suggestion-name="${guest}" data-suggestion-at="${Date.now()}">${text}</span>`;
   setDocument(
     tour,
     [
-      "<p>Diese Seite zeigt, was der Editor kann. Tippe irgendwo <code>/</code> für das Blockmenü oder markiere Text für die Formatierung.</p>",
-      "<h2>Text und Formatierung</h2>",
-      '<p><strong>Fett</strong>, <em>kursiv</em>, <u>unterstrichen</u>, <s>durchgestrichen</s>, <code>Code</code>, <mark data-color="#fff3bf" style="background-color:#fff3bf">markiert</mark>, <span style="color:#3b3fd8">farbig</span>, E = mc<sup>2</sup>, H<sub>2</sub>O und ein <span data-spoiler="true">verdeckter Spoiler – klick drauf</span>.</p>',
-      '<p data-indent="1">Mit Tab eingerückter Absatz.</p>',
-      `<p>Erwähnung: <span data-mention="${esc(user)}" class="mention">@Demo-Gast</span> · Link auf eine Seite: ${link(projects, "Projekte")}</p>`,
-      "<h2>Listen und Aufgaben</h2>",
-      "<ul><li><p>Aufzählung</p><ul><li><p>verschachtelt</p></li></ul></li><li><p>zweiter Punkt</p></li></ul>",
-      "<ol><li><p>Nummeriert</p></li><li><p>zweitens</p></li></ol>",
-      `<ul data-type="taskList">${task("Erledigte Aufgabe", true)}${task("Offene Aufgabe")}` +
-        `<li data-type="taskItem" data-checked="false" data-due="${day(1)}"><label><input type="checkbox"></label><div><p>Aufgabe mit Datum für <span data-mention="${esc(user)}" class="mention">@Demo-Gast</span> – steht unter „Meine Aufgaben“</p></div></li>` +
-        `<li data-type="taskItem" data-checked="false" data-due="${day(-2)}"><label><input type="checkbox"></label><div><p>Überfällige Aufgabe</p></div></li></ul>`,
-      `<p data-reactions='${JSON.stringify({ "👍": [user], "🎉": [user] })}'>Auf Absätze lässt sich reagieren – Cursor in einen Absatz setzen und rechts auf das Smiley tippen.</p>`,
-      "<h2>Vorschläge</h2>",
-      `<p>Im Vorschlagsmodus (Stift in der Werkzeugleiste) wird aus Änderungen ein Vorschlag: Das Treffen ist am <span data-suggestion="delete" data-suggestion-id="demo1" data-suggestion-author="${esc(user)}" data-suggestion-name="Demo-Gast" data-suggestion-at="${Date.now()}">Montag</span><span data-suggestion="insert" data-suggestion-id="demo1" data-suggestion-author="${esc(user)}" data-suggestion-name="Demo-Gast" data-suggestion-at="${Date.now()}">Dienstag</span> um 10 Uhr.</p>`,
-      "<h2>Synchronisierter Block</h2>",
+      ct(
+        "<p>Diese Seite zeigt, was der Editor kann. Tippe irgendwo <code>/</code> für das Blockmenü oder markiere Text für die Formatierung.</p>",
+        "<p>This page shows what the editor can do. Type <code>/</code> anywhere for the block menu, or select text to format it.</p>",
+      ),
+      ct("<h2>Text und Formatierung</h2>", "<h2>Text and formatting</h2>"),
+      ct(
+        '<p><strong>Fett</strong>, <em>kursiv</em>, <u>unterstrichen</u>, <s>durchgestrichen</s>, <code>Code</code>, <mark data-color="#fff3bf" style="background-color:#fff3bf">markiert</mark>, <span style="color:#3b3fd8">farbig</span>, E = mc<sup>2</sup>, H<sub>2</sub>O und ein <span data-spoiler="true">verdeckter Spoiler – klick drauf</span>.</p>',
+        '<p><strong>Bold</strong>, <em>italic</em>, <u>underlined</u>, <s>struck through</s>, <code>code</code>, <mark data-color="#fff3bf" style="background-color:#fff3bf">highlighted</mark>, <span style="color:#3b3fd8">coloured</span>, E = mc<sup>2</sup>, H<sub>2</sub>O and a <span data-spoiler="true">hidden spoiler – click it</span>.</p>',
+      ),
+      ct('<p data-indent="1">Mit Tab eingerückter Absatz.</p>', '<p data-indent="1">A paragraph indented with Tab.</p>'),
+      ct(
+        `<p>Erwähnung: <span data-mention="${esc(user)}" class="mention">@${guest}</span> · Link auf eine Seite: ${link(projects, "Projekte")}</p>`,
+        `<p>Mention: <span data-mention="${esc(user)}" class="mention">@${guest}</span> · Link to a page: ${link(projects, "Projects")}</p>`,
+      ),
+      ct("<h2>Listen und Aufgaben</h2>", "<h2>Lists and tasks</h2>"),
+      ct(
+        "<ul><li><p>Aufzählung</p><ul><li><p>verschachtelt</p></li></ul></li><li><p>zweiter Punkt</p></li></ul>",
+        "<ul><li><p>Bulleted list</p><ul><li><p>nested</p></li></ul></li><li><p>second item</p></li></ul>",
+      ),
+      ct("<ol><li><p>Nummeriert</p></li><li><p>zweitens</p></li></ol>", "<ol><li><p>Numbered</p></li><li><p>second</p></li></ol>"),
+      `<ul data-type="taskList">${task(ct("Erledigte Aufgabe", "Completed task"), true)}${task(ct("Offene Aufgabe", "Open task"))}` +
+        `<li data-type="taskItem" data-checked="false" data-due="${day(1)}"><label><input type="checkbox"></label><div><p>${ct("Aufgabe mit Datum für", "Task with a date for")} <span data-mention="${esc(user)}" class="mention">@${guest}</span> – ${ct("steht unter „Meine Aufgaben“", "shows up in “My tasks”")}</p></div></li>` +
+        `<li data-type="taskItem" data-checked="false" data-due="${day(-2)}"><label><input type="checkbox"></label><div><p>${ct("Überfällige Aufgabe", "Overdue task")}</p></div></li></ul>`,
+      `<p data-reactions='${JSON.stringify({ "👍": [user], "🎉": [user] })}'>${ct(
+        "Auf Absätze lässt sich reagieren – Cursor in einen Absatz setzen und rechts auf das Smiley tippen.",
+        "You can react to paragraphs – put the cursor in a paragraph and tap the smiley on the right.",
+      )}</p>`,
+      ct("<h2>Vorschläge</h2>", "<h2>Suggestions</h2>"),
+      ct(
+        `<p>Im Vorschlagsmodus (Stift in der Werkzeugleiste) wird aus Änderungen ein Vorschlag: Das Treffen ist am ${suggestion("delete", "Montag")}${suggestion("insert", "Dienstag")} um 10 Uhr.</p>`,
+        `<p>In suggestion mode (the pen in the toolbar) changes become suggestions: the meeting is on ${suggestion("delete", "Monday")}${suggestion("insert", "Tuesday")} at 10 am.</p>`,
+      ),
+      ct("<h2>Synchronisierter Block</h2>", "<h2>Synced block</h2>"),
       `<div data-synced-block="${synced}"></div>`,
-      "<h2>Hervorheben und Aufklappen</h2>",
-      '<aside data-callout="true"><p>💡 Ein Hinweis-Block für Wichtiges.</p></aside>',
-      "<blockquote><p>Ein Zitat.</p></blockquote>",
-      "<details><summary>Aufklappbarer Block</summary><div><p>Versteckter Inhalt, bis man ihn öffnet.</p></div></details>",
-      "<h2>Code, Formeln und Diagramme</h2>",
-      '<pre><code class="language-typescript">const greeting = (name: string) =&gt; `Hallo ${name}!`;</code></pre>',
+      ct("<h2>Hervorheben und Aufklappen</h2>", "<h2>Highlight and toggle</h2>"),
+      ct(
+        '<aside data-callout="true"><p>💡 Ein Hinweis-Block für Wichtiges.</p></aside>',
+        '<aside data-callout="true"><p>💡 A callout for what matters.</p></aside>',
+      ),
+      ct("<blockquote><p>Ein Zitat.</p></blockquote>", "<blockquote><p>A quote.</p></blockquote>"),
+      ct(
+        "<details><summary>Aufklappbarer Block</summary><div><p>Versteckter Inhalt, bis man ihn öffnet.</p></div></details>",
+        "<details><summary>Toggle block</summary><div><p>Hidden content until you open it.</p></div></details>",
+      ),
+      ct("<h2>Code, Formeln und Diagramme</h2>", "<h2>Code, formulas and diagrams</h2>"),
+      ct(
+        '<pre><code class="language-typescript">const greeting = (name: string) =&gt; `Hallo ${name}!`;</code></pre>',
+        '<pre><code class="language-typescript">const greeting = (name: string) =&gt; `Hello ${name}!`;</code></pre>',
+      ),
       '<div data-math="\\int_0^1 x^2\\,dx = \\tfrac{1}{3}" class="math-block"></div>',
-      '<p>Inline-Formel: <span data-math="a^2 + b^2 = c^2" class="math-inline"></span></p>',
-      `<div data-mermaid="${esc("flowchart LR\n  Idee --> Plan --> Umsetzung --> Release")}" class="mermaid-block"></div>`,
-      "<h2>Tabelle und Spalten</h2>",
-      "<table><tbody><tr><th><p>Plan</p></th><th><p>Status</p></th></tr><tr><td><p>Onboarding</p></td><td><p>In Arbeit</p></td></tr><tr><td><p>Suche</p></td><td><p>Review</p></td></tr></tbody></table>",
-      '<div data-columns="true"><div data-column="true"><h3>Links</h3><p>Zwei Spalten nebeneinander – auf dem Handy untereinander.</p></div><div data-column="true"><h3>Rechts</h3><p>Blöcke lassen sich per Griff zwischen Spalten ziehen.</p></div></div>',
-      "<h2>Datenbank und Whiteboard im Dokument</h2>",
+      `<p>${ct("Inline-Formel", "Inline formula")}: <span data-math="a^2 + b^2 = c^2" class="math-inline"></span></p>`,
+      `<div data-mermaid="${esc(ct("flowchart LR\n  Idee --> Plan --> Umsetzung --> Release", "flowchart LR\n  Idea --> Plan --> Build --> Release"))}" class="mermaid-block"></div>`,
+      ct("<h2>Tabelle und Spalten</h2>", "<h2>Table and columns</h2>"),
+      ct(
+        "<table><tbody><tr><th><p>Plan</p></th><th><p>Status</p></th></tr><tr><td><p>Onboarding</p></td><td><p>In Arbeit</p></td></tr><tr><td><p>Suche</p></td><td><p>Review</p></td></tr></tbody></table>",
+        "<table><tbody><tr><th><p>Plan</p></th><th><p>Status</p></th></tr><tr><td><p>Onboarding</p></td><td><p>In progress</p></td></tr><tr><td><p>Search</p></td><td><p>Review</p></td></tr></tbody></table>",
+      ),
+      ct(
+        '<div data-columns="true"><div data-column="true"><h3>Links</h3><p>Zwei Spalten nebeneinander – auf dem Handy untereinander.</p></div><div data-column="true"><h3>Rechts</h3><p>Blöcke lassen sich per Griff zwischen Spalten ziehen.</p></div></div>',
+        '<div data-columns="true"><div data-column="true"><h3>Left</h3><p>Two columns side by side – stacked on the phone.</p></div><div data-column="true"><h3>Right</h3><p>Drag blocks between columns by their handle.</p></div></div>',
+      ),
+      ct("<h2>Datenbank und Whiteboard im Dokument</h2>", "<h2>Database and whiteboard in the document</h2>"),
       `<div data-linked-database="${randomUUID()}" data-linked-source="${projects}" data-linked-views="${esc(linkedViews)}" data-linked-version="1"></div>`,
       `<div data-whiteboard="${board}" data-whiteboard-height="380"></div>`,
-      "<h2>Einbettung</h2>",
+      ct("<h2>Einbettung</h2>", "<h2>Embed</h2>"),
       '<iframe src="https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ"></iframe>',
       "<hr>",
-      "<p>Text markieren und „Text kommentieren“ wählen startet eine Diskussion direkt an der Stelle.</p>",
+      ct(
+        "<p>Text markieren und „Text kommentieren“ wählen startet eine Diskussion direkt an der Stelle.</p>",
+        "<p>Select text and choose “Comment” to start a discussion right at that spot.</p>",
+      ),
     ].join(""),
     "✍️",
   );
 
   // ---- Welcome page, first in the tree --------------------------------------
-  const welcome = createPage(workspace, space, user, "Willkommen in der Demo", "document");
+  const welcome = createPage(workspace, space, user, ct("Willkommen in der Demo", "Welcome to the demo"), "document");
   run("UPDATE pages SET position=-1 WHERE id=?", welcome);
+  const [tourName, projectsName, journalName, knowledgeName] = [
+    ct("Editor-Rundgang", "Editor tour"),
+    ct("Projekte", "Projects"),
+    "Journal",
+    ct("Wissen", "Knowledge"),
+  ];
   setDocument(
     welcome,
-    `<p>Das ist dein eigener Demo-Arbeitsbereich. Probiere alles aus – er wird gelöscht, sobald du die Demo beendest.</p>` +
+    ct(
+      "<p>Das ist dein eigener Demo-Arbeitsbereich. Probiere alles aus – er wird gelöscht, sobald du die Demo beendest.</p>",
+      "<p>This is your own demo workspace. Try everything – it is deleted as soon as you end the demo.</p>",
+    ) +
       `<div data-synced-block="${synced}"></div>` +
-      `<aside data-callout="true"><p>👉 Lieblingsstellen: ${link(tour, "Editor-Rundgang")}, ${link(projects, "Projekte")} (neun Ansichten), ${link(board, "Whiteboard")} und ${link(journal, "Journal")}.</p></aside>` +
-      "<h2>Was du hier findest</h2>" +
-      `<ul><li><p>${link(tour, "Editor-Rundgang")} – alle Blöcke: Aufgaben, Code, Formeln, Diagramme, Spalten, Spoiler, Einbettungen.</p></li>` +
-      `<li><p>${link(projects, "Projekte")} – Tabelle, Board, Kalender, Timeline, Galerie, Liste, Feed, Diagramm und Formular; mit Relation zu ${link(team, "Team")}, Rollup und Formel.</p></li>` +
-      `<li><p>${link(board, "Whiteboard")} – Rahmen, Zettel, Formen, Verbindungen und ein verdeckter Zettel.</p></li>` +
-      `<li><p>${link(journal, "Journal")} – die offenen Aufgaben von gestern sind heute schon da.</p></li>` +
-      `<li><p>${link(knowledge, "Wissen")} – Unterseiten aus der Vorlagengalerie.</p></li></ul>` +
-      "<h2>Probier das</h2><ul data-type=\"taskList\">" +
-      task("Tippe <code>/</code> in einem Dokument und wähle einen Block") +
-      task("Ziehe eine Karte im Board in eine andere Spalte") +
-      task("Öffne die Vorlagen unten in der Seitenleiste") +
-      task("Drücke ⌘K (Strg+K) und suche nach „Onboarding“") +
+      `<aside data-callout="true"><p>👉 ${ct("Lieblingsstellen", "Favourite spots")}: ${link(tour, tourName)}, ${link(projects, projectsName)} (${ct("neun Ansichten", "nine views")}), ${link(board, "Whiteboard")} ${ct("und", "and")} ${link(journal, journalName)}.</p></aside>` +
+      ct("<h2>Was du hier findest</h2>", "<h2>What you find here</h2>") +
+      `<ul><li><p>${link(tour, tourName)} – ${ct("alle Blöcke: Aufgaben, Code, Formeln, Diagramme, Spalten, Spoiler, Einbettungen.", "every block: tasks, code, formulas, diagrams, columns, spoilers, embeds.")}</p></li>` +
+      `<li><p>${link(projects, projectsName)} – ${ct("Tabelle, Board, Kalender, Timeline, Galerie, Liste, Feed, Diagramm und Formular; mit Relation zu", "table, board, calendar, timeline, gallery, list, feed, chart and form; with a relation to")} ${link(team, "Team")}, ${ct("Rollup und Formel.", "a rollup and a formula.")}</p></li>` +
+      `<li><p>${link(board, "Whiteboard")} – ${ct("Rahmen, Zettel, Formen, Verbindungen und ein verdeckter Zettel.", "frames, notes, shapes, connectors and a hidden note.")}</p></li>` +
+      `<li><p>${link(journal, journalName)} – ${ct("die offenen Aufgaben von gestern sind heute schon da.", "yesterday's open tasks are already here today.")}</p></li>` +
+      `<li><p>${link(knowledge, knowledgeName)} – ${ct("Unterseiten aus der Vorlagengalerie.", "sub-pages from the template gallery.")}</p></li></ul>` +
+      ct("<h2>Probier das</h2>", "<h2>Try this</h2>") +
+      '<ul data-type="taskList">' +
+      task(ct("Tippe <code>/</code> in einem Dokument und wähle einen Block", "Type <code>/</code> in a document and choose a block")) +
+      task(ct("Ziehe eine Karte im Board in eine andere Spalte", "Drag a card on the board to another column")) +
+      task(ct("Öffne die Vorlagen unten in der Seitenleiste", "Open the templates at the bottom of the sidebar")) +
+      task(ct("Drücke ⌘K (Strg+K) und suche nach „Onboarding“", "Press ⌘K (Ctrl+K) and search for “Onboarding”")) +
       "</ul>",
     "👋",
   );
