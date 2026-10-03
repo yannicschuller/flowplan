@@ -42,3 +42,22 @@ export function LanguageSwitch({ className }: { className?: string }) {
     </span>
   );
 }
+
+// Saving states travel through the app as German words (and are compared as
+// such); they are translated only where they are shown.
+const statusWords: Record<string, string> = {
+  Gespeichert: "Saved",
+  "Speichern …": "Saving …",
+  "Änderungen …": "Changes …",
+  "Offline gespeichert": "Saved offline",
+  "Speichern fehlgeschlagen": "Saving failed",
+  "Verbindung unterbrochen – wird wiederholt …": "Connection lost – retrying …",
+  "Neue Dokumentversion wird geladen …": "Loading the new document version …",
+  "Sprachnotiz wird in Text umgewandelt …": "Turning the voice note into text …",
+  "Bild wird hochgeladen …": "Uploading image …",
+  "Änderungen gespeichert": "Changes saved",
+};
+export function useStatusLabel() {
+  const locale = useLocale();
+  return (status: string) => (locale === "en" ? statusWords[status] || status : status);
+}

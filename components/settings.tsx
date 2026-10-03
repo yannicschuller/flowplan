@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { WorkspaceIconPicker } from "./workspace-icon";
 import { Select } from "./select";
 import { SpaceIcon } from "./space-appearance";
@@ -45,45 +46,45 @@ type SettingsData = {
 const settingsTabs = [
   [
     "general",
-    "Allgemein",
+    ["Allgemein", "General"],
     SlidersHorizontal,
-    "Name, Symbol und Aussehen des Arbeitsbereichs, dein Profil und Tastenkürzel.",
+    ["Name, Symbol und Aussehen des Arbeitsbereichs, dein Profil und Tastenkürzel.", "Name, icon and appearance of the workspace, your profile and keyboard shortcuts."],
   ],
   [
     "spaces",
-    "Bereiche",
+    ["Bereiche", "Spaces"],
     FolderSimple,
-    "Bereiche anlegen, umbenennen, freigeben und ihr Aussehen festlegen.",
+    ["Bereiche anlegen, umbenennen, freigeben und ihr Aussehen festlegen.", "Create, rename and share spaces and set their appearance."],
   ],
   [
     "members",
-    "Mitglieder",
+    ["Mitglieder", "Members"],
     UsersThree,
-    "Wer zum Arbeitsbereich gehört, mit welcher Rolle, und wer eingeladen ist.",
+    ["Wer zum Arbeitsbereich gehört, mit welcher Rolle, und wer eingeladen ist.", "Who belongs to the workspace, in which role, and who is invited."],
   ],
   [
     "groups",
-    "Gruppen & Rechte",
+    ["Gruppen & Rechte", "Groups & permissions"],
     ShieldCheck,
-    "Gruppen bilden und ihnen Zugriff auf Bereiche geben.",
+    ["Gruppen bilden und ihnen Zugriff auf Bereiche geben.", "Form groups and give them access to spaces."],
   ],
   [
     "data",
-    "Daten",
+    ["Daten", "Data"],
     Database,
-    "Offline-Nutzung, Export und Import von Inhalten.",
+    ["Offline-Nutzung, Export und Import von Inhalten.", "Offline use, export and import of content."],
   ],
   [
     "notifications",
-    "Benachrichtigungen",
+    ["Benachrichtigungen", "Notifications"],
     BellSimple,
-    "Welche Benachrichtigungen dich im Posteingang, per Push und per E-Mail erreichen.",
+    ["Welche Benachrichtigungen dich im Posteingang, per Push und per E-Mail erreichen.", "Which notifications reach you in the inbox, as push and by e-mail."],
   ],
   [
     "integrations",
-    "API & Webhooks",
+    ["API & Webhooks", "API & webhooks"],
     PlugsConnected,
-    "Persönliche API-Tokens für Skripte und Automationen, Webhooks des Arbeitsbereichs.",
+    ["Persönliche API-Tokens für Skripte und Automationen, Webhooks des Arbeitsbereichs.", "Personal API tokens for scripts and automations, the workspace's webhooks."],
   ],
 ] as const;
 export default function Settings({
@@ -103,6 +104,7 @@ export default function Settings({
   dark: boolean;
   setDark: (b: boolean) => void;
 }) {
+  const t = useT();
   const [tab, setTab] = useState("general"),
     [email, setEmail] = useState(""),
     [role, setRole] = useState("editor"),
@@ -139,15 +141,14 @@ export default function Settings({
       <div className="utility-title settings-header">
         <GearSix size={30} />
         <div>
-          <h1>Einstellungen</h1>
+          <h1>{t("Einstellungen", "Settings")}</h1>
           <p>
-            Arbeitsbereich „{boot.workspace.name}“ – Mitglieder, Rechte, Daten
-            und Aussehen.
+            {t("Arbeitsbereich „", "Workspace “")}{boot.workspace.name}{t("“ – Mitglieder, Rechte, Daten und Aussehen.", "” – members, permissions, data and appearance.")}
           </p>
         </div>
       </div>
       <div className="settings-layout">
-        <nav className="settings-tabs" aria-label="Bereiche der Einstellungen">
+        <nav className="settings-tabs" aria-label={t("Bereiche der Einstellungen", "Settings sections")}>
           {settingsTabs.map(([id, label, Icon]) => (
             <button
               key={id}
@@ -156,13 +157,16 @@ export default function Settings({
               onClick={() => setTab(id)}
             >
               <Icon size={18} aria-hidden="true" />
-              {label}
+              {t(label[0], label[1])}
             </button>
           ))}
         </nav>
         <div className="settings-body">
           <p className="settings-intro">
-            {settingsTabs.find(([id]) => id === tab)?.[3]}
+            {(() => {
+              const intro = settingsTabs.find(([id]) => id === tab)?.[3];
+              return intro ? t(intro[0], intro[1]) : null;
+            })()}
           </p>
           {tab === "integrations" && (
             <IntegrationSettings
@@ -195,30 +199,28 @@ export default function Settings({
           )}
           {tab === "spaces" && (
             <section className="settings-section">
-              <h2>Bereiche verwalten</h2>
+              <h2>{t("Bereiche verwalten", "Manage spaces")}</h2>
               <p>
-                Bereichseigentümer verwalten ihre eigenen Bereiche.
-                Arbeitsbereichseigentümer können alle Bereiche verwalten;
-                private Seiten bleiben an ihre Leserechte gebunden.
+                {t("Bereichseigentümer verwalten ihre eigenen Bereiche. Arbeitsbereichseigentümer können alle Bereiche verwalten; private Seiten bleiben an ihre Leserechte gebunden.", "Space owners manage their own spaces. Workspace owners can manage all spaces; private pages stay bound to their read permissions.")}
               </p>
               {(boot.managedSpaces || []).map((space) => (
                 <div className="utility-row" key={space.id}>
                   <SpaceIcon icon={space.icon} color={space.icon_color} />
                   {space.visibility === "private" && (
-                    <Lock aria-label="Privater Bereich" />
+                    <Lock aria-label={t("Privater Bereich", "Private space")} />
                   )}
                   <strong>{space.name}</strong>
                   <button
                     className="button compact"
                     onClick={() => setEditingSpace(space)}
                   >
-                    Verwalten
+                    {t("Verwalten", "Manage")}
                   </button>
                 </div>
               ))}
               {!boot.managedSpaces?.length && (
                 <p className="muted">
-                  Keine Bereiche mit Verwaltungsrechten vorhanden.
+                  {t("Keine Bereiche mit Verwaltungsrechten vorhanden.", "No spaces you can manage.")}
                 </p>
               )}
             </section>
@@ -236,12 +238,12 @@ export default function Settings({
           {tab === "general" && (
             <>
               <section className="settings-section">
-                <h2>Arbeitsbereich</h2>
+                <h2>{t("Arbeitsbereich", "Workspace")}</h2>
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (await act({ action: "workspace.update", name }))
-                      onError("Arbeitsbereich gespeichert");
+                      onError(t("Arbeitsbereich gespeichert", "Workspace saved"));
                   }}
                 >
                   <WorkspaceIconPicker
@@ -251,7 +253,7 @@ export default function Settings({
                     save={(icon) => act({ action: "workspace.update", icon })}
                   />
                   <label>
-                    Name
+                    {t("Name", "Name")}
                     <input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
@@ -260,7 +262,7 @@ export default function Settings({
                   </label>
                   {owner && (
                     <button className="button primary compact">
-                      Änderungen speichern
+                      {t("Änderungen speichern", "Save changes")}
                     </button>
                   )}
                 </form>
@@ -271,26 +273,26 @@ export default function Settings({
                 onExit={onWorkspaceExit}
               />
               <section className="settings-section">
-                <h2>Erscheinungsbild</h2>
+                <h2>{t("Erscheinungsbild", "Appearance")}</h2>
                 <div className="theme-options">
                   <button
                     className={!dark ? "selected" : ""}
                     onClick={() => setDark(false)}
                   >
                     <Sun size={25} />
-                    Hell
+                    {t("Hell", "Light")}
                   </button>
                   <button
                     className={dark ? "selected" : ""}
                     onClick={() => setDark(true)}
                   >
                     <Moon size={25} />
-                    Dunkel
+                    {t("Dunkel", "Dark")}
                   </button>
                 </div>
               </section>
               <section className="settings-section">
-                <h2>Dein Profil</h2>
+                <h2>{t("Dein Profil", "Your profile")}</h2>
                 <div className="member-row">
                   <Avatar name={boot.user.name} userId={boot.user.id} />
                   <span>
@@ -303,27 +305,26 @@ export default function Settings({
                   <AccountSecurity name={boot.user.name} onRenamed={onRefresh} />
                 ) : (
                   <p className="muted">
-                    Name und E-Mail werden von deinem Identitätsanbieter
-                    übernommen.
+                    {t("Name und E-Mail werden von deinem Identitätsanbieter übernommen.", "Your name and e-mail come from your identity provider.")}
                   </p>
                 )}
               </section>
               <section className="settings-section">
-                <h2>Tastenkürzel</h2>
+                <h2>{t("Tastenkürzel", "Keyboard shortcuts")}</h2>
                 <div className="shortcut">
-                  <span>Seiten suchen</span>
+                  <span>{t("Seiten suchen", "Search pages")}</span>
                   <kbd>⌘ / Ctrl + K</kbd>
                 </div>
                 <div className="shortcut">
-                  <span>Neue Seite</span>
+                  <span>{t("Neue Seite", "New page")}</span>
                   <kbd>⌘ / Ctrl + N</kbd>
                 </div>
                 <div className="shortcut">
-                  <span>Editor-Befehle</span>
+                  <span>{t("Editor-Befehle", "Editor commands")}</span>
                   <kbd>/</kbd>
                 </div>
                 <div className="shortcut">
-                  <span>Fett / Kursiv</span>
+                  <span>{t("Fett / Kursiv", "Bold / italic")}</span>
                   <kbd>⌘ / Ctrl + B / I</kbd>
                 </div>
               </section>
@@ -332,14 +333,14 @@ export default function Settings({
           {tab === "members" && (
             <>
               <section className="settings-section">
-                <h2>Mitglieder · {boot.members.length}</h2>
+                <h2>{t("Mitglieder ·", "Members ·")}{" "}{boot.members.length}</h2>
                 {boot.members.map((m) => (
                   <div className="member-row" key={m.id}>
                     <Avatar name={m.name} userId={m.id} />
                     <span>
                       {m.name}
                       {!!m.guest && (
-                        <span className="tag tag-yellow">Gast</span>
+                        <span className="tag tag-yellow">{t("Gast", "Guest")}</span>
                       )}
                       <small>{m.email}</small>
                     </span>
@@ -348,8 +349,8 @@ export default function Settings({
                         className="button compact"
                         aria-label={
                           m.guest
-                            ? `${m.name} zum Mitglied machen`
-                            : `${m.name} zum Gast machen`
+                            ? t(`${m.name} zum Mitglied machen`, `Make ${m.name} a member`)
+                            : t(`${m.name} zum Gast machen`, `Make ${m.name} a guest`)
                         }
                         onClick={() =>
                           act({
@@ -359,12 +360,12 @@ export default function Settings({
                           })
                         }
                       >
-                        {m.guest ? "Zum Mitglied machen" : "Zum Gast machen"}
+                        {m.guest ? t("Zum Mitglied machen", "Make member") : t("Zum Gast machen", "Make guest")}
                       </button>
                     )}
                     {owner ? (
                       <Select
-                        aria-label={`Rolle für ${m.name}`}
+                        aria-label={t(`Rolle für ${m.name}`, `Role for ${m.name}`)}
                         value={m.role}
                         onChange={(e) =>
                           act({
@@ -374,10 +375,10 @@ export default function Settings({
                           })
                         }
                       >
-                        <option value="owner">Eigentümer</option>
-                        <option value="editor">Bearbeiten</option>
-                        <option value="viewer">Ansehen</option>
-                        <option value="remove">Entfernen</option>
+                        <option value="owner">{t("Eigentümer", "Owner")}</option>
+                        <option value="editor">{t("Bearbeiten", "Edit")}</option>
+                        <option value="viewer">{t("Ansehen", "View")}</option>
+                        <option value="remove">{t("Entfernen", "Remove")}</option>
                       </Select>
                     ) : (
                       <span className="tag">{m.role}</span>
@@ -387,10 +388,9 @@ export default function Settings({
               </section>
               {owner && (
                 <section className="settings-section">
-                  <h2>Mitglied einladen</h2>
+                  <h2>{t("Mitglied einladen", "Invite member")}</h2>
                   <p className="muted">
-                    Die Freigabe wird bei der nächsten SSO-Anmeldung mit
-                    bestätigter E-Mail automatisch zugeordnet.
+                    {t("Die Freigabe wird bei der nächsten SSO-Anmeldung mit bestätigter E-Mail automatisch zugeordnet.", "The invitation is assigned automatically once the person signs in with this confirmed e-mail address.")}
                   </p>
                   <form
                     className="invite-form"
@@ -410,18 +410,18 @@ export default function Settings({
                     <input
                       required
                       type="email"
-                      placeholder="name@unternehmen.de"
-                      aria-label="E-Mail des neuen Mitglieds"
+                      placeholder={t("name@unternehmen.de", "name@company.com")}
+                      aria-label={t("E-Mail des neuen Mitglieds", "E-mail of the new member")}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                     />
                     <Select
                       value={role}
-                      aria-label="Rolle"
+                      aria-label={t("Rolle", "Role")}
                       onChange={(e) => setRole(e.target.value)}
                     >
-                      <option value="editor">Bearbeiten</option>
-                      <option value="viewer">Ansehen</option>
+                      <option value="editor">{t("Bearbeiten", "Edit")}</option>
+                      <option value="viewer">{t("Ansehen", "View")}</option>
                     </Select>
                     <label className="checkbox-label">
                       <input
@@ -429,18 +429,18 @@ export default function Settings({
                         checked={inviteGuest}
                         onChange={(e) => setInviteGuest(e.target.checked)}
                       />
-                      Als Gast (nur freigegebene Seiten)
+                      {t("Als Gast (nur freigegebene Seiten)", "As a guest (shared pages only)")}
                     </label>
                     <button className="button primary">
                       <Plus />
-                      Freigeben
+                      {t("Freigeben", "Invite")}
                     </button>
                   </form>
                   {settings?.invites.map((i) => (
                     <div className="utility-row" key={i.id}>
                       <span>{i.email}</span>
                       <span className="tag tag-yellow">
-                        {i.guest ? "Gast · ausstehend" : "Ausstehend"}
+                        {i.guest ? t("Gast · ausstehend", "Guest · pending") : t("Ausstehend", "Pending")}
                       </span>
                     </div>
                   ))}
@@ -452,10 +452,9 @@ export default function Settings({
             (owner ? (
               <>
                 <section className="settings-section">
-                  <h2>Gruppen</h2>
+                  <h2>{t("Gruppen", "Groups")}</h2>
                   <p className="muted">
-                    Fasse Mitglieder zusammen und vergebe gemeinsame Rechte für
-                    Bereiche.
+                    {t("Fasse Mitglieder zusammen und vergebe gemeinsame Rechte für Bereiche.", "Bring members together and give them shared permissions for spaces.")}
                   </p>
                   <form
                     className="invite-form"
@@ -470,13 +469,13 @@ export default function Settings({
                     <input
                       required
                       value={groupName}
-                      aria-label="Gruppenname"
+                      aria-label={t("Gruppenname", "Group name")}
                       onChange={(e) => setGroupName(e.target.value)}
-                      placeholder="Neue Gruppe"
+                      placeholder={t("Neue Gruppe", "New group")}
                     />
                     <button className="button primary">
                       <Plus />
-                      Erstellen
+                      {t("Erstellen", "Create")}
                     </button>
                   </form>
                   {settings?.groups.map((g) => (
@@ -489,26 +488,26 @@ export default function Settings({
                             (m) => m.group_id === g.id,
                           ).length
                         }{" "}
-                        Mitglieder
+                        {t("Mitglieder", "Members")}
                       </span>
                       <button
                         className="button compact"
                         onClick={() => setGroupId(g.id)}
                       >
-                        Verwalten
+                        {t("Verwalten", "Manage")}
                       </button>
                     </div>
                   ))}
                 </section>
                 <section className="settings-section">
-                  <h2>Bereiche & Zugriffsrechte</h2>
+                  <h2>{t("Bereiche & Zugriffsrechte", "Spaces & access")}</h2>
                   {(boot.managedSpaces || boot.spaces).map((s) => (
                     <div className="space-settings" key={s.id}>
                       <div className="utility-row">
                         {s.visibility === "private" ? <Lock /> : <Globe />}
                         <strong>{s.name}</strong>
                         <Select
-                          aria-label={`Sichtbarkeit ${s.name}`}
+                          aria-label={t(`Sichtbarkeit ${s.name}`, `Visibility ${s.name}`)}
                           value={s.visibility}
                           onChange={(e) =>
                             act({
@@ -520,8 +519,8 @@ export default function Settings({
                             })
                           }
                         >
-                          <option value="team">Gesamtes Team</option>
-                          <option value="private">Nur Berechtigte</option>
+                          <option value="team">{t("Gesamtes Team", "Whole team")}</option>
+                          <option value="private">{t("Nur Berechtigte", "Only people with access")}</option>
                         </Select>
                       </div>
                       {settings?.groups.map((g) => (
@@ -529,7 +528,7 @@ export default function Settings({
                           <Users size={16} />
                           <span>{g.name}</span>
                           <Select
-                            aria-label={`Rechte ${g.name} in ${s.name}`}
+                            aria-label={t(`Rechte ${g.name} in ${s.name}`, `Permissions of ${g.name} in ${s.name}`)}
                             value={
                               settings.grants.find(
                                 (x) =>
@@ -546,10 +545,10 @@ export default function Settings({
                             }
                           >
                             <option value="remove">
-                              Keine zusätzlichen Rechte
+                              {t("Keine zusätzlichen Rechte", "No additional permissions")}
                             </option>
-                            <option value="viewer">Ansehen</option>
-                            <option value="editor">Bearbeiten</option>
+                            <option value="viewer">{t("Ansehen", "View")}</option>
+                            <option value="editor">{t("Bearbeiten", "Edit")}</option>
                           </Select>
                         </div>
                       ))}
@@ -560,10 +559,9 @@ export default function Settings({
             ) : (
               <div className="empty-state">
                 <ShieldCheck size={36} />
-                <h3>Nur für Eigentümer</h3>
+                <h3>{t("Nur für Eigentümer", "Owners only")}</h3>
                 <p>
-                  Gruppen und Berechtigungen verwaltet ein Eigentümer des
-                  Arbeitsbereichs.
+                  {t("Gruppen und Berechtigungen verwaltet ein Eigentümer des Arbeitsbereichs.", "Groups and permissions are managed by an owner of the workspace.")}
                 </p>
               </div>
             ))}
@@ -577,12 +575,9 @@ export default function Settings({
                   .map((p) => p.id)}
               />
               <section className="settings-section">
-                <h2>Arbeitsbereich exportieren</h2>
+                <h2>{t("Arbeitsbereich exportieren", "Export workspace")}</h2>
                 <p>
-                  Das ZIP-Inhaltsarchiv enthält zugängliche Seiten
-                  einschließlich Papierkorb, Datenbanken, interne Verknüpfungen,
-                  Seiten- und Datensatzvorlagen, Kommentare, Versionen,
-                  Favoriten und hochgeladene Dateien.
+                  {t("Das ZIP-Inhaltsarchiv enthält zugängliche Seiten einschließlich Papierkorb, Datenbanken, interne Verknüpfungen, Seiten- und Datensatzvorlagen, Kommentare, Versionen, Favoriten und hochgeladene Dateien.", "The ZIP content archive contains accessible pages including the trash, databases, internal links, page and record templates, comments, versions, favourites and uploaded files.")}
                 </p>
                 <div className="archive-actions">
                   <button
@@ -614,8 +609,8 @@ export default function Settings({
                   >
                     <DownloadSimple />
                     {archiveBusy
-                      ? "Archiv wird verarbeitet …"
-                      : "ZIP mit Dateien exportieren"}
+                      ? t("Archiv wird verarbeitet …", "Processing archive …")
+                      : t("ZIP mit Dateien exportieren", "Export ZIP with files")}
                   </button>
                   <button
                     className="button"
@@ -635,19 +630,18 @@ export default function Settings({
                     }}
                   >
                     <DownloadSimple />
-                    JSON ohne Dateien exportieren
+                    {t("JSON ohne Dateien exportieren", "Export JSON without files")}
                   </button>
                 </div>
               </section>
               <section className="settings-section">
-                <h2>Markdown oder Text importieren</h2>
+                <h2>{t("Markdown oder Text importieren", "Import Markdown or text")}</h2>
                 <p>
-                  Jede Datei wird als neue Seite in deinem Arbeitsbereich
-                  angelegt.
+                  {t("Jede Datei wird als neue Seite in deinem Arbeitsbereich angelegt.", "Every file becomes a new page in your workspace.")}
                 </p>
                 <label className="button file-label">
                   <UploadSimple />
-                  Dateien auswählen
+                  {t("Dateien auswählen", "Choose files")}
                   <input
                     type="file"
                     accept=".md,.txt,.html"
@@ -657,7 +651,7 @@ export default function Settings({
                     onChange={async (e) => {
                       for (const file of Array.from(e.target.files || [])) {
                         if (file.size > 2_000_000) {
-                          onError("Datei zu groß (max. 2 MB)");
+                          onError(t("Datei zu groß (max. 2 MB)", "File too large (max. 2 MB)"));
                           continue;
                         }
                         try {
@@ -694,7 +688,7 @@ export default function Settings({
                       html,
                     })) as { added: number; skipped: number };
                     onError(
-                      `${result.added} Lesezeichen importiert${result.skipped ? `, ${result.skipped} übersprungen` : ""}.`,
+                      t(`${result.added} Lesezeichen importiert${result.skipped ? `, ${result.skipped} übersprungen` : ""}.`, `${result.added} bookmarks imported${result.skipped ? `, ${result.skipped} skipped` : ""}.`),
                     );
                   } catch (err) {
                     onError((err as Error).message);
@@ -702,18 +696,14 @@ export default function Settings({
                 }}
               />
               <section className="settings-section">
-                <h2>Notion-, AppFlowy- oder Markdown-Export importieren</h2>
+                <h2>{t("Notion-, AppFlowy- oder Markdown-Export importieren", "Import a Notion, AppFlowy or Markdown export")}</h2>
                 <p>
-                  ZIP mit Markdown- und CSV-Dateien: Markdown wird zu Seiten,
-                  CSV zu Datenbanken, Ordner zu Unterseiten. Bilder und Dateien,
-                  auf die Markdown verweist, werden hochgeladen; Datensatzseiten
-                  aus Notion werden den Einträgen zugeordnet. Maximal 100 MB,
-                  500 Seiten und 5.000 Einträge je Tabelle.
+                  {t("ZIP mit Markdown- und CSV-Dateien: Markdown wird zu Seiten, CSV zu Datenbanken, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Maximal 100 MB, 500 Seiten und 5.000 Einträge je Tabelle.", "A ZIP with Markdown and CSV files: Markdown becomes pages, CSV databases, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. At most 100 MB, 500 pages and 5,000 records per table.")}
                 </p>
                 <label>
-                  Zielbereich
+                  {t("Zielbereich", "Target space")}
                   <Select
-                    aria-label="Zielbereich für den Import"
+                    aria-label={t("Zielbereich für den Import", "Target space for the import")}
                     value={importSpace || boot.spaces[0]?.id || ""}
                     onChange={(e) => setImportSpace(e.target.value)}
                   >
@@ -726,12 +716,12 @@ export default function Settings({
                 </label>
                 <label className="button file-label">
                   <UploadSimple />
-                  {zipBusy ? "Import läuft …" : "ZIP auswählen"}
+                  {zipBusy ? t("Import läuft …", "Importing …") : t("ZIP auswählen", "Choose ZIP")}
                   <input
                     type="file"
                     accept=".zip,application/zip"
                     hidden
-                    aria-label="Export-ZIP importieren"
+                    aria-label={t("Export-ZIP importieren", "Import export ZIP")}
                     disabled={boot.workspace.role === "viewer" || zipBusy}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
@@ -754,10 +744,10 @@ export default function Settings({
                         const result = await response.json();
                         if (!response.ok)
                           throw new Error(
-                            result.error || "Import fehlgeschlagen.",
+                            result.error || t("Import fehlgeschlagen.", "Import failed."),
                           );
                         setZipResult(
-                          `${result.pages} Seiten, ${result.rows} Einträge und ${result.files} Dateien importiert.`,
+                          t(`${result.pages} Seiten, ${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.pages} pages, ${result.rows} records and ${result.files} files imported.`),
                         );
                         await onRefresh();
                       } catch (err) {
@@ -771,18 +761,15 @@ export default function Settings({
                 {zipResult && <p role="status">{zipResult}</p>}
               </section>
               <section className="settings-section">
-                <h2>Flowplan-Backup importieren</h2>
+                <h2>{t("Flowplan-Backup importieren", "Import a Flowplan backup")}</h2>
                 <p>
-                  ZIP-Archive werden als Kopien in neuen privaten Bereichen
-                  wiederhergestellt. Alte Freigaben und Anmeldedaten werden
-                  nicht aktiviert. Maximal 2 GB ZIP / 4 GB entpackt.
-                  JSON-Dateien bleiben als älteres Importformat verfügbar.
+                  {t("ZIP-Archive werden als Kopien in neuen privaten Bereichen wiederhergestellt. Alte Freigaben und Anmeldedaten werden nicht aktiviert. Maximal 2 GB ZIP / 4 GB entpackt. JSON-Dateien bleiben als älteres Importformat verfügbar.", "ZIP archives are restored as copies in new private spaces. Old shares and sign-in data are not activated. At most 2 GB ZIP / 4 GB unpacked. JSON files remain available as an older import format.")}
                 </p>
                 <label className="button file-label">
                   <UploadSimple />
                   {archiveBusy
-                    ? "Archiv wird verarbeitet …"
-                    : "ZIP-Archiv auswählen"}
+                    ? t("Archiv wird verarbeitet …", "Processing archive …")
+                    : t("ZIP-Archiv auswählen", "Choose ZIP archive")}
                   <input
                     type="file"
                     accept=".zip"
@@ -795,7 +782,7 @@ export default function Settings({
                       setArchiveBusy(true);
                       try {
                         if (file.size > 2 * 1024 * 1024 * 1024)
-                          throw new Error("ZIP darf maximal 2 GB groß sein.");
+                          throw new Error(t("ZIP darf maximal 2 GB groß sein.", "The ZIP may be at most 2 GB."));
                         const r = await fetch(
                           `/api/backup?workspace=${boot.workspace.id}`,
                           {
@@ -808,7 +795,7 @@ export default function Settings({
                         if (!r.ok) throw new Error(result.error);
                         await onRefresh();
                         onError(
-                          `${result.pages} ${result.pages === 1 ? "Seite" : "Seiten"} und ${result.files} ${result.files === 1 ? "Datei" : "Dateien"} importiert.${result.omittedRelations ? ` ${result.omittedRelations} Verknüpfungen zu nicht enthaltenen Einträgen konnten nicht übernommen werden.` : ""}`,
+                          t(`${result.pages} ${result.pages === 1 ? "Seite" : "Seiten"} und ${result.files} ${result.files === 1 ? "Datei" : "Dateien"} importiert.${result.omittedRelations ? ` ${result.omittedRelations} Verknüpfungen zu nicht enthaltenen Einträgen konnten nicht übernommen werden.` : ""}`, `${result.pages} ${result.pages === 1 ? "page" : "pages"} and ${result.files} ${result.files === 1 ? "file" : "files"} imported.${result.omittedRelations ? ` ${result.omittedRelations} links to records not included could not be kept.` : ""}`),
                         );
                       } catch (e) {
                         onError((e as Error).message);
@@ -821,7 +808,7 @@ export default function Settings({
                 </label>
                 <label className="button file-label">
                   <UploadSimple />
-                  JSON-Backup auswählen
+                  {t("JSON-Backup auswählen", "Choose JSON backup")}
                   <input
                     type="file"
                     accept=".json"
@@ -837,7 +824,7 @@ export default function Settings({
                             spaceId: boot.spaces[0].id,
                             backup: JSON.parse(await f.text()),
                           });
-                          onError("Backup importiert");
+                          onError(t("Backup importiert", "Backup imported"));
                         } catch (err) {
                           onError((err as Error).message);
                         }
@@ -848,13 +835,9 @@ export default function Settings({
                 </label>
               </section>
               <section className="settings-section">
-                <h2>Offline & Synchronisierung</h2>
+                <h2>{t("Offline & Synchronisierung", "Offline & sync")}</h2>
                 <p>
-                  Dokumente und Whiteboards werden zusätzlich auf diesem Gerät
-                  gespeichert und nach Wiederherstellung der Verbindung
-                  zusammengeführt. Einträge in Datenbanken lassen sich offline
-                  anlegen, ändern und löschen; Konflikte kannst du danach
-                  auflösen.
+                  {t("Dokumente und Whiteboards werden zusätzlich auf diesem Gerät gespeichert und nach Wiederherstellung der Verbindung zusammengeführt. Einträge in Datenbanken lassen sich offline anlegen, ändern und löschen; Konflikte kannst du danach auflösen.", "Documents and whiteboards are also stored on this device and merged once the connection is back. Database records can be created, changed and deleted offline; you can resolve conflicts afterwards.")}
                 </p>
               </section>
             </>
@@ -864,7 +847,7 @@ export default function Settings({
       <Modal
         open={!!groupId}
         onClose={() => setGroupId(null)}
-        title={settings?.groups.find((g) => g.id === groupId)?.name || "Gruppe"}
+        title={settings?.groups.find((g) => g.id === groupId)?.name || t("Gruppe", "Group")}
       >
         {boot.members.map((m) => (
           <label className="member-row checkbox-label" key={m.id}>

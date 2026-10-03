@@ -2,6 +2,7 @@
 // The menu for text: selecting text shows it above the selection, a right
 // click opens it at the pointer (Shift + right click keeps the browser's
 // own menu). Reactions for the paragraph, formatting, a comment, copying.
+import { useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
@@ -33,6 +34,7 @@ export function TextMenu({
   editable: boolean;
   onLink: () => void;
 }) {
+  const t = useT();
   const [place, setPlace] = useState<Place | null>(null);
   const menu = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPlace(null), []);
@@ -159,7 +161,7 @@ export function TextMenu({
       ref={menu}
       className={`text-menu ${place.mode}`}
       role="menu"
-      aria-label="Textmenü"
+      aria-label={t("Textmenü", "Text menu")}
       style={{
         left: place.x + shift.x,
         top: place.y + shift.y,
@@ -169,14 +171,14 @@ export function TextMenu({
       }}
     >
       {editable && block !== null && userId && (
-        <div className="text-menu-reactions" role="group" aria-label="Auf den Absatz reagieren">
+        <div className="text-menu-reactions" role="group" aria-label={t("Auf den Absatz reagieren", "React to the paragraph")}>
           {reactions.map((emoji) => (
             <button
               key={emoji}
               type="button"
               role="menuitemcheckbox"
               aria-checked={mine.has(emoji)}
-              aria-label={`Mit ${emoji} reagieren`}
+              aria-label={t(`Mit ${emoji} reagieren`, `React with ${emoji}`)}
               className={mine.has(emoji) ? "active" : ""}
               onClick={run(() => setReactions(editor.view, block, emoji, userId))}
             >
@@ -186,12 +188,12 @@ export function TextMenu({
         </div>
       )}
       {editable && (
-        <div className="text-menu-format" role="group" aria-label="Formatieren">
-          {mark("bold", "Fett", <TextB size={16} />, () => editor.chain().focus().toggleBold().run())}
-          {mark("italic", "Kursiv", <TextItalic size={16} />, () => editor.chain().focus().toggleItalic().run())}
-          {mark("underline", "Unterstrichen", <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
-          {mark("strike", "Durchgestrichen", <TextStrikethrough size={16} />, () => editor.chain().focus().toggleStrike().run())}
-          {mark("highlight", "Markieren", <HighlighterCircle size={16} />, () => editor.chain().focus().toggleHighlight().run())}
+        <div className="text-menu-format" role="group" aria-label={t("Formatieren", "Format")}>
+          {mark("bold", t("Fett", "Bold"), <TextB size={16} />, () => editor.chain().focus().toggleBold().run())}
+          {mark("italic", t("Kursiv", "Italic"), <TextItalic size={16} />, () => editor.chain().focus().toggleItalic().run())}
+          {mark("underline", t("Unterstrichen", "Underline"), <TextUnderline size={16} />, () => editor.chain().focus().toggleUnderline().run())}
+          {mark("strike", t("Durchgestrichen", "Strikethrough"), <TextStrikethrough size={16} />, () => editor.chain().focus().toggleStrike().run())}
+          {mark("highlight", t("Markieren", "Highlight"), <HighlighterCircle size={16} />, () => editor.chain().focus().toggleHighlight().run())}
           {mark("code", "Code", <Code size={16} />, () => editor.chain().focus().toggleCode().run())}
           <button type="button" aria-label="Link" title="Link" onClick={run(onLink)}>
             <LinkSimple size={16} />
@@ -209,7 +211,7 @@ export function TextMenu({
               close();
             }}
           >
-            <CalendarBlank size={15} /> {task.node.attrs.due ? "Fälligkeit ändern" : "Fälligkeit"}
+            <CalendarBlank size={15} /> {task.node.attrs.due ? t("Fälligkeit ändern", "Change due date") : t("Fälligkeit", "Due date")}
           </button>
         )}
         <button
@@ -217,7 +219,7 @@ export function TextMenu({
           role="menuitem"
           onClick={run(() => editor.view.dom.dispatchEvent(new CustomEvent("comment-create")))}
         >
-          <ChatCircle size={15} /> Kommentieren
+          <ChatCircle size={15} /> {t("Kommentieren", "Comment")}
         </button>
         {!empty && (
           <button
@@ -225,7 +227,7 @@ export function TextMenu({
             role="menuitem"
             onClick={run(() => void navigator.clipboard?.writeText(editor.state.doc.textBetween(from, to, "\n")))}
           >
-            <Copy size={15} /> Kopieren
+            <Copy size={15} /> {t("Kopieren", "Copy")}
           </button>
         )}
       </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -112,6 +113,7 @@ export function Modal({
   wide?: boolean;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
+  const t = useT();
   return (
     <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Dialog.Portal>
@@ -125,7 +127,7 @@ export function Modal({
         >
           <div className="modal-heading">
             <Dialog.Title>{title}</Dialog.Title>
-            <Dialog.Close className="icon-button" aria-label="Schließen">
+            <Dialog.Close className="icon-button" aria-label={t("Schließen", "Close")}>
               <X size={20} />
             </Dialog.Close>
             {/* After the close button in the DOM, so opening focuses that
@@ -142,13 +144,14 @@ export function Modal({
 // with a soft shimmer (still for reduced motion).
 export function PageSkeleton({
   kind = "document",
-  label = "Seite wird geöffnet …",
+  label,
   compact = false,
 }: {
   kind?: "document" | "database";
   label?: string;
   compact?: boolean;
 }) {
+  const t = useT();
   return (
     <div
       className={`page-skeleton${compact ? " compact" : ""}`}
@@ -161,7 +164,7 @@ export function PageSkeleton({
           <i />
           <i />
         </span>
-        {label}
+        {label ?? t("Seite wird geöffnet …", "Opening page …")}
       </span>
       <div aria-hidden="true" className="page-skeleton-body">
         {!compact && (

@@ -1,4 +1,5 @@
 "use client";
+import { useLocale, useStatusLabel, useT } from "./i18n";
 import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
@@ -144,17 +145,29 @@ import {
 import type { ShareLink } from "@/lib/share-links";
 import { templateCatalog } from "@/lib/template-catalog";
 import { templateCategories } from "@/lib/template-categories";
+// Shown while the parts load (they use the reader's language).
+function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
+  const t = useT();
+  const locale = useLocale();
+  if (what === "emoji") return <p>{t("Emojis werden geladen …", "Loading emojis …")}</p>;
+  return (
+    <PageSkeleton
+      compact
+      label={what === "document" ? t("Dokument wird geöffnet …", "Opening document …") : t("Whiteboard wird geöffnet …", "Opening whiteboard …")}
+    />
+  );
+}
 const EmojiPicker = dynamic(() => import("./emoji-picker"), {
   ssr: false,
-  loading: () => <p>Emojis werden geladen …</p>,
+  loading: () => <Loading what="emoji" />,
 });
 const DocumentEditor = dynamic(() => import("./editor"), {
   ssr: false,
-  loading: () => <PageSkeleton compact label="Dokument wird geöffnet …" />,
+  loading: () => <Loading what="document" />,
 });
 const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
   ssr: false,
-  loading: () => <PageSkeleton compact label="Whiteboard wird geöffnet …" />,
+  loading: () => <Loading what="whiteboard" />,
 });
 type PageData = DatabaseData & {
   whiteboard?: { state: string; generation: string };
@@ -223,6 +236,9 @@ export default function WorkspaceApp({
   // Public gallery: create a page from this template once signed in.
   useTemplate?: string;
 }) {
+  const t = useT();
+  const statusLabel = useStatusLabel();
+  const locale = useLocale();
   const [clock, setClock] = useState<number | null>(null);
   useEffect(() => {
     // The server and initial browser render must not depend on different clocks.
@@ -614,7 +630,7 @@ export default function WorkspaceApp({
       if (fragment.startsWith("page=")) {
         const target = parsePageLocation(location.hash);
         if (!target) {
-          notify("Dieser Seitenlink ist ungültig.");
+          notify(t("Dieser Seitenlink ist ungültig.", "This page link is invalid."));
           return;
         }
         if (currentId.current !== target.pageId || screenRef.current !== "page")
@@ -669,7 +685,7 @@ export default function WorkspaceApp({
         if (useTemplate.startsWith("starter:")) {
           const key = useTemplate.slice(8);
           const builtIn = templateCatalog[key];
-          if (!builtIn) throw new Error("Diese Vorlage ist nicht mehr verfügbar.");
+          if (!builtIn) throw new Error(t("Diese Vorlage ist nicht mehr verfügbar.", "This template is no longer available."));
           const created = await mutate({
             action: "page.create",
             workspaceId: boot.workspace.id,
@@ -686,7 +702,7 @@ export default function WorkspaceApp({
         );
         const template = list.find((t) => t.id === useTemplate);
         if (!template)
-          throw new Error("Diese Vorlage ist nicht mehr verfügbar.");
+          throw new Error(t("Diese Vorlage ist nicht mehr verfügbar.", "This template is no longer available."));
         const created = await mutate({
           action: "page.create",
           workspaceId: boot.workspace.id,
@@ -849,10 +865,10 @@ export default function WorkspaceApp({
         clearSelection();
         notify(
           operation === "delete"
-            ? "Seiten in den Papierkorb verschoben."
+            ? t("Seiten in den Papierkorb verschoben.", "Pages moved to the trash.")
             : operation === "duplicate"
-              ? "Seiten dupliziert."
-              : "Seiten verschoben.",
+              ? t("Seiten dupliziert.", "Pages duplicated.")
+              : t("Seiten verschoben.", "Pages moved."),
         );
       }
     } finally {
@@ -936,7 +952,7 @@ export default function WorkspaceApp({
     const byId = new Map(activePages.map((p) => [p.id, p]));
     const shown = new Set<string>();
     for (const p of activePages)
-      if ((p.title || "Ohne Titel").toLocaleLowerCase("de").includes(query))
+      if ((p.title || t("Ohne Titel", "Untitled")).toLocaleLowerCase("de").includes(query))
         for (
           let at: Page | undefined = p;
           at && !shown.has(at.id);
@@ -1025,7 +1041,7 @@ export default function WorkspaceApp({
               <button
                 className="tree-toggle"
                 aria-label={
-                  closed ? "Unterseiten öffnen" : "Unterseiten schließen"
+                  closed ? t("Unterseiten öffnen", "Expand sub-pages") : t("Unterseiten schließen", "Collapse sub-pages")
                 }
                 onClick={() =>
                   setCollapsed((s) => {
@@ -1049,7 +1065,7 @@ export default function WorkspaceApp({
                 <input
                   type="checkbox"
                   className="page-select"
-                  aria-label={`${p.title} auswählen`}
+                  aria-label={t(`${p.title} auswählen`, `Select ${p.title}`)}
                   checked={selectedPages.includes(p.id)}
                   onChange={() => toggleSelected(p.id, false)}
                 />
@@ -1120,7 +1136,7 @@ export default function WorkspaceApp({
               {canCreate && (
                 <button
                   className="nav-add"
-                  title="Unterseite hinzufügen"
+                  title={t("Unterseite hinzufügen", "Add sub-page")}
                   onClick={() => addPage("document", p.id, p.space_id)}
                 >
                   <Plus size={14} />
@@ -1140,44 +1156,44 @@ export default function WorkspaceApp({
   // Commands for the quick search ("> …" or matching words).
   const openPageData = screen === "page" && data ? data : null;
   const commandActions: CommandAction[] = [
-    { label: "Neue Seite", keywords: "dokument anlegen erstellen notiz", icon: FileText, run: () => addPage() },
-    { label: "Neue Datenbank", keywords: "tabelle projekt anlegen", icon: Table, run: () => addPage("database") },
-    { label: "Neues Whiteboard", keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
-    { label: "Neues Journal", keywords: "tagebuch tag", icon: Notebook, run: () => addPage("journal") },
-    { label: "Vorlagen öffnen", keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
-    { label: "Zur Startseite", keywords: "home start", icon: House, run: () => go("home") },
-    { label: "Posteingang öffnen", keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
-    { label: "Meine Aufgaben", keywords: "tasks todo fällig", icon: CheckSquare, run: () => go("tasks") },
-    { label: "Medien", keywords: "bilder dateien", icon: ImageSquare, run: () => go("media") },
-    { label: "Graph der Verlinkungen", keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
-    { label: "Papierkorb", keywords: "trash gelöscht wiederherstellen", icon: Trash, run: () => go("trash") },
-    { label: "Einstellungen", keywords: "settings konto mitglieder", icon: GearSix, run: () => go("settings") },
+    { label: t("Neue Seite", "New page"), keywords: t("dokument anlegen erstellen notiz", "dokument anlegen erstellen notiz document new create note page"), icon: FileText, run: () => addPage() },
+    { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
+    { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
+    { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal") },
+    { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
+    { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
+    { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
+    { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks") },
+    { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
+    { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
+    { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
+    { label: t("Einstellungen", "Settings"), keywords: "settings konto mitglieder", icon: GearSix, run: () => go("settings") },
     ...(boot.user.isAdmin
-      ? [{ label: "Administration", keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
+      ? [{ label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
       : []),
-    { label: dark ? "Helles Design" : "Dunkles Design", keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
-    { label: "Seitenleiste ein- oder ausblenden", keywords: "sidebar navigation", icon: SidebarSimple, run: () => setDesktopCollapsed((v) => !v) },
+    { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
+    { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: () => setDesktopCollapsed((v) => !v) },
     ...(openPageData
       ? [
-          { label: "Fokusmodus", keywords: "schreiben ablenkungsfrei zen wortziel", icon: TextAa, run: () => setFocusMode(true) },
+          { label: t("Fokusmodus", "Focus mode"), keywords: "schreiben ablenkungsfrei zen wortziel", icon: TextAa, run: () => setFocusMode(true) },
           {
-            label: boot.favorites.includes(openPageData.page.id) ? "Aus Favoriten entfernen" : "Zu Favoriten",
+            label: boot.favorites.includes(openPageData.page.id) ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites"),
             keywords: "favorit stern",
             icon: Star,
             run: () =>
               void act({ action: "favorite", pageId: openPageData.page.id, value: !boot.favorites.includes(openPageData.page.id) }),
           },
           {
-            label: openPageData.following ? "Seite nicht mehr folgen" : "Seite folgen",
+            label: openPageData.following ? t("Seite nicht mehr folgen", "Unfollow page") : t("Seite folgen", "Follow page"),
             keywords: "benachrichtigen glocke follow",
             icon: Bell,
             run: () => void act({ action: "page.follow", pageId: openPageData.page.id, follow: !openPageData.following }),
           },
-          { label: "Kommentare öffnen", keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
-          { label: "Seite exportieren", keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
-          { label: "Drucken oder als PDF sichern", keywords: "pdf print drucken", icon: Printer, run: () => window.print() },
-          { label: "Versionsverlauf", keywords: "history versionen wiederherstellen", icon: ClockCounterClockwise, run: () => setHistory(true) },
-          { label: "Teilen", keywords: "share link freigeben", icon: ShareNetwork, run: () => setShare(true) },
+          { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
+          { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
+          { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: () => window.print() },
+          { label: t("Versionsverlauf", "Version history"), keywords: "history versionen wiederherstellen", icon: ClockCounterClockwise, run: () => setHistory(true) },
+          { label: t("Teilen", "Share"), keywords: "share link freigeben", icon: ShareNetwork, run: () => setShare(true) },
         ]
       : []),
   ];
@@ -1208,7 +1224,7 @@ export default function WorkspaceApp({
       )}
       <button
         className="mobile-scrim"
-        aria-label="Navigation schließen"
+        aria-label={t("Navigation schließen", "Close navigation")}
         onClick={() => setMobile(false)}
       />
       <aside className="sidebar">
@@ -1229,7 +1245,7 @@ export default function WorkspaceApp({
           </a>
           <button
             className="icon-button sidebar-hide"
-            title="Navigation schließen"
+            title={t("Navigation schließen", "Close navigation")}
             onClick={() => {
               setMobile(false);
               setDesktopCollapsed(true);
@@ -1248,7 +1264,7 @@ export default function WorkspaceApp({
               {boot.workspace.name}
               <small>
                 {boot.members.length}{" "}
-                {boot.members.length === 1 ? "Mitglied" : "Mitglieder"}
+                {boot.members.length === 1 ? t("Mitglied", "member") : t("Mitglieder", "members")}
               </small>
             </span>
             <CaretDown size={14} />
@@ -1274,7 +1290,7 @@ export default function WorkspaceApp({
                     onSelect={() => setNewWorkspace(true)}
                   >
                     <Plus />
-                    Arbeitsbereich erstellen
+                    {t("Arbeitsbereich erstellen", "Create workspace")}
                   </Dropdown.Item>
                 </>
               )}
@@ -1285,21 +1301,21 @@ export default function WorkspaceApp({
           <nav className="main-nav">
             <button onClick={() => setSearch(true)}>
               <MagnifyingGlass size={19} />
-              Suchen<span className="keycap">⌘ K</span>
+              {t("Suchen", "Search")}<span className="keycap">⌘ K</span>
             </button>
             <button
               className={screen === "home" ? "selected" : ""}
               onClick={() => go("home")}
             >
               <House size={19} />
-              Startseite
+              {t("Startseite", "Home")}
             </button>
             <button
               className={screen === "inbox" ? "selected" : ""}
               onClick={() => go("inbox")}
             >
               <Bell size={19} />
-              Posteingang
+              {t("Posteingang", "Inbox")}
               {boot.notifications.some((n) => !n.read_at) && (
                 <span className="notification-count">
                     {boot.notifications.filter((n) => !n.read_at).length}
@@ -1311,9 +1327,9 @@ export default function WorkspaceApp({
               onClick={() => go("tasks")}
             >
               <CheckSquare size={19} />
-              Meine Aufgaben
+              {t("Meine Aufgaben", "My tasks")}
               {!!boot.dueTasks && (
-                <span className="notification-count" title="Heute fällig oder überfällig">
+                <span className="notification-count" title={t("Heute fällig oder überfällig", "Due today or overdue")}>
                   {boot.dueTasks}
                 </span>
               )}
@@ -1326,17 +1342,17 @@ export default function WorkspaceApp({
               value={treeFilter}
               onChange={(e) => setTreeFilter(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && setTreeFilter("")}
-              placeholder="Seiten filtern"
-              aria-label="Seiten filtern"
+              placeholder={t("Seiten filtern", "Filter pages")}
+              aria-label={t("Seiten filtern", "Filter pages")}
             />
           </div>
           {filterMatches && !filterMatches.size && (
-            <p className="sidebar-empty tree-filter-empty">Keine Seite heißt so.</p>
+            <p className="sidebar-empty tree-filter-empty">{t("Keine Seite heißt so.", "No page has that name.")}</p>
           )}
           {!filterMatches && (favorites.length > 0 || !!boot.favoriteRows?.length) && (
             <section className="nav-section">
               <div className="nav-section-title">
-                Favoriten
+                {t("Favoriten", "Favourites")}
                 <Star size={13} />
               </div>
               {favorites.map((p) => (
@@ -1358,7 +1374,7 @@ export default function WorkspaceApp({
                 <button
                   className="favorite-nav"
                   key={f.rowId}
-                  aria-label={`Eintrag ${f.title}`}
+                  aria-label={t(`Eintrag ${f.title}`, `Record ${f.title}`)}
                   onClick={() =>
                     openPage(f.pageId, { pageId: f.pageId, rowId: f.rowId })
                   }
@@ -1373,9 +1389,9 @@ export default function WorkspaceApp({
             <div
               className="page-selection-bar"
               role="toolbar"
-              aria-label="Seitenauswahl"
+              aria-label={t("Seitenauswahl", "Page selection")}
             >
-              <span>{selectedPages.length} ausgewählt</span>
+              <span>{selectedPages.length} {t("ausgewählt", "selected")}</span>
               <button
                 className="text-button"
                 disabled={!selectedPages.length || bulkBusy}
@@ -1384,24 +1400,24 @@ export default function WorkspaceApp({
                   setBulkDialog("move");
                 }}
               >
-                Verschieben
+                {t("Verschieben", "Move")}
               </button>
               <button
                 className="text-button"
                 disabled={!selectedPages.length || bulkBusy}
                 onClick={() => void bulkPages("duplicate")}
               >
-                Duplizieren
+                {t("Duplizieren", "Duplicate")}
               </button>
               <button
                 className="text-button danger"
                 disabled={!selectedPages.length || bulkBusy}
                 onClick={() => setBulkDialog("delete")}
               >
-                Papierkorb
+                {t("Papierkorb", "Trash")}
               </button>
               <button className="text-button" onClick={clearSelection}>
-                Fertig
+                {t("Fertig", "Done")}
               </button>
             </div>
           )}
@@ -1417,7 +1433,7 @@ export default function WorkspaceApp({
                 <span>
                   <SpaceIcon icon={space.icon} color={space.icon_color} />
                   {space.visibility === "private" && (
-                    <Lock size={12} aria-label="Privater Bereich" />
+                    <Lock size={12} aria-label={t("Privater Bereich", "Private space")} />
                   )}{" "}
                   <span className="space-name" title={space.name}>
                     {space.name}
@@ -1427,7 +1443,7 @@ export default function WorkspaceApp({
                   (canCreate && space.owner_id === boot.user.id)) && (
                   <button
                     className="icon-button"
-                    aria-label={`Bereich ${space.name} verwalten`}
+                    aria-label={t(`Bereich ${space.name} verwalten`, `Manage space ${space.name}`)}
                     onClick={() => setSpaceManager({ space })}
                   >
                     <DotsThree size={16} />
@@ -1436,7 +1452,7 @@ export default function WorkspaceApp({
                 {canCreate && (
                   <button
                     className={`icon-button ${selecting ? "active" : ""}`}
-                    title="Seiten auswählen"
+                    title={t("Seiten auswählen", "Select pages")}
                     aria-pressed={selecting}
                     onClick={() =>
                       selecting ? clearSelection() : setSelecting(true)
@@ -1448,7 +1464,7 @@ export default function WorkspaceApp({
                 {canCreate && (
                   <button
                     className="icon-button"
-                    title={`Seite in ${space.name} hinzufügen`}
+                    title={t(`Seite in ${space.name} hinzufügen`, `Add page in ${space.name}`)}
                     onClick={() => addPage("document", null, space.id)}
                   >
                     <Plus size={14} />
@@ -1457,14 +1473,14 @@ export default function WorkspaceApp({
               </div>
               {tree(null, space.id)}
               {!activePages.some((p) => p.space_id === space.id) && (
-                <span className="sidebar-empty">Noch keine Seiten</span>
+                <span className="sidebar-empty">{t("Noch keine Seiten", "No pages yet")}</span>
               )}
             </section>
           ))}
           {canCreate && (
             <button className="add-space" onClick={() => setNewSpace(true)}>
               <Plus size={15} />
-              Bereich hinzufügen
+              {t("Bereich hinzufügen", "Add space")}
             </button>
           )}
         </div>
@@ -1473,39 +1489,39 @@ export default function WorkspaceApp({
               keeps the height. */}
           <div className="sidebar-tools">
             <button
-              aria-label="Vorlagen"
-              title="Vorlagen"
+              aria-label={t("Vorlagen", "Templates")}
+              title={t("Vorlagen", "Templates")}
               onClick={() => setTemplates(true)}
             >
               <SquaresFour size={18} />
             </button>
             <button
-              aria-label="Medien"
-              title="Medien"
+              aria-label={t("Medien", "Media")}
+              title={t("Medien", "Media")}
               className={screen === "media" ? "selected" : ""}
               onClick={() => go("media")}
             >
               <Images size={18} />
             </button>
             <button
-              aria-label="Graph"
-              title="Graph der Verlinkungen"
+              aria-label={t("Graph", "Graph")}
+              title={t("Graph der Verlinkungen", "Graph of links")}
               className={screen === "graph" ? "selected" : ""}
               onClick={() => go("graph")}
             >
               <Graph size={18} />
             </button>
             <button
-              aria-label="Papierkorb"
-              title="Papierkorb"
+              aria-label={t("Papierkorb", "Trash")}
+              title={t("Papierkorb", "Trash")}
               className={screen === "trash" ? "selected" : ""}
               onClick={() => go("trash")}
             >
               <Trash size={18} />
             </button>
             <button
-              aria-label="Einstellungen"
-              title="Einstellungen"
+              aria-label={t("Einstellungen", "Settings")}
+              title={t("Einstellungen", "Settings")}
               className={screen === "settings" ? "selected" : ""}
               onClick={() => go("settings")}
             >
@@ -1513,8 +1529,8 @@ export default function WorkspaceApp({
             </button>
             {boot.user.isAdmin && (
               <button
-                aria-label="Administration"
-                title="Administration"
+                aria-label={t("Administration", "Administration")}
+                title={t("Administration", "Administration")}
                 className={screen === "admin" ? "selected" : ""}
                 onClick={() => go("admin")}
               >
@@ -1526,10 +1542,10 @@ export default function WorkspaceApp({
             <Avatar name={boot.user.name} userId={boot.user.id} />
             <span>
               {boot.user.name}
-              <small>{online ? "Arbeitsbereich verbunden" : "Offline"}</small>
+              <small>{online ? t("Arbeitsbereich verbunden", "Workspace connected") : t("Offline", "Offline")}</small>
             </span>
             <Dropdown.Root>
-              <Dropdown.Trigger className="icon-button" aria-label="Kontomenü">
+              <Dropdown.Trigger className="icon-button" aria-label={t("Kontomenü", "Account menu")}>
                 <DotsThree size={22} />
               </Dropdown.Trigger>
               <Dropdown.Portal>
@@ -1541,7 +1557,7 @@ export default function WorkspaceApp({
                     }}
                   >
                     {dark ? <Sun /> : <Moon />}
-                    {dark ? "Helles Design" : "Dunkles Design"}
+                    {dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme")}
                   </Dropdown.Item>
                   <Dropdown.Item
                     className="dropdown-item"
@@ -1552,7 +1568,7 @@ export default function WorkspaceApp({
                     }}
                   >
                     <SignOut />
-                    Abmelden
+                    {t("Abmelden", "Sign out")}
                   </Dropdown.Item>
                 </Dropdown.Content>
               </Dropdown.Portal>
@@ -1564,12 +1580,10 @@ export default function WorkspaceApp({
         {boot.user.demo && (
           <div className="demo-banner" role="note">
             <span>
-              <strong>Demo</strong> – probier alles aus. Dein Arbeitsbereich
-              wird gelöscht, sobald du die Demo beendest oder 45 Minuten nichts
-              tust.
+              <strong>{t("Demo", "Demo")}</strong> {t("– probier alles aus. Dein Arbeitsbereich wird gelöscht, sobald du die Demo beendest oder 45 Minuten nichts tust.", "– try everything. Your workspace is deleted as soon as you end the demo or do nothing for 45 minutes.")}
             </span>
             <a className="button primary" href="/api/auth/login?register=1">
-              Registrieren
+              {t("Registrieren", "Sign up")}
             </a>
             <button
               type="button"
@@ -1579,7 +1593,7 @@ export default function WorkspaceApp({
                 location.assign("/");
               }}
             >
-              Demo beenden
+              {t("Demo beenden", "End demo")}
             </button>
           </div>
         )}
@@ -1590,15 +1604,14 @@ export default function WorkspaceApp({
         )}
         {!online && (
           <div className="offline-banner" role="status">
-            Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen
-            werden später abgeglichen.
+            {t("Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen werden später abgeglichen.", "Offline – you see the last saved state. Text changes are synced later.")}
           </div>
         )}
         <header className="topbar">
           <div className="breadcrumb">
             <button
               className="icon-button mobile-menu"
-              aria-label="Navigation öffnen"
+              aria-label={t("Navigation öffnen", "Open navigation")}
               onClick={() => {
                 setMobile(true);
                 setDesktopCollapsed(false);
@@ -1617,15 +1630,15 @@ export default function WorkspaceApp({
               <span>
                 {
                   {
-                    home: "Startseite",
-                    trash: "Papierkorb",
-                    inbox: "Posteingang",
-                    tasks: "Meine Aufgaben",
-                    graph: "Graph",
-                    media: "Medien",
-                    settings: "Einstellungen",
-                    admin: "Administration",
-                    page: "Seite",
+                    home: t("Startseite", "Home"),
+                    trash: t("Papierkorb", "Trash"),
+                    inbox: t("Posteingang", "Inbox"),
+                    tasks: t("Meine Aufgaben", "My tasks"),
+                    graph: t("Graph", "Graph"),
+                    media: t("Medien", "Media"),
+                    settings: t("Einstellungen", "Settings"),
+                    admin: t("Administration", "Administration"),
+                    page: t("Seite", "Page"),
                   }[screen]
                 }
               </span>
@@ -1635,7 +1648,7 @@ export default function WorkspaceApp({
             <div className="page-top-actions">
               <span className="save-status">
                 {online ? <CloudCheck size={15} /> : <WifiSlash size={15} />}
-                <span>{status}</span>
+                <span>{statusLabel(status)}</span>
               </span>
               <div className="presence">
                 {data.present
@@ -1646,7 +1659,7 @@ export default function WorkspaceApp({
                   ))}
               </div>
               <button
-                title="Kommentare"
+                title={t("Kommentare", "Comments")}
                 className={`icon-button ${comments ? "active" : ""}`}
                 onClick={() => setComments(!comments)}
               >
@@ -1664,7 +1677,7 @@ export default function WorkspaceApp({
               )}
               <button
                 className={`icon-button ${boot.favorites.includes(data.page.id) ? "starred" : ""}`}
-                title="Favorit"
+                title={t("Favorit", "Favourite")}
                 onClick={() =>
                   act({
                     action: "favorite",
@@ -1685,12 +1698,12 @@ export default function WorkspaceApp({
                 onClick={() => setShare(true)}
               >
                 <ShareNetwork size={15} />
-                Teilen
+                {t("Teilen", "Share")}
               </button>
               <Dropdown.Root>
                 <Dropdown.Trigger
                   className="icon-button"
-                  aria-label="Seitenaktionen"
+                  aria-label={t("Seitenaktionen", "Page actions")}
                 >
                   <DotsThree size={24} />
                 </Dropdown.Trigger>
@@ -1703,14 +1716,14 @@ export default function WorkspaceApp({
                       }}
                     >
                       <Flag />
-                      Icon ändern
+                      {t("Icon ändern", "Change icon")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setCoverPicker(true)}
                     >
                       <SquaresFour />
-                      Cover ändern
+                      {t("Cover ändern", "Change cover")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
@@ -1723,7 +1736,7 @@ export default function WorkspaceApp({
                       }
                     >
                       <ArrowSquareOut />
-                      Volle Breite {data.page.full_width ? "✓" : ""}
+                      {t("Volle Breite", "Full width")}{" "}{data.page.full_width ? "✓" : ""}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
@@ -1738,7 +1751,7 @@ export default function WorkspaceApp({
                       }
                     >
                       <FileText />
-                      Schrift wechseln
+                      {t("Schrift wechseln", "Change font")}
                     </Dropdown.Item>
                     <Dropdown.Separator className="dropdown-separator" />
                     <Dropdown.Item
@@ -1752,42 +1765,42 @@ export default function WorkspaceApp({
                       }}
                     >
                       <Copy />
-                      Duplizieren
+                      {t("Duplizieren", "Duplicate")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setMove(true)}
                     >
                       <ArrowRight />
-                      Verschieben
+                      {t("Verschieben", "Move")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setTemplateName(true)}
                     >
                       <SquaresFour />
-                      Als Vorlage speichern
+                      {t("Als Vorlage speichern", "Save as template")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setPageExport(true)}
                     >
                       <DownloadSimple />
-                      Exportieren
+                      {t("Exportieren", "Export")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => window.print()}
                     >
                       <FileText />
-                      Drucken / PDF
+                      {t("Drucken / PDF", "Print / PDF")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setHistory(true)}
                     >
                       <Clock />
-                      Versionsverlauf
+                      {t("Versionsverlauf", "Version history")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
@@ -1800,7 +1813,7 @@ export default function WorkspaceApp({
                       }
                     >
                       <Lock />
-                      {data.page.locked ? "Seite entsperren" : "Seite sperren"}
+                      {data.page.locked ? t("Seite entsperren", "Unlock page") : t("Seite sperren", "Lock page")}
                     </Dropdown.Item>
                     <Dropdown.Separator className="dropdown-separator" />
                     <Dropdown.Item
@@ -1814,7 +1827,7 @@ export default function WorkspaceApp({
                       }}
                     >
                       <Trash />
-                      In den Papierkorb
+                      {t("In den Papierkorb", "Move to trash")}
                     </Dropdown.Item>
                   </Dropdown.Content>
                 </Dropdown.Portal>
@@ -1823,7 +1836,7 @@ export default function WorkspaceApp({
           ) : (
             <span className="topbar-note">
               <span className="subtle-dot" />
-              Dein Raum für Ideen
+              {t("Dein Raum für Ideen", "Your room for ideas")}
             </span>
           )}
         </header>
@@ -1831,24 +1844,23 @@ export default function WorkspaceApp({
           {screen === "home" && (
             <div className="home-content">
               <div className="home-greeting">
-                <span className="eyebrow">DEIN ARBEITSBEREICH</span>
+                <span className="eyebrow">{t("DEIN ARBEITSBEREICH", "YOUR WORKSPACE")}</span>
                 <h1>
-                  {greeting(clock)}, {boot.user.name.split(" ")[0]}
+                  {greeting(clock, t)}, {boot.user.name.split(" ")[0]}
                   <span className="greeting-dot">.</span>
                 </h1>
                 <p>
-                  Gute Ideen beginnen hier. Mach dort weiter, wo du aufgehört
-                  hast.
+                  {t("Gute Ideen beginnen hier. Mach dort weiter, wo du aufgehört hast.", "Good ideas start here. Pick up where you left off.")}
                 </p>
               </div>
               <section className="recent-section">
                 <div className="section-heading">
                   <h2>
                     <Clock size={19} />
-                    Zuletzt bearbeitet
+                    {t("Zuletzt bearbeitet", "Recently edited")}
                   </h2>
                   <span>
-                    {activePages.length} Seiten in deinem Arbeitsbereich
+                    {activePages.length} {t("Seiten in deinem Arbeitsbereich", "pages in your workspace")}
                   </span>
                 </div>
                 <div className="recent-grid">
@@ -1887,7 +1899,7 @@ export default function WorkspaceApp({
                           <strong>{p.title}</strong>
                         </div>
                         <small>
-                          Bearbeitet {relativeTime(p.updated_at, clock)}
+                          {t("Bearbeitet", "Edited")}{" "}{relativeTime(p.updated_at, clock, locale)}
                         </small>
                       </button>
                     ))}
@@ -1900,7 +1912,7 @@ export default function WorkspaceApp({
                 <section className="visited-section">
                   <h2>
                     <Eye size={17} />
-                    Zuletzt angesehen
+                    {t("Zuletzt angesehen", "Recently viewed")}
                   </h2>
                   <div className="visited-list">
                     {(boot.recentVisits || []).flatMap((visit) => {
@@ -1913,7 +1925,7 @@ export default function WorkspaceApp({
                               onClick={() => openPage(p.id)}
                             >
                               <PageIcon name={p.icon} size={16} />
-                              <span>{p.title || "Ohne Titel"}</span>
+                              <span>{p.title || t("Ohne Titel", "Untitled")}</span>
                               <small>{ago(visit.seenAt, clock)}</small>
                             </button>,
                           ]
@@ -1923,7 +1935,7 @@ export default function WorkspaceApp({
                 </section>
               )}
               <section className="quick-section">
-                <h2>Was hast du heute vor?</h2>
+                <h2>{t("Was hast du heute vor?", "What are you up to today?")}</h2>
                 <div className="quick-actions">
                   <button
                     disabled={clock === null || !canCreate}
@@ -1933,8 +1945,8 @@ export default function WorkspaceApp({
                       <FileText size={25} />
                     </span>
                     <span>
-                      <strong>Eine Idee festhalten</strong>
-                      <small>Eine leere Seite voller Möglichkeiten</small>
+                      <strong>{t("Eine Idee festhalten", "Capture an idea")}</strong>
+                      <small>{t("Eine leere Seite voller Möglichkeiten", "A blank page full of possibilities")}</small>
                     </span>
                     <Plus size={20} />
                   </button>
@@ -1946,8 +1958,8 @@ export default function WorkspaceApp({
                       <Table size={25} />
                     </span>
                     <span>
-                      <strong>Ein Projekt planen</strong>
-                      <small>Aufgaben, Termine und Überblick</small>
+                      <strong>{t("Ein Projekt planen", "Plan a project")}</strong>
+                      <small>{t("Aufgaben, Termine und Überblick", "Tasks, dates and an overview")}</small>
                     </span>
                     <Plus size={20} />
                   </button>
@@ -1957,7 +1969,7 @@ export default function WorkspaceApp({
                 <div className="section-heading">
                   <h2>
                     <Folder size={19} />
-                    In deinem Arbeitsbereich
+                    {t("In deinem Arbeitsbereich", "In your workspace")}
                   </h2>
                   {canCreate && (
                     <button
@@ -1966,7 +1978,7 @@ export default function WorkspaceApp({
                       onClick={() => addPage()}
                     >
                       <Plus size={16} />
-                      Neue Seite
+                      {t("Neue Seite", "New page")}
                     </button>
                   )}
                 </div>
@@ -1983,7 +1995,7 @@ export default function WorkspaceApp({
                       </span>
                       <strong>{p.title}</strong>
                       <span>
-                        {p.kind === "database" ? "Datenbank" : "Dokument"}
+                        {p.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")}
                       </span>
                       <ArrowUpRight size={17} />
                     </button>
@@ -1991,8 +2003,8 @@ export default function WorkspaceApp({
               </section>
               <div className="home-footnote">
                 <Stack size={16} />
-                <span>Weniger suchen. Mehr bewegen.</span>
-                <span>⌘ K zum schnellen Finden</span>
+                <span>{t("Weniger suchen. Mehr bewegen.", "Search less. Get more done.")}</span>
+                <span>{t("⌘ K zum schnellen Finden", "⌘ K to find things fast")}</span>
               </div>
             </div>
           )}
@@ -2008,7 +2020,7 @@ export default function WorkspaceApp({
                 />
               </div>
             ) : (
-              <div className="loading-content">Seite nicht verfügbar.</div>
+              <div className="loading-content">{t("Seite nicht verfügbar.", "Page not available.")}</div>
             )
           ) : (
             screen === "page" &&
@@ -2029,7 +2041,7 @@ export default function WorkspaceApp({
                       {imageFileId(data.page.cover) && (
                         <img
                           src={data.page.cover}
-                          alt="Seiten-Cover"
+                          alt={t("Seiten-Cover", "Page cover")}
                           style={{
                             objectPosition: `50% ${data.page.cover_position ?? 50}%`,
                           }}
@@ -2040,7 +2052,7 @@ export default function WorkspaceApp({
                           className="button cover-change"
                           onClick={() => setCoverPicker(true)}
                         >
-                          Cover ändern
+                          {t("Cover ändern", "Change cover")}
                         </button>
                       )}
                     </div>
@@ -2048,7 +2060,7 @@ export default function WorkspaceApp({
                   <div className="document-header">
                     <button
                       className="large-page-icon"
-                      title="Seiten-Icon ändern"
+                      title={t("Seiten-Icon ändern", "Change page icon")}
                       onClick={() => editable && setIconPicker(true)}
                     >
                       <PageIcon
@@ -2061,13 +2073,13 @@ export default function WorkspaceApp({
                         className="add-cover text-button"
                         onClick={() => setCoverPicker(true)}
                       >
-                        Cover hinzufügen
+                        {t("Cover hinzufügen", "Add cover")}
                       </button>
                     )}
                     <input
                       key={`${data.page.id}-title`}
                       className="page-title"
-                      aria-label="Seitentitel"
+                      aria-label={t("Seitentitel", "Page title")}
                       defaultValue={data.page.title}
                       readOnly={!editable}
                       onBlur={(e) => {
@@ -2085,7 +2097,7 @@ export default function WorkspaceApp({
                     {data.page.locked === 1 && (
                       <div className="locked-notice">
                         <Lock size={14} />
-                        Diese Seite ist gesperrt.
+                        {t("Diese Seite ist gesperrt.", "This page is locked.")}
                       </div>
                     )}
                   </div>
@@ -2108,9 +2120,9 @@ export default function WorkspaceApp({
                               (c) => c.pageId === data.page.id,
                             ).length
                           }{" "}
-                          Offline-Änderungen warten auf die Verbindung
+                          {t("Offline-Änderungen warten auf die Verbindung", "Offline changes are waiting for the connection")}
                           {offlineQueue.syncing
-                            ? " · werden übertragen …"
+                            ? t(" · werden übertragen …", " · being sent …")
                             : "."}
                         </p>
                       )}
@@ -2219,7 +2231,7 @@ export default function WorkspaceApp({
                     )}
                     {data.backlinks?.length > 0 && (
                       <>
-                        <h3>Verlinkt von</h3>
+                        <h3>{t("Verlinkt von", "Linked from")}</h3>
                         {data.backlinks.map((p) => (
                           <button key={p.id} onClick={() => openPage(p.id)}>
                             <PageIcon name={p.icon} />
@@ -2250,7 +2262,7 @@ export default function WorkspaceApp({
                         }
                       >
                         <Plus size={16} />
-                        Unterseite hinzufügen
+                        {t("Unterseite hinzufügen", "Add sub-page")}
                       </button>
                     )}
                   </div>
@@ -2258,10 +2270,10 @@ export default function WorkspaceApp({
                 {comments && (
                   <aside className="comments-panel">
                     <header>
-                      <h3>Kommentare</h3>
+                      <h3>{t("Kommentare", "Comments")}</h3>
                       <button
                         className="icon-button"
-                        aria-label="Kommentare schließen"
+                        aria-label={t("Kommentare schließen", "Close comments")}
                         onClick={() => setComments(false)}
                       >
                         <X />
@@ -2274,7 +2286,7 @@ export default function WorkspaceApp({
                       textComments={data.page.kind === "document"}
                       canResolve={data.role !== "viewer"}
                       act={act}
-                      time={(value) => relativeTime(value, clock)}
+                      time={(value) => relativeTime(value, clock, locale)}
                     />
                     <form
                       onSubmit={async (e) => {
@@ -2291,10 +2303,10 @@ export default function WorkspaceApp({
                         required
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
-                        placeholder="Schreibe einen Kommentar …"
+                        placeholder={t("Schreibe einen Kommentar …", "Write a comment …")}
                       />
                       <button className="button primary compact">
-                        Kommentieren
+                        {t("Kommentieren", "Comment")}
                       </button>
                     </form>
                   </aside>
@@ -2306,15 +2318,15 @@ export default function WorkspaceApp({
             <div className="utility-content">
               <div className="utility-title">
                 <Trash size={30} />
-                <h1>Papierkorb</h1>
-                <p>Gelöschte Seiten und Bereiche kannst du wiederherstellen.</p>
+                <h1>{t("Papierkorb", "Trash")}</h1>
+                <p>{t("Gelöschte Seiten und Bereiche kannst du wiederherstellen.", "You can restore deleted pages and spaces.")}</p>
               </div>
               {(boot.trashedSpaces || []).map((space) => (
                 <div className="utility-row trash-space" key={space.id}>
                   <SpaceIcon icon={space.icon} color={space.icon_color} />
                   <strong>
                     {space.name}
-                    <small>Bereich mit Seiten</small>
+                    <small>{t("Bereich mit Seiten", "Space with pages")}</small>
                   </strong>
                   <div className="lifecycle-buttons">
                     <button
@@ -2327,13 +2339,13 @@ export default function WorkspaceApp({
                         })
                       }
                     >
-                      Bereich wiederherstellen
+                      {t("Bereich wiederherstellen", "Restore space")}
                     </button>
                     <button
                       className="button danger compact"
                       onClick={() => setSpaceManager({ space, purge: true })}
                     >
-                      Endgültig löschen
+                      {t("Endgültig löschen", "Delete permanently")}
                     </button>
                   </div>
                 </div>
@@ -2344,7 +2356,7 @@ export default function WorkspaceApp({
                   <div className="utility-row" key={p.id}>
                     <PageIcon name={p.icon} />
                     <strong>{p.title}</strong>
-                    <span>{relativeTime(p.deleted_at!, clock)}</span>
+                    <span>{relativeTime(p.deleted_at!, clock, locale)}</span>
                     <button
                       className="button compact"
                       onClick={() =>
@@ -2352,7 +2364,7 @@ export default function WorkspaceApp({
                       }
                     >
                       <ArrowCounterClockwise />
-                      Wiederherstellen
+                      {t("Wiederherstellen", "Restore")}
                     </button>
                   </div>
                 ))}
@@ -2367,8 +2379,8 @@ export default function WorkspaceApp({
                 !boot.trashedSpaces?.length && (
                   <div className="empty-state">
                     <Trash size={38} />
-                    <h3>Alles aufgeräumt</h3>
-                    <p>Dein Papierkorb ist leer.</p>
+                    <h3>{t("Alles aufgeräumt", "All tidy")}</h3>
+                    <p>{t("Dein Papierkorb ist leer.", "Your trash is empty.")}</p>
                   </div>
                 )}
             </div>
@@ -2401,15 +2413,15 @@ export default function WorkspaceApp({
             <div className="utility-content">
               <div className="utility-title">
                 <Bell size={30} />
-                <h1>Posteingang</h1>
-                <p>Neuigkeiten aus deinem Arbeitsbereich.</p>
+                <h1>{t("Posteingang", "Inbox")}</h1>
+                <p>{t("Neuigkeiten aus deinem Arbeitsbereich.", "News from your workspace.")}</p>
               </div>
               <div className="inbox-toolbar">
-                <div role="radiogroup" aria-label="Benachrichtigungen filtern">
+                <div role="radiogroup" aria-label={t("Benachrichtigungen filtern", "Filter notifications")}>
                   {(
                     [
-                      ["all", "Alle"],
-                      ["unread", "Ungelesen"],
+                      ["all", t("Alle", "All")],
+                      ["unread", t("Ungelesen", "Unread")],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -2430,7 +2442,7 @@ export default function WorkspaceApp({
                   disabled={!boot.notifications.some((n) => !n.read_at)}
                   onClick={() => void act({ action: "notification.read" })}
                 >
-                  Alle als gelesen markieren
+                  {t("Alle als gelesen markieren", "Mark all as read")}
                 </button>
               </div>
               {boot.notifications
@@ -2458,10 +2470,10 @@ export default function WorkspaceApp({
                       <ChatCircle size={22} />
                       <span>
                         {!n.read_at && (
-                          <span className="unread-dot" aria-label="Ungelesen" />
+                          <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />
                         )}
                         {n.body}
-                        <small>{relativeTime(n.created_at, clock)}</small>
+                        <small>{relativeTime(n.created_at, clock, locale)}</small>
                       </span>
                       <ArrowUpRight />
                     </button>
@@ -2477,12 +2489,12 @@ export default function WorkspaceApp({
                         }
                       >
                         {n.read_at
-                          ? "Als ungelesen markieren"
-                          : "Als gelesen markieren"}
+                          ? t("Als ungelesen markieren", "Mark as unread")
+                          : t("Als gelesen markieren", "Mark as read")}
                       </button>
                       <button
                         className="text-button"
-                        aria-label={`Benachrichtigung entfernen: ${n.body}`}
+                        aria-label={t(`Benachrichtigung entfernen: ${n.body}`, `Remove notification: ${n.body}`)}
                         onClick={() =>
                           void act({
                             action: "notification.delete",
@@ -2490,7 +2502,7 @@ export default function WorkspaceApp({
                           })
                         }
                       >
-                        Entfernen
+                        {t("Entfernen", "Remove")}
                       </button>
                     </div>
                   </div>
@@ -2498,13 +2510,13 @@ export default function WorkspaceApp({
               {inboxFilter === "unread" &&
                 !!boot.notifications.length &&
                 !boot.notifications.some((n) => !n.read_at) && (
-                  <p className="muted">Keine ungelesenen Benachrichtigungen.</p>
+                  <p className="muted">{t("Keine ungelesenen Benachrichtigungen.", "No unread notifications.")}</p>
                 )}
               {!boot.notifications.length && (
                 <div className="empty-state">
                   <Bell size={38} />
-                  <h3>Du bist auf dem Laufenden</h3>
-                  <p>Neue Kommentare erscheinen hier.</p>
+                  <h3>{t("Du bist auf dem Laufenden", "You are all caught up")}</h3>
+                  <p>{t("Neue Kommentare erscheinen hier.", "New comments appear here.")}</p>
                 </div>
               )}
             </div>
@@ -2544,7 +2556,7 @@ export default function WorkspaceApp({
       <Modal
         open={bulkDialog === "move"}
         onClose={() => setBulkDialog(null)}
-        title="Seiten verschieben"
+        title={t("Seiten verschieben", "Move pages")}
       >
         <form
           onSubmit={(e) => {
@@ -2553,13 +2565,13 @@ export default function WorkspaceApp({
           }}
         >
           <label>
-            Ziel
+            {t("Ziel", "Destination")}
             <Select
-              aria-label="Ziel"
+              aria-label={t("Ziel", "Destination")}
               value={bulkTarget}
               onChange={(e) => setBulkTarget(e.target.value)}
             >
-              <option value="">Ziel wählen …</option>
+              <option value="">{t("Ziel wählen …", "Choose destination …")}</option>
               {boot.spaces.map((sp) => (
                 <optgroup key={sp.id} label={sp.name}>
                   <option value={`space:${sp.id}`}>
@@ -2585,7 +2597,7 @@ export default function WorkspaceApp({
             </Select>
           </label>
           <p className="muted">
-            {selectedPages.length} Seiten mit ihren Unterseiten verschieben.
+            {selectedPages.length} {t("Seiten mit ihren Unterseiten verschieben.", "Move pages with their sub-pages.")}
           </p>
           <div className="modal-actions">
             <button
@@ -2593,13 +2605,13 @@ export default function WorkspaceApp({
               className="button"
               onClick={() => setBulkDialog(null)}
             >
-              Abbrechen
+              {t("Abbrechen", "Cancel")}
             </button>
             <button
               className="button primary"
               disabled={!bulkTarget || bulkBusy}
             >
-              Verschieben
+              {t("Verschieben", "Move")}
             </button>
           </div>
         </form>
@@ -2607,22 +2619,21 @@ export default function WorkspaceApp({
       <Modal
         open={bulkDialog === "delete"}
         onClose={() => setBulkDialog(null)}
-        title="Seiten in den Papierkorb"
+        title={t("Seiten in den Papierkorb", "Move pages to trash")}
       >
         <p>
-          {selectedPages.length} Seiten samt Unterseiten in den Papierkorb
-          verschieben? Freigaben und Veröffentlichungen werden beendet.
+          {selectedPages.length} {t("Seiten samt Unterseiten in den Papierkorb verschieben? Freigaben und Veröffentlichungen werden beendet.", "Move the pages and their sub-pages to the trash? Shares and publications end.")}
         </p>
         <div className="modal-actions">
           <button className="button" onClick={() => setBulkDialog(null)}>
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
           <button
             className="button danger"
             disabled={bulkBusy}
             onClick={() => void bulkPages("delete")}
           >
-            In den Papierkorb
+            {t("In den Papierkorb", "Move to trash")}
           </button>
         </div>
       </Modal>
@@ -2633,14 +2644,14 @@ export default function WorkspaceApp({
           setQuery("");
           setSearchName(null);
         }}
-        title="Schnellsuche"
+        title={t("Schnellsuche", "Quick search")}
       >
         <div className="command-search">
           <MagnifyingGlass size={22} />
           <input
             autoFocus
-            aria-label="Suchen oder Befehl"
-            placeholder="Suchen … oder > für Befehle"
+            aria-label={t("Suchen oder Befehl", "Search or command")}
+            placeholder={t("Suchen … oder > für Befehle", "Search … or > for commands")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -2661,16 +2672,16 @@ export default function WorkspaceApp({
           <kbd>esc</kbd>
         </div>
         <div className="search-filters">
-          <div role="radiogroup" aria-label="Suchergebnisse filtern">
+          <div role="radiogroup" aria-label={t("Suchergebnisse filtern", "Filter search results")}>
             {(
               [
-                ["all", "Alles"],
-                ["document", "Dokumente"],
-                ["database", "Datenbanken"],
-                ["whiteboard", "Whiteboards"],
-                ["row", "Einträge"],
-                ["comment", "Kommentare"],
-                ["file", "Dateien"],
+                ["all", t("Alles", "Everything")],
+                ["document", t("Dokumente", "Documents")],
+                ["database", t("Datenbanken", "Databases")],
+                ["whiteboard", t("Whiteboards", "Whiteboards")],
+                ["row", t("Einträge", "Records")],
+                ["comment", t("Kommentare", "Comments")],
+                ["file", t("Dateien", "Files")],
               ] as const
             ).map(([kind, label]) => (
               <button
@@ -2685,11 +2696,11 @@ export default function WorkspaceApp({
             ))}
           </div>
           <Select
-            aria-label="Bereich"
+            aria-label={t("Bereich", "Space")}
             value={searchSpace}
             onChange={(e) => setSearchSpace(e.target.value)}
           >
-            <option value="">Alle Bereiche</option>
+            <option value="">{t("Alle Bereiche", "All spaces")}</option>
             {boot.spaces.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -2701,7 +2712,7 @@ export default function WorkspaceApp({
               className="button compact"
               onClick={() => setSearchName(query.trim().slice(0, 120))}
             >
-              <BookmarkSimple size={15} /> Suche speichern
+              <BookmarkSimple size={15} /> {t("Suche speichern", "Save search")}
             </button>
           )}
         </div>
@@ -2722,7 +2733,7 @@ export default function WorkspaceApp({
             }}
           >
             <input
-              aria-label="Name der gespeicherten Suche"
+              aria-label={t("Name der gespeicherten Suche", "Name of the saved search")}
               value={searchName}
               maxLength={120}
               autoFocus
@@ -2732,14 +2743,14 @@ export default function WorkspaceApp({
               className="button compact primary"
               disabled={!searchName.trim()}
             >
-              Speichern
+              {t("Speichern", "Save")}
             </button>
             <button
               type="button"
               className="button compact"
               onClick={() => setSearchName(null)}
             >
-              Abbrechen
+              {t("Abbrechen", "Cancel")}
             </button>
           </form>
         )}
@@ -2747,7 +2758,7 @@ export default function WorkspaceApp({
           <div
             className="saved-searches"
             role="list"
-            aria-label="Gespeicherte Suchen"
+            aria-label={t("Gespeicherte Suchen", "Saved searches")}
           >
             {boot.savedSearches.map((s) => (
               <span className="chip saved-search" role="listitem" key={s.id}>
@@ -2765,7 +2776,7 @@ export default function WorkspaceApp({
                   <BookmarkSimple size={13} /> {s.name}
                 </button>
                 <button
-                  aria-label={`Gespeicherte Suche ${s.name} löschen`}
+                  aria-label={t(`Gespeicherte Suche ${s.name} löschen`, `Delete saved search ${s.name}`)}
                   onClick={() =>
                     void act({ action: "search.delete", searchId: s.id })
                   }
@@ -2777,8 +2788,8 @@ export default function WorkspaceApp({
           </div>
         )}
         {shownActions.length > 0 && (
-          <div className="command-actions" aria-label="Aktionen">
-            <small>Aktionen</small>
+          <div className="command-actions" aria-label={t("Aktionen", "Actions")}>
+            <small>{t("Aktionen", "Actions")}</small>
             {shownActions.map((action, i) => (
               <button
                 key={action.label}
@@ -2812,10 +2823,10 @@ export default function WorkspaceApp({
                 {p.pageTitle && (
                   <small className="search-context">
                     {p.kind === "comment"
-                      ? `Kommentar in ${p.pageTitle}`
+                      ? t(`Kommentar in ${p.pageTitle}`, `Comment in ${p.pageTitle}`)
                       : p.kind === "file"
-                        ? `Datei in ${p.pageTitle}`
-                        : `Eintrag in ${p.pageTitle}`}
+                        ? t(`Datei in ${p.pageTitle}`, `File in ${p.pageTitle}`)
+                        : t(`Eintrag in ${p.pageTitle}`, `Record in ${p.pageTitle}`)}
                   </small>
                 )}
                 <small>
@@ -2830,12 +2841,12 @@ export default function WorkspaceApp({
             </button>
           ))}
           {!searchResults.length && !shownActions.length && (
-            <div className="empty-state small">Nichts gefunden.</div>
+            <div className="empty-state small">{t("Nichts gefunden.", "Nothing found.")}</div>
           )}
         </div>
         )}
       </Modal>
-      <Modal open={create} onClose={() => setCreate(false)} title="Neue Seite">
+      <Modal open={create} onClose={() => setCreate(false)} title={t("Neue Seite", "New page")}>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -2844,7 +2855,7 @@ export default function WorkspaceApp({
               workspaceId: boot.workspace.id,
               spaceId,
               parentId: parent,
-              title: newTitle || "Ohne Titel",
+              title: newTitle || t("Ohne Titel", "Untitled"),
               kind: newKind,
               starterTemplate,
             });
@@ -2855,12 +2866,12 @@ export default function WorkspaceApp({
           }}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               autoFocus
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Wie heißt deine Seite?"
+              placeholder={t("Wie heißt deine Seite?", "What is your page called?")}
             />
           </label>
           <div className="type-picker">
@@ -2873,8 +2884,8 @@ export default function WorkspaceApp({
               }}
             >
               <FileText size={26} />
-              <strong>Dokument</strong>
-              <small>Notizen, Wissen und Ideen</small>
+              <strong>{t("Dokument", "Document")}</strong>
+              <small>{t("Notizen, Wissen und Ideen", "Notes, knowledge and ideas")}</small>
             </button>
             <button
               type="button"
@@ -2885,8 +2896,8 @@ export default function WorkspaceApp({
               }}
             >
               <Table size={26} />
-              <strong>Datenbank</strong>
-              <small>Aufgaben und strukturierte Daten</small>
+              <strong>{t("Datenbank", "Database")}</strong>
+              <small>{t("Aufgaben und strukturierte Daten", "Tasks and structured data")}</small>
             </button>
             <button
               type="button"
@@ -2897,8 +2908,8 @@ export default function WorkspaceApp({
               }}
             >
               <PresentationChart size={26} />
-              <strong>Whiteboard</strong>
-              <small>Ideen, Diagramme und Workshops</small>
+              <strong>{t("Whiteboard", "Whiteboard")}</strong>
+              <small>{t("Ideen, Diagramme und Workshops", "Ideas, diagrams and workshops")}</small>
             </button>
             <button
               type="button"
@@ -2909,12 +2920,12 @@ export default function WorkspaceApp({
               }}
             >
               <Notebook size={26} />
-              <strong>Journal</strong>
-              <small>Jeden Tag eine Seite, offene Aufgaben wandern mit</small>
+              <strong>{t("Journal", "Journal")}</strong>
+              <small>{t("Jeden Tag eine Seite, offene Aufgaben wandern mit", "A page every day, open tasks move along")}</small>
             </button>
           </div>
           <label>
-            Bereich
+            {t("Bereich", "Space")}
             <Select
               value={spaceId}
               onChange={(e) => {
@@ -2935,9 +2946,9 @@ export default function WorkspaceApp({
               className="button"
               onClick={() => setCreate(false)}
             >
-              Abbrechen
+              {t("Abbrechen", "Cancel")}
             </button>
-            <button className="button primary">Seite erstellen</button>
+            <button className="button primary">{t("Seite erstellen", "Create page")}</button>
           </div>
         </form>
       </Modal>
@@ -2948,14 +2959,13 @@ export default function WorkspaceApp({
         }
         resolve={offlineQueue.resolve}
       />
-      <Modal open={share} onClose={() => setShare(false)} title="Seite teilen">
+      <Modal open={share} onClose={() => setShare(false)} title={t("Seite teilen", "Share page")}>
         {data && (
           <>
             <div className="share-members">
-              <h3>Zugriff im Arbeitsbereich</h3>
+              <h3>{t("Zugriff im Arbeitsbereich", "Access in the workspace")}</h3>
               <p className="muted">
-                Die Rechte des Bereichs und übergeordneter Seiten gelten auch
-                hier.
+                {t("Die Rechte des Bereichs und übergeordneter Seiten gelten auch hier.", "The permissions of the space and parent pages apply here too.")}
               </p>
               {boot.members.map((m) => (
                 <div className="member-row" key={m.id}>
@@ -2966,7 +2976,7 @@ export default function WorkspaceApp({
                   </span>
                   {boot.workspace.role === "owner" ? (
                     <Select
-                      aria-label={`Seitenrechte für ${m.name}`}
+                      aria-label={t(`Seitenrechte für ${m.name}`, `Page permissions for ${m.name}`)}
                       defaultValue="remove"
                       onChange={(e) =>
                         act({
@@ -2977,9 +2987,9 @@ export default function WorkspaceApp({
                         })
                       }
                     >
-                      <option value="remove">Geerbt</option>
-                      <option value="editor">Bearbeiten</option>
-                      <option value="viewer">Ansehen</option>
+                      <option value="remove">{t("Geerbt", "Inherited")}</option>
+                      <option value="editor">{t("Bearbeiten", "Edit")}</option>
+                      <option value="viewer">{t("Ansehen", "View")}</option>
                     </Select>
                   ) : (
                     <small>{m.role}</small>
@@ -2997,9 +3007,9 @@ export default function WorkspaceApp({
             <div className="settings-section">
               <h3>
                 <Globe size={18} />
-                Im Web veröffentlichen
+                {t("Im Web veröffentlichen", "Publish on the web")}
               </h3>
-              <p>Jeder mit dem Link kann den Inhalt dieser Seite lesen.</p>
+              <p>{t("Jeder mit dem Link kann den Inhalt dieser Seite lesen.", "Anyone with the link can read this page's content.")}</p>
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -3013,7 +3023,7 @@ export default function WorkspaceApp({
                     })
                   }
                 />
-                Öffentlichen Link aktivieren
+                {t("Öffentlichen Link aktivieren", "Enable public link")}
               </label>
               {data.page.public_token && (
                 <div className="publication-options">
@@ -3032,7 +3042,7 @@ export default function WorkspaceApp({
                         })
                       }
                     />
-                    Aktuell vorhandene Unterseiten mit veröffentlichen
+                    {t("Aktuell vorhandene Unterseiten mit veröffentlichen", "Also publish the current sub-pages")}
                   </label>
                   <label className="checkbox-label">
                     <input
@@ -3049,13 +3059,10 @@ export default function WorkspaceApp({
                         })
                       }
                     />
-                    Besucher dürfen eine Kopie in ihren Arbeitsbereich
-                    übernehmen
+                    {t("Besucher dürfen eine Kopie in ihren Arbeitsbereich übernehmen", "Visitors may copy it into their workspace")}
                   </label>
                   <p className="muted">
-                    Veröffentlichte Seiten: {data.publication?.count || 1}.
-                    Dokumente, Datensatzinhalte und darin verlinkte Uploads sind
-                    öffentlich. Kommentare und Mitgliederangaben bleiben privat.
+                    {t("Veröffentlichte Seiten:", "Published pages:")}{" "}{data.publication?.count || 1}{t(". Dokumente, Datensatzinhalte und darin verlinkte Uploads sind öffentlich. Kommentare und Mitgliederangaben bleiben privat.", ". Documents, record contents and uploads linked in them are public. Comments and member details stay private.")}
                   </p>
                   {data.publication?.includeChildren && editable && (
                     <button
@@ -3070,7 +3077,7 @@ export default function WorkspaceApp({
                         })
                       }
                     >
-                      Auswahl um neue Unterseiten ergänzen
+                      {t("Auswahl um neue Unterseiten ergänzen", "Add new sub-pages to the selection")}
                     </button>
                   )}
                 </div>
@@ -3087,7 +3094,7 @@ export default function WorkspaceApp({
                       void navigator.clipboard.writeText(
                         `${location.origin}/share/${data.page.public_token}`,
                       );
-                      notify("Link kopiert");
+                      notify(t("Link kopiert", "Link copied"));
                     }}
                   >
                     <Copy />
@@ -3101,7 +3108,7 @@ export default function WorkspaceApp({
       <Modal
         open={history}
         onClose={() => setHistory(false)}
-        title="Versionsverlauf"
+        title={t("Versionsverlauf", "Version history")}
       >
         {data && (
           <>
@@ -3110,7 +3117,7 @@ export default function WorkspaceApp({
               onClick={() => act({ action: "page.snapshot", pageId })}
             >
               <Plus />
-              Aktuelle Version sichern
+              {t("Aktuelle Version sichern", "Save current version")}
             </button>
             <div className="history-list">
               {data.snapshots.map((s) => (
@@ -3122,8 +3129,8 @@ export default function WorkspaceApp({
                       {new Date(s.created_at + "Z").toLocaleString("de-DE")}
                       {" · "}
                       {s.kind === "manual"
-                        ? "Manuell gesichert"
-                        : "Automatisch"}
+                        ? t("Manuell gesichert", "Saved manually")
+                        : t("Automatisch", "Automatic")}
                     </small>
                   </span>
                   <button
@@ -3139,7 +3146,7 @@ export default function WorkspaceApp({
                       });
                     }}
                   >
-                    Änderungen
+                    {t("Änderungen", "Changes")}
                   </button>
                   <button
                     className="button compact"
@@ -3153,16 +3160,16 @@ export default function WorkspaceApp({
                       if (r) {
                         setEpoch((x) => x + 1);
                         setHistory(false);
-                        notify("Version wiederhergestellt");
+                        notify(t("Version wiederhergestellt", "Version restored"));
                       }
                     }}
                   >
-                    Wiederherstellen
+                    {t("Wiederherstellen", "Restore")}
                   </button>
                 </div>
               ))}
               {!data.snapshots.length && (
-                <p className="muted">Noch keine gesicherten Versionen.</p>
+                <p className="muted">{t("Noch keine gesicherten Versionen.", "No saved versions yet.")}</p>
               )}
             </div>
           </>
@@ -3187,20 +3194,20 @@ export default function WorkspaceApp({
       <Modal
         open={iconPicker}
         onClose={() => setIconPicker(false)}
-        title="Seiten-Icon"
+        title={t("Seiten-Icon", "Page icon")}
       >
         {iconPicker && data && (
           <>
             <div
               className="icon-tabs"
               role="tablist"
-              aria-label="Art des Seitensymbols"
+              aria-label={t("Art des Seitensymbols", "Kind of page icon")}
             >
               {(
                 [
-                  ["emoji", "Emoji"],
-                  ["image", "Bild"],
-                  ["library", "Symbole"],
+                  ["emoji", t("Emoji", "Emoji")],
+                  ["image", t("Bild", "Image")],
+                  ["library", t("Symbole", "Icons")],
                 ] as const
               ).map(([tab, label]) => (
                 <button
@@ -3215,9 +3222,9 @@ export default function WorkspaceApp({
               ))}
             </div>
             <label className="icon-size">
-              Größe
+              {t("Größe", "Size")}
               <Select
-                aria-label="Symbolgröße"
+                aria-label={t("Symbolgröße", "Icon size")}
                 value={data.page.icon_size || ""}
                 onChange={(e) =>
                   void act({
@@ -3227,9 +3234,9 @@ export default function WorkspaceApp({
                   })
                 }
               >
-                <option value="">Standard</option>
-                <option value="small">Klein</option>
-                <option value="large">Groß</option>
+                <option value="">{t("Standard", "Default")}</option>
+                <option value="small">{t("Klein", "Small")}</option>
+                <option value="large">{t("Groß", "Large")}</option>
               </Select>
             </label>
             {iconTab === "library" ? (
@@ -3296,7 +3303,7 @@ export default function WorkspaceApp({
       <Modal
         open={newWorkspace}
         onClose={() => setNewWorkspace(false)}
-        title="Arbeitsbereich erstellen"
+        title={t("Arbeitsbereich erstellen", "Create workspace")}
       >
         <form
           onSubmit={async (e) => {
@@ -3312,7 +3319,7 @@ export default function WorkspaceApp({
           }}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               required
               autoFocus
@@ -3321,13 +3328,13 @@ export default function WorkspaceApp({
               placeholder="z. B. Design-Team"
             />
           </label>
-          <button className="button primary">Erstellen</button>
+          <button className="button primary">{t("Erstellen", "Create")}</button>
         </form>
       </Modal>
       <Modal
         open={newSpace}
         onClose={() => setNewSpace(false)}
-        title="Bereich hinzufügen"
+        title={t("Bereich hinzufügen", "Add space")}
       >
         <form
           onSubmit={async (e) => {
@@ -3344,7 +3351,7 @@ export default function WorkspaceApp({
           }}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               autoFocus
               required
@@ -3366,25 +3373,24 @@ export default function WorkspaceApp({
               checked={privateSpace}
               onChange={(e) => setPrivateSpace(e.target.checked)}
             />
-            Privater Bereich
+            {t("Privater Bereich", "Private space")}
           </label>
           <p className="muted">
-            Private Bereiche sind nur für dich und ausdrücklich berechtigte
-            Mitglieder sichtbar.
+            {t("Private Bereiche sind nur für dich und ausdrücklich berechtigte Mitglieder sichtbar.", "Private spaces are only visible to you and members with explicit access.")}
           </p>
-          <button className="button primary">Bereich erstellen</button>
+          <button className="button primary">{t("Bereich erstellen", "Create space")}</button>
         </form>
       </Modal>
       <Modal
         open={templates}
         onClose={() => setTemplates(false)}
-        title="Vorlagen"
+        title={t("Vorlagen", "Templates")}
       >
         <p className="muted">
-          Starte mit einer Struktur oder verwende deine gespeicherten Vorlagen.
+          {t("Starte mit einer Struktur oder verwende deine gespeicherten Vorlagen.", "Start with a structure or use your saved templates.")}
         </p>
-        <nav className="template-categories" aria-label="Kategorien">
-          {[["all", "Alle"], ...Object.entries(templateCategories)].map(([id, label]) => (
+        <nav className="template-categories" aria-label={t("Kategorien", "Categories")}>
+          {[["all", t("Alle", "All")], ...Object.entries(templateCategories)].map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -3398,27 +3404,27 @@ export default function WorkspaceApp({
         </nav>
         <div className="template-grid">
           {Object.entries(templateCatalog)
-            .filter(([, t]) => galleryCategory === "all" || t.category === galleryCategory)
-            .map(([templateKey, t]) => (
+            .filter(([, template]) => galleryCategory === "all" || template.category === galleryCategory)
+            .map(([templateKey, template]) => (
               <button
                 key={templateKey}
                 onClick={() => {
                   setTemplates(false);
-                  setNewTitle(t.name);
+                  setNewTitle(template.name);
                   setStarterTemplate(templateKey);
-                  setNewKind(t.kind as PageKind);
+                  setNewKind(template.kind as PageKind);
                   setParent(null);
                   setCreate(true);
                 }}
               >
                 <span className="template-emoji" aria-hidden="true">
-                  {t.icon}
+                  {template.icon}
                 </span>
-                <strong>{t.name}</strong>
-                <small>{t.description}</small>
+                <strong>{template.name}</strong>
+                <small>{template.description}</small>
                 <small className="template-meta">
-                  {t.kind === "database" ? "Datenbank" : "Dokument"} ·{" "}
-                  {templateCategories[t.category]}
+                  {template.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")} ·{" "}
+                  {templateCategories[template.category]}
                 </small>
               </button>
             ))}
@@ -3447,7 +3453,7 @@ export default function WorkspaceApp({
       <Modal
         open={templateName}
         onClose={() => setTemplateName(false)}
-        title="Vorlage speichern"
+        title={t("Vorlage speichern", "Save template")}
       >
         <form
           onSubmit={async (e) => {
@@ -3460,12 +3466,12 @@ export default function WorkspaceApp({
             });
             if (r) {
               setTemplateName(false);
-              notify("Vorlage gespeichert");
+              notify(t("Vorlage gespeichert", "Template saved"));
             }
           }}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               autoFocus
               value={templateTitle}
@@ -3479,9 +3485,9 @@ export default function WorkspaceApp({
               checked={privateTemplate}
               onChange={(e) => setPrivateTemplate(e.target.checked)}
             />
-            Nur für mich sichtbar
+            {t("Nur für mich sichtbar", "Only visible to me")}
           </label>
-          <button className="button primary">Speichern</button>
+          <button className="button primary">{t("Speichern", "Save")}</button>
         </form>
       </Modal>
       {pageMenu && (
@@ -3503,7 +3509,7 @@ export default function WorkspaceApp({
               align="start"
               sideOffset={2}
               collisionPadding={8}
-              aria-label={`Aktionen für ${pageMenu.page.title || "Ohne Titel"}`}
+              aria-label={t(`Aktionen für ${pageMenu.page.title || "Ohne Titel"}`, `Actions for ${pageMenu.page.title || "Untitled"}`)}
             >
               {(() => {
                 const target = pageMenu.page;
@@ -3524,21 +3530,21 @@ export default function WorkspaceApp({
                       onSelect={() => window.open(url(), "_blank", "noopener")}
                     >
                       <ArrowSquareOut />
-                      In neuem Tab öffnen
+                      {t("In neuem Tab öffnen", "Open in new tab")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={async () => {
                         try {
                           await navigator.clipboard.writeText(url());
-                          notify("Link kopiert");
+                          notify(t("Link kopiert", "Link copied"));
                         } catch {
-                          notify("Link konnte nicht kopiert werden.");
+                          notify(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
                         }
                       }}
                     >
                       <LinkIcon />
-                      Link kopieren
+                      {t("Link kopieren", "Copy link")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
@@ -3547,14 +3553,14 @@ export default function WorkspaceApp({
                       }
                     >
                       <Star />
-                      {starred ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+                      {starred ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites")}
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => openThen(() => setShare(true))}
                     >
                       <ShareNetwork />
-                      Teilen
+                      {t("Teilen", "Share")}
                     </Dropdown.Item>
                     {canCreate && (
                       <>
@@ -3564,14 +3570,14 @@ export default function WorkspaceApp({
                           onSelect={() => addPage("document", target.id, target.space_id)}
                         >
                           <Plus />
-                          Unterseite hinzufügen
+                          {t("Unterseite hinzufügen", "Add sub-page")}
                         </Dropdown.Item>
                         <Dropdown.Item
                           className="dropdown-item"
                           onSelect={() => openThen(() => setIconPicker(true))}
                         >
                           <Flag />
-                          Icon ändern
+                          {t("Icon ändern", "Change icon")}
                         </Dropdown.Item>
                         <Dropdown.Item
                           className="dropdown-item"
@@ -3581,21 +3587,21 @@ export default function WorkspaceApp({
                           }}
                         >
                           <Copy />
-                          Duplizieren
+                          {t("Duplizieren", "Duplicate")}
                         </Dropdown.Item>
                         <Dropdown.Item
                           className="dropdown-item"
                           onSelect={() => openThen(() => setMove(true))}
                         >
                           <ArrowRight />
-                          Verschieben
+                          {t("Verschieben", "Move")}
                         </Dropdown.Item>
                         <Dropdown.Item
                           className="dropdown-item"
                           onSelect={() => openThen(() => setPageExport(true))}
                         >
                           <DownloadSimple />
-                          Exportieren
+                          {t("Exportieren", "Export")}
                         </Dropdown.Item>
                         <Dropdown.Item
                           className="dropdown-item"
@@ -3608,7 +3614,7 @@ export default function WorkspaceApp({
                           }
                         >
                           <Lock />
-                          {target.locked ? "Seite entsperren" : "Seite sperren"}
+                          {target.locked ? t("Seite entsperren", "Unlock page") : t("Seite sperren", "Lock page")}
                         </Dropdown.Item>
                         <Dropdown.Separator className="dropdown-separator" />
                         <Dropdown.Item
@@ -3622,7 +3628,7 @@ export default function WorkspaceApp({
                           }}
                         >
                           <Trash />
-                          In den Papierkorb
+                          {t("In den Papierkorb", "Move to trash")}
                         </Dropdown.Item>
                       </>
                     )}
@@ -3688,7 +3694,7 @@ export default function WorkspaceApp({
           {toast}
           <button
             className="icon-button"
-            aria-label="Meldung schließen"
+            aria-label={t("Meldung schließen", "Close message")}
             onClick={() => setToast("")}
           >
             <X size={16} />
@@ -3698,12 +3704,13 @@ export default function WorkspaceApp({
     </div>
   );
 }
-function greeting(clock: number | null) {
-  if (clock === null) return "Hallo";
+function greeting(clock: number | null, t: (de: string, en: string) => string) {
+  if (clock === null) return t("Hallo", "Hello");
   const hour = new Date(clock).getHours();
-  return hour < 11 ? "Guten Morgen" : hour < 18 ? "Hallo" : "Guten Abend";
+  return hour < 11 ? t("Guten Morgen", "Good morning") : hour < 18 ? t("Hallo", "Hello") : t("Guten Abend", "Good evening");
 }
-function relativeTime(value: string, clock: number | null) {
+function relativeTime(value: string, clock: number | null, locale: "de" | "en" = "de") {
+  const t = (de: string, en: string) => (locale === "de" ? de : en);
   const date = new Date(
     /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
       ? value
@@ -3712,10 +3719,10 @@ function relativeTime(value: string, clock: number | null) {
   if (!Number.isFinite(date.getTime())) return value;
   if (clock === null) return date.toISOString().slice(0, 10);
   const diff = clock - date.getTime();
-  if (diff < 60000) return "gerade eben";
-  if (diff < 3600000) return `vor ${Math.floor(diff / 60000)} Min.`;
-  if (diff < 86400000) return `vor ${Math.floor(diff / 3600000)} Std.`;
-  return date.toLocaleDateString("de-DE", { day: "numeric", month: "short" });
+  if (diff < 60000) return t("gerade eben", "just now");
+  if (diff < 3600000) return t(`vor ${Math.floor(diff / 60000)} Min.`, `${Math.floor(diff / 60000)} min ago`);
+  if (diff < 86400000) return t(`vor ${Math.floor(diff / 3600000)} Std.`, `${Math.floor(diff / 3600000)} h ago`);
+  return date.toLocaleDateString(t("de-DE", "en-GB"), { day: "numeric", month: "short" });
 }
 function InfoIcon() {
   return <Check size={18} />;
@@ -3747,6 +3754,8 @@ function RowTrash({
   act: (b: Record<string, unknown>) => Promise<unknown>;
   onOpen: (pageId: string, rowId: string) => void;
 }) {
+  const t = useT();
+  const locale = useLocale();
   const [entries, setEntries] = useState<
     {
       id: string;
@@ -3764,18 +3773,17 @@ function RowTrash({
   useEffect(load, [load]);
   if (!entries.length) return null;
   return (
-    <section className="row-trash" aria-label="Gelöschte Einträge">
-      <h2>Gelöschte Einträge</h2>
+    <section className="row-trash" aria-label={t("Gelöschte Einträge", "Deleted records")}>
+      <h2>{t("Gelöschte Einträge", "Deleted records")}</h2>
       <p className="muted">
-        Einträge bleiben 30 Tage im Papierkorb und werden danach endgültig
-        gelöscht.
+        {t("Einträge bleiben 30 Tage im Papierkorb und werden danach endgültig gelöscht.", "Records stay in the trash for 30 days and are then deleted permanently.")}
       </p>
       {entries.map((e) => (
         <div className="utility-row" key={e.id}>
           <PageIcon name="file" />
           <strong>
             {e.title}
-            <small>aus {e.pageTitle}</small>
+            <small>{t("aus", "from")}{" "}{e.pageTitle}</small>
           </strong>
           <div className="lifecycle-buttons">
             <button
@@ -3788,7 +3796,7 @@ function RowTrash({
               }}
             >
               <ArrowCounterClockwise />
-              Wiederherstellen
+              {t("Wiederherstellen", "Restore")}
             </button>
             <button
               className="button danger compact"
@@ -3797,7 +3805,7 @@ function RowTrash({
                   load();
               }}
             >
-              Endgültig löschen
+              {t("Endgültig löschen", "Delete permanently")}
             </button>
           </div>
         </div>
