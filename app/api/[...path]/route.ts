@@ -1,3 +1,4 @@
+import { withRequestLocale } from "@/lib/content-locale";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { storageOverview } from "@/lib/storage-overview";
 import { avatarFor } from "@/lib/avatars";
@@ -99,7 +100,8 @@ function error(e: unknown) {
     { status: e instanceof HttpError ? e.status : 500 },
   );
 }
-export async function GET(
+export const GET = withRequestLocale(handleGET);
+async function handleGET(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
@@ -640,7 +642,8 @@ export async function GET(
     return error(e);
   }
 }
-export async function POST(
+export const POST = withRequestLocale(handlePOST);
+async function handlePOST(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {

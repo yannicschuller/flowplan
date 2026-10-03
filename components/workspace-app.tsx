@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT } from "./i18n";
 import { BrandMark } from "./brand-mark";
@@ -2473,7 +2474,7 @@ export default function WorkspaceApp({
                         {!n.read_at && (
                           <span className="unread-dot" aria-label={t("Ungelesen", "Unread")} />
                         )}
-                        {n.body}
+                        {serverMessage(n.body)}
                         <small>{relativeTime(n.created_at, clock, locale)}</small>
                       </span>
                       <ArrowUpRight />
@@ -2495,7 +2496,7 @@ export default function WorkspaceApp({
                       </button>
                       <button
                         className="text-button"
-                        aria-label={t(`Benachrichtigung entfernen: ${n.body}`, `Remove notification: ${n.body}`)}
+                        aria-label={t(`Benachrichtigung entfernen: ${n.body}`, `Remove notification: ${serverMessage(n.body)}`)}
                         onClick={() =>
                           void act({
                             action: "notification.delete",

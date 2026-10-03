@@ -40,3 +40,11 @@ test("every German HttpError message has an English version", async () => {
         missing.push(`${file}: ${text}`);
   assert.deepEqual(missing, []);
 });
+
+test("notifications are shown in the reader's language", async () => {
+  const { englishMessage } = await import("../lib/i18n-errors");
+  assert.equal(englishMessage("Ada hat dich in einem Kommentar in „Plan“ erwähnt"), "Ada mentioned you in a comment in “Plan”");
+  assert.equal(englishMessage("Ada hat dich in „Plan“ erwähnt"), "Ada mentioned you in “Plan”");
+  assert.equal(englishMessage("Ada kommentiert „Plan“"), "Ada commented on “Plan”");
+  assert.equal(englishMessage("Heute fällig: Bericht (Plan) („Woche“)"), "Due today: Bericht (Plan) (“Woche”)");
+});

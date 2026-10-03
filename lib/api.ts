@@ -142,8 +142,6 @@ import {
 import {
   createPage,
   createWorkspace,
-  defaultFields,
-  defaultViews,
 } from "./seed";
 import type {
   Identity,

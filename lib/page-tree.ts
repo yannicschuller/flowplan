@@ -1,3 +1,4 @@
+import { ct } from "./content-locale";
 import { copyWhiteboard } from "./whiteboard";
 import { visibleRows } from "./row-access";
 import { mapFileCell } from "./file-cells";
@@ -54,7 +55,7 @@ export function duplicatePages(
         workspaceId,
         spaceId,
         user.id,
-        p.id === root?.id ? `${p.title} (Kopie)` : p.title,
+        p.id === root?.id ? `${p.title} ${ct("(Kopie)", "(copy)")}` : p.title,
         p.kind,
       ),
     );

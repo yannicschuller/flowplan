@@ -1,3 +1,5 @@
+import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
+import { contentLocale } from "./content-locale";
 // Journals: a page that keeps one sub page per day. When a new day starts,
 // its page is created and the open tasks of the last day move over to it.
 // A day that got no entry of its own (only carried tasks) is removed again,
@@ -38,15 +40,7 @@ export const journalDate = z
       new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value,
     "Ungültiges Datum.",
   );
-export function dayTitle(date: string) {
-  return new Intl.DateTimeFormat("de-DE", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${date}T00:00:00Z`));
-}
+export const dayTitle = (date: string) => localDayTitle(date, contentLocale());
 function shiftDay(date: string, days: number) {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -165,7 +159,7 @@ function untouched(page: Page, doc: PMNode) {
   )
     return false;
   if (hasEntryData(page.id)) return false;
-  if (page.title !== dayTitle(page.journal_date!)) return false;
+  if (!isAutoDayTitle(page.title, page.journal_date!)) return false;
   if (page.icon !== "day" || page.cover) return false;
   const used = (sql: string) => !!one(sql, page.id);
   return !(

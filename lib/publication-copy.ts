@@ -1,3 +1,4 @@
+import { ct } from "./content-locale";
 import { copyFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { quotaCheckpoint } from "./instance-ops";
 import { resolve } from "node:path";
@@ -122,7 +123,7 @@ export function copyPublication(user: Identity, input: unknown) {
       b.workspaceId,
       b.spaceId,
       user.id,
-      p.id === root.id ? `${p.title} (Kopie)` : p.title,
+      p.id === root.id ? `${p.title} ${ct("(Kopie)", "(copy)")}` : p.title,
       p.kind,
       p.id === root.id ? null : pageIds.get(p.parent_id!) || null,
     );

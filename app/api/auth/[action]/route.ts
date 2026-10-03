@@ -1,3 +1,4 @@
+import { withRequestLocale } from "@/lib/content-locale";
 import { DEMO_MAX_MS, demoSessionExpiry, endDemo, startDemo } from "@/lib/demo";
 import { syncAvatar } from "@/lib/avatars";
 import { loginReturnPath } from "@/lib/page-location";
@@ -63,7 +64,8 @@ async function signIn(userId: string, groups: string[]) {
   await issueSession(userId, groups);
 }
 import { clientAddress } from "@/lib/client-address";
-export async function GET(
+export const GET = withRequestLocale(handleGET);
+async function handleGET(
   req: Request,
   { params }: { params: Promise<{ action: string }> },
 ) {
@@ -185,7 +187,8 @@ export async function GET(
     );
   }
 }
-export async function POST(
+export const POST = withRequestLocale(handlePOST);
+async function handlePOST(
   req: Request,
   { params }: { params: Promise<{ action: string }> },
 ) {

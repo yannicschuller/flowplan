@@ -1,5 +1,6 @@
 "use client";
 import { useT } from "./i18n";
+import { isAutoDayTitle } from "@/lib/journal-title";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -62,14 +63,6 @@ const weekday = new Intl.DateTimeFormat(LOCALE_TAG, {
   timeZone: "UTC",
 });
 const longDate = new Intl.DateTimeFormat(LOCALE_TAG, {
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-  timeZone: "UTC",
-});
-// The title a day page gets automatically (see lib/journal.ts).
-const autoTitle = new Intl.DateTimeFormat(LOCALE_TAG, {
-  weekday: "long",
   day: "numeric",
   month: "long",
   year: "numeric",
@@ -397,7 +390,7 @@ export function JournalView({
                       </span>
                       <span className="journal-day-name">
                         {weekday.format(utc(day.journal_date))}
-                        {day.title !== autoTitle.format(utc(day.journal_date)) && (
+                        {!isAutoDayTitle(day.title, day.journal_date) && (
                           <small>{day.title}</small>
                         )}
                         {day.excerpt && <span className="journal-day-excerpt">{day.excerpt}</span>}

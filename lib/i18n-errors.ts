@@ -429,6 +429,8 @@ const exact: Record<string, string> = {
   "Zyklische Werte werden nicht unterstützt.": "Circular values are not supported.",
   "prop erwartet einen Eigenschaftsnamen oder eine ID als Text.": "prop expects a property name or an ID as text.",
   "round unterstützt null bis zehn Nachkommastellen.": "round supports zero to ten decimal places.",
+  // notifications
+  "Push-Testbenachrichtigung": "Push test notification",
 };
 const patterns: [RegExp, string][] = [
   [/^Höchstens (.+) Tokens pro Person\.$/, "At most $1 tokens per person."],
@@ -452,6 +454,19 @@ const patterns: [RegExp, string][] = [
   [/^Maximal (.+) Erinnerungen je Person\.$/, "At most $1 reminders per person."],
   [/^Ungültiges Zeichen „(.+)“\.$/, "Invalid character “$1”."],
   [/^Argumente prüfen: (.+)\.$/, "Check the arguments: $1."],
+  // notifications (stored in German, shown in the reader's language)
+  [/^Neuer Gasteintrag in „(.+)“$/, "New guest record in “$1”"],
+  [/^Neuer Gastkommentar auf „(.+)“$/, "New guest comment on “$1”"],
+  [/^(.+) hat dir eine Aufgabe in „(.+)“ gegeben: ([\s\S]*)$/, "$1 gave you a task in “$2”: $3"],
+  [/^Heute fällig: ([\s\S]*) \(„(.+)“\)$/, "Due today: $1 (“$2”)"],
+  [/^(.+) hat dich in einem Kommentar in „(.+)“ erwähnt$/, "$1 mentioned you in a comment in “$2”"],
+  [/^(.+) hat dich in einem Eintrag von „(.+)“ erwähnt$/, "$1 mentioned you in a record of “$2”"],
+  [/^(.+) hat dich in „(.+)“ erwähnt$/, "$1 mentioned you in “$2”"],
+  [/^(.+) kommentiert eine Textstelle in „(.+)“$/, "$1 commented on a passage in “$2”"],
+  [/^(.+) antwortet auf einen Kommentar in „(.+)“$/, "$1 replied to a comment in “$2”"],
+  [/^(.+) kommentiert „(.+)“$/, "$1 commented on “$2”"],
+  [/^(.+) hat „(.+)“ geändert$/, "$1 changed “$2”"],
+  [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
 ];
 
 export function englishMessage(message: string) {

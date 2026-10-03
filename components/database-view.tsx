@@ -5003,10 +5003,10 @@ function MoreRows({
 }
 
 function tagColor(s: string) {
-  if (["Erledigt", "Niedrig"].includes(s)) return "green";
-  if (["In Arbeit", "Design"].includes(s)) return "blue";
-  if (["Hoch"].includes(s)) return "red";
-  if (["Mittel", "Produkt"].includes(s)) return "yellow";
+  if (["Erledigt", "Niedrig", "Done", "Low"].includes(s)) return "green";
+  if (["In Arbeit", "Design", "In progress"].includes(s)) return "blue";
+  if (["Hoch", "High"].includes(s)) return "red";
+  if (["Mittel", "Produkt", "Medium", "Product"].includes(s)) return "yellow";
   return "gray";
 }
 // Files cells contain several controls; a <label> would forward every click
