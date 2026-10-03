@@ -52,13 +52,21 @@ export function TextMenu({
     // The browser reports a new selection shortly after the mouse or key is
     // released; the editor knows it only then.
     const later = () => setTimeout(showForSelection, 40);
+    // In this editor (its element can be replaced while the editor lives).
+    const inEditor = (event: Event) => editor.view.dom.contains(event.target as Node);
+    // Only for presses that began in the text: a click elsewhere (a dialog
+    // button that hands the focus back, a block handle) selects no text.
+    let pressedInEditor = false;
+    const onMouseDown = (event: MouseEvent) => {
+      pressedInEditor = inEditor(event);
+    };
     // Not for clicks in the menu itself (it closes after an action).
     const onMouseUp = (event: MouseEvent) => {
+      if (!pressedInEditor) return;
+      pressedInEditor = false;
       if ((event.target as HTMLElement | null)?.closest?.(".text-menu")) return;
       later();
     };
-    // In this editor (its element can be replaced while the editor lives).
-    const inEditor = (event: Event) => editor.view.dom.contains(event.target as Node);
     const onKeyUp = (event: KeyboardEvent) => {
       if (inEditor(event) && event.shiftKey && event.key.startsWith("Arrow")) later();
     };
@@ -75,11 +83,13 @@ export function TextMenu({
       if (editor.state.selection.empty) setPlace((p) => (p?.mode === "selection" ? null : p));
     };
     // On the document: layers over the text (block handles) may take the event.
+    document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("mouseup", onMouseUp);
     document.addEventListener("keyup", onKeyUp);
     document.addEventListener("contextmenu", onContext);
     editor.on("selectionUpdate", onSelection);
     return () => {
+      document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("mouseup", onMouseUp);
       document.removeEventListener("keyup", onKeyUp);
       document.removeEventListener("contextmenu", onContext);
