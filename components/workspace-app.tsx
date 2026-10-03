@@ -145,7 +145,7 @@ import {
   type JournalSettings,
 } from "./journal-parts";
 import type { ShareLink } from "@/lib/share-links";
-import { templateCatalog } from "@/lib/template-catalog";
+import { catalogFor } from "@/lib/template-catalogs";
 import { templateCategories } from "@/lib/template-categories";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
@@ -686,7 +686,7 @@ export default function WorkspaceApp({
         // A template that comes with Flowplan (public gallery).
         if (useTemplate.startsWith("starter:")) {
           const key = useTemplate.slice(8);
-          const builtIn = templateCatalog[key];
+          const builtIn = catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en")[key];
           if (!builtIn) throw new Error(t("Diese Vorlage ist nicht mehr verfügbar.", "This template is no longer available."));
           const created = await mutate({
             action: "page.create",
@@ -3405,7 +3405,7 @@ export default function WorkspaceApp({
           ))}
         </nav>
         <div className="template-grid">
-          {Object.entries(templateCatalog)
+          {Object.entries(catalogFor(LOCALE_TAG === "de-DE" ? "de" : "en"))
             .filter(([, template]) => galleryCategory === "all" || template.category === galleryCategory)
             .map(([templateKey, template]) => (
               <button

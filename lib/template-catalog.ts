@@ -19,16 +19,16 @@ export type CatalogTemplate = {
   rows?: CatalogRow[];
 };
 
-const task = (text: string, done = false) =>
+export const task = (text: string, done = false) =>
   `<li data-type="taskItem" data-checked="${done}"><label><input type="checkbox"${done ? " checked" : ""}></label><div><p>${text}</p></div></li>`;
-const tasks = (...items: string[]) => `<ul data-type="taskList">${items.join("")}</ul>`;
-const callout = (html: string) => `<aside data-callout="true">${html}</aside>`;
-const toggle = (title: string, html: string) => `<details><summary>${title}</summary><div>${html}</div></details>`;
-const table = (rows: string[][]) =>
+export const tasks = (...items: string[]) => `<ul data-type="taskList">${items.join("")}</ul>`;
+export const callout = (html: string) => `<aside data-callout="true">${html}</aside>`;
+export const toggle = (title: string, html: string) => `<details><summary>${title}</summary><div>${html}</div></details>`;
+export const table = (rows: string[][]) =>
   `<table><tbody>${rows
     .map((r, i) => `<tr>${r.map((c) => (i === 0 ? `<th><p>${c}</p></th>` : `<td><p>${c}</p></td>`)).join("")}</tr>`)
     .join("")}</tbody></table>`;
-const view = (id: string, name: string, type: View["type"], extra: Partial<View> = {}): View =>
+export const view = (id: string, name: string, type: View["type"], extra: Partial<View> = {}): View =>
   ({ id, name, type, filters: [], sorts: [], ...extra }) as View;
 
 export const templateCatalog: Record<string, CatalogTemplate> = {

@@ -48,3 +48,25 @@ test("journal days keep their automatic title in both languages", () => {
   assert.ok(isAutoDayTitle(dayTitle("2026-10-03", "en"), "2026-10-03"));
   assert.ok(!isAutoDayTitle("Urlaub", "2026-10-03"));
 });
+
+test("the English template catalog matches the German one", async () => {
+  const { templateCatalog } = await import("../lib/template-catalog");
+  const { templateCatalogEn } = await import("../lib/template-catalog-en");
+  assert.deepEqual(Object.keys(templateCatalogEn).sort(), Object.keys(templateCatalog).sort());
+  for (const [key, de] of Object.entries(templateCatalog)) {
+    const en = templateCatalogEn[key];
+    assert.equal(en.kind, de.kind, key);
+    assert.equal(en.category, de.category, key);
+    assert.deepEqual(en.fields?.map((f) => [f.id, f.type]), de.fields?.map((f) => [f.id, f.type]), key);
+    assert.deepEqual(en.views?.map((v) => v.id), de.views?.map((v) => v.id), key);
+    assert.equal(en.rows?.length, de.rows?.length, key);
+    for (const row of en.rows || [])
+      for (const [field, value] of Object.entries(row.cells)) {
+        const options = en.fields?.find((f) => f.id === field)?.options;
+        if (options) for (const v of [value].flat()) assert.ok(options.includes(v as string), `${key}.${field}: ${v}`);
+      }
+    for (const f of en.fields || [])
+      for (const [, name] of (f.formula || "").matchAll(/prop\("([^"]+)"\)/g))
+        assert.ok(en.fields!.some((x) => x.name === name), `${key}: ${name}`);
+  }
+});

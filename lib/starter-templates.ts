@@ -4,12 +4,14 @@
 import { id, run } from "./db";
 import { htmlState } from "./document-server";
 import { resolveCatalogDates, templateCatalog, type TemplateKey } from "./template-catalog";
+import { catalogFor } from "./template-catalogs";
+import { contentLocale } from "./content-locale";
 
 export const starterTemplates = templateCatalog;
 export type StarterTemplateKey = TemplateKey;
 
 export function applyStarterTemplate(pageId: string, userId: string, key: StarterTemplateKey) {
-  const template = templateCatalog[key];
+  const template = catalogFor(contentLocale())[key];
   run("UPDATE pages SET icon=? WHERE id=?", template.icon, pageId);
   if (template.kind === "document") {
     const html = template.html || "";

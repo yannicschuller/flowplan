@@ -6,7 +6,9 @@ import { publicField } from "@/lib/shared-content";
 import { displayText } from "@/lib/field-format";
 import { cellText } from "@/lib/cell-text";
 import { HttpError } from "@/lib/auth";
-import { resolveCatalogDates, templateCatalog } from "@/lib/template-catalog";
+import { resolveCatalogDates } from "@/lib/template-catalog";
+import { catalogFor } from "@/lib/template-catalogs";
+import { requestLocale } from "@/lib/i18n-server";
 import { computedCells } from "@/lib/database";
 import type { Row } from "@/lib/types";
 import { templateCategories } from "@/lib/template-categories";
@@ -20,7 +22,7 @@ export default async function TemplatePreview({
   const t = await serverT();
   const { id } = await params;
   // Templates that come with Flowplan: "starter-<key>".
-  const builtIn = id.startsWith("starter-") ? templateCatalog[id.slice(8)] : undefined;
+  const builtIn = id.startsWith("starter-") ? catalogFor(await requestLocale())[id.slice(8)] : undefined;
   if (id.startsWith("starter-") && !builtIn) notFound();
   if (builtIn) {
     const fields = builtIn.fields || [];

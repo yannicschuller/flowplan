@@ -2,7 +2,8 @@ import { serverT } from "@/lib/i18n-server";
 import { publicTemplates } from "@/lib/public-templates";
 import { templateCategories } from "@/lib/template-categories";
 import { PageIcon } from "@/components/ui";
-import { templateCatalog } from "@/lib/template-catalog";
+import { catalogFor } from "@/lib/template-catalogs";
+import { requestLocale } from "@/lib/i18n-server";
 export const dynamic = "force-dynamic";
 export async function generateMetadata() {
   return { title: (await serverT())("Vorlagen · Flowplan", "Templates · Flowplan") };
@@ -19,7 +20,7 @@ export default async function Templates({
   const active = category && category in templateCategories ? category : "";
   const list = publicTemplates(active || undefined);
   // Templates that come with Flowplan, then those admins published.
-  const builtIn = Object.entries(templateCatalog).filter(([, t]) => !active || t.category === active);
+  const builtIn = Object.entries(catalogFor(await requestLocale())).filter(([, t]) => !active || t.category === active);
   return (
     <main className="public-page template-gallery-page">
       <a href="/" className="public-brand">
