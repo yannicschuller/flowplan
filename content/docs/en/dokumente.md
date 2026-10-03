@@ -100,6 +100,7 @@ List items and tasks stay what they are when moved: outside their list they form
 
 - **Pasting from the clipboard** (<kbd>⌘</kbd> <kbd>V</kbd>) or dragging in uploads images and files. Images can be resized at their edges.
 - **Photos are scaled down before uploading**: at most 2560 px on the longer side, stored as WebP. The camera rotation is kept, metadata such as the location is removed. GIFs, SVGs and files that would hardly get smaller stay unchanged. Attachments in file properties and forms are stored as they are.
+- **PDFs** appear as a card with a preview of the first page. A click opens the PDF viewer with all pages, zoom (also <kbd>⌘</kbd> <kbd>+</kbd>/<kbd>−</kbd>) and **Download**; <kbd>Esc</kbd> closes it. The same applies to PDFs in the media library, in files properties of databases and on published pages. In editable text, <kbd>⌘</kbd>-click a link to a PDF to open the viewer.
 - **Media** in the sidebar collects all uploads of the workspace for reuse.
 - **Embed** (`/embed`) takes an address: YouTube, Vimeo, Loom, Spotify, Figma and CodePen appear as players with an adjustable width, other sites as a link card with title and preview image.
 - Links to pages and mentions of people show a preview on hover.

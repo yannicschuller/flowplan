@@ -90,7 +90,7 @@ export function copyPublication(user: Identity, input: unknown) {
         delete attrs["data-linked-views"];
         delete attrs["data-linked-version"];
       }
-      for (const key of ["src", "href"]) {
+      for (const key of ["src", "href", "data-pdf"]) {
         if (!attrs[key]) continue;
         if (fileIdOf(attrs[key])) {
           const copied = copyFile(attrs[key]);

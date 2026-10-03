@@ -109,6 +109,7 @@ import {
   CalendarBlank,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
+import { withPdfView } from "./pdf-node";
 import type { Page, User } from "@/lib/types";
 import {
   mathNodeViews,
@@ -364,7 +365,7 @@ export default function DocumentEditor({
         Mention,
         Columns,
         Column,
-        Media,
+        withPdfView(Media),
         LinkCard,
         linkedDatabaseNode(() => linkedContext.current),
         syncedBlockNode(() => syncedContext.current),
@@ -730,6 +731,15 @@ export default function DocumentEditor({
           ?.chain()
           .focus()
           .setImage({ src: data.url, alt: original.name })
+          .run();
+      else if (file.type === "application/pdf" || /\.pdf$/i.test(file.name))
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "media",
+            attrs: { src: data.url, kind: "pdf", title: file.name },
+          })
           .run();
       else if (file.type.startsWith("video/") || file.type.startsWith("audio/"))
         editor

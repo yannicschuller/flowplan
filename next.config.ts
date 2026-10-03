@@ -23,7 +23,11 @@ const config: NextConfig = {
       "./node_modules/zlibjs/**/*",
       "./node_modules/idb-keyval/**/*",
       // Documentation pages (/docs) are read from Markdown files.
-      "./content/docs/*.md",
+      "./content/docs/**/*.md",
+      // PDF viewer in the browser: fonts, character maps and decoders.
+      "./node_modules/pdfjs-dist/cmaps/*",
+      "./node_modules/pdfjs-dist/standard_fonts/*",
+      "./node_modules/pdfjs-dist/wasm/*",
     ],
   },
   async headers() {

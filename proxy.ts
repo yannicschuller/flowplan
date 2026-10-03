@@ -22,7 +22,8 @@ export function contentSecurityPolicy(nonce: string | null, dev: boolean) {
       "'self' 'unsafe-inline'";
   return [
     "default-src 'self'",
-    `script-src ${scripts}${dev ? " 'unsafe-eval'" : ""}`,
+    // 'wasm-unsafe-eval': the PDF viewer decodes some images with WebAssembly.
+    `script-src ${scripts} 'wasm-unsafe-eval'${dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",

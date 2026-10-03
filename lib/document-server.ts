@@ -37,6 +37,8 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-suggestion-author",
         "data-suggestion-name",
         "data-suggestion-at",
+        "data-pdf",
+        "data-title",
         "data-spoiler",
         "data-indent",
         "data-callout",

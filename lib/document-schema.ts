@@ -548,6 +548,16 @@ export const Media = Node.create({
         kind: "embed",
       }),
     },
+    // PDF with a preview of its first page (components/pdf-viewer.tsx).
+    {
+      tag: "div[data-pdf]",
+      priority: 60,
+      getAttrs: (el) => ({
+        src: (el as HTMLElement).getAttribute("data-pdf"),
+        kind: "pdf",
+        title: (el as HTMLElement).getAttribute("data-title") || "",
+      }),
+    },
   ],
   renderHTML: ({ node }) => {
     const { src, kind, title } = node.attrs;
@@ -579,6 +589,17 @@ export const Media = Node.create({
           class: "media-block",
           ...widthStyle(node.attrs.width),
         },
+      ];
+    if (kind === "pdf" && /^\/api\/files\/[a-f0-9-]+$/.test(src))
+      return [
+        "div",
+        {
+          "data-pdf": src,
+          "data-title": title || "PDF",
+          class: "pdf-block",
+          ...widthStyle(node.attrs.width),
+        },
+        ["a", { href: src }, title || "PDF"],
       ];
     return ["p", {}, "Medium nicht verfügbar"];
   },

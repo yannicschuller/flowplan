@@ -3,6 +3,7 @@ import "./globals.css";
 import "katex/dist/katex.min.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { LocaleProvider } from "@/components/i18n";
+import { PdfViewerHost } from "@/components/pdf-viewer";
 export async function generateMetadata(): Promise<Metadata> {
   const de = (await requestLocale()) === "de";
   return {
@@ -49,7 +50,10 @@ export default async function RootLayout({
         <link rel="stylesheet" href="/fonts.css" />
       </head>
       <body>
-        <LocaleProvider locale={locale}>{children}</LocaleProvider>
+        <LocaleProvider locale={locale}>
+          {children}
+          <PdfViewerHost />
+        </LocaleProvider>
       </body>
     </html>
   );

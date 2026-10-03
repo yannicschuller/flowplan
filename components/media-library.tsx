@@ -1,4 +1,5 @@
 "use client";
+import { PdfThumbnail } from "./pdf-viewer";
 import { useEffect, useState } from "react";
 import {
   File as FileIcon,
@@ -119,6 +120,7 @@ export function MediaLibrary({
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`${item.name} öffnen`}
+              data-pdf={item.kind === "pdf" ? item.name : undefined}
             >
               {item.kind === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -128,7 +130,7 @@ export function MediaLibrary({
               ) : item.kind === "audio" ? (
                 <FileAudio size={36} />
               ) : item.kind === "pdf" ? (
-                <FilePdf size={36} />
+                <PdfThumbnail src={item.url} width={180} />
               ) : (
                 <FileIcon size={36} />
               )}
