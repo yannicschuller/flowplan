@@ -28,3 +28,7 @@ Node.js 22.13 or newer. Without OIDC settings the development server offers a lo
 - The user interface is German and English; add both texts for new UI strings.
 
 By contributing you agree that your contributions are licensed under the [AGPL-3.0](LICENSE).
+
+## Releases
+
+Maintainers release from GitHub: **Actions → Release → Run workflow**, then choose `patch`, `minor` or `major`. The workflow raises the version in `package.json`, tags `v1.2.3`, writes the release notes from the merged changes and publishes the image as `latest`, `1.2.3`, `1.2` and `1`. Every other push builds `beta`.

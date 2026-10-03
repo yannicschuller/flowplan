@@ -43,8 +43,9 @@ For single sign-on, register a confidential web client at your OIDC provider wit
 The image is published to the GitHub Container Registry for `linux/amd64` and `linux/arm64`:
 
 ```
-ghcr.io/yannicschuller/flowplan:latest     # latest commit on main
-ghcr.io/yannicschuller/flowplan:1.2.3      # releases (git tags v1.2.3)
+ghcr.io/yannicschuller/flowplan:latest     # the latest release
+ghcr.io/yannicschuller/flowplan:1.2.3      # a fixed release (also :1.2 and :1)
+ghcr.io/yannicschuller/flowplan:beta       # the latest development state, not for production
 ```
 
 All data lives in the volume on `/app/data`. Run **exactly one** container per data directory (SQLite). Optional S3 storage mirrors uploads and backs up the database continuously.
