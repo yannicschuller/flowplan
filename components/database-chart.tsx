@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useMemo, useState } from "react";
@@ -31,7 +32,7 @@ const paletteOf = (config: ChartConfig) =>
 const format = (n: number | null) =>
   n === null
     ? "–"
-    : new Intl.NumberFormat("de-DE", { maximumFractionDigits: 4 }).format(n);
+    : new Intl.NumberFormat(LOCALE_TAG, { maximumFractionDigits: 4 }).format(n);
 const short = (s: string) => (s.length > 22 ? s.slice(0, 20) + "…" : s);
 // Optional axis titles; the value axis is vertical except in bar charts.
 function AxisTitles({

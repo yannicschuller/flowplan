@@ -1,4 +1,6 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import {
   ShieldCheck,
@@ -81,43 +83,43 @@ type AdminData = {
   } | null;
 };
 const mb = (bytes: number) =>
-  `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
-const duration = (seconds: number) =>
+  `${(bytes / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })} MB`;
+const duration = (seconds: number, t: (de: string, en: string) => string) =>
   seconds < 3600
-    ? `${Math.round(seconds / 60)} Min.`
+    ? t(`${Math.round(seconds / 60)} Min.`, `${Math.round(seconds / 60)} min`)
     : seconds < 86400
-      ? `${Math.round(seconds / 3600)} Std.`
-      : `${Math.round(seconds / 86400)} Tage`;
+      ? t(`${Math.round(seconds / 3600)} Std.`, `${Math.round(seconds / 3600)} h`)
+      : t(`${Math.round(seconds / 86400)} Tage`, `${Math.round(seconds / 86400)} days`);
 const adminTabs = [
   [
     "users",
-    "Benutzer",
+    ["Benutzer", "Users"],
     Users,
-    "Konten der Instanz: Sitzungen beenden, sperren und wieder freigeben.",
+    ["Konten der Instanz: Sitzungen beenden, sperren und wieder freigeben.", "Accounts of the instance: end sessions, block and unblock."],
   ],
   [
     "workspaces",
-    "Arbeitsbereiche",
+    ["Arbeitsbereiche", "Workspaces"],
     Stack,
-    "Alle Arbeitsbereiche mit Belegung und Speicherkontingent.",
+    ["Alle Arbeitsbereiche mit Belegung und Speicherkontingent.", "All workspaces with usage and storage quota."],
   ],
   [
     "operations",
-    "Betrieb",
+    ["Betrieb", "Operations"],
     Gauge,
-    "Zustand der Instanz: Speicher, Warteschlangen, Suchindex und Laufzeit.",
+    ["Zustand der Instanz: Speicher, Warteschlangen, Suchindex und Laufzeit.", "State of the instance: storage, queues, search index and uptime."],
   ],
   [
     "instance",
-    "Instanz",
+    ["Instanz", "Instance"],
     SlidersHorizontal,
-    "Name, Hinweise, Grenzen und Sicherung der gesamten Instanz.",
+    ["Name, Hinweise, Grenzen und Sicherung der gesamten Instanz.", "Name, notices, limits and backup of the whole instance."],
   ],
   [
     "audit",
-    "Aktivitätsprotokoll",
+    ["Aktivitätsprotokoll", "Activity log"],
     ListChecks,
-    "Die letzten Änderungen mit Person und betroffener Ressource.",
+    ["Die letzten Änderungen mit Person und betroffener Ressource.", "The latest changes with person and affected resource."],
   ],
 ] as const;
 const auditTime = (value: string) => {
@@ -125,7 +127,7 @@ const auditTime = (value: string) => {
     /[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : value.replace(" ", "T") + "Z",
   );
   return Number.isFinite(date.getTime())
-    ? date.toLocaleString("de-DE", {
+    ? date.toLocaleString(LOCALE_TAG, {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
@@ -141,6 +143,7 @@ export default function Admin({
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
   onError: (s: string) => void;
 }) {
+  const t = useT();
   const [data, setData] = useState<AdminData | null>(null),
     [tab, setTabState] = useState("users"),
     [query, setQuery] = useState(""),
@@ -171,40 +174,40 @@ export default function Admin({
   // A reset link for an account with e-mail and password, to hand over.
   const [resetLink, setResetLink] = useState<{ userId: string; url: string } | null>(null);
   if (!data)
-    return <div className="loading-content">Administration wird geladen …</div>;
+    return <div className="loading-content">{t("Administration wird geladen …", "Loading administration …")}</div>;
   return (
     <div className="utility-content admin-page">
       <div className="utility-title">
         <ShieldCheck size={32} />
-        <h1>Administration</h1>
-        <p>Benutzer, Arbeitsbereiche und Zugriffe deiner Flowplan-Instanz.</p>
+        <h1>{t("Administration", "Administration")}</h1>
+        <p>{t("Benutzer, Arbeitsbereiche und Zugriffe deiner Flowplan-Instanz.", "Users, workspaces and access of your Flowplan instance.")}</p>
       </div>
       <div className="admin-stats">
         <div>
           <Users />
           <strong>{data.users.length}</strong>
-          <span>Benutzer</span>
+          <span>{t("Benutzer", "Users")}</span>
         </div>
         <div>
           <Stack />
           <strong>{data.workspaces.length}</strong>
-          <span>Arbeitsbereiche</span>
+          <span>{t("Arbeitsbereiche", "Workspaces")}</span>
         </div>
         <div>
           <Key />
           <strong>{data.sessions}</strong>
-          <span>Aktive Sitzungen</span>
+          <span>{t("Aktive Sitzungen", "Active sessions")}</span>
         </div>
       </div>
       <div className="callout">
         <ShieldCheck size={20} />
         <span>
-          Admin-Gruppe: <strong>{data.adminGroup}</strong> · OIDC{" "}
-          {data.oidcConfigured ? "konfiguriert" : "nicht konfiguriert"}
+          {t("Admin-Gruppe:", "Admin group:")}{" "}<strong>{data.adminGroup}</strong> · OIDC{" "}
+          {data.oidcConfigured ? "konfiguriert" : t("nicht konfiguriert", "not configured")}
         </span>
       </div>
       <div className="settings-layout">
-        <nav className="settings-tabs" aria-label="Bereiche der Administration">
+        <nav className="settings-tabs" aria-label={t("Bereiche der Administration", "Administration sections")}>
           {adminTabs.map(([id, label, Icon]) => (
             <button
               key={id}
@@ -213,42 +216,42 @@ export default function Admin({
               onClick={() => setTab(id)}
             >
               <Icon size={18} aria-hidden="true" />
-              {label}
+              {t(label[0], label[1])}
             </button>
           ))}
           <button
             className="settings-refresh"
-            title="Aktualisieren"
-            aria-label="Aktualisieren"
+            title={t("Aktualisieren", "Refresh")}
+            aria-label={t("Aktualisieren", "Refresh")}
             onClick={() => load()}
           >
             <ArrowCounterClockwise size={16} aria-hidden="true" />
-            Aktualisieren
+            {t("Aktualisieren", "Refresh")}
           </button>
         </nav>
         <div className="settings-body">
           <p className="settings-intro">
-            {adminTabs.find(([id]) => id === tab)?.[3]}
+            {(([de, en]) => t(de, en))(adminTabs.find(([id]) => id === tab)![3])}
           </p>
           {tab === "users" && (
             <section className="settings-section">
               <div className="settings-list-head">
-                <h2>Benutzer · {data.users.length}</h2>
+                <h2>{t("Benutzer ·", "Users ·")}{" "}{data.users.length}</h2>
                 <input
                   type="search"
-                  aria-label="Benutzer suchen"
-                  placeholder="Name oder E-Mail suchen …"
+                  aria-label={t("Benutzer suchen", "Search users")}
+                  placeholder={t("Name oder E-Mail suchen …", "Search name or email …")}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
                 <Select
-                  aria-label="Status"
+                  aria-label={t("Status", "Status")}
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                 >
-                  <option value="all">Alle</option>
-                  <option value="active">Aktiv</option>
-                  <option value="disabled">Deaktiviert</option>
+                  <option value="all">{t("Alle", "All")}</option>
+                  <option value="active">{t("Aktiv", "Active")}</option>
+                  <option value="disabled">{t("Deaktiviert", "Disabled")}</option>
                 </Select>
               </div>
               <div className="settings-list">
@@ -273,18 +276,18 @@ export default function Admin({
                           {u.email}
                           {" · "}
                           {u.last_login_at
-                            ? `zuletzt angemeldet ${new Date(u.last_login_at).toLocaleDateString("de-DE")}`
-                            : "noch nie angemeldet"}
+                            ? `zuletzt angemeldet ${new Date(u.last_login_at).toLocaleDateString(LOCALE_TAG)}`
+                            : t("noch nie angemeldet", "never signed in")}
                         </small>
                       </span>
                       {!!u.disabled && (
                         <span className="status-chip muted-chip">
-                          Deaktiviert
+                          {t("Deaktiviert", "Disabled")}
                         </span>
                       )}
                       {data.localAccounts?.[u.id] && (
-                        <span className="status-chip muted-chip" title="Meldet sich mit E-Mail und Passwort an">
-                          {data.localAccounts[u.id].admin ? "Admin · E-Mail" : "E-Mail"}
+                        <span className="status-chip muted-chip" title={t("Meldet sich mit E-Mail und Passwort an", "Signs in with email and password")}>
+                          {data.localAccounts[u.id].admin ? t("Admin · E-Mail", "Admin · email") : "E-Mail"}
                           {data.localAccounts[u.id].passkeys ? ` · ${data.localAccounts[u.id].passkeys} Passkey` : ""}
                         </span>
                       )}
@@ -296,7 +299,7 @@ export default function Admin({
                               act({ action: "admin.localAdmin", userId: u.id, admin: !data.localAccounts![u.id].admin })
                             }
                           >
-                            {data.localAccounts[u.id].admin ? "Admin entziehen" : "Zum Admin machen"}
+                            {data.localAccounts[u.id].admin ? t("Admin entziehen", "Revoke admin") : t("Zum Admin machen", "Make admin")}
                           </button>
                           <button
                             className="button compact"
@@ -305,7 +308,7 @@ export default function Admin({
                               if (result?.url) setResetLink({ userId: u.id, url: result.url });
                             }}
                           >
-                            Link zum Zurücksetzen
+                            {t("Link zum Zurücksetzen", "Reset link")}
                           </button>
                         </>
                       )}
@@ -315,7 +318,7 @@ export default function Admin({
                           act({ action: "admin.revoke", userId: u.id })
                         }
                       >
-                        Sitzungen beenden
+                        {t("Sitzungen beenden", "End sessions")}
                       </button>
                       <button
                         className={`button compact ${u.disabled ? "" : "danger"}`}
@@ -327,11 +330,11 @@ export default function Admin({
                           })
                         }
                       >
-                        {u.disabled ? "Aktivieren" : "Deaktivieren"}
+                        {u.disabled ? t("Aktivieren", "Enable") : t("Deaktivieren", "Disable")}
                       </button>
                       {resetLink?.userId === u.id && (
                         <label className="reset-link">
-                          Zwei Stunden gültig – an {u.name} weitergeben:
+                          {t("Zwei Stunden gültig – an", "Valid for two hours – send to")}{" "}{u.name} weitergeben:
                           <input readOnly value={resetLink.url} onFocus={(e) => e.currentTarget.select()} />
                         </label>
                       )}
@@ -343,11 +346,11 @@ export default function Admin({
           {tab === "workspaces" && (
             <section className="settings-section">
               <div className="settings-list-head">
-                <h2>Arbeitsbereiche · {data.workspaces.length}</h2>
+                <h2>{t("Arbeitsbereiche ·", "Workspaces ·")}{" "}{data.workspaces.length}</h2>
                 <input
                   type="search"
-                  aria-label="Arbeitsbereiche suchen"
-                  placeholder="Arbeitsbereich suchen …"
+                  aria-label={t("Arbeitsbereiche suchen", "Search workspaces")}
+                  placeholder={t("Arbeitsbereich suchen …", "Search workspace …")}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -356,11 +359,11 @@ export default function Admin({
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Arbeitsbereich</th>
-                      <th>Mitglieder</th>
-                      <th>Seiten</th>
-                      <th>Speicher</th>
-                      <th>Kontingent (MB)</th>
+                      <th>{t("Arbeitsbereich", "Workspace")}</th>
+                      <th>{t("Mitglieder", "Members")}</th>
+                      <th>{t("Seiten", "Pages")}</th>
+                      <th>{t("Speicher", "Storage")}</th>
+                      <th>{t("Kontingent (MB)", "Quota (MB)")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -384,7 +387,7 @@ export default function Admin({
                                   max={quota * 1024 * 1024}
                                   value={usage?.bytes || 0}
                                   high={quota * 1024 * 1024 * 0.9}
-                                  aria-label={`Belegung ${w.name}`}
+                                  aria-label={t(`Belegung ${w.name}`, `Usage ${w.name}`)}
                                 />
                               )}
                             </td>
@@ -393,10 +396,10 @@ export default function Admin({
                                 type="number"
                                 min={0}
                                 className="quota-input"
-                                aria-label={`Kontingent ${w.name}`}
+                                aria-label={t(`Kontingent ${w.name}`, `Quota ${w.name}`)}
                                 placeholder={
                                   data.metrics.defaultQuotaMb
-                                    ? `Standard ${data.metrics.defaultQuotaMb}`
+                                    ? t(`Standard ${data.metrics.defaultQuotaMb}`, `Default ${data.metrics.defaultQuotaMb}`)
                                     : "unbegrenzt"
                                 }
                                 defaultValue={usage?.quotaMb ?? ""}
@@ -445,48 +448,48 @@ export default function Admin({
           )}
           {tab === "operations" && (
             <section className="settings-section">
-              <h2>Betriebsmetriken</h2>
-              <div className="admin-metrics" aria-label="Betriebsmetriken">
+              <h2>{t("Betriebsmetriken", "Operating metrics")}</h2>
+              <div className="admin-metrics" aria-label={t("Betriebsmetriken", "Operating metrics")}>
                 {(
                   [
-                    ["Datenbank", mb(data.metrics.databaseBytes)],
+                    [t("Datenbank", "Database"), mb(data.metrics.databaseBytes)],
                     [
-                      "Uploads",
-                      `${mb(data.metrics.uploadBytes)} · ${data.metrics.files} Dateien`,
+                      t("Uploads", "Uploads"),
+                      t(`${mb(data.metrics.uploadBytes)} · ${data.metrics.files} Dateien`, `${mb(data.metrics.uploadBytes)} · ${data.metrics.files} files`),
                     ],
                     [
-                      "Seiten",
-                      `${data.metrics.pages} aktiv · ${data.metrics.trashedPages} im Papierkorb`,
+                      t("Seiten", "Pages"),
+                      t(`${data.metrics.pages} aktiv · ${data.metrics.trashedPages} im Papierkorb`, `${data.metrics.pages} active · ${data.metrics.trashedPages} in trash`),
                     ],
-                    ["Datensätze", String(data.metrics.rows)],
+                    [t("Datensätze", "Records"), String(data.metrics.rows)],
                     [
-                      "Versionen",
-                      `${data.metrics.snapshots} · Aufbewahrung ${data.metrics.retentionDays ? `${data.metrics.retentionDays} Tage` : "unbegrenzt"}`,
+                      t("Versionen", "Versions"),
+                      t(`${data.metrics.snapshots} · Aufbewahrung ${data.metrics.retentionDays ? `${data.metrics.retentionDays} Tage` : "unbegrenzt"}`, `${data.metrics.snapshots} · kept ${data.metrics.retentionDays ? `${data.metrics.retentionDays} days` : "forever"}`),
                     ],
                     [
-                      "Push-Warteschlange",
+                      t("Push-Warteschlange", "Push queue"),
                       `${data.metrics.pushPending} offen · ${data.metrics.pushFailed} fehlgeschlagen`,
                     ],
                     [
-                      "Suchindex",
+                      t("Suchindex", "Search index"),
                       data.metrics.searchBacklog
-                        ? `${data.metrics.searchBacklog} Änderungen ausstehend`
+                        ? t(`${data.metrics.searchBacklog} Änderungen ausstehend`, `${data.metrics.searchBacklog} changes pending`)
                         : "aktuell",
                     ],
-                    ["Erinnerungen", String(data.metrics.reminders)],
+                    [t("Erinnerungen", "Reminders"), String(data.metrics.reminders)],
                     [
-                      "Demos",
+                      t("Demos", "Demos"),
                       `${data.metrics.demosActive} laufen · ${data.metrics.demosStarted} insgesamt gestartet${data.settings.publicDemo ? "" : " · ausgeschaltet"}`,
                     ],
                     [
-                      "Standardkontingent",
+                      t("Standardkontingent", "Default quota"),
                       data.metrics.defaultQuotaMb
-                        ? `${data.metrics.defaultQuotaMb} MB je Arbeitsbereich`
+                        ? t(`${data.metrics.defaultQuotaMb} MB je Arbeitsbereich`, `${data.metrics.defaultQuotaMb} MB per workspace`)
                         : "unbegrenzt",
                     ],
                     [
-                      "Laufzeit",
-                      `${duration(data.metrics.uptimeSeconds)} · Node ${data.metrics.node}`,
+                      t("Laufzeit", "Uptime"),
+                      `${duration(data.metrics.uptimeSeconds, t)} · Node ${data.metrics.node}`,
                     ],
                   ] as const
                 ).map(([label, value]) => (
@@ -502,14 +505,14 @@ export default function Admin({
           {tab === "audit" && (
             <section className="settings-section">
               <div className="settings-list-head">
-                <h2>Aktivitätsprotokoll</h2>
+                <h2>{t("Aktivitätsprotokoll", "Activity log")}</h2>
                 <a className="button compact" href="/api/admin/audit.csv" download>
-                  Als CSV exportieren
+                  {t("Als CSV exportieren", "Export as CSV")}
                 </a>
                 <input
                   type="search"
-                  aria-label="Protokoll durchsuchen"
-                  placeholder="Person oder Aktion suchen …"
+                  aria-label={t("Protokoll durchsuchen", "Search the log")}
+                  placeholder={t("Person oder Aktion suchen …", "Search person or action …")}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -518,10 +521,10 @@ export default function Admin({
                 <table className="data-table audit-table">
                   <thead>
                     <tr>
-                      <th>Zeitpunkt</th>
-                      <th>Person</th>
-                      <th>Aktion</th>
-                      <th>Ressource</th>
+                      <th>{t("Zeitpunkt", "Time")}</th>
+                      <th>{t("Person", "Person")}</th>
+                      <th>{t("Aktion", "Action")}</th>
+                      <th>{t("Ressource", "Resource")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -534,7 +537,7 @@ export default function Admin({
                       .map((a) => (
                         <tr key={a.id}>
                           <td>{auditTime(a.created_at)}</td>
-                          <td>{a.name || "System"}</td>
+                          <td>{a.name || t("System", "System")}</td>
                           <td>
                             <code>{a.action}</code>
                           </td>
@@ -566,6 +569,7 @@ function InstanceSettingsForm({
   localLogin: boolean;
   onSave: (settings: InstanceSettings) => Promise<void>;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState(initial),
     [saved, setSaved] = useState(false);
   const optional = (value: string) =>
@@ -573,7 +577,7 @@ function InstanceSettingsForm({
   return (
     <form
       className="settings-section instance-settings"
-      aria-label="Instanzeinstellungen"
+      aria-label={t("Instanzeinstellungen", "Instance settings")}
       onSubmit={async (e) => {
         e.preventDefault();
         setSaved(false);
@@ -581,22 +585,21 @@ function InstanceSettingsForm({
         setSaved(true);
       }}
     >
-      <h2>Instanz</h2>
+      <h2>{t("Instanz", "Instance")}</h2>
       <p>
-        Leere Felder übernehmen die Werte aus der Umgebung (Konfigurationsdatei
-        oder Umgebungsvariablen).
+        {t("Leere Felder übernehmen die Werte aus der Umgebung (Konfigurationsdatei oder Umgebungsvariablen).", "Empty fields take the values from the environment (configuration file or environment variables).")}
       </p>
       <label>
-        Name der Instanz
+        {t("Name der Instanz", "Instance name")}
         <input
           maxLength={60}
-          placeholder="z. B. Flowplan der Muster GmbH"
+          placeholder={t("z. B. Flowplan der Muster GmbH", "e.g. Flowplan of Example Ltd")}
           value={draft.name}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
         />
       </label>
       <label>
-        Hinweis für alle Personen
+        {t("Hinweis für alle Personen", "Notice for everyone")}
         <textarea
           maxLength={500}
           rows={2}
@@ -606,11 +609,11 @@ function InstanceSettingsForm({
         />
       </label>
       <label>
-        Standard-Speicherkontingent je Arbeitsbereich (MB, 0 = unbegrenzt)
+        {t("Standard-Speicherkontingent je Arbeitsbereich (MB, 0 = unbegrenzt)", "Default storage quota per workspace (MB, 0 = unlimited)")}
         <input
           type="number"
           min={0}
-          placeholder="Wert aus der Umgebung"
+          placeholder={t("Wert aus der Umgebung", "Value from the environment")}
           value={draft.defaultQuotaMb ?? ""}
           onChange={(e) =>
             setDraft({ ...draft, defaultQuotaMb: optional(e.target.value) })
@@ -618,11 +621,11 @@ function InstanceSettingsForm({
         />
       </label>
       <label>
-        Versionen aufbewahren (Tage, 0 = unbegrenzt)
+        {t("Versionen aufbewahren (Tage, 0 = unbegrenzt)", "Keep versions (days, 0 = forever)")}
         <input
           type="number"
           min={0}
-          placeholder="Wert aus der Umgebung"
+          placeholder={t("Wert aus der Umgebung", "Value from the environment")}
           value={draft.retentionDays ?? ""}
           onChange={(e) =>
             setDraft({ ...draft, retentionDays: optional(e.target.value) })
@@ -630,7 +633,7 @@ function InstanceSettingsForm({
         />
       </label>
       <label>
-        Größte Datei beim Hochladen (MB)
+        {t("Größte Datei beim Hochladen (MB)", "Largest upload (MB)")}
         <input
           type="number"
           min={1}
@@ -656,7 +659,7 @@ function InstanceSettingsForm({
             setDraft({ ...draft, allowWorkspaceCreation: e.target.checked })
           }
         />
-        Alle Personen dürfen Arbeitsbereiche anlegen
+        {t("Alle Personen dürfen Arbeitsbereiche anlegen", "Everyone may create workspaces")}
       </label>
       {localLogin && (
         <label className="checkbox-label">
@@ -666,10 +669,9 @@ function InstanceSettingsForm({
             onChange={(e) => setDraft({ ...draft, allowSignup: e.target.checked })}
           />
           <span>
-            Registrierung mit E-Mail und Passwort erlauben
+            {t("Registrierung mit E-Mail und Passwort erlauben", "Allow sign-up with email and password")}
             <small className="muted">
-              Ohne diese Einstellung legen nur eingeladene Adressen ein Konto
-              an. Das erste Konto einer Instanz verwaltet sie.
+              {t("Ohne diese Einstellung legen nur eingeladene Adressen ein Konto an. Das erste Konto einer Instanz verwaltet sie.", "Without this setting only invited addresses can create an account. The first account of an instance administers it.")}
             </small>
           </span>
         </label>
@@ -682,12 +684,9 @@ function InstanceSettingsForm({
           onChange={(e) => setDraft({ ...draft, publicDemo: e.target.checked })}
         />
         <span>
-          Demo auf der Startseite anbieten
+          {t("Demo auf der Startseite anbieten", "Offer a demo on the start page")}
           <small className="muted">
-            Besucher erhalten ohne Konto einen eigenen Arbeitsbereich mit
-            Beispielen. Er wird nach 45 Minuten ohne Aktivität (spätestens
-            nach 3 Stunden) oder mit „Demo beenden“ gelöscht. Demo-Konten
-            können nichts veröffentlichen, teilen oder einladen.
+            {t("Besucher erhalten ohne Konto einen eigenen Arbeitsbereich mit Beispielen. Er wird nach 45 Minuten ohne Aktivität (spätestens nach 3 Stunden) oder mit „Demo beenden“ gelöscht. Demo-Konten können nichts veröffentlichen, teilen oder einladen.", "Visitors get their own workspace with examples without an account. It is deleted after 45 minutes without activity (after 3 hours at the latest) or with “End demo”. Demo accounts cannot publish, share or invite.")}
           </small>
         </span>
       </label>
@@ -699,15 +698,14 @@ function InstanceSettingsForm({
           onChange={(e) => setDraft({ ...draft, backupSchedule: e.target.checked })}
         />
         <span>
-          Tägliche Datenbanksicherung
+          {t("Tägliche Datenbanksicherung", "Daily database backup")}
           <small className="muted">
-            Eine Kopie der Datenbank pro Tag – mit S3 in den Bucket
-            (Ordner <code>backups/</code>), sonst in den Datenordner.
+            {t("Eine Kopie der Datenbank pro Tag – mit S3 in den Bucket (Ordner", "One copy of the database per day – with S3 into the bucket (folder")}{" "}<code>backups/</code>{t("), sonst in den Datenordner.", "), otherwise into the data folder.")}
           </small>
         </span>
       </label>
       <label>
-        Aufbewahrte Sicherungen
+        {t("Aufbewahrte Sicherungen", "Backups kept")}
         <input
           type="number"
           min={1}
@@ -717,7 +715,7 @@ function InstanceSettingsForm({
         />
       </label>
       <label>
-        Konten ohne Anmeldung sperren nach (Tagen)
+        {t("Konten ohne Anmeldung sperren nach (Tagen)", "Block accounts without sign-in after (days)")}
         <input
           type="number"
           min={30}
@@ -729,8 +727,8 @@ function InstanceSettingsForm({
           }
         />
       </label>
-      <button className="button primary">Einstellungen speichern</button>
-      {saved && <p role="status">Gespeichert.</p>}
+      <button className="button primary">{t("Einstellungen speichern", "Save settings")}</button>
+      {saved && <p role="status">{t("Gespeichert.", "Saved.")}</p>}
     </form>
   );
 }
@@ -747,6 +745,7 @@ function MailAndBackup({
   onChange: () => void;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [to, setTo] = useState(""),
     [busy, setBusy] = useState(""),
     [note, setNote] = useState("");
@@ -769,25 +768,24 @@ function MailAndBackup({
         <h2>E-Mail-Versand</h2>
         {mail.configured ? (
           <p>
-            SMTP: <code>{mail.host}</code> als <code>{mail.from}</code> ·{" "}
-            {mail.pending} in der Warteschlange · {mail.sentWeek} gesendet (7 Tage)
+            SMTP: <code>{mail.host}</code> {t("als", "as")}{" "}<code>{mail.from}</code> ·{" "}
+            {mail.pending} {t("in der Warteschlange ·", "queued ·")}{" "}{mail.sentWeek} {t("gesendet (7 Tage)", "sent (7 days)")}
             {mail.failed > 0 && ` · ${mail.failed} aufgegeben`}
           </p>
         ) : (
           <p className="muted">
-            Nicht eingerichtet. Mit <code>SMTP_HOST</code>, <code>SMTP_PORT</code>,{" "}
-            <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code> und <code>SMTP_FROM</code>{" "}
-            verschickt Flowplan Einladungen und Zusammenfassungen ungelesener
-            Benachrichtigungen.
+            {t("Nicht eingerichtet. Mit", "Not set up. With")}{" "}<code>SMTP_HOST</code>, <code>SMTP_PORT</code>,{" "}
+            <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code> {t("und", "and")}{" "}<code>SMTP_FROM</code>{" "}
+            {t("verschickt Flowplan Einladungen und Zusammenfassungen ungelesener Benachrichtigungen.", "Flowplan sends invitations and digests of unread notifications.")}
           </p>
         )}
-        {mail.lastError && <p className="error">Letzter Fehler: {mail.lastError}</p>}
+        {mail.lastError && <p className="error">{t("Letzter Fehler:", "Last error:")}{" "}{mail.lastError}</p>}
         {mail.configured && (
           <form
             className="integration-form"
             onSubmit={(e) => {
               e.preventDefault();
-              void post("/api/admin/mail-test", { to }, `Test-E-Mail an ${to} gesendet.`);
+              void post("/api/admin/mail-test", { to }, t(`Test-E-Mail an ${to} gesendet.`, `Test email sent to ${to}.`));
             }}
           >
             <input
@@ -796,24 +794,24 @@ function MailAndBackup({
               value={to}
               onChange={(e) => setTo(e.target.value)}
               placeholder="E-Mail-Adresse"
-              aria-label="Empfänger der Test-E-Mail"
+              aria-label={t("Empfänger der Test-E-Mail", "Test email recipient")}
             />
             <button className="button" disabled={!!busy}>
-              Test-E-Mail senden
+              {t("Test-E-Mail senden", "Send test email")}
             </button>
           </form>
         )}
       </section>
       <section className="settings-section">
-        <h2>Geplante Sicherung</h2>
+        <h2>{t("Geplante Sicherung", "Scheduled backup")}</h2>
         <p>
-          {backup.enabled ? "Täglich" : "Ausgeschaltet"} ·{" "}
-          {backup.target === "s3" ? "in den S3-Bucket" : "in den Datenordner"} · die neuesten{" "}
+          {backup.enabled ? t("Täglich", "Daily") : t("Ausgeschaltet", "Off")} ·{" "}
+          {backup.target === "s3" ? t("in den S3-Bucket", "into the S3 bucket") : t("in den Datenordner", "into the data folder")} {t("· die neuesten", "· the latest")}{" "}
           {backup.keep} bleiben erhalten.
         </p>
         {backup.last && (
           <p className={backup.last.error ? "error" : "muted"}>
-            Letzte Sicherung {new Date(backup.last.at).toLocaleString("de-DE")}:{" "}
+            {t("Letzte Sicherung", "Last backup")}{" "}{new Date(backup.last.at).toLocaleString(LOCALE_TAG)}:{" "}
             {backup.last.error
               ? backup.last.error
               : `${backup.last.name} (${(backup.last.bytes / 1048576).toFixed(1)} MB)`}
@@ -822,9 +820,9 @@ function MailAndBackup({
         <button
           className="button"
           disabled={!!busy}
-          onClick={() => void post("/api/admin/backup-run", {}, "Sicherung erstellt.")}
+          onClick={() => void post("/api/admin/backup-run", {}, t("Sicherung erstellt.", "Backup created."))}
         >
-          {busy === "/api/admin/backup-run" ? "Sichert …" : "Jetzt sichern"}
+          {busy === "/api/admin/backup-run" ? t("Sichert …", "Backing up …") : t("Jetzt sichern", "Back up now")}
         </button>
       </section>
       {note && <p role="status">{note}</p>}
@@ -842,35 +840,33 @@ function InstanceBackup({
   onChange: () => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   return (
     <section
       className="settings-section instance-backup"
-      aria-label="Instanzsicherung"
+      aria-label={t("Instanzsicherung", "Instance backup")}
     >
-      <h2>Sicherung der gesamten Instanz</h2>
+      <h2>{t("Sicherung der gesamten Instanz", "Backup of the whole instance")}</h2>
       <p className="muted">
-        Enthält alle Arbeitsbereiche, Konten, Einstellungen und Dateien. Die
-        Datei enthält vertrauliche Daten und sollte sicher verwahrt werden.
+        {t("Enthält alle Arbeitsbereiche, Konten, Einstellungen und Dateien. Die Datei enthält vertrauliche Daten und sollte sicher verwahrt werden.", "Contains all workspaces, accounts, settings and files. The file holds confidential data and should be kept safe.")}
       </p>
       <a className="button" href="/api/admin/instance-backup" download>
-        Sicherung herunterladen
+        {t("Sicherung herunterladen", "Download backup")}
       </a>
-      <h3>Aus Sicherung wiederherstellen</h3>
+      <h3>{t("Aus Sicherung wiederherstellen", "Restore from backup")}</h3>
       <p className="muted">
-        Die hochgeladene Sicherung wird geprüft und beim nächsten Neustart des
-        Servers übernommen. Der bisherige Stand bleibt im Datenordner als
-        „pre-restore-…“ erhalten. Alle Sitzungen enden mit der Übernahme.
+        {t("Die hochgeladene Sicherung wird geprüft und beim nächsten Neustart des Servers übernommen. Der bisherige Stand bleibt im Datenordner als „pre-restore-…“ erhalten. Alle Sitzungen enden mit der Übernahme.", "The uploaded backup is checked and applied on the next server restart. The previous state stays in the data folder as “pre-restore-…”. All sessions end when it is applied.")}
       </p>
       {pending ? (
         <div className="callout" role="status">
           <span>
-            Bereit zur Übernahme beim Neustart: Sicherung vom{" "}
+            {t("Bereit zur Übernahme beim Neustart: Sicherung vom", "Ready to apply on restart: backup from")}{" "}
             {pending.createdAt
-              ? new Date(pending.createdAt).toLocaleString("de-DE")
+              ? new Date(pending.createdAt).toLocaleString(LOCALE_TAG)
               : "unbekannten Datum"}{" "}
-            mit {pending.workspaces} Arbeitsbereichen, {pending.pages} Seiten,{" "}
-            {pending.users} Konten und {pending.files} Dateien.
+            {t("mit", "with")}{" "}{pending.workspaces} {t("Arbeitsbereichen,", "workspaces,")}{" "}{pending.pages} {t("Seiten,", "pages,")}{" "}
+            {pending.users} {t("Konten und", "accounts and")}{" "}{pending.files} {t("Dateien.", "files.")}
           </span>
           <button
             className="button compact"
@@ -890,17 +886,17 @@ function InstanceBackup({
               }
             }}
           >
-            Wiederherstellung abbrechen
+            {t("Wiederherstellung abbrechen", "Cancel restore")}
           </button>
         </div>
       ) : (
         <label className="button file-label">
-          {busy ? "Sicherung wird geprüft …" : "Sicherung auswählen"}
+          {busy ? t("Sicherung wird geprüft …", "Checking backup …") : t("Sicherung auswählen", "Choose backup")}
           <input
             type="file"
             accept=".zip"
             hidden
-            aria-label="Instanzsicherung hochladen"
+            aria-label={t("Instanzsicherung hochladen", "Upload instance backup")}
             disabled={busy}
             onChange={async (e) => {
               const file = e.currentTarget.files?.[0];

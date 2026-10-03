@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT } from "./i18n";
 import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
@@ -3126,7 +3127,7 @@ export default function WorkspaceApp({
                   <span>
                     <strong>{s.title}</strong>
                     <small>
-                      {new Date(s.created_at + "Z").toLocaleString("de-DE")}
+                      {new Date(s.created_at + "Z").toLocaleString(LOCALE_TAG)}
                       {" · "}
                       {s.kind === "manual"
                         ? t("Manuell gesichert", "Saved manually")
@@ -3141,7 +3142,7 @@ export default function WorkspaceApp({
                       setVersionChanges({
                         id: s.id,
                         label: new Date(s.created_at + "Z").toLocaleString(
-                          "de-DE",
+                          LOCALE_TAG,
                         ),
                       });
                     }}
@@ -3183,7 +3184,7 @@ export default function WorkspaceApp({
           label={versionChanges.label}
           versions={data.snapshots.map((s) => ({
             id: s.id,
-            label: new Date(s.created_at + "Z").toLocaleString("de-DE"),
+            label: new Date(s.created_at + "Z").toLocaleString(LOCALE_TAG),
           }))}
           onClose={() => {
             setVersionChanges(null);
@@ -3722,7 +3723,7 @@ function relativeTime(value: string, clock: number | null, locale: "de" | "en" =
   if (diff < 60000) return t("gerade eben", "just now");
   if (diff < 3600000) return t(`vor ${Math.floor(diff / 60000)} Min.`, `${Math.floor(diff / 60000)} min ago`);
   if (diff < 86400000) return t(`vor ${Math.floor(diff / 3600000)} Std.`, `${Math.floor(diff / 3600000)} h ago`);
-  return date.toLocaleDateString(t("de-DE", "en-GB"), { day: "numeric", month: "short" });
+  return date.toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short" });
 }
 function InfoIcon() {
   return <Check size={18} />;

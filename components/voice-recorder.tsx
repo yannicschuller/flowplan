@@ -1,6 +1,7 @@
 "use client";
 // Records a voice note in the browser (MediaRecorder); the recording is
 // uploaded as audio and, if the server has Whisper, turned into text.
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { Microphone, Stop, Trash } from "@phosphor-icons/react";
@@ -76,7 +77,7 @@ export function VoiceRecorder({
       stopAll();
       const base = type.split(";")[0];
       const ext = base.includes("mp4") ? "m4a" : base.includes("ogg") ? "ogg" : "webm";
-      const stamp = new Date().toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }).replace(/[/:, ]+/g, "-");
+      const stamp = new Date().toLocaleString(LOCALE_TAG, { dateStyle: "short", timeStyle: "short" }).replace(/[/:, ]+/g, "-");
       setFile(new File(chunks, t(`Sprachnotiz-${stamp}.${ext}`, `Voice-note-${stamp}.${ext}`), { type: base }));
       setState("done");
     };
@@ -106,7 +107,7 @@ export function VoiceRecorder({
         ) : state === "done" && file ? (
           <>
             {url && <audio controls src={url} aria-label={t("Aufnahme anhören", "Listen to the recording")} />}
-            <small>{clock(seconds)} · {(file.size / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB</small>
+            <small>{clock(seconds)} · {(file.size / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })} MB</small>
             {transcription ? (
               <label className="voice-option">
                 <input type="checkbox" checked={toText} onChange={(e) => setToText(e.target.checked)} />

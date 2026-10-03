@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import {
@@ -144,7 +145,7 @@ export default function DatabaseTimeline({
     day: number,
     options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" },
   ) =>
-    new Date(day * DAY).toLocaleDateString("de-DE", {
+    new Date(day * DAY).toLocaleDateString(LOCALE_TAG, {
       ...options,
       timeZone: "UTC",
     });

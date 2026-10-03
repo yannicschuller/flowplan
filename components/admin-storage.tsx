@@ -1,4 +1,6 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
+import { useT } from "./i18n";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowClockwise, CloudCheck, CloudSlash, Database, HardDrives } from "@phosphor-icons/react";
 import { api } from "./ui";
@@ -14,16 +16,16 @@ export function bytes(value: number) {
     v /= 1024;
     i++;
   }
-  return `${v.toLocaleString("de-DE", { maximumFractionDigits: v < 10 ? 1 : 0 })} ${units[i]}`;
+  return `${v.toLocaleString(LOCALE_TAG, { maximumFractionDigits: v < 10 ? 1 : 0 })} ${units[i]}`;
 }
-const number = (n: number) => n.toLocaleString("de-DE");
-function ago(iso: string | null) {
-  if (!iso) return "noch keine";
+const number = (n: number) => n.toLocaleString(LOCALE_TAG);
+function ago(iso: string | null, t: (de: string, en: string) => string) {
+  if (!iso) return t("noch keine", "none yet");
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (minutes < 1) return "gerade eben";
-  if (minutes < 60) return `vor ${minutes} Min.`;
-  if (minutes < 1440) return `vor ${Math.round(minutes / 60)} Std.`;
-  return `vor ${Math.round(minutes / 1440)} Tagen`;
+  if (minutes < 1) return t("gerade eben", "just now");
+  if (minutes < 60) return t(`vor ${minutes} Min.`, `${minutes} min ago`);
+  if (minutes < 1440) return t(`vor ${Math.round(minutes / 60)} Std.`, `${Math.round(minutes / 60)} h ago`);
+  return t(`vor ${Math.round(minutes / 1440)} Tagen`, `${Math.round(minutes / 1440)} days ago`);
 }
 
 // A stacked bar with its legend: shares of a total.
@@ -34,6 +36,7 @@ function Breakdown({
   parts: { key: string; label: string; bytes: number; files?: number }[];
   label: string;
 }) {
+  const t = useT();
   const total = parts.reduce((sum, p) => sum + p.bytes, 0);
   const shown = parts.filter((p) => p.bytes > 0);
   return (
@@ -53,12 +56,12 @@ function Breakdown({
             <li key={p.key}>
               <i style={{ background: COLORS[i % COLORS.length] }} />
               <span>{p.label}</span>
-              {p.files !== undefined && <small>{number(p.files)} Dateien</small>}
+              {p.files !== undefined && <small>{number(p.files)} {t("Dateien", "Files")}</small>}
               <strong>{bytes(p.bytes)}</strong>
             </li>
           ))
         ) : (
-          <li className="storage-empty">Noch nichts gespeichert</li>
+          <li className="storage-empty">{t("Noch nichts gespeichert", "Nothing stored yet")}</li>
         )}
       </ul>
     </div>
@@ -66,6 +69,7 @@ function Breakdown({
 }
 
 export function AdminStorage({ onError }: { onError: (message: string) => void }) {
+  const t = useT();
   const [data, setData] = useState<StorageOverview | null>(null),
     [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
@@ -84,8 +88,8 @@ export function AdminStorage({ onError }: { onError: (message: string) => void }
   if (!data)
     return (
       <section className="settings-section">
-        <h2>Speicher</h2>
-        <p className="muted">Speicher wird geprüft …</p>
+        <h2>{t("Speicher", "Storage")}</h2>
+        <p className="muted">{t("Speicher wird geprüft …", "Checking storage …")}</p>
       </section>
     );
   const s3 = data.objectStorage,
@@ -93,10 +97,10 @@ export function AdminStorage({ onError }: { onError: (message: string) => void }
   return (
     <section className="settings-section admin-storage">
       <div className="settings-list-head">
-        <h2>Speicher</h2>
+        <h2>{t("Speicher", "Storage")}</h2>
         <button type="button" className="button" onClick={() => void load()} disabled={busy}>
           <ArrowClockwise size={15} className={busy ? "spin" : undefined} />
-          {busy ? "Prüfe …" : "Aktualisieren"}
+          {busy ? t("Prüfe …", "Checking …") : t("Aktualisieren", "Refresh")}
         </button>
       </div>
 
@@ -109,43 +113,43 @@ export function AdminStorage({ onError }: { onError: (message: string) => void }
         <div>
           <strong>
             {!s3.enabled
-              ? "S3 nicht eingerichtet – alles liegt lokal"
+              ? t("S3 nicht eingerichtet – alles liegt lokal", "S3 not set up – everything is local")
               : s3.reachable
                 ? "S3 verbunden"
-                : "S3 nicht erreichbar"}
+                : t("S3 nicht erreichbar", "S3 not reachable")}
           </strong>
           {s3.enabled ? (
             <span>
-              {s3.bucket} auf {s3.endpoint}
+              {s3.bucket} {t("auf", "on")}{" "}{s3.endpoint}
               {s3.prefix ? ` · Ordner ${s3.prefix}` : ""}
               {s3.reachable && s3.latencyMs !== undefined ? ` · ${s3.latencyMs} ms` : ""}
               {!s3.reachable && s3.error ? ` · ${s3.error}` : ""}
             </span>
           ) : (
-            <span>Mit den Variablen S3_* werden Dateien und Datenbank zusätzlich in einen Bucket gesichert.</span>
+            <span>{t("Mit den Variablen S3_* werden Dateien und Datenbank zusätzlich in einen Bucket gesichert.", "With the S3_* variables, files and database are also backed up to a bucket.")}</span>
           )}
         </div>
         {s3.enabled && (
           <dl>
             <div>
-              <dt>Warteschlange</dt>
+              <dt>{t("Warteschlange", "Queue")}</dt>
               <dd>
                 {s3.pending ? `${number(s3.pending)} ausstehend` : "leer"}
-                {s3.retrying ? " · wird wiederholt" : ""}
+                {s3.retrying ? t(" · wird wiederholt", " · retrying") : ""}
               </dd>
             </div>
             {s3.reachable && s3.backup && (
               <div>
-                <dt>Datenbanksicherung</dt>
-                <dd>{s3.backup.objects ? `${ago(s3.backup.lastModified)} · ${bytes(s3.backup.bytes)}` : "noch keine"}</dd>
+                <dt>{t("Datenbanksicherung", "Database backup")}</dt>
+                <dd>{s3.backup.objects ? `${ago(s3.backup.lastModified, t)} · ${bytes(s3.backup.bytes)}` : t("noch keine", "none yet")}</dd>
               </div>
             )}
             {s3.reachable && s3.missing !== undefined && (
               <div>
-                <dt>Abgleich</dt>
+                <dt>{t("Abgleich", "Reconciliation")}</dt>
                 <dd>
-                  {s3.missing ? `${number(s3.missing)} Dateien fehlen im Bucket` : "alle Dateien im Bucket"}
-                  {s3.orphans ? ` · ${number(s3.orphans)} ohne Datei` : ""}
+                  {s3.missing ? t(`${number(s3.missing)} Dateien fehlen im Bucket`, `${number(s3.missing)} files missing in the bucket`) : t("alle Dateien im Bucket", "all files in the bucket")}
+                  {s3.orphans ? t(` · ${number(s3.orphans)} ohne Datei`, ` · ${number(s3.orphans)} without a file`) : ""}
                 </dd>
               </div>
             )}
@@ -156,17 +160,17 @@ export function AdminStorage({ onError }: { onError: (message: string) => void }
       <div className="storage-columns">
         <div className="storage-panel">
           <h3>
-            <HardDrives size={18} /> Lokal
+            <HardDrives size={18} /> {t("Lokal", "Local")}
             <strong>{bytes(data.local.databaseBytes + data.local.uploads.bytes)}</strong>
           </h3>
           <h4>
-            SQLite-Datenbank <span>{bytes(data.local.databaseBytes)}</span>
+            {t("SQLite-Datenbank", "SQLite database")}{" "}<span>{bytes(data.local.databaseBytes)}</span>
           </h4>
-          <Breakdown parts={data.local.database} label="Aufteilung der Datenbank" />
+          <Breakdown parts={data.local.database} label={t("Aufteilung der Datenbank", "Database breakdown")} />
           <h4>
-            Hochgeladene Dateien <span>{bytes(data.local.uploads.bytes)} · {number(data.local.uploads.files)}</span>
+            {t("Hochgeladene Dateien", "Uploaded files")}{" "}<span>{bytes(data.local.uploads.bytes)} · {number(data.local.uploads.files)}</span>
           </h4>
-          <Breakdown parts={data.local.uploads.byType} label="Dateien nach Art" />
+          <Breakdown parts={data.local.uploads.byType} label={t("Dateien nach Art", "Files by kind")} />
         </div>
         <div className="storage-panel">
           <h3>
@@ -180,43 +184,43 @@ export function AdminStorage({ onError }: { onError: (message: string) => void }
           {s3.enabled && s3.reachable && s3.uploads ? (
             <>
               <h4>
-                Datenbanksicherung (Litestream) <span>{bytes(s3.backup?.bytes || 0)} · {number(s3.backup?.objects || 0)} Teile</span>
+                {t("Datenbanksicherung (Litestream)", "Database backup (Litestream)")}{" "}<span>{bytes(s3.backup?.bytes || 0)} · {number(s3.backup?.objects || 0)} {t("Teile", "Parts")}</span>
               </h4>
               <h4>
-                Dateien <span>{bytes(s3.uploads.bytes)} · {number(s3.uploads.objects)}</span>
+                {t("Dateien", "Files")}{" "}<span>{bytes(s3.uploads.bytes)} · {number(s3.uploads.objects)}</span>
               </h4>
-              <Breakdown parts={s3.uploads.byType} label="Dateien im Bucket nach Art" />
-              {s3.partial && <p className="muted">Mehr als 50 000 Objekte – Werte unvollständig.</p>}
+              <Breakdown parts={s3.uploads.byType} label={t("Dateien im Bucket nach Art", "Files in the bucket by kind")} />
+              {s3.partial && <p className="muted">{t("Mehr als 50 000 Objekte – Werte unvollständig.", "More than 50,000 objects – values incomplete.")}</p>}
             </>
           ) : (
             <p className="muted">
-              {s3.enabled ? "Der Bucket kann gerade nicht gelesen werden." : "Kein S3-Speicher eingerichtet."}
+              {s3.enabled ? t("Der Bucket kann gerade nicht gelesen werden.", "The bucket cannot be read right now.") : t("Kein S3-Speicher eingerichtet.", "No S3 storage set up.")}
             </p>
           )}
         </div>
       </div>
 
-      <h3 className="storage-counts-title">Inhalte</h3>
+      <h3 className="storage-counts-title">{t("Inhalte", "Content")}</h3>
       <div className="admin-metrics storage-counts">
         {(
           [
-            ["Arbeitsbereiche", c.workspaces],
-            ["Bereiche", c.spaces],
-            ["Dokumente", c.documents],
-            ["Datenbanken", c.databases],
-            ["Datensätze", c.rows],
-            ["Whiteboards", c.whiteboards],
-            ["Journale", `${number(c.journals)} · ${number(c.journalDays)} Tage`],
-            ["Dateien", c.files],
-            ["Kommentare", c.comments],
-            ["Versionen", c.versions],
-            ["Vorlagen", c.templates],
-            ["Im Papierkorb", c.trashedPages],
-            ["Gastlinks", c.shareLinks],
-            ["Veröffentlicht", c.publications],
-            ["Aktive Formulare", c.forms],
-            ["Benutzer", `${number(c.users)}${c.disabledUsers ? ` · ${number(c.disabledUsers)} gesperrt` : ""}`],
-            ["Aktive Sitzungen", c.sessions],
+            [t("Arbeitsbereiche", "Workspaces"), c.workspaces],
+            [t("Bereiche", "Spaces"), c.spaces],
+            [t("Dokumente", "Documents"), c.documents],
+            [t("Datenbanken", "Databases"), c.databases],
+            [t("Datensätze", "Records"), c.rows],
+            [t("Whiteboards", "Whiteboards"), c.whiteboards],
+            [t("Journale", "Journals"), t(`${number(c.journals)} · ${number(c.journalDays)} Tage`, `${number(c.journals)} · ${number(c.journalDays)} days`)],
+            [t("Dateien", "Files"), c.files],
+            [t("Kommentare", "Comments"), c.comments],
+            [t("Versionen", "Versions"), c.versions],
+            [t("Vorlagen", "Templates"), c.templates],
+            [t("Im Papierkorb", "In trash"), c.trashedPages],
+            [t("Gastlinks", "Guest links"), c.shareLinks],
+            [t("Veröffentlicht", "Published"), c.publications],
+            [t("Aktive Formulare", "Active forms"), c.forms],
+            [t("Benutzer", "Users"), `${number(c.users)}${c.disabledUsers ? ` · ${number(c.disabledUsers)} gesperrt` : ""}`],
+            [t("Aktive Sitzungen", "Active sessions"), c.sessions],
           ] as const
         ).map(([label, value]) => (
           <div key={label}>

@@ -1,3 +1,4 @@
+import { LOCALE_TAG } from "./locale-tag";
 import { formatFieldDate, formatNumber } from "./field-format";
 import type { Field, Row } from "./types";
 import { isFormulaError } from "./formula";
@@ -236,7 +237,7 @@ export function summaryText(
           )
         ? formatNumber(result.value, field.format, field.decimals)
         : typeof result.value === "number"
-          ? new Intl.NumberFormat("de-DE", {
+          ? new Intl.NumberFormat(LOCALE_TAG, {
               maximumFractionDigits: 4,
               ...(percentAggregate(result.calculation)
                 ? { style: "percent" as const }

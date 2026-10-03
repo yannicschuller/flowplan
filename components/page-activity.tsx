@@ -1,6 +1,7 @@
 "use client";
 // Following a page, who has read it and what changed since one's own last
 // visit (components of the page header and above the content).
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useLocale, useT } from "./i18n";
 import { useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
@@ -32,7 +33,7 @@ export function ago(ms: number, now = Date.now(), locale: "de" | "en" = "de") {
   const days = Math.round(hours / 24);
   if (days === 1) return t("gestern", "yesterday");
   if (days < 30) return t(`vor ${days} Tagen`, `${days} days ago`);
-  return new Date(ms).toLocaleDateString(t("de-DE", "en-GB"), { day: "numeric", month: "long", year: "numeric" });
+  return new Date(ms).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "long", year: "numeric" });
 }
 const names = (list: string[], t: (de: string, en: string) => string) =>
   list.length <= 2

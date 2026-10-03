@@ -2,6 +2,8 @@
 // Journal building blocks: settings (template, trackers, calendar, PIN),
 // the review of a week or month, the bar above a day page (trackers, place,
 // appointments) and the lock screen.
+import { useT } from "./i18n";
+import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
 import {
   CalendarBlank,
@@ -18,7 +20,7 @@ import {
 import { api, Modal } from "./ui";
 
 export const moodFaces = ["😞", "🙁", "😐", "🙂", "😄"];
-const moodNames = ["Schlecht", "Mäßig", "Okay", "Gut", "Großartig"];
+const moodNames = [tr("Schlecht", "Bad"), tr("Mäßig", "Poor"), "Okay", tr("Gut", "Good"), tr("Großartig", "Great")];
 export type Tracker = {
   id: string;
   name: string;
@@ -39,13 +41,13 @@ export type DayEntry = {
   lon: number | null;
 };
 const utc = (day: string) => new Date(`${day}T00:00:00Z`);
-const longDate = new Intl.DateTimeFormat("de-DE", {
+const longDate = new Intl.DateTimeFormat(LOCALE_TAG, {
   weekday: "short",
   day: "numeric",
   month: "long",
   timeZone: "UTC",
 });
-const monthName = new Intl.DateTimeFormat("de-DE", {
+const monthName = new Intl.DateTimeFormat(LOCALE_TAG, {
   month: "long",
   year: "numeric",
   timeZone: "UTC",
@@ -56,28 +58,40 @@ const shiftDay = (day: string, days: number) => {
   return d.toISOString().slice(0, 10);
 };
 const message = (e: unknown) =>
-  e instanceof Error ? e.message : "Das hat nicht geklappt.";
+  e instanceof Error ? e.message : tr("Das hat nicht geklappt.", "That did not work.");
 
 export const templatePresets: { name: string; description: string; html: string }[] = [
   {
-    name: "Dankbarkeit & Fokus",
-    description: "Drei Dinge, für die du dankbar bist, dein Fokus und ein Rückblick am Abend.",
-    html: "<h3>Dankbar für</h3><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><h3>Fokus heute</h3><p></p><h3>Rückblick am Abend</h3><p></p>",
+    name: tr("Dankbarkeit & Fokus", "Gratitude & focus"),
+    description: tr("Drei Dinge, für die du dankbar bist, dein Fokus und ein Rückblick am Abend.", "Three things you are grateful for, your focus and a review in the evening."),
+    html: tr(
+      "<h3>Dankbar für</h3><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><h3>Fokus heute</h3><p></p><h3>Rückblick am Abend</h3><p></p>",
+      "<h3>Grateful for</h3><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><h3>Focus today</h3><p></p><h3>Evening review</h3><p></p>",
+    ),
   },
   {
-    name: "5-Minuten-Journal",
-    description: "Morgens drei Fragen, abends zwei – kurz und regelmäßig.",
-    html: "<h3>☀️ Morgens</h3><p><strong>Wofür bin ich dankbar?</strong></p><p></p><p><strong>Was würde heute großartig machen?</strong></p><p></p><p><strong>Mein Satz für heute</strong></p><p></p><h3>🌙 Abends</h3><p><strong>Drei schöne Dinge heute</strong></p><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><p><strong>Was nehme ich mir für morgen vor?</strong></p><p></p>",
+    name: tr("5-Minuten-Journal", "5-minute journal"),
+    description: tr("Morgens drei Fragen, abends zwei – kurz und regelmäßig.", "Three questions in the morning, two in the evening – short and regular."),
+    html: tr(
+      "<h3>☀️ Morgens</h3><p><strong>Wofür bin ich dankbar?</strong></p><p></p><p><strong>Was würde heute großartig machen?</strong></p><p></p><p><strong>Mein Satz für heute</strong></p><p></p><h3>🌙 Abends</h3><p><strong>Drei schöne Dinge heute</strong></p><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><p><strong>Was nehme ich mir für morgen vor?</strong></p><p></p>",
+      "<h3>☀️ Morning</h3><p><strong>What am I grateful for?</strong></p><p></p><p><strong>What would make today great?</strong></p><p></p><p><strong>My line for today</strong></p><p></p><h3>🌙 Evening</h3><p><strong>Three good things today</strong></p><ol><li><p></p></li><li><p></p></li><li><p></p></li></ol><p><strong>What do I plan for tomorrow?</strong></p><p></p>",
+    ),
   },
   {
-    name: "Arbeitslog",
-    description: "Was erledigt ist, was hakt und was morgen kommt.",
-    html: "<h3>Erledigt</h3><ul><li><p></p></li></ul><h3>Blockiert</h3><p></p><h3>Morgen</h3><p></p><h3>Notizen</h3><p></p>",
+    name: tr("Arbeitslog", "Work log"),
+    description: tr("Was erledigt ist, was hakt und was morgen kommt.", "What is done, what is stuck and what comes tomorrow."),
+    html: tr(
+      "<h3>Erledigt</h3><ul><li><p></p></li></ul><h3>Blockiert</h3><p></p><h3>Morgen</h3><p></p><h3>Notizen</h3><p></p>",
+      "<h3>Done</h3><ul><li><p></p></li></ul><h3>Blocked</h3><p></p><h3>Tomorrow</h3><p></p><h3>Notes</h3><p></p>",
+    ),
   },
   {
-    name: "Tagesrückblick",
-    description: "Drei Fragen für den Abend.",
-    html: "<h3>Was ist heute passiert?</h3><p></p><h3>Was habe ich gelernt?</h3><p></p><h3>Worauf freue ich mich?</h3><p></p>",
+    name: tr("Tagesrückblick", "Daily review"),
+    description: tr("Drei Fragen für den Abend.", "Three questions for the evening."),
+    html: tr(
+      "<h3>Was ist heute passiert?</h3><p></p><h3>Was habe ich gelernt?</h3><p></p><h3>Worauf freue ich mich?</h3><p></p>",
+      "<h3>What happened today?</h3><p></p><h3>What did I learn?</h3><p></p><h3>What am I looking forward to?</h3><p></p>",
+    ),
   },
 ];
 
@@ -85,17 +99,17 @@ export const templatePresets: { name: string; description: string; html: string 
 
 type SettingsTab = "template" | "trackers" | "bar" | "lock";
 const trackerSuggestions: Omit<Tracker, "id">[] = [
-  { name: "Stimmung", kind: "mood" },
-  { name: "Schlaf", kind: "number", unit: "h" },
-  { name: "Sport", kind: "check" },
-  { name: "Energie", kind: "scale" },
-  { name: "Wasser", kind: "number", unit: "Gläser" },
+  { name: tr("Stimmung", "Mood"), kind: "mood" },
+  { name: tr("Schlaf", "Sleep"), kind: "number", unit: "h" },
+  { name: tr("Sport", "Exercise"), kind: "check" },
+  { name: tr("Energie", "Energy"), kind: "scale" },
+  { name: tr("Wasser", "Water"), kind: "number", unit: tr("Gläser", "glasses") },
 ];
 const kindNames: Record<Tracker["kind"], string> = {
-  mood: "Stimmung 😞–😄",
-  scale: "Skala 1–5",
-  number: "Zahl",
-  check: "Ja / Nein",
+  mood: tr("Stimmung 😞–😄", "Mood 😞–😄"),
+  scale: tr("Skala 1–5", "Scale 1–5"),
+  number: tr("Zahl", "Number"),
+  check: tr("Ja / Nein", "Yes / no"),
 };
 
 export function JournalSettingsDialog({
@@ -113,6 +127,7 @@ export function JournalSettingsDialog({
   onChanged: () => Promise<unknown> | void;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [tab, setTab] = useState<SettingsTab>("template");
   const [current, setCurrent] = useState(settings);
   const [trackers, setTrackers] = useState<Tracker[]>(settings.trackers);
@@ -145,7 +160,7 @@ export function JournalSettingsDialog({
     if (!(await save({ options: { [key]: value } }))) setCurrent(before);
   };
   const lock = async (next: string | null) => {
-    if (next !== null && next !== pinAgain) return onError("Die PINs stimmen nicht überein.");
+    if (next !== null && next !== pinAgain) return onError(t("Die PINs stimmen nicht überein.", "The PINs do not match."));
     setBusy(true);
     try {
       await api("/api/command", {
@@ -159,7 +174,7 @@ export function JournalSettingsDialog({
       setPinAgain("");
       setOldPin("");
       await onChanged();
-      onError(next === null ? "Sperre entfernt." : "Journal ist mit PIN geschützt.");
+      onError(next === null ? t("Sperre entfernt.", "Lock removed.") : t("Journal ist mit PIN geschützt.", "Journal is protected with a PIN."));
     } catch (e) {
       onError(message(e));
     } finally {
@@ -174,14 +189,14 @@ export function JournalSettingsDialog({
       .replace(/^-|-$/g, "")
       .slice(0, 30) || "tracker") + "-" + Math.random().toString(36).slice(2, 6);
   const tabs: [SettingsTab, string][] = [
-    ["template", "Vorlage"],
-    ["trackers", "Tracker"],
-    ["bar", "Tagesleiste"],
-    ["lock", "Sperre"],
+    ["template", t("Vorlage", "Template")],
+    ["trackers", t("Tracker", "Trackers")],
+    ["bar", t("Tagesleiste", "Day bar")],
+    ["lock", t("Sperre", "Lock")],
   ];
   return (
-    <Modal open onClose={onClose} title="Journal einrichten" wide className="journal-settings">
-      <div className="js-tabs" role="tablist" aria-label="Bereiche">
+    <Modal open onClose={onClose} title={t("Journal einrichten", "Set up journal")} wide className="journal-settings">
+      <div className="js-tabs" role="tablist" aria-label={t("Bereiche", "Sections")}>
         {tabs.map(([key, label]) => (
           <button
             key={key}
@@ -198,20 +213,20 @@ export function JournalSettingsDialog({
       </div>
 
       {tab === "template" && (
-        <section className="js-panel" role="tabpanel" aria-label="Vorlage">
-          <p className="js-intro">Jeder neue Tag beginnt mit diesem Inhalt. Aufgaben aus der Vorlage kommen jeden Tag neu.</p>
+        <section className="js-panel" role="tabpanel" aria-label={t("Vorlage", "Template")}>
+          <p className="js-intro">{t("Jeder neue Tag beginnt mit diesem Inhalt. Aufgaben aus der Vorlage kommen jeden Tag neu.", "Every new day starts with this content. Tasks from the template come anew every day.")}</p>
           <div className="js-current">
             <div className="js-current-head">
-              <strong>Aktuelle Vorlage</strong>
+              <strong>{t("Aktuelle Vorlage", "Current template")}</strong>
               <span className="js-current-actions">
                 {todayId && (
-                  <button type="button" className="text-button" disabled={busy} onClick={() => void save({ templateFromDay: todayId }, "Der heutige Tag ist jetzt die Vorlage.")}>
-                    Heutigen Tag übernehmen
+                  <button type="button" className="text-button" disabled={busy} onClick={() => void save({ templateFromDay: todayId }, t("Der heutige Tag ist jetzt die Vorlage.", "Today is now the template."))}>
+                    {t("Heutigen Tag übernehmen", "Use today")}
                   </button>
                 )}
                 {current.template && (
-                  <button type="button" className="text-button" disabled={busy} onClick={() => void save({ template: "" }, "Vorlage entfernt.")}>
-                    Entfernen
+                  <button type="button" className="text-button" disabled={busy} onClick={() => void save({ template: "" }, t("Vorlage entfernt.", "Template removed."))}>
+                    {t("Entfernen", "Remove")}
                   </button>
                 )}
               </span>
@@ -223,10 +238,10 @@ export function JournalSettingsDialog({
                 dangerouslySetInnerHTML={{ __html: current.template }}
               />
             ) : (
-              <p className="journal-template-empty">Keine Vorlage – neue Tage beginnen leer.</p>
+              <p className="journal-template-empty">{t("Keine Vorlage – neue Tage beginnen leer.", "No template – new days start empty.")}</p>
             )}
           </div>
-          <strong className="js-label">Fertige Vorlagen</strong>
+          <strong className="js-label">{t("Fertige Vorlagen", "Ready-made templates")}</strong>
           <div className="journal-presets">
             {templatePresets.map((preset) => (
               <button
@@ -234,7 +249,7 @@ export function JournalSettingsDialog({
                 type="button"
                 className="journal-preset"
                 disabled={busy}
-                onClick={() => void save({ template: preset.html }, `Vorlage „${preset.name}“ gesetzt.`)}
+                onClick={() => void save({ template: preset.html }, t(`Vorlage „${preset.name}“ gesetzt.`, `Template “${preset.name}” set.`))}
               >
                 <strong>{preset.name}</strong>
                 <span>{preset.description}</span>
@@ -245,20 +260,20 @@ export function JournalSettingsDialog({
       )}
 
       {tab === "trackers" && (
-        <section className="js-panel" role="tabpanel" aria-label="Tracker">
-          <p className="js-intro">Werte, die du jeden Tag festhältst. Der Verlauf erscheint auf der Journalseite.</p>
+        <section className="js-panel" role="tabpanel" aria-label={t("Tracker", "Trackers")}>
+          <p className="js-intro">{t("Werte, die du jeden Tag festhältst. Der Verlauf erscheint auf der Journalseite.", "Values you record every day. The history appears on the journal page.")}</p>
           {trackers.length ? (
             <ul className="js-trackers">
               {trackers.map((tracker, i) => (
                 <li key={tracker.id}>
                   <input
-                    aria-label="Name des Trackers"
+                    aria-label={t("Name des Trackers", "Tracker name")}
                     value={tracker.name}
                     maxLength={40}
                     onChange={(e) => setTrackers(trackers.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
                   />
                   <select
-                    aria-label="Art"
+                    aria-label={t("Art", "Kind")}
                     value={tracker.kind}
                     onChange={(e) => setTrackers(trackers.map((t, j) => (j === i ? { ...t, kind: e.target.value as Tracker["kind"] } : t)))}
                   >
@@ -270,8 +285,8 @@ export function JournalSettingsDialog({
                   </select>
                   {tracker.kind === "number" ? (
                     <input
-                      aria-label="Einheit"
-                      placeholder="Einheit"
+                      aria-label={t("Einheit", "Unit")}
+                      placeholder={t("Einheit", "Unit")}
                       value={tracker.unit || ""}
                       maxLength={12}
                       className="js-unit"
@@ -280,14 +295,14 @@ export function JournalSettingsDialog({
                   ) : (
                     <span className="js-unit" aria-hidden="true" />
                   )}
-                  <button type="button" className="icon-button" aria-label={`${tracker.name} entfernen`} onClick={() => setTrackers(trackers.filter((_, j) => j !== i))}>
+                  <button type="button" className="icon-button" aria-label={t(`${tracker.name} entfernen`, `Remove ${tracker.name}`)} onClick={() => setTrackers(trackers.filter((_, j) => j !== i))}>
                     <Trash size={16} />
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="journal-template-empty">Noch keine Tracker.</p>
+            <p className="journal-template-empty">{t("Noch keine Tracker.", "No trackers yet.")}</p>
           )}
           <div className="journal-tracker-add">
             {trackerSuggestions
@@ -307,13 +322,13 @@ export function JournalSettingsDialog({
               type="button"
               className="chip"
               disabled={trackers.length >= 12}
-              onClick={() => setTrackers([...trackers, { id: idFor("tracker"), name: "Neuer Tracker", kind: "scale" }])}
+              onClick={() => setTrackers([...trackers, { id: idFor("tracker"), name: t("Neuer Tracker", "New tracker"), kind: "scale" }])}
             >
-              <Plus size={12} /> Eigener
+              <Plus size={12} /> {t("Eigener", "Custom")}
             </button>
           </div>
           <div className="js-footer">
-            {trackersChanged && <span className="muted">Nicht gespeichert</span>}
+            {trackersChanged && <span className="muted">{t("Nicht gespeichert", "Not saved")}</span>}
             <button
               type="button"
               className="button primary"
@@ -327,19 +342,19 @@ export function JournalSettingsDialog({
                       ...(t.kind === "number" && t.unit?.trim() ? { unit: t.unit.trim() } : { unit: undefined }),
                     })),
                   },
-                  "Tracker gespeichert.",
+                  t("Tracker gespeichert.", "Trackers saved."),
                 )
               }
             >
-              Tracker speichern
+              {t("Tracker speichern", "Save trackers")}
             </button>
           </div>
         </section>
       )}
 
       {tab === "bar" && (
-        <section className="js-panel" role="tabpanel" aria-label="Tagesleiste">
-          <p className="js-intro">Die Leiste über jedem Tag. Tracker stehen immer darin, sobald es welche gibt.</p>
+        <section className="js-panel" role="tabpanel" aria-label={t("Tagesleiste", "Day bar")}>
+          <p className="js-intro">{t("Die Leiste über jedem Tag. Tracker stehen immer darin, sobald es welche gibt.", "The bar above every day. Trackers are always in it once there are some.")}</p>
           <label className="js-switch">
             <input
               type="checkbox"
@@ -348,8 +363,8 @@ export function JournalSettingsDialog({
               onChange={(e) => setOption("place", e.target.checked)}
             />
             <span>
-              <strong>Ort</strong>
-              <small>Ortsangabe und Standort pro Tag</small>
+              <strong>{t("Ort", "Place")}</strong>
+              <small>{t("Ortsangabe und Standort pro Tag", "Place and location per day")}</small>
             </span>
           </label>
           <label className="js-switch">
@@ -360,15 +375,15 @@ export function JournalSettingsDialog({
               onChange={(e) => setOption("events", e.target.checked)}
             />
             <span>
-              <strong>Termine</strong>
-              <small>Einträge aus Datenbanken mit Datum und aus einem Kalender</small>
+              <strong>{t("Termine", "Events")}</strong>
+              <small>{t("Einträge aus Datenbanken mit Datum und aus einem Kalender", "Records from databases with a date and from a calendar")}</small>
             </span>
           </label>
           {options.events && (
             <div className="js-field">
-              <strong className="js-label">Kalender einbinden (optional)</strong>
+              <strong className="js-label">{t("Kalender einbinden (optional)", "Connect a calendar (optional)")}</strong>
               <small className="muted">
-                iCal-Link, z. B. die „Geheime Adresse im iCal-Format“ aus Google Kalender.
+                {t("iCal-Link, z. B. die „Geheime Adresse im iCal-Format“ aus Google Kalender.", "iCal link, e.g. the “Secret address in iCal format” from Google Calendar.")}
               </small>
               <div className="journal-inline-form">
                 <input type="url" placeholder="https://… .ics" value={ics} onChange={(e) => setIcs(e.target.value)} aria-label="iCal-Adresse" />
@@ -376,9 +391,9 @@ export function JournalSettingsDialog({
                   type="button"
                   className="button"
                   disabled={busy || ics === (current.icsUrl || "")}
-                  onClick={() => void save({ icsUrl: ics.trim() }, ics.trim() ? "Kalender verbunden." : "Kalender entfernt.")}
+                  onClick={() => void save({ icsUrl: ics.trim() }, ics.trim() ? t("Kalender verbunden.", "Calendar connected.") : t("Kalender entfernt.", "Calendar removed."))}
                 >
-                  Speichern
+                  {t("Speichern", "Save")}
                 </button>
               </div>
             </div>
@@ -387,14 +402,13 @@ export function JournalSettingsDialog({
       )}
 
       {tab === "lock" && (
-        <section className="js-panel" role="tabpanel" aria-label="Sperre">
+        <section className="js-panel" role="tabpanel" aria-label={t("Sperre", "Lock")}>
           <p className="js-status">
             <LockKey size={18} weight={current.locked ? "fill" : "regular"} />
-            {current.locked ? "Das Journal ist mit einer PIN geschützt." : "Das Journal ist nicht gesperrt."}
+            {current.locked ? t("Das Journal ist mit einer PIN geschützt.", "The journal is protected with a PIN.") : t("Das Journal ist nicht gesperrt.", "The journal is not locked.")}
           </p>
           <p className="js-intro">
-            Mit PIN zeigt das Journal seine Tage erst nach Eingabe – für alle, die es öffnen dürfen. Nach 15 Minuten sperrt es
-            sich wieder. Das schützt vor Blicken, ist aber keine Verschlüsselung.
+            {t("Mit PIN zeigt das Journal seine Tage erst nach Eingabe – für alle, die es öffnen dürfen. Nach 15 Minuten sperrt es sich wieder. Das schützt vor Blicken, ist aber keine Verschlüsselung.", "With a PIN the journal shows its days only after entering it – for everyone allowed to open it. After 15 minutes it locks again. This protects against prying eyes but is not encryption.")}
           </p>
           <div className="js-pin">
             {current.locked && (
@@ -402,8 +416,8 @@ export function JournalSettingsDialog({
                 type="password"
                 inputMode="numeric"
                 autoComplete="off"
-                placeholder="Bisherige PIN"
-                aria-label="Bisherige PIN"
+                placeholder={t("Bisherige PIN", "Current PIN")}
+                aria-label={t("Bisherige PIN", "Current PIN")}
                 value={oldPin}
                 onChange={(e) => setOldPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
               />
@@ -412,8 +426,8 @@ export function JournalSettingsDialog({
               type="password"
               inputMode="numeric"
               autoComplete="new-password"
-              placeholder={current.locked ? "Neue PIN" : "PIN (4–8 Ziffern)"}
-              aria-label="Neue PIN"
+              placeholder={current.locked ? t("Neue PIN", "New PIN") : "PIN (4–8 Ziffern)"}
+              aria-label={t("Neue PIN", "New PIN")}
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
             />
@@ -430,7 +444,7 @@ export function JournalSettingsDialog({
           <div className="js-footer">
             {current.locked && (
               <button type="button" className="button" disabled={busy || oldPin.length < 4} onClick={() => void lock(null)}>
-                Sperre entfernen
+                {t("Sperre entfernen", "Remove lock")}
               </button>
             )}
             <button
@@ -439,7 +453,7 @@ export function JournalSettingsDialog({
               disabled={busy || pin.length < 4 || (current.locked && oldPin.length < 4)}
               onClick={() => void lock(pin)}
             >
-              {current.locked ? "PIN ändern" : "Sperren"}
+              {current.locked ? t("PIN ändern", "Change PIN") : t("Sperren", "Lock")}
             </button>
           </div>
         </section>
@@ -477,18 +491,27 @@ function period(mode: "week" | "month", anchor: string) {
 }
 export function reviewText(review: Review, label: string) {
   const lines = [`# ${label}`, ""];
-  lines.push(`${review.days.length} Tage · ${review.words} Wörter · ${review.done.length} erledigte Aufgaben`, "");
+  lines.push(
+    tr(
+      `${review.days.length} Tage · ${review.words} Wörter · ${review.done.length} erledigte Aufgaben`,
+      `${review.days.length} days · ${review.words} words · ${review.done.length} completed tasks`,
+    ),
+    "",
+  );
   for (const tracker of review.trackers.filter((t) => t.count))
     lines.push(
       `- ${tracker.name}: ${
         tracker.kind === "check"
-          ? `${tracker.values.filter((v) => v.value === true).length} von ${tracker.count} Tagen`
-          : `Ø ${(tracker.average ?? 0).toLocaleString("de-DE", { maximumFractionDigits: 1 })}${tracker.unit ? ` ${tracker.unit}` : ""}`
+          ? tr(
+              `${tracker.values.filter((v) => v.value === true).length} von ${tracker.count} Tagen`,
+              `${tracker.values.filter((v) => v.value === true).length} of ${tracker.count} days`,
+            )
+          : `Ø ${(tracker.average ?? 0).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })}${tracker.unit ? ` ${tracker.unit}` : ""}`
       }`,
     );
-  if (review.places.length) lines.push(`- Orte: ${review.places.join(", ")}`);
+  if (review.places.length) lines.push(`- ${tr("Orte", "Places")}: ${review.places.join(", ")}`);
   if (review.done.length) {
-    lines.push("", "## Erledigt");
+    lines.push("", tr("## Erledigt", "## Done"));
     for (const task of review.done) lines.push(`- [x] ${task.text}`);
   }
   return lines.join("\n");
@@ -506,6 +529,7 @@ export function JournalReview({
   onOpen: (id: string) => void;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [mode, setMode] = useState<"week" | "month">("week");
   const [anchor, setAnchor] = useState(today);
   const [review, setReview] = useState<Review | null>(null);
@@ -522,7 +546,7 @@ export function JournalReview({
   }, [pageId, range.from, range.to, onError]);
   const label =
     mode === "week"
-      ? `Woche vom ${longDate.format(utc(range.from))} bis ${longDate.format(utc(range.to))}`
+      ? t(`Woche vom ${longDate.format(utc(range.from))} bis ${longDate.format(utc(range.to))}`, `Week from ${longDate.format(utc(range.from))} to ${longDate.format(utc(range.to))}`)
       : monthName.format(utc(range.from));
   const move = (n: number) => {
     if (mode === "week") setAnchor(shiftDay(range.from, 7 * n));
@@ -532,24 +556,24 @@ export function JournalReview({
     }
   };
   return (
-    <Modal open onClose={onClose} title="Rückblick" wide className="journal-review">
+    <Modal open onClose={onClose} title={t("Rückblick", "Review")} wide className="journal-review">
       <div className="journal-review-head">
-        <div className="journal-layout" role="group" aria-label="Zeitraum">
+        <div className="journal-layout" role="group" aria-label={t("Zeitraum", "Period")}>
           <button type="button" className={mode === "week" ? "active" : ""} aria-pressed={mode === "week"} onClick={() => setMode("week")}>
-            Woche
+            {t("Woche", "Week")}
           </button>
           <button type="button" className={mode === "month" ? "active" : ""} aria-pressed={mode === "month"} onClick={() => setMode("month")}>
-            Monat
+            {t("Monat", "Month")}
           </button>
         </div>
-        <button type="button" className="icon-button" aria-label="Früher" onClick={() => move(-1)}>
+        <button type="button" className="icon-button" aria-label={t("Früher", "Earlier")} onClick={() => move(-1)}>
           <CaretLeft size={16} />
         </button>
         <strong>{label}</strong>
         <button
           type="button"
           className="icon-button"
-          aria-label="Später"
+          aria-label={t("Später", "Later")}
           disabled={range.to >= today}
           onClick={() => move(1)}
         >
@@ -557,34 +581,34 @@ export function JournalReview({
         </button>
       </div>
       {!review ? (
-        <p className="muted">Wird zusammengestellt …</p>
+        <p className="muted">{t("Wird zusammengestellt …", "Compiling …")}</p>
       ) : !review.days.length ? (
         <p className="journal-empty">
-          <CalendarBlank size={18} /> In diesem Zeitraum gibt es keine Einträge.
+          <CalendarBlank size={18} /> {t("In diesem Zeitraum gibt es keine Einträge.", "There are no entries in this period.")}
         </p>
       ) : (
         <div className="journal-review-body">
           <div className="journal-review-numbers">
-            <span><strong>{review.days.length}</strong> {review.days.length === 1 ? "Tag" : "Tage"}</span>
-            <span><strong>{review.words.toLocaleString("de-DE")}</strong> Wörter</span>
+            <span><strong>{review.days.length}</strong> {review.days.length === 1 ? t("Tag", "day") : t("Tage", "days")}</span>
+            <span><strong>{review.words.toLocaleString(LOCALE_TAG)}</strong> {t("Wörter", "words")}</span>
             <span><strong>{review.done.length}</strong> erledigt</span>
-            <span><strong>{review.open}</strong> noch offen</span>
+            <span><strong>{review.open}</strong> {t("noch offen", "still open")}</span>
           </div>
           {review.trackers.some((t) => t.count) && (
             <div className="journal-review-trackers">
               {review.trackers
                 .filter((t) => t.count)
-                .map((t) => (
-                  <div key={t.id}>
-                    <small>{t.name}</small>
+                .map((tracker) => (
+                  <div key={tracker.id}>
+                    <small>{tracker.name}</small>
                     <strong>
-                      {t.kind === "check"
-                        ? `${t.values.filter((v) => v.value === true).length} / ${t.count}`
-                        : t.kind === "mood"
-                          ? `${moodFaces[Math.round(t.average ?? 3) - 1]} ${(t.average ?? 0).toLocaleString("de-DE", { maximumFractionDigits: 1 })}`
-                          : `${(t.average ?? 0).toLocaleString("de-DE", { maximumFractionDigits: 1 })}${t.unit ? ` ${t.unit}` : ""}`}
+                      {tracker.kind === "check"
+                        ? `${tracker.values.filter((v) => v.value === true).length} / ${tracker.count}`
+                        : tracker.kind === "mood"
+                          ? `${moodFaces[Math.round(tracker.average ?? 3) - 1]} ${(tracker.average ?? 0).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })}`
+                          : `${(tracker.average ?? 0).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })}${tracker.unit ? ` ${tracker.unit}` : ""}`}
                     </strong>
-                    <span>{t.kind === "check" ? "Tage" : "Durchschnitt"}</span>
+                    <span>{tracker.kind === "check" ? t("Tage", "days") : t("Durchschnitt", "Average")}</span>
                   </div>
                 ))}
             </div>
@@ -597,7 +621,7 @@ export function JournalReview({
           {review.images.length > 0 && (
             <div className="journal-review-photos">
               {review.images.map((image) => (
-                <button key={image.src} type="button" onClick={() => onOpen(image.dayId)} aria-label={`Tag ${image.date} öffnen`}>
+                <button key={image.src} type="button" onClick={() => onOpen(image.dayId)} aria-label={t(`Tag ${image.date} öffnen`, `Open day ${image.date}`)}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={image.src} alt="" loading="lazy" />
                 </button>
@@ -606,7 +630,7 @@ export function JournalReview({
           )}
           {review.done.length > 0 && (
             <section>
-              <h3>Erledigt</h3>
+              <h3>{t("Erledigt", "Done")}</h3>
               <ul className="journal-review-done">
                 {review.done.map((task, i) => (
                   <li key={`${task.dayId}-${i}`}>
@@ -621,7 +645,7 @@ export function JournalReview({
             </section>
           )}
           <section>
-            <h3>Tage</h3>
+            <h3>{t("Tage", "days")}</h3>
             <div className="journal-review-days">
               {review.days.map((day) => (
                 <button key={day.id} type="button" className="chip" onClick={() => onOpen(day.id)}>
@@ -637,13 +661,13 @@ export function JournalReview({
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(reviewText(review, label));
-                  onError("Rückblick als Markdown kopiert.");
+                  onError(t("Rückblick als Markdown kopiert.", "Review copied as Markdown."));
                 } catch {
-                  onError("Kopieren nicht möglich.");
+                  onError(t("Kopieren nicht möglich.", "Copying is not possible."));
                 }
               }}
             >
-              <Copy size={16} /> Als Markdown kopieren
+              <Copy size={16} /> {t("Als Markdown kopieren", "Copy as Markdown")}
             </button>
           </div>
         </div>
@@ -663,7 +687,7 @@ type DayEvent = {
   pageId?: string;
   rowId?: string;
 };
-const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
+const time = new Intl.DateTimeFormat(LOCALE_TAG, { hour: "2-digit", minute: "2-digit" });
 export function JournalDayBar({
   pageId,
   trackers,
@@ -680,6 +704,7 @@ export function JournalDayBar({
   editable: boolean;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const [values, setValues] = useState(entry.values);
   const [place, setPlace] = useState(entry.place);
   const [coords, setCoords] = useState(
@@ -727,7 +752,7 @@ export function JournalDayBar({
     void save({ values: { [id]: value } });
   };
   const locate = () => {
-    if (!navigator.geolocation) return onError("Standort wird nicht unterstützt.");
+    if (!navigator.geolocation) return onError(t("Standort wird nicht unterstützt.", "Location is not supported."));
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const next = {
@@ -737,12 +762,12 @@ export function JournalDayBar({
         setCoords(next);
         void save(next);
       },
-      () => onError("Standort nicht verfügbar."),
+      () => onError(t("Standort nicht verfügbar.", "Location not available.")),
       { timeout: 10_000, maximumAge: 300_000 },
     );
   };
   const eventTime = (event: DayEvent) =>
-    event.timed ? time.format(new Date(event.start)) : "Ganztägig";
+    event.timed ? time.format(new Date(event.start)) : t("Ganztägig", "All day");
   // Nothing switched on and no appointments: no bar at all.
   if (!trackers.length && !options.place && !(events?.length || calendarError)) return null;
   return (
@@ -812,8 +837,8 @@ export function JournalDayBar({
       <div className="journal-daybar-place">
         <MapPin size={15} />
         <input
-          placeholder="Ort"
-          aria-label="Ort"
+          placeholder={t("Ort", "Place")}
+          aria-label={t("Ort", "Place")}
           value={place}
           maxLength={120}
           disabled={!editable}
@@ -827,7 +852,7 @@ export function JournalDayBar({
               target="_blank"
               rel="noreferrer noopener"
             >
-              Karte
+              {t("Karte", "Map")}
             </a>
             {editable && (
               <button
@@ -838,21 +863,21 @@ export function JournalDayBar({
                   void save({ lat: null, lon: null });
                 }}
               >
-                Standort entfernen
+                {t("Standort entfernen", "Remove location")}
               </button>
             )}
           </>
         ) : (
           editable && (
             <button type="button" className="text-button" onClick={locate}>
-              <Crosshair size={14} /> Standort
+              <Crosshair size={14} /> {t("Standort", "Location")}
             </button>
           )
         )}
       </div>
       )}
       {(events?.length || calendarError) ? (
-        <div className="journal-daybar-events" aria-label="Termine">
+        <div className="journal-daybar-events" aria-label={t("Termine", "Events")}>
           <CalendarBlank size={15} />
           <ul>
             {events?.map((event, i) => (
@@ -883,6 +908,7 @@ export function JournalLockScreen({
   journalId: string;
   onUnlocked: () => Promise<unknown> | void;
 }) {
+  const t = useT();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -905,8 +931,8 @@ export function JournalLockScreen({
       }}
     >
       <LockKey size={36} weight="duotone" />
-      <h2>Dieses Journal ist gesperrt</h2>
-      <p>Gib die PIN ein, um die Einträge zu sehen.</p>
+      <h2>{t("Dieses Journal ist gesperrt", "This journal is locked")}</h2>
+      <p>{t("Gib die PIN ein, um die Einträge zu sehen.", "Enter the PIN to see the entries.")}</p>
       <input
         type="password"
         inputMode="numeric"
@@ -918,7 +944,7 @@ export function JournalLockScreen({
       />
       {error && <p className="journal-lock-error" role="alert">{error}</p>}
       <button type="submit" className="button primary" disabled={busy || pin.length < 4}>
-        Entsperren
+        {t("Entsperren", "Unlock")}
       </button>
     </form>
   );

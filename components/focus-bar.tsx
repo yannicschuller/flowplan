@@ -1,6 +1,7 @@
 "use client";
 // Writing without distraction: sidebar and page chrome fade away, a small
 // bar counts words towards an optional goal (kept per page on this device).
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useEffect, useState } from "react";
 import { X } from "@phosphor-icons/react";
 
@@ -52,8 +53,8 @@ export function FocusBar({
   return (
     <div className="focus-bar" role="status" aria-label="Fokusmodus">
       <span className="focus-count">
-        <strong>{words.toLocaleString("de-DE")}</strong> Wörter
-        {words - start > 0 && <small>+{(words - start).toLocaleString("de-DE")} in dieser Sitzung</small>}
+        <strong>{words.toLocaleString(LOCALE_TAG)}</strong> Wörter
+        {words - start > 0 && <small>+{(words - start).toLocaleString(LOCALE_TAG)} in dieser Sitzung</small>}
       </span>
       <label className="focus-goal">
         Ziel

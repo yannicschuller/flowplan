@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
 import { Copy, Trash } from "@phosphor-icons/react";
 import { api } from "./ui";
@@ -22,7 +23,7 @@ type Hook = {
   last: { status: number | null; error: string | null; delivered_at: number | null } | null;
 };
 const when = (ms: number | null) =>
-  ms ? new Date(ms).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "nie";
+  ms ? new Date(ms).toLocaleString(LOCALE_TAG, { dateStyle: "short", timeStyle: "short" }) : "nie";
 
 // Settings → API & Webhooks: personal tokens for everyone, webhooks for
 // workspace owners (lib/api-tokens.ts, lib/webhooks.ts).

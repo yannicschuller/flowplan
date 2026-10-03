@@ -2,6 +2,7 @@
 // text so the caret never lands behind it (red when overdue, highlighted
 // today). A date is set from the text menu or the toolbar (pickTaskDue);
 // clicking the chip changes or removes it.
+import { LOCALE_TAG } from "./locale-tag";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
@@ -20,7 +21,7 @@ export function dueLabel(due: string, today = localToday()) {
   if (diff === -1) return "Gestern";
   const date = new Date(`${due}T00:00:00Z`);
   const sameYear = due.slice(0, 4) === today.slice(0, 4);
-  return date.toLocaleDateString("de-DE", {
+  return date.toLocaleDateString(LOCALE_TAG, {
     day: "numeric",
     month: "short",
     ...(sameYear ? {} : { year: "numeric" }),
@@ -120,7 +121,7 @@ function chip(view: EditorView, pos: number, node: PMNode, editable: boolean) {
   el.contentEditable = "false";
   el.className = `task-due task-due-${due ? dueState(due, !!node.attrs.checked) : "later"}`;
   el.textContent = due ? `📅 ${dueLabel(due)}` : "";
-  if (due) el.title = `Fällig am ${new Date(`${due}T00:00:00Z`).toLocaleDateString("de-DE", { timeZone: "UTC" })}${editable ? " – klicken zum Ändern oder Entfernen" : ""}`;
+  if (due) el.title = `Fällig am ${new Date(`${due}T00:00:00Z`).toLocaleDateString(LOCALE_TAG, { timeZone: "UTC" })}${editable ? " – klicken zum Ändern oder Entfernen" : ""}`;
   if (editable && el instanceof HTMLButtonElement) {
     el.type = "button";
     el.setAttribute("aria-label", due ? `Fälligkeit ${dueLabel(due)} ändern` : "Fälligkeit setzen");

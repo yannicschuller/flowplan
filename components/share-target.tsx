@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useEffect, useState } from "react";
 import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
@@ -108,7 +109,7 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
               <input type="checkbox" checked={withArticle} disabled={clipping} onChange={(e) => void loadArticle(e.target.checked)} />
               Artikeltext übernehmen
               {clipping && <small> wird geladen …</small>}
-              {withArticle && article && <small> {article.words.toLocaleString("de-DE")} Wörter</small>}
+              {withArticle && article && <small> {article.words.toLocaleString(LOCALE_TAG)} Wörter</small>}
             </label>
           )}
           <div className="share-target-preview" aria-label="Geteilter Inhalt">

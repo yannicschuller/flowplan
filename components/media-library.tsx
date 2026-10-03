@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { PdfThumbnail } from "./pdf-viewer";
 import { useEffect, useState } from "react";
@@ -22,7 +23,7 @@ const kinds: [MediaKind, string, string][] = [
 const size = (bytes: number) =>
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} KB`
-    : `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
+    : `${(bytes / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })} MB`;
 
 // All files of the pages you can read in this workspace.
 export function MediaLibrary({
@@ -144,7 +145,7 @@ export function MediaLibrary({
               {size(item.size)} ·{" "}
               {new Date(
                 item.created_at.replace(" ", "T") + "Z",
-              ).toLocaleDateString("de-DE")}
+              ).toLocaleDateString(LOCALE_TAG)}
             </small>
             <button
               className="text-button media-page"

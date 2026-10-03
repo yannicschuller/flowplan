@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "../i18n";
 import {
   useCallback,
@@ -2818,7 +2819,7 @@ export default function Whiteboard({
                     <span>
                       <strong>{m.name}</strong>
                       <small>
-                        {new Date(m.at).toLocaleString("de-DE", {
+                        {new Date(m.at).toLocaleString(LOCALE_TAG, {
                           day: "numeric",
                           month: "short",
                           hour: "2-digit",

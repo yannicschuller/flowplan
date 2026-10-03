@@ -1,3 +1,4 @@
+import { LOCALE_TAG } from "./locale-tag";
 import { Temporal } from "@js-temporal/polyfill";
 
 const shape =
@@ -99,7 +100,7 @@ export function formatDateValue(
         ? `${pad(day.day)}.${pad(day.month)}.${pad(day.year, 4)}`
         : style.date === "us"
           ? `${pad(day.month)}/${pad(day.day)}/${pad(day.year, 4)}`
-          : day.toLocaleString("de-DE", {
+          : day.toLocaleString(LOCALE_TAG, {
               day: "numeric",
               month: style.date === "long" ? "long" : "short",
               year: "numeric",

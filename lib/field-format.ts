@@ -1,3 +1,4 @@
+import { LOCALE_TAG } from "./locale-tag";
 import { formatDateValue } from "./date-values";
 import { cellText } from "./cell-text";
 import type { Field } from "./types";
@@ -76,29 +77,29 @@ export function formatNumber(value: number, format = "", decimals?: number) {
       : { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
   const currency = currencies[format as keyof typeof currencies];
   if (currency)
-    return new Intl.NumberFormat("de-DE", {
+    return new Intl.NumberFormat(LOCALE_TAG, {
       style: "currency",
       currency: currency[1],
       ...digits,
     }).format(value);
   if (format === "percent")
-    return new Intl.NumberFormat("de-DE", {
+    return new Intl.NumberFormat(LOCALE_TAG, {
       style: "percent",
       maximumFractionDigits: 2,
       ...digits,
     }).format(value);
   if (format === "plain")
-    return new Intl.NumberFormat("de-DE", {
+    return new Intl.NumberFormat(LOCALE_TAG, {
       useGrouping: false,
       maximumFractionDigits: 10,
       ...digits,
     }).format(value);
   if (format === "decimal2" && decimals === undefined)
-    return new Intl.NumberFormat("de-DE", {
+    return new Intl.NumberFormat(LOCALE_TAG, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value);
-  return new Intl.NumberFormat("de-DE", {
+  return new Intl.NumberFormat(LOCALE_TAG, {
     maximumFractionDigits: 10,
     ...digits,
   }).format(value);

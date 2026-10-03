@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import {
@@ -538,7 +539,7 @@ export default function DatabaseCalendar({
     <section className="calendar-view" aria-label={t("Kalender", "Calendar")}>
       <div className="calendar-controls">
         <h3>
-          {Temporal.PlainDate.from(anchor).toLocaleString("de-DE", {
+          {Temporal.PlainDate.from(anchor).toLocaleString(LOCALE_TAG, {
             month: "long",
             year: "numeric",
           })}
@@ -736,7 +737,7 @@ export default function DatabaseCalendar({
                       <header className="calendar-hours-heading">
                         <strong>
                           {Temporal.PlainDate.from(day.date).toLocaleString(
-                            "de-DE",
+                            LOCALE_TAG,
                             {
                               weekday: "short",
                               day: "numeric",

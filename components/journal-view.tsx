@@ -1,4 +1,6 @@
 "use client";
+import { useT } from "./i18n";
+import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -50,38 +52,38 @@ const shiftMonths = (day: string, months: number) => {
   target.setUTCDate(Math.min(d.getUTCDate(), last));
   return target.toISOString().slice(0, 10);
 };
-const monthName = new Intl.DateTimeFormat("de-DE", {
+const monthName = new Intl.DateTimeFormat(LOCALE_TAG, {
   month: "long",
   year: "numeric",
   timeZone: "UTC",
 });
-const weekday = new Intl.DateTimeFormat("de-DE", {
+const weekday = new Intl.DateTimeFormat(LOCALE_TAG, {
   weekday: "long",
   timeZone: "UTC",
 });
-const longDate = new Intl.DateTimeFormat("de-DE", {
+const longDate = new Intl.DateTimeFormat(LOCALE_TAG, {
   day: "numeric",
   month: "long",
   year: "numeric",
   timeZone: "UTC",
 });
 // The title a day page gets automatically (see lib/journal.ts).
-const autoTitle = new Intl.DateTimeFormat("de-DE", {
+const autoTitle = new Intl.DateTimeFormat(LOCALE_TAG, {
   weekday: "long",
   day: "numeric",
   month: "long",
   year: "numeric",
   timeZone: "UTC",
 });
-const shortMonth = new Intl.DateTimeFormat("de-DE", {
+const shortMonth = new Intl.DateTimeFormat(LOCALE_TAG, {
   month: "short",
   timeZone: "UTC",
 });
 function relative(day: string, today: string) {
   const diff = Math.round((utc(today).getTime() - utc(day).getTime()) / 864e5);
-  if (diff === 0) return "Heute";
-  if (diff === 1) return "Gestern";
-  return `vor ${diff} Tagen`;
+  if (diff === 0) return tr("Heute", "Today");
+  if (diff === 1) return tr("Gestern", "Yesterday");
+  return tr(`vor ${diff} Tagen`, `${diff} days ago`);
 }
 // Days in a row up to today (or yesterday, while today is still open).
 export function currentStreak(dates: Set<string>, today: string) {
@@ -113,11 +115,14 @@ export function onThisDay(days: JournalDay[], today: string) {
     const day = byDate.get(date);
     if (day) found.push({ label, day });
   };
-  add("Vor einer Woche", shiftDay(today, -7));
-  add("Vor einem Monat", shiftMonths(today, -1));
-  add("Vor einem halben Jahr", shiftMonths(today, -6));
+  add(tr("Vor einer Woche", "A week ago"), shiftDay(today, -7));
+  add(tr("Vor einem Monat", "A month ago"), shiftMonths(today, -1));
+  add(tr("Vor einem halben Jahr", "Half a year ago"), shiftMonths(today, -6));
   for (let years = 1; years <= 20; years++)
-    add(years === 1 ? "Vor einem Jahr" : `Vor ${years} Jahren`, shiftMonths(today, -12 * years));
+    add(
+      years === 1 ? tr("Vor einem Jahr", "A year ago") : tr(`Vor ${years} Jahren`, `${years} years ago`),
+      shiftMonths(today, -12 * years),
+    );
   return found;
 }
 function level(words: number) {
@@ -147,6 +152,7 @@ export function JournalView({
   onChanged: () => Promise<unknown> | void;
   onError: (message: string) => void;
 }) {
+  const t = useT();
   const today = localDay();
   const current = days.find((d) => d.journal_date === today);
   // Opening the journal makes sure today's page exists.
@@ -204,14 +210,14 @@ export function JournalView({
   return (
     <div className="journal">
       <div className="journal-toolbar">
-        <div className="journal-layout" role="group" aria-label="Darstellung">
+        <div className="journal-layout" role="group" aria-label={t("Darstellung", "Display")}>
           <button
             type="button"
             className={layout === "list" ? "active" : ""}
             aria-pressed={layout === "list"}
             onClick={() => chooseLayout("list")}
           >
-            <ListBullets size={16} /> Liste
+            <ListBullets size={16} /> {t("Liste", "List")}
           </button>
           <button
             type="button"
@@ -219,19 +225,19 @@ export function JournalView({
             aria-pressed={layout === "calendar"}
             onClick={() => chooseLayout("calendar")}
           >
-            <SquaresFour size={16} /> Kalender
+            <SquaresFour size={16} /> {t("Kalender", "Calendar")}
           </button>
         </div>
         <span className="journal-toolbar-gap" />
         <button type="button" className="button" onClick={() => setReview(true)}>
-          <ClockCounterClockwise size={16} /> Rückblick
+          <ClockCounterClockwise size={16} /> {t("Rückblick", "Review")}
         </button>
         {settings?.locked && (
           <button
             type="button"
             className="icon-button"
-            aria-label="Journal jetzt sperren"
-            title="Journal jetzt sperren"
+            aria-label={t("Journal jetzt sperren", "Lock journal now")}
+            title={t("Journal jetzt sperren", "Lock journal now")}
             onClick={async () => {
               const { api } = await import("./ui");
               await api("/api/command", { action: "journal.relock", pageId });
@@ -245,8 +251,8 @@ export function JournalView({
           <button
             type="button"
             className="icon-button"
-            aria-label="Journal einrichten"
-            title="Journal einrichten"
+            aria-label={t("Journal einrichten", "Set up journal")}
+            title={t("Journal einrichten", "Set up journal")}
             onClick={() => setSettingsOpen(true)}
           >
             <GearSix size={18} />
@@ -264,28 +270,28 @@ export function JournalView({
           <strong>{Number(today.slice(8))}</strong>
         </span>
         <span className="journal-today-text">
-          <small>Heute</small>
+          <small>{t("Heute", "Today")}</small>
           <strong>{weekday.format(utc(today))}</strong>
           <span>
             {current
-              ? current.excerpt || "Schreib auf, was ansteht und was passiert ist."
+              ? current.excerpt || t("Schreib auf, was ansteht und was passiert ist.", "Write down what is coming up and what happened.")
               : trashed
-                ? "Die Seite für heute liegt im Papierkorb."
+                ? t("Die Seite für heute liegt im Papierkorb.", "Today's page is in the trash.")
                 : editable
-                  ? "Die Seite für heute wird angelegt …"
-                  : "Für heute gibt es noch keinen Eintrag."}
+                  ? t("Die Seite für heute wird angelegt …", "Creating today's page …")
+                  : t("Für heute gibt es noch keinen Eintrag.", "There is no entry for today yet.")}
           </span>
         </span>
         {current && (
           <span className="journal-today-open">
-            Öffnen <ArrowRight size={16} />
+            {t("Öffnen", "Open")}{" "}<ArrowRight size={16} />
           </span>
         )}
       </button>
 
       {!current && trashed && editable && (
         <div className="journal-trashed" role="status">
-          <span>Du hast die heutige Seite gelöscht.</span>
+          <span>{t("Du hast die heutige Seite gelöscht.", "You deleted today's page.")}</span>
           <button
             type="button"
             className="button primary compact"
@@ -302,7 +308,7 @@ export function JournalView({
               }
             }}
           >
-            Neu anlegen
+            {t("Neu anlegen", "Create again")}
           </button>
           <button
             type="button"
@@ -322,36 +328,36 @@ export function JournalView({
               }
             }}
           >
-            Aus dem Papierkorb holen
+            {t("Aus dem Papierkorb holen", "Restore from trash")}
           </button>
         </div>
       )}
       {days.length > 0 && (
-        <section className="journal-stats" aria-label="Schreibstatistik">
+        <section className="journal-stats" aria-label={t("Schreibstatistik", "Writing statistics")}>
           <div className="journal-stat">
             <Fire size={18} weight={streak ? "fill" : "regular"} className={streak ? "hot" : ""} />
             <strong>{streak}</strong>
-            <span>{streak === 1 ? "Tag in Folge" : "Tage in Folge"}</span>
+            <span>{streak === 1 ? t("Tag in Folge", "day in a row") : t("Tage in Folge", "days in a row")}</span>
           </div>
           <div className="journal-stat">
             <strong>{best}</strong>
-            <span>längste Serie</span>
+            <span>{t("längste Serie", "longest streak")}</span>
           </div>
           <div className="journal-stat">
             <strong>{written.length}</strong>
-            <span>{written.length === 1 ? "Eintrag" : "Einträge"}</span>
+            <span>{written.length === 1 ? t("Eintrag", "entry") : t("Einträge", "entries")}</span>
           </div>
           <div className="journal-stat">
-            <strong>{totalWords.toLocaleString("de-DE")}</strong>
-            <span>Wörter</span>
+            <strong>{totalWords.toLocaleString(LOCALE_TAG)}</strong>
+            <span>{t("Wörter", "words")}</span>
           </div>
           <Heatmap days={days} today={today} onOpen={onOpen} />
         </section>
       )}
 
       {memories.length > 0 && (
-        <section className="journal-memories" aria-label="An diesem Tag">
-          <h2>An diesem Tag</h2>
+        <section className="journal-memories" aria-label={t("An diesem Tag", "On this day")}>
+          <h2>{t("An diesem Tag", "On this day")}</h2>
           <div className="journal-memory-list">
             {memories.map(({ label, day }) => (
               <button key={day.id} type="button" className="journal-memory" onClick={() => onOpen(day.id)}>
@@ -406,7 +412,7 @@ export function JournalView({
                         <img className="journal-day-thumb" src={day.image} alt="" loading="lazy" />
                       )}
                       <span className="journal-day-when">
-                        {face && <span className="journal-day-mood" title="Stimmung">{face}</span>}
+                        {face && <span className="journal-day-mood" title={t("Stimmung", "Mood")}>{face}</span>}
                         {relative(day.journal_date, today)}
                       </span>
                     </button>
@@ -419,15 +425,12 @@ export function JournalView({
       ) : (
         <p className="journal-empty">
           <CalendarBlank size={18} />
-          Frühere Tage erscheinen hier, sobald du an ihnen etwas eingetragen
-          hast.
+          {t("Frühere Tage erscheinen hier, sobald du an ihnen etwas eingetragen hast.", "Earlier days appear here once you have written something on them.")}
         </p>
       )}
       <p className="journal-hint">
         <Notebook size={16} />
-        Jeden Tag entsteht hier eine neue Seite. Offene Aufgaben wandern
-        automatisch in den nächsten Tag; Tage ohne eigenen Eintrag verschwinden
-        wieder.
+        {t("Jeden Tag entsteht hier eine neue Seite. Offene Aufgaben wandern automatisch in den nächsten Tag; Tage ohne eigenen Eintrag verschwinden wieder.", "A new page is created here every day. Open tasks move to the next day automatically; days without an entry of their own disappear again.")}
       </p>
       {review && (
         <JournalReview
@@ -465,6 +468,7 @@ function Heatmap({
   today: string;
   onOpen: (id: string) => void;
 }) {
+  const t = useT();
   const byDate = new Map(days.map((d) => [d.journal_date, d]));
   const weekdayIndex = (utc(today).getUTCDay() + 6) % 7;
   const start = shiftDay(today, -(52 * 7 + weekdayIndex));
@@ -474,15 +478,15 @@ function Heatmap({
     cells.push({ date, day: byDate.get(date) });
   }
   return (
-    <div className="journal-heatmap" aria-label="Einträge im letzten Jahr">
+    <div className="journal-heatmap" aria-label={t("Einträge im letzten Jahr", "Entries in the last year")}>
       {cells.map(({ date, day }) =>
         day ? (
           <button
             key={date}
             type="button"
             className={`level-${level(day.words || 0)}`}
-            title={`${longDate.format(utc(date))} · ${(day.words || 0).toLocaleString("de-DE")} Wörter`}
-            aria-label={`${longDate.format(utc(date))} öffnen`}
+            title={t(`${longDate.format(utc(date))} · ${(day.words || 0).toLocaleString(LOCALE_TAG)} Wörter`, `${longDate.format(utc(date))} · ${(day.words || 0).toLocaleString(LOCALE_TAG)} words`)}
+            aria-label={t(`${longDate.format(utc(date))} öffnen`, `Open ${longDate.format(utc(date))}`)}
             onClick={() => onOpen(day.id)}
           />
         ) : (
@@ -503,6 +507,7 @@ function TrackerTrends({
   today: string;
   trackers: JournalSettings["trackers"];
 }) {
+  const t = useT();
   const byDate = new Map(days.map((d) => [d.journal_date, d]));
   const span = Array.from({ length: 30 }, (_, i) => shiftDay(today, i - 29));
   const shown = trackers
@@ -515,8 +520,8 @@ function TrackerTrends({
     .filter((t) => t.numbers.length || t.checks);
   if (!shown.length) return null;
   return (
-    <section className="journal-trends" aria-label="Tracker der letzten 30 Tage">
-      <h2>Letzte 30 Tage</h2>
+    <section className="journal-trends" aria-label={t("Tracker der letzten 30 Tage", "Trackers of the last 30 days")}>
+      <h2>{t("Letzte 30 Tage", "Last 30 days")}</h2>
       {shown.map(({ tracker, values, numbers, checks }) => {
         const max =
           tracker.kind === "mood" || tracker.kind === "scale" ? 5 : Math.max(1, ...numbers);
@@ -529,17 +534,17 @@ function TrackerTrends({
               {tracker.name}
               <small>
                 {tracker.kind === "check"
-                  ? `${checks} von 30 Tagen`
+                  ? t(`${checks} von 30 Tagen`, `${checks} of 30 days`)
                   : tracker.kind === "mood"
-                    ? `Ø ${moodFaces[Math.round(average) - 1] || ""} ${average.toLocaleString("de-DE", { maximumFractionDigits: 1 })}`
-                    : `Ø ${average.toLocaleString("de-DE", { maximumFractionDigits: 1 })}${tracker.unit ? ` ${tracker.unit}` : ""}`}
+                    ? `Ø ${moodFaces[Math.round(average) - 1] || ""} ${average.toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })}`
+                    : `Ø ${average.toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })}${tracker.unit ? ` ${tracker.unit}` : ""}`}
               </small>
             </span>
             <span className="journal-trend-bars" aria-hidden="true">
               {values.map((value, i) => (
                 <i
                   key={span[i]}
-                  title={`${longDate.format(utc(span[i]))}: ${value === undefined ? "–" : value === true ? "ja" : value === false ? "nein" : value}`}
+                  title={`${longDate.format(utc(span[i]))}: ${value === undefined ? "–" : value === true ? t("ja", "yes") : value === false ? t("nein", "no") : value}`}
                   className={tracker.kind === "check" ? (value === true ? "yes" : "no") : value === undefined ? "none" : ""}
                   style={
                     tracker.kind === "check" || typeof value !== "number"
@@ -568,6 +573,7 @@ function JournalCalendar({
   mood?: string;
   onOpen: (id: string) => void;
 }) {
+  const t = useT();
   const [month, setMonth] = useState(today.slice(0, 7));
   const byDate = new Map(days.map((d) => [d.journal_date, d]));
   const first = `${month}-01`;
@@ -579,18 +585,18 @@ function JournalCalendar({
   ];
   const move = (n: number) => setMonth(shiftMonths(first, n).slice(0, 7));
   return (
-    <section className="journal-calendar" aria-label="Kalender">
+    <section className="journal-calendar" aria-label={t("Kalender", "Calendar")}>
       <header>
-        <button type="button" className="icon-button" aria-label="Vorheriger Monat" onClick={() => move(-1)}>
+        <button type="button" className="icon-button" aria-label={t("Vorheriger Monat", "Previous month")} onClick={() => move(-1)}>
           <CaretLeft size={16} />
         </button>
         <h2>{monthName.format(utc(first))}</h2>
-        <button type="button" className="icon-button" aria-label="Nächster Monat" onClick={() => move(1)}>
+        <button type="button" className="icon-button" aria-label={t("Nächster Monat", "Next month")} onClick={() => move(1)}>
           <CaretRight size={16} />
         </button>
       </header>
       <div className="journal-calendar-grid">
-        {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => (
+        {(t("Mo Di Mi Do Fr Sa So", "Mo Tu We Th Fr Sa Su")).split(" ").map((d) => (
           <span key={d} className="journal-calendar-head">{d}</span>
         ))}
         {cells.map((date, i) => {
@@ -609,7 +615,7 @@ function JournalCalendar({
               type="button"
               className={`has-entry${date === today ? " today" : ""}${day.image ? " has-image" : ""}`}
               style={day.image ? { backgroundImage: `url(${day.image})` } : undefined}
-              aria-label={`${longDate.format(utc(date))} öffnen`}
+              aria-label={t(`${longDate.format(utc(date))} öffnen`, `Open ${longDate.format(utc(date))}`)}
               onClick={() => onOpen(day.id)}
             >
               {content}

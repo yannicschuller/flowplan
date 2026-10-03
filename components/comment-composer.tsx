@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -550,7 +551,7 @@ export function CommentComposer({
         </p>
       )}
       <small className="comment-input-hint">
-        {body.length.toLocaleString("de-DE")} / 5.000 · ⌘/Strg+Enter zum Senden
+        {body.length.toLocaleString(LOCALE_TAG)} / 5.000 · ⌘/Strg+Enter zum Senden
       </small>
     </fieldset>
   );

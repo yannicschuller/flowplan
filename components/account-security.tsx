@@ -2,6 +2,7 @@
 // Settings → General → your profile: name, password and passkeys of an
 // account with e-mail and password. SSO accounts are managed by their
 // provider.
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useEffect, useState, type FormEvent } from "react";
 import { Fingerprint, Trash } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
@@ -44,7 +45,7 @@ export function AccountSecurity({ name, onRenamed }: { name: string; onRenamed: 
       setBusy("");
     }
   };
-  const date = (ms: number) => new Date(ms).toLocaleDateString(t("de-DE", "en-GB"), { day: "numeric", month: "short", year: "numeric" });
+  const date = (ms: number) => new Date(ms).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short", year: "numeric" });
   const rename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const value = String(new FormData(event.currentTarget).get("name") || "");

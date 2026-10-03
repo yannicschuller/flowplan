@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useState } from "react";
 import { CellInput } from "./cell-input";
 import {
@@ -125,8 +126,8 @@ export default function FormQuestions({
 }
 const fileSize = (bytes: number) =>
   bytes < 1024 * 1024
-    ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("de-DE")} KB`
-    : `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
+    ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString(LOCALE_TAG)} KB`
+    : `${(bytes / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })} MB`;
 // Files stay in the browser until the answer is submitted.
 function FormFiles({
   name,

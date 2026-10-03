@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { RowAccess, rowAccessSummary } from "./row-access";
@@ -1517,7 +1518,7 @@ export default function DatabaseView({
         : target.epochMilliseconds < Date.now() - ARM_GRACE_MS
           ? t("Der Erinnerungszeitpunkt liegt in der Vergangenheit.", "The reminder time is in the past.")
           : t(`Erinnerung am ${new Date(target.epochMilliseconds).toLocaleString(
-              "de-DE",
+              LOCALE_TAG,
               {
                 timeZone: reminder.timeZone,
                 dateStyle: "medium",
@@ -4590,7 +4591,7 @@ export default function DatabaseView({
                   <span>
                     {t("Termin am", "Occurrence on")}{" "}
                     {new Date(`${occurrence.date}T00:00:00`).toLocaleDateString(
-                      "de-DE",
+                      LOCALE_TAG,
                       {
                         weekday: "short",
                         day: "numeric",

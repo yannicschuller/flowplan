@@ -1,3 +1,4 @@
+import { LOCALE_TAG } from "./locale-tag";
 export const relativeDateNames = {
   today: "Heute",
   yesterday: "Gestern",
@@ -157,7 +158,7 @@ export function relativeWindowLabel(
   const window = relativeDateWindow(range, timeZone, days, now);
   if (!window) return "Ungültiger Zeitraum";
   const label = (day: number) =>
-    new Date(day * dayMs).toLocaleDateString("de-DE", {
+    new Date(day * dayMs).toLocaleDateString(LOCALE_TAG, {
       timeZone: "UTC",
       day: "2-digit",
       month: "2-digit",

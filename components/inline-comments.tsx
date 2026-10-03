@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { CommentComposer, CommentBody } from "./comment-composer";
@@ -468,7 +469,7 @@ export function InlineComments({
                     <small>
                       {new Date(
                         m.created_at.replace(" ", "T") + "Z",
-                      ).toLocaleString("de-DE")}
+                      ).toLocaleString(LOCALE_TAG)}
                       {m.edited_at && !m.deleted ? " · bearbeitet" : ""}
                       {m.author_id === null ? " · importiert" : ""}
                     </small>

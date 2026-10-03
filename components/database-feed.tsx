@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import {
   useEffect,
@@ -75,7 +76,7 @@ function FeedEntry({
           {config.showAuthor && <strong>{name}</strong>}
           {config.showDate && Number.isFinite(date.getTime()) && (
             <time dateTime={date.toISOString()}>
-              {date.toLocaleString("de-DE", {
+              {date.toLocaleString(LOCALE_TAG, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",

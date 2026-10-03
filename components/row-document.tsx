@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
@@ -130,7 +131,7 @@ export default function RowDocument({
             <Clock />
             <span>
               {new Date(s.created_at.replace(" ", "T") + "Z").toLocaleString(
-                "de-DE",
+                LOCALE_TAG,
               )}
             </span>
             <button
@@ -168,12 +169,12 @@ export default function RowDocument({
             (
               data.snapshots.find((s) => s.id === changes)?.created_at || ""
             ).replace(" ", "T") + "Z",
-          ).toLocaleString("de-DE")}
+          ).toLocaleString(LOCALE_TAG)}
           versions={data.snapshots.map((s) => ({
             id: s.id,
             label: new Date(
               s.created_at.replace(" ", "T") + "Z",
-            ).toLocaleString("de-DE"),
+            ).toLocaleString(LOCALE_TAG),
           }))}
           onClose={() => {
             setChanges(null);

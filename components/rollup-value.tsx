@@ -1,3 +1,4 @@
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { Field } from "@/lib/types";
 import { cellText } from "@/lib/database";
 import { percentAggregate } from "@/lib/rollups";
@@ -30,7 +31,7 @@ export function RollupValue({
   const label =
     field.type === "number"
       ? formatNumber(value, field.format, field.decimals)
-      : new Intl.NumberFormat("de-DE", {
+      : new Intl.NumberFormat(LOCALE_TAG, {
           maximumFractionDigits: 2,
           ...(percent ? { style: "percent" as const } : {}),
         }).format(value);
