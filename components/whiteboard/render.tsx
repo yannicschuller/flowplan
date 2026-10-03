@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "../i18n";
 import { pressureOutline } from "@/lib/whiteboard-tools";
 import { LibraryIcon } from "../library-icons";
 import type { CSSProperties, ReactNode } from "react";
@@ -140,6 +141,7 @@ function CoveredShape({
   item: WhiteboardItem;
   transform: string;
 }) {
+  const t = useT();
   const size = Math.max(12, Math.min(22, Math.min(item.w, item.h) / 6));
   return (
     <g transform={transform} className="wb-covered">
@@ -158,7 +160,7 @@ function CoveredShape({
         fontSize={size}
         className="wb-cover-label"
       >
-        Verdeckt
+        {t("Verdeckt", "Hidden")}
       </text>
     </g>
   );
@@ -182,6 +184,7 @@ export function WhiteboardShape({
   // Live data of database records shown as cards.
   cards?: Map<string, RowCard>;
 }) {
+  const t = useT();
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${item.rotation} ${item.w / 2} ${item.h / 2})` : ""}`;
   const text = editing ?? undefined;
   if (item.covered && !["frame", "connector", "comment"].includes(item.type))
@@ -242,7 +245,7 @@ export function WhiteboardShape({
           />
           <foreignObject x={0} y={-28} width={Math.max(1, item.w)} height={26}>
             <div className="wb-frame-title">
-              {text ?? (item.text || "Rahmen")}
+              {text ?? (item.text || t("Rahmen", "Frame"))}
             </div>
           </foreignObject>
         </g>
@@ -340,8 +343,8 @@ export function WhiteboardShape({
             <rect width={6} height={item.h} rx={3} fill={item.fill || "#e0782c"} />
             <foreignObject x={14} y={0} width={Math.max(1, item.w - 20)} height={item.h}>
               <div className="wb-card-body wb-row-card">
-                <small>{row?.database || page?.title || "Datenbank"}</small>
-                <strong>{row?.title ?? "Eintrag nicht verfügbar"}</strong>
+                <small>{row?.database || page?.title || t("Datenbank", "Database")}</small>
+                <strong>{row?.title ?? t("Eintrag nicht verfügbar", "Record not available")}</strong>
                 {!!row?.props.length && (
                   <span className="wb-row-props">
                     {row.props.map((p) => (
@@ -380,12 +383,12 @@ export function WhiteboardShape({
             <div className="wb-card-body">
               <small>
                 {page?.kind === "database"
-                  ? "Datenbank"
+                  ? t("Datenbank", "Database")
                   : page?.kind === "whiteboard"
-                    ? "Whiteboard"
-                    : "Seite"}
+                    ? t("Whiteboard", "Whiteboard")
+                    : t("Seite", "Page")}
               </small>
-              <strong>{page?.title || "Seite nicht verfügbar"}</strong>
+              <strong>{page?.title || t("Seite nicht verfügbar", "Page not available")}</strong>
             </div>
           </foreignObject>
         </g>
@@ -549,6 +552,7 @@ export function WhiteboardStatic({
   pages: PageRef[];
   height?: number;
 }) {
+  const t = useT();
   const map = new Map(items.map((i) => [i.id, i]));
   const box = contentBounds(items, map);
   const pad = 40;
@@ -562,7 +566,7 @@ export function WhiteboardStatic({
       style={{ height }}
       preserveAspectRatio="xMidYMid meet"
       role="img"
-      aria-label="Whiteboard-Vorschau"
+      aria-label={t("Whiteboard-Vorschau", "Whiteboard preview")}
     >
       <WhiteboardDefs />
       {items

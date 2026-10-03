@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import {
   useEffect,
@@ -88,6 +89,7 @@ export default function DatabaseCalendar({
   onSchedule: (input: Record<string, unknown>) => Promise<unknown>;
   onView: (patch: Partial<View>) => Promise<unknown>;
 }) {
+  const t = useT();
   const [local, setLocal] = useState<CalendarConfig>(),
     [anchor, setAnchor] = useState(() =>
       dateInZone(view.calendar?.timeZone || browserZone()),
@@ -189,7 +191,7 @@ export default function DatabaseCalendar({
     suppressed = useRef(false),
     scroller = useRef<HTMLDivElement>(null);
   const title = (row: Row) =>
-    cellText(row.cells[fields[0]?.id]) || "Ohne Titel";
+    cellText(row.cells[fields[0]?.id]) || t("Ohne Titel", "Untitled");
   useEffect(() => {
     setZoneDraft(zone);
   }, [zone]);
@@ -209,7 +211,7 @@ export default function DatabaseCalendar({
       setDrag(null);
       suppressed.current = true;
       setError(
-        "Die Daten wurden während des Ziehens geändert. Bitte erneut versuchen.",
+        t("Die Daten wurden während des Ziehens geändert. Bitte erneut versuchen.", "The data changed while dragging. Please try again."),
       );
     }
   }, [rows, version, canEdit]);
@@ -217,7 +219,7 @@ export default function DatabaseCalendar({
     if (pending.current) return;
     if (!validZone(next.timeZone)) {
       setError(
-        "Bitte eine gültige IANA-Zeitzone eingeben, zum Beispiel Europe/Berlin.",
+        t("Bitte eine gültige IANA-Zeitzone eingeben, zum Beispiel Europe/Berlin.", "Please enter a valid IANA time zone, for example Europe/Berlin."),
       );
       return;
     }
@@ -465,7 +467,7 @@ export default function DatabaseCalendar({
             </span>
           )}
           {parseRecurrence(row.recurrence) && (
-            <span aria-label="Wiederholung" title="Wiederkehrender Eintrag">
+            <span aria-label={t("Wiederholung", "Recurrence")} title={t("Wiederkehrender Eintrag", "Recurring record")}>
               ↻{" "}
             </span>
           )}
@@ -514,7 +516,7 @@ export default function DatabaseCalendar({
         {canEdit && !occurrence(row.id) && (
           <button
             className="calendar-edit"
-            aria-label={`Termin für ${title(row)} bearbeiten`}
+            aria-label={t(`Termin für ${title(row)} bearbeiten`, `Edit date of ${title(row)}`)}
             disabled={busy}
             onClick={() => edit(row)}
           >
@@ -533,7 +535,7 @@ export default function DatabaseCalendar({
     if (date.year >= 1 && date.year <= 9999) setAnchor(date.toString());
   }
   return (
-    <section className="calendar-view" aria-label="Kalender">
+    <section className="calendar-view" aria-label={t("Kalender", "Calendar")}>
       <div className="calendar-controls">
         <h3>
           {Temporal.PlainDate.from(anchor).toLocaleString("de-DE", {
@@ -542,7 +544,7 @@ export default function DatabaseCalendar({
           })}
         </h3>
         <Select
-          aria-label="Kalender: Ansicht"
+          aria-label={t("Kalender: Ansicht", "Calendar: view")}
           disabled={busy}
           value={config.mode}
           onChange={(e) =>
@@ -552,12 +554,12 @@ export default function DatabaseCalendar({
             })
           }
         >
-          <option value="month">Monat</option>
-          <option value="week">Woche</option>
-          <option value="day">Tag</option>
+          <option value="month">{t("Monat", "Month")}</option>
+          <option value="week">{t("Woche", "Week")}</option>
+          <option value="day">{t("Tag", "Day")}</option>
         </Select>
         <Select
-          aria-label="Kalender: Wochenbeginn"
+          aria-label={t("Kalender: Wochenbeginn", "Calendar: week start")}
           disabled={busy}
           value={config.weekStart || "monday"}
           onChange={(e) =>
@@ -567,23 +569,23 @@ export default function DatabaseCalendar({
             })
           }
         >
-          <option value="monday">Woche ab Montag</option>
-          <option value="sunday">Woche ab Sonntag</option>
+          <option value="monday">{t("Woche ab Montag", "Week from Monday")}</option>
+          <option value="sunday">{t("Woche ab Sonntag", "Week from Sunday")}</option>
         </Select>
         <label className="checkbox-label">
           <input
             type="checkbox"
-            aria-label="Kalender: Wochenenden anzeigen"
+            aria-label={t("Kalender: Wochenenden anzeigen", "Calendar: show weekends")}
             disabled={busy}
             checked={weekends}
             onChange={(e) =>
               void configure({ ...config, showWeekends: e.target.checked })
             }
           />
-          Wochenenden
+          {t("Wochenenden", "Weekends")}
         </label>
         <input
-          aria-label="Kalender: Datum"
+          aria-label={t("Kalender: Datum", "Calendar: date")}
           type="date"
           min="0001-01-01"
           max="9999-12-31"
@@ -600,18 +602,18 @@ export default function DatabaseCalendar({
           className="button compact"
           onClick={() => setAnchor(dateInZone(zone))}
         >
-          Heute
+          {t("Heute", "Today")}
         </button>
         <button
           className="icon-button"
-          aria-label="Vorheriger Zeitraum"
+          aria-label={t("Vorheriger Zeitraum", "Previous period")}
           onClick={() => navigate(-1)}
         >
           <CaretLeft />
         </button>
         <button
           className="icon-button"
-          aria-label="Nächster Zeitraum"
+          aria-label={t("Nächster Zeitraum", "Next period")}
           onClick={() => navigate(1)}
         >
           <CaretRight />
@@ -626,9 +628,9 @@ export default function DatabaseCalendar({
         }}
       >
         <label>
-          Zeitzone{" "}
+          {t("Zeitzone", "Time zone")}{" "}
           <input
-            aria-label="Kalender: Zeitzone"
+            aria-label={t("Kalender: Zeitzone", "Calendar: time zone")}
             value={zoneDraft}
             onChange={(e) => setZoneDraft(e.target.value)}
             disabled={busy}
@@ -652,9 +654,9 @@ export default function DatabaseCalendar({
           className="button compact"
           disabled={busy || zoneDraft === zone}
         >
-          Übernehmen
+          {t("Übernehmen", "Apply")}
         </button>
-        {!viewEditable && <small>Ansicht nur für dich</small>}
+        {!viewEditable && <small>{t("Ansicht nur für dich", "View only for you")}</small>}
       </form>
       {error && !draft && (
         <p role="alert" className="error">
@@ -663,8 +665,7 @@ export default function DatabaseCalendar({
       )}
       {!start || invalidEnd ? (
         <p className="timeline-notice">
-          In den Ansichtsoptionen gültige, unterschiedliche Datumsfelder für
-          Beginn und Ende auswählen.
+          {t("In den Ansichtsoptionen gültige, unterschiedliche Datumsfelder für Beginn und Ende auswählen.", "Choose valid, different date fields for start and end in the view options.")}
         </p>
       ) : (
         <>
@@ -710,13 +711,9 @@ export default function DatabaseCalendar({
           ) : (
             <>
               <details className="calendar-help">
-                <summary>Kalenderhilfe</summary>
+                <summary>{t("Kalenderhilfe", "Calendar help")}</summary>
                 <p className="timeline-help">
-                  Ziehen verschiebt Termine in 15-Minuten-Schritten, Randgriffe
-                  ändern Beginn und Ende. Alt + ↑/↓ verschiebt per Tastatur, Alt
-                  + ←/→ um einen Tag; zusätzlich Umschalt ändert das Ende. Ohne
-                  Enddatum wird eine Stunde angezeigt. Zeitumstellungen
-                  erscheinen mit ihrer tatsächlichen Tageslänge.
+                  {t("Ziehen verschiebt Termine in 15-Minuten-Schritten, Randgriffe ändern Beginn und Ende. Alt + ↑/↓ verschiebt per Tastatur, Alt + ←/→ um einen Tag; zusätzlich Umschalt ändert das Ende. Ohne Enddatum wird eine Stunde angezeigt. Zeitumstellungen erscheinen mit ihrer tatsächlichen Tageslänge.", "Dragging moves events in 15-minute steps, the edge handles change start and end. Alt + ↑/↓ moves with the keyboard, Alt + ←/→ by one day; adding Shift changes the end. Without an end date one hour is shown. Clock changes appear with their real day length.")}
                 </p>
               </details>
               <div
@@ -747,7 +744,7 @@ export default function DatabaseCalendar({
                             },
                           )}
                         </strong>
-                        <span>{day.minutes / 60} Stunden</span>
+                        <span>{day.minutes / 60} {t("Stunden", "Hours")}</span>
                         <div
                           className={`calendar-all-day ${touchTarget === day.date ? "touch-target" : ""}`}
                           data-day={day.date}
@@ -759,7 +756,7 @@ export default function DatabaseCalendar({
                             disabled={!canEdit || busy}
                             onClick={() => onCreate({ [start.id]: day.date })}
                           >
-                            Ganztägig{canEdit ? " +" : ""}
+                            {t("Ganztägig", "All day")}{canEdit ? " +" : ""}
                           </button>
                           {rows
                             .filter((r) => {
@@ -796,7 +793,7 @@ export default function DatabaseCalendar({
                                 key={i}
                                 className="calendar-hour"
                                 style={{ top: i * 60 * PX }}
-                                aria-label={`Termin am ${day.date} um ${text} UTC${label.offset} anlegen`}
+                                aria-label={t(`Termin am ${day.date} um ${text} UTC${label.offset} anlegen`, `Create event on ${day.date} at ${text} UTC${label.offset}`)}
                                 disabled={!canEdit || busy}
                                 onClick={() =>
                                   onCreate({
@@ -951,7 +948,7 @@ export default function DatabaseCalendar({
                                   <button
                                     className="calendar-edit"
                                     disabled={busy}
-                                    aria-label={`Termin für ${name} bearbeiten`}
+                                    aria-label={t(`Termin für ${name} bearbeiten`, `Edit date of ${name}`)}
                                     onClick={() => edit(actual)}
                                   >
                                     <CalendarBlank size={14} />
@@ -969,7 +966,7 @@ export default function DatabaseCalendar({
                                         <button
                                           key={edge}
                                           className={`calendar-time-resize ${edge}`}
-                                          aria-label={`${edge === "start" ? "Beginn" : "Ende"} von ${name} ziehen`}
+                                          aria-label={t(`${edge === "start" ? "Beginn" : "Ende"} von ${name} ziehen`, `Drag ${edge === "start" ? "start" : "end"} of ${name}`)}
                                           aria-disabled={busy}
                                           onPointerDown={(e) =>
                                             begin(
@@ -1015,7 +1012,7 @@ export default function DatabaseCalendar({
           )}
           {rows.some((r) => !ranges.get(r.id)) && (
             <div className="undated">
-              <strong>Ohne gültigen Zeitraum</strong>
+              <strong>{t("Ohne gültigen Zeitraum", "Without a valid period")}</strong>
               {rows
                 .filter((r) => !ranges.get(r.id))
                 .map((r) => (
@@ -1026,9 +1023,9 @@ export default function DatabaseCalendar({
                         className="button compact"
                         disabled={busy}
                         onClick={() => edit(r)}
-                        aria-label={`Termin für ${title(r)} bearbeiten`}
+                        aria-label={t(`Termin für ${title(r)} bearbeiten`, `Edit date of ${title(r)}`)}
                       >
-                        Termin festlegen
+                        {t("Termin festlegen", "Set date")}
                       </button>
                     )}
                   </div>
@@ -1040,7 +1037,7 @@ export default function DatabaseCalendar({
       <Modal
         open={!!draft}
         onClose={() => !busy && setDraft(null)}
-        title="Termin bearbeiten"
+        title={t("Termin bearbeiten", "Edit date")}
       >
         {draft && (
           <form
@@ -1063,7 +1060,7 @@ export default function DatabaseCalendar({
               {title(draft.row)} · {draft.zone}
             </p>
             <label>
-              Beginn
+              {t("Beginn", "Start")}
               <DateInput
                 name="Beginn"
                 value={draft.start}
@@ -1075,7 +1072,7 @@ export default function DatabaseCalendar({
             </label>
             {end ? (
               <label>
-                Ende
+                {t("Ende", "End")}
                 <DateInput
                   name="Ende"
                   value={draft.end}
@@ -1087,13 +1084,11 @@ export default function DatabaseCalendar({
               </label>
             ) : (
               <p>
-                Für einen Zeitraum in den Ansichtsoptionen ein Enddatumsfeld
-                auswählen.
+                {t("Für einen Zeitraum in den Ansichtsoptionen ein Enddatumsfeld auswählen.", "For a period, choose an end date field in the view options.")}
               </p>
             )}
             <p className="muted">
-              Beginn und Ende gemeinsam speichern. Ein leeres Enddatum bedeutet
-              einen Tag beziehungsweise eine Stunde.
+              {t("Beginn und Ende gemeinsam speichern. Ein leeres Enddatum bedeutet einen Tag beziehungsweise eine Stunde.", "Save start and end together. An empty end date means one day or one hour.")}
             </p>
             {error && (
               <p role="alert" className="error">
@@ -1107,13 +1102,13 @@ export default function DatabaseCalendar({
                 disabled={busy}
                 onClick={() => setDraft(null)}
               >
-                Abbrechen
+                {t("Abbrechen", "Cancel")}
               </button>
               <button
                 className="button primary"
                 disabled={busy || !canEdit || !draft.start}
               >
-                {busy ? "Wird gespeichert …" : "Termin speichern"}
+                {busy ? t("Wird gespeichert …", "Saving …") : t("Termin speichern", "Save date")}
               </button>
             </div>
           </form>

@@ -4,6 +4,7 @@
 // and client render the same language.
 import { createContext, useCallback, useContext } from "react";
 import { LOCALE_COOKIE, translate, type Locale } from "@/lib/i18n";
+import { translateLabel } from "@/lib/i18n-labels";
 
 const LocaleContext = createContext<Locale>("de");
 
@@ -13,9 +14,13 @@ export function LocaleProvider({ locale, children }: { locale: Locale; children:
 export function useLocale() {
   return useContext(LocaleContext);
 }
-// t("Anmelden", "Sign in")
+// t("Anmelden", "Sign in"); t(label) alone translates a label from the
+// German tables in lib (operators, rollups, formats …).
 export function useT() {
-  return translate(useContext(LocaleContext));
+  const locale = useContext(LocaleContext);
+  const pick = translate(locale);
+  return (de: string, en?: string) =>
+    en === undefined ? translateLabel(de, locale) : pick(de, en);
 }
 export function setLocale(locale: Locale) {
   document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax`;
@@ -50,6 +55,7 @@ const statusWords: Record<string, string> = {
   "Speichern …": "Saving …",
   "Änderungen …": "Changes …",
   "Offline gespeichert": "Saved offline",
+  Offline: "Offline",
   "Speichern fehlgeschlagen": "Saving failed",
   "Verbindung unterbrochen – wird wiederholt …": "Connection lost – retrying …",
   "Neue Dokumentversion wird geladen …": "Loading the new document version …",
@@ -61,3 +67,4 @@ export function useStatusLabel() {
   const locale = useLocale();
   return (status: string) => (locale === "en" ? statusWords[status] || status : status);
 }
+

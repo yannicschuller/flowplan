@@ -4,7 +4,7 @@ import type { Field } from "./types";
 
 // Display formats of number and date properties. Stored values never change;
 // only their presentation does.
-const currencies = {
+export const currencies = {
   eur: ["Euro", "EUR"],
   usd: ["US-Dollar", "USD"],
   gbp: ["Britisches Pfund", "GBP"],

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useMemo, useState } from "react";
 import Papa from "papaparse";
@@ -85,12 +86,13 @@ function ChartGraphic({
   config: ChartConfig;
   onSelect: (key: string) => void;
 }) {
+  const t = useT();
   const colors = paletteOf(config);
   const available = points.slice(0, 100),
     values = available.map((p) => p.value ?? 0);
   const { lo, span, magnitude, scale } = chartDomain(values, config);
   const label = (p: ChartPoint) =>
-    `${p.label}: ${format(p.value)} · ${p.rows.length} Einträge`;
+    t(`${p.label}: ${format(p.value)} · ${p.rows.length} Einträge`, `${p.label}: ${format(p.value)} · ${p.rows.length} records`);
   const interaction = (p: ChartPoint) => ({
     role: "button",
     tabIndex: 0,
@@ -107,16 +109,14 @@ function ChartGraphic({
   if (!available.length)
     return (
       <p className="muted">
-        Keine Daten für diese Auswertung. Passe Filter, Suche oder Gruppierung
-        an.
+        {t("Keine Daten für diese Auswertung. Passe Filter, Suche oder Gruppierung an.", "No data for this chart. Adjust filters, search or grouping.")}
       </p>
     );
   if (config.kind === "donut") {
     if (available.some((p) => p.value !== null && p.value < 0))
       return (
         <p role="status">
-          Ein Donut kann negative Werte nicht darstellen. Wähle Balken oder
-          Linie. Alle Ergebnisse stehen in der Wertetabelle.
+          {t("Ein Donut kann negative Werte nicht darstellen. Wähle Balken oder Linie. Alle Ergebnisse stehen in der Wertetabelle.", "A donut cannot show negative values. Choose bars or a line. All results are in the value table.")}
         </p>
       );
     const total = available.reduce(
@@ -126,8 +126,7 @@ function ChartGraphic({
     if (!total)
       return (
         <p role="status">
-          Für einen Donut werden positive Werte benötigt. Alle Ergebnisse stehen
-          in der Wertetabelle.
+          {t("Für einen Donut werden positive Werte benötigt. Alle Ergebnisse stehen in der Wertetabelle.", "A donut needs positive values. All results are in the value table.")}
         </p>
       );
     let offset = 0;
@@ -137,7 +136,7 @@ function ChartGraphic({
         width="440"
         height="330"
         className="chart-donut"
-        aria-label="Donutdiagramm"
+        aria-label={t("Donutdiagramm", "Donut chart")}
       >
         {available.map((p, i) => {
           const part = (p.value ?? 0) / magnitude / total;
@@ -183,7 +182,7 @@ function ChartGraphic({
           {available.length}
         </text>
         <text x="220" y="185" textAnchor="middle">
-          Gruppen
+          {t("Gruppen", "Groups")}
         </text>
       </svg>
     );
@@ -200,7 +199,7 @@ function ChartGraphic({
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        aria-label="Balkendiagramm"
+        aria-label={t("Balkendiagramm", "Bar chart")}
       >
         <AxisTitles
           config={config}
@@ -267,7 +266,7 @@ function ChartGraphic({
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      aria-label={config.kind === "line" ? "Liniendiagramm" : "Säulendiagramm"}
+      aria-label={config.kind === "line" ? t("Liniendiagramm", "Line chart") : t("Säulendiagramm", "Column chart")}
     >
       <AxisTitles
         config={config}
@@ -370,6 +369,7 @@ function SeriesGraphic({
   config: ChartConfig;
   onSelect: (key: string) => void;
 }) {
+  const t = useT();
   const colors = paletteOf(config);
   const available = points.slice(0, 100);
   const stacked =
@@ -392,7 +392,7 @@ function SeriesGraphic({
   });
   const { lo, span, magnitude, scale } = chartDomain(extents, config);
   const label = (p: ChartPoint, s: ChartSeries) =>
-    `${p.label} · ${s.label}: ${format(cell(p, s).value)} · ${cell(p, s).rows.length} Einträge`;
+    t(`${p.label} · ${s.label}: ${format(cell(p, s).value)} · ${cell(p, s).rows.length} Einträge`, `${p.label} · ${s.label}: ${format(cell(p, s).value)} · ${cell(p, s).rows.length} records`);
   const interaction = (p: ChartPoint, s: ChartSeries) => ({
     role: "button",
     tabIndex: 0,
@@ -410,8 +410,7 @@ function SeriesGraphic({
   if (!available.length)
     return (
       <p className="muted">
-        Keine Daten für diese Auswertung. Passe Filter, Suche oder Gruppierung
-        an.
+        {t("Keine Daten für diese Auswertung. Passe Filter, Suche oder Gruppierung an.", "No data for this chart. Adjust filters, search or grouping.")}
       </p>
     );
   // Segments of one group: offsets for stacks, slots for grouped bars.
@@ -440,7 +439,7 @@ function SeriesGraphic({
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        aria-label="Balkendiagramm mit Datenreihen"
+        aria-label={t("Balkendiagramm mit Datenreihen", "Bar chart with series")}
       >
         <AxisTitles
           config={config}
@@ -508,8 +507,8 @@ function SeriesGraphic({
       viewBox={`0 0 ${width} ${height}`}
       aria-label={
         config.kind === "line"
-          ? "Liniendiagramm mit Datenreihen"
-          : "Säulendiagramm mit Datenreihen"
+          ? t("Liniendiagramm mit Datenreihen", "Line chart with series")
+          : t("Säulendiagramm mit Datenreihen", "Column chart with series")
       }
     >
       <AxisTitles
@@ -620,6 +619,7 @@ function ChartSettings({
   onSave: (c: ChartConfig, version: number) => Promise<unknown>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState(initial),
     [baseVersion, setBaseVersion] = useState(version),
     [dirty, setDirty] = useState(false),
@@ -649,10 +649,10 @@ function ChartSettings({
           if (await onSave(draft, baseVersion)) onClose();
           else
             setError(
-              "Das Diagramm konnte nicht gespeichert werden. Bitte erneut versuchen.",
+              t("Das Diagramm konnte nicht gespeichert werden. Bitte erneut versuchen.", "The chart could not be saved. Please try again."),
             );
         } catch {
-          setError("Speichern fehlgeschlagen.");
+          setError(t("Speichern fehlgeschlagen.", "Saving failed."));
         } finally {
           setBusy(false);
         }
@@ -660,7 +660,7 @@ function ChartSettings({
     >
       <fieldset className="schema-settings" disabled={busy || !editable}>
         <label>
-          Diagrammtyp
+          {t("Diagrammtyp", "Chart type")}
           <Select
             value={draft.kind}
             onChange={(e) =>
@@ -669,18 +669,18 @@ function ChartSettings({
           >
             {Object.entries(chartKinds).map(([value, title]) => (
               <option key={value} value={value}>
-                {title}
+                {t(title)}
               </option>
             ))}
           </Select>
         </label>
         <label>
-          Gruppierung
+          {t("Gruppierung", "Grouping")}
           <Select
             value={draft.xField || ""}
             onChange={(e) => patch({ xField: e.target.value || undefined })}
           >
-            <option value="">Alle Einträge</option>
+            <option value="">{t("Alle Einträge", "All records")}</option>
             {fields.filter(chartGroupField).map((f) => (
               <option key={f.id} value={f.id}>
                 {f.name}
@@ -690,7 +690,7 @@ function ChartSettings({
         </label>
         {chartDateField(fields.find((f) => f.id === draft.xField)) && (
           <label>
-            Datumsintervall
+            {t("Datumsintervall", "Date interval")}
             <Select
               value={draft.dateBucket}
               onChange={(e) =>
@@ -699,15 +699,15 @@ function ChartSettings({
                 })
               }
             >
-              <option value="day">Tag</option>
-              <option value="week">Woche (Montag–Sonntag)</option>
-              <option value="month">Monat</option>
-              <option value="year">Jahr</option>
+              <option value="day">{t("Tag", "Day")}</option>
+              <option value="week">{t("Woche (Montag–Sonntag)", "Week (Monday–Sunday)")}</option>
+              <option value="month">{t("Monat", "Month")}</option>
+              <option value="year">{t("Jahr", "Year")}</option>
             </Select>
           </label>
         )}
         <label>
-          Berechnung
+          {t("Berechnung", "Calculation")}
           <Select
             value={draft.aggregate}
             onChange={(e) =>
@@ -719,19 +719,19 @@ function ChartSettings({
           >
             {Object.entries(chartAggregates).map(([value, title]) => (
               <option key={value} value={value}>
-                {title}
+                {t(title)}
               </option>
             ))}
           </Select>
         </label>
         {draft.aggregate !== "count" && (
           <label>
-            Messwert
+            {t("Messwert", "Measure")}
             <Select
               value={draft.yField || ""}
               onChange={(e) => patch({ yField: e.target.value || undefined })}
             >
-              <option value="">Eigenschaft wählen</option>
+              <option value="">{t("Eigenschaft wählen", "Choose property")}</option>
               {fields.filter(chartNumberField).map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
@@ -741,16 +741,16 @@ function ChartSettings({
           </label>
         )}
         <label>
-          Datenreihen
+          {t("Datenreihen", "Series")}
           <Select
-            aria-label="Datenreihen"
+            aria-label={t("Datenreihen", "Series")}
             disabled={!!draft.measures?.length}
             value={draft.seriesField || ""}
             onChange={(e) =>
               patch({ seriesField: e.target.value || undefined })
             }
           >
-            <option value="">Keine (eine Reihe)</option>
+            <option value="">{t("Keine (eine Reihe)", "None (one series)")}</option>
             {fields
               .filter((f) => chartGroupField(f) && f.id !== draft.xField)
               .map((f) => (
@@ -762,11 +762,11 @@ function ChartSettings({
         </label>
         {!draft.seriesField && draft.kind !== "donut" && (
           <fieldset className="chart-measures">
-            <legend>Weitere Werte</legend>
+            <legend>{t("Weitere Werte", "More values")}</legend>
             {(draft.measures || []).map((m, i) => (
               <div key={i} className="chart-measure">
                 <Select
-                  aria-label={`Weiterer Wert ${i + 1}: Berechnung`}
+                  aria-label={t(`Weiterer Wert ${i + 1}: Berechnung`, `Extra value ${i + 1}: calculation`)}
                   value={m.aggregate}
                   onChange={(e) =>
                     patch({
@@ -778,12 +778,12 @@ function ChartSettings({
                 >
                   {(["sum", "average", "min", "max"] as const).map((a) => (
                     <option key={a} value={a}>
-                      {chartAggregates[a]}
+                      {t(chartAggregates[a])}
                     </option>
                   ))}
                 </Select>
                 <Select
-                  aria-label={`Weiterer Wert ${i + 1}: Eigenschaft`}
+                  aria-label={t(`Weiterer Wert ${i + 1}: Eigenschaft`, `Extra value ${i + 1}: property`)}
                   value={m.field}
                   onChange={(e) =>
                     patch({
@@ -802,7 +802,7 @@ function ChartSettings({
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label={`Weiteren Wert ${i + 1} entfernen`}
+                  aria-label={t(`Weiteren Wert ${i + 1} entfernen`, `Remove extra value ${i + 1}`)}
                   onClick={() => {
                     const next = (draft.measures || []).filter((_, j) => j !== i);
                     patch({ measures: next.length ? next : undefined });
@@ -825,11 +825,11 @@ function ChartSettings({
                   })
                 }
               >
-                + Wert hinzufügen
+                {t("+ Wert hinzufügen", "+ Add value")}
               </button>
             )}
             {!fields.some(chartNumberField) && (
-              <small className="muted">Braucht eine Zahl-, Formel- oder Rollup-Eigenschaft.</small>
+              <small className="muted">{t("Braucht eine Zahl-, Formel- oder Rollup-Eigenschaft.", "Needs a number, formula or rollup property.")}</small>
             )}
           </fieldset>
         )}
@@ -837,9 +837,9 @@ function ChartSettings({
           draft.kind !== "line" &&
           draft.kind !== "donut" && (
             <label>
-              Darstellung der Reihen
+              {t("Darstellung der Reihen", "Series layout")}
               <Select
-                aria-label="Darstellung der Reihen"
+                aria-label={t("Darstellung der Reihen", "Series layout")}
                 value={
                   canStack(draft) ? draft.seriesMode || "grouped" : "grouped"
                 }
@@ -850,8 +850,8 @@ function ChartSettings({
                   })
                 }
               >
-                <option value="grouped">Nebeneinander</option>
-                <option value="stacked">Gestapelt</option>
+                <option value="grouped">{t("Nebeneinander", "Side by side")}</option>
+                <option value="stacked">{t("Gestapelt", "Stacked")}</option>
               </Select>
             </label>
           )}
@@ -862,13 +862,13 @@ function ChartSettings({
               checked={draft.showLegend !== false}
               onChange={(e) => patch({ showLegend: e.target.checked })}
             />
-            Legende anzeigen
+            {t("Legende anzeigen", "Show legend")}
           </label>
         )}
         <label>
-          Farben
+          {t("Farben", "Colours")}
           <Select
-            aria-label="Farbpalette"
+            aria-label={t("Farbpalette", "Colour palette")}
             value={draft.palette || "default"}
             onChange={(e) =>
               patch({ palette: e.target.value as ChartConfig["palette"] })
@@ -876,7 +876,7 @@ function ChartSettings({
           >
             {Object.entries(chartPaletteNames).map(([key, label]) => (
               <option key={key} value={key}>
-                {label}
+                {t(label)}
               </option>
             ))}
           </Select>
@@ -887,14 +887,14 @@ function ChartSettings({
             checked={draft.showGrid !== false}
             onChange={(e) => patch({ showGrid: e.target.checked })}
           />
-          Gitterlinien anzeigen
+          {t("Gitterlinien anzeigen", "Show grid lines")}
         </label>
         {draft.kind !== "donut" && (
           <>
             <label>
-              Beschriftung Gruppenachse
+              {t("Beschriftung Gruppenachse", "Group axis label")}
               <input
-                aria-label="Beschriftung Gruppenachse"
+                aria-label={t("Beschriftung Gruppenachse", "Group axis label")}
                 maxLength={80}
                 value={draft.groupAxisLabel || ""}
                 onChange={(e) =>
@@ -903,9 +903,9 @@ function ChartSettings({
               />
             </label>
             <label>
-              Beschriftung Werteachse
+              {t("Beschriftung Werteachse", "Value axis label")}
               <input
-                aria-label="Beschriftung Werteachse"
+                aria-label={t("Beschriftung Werteachse", "Value axis label")}
                 maxLength={80}
                 value={draft.valueAxisLabel || ""}
                 onChange={(e) =>
@@ -915,12 +915,12 @@ function ChartSettings({
             </label>
             <div className="chart-range">
               <label>
-                Werteachse von
+                {t("Werteachse von", "Value axis from")}
                 <input
-                  aria-label="Werteachse von"
+                  aria-label={t("Werteachse von", "Value axis from")}
                   type="number"
                   step="any"
-                  placeholder="Automatisch"
+                  placeholder={t("Automatisch", "Automatic")}
                   value={draft.valueMin ?? ""}
                   onChange={(e) =>
                     patch({
@@ -935,10 +935,10 @@ function ChartSettings({
               <label>
                 bis
                 <input
-                  aria-label="Werteachse bis"
+                  aria-label={t("Werteachse bis", "Value axis to")}
                   type="number"
                   step="any"
-                  placeholder="Automatisch"
+                  placeholder={t("Automatisch", "Automatic")}
                   value={draft.valueMax ?? ""}
                   onChange={(e) =>
                     patch({
@@ -955,24 +955,23 @@ function ChartSettings({
               draft.valueMax !== undefined &&
               draft.valueMax <= draft.valueMin && (
                 <p className="field-error" role="alert">
-                  Der Endwert muss größer als der Anfangswert sein; bis dahin
-                  wird automatisch skaliert.
+                  {t("Der Endwert muss größer als der Anfangswert sein; bis dahin wird automatisch skaliert.", "The end value must be greater than the start value; until then the scale is automatic.")}
                 </p>
               )}
           </>
         )}
         <label>
-          Gruppen sortieren
+          {t("Gruppen sortieren", "Sort groups")}
           <Select
             value={draft.order}
             onChange={(e) =>
               patch({ order: e.target.value as ChartConfig["order"] })
             }
           >
-            <option value="label_asc">Bezeichnung aufsteigend</option>
-            <option value="label_desc">Bezeichnung absteigend</option>
-            <option value="value_asc">Wert aufsteigend</option>
-            <option value="value_desc">Wert absteigend</option>
+            <option value="label_asc">{t("Bezeichnung aufsteigend", "Label ascending")}</option>
+            <option value="label_desc">{t("Bezeichnung absteigend", "Label descending")}</option>
+            <option value="value_asc">{t("Wert aufsteigend", "Value ascending")}</option>
+            <option value="value_desc">{t("Wert absteigend", "Value descending")}</option>
           </Select>
         </label>
         <label className="checkbox-label">
@@ -981,7 +980,7 @@ function ChartSettings({
             checked={draft.includeEmpty}
             onChange={(e) => patch({ includeEmpty: e.target.checked })}
           />
-          Einträge ohne Gruppierungswert anzeigen
+          {t("Einträge ohne Gruppierungswert anzeigen", "Show records without a grouping value")}
         </label>
         <label className="checkbox-label">
           <input
@@ -989,14 +988,14 @@ function ChartSettings({
             checked={draft.showValues}
             onChange={(e) => patch({ showValues: e.target.checked })}
           />
-          Werte im Diagramm anzeigen
+          {t("Werte im Diagramm anzeigen", "Show values in the chart")}
         </label>
       </fieldset>
       {invalid && <p role="alert">{invalid}</p>}
       {stale && (
         <div role="alert">
           <p>
-            Die Ansicht wurde inzwischen geändert. Dein Entwurf bleibt erhalten.
+            {t("Die Ansicht wurde inzwischen geändert. Dein Entwurf bleibt erhalten.", "The view was changed in the meantime. Your draft is kept.")}
           </p>
           <button
             type="button"
@@ -1008,21 +1007,21 @@ function ChartSettings({
               setError("");
             }}
           >
-            Entwurf verwerfen und neu laden
+            {t("Entwurf verwerfen und neu laden", "Discard draft and reload")}
           </button>
         </div>
       )}
       {error && <p role="alert">{error}</p>}
       <div className="modal-actions">
         <button type="button" className="button" onClick={onClose}>
-          Abbrechen
+          {t("Abbrechen", "Cancel")}
         </button>
         {editable && (
           <button
             className="button primary"
             disabled={busy || stale || !!invalid}
           >
-            Anwenden
+            {t("Anwenden", "Apply")}
           </button>
         )}
       </div>
@@ -1050,6 +1049,7 @@ export default function DatabaseChart({
   onSave: (c: ChartConfig, version: number) => Promise<unknown>;
   onOpenRow: (id: string) => void;
 }) {
+  const t = useT();
   const [settings, setSettings] = useState(false),
     [selected, setSelected] = useState<string | null>(null),
     [tablePage, setTablePage] = useState(0),
@@ -1083,8 +1083,8 @@ export default function DatabaseChart({
       : groupPoint;
   const title =
     config.aggregate === "count"
-      ? chartAggregates.count
-      : `${chartAggregates[config.aggregate]} · ${fields.find((f) => f.id === config.yField)?.name || "Eigenschaft fehlt"}`;
+      ? t(chartAggregates.count)
+      : `${t(chartAggregates[config.aggregate])} · ${fields.find((f) => f.id === config.yField)?.name || t("Eigenschaft fehlt", "Property missing")}`;
   const page = Math.min(
       tablePage,
       Math.max(0, Math.ceil(points.length / 50) - 1),
@@ -1098,18 +1098,18 @@ export default function DatabaseChart({
     setEntryPage(0);
   };
   return (
-    <section className="database-chart" aria-label="Datenbankdiagramm">
+    <section className="database-chart" aria-label={t("Datenbankdiagramm", "Database chart")}>
       <div className="chart-heading">
         <div>
           <h3>{title}</h3>
           <p className="muted">
-            {rows.length} Einträge · {points.length} Gruppen
+            {rows.length} {t("Einträge ·", "records ·")}{" "}{points.length} {t("Gruppen", "Groups")}
           </p>
         </div>
         <div className="chart-actions">
           <button className="button compact" onClick={() => setSettings(true)}>
             <SlidersHorizontal size={16} />
-            Diagramm konfigurieren
+            {t("Diagramm konfigurieren", "Configure chart")}
           </button>
           <button
             className="button compact"
@@ -1129,7 +1129,7 @@ export default function DatabaseChart({
                         )
                       : {}),
                     // With further values the main value is already a column.
-                    ...(measured ? {} : { [withSeries ? "Gesamt" : "Wert"]: p.value }),
+                    ...(measured ? {} : { [withSeries ? t("Gesamt", "Total") : t("Wert", "Value")]: p.value }),
                     Einträge: p.rows.length,
                   })),
                   { escapeFormulae: true },
@@ -1139,7 +1139,7 @@ export default function DatabaseChart({
             }
           >
             <DownloadSimple size={16} />
-            Auswertung als CSV
+            {t("Auswertung als CSV", "Results as CSV")}
           </button>
         </div>
       </div>
@@ -1149,16 +1149,14 @@ export default function DatabaseChart({
         <>
           {points.length > 100 && (
             <p role="status">
-              Im Diagramm werden die ersten 100 von {points.length} Gruppen
-              dargestellt. Die Wertetabelle und der CSV-Export enthalten alle
-              Gruppen.
+              {t("Im Diagramm werden die ersten 100 von", "The chart shows the first 100 of")}{" "}{points.length} {t("Gruppen dargestellt. Die Wertetabelle und der CSV-Export enthalten alle Gruppen.", "groups. The value table and the CSV export contain all groups.")}
             </p>
           )}
           <div
             className={`chart-scroll ${config.showGrid === false ? "no-grid" : ""}`}
             tabIndex={0}
             role="region"
-            aria-label="Diagramm, bei Bedarf horizontal scrollen"
+            aria-label={t("Diagramm, bei Bedarf horizontal scrollen", "Chart, scroll horizontally if needed")}
           >
             {withSeries ? (
               <SeriesGraphic
@@ -1173,7 +1171,7 @@ export default function DatabaseChart({
             )}
           </div>
           {withSeries && config.showLegend !== false && (
-            <ul className="chart-legend" aria-label="Legende">
+            <ul className="chart-legend" aria-label={t("Legende", "Legend")}>
               {series.map((x, i) => (
                 <li key={x.key}>
                   <span
@@ -1187,27 +1185,23 @@ export default function DatabaseChart({
           )}
           {series.length > 0 && config.kind === "donut" && (
             <p className="muted" role="status">
-              Donutdiagramme zeigen keine Datenreihen; die Wertetabelle enthält
-              die Aufschlüsselung.
+              {t("Donutdiagramme zeigen keine Datenreihen; die Wertetabelle enthält die Aufschlüsselung.", "Donut charts show no series; the value table contains the breakdown.")}
             </p>
           )}
           <p className="chart-note muted">
-            Datenpunkt oder Gruppe auswählen, um Einträge zu öffnen.
-            Mehrfachzuordnungen zählen in jeder Gruppe. Leere oder nicht
-            numerische Messwerte werden ausgelassen; „–“ bedeutet kein
-            berechenbarer Wert.
+            {t("Datenpunkt oder Gruppe auswählen, um Einträge zu öffnen. Mehrfachzuordnungen zählen in jeder Gruppe. Leere oder nicht numerische Messwerte werden ausgelassen; „–“ bedeutet kein berechenbarer Wert.", "Select a data point or group to open its records. Records in several groups count in each. Empty or non-numeric measures are left out; “–” means no computable value.")}
           </p>
           <div className="chart-table-scroll">
             <table className="chart-data">
-              <caption>Wertetabelle · {title}</caption>
+              <caption>{t("Wertetabelle ·", "Value table ·")}{" "}{title}</caption>
               <thead>
                 <tr>
-                  <th>Gruppe</th>
+                  <th>{t("Gruppe", "Group")}</th>
                   {series.map((x) => (
                     <th key={x.key}>{x.label}</th>
                   ))}
-                  {!measured && <th>{series.length ? "Gesamt" : "Wert"}</th>}
-                  <th>Einträge</th>
+                  {!measured && <th>{series.length ? t("Gesamt", "Total") : t("Wert", "Value")}</th>}
+                  <th>{t("Einträge", "Records")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1227,7 +1221,7 @@ export default function DatabaseChart({
                     {series.map((x) => (
                       <td key={x.key}>
                         <button
-                          aria-label={`${p.label} · ${x.label}: Einträge anzeigen`}
+                          aria-label={t(`${p.label} · ${x.label}: Einträge anzeigen`, `${p.label} · ${x.label}: show records`)}
                           onClick={() => select(p.key + SEP + x.key)}
                         >
                           {format(values.get(p.key)?.get(x.key)?.value ?? null)}
@@ -1248,7 +1242,7 @@ export default function DatabaseChart({
                 disabled={!page}
                 onClick={() => setTablePage(page - 1)}
               >
-                Vorherige Gruppen
+                {t("Vorherige Gruppen", "Previous groups")}
               </button>
               <span>
                 {page + 1} / {Math.ceil(points.length / 50)}
@@ -1258,7 +1252,7 @@ export default function DatabaseChart({
                 disabled={(page + 1) * 50 >= points.length}
                 onClick={() => setTablePage(page + 1)}
               >
-                Weitere Gruppen
+                {t("Weitere Gruppen", "More groups")}
               </button>
             </div>
           )}
@@ -1267,7 +1261,7 @@ export default function DatabaseChart({
       {settings && (
         <Modal
           open
-          title="Diagramm konfigurieren"
+          title={t("Diagramm konfigurieren", "Configure chart")}
           onClose={() => setSettings(false)}
         >
           <ChartSettings
@@ -1282,11 +1276,11 @@ export default function DatabaseChart({
       )}
       <Modal
         open={selected !== null}
-        title={selectedPoint ? `Einträge · ${selectedPoint.label}` : "Einträge"}
+        title={selectedPoint ? t(`Einträge · ${selectedPoint.label}`, `Records · ${selectedPoint.label}`) : t("Einträge", "Records")}
         onClose={() => setSelected(null)}
       >
         <p className="muted">
-          {selectedPoint?.rows.length || 0} Einträge · {title}:{" "}
+          {selectedPoint?.rows.length || 0} {t("Einträge ·", "records ·")}{" "}{title}:{" "}
           {format(selectedPoint?.value ?? null)}
         </p>
         <div className="chart-entry-list">
@@ -1300,7 +1294,7 @@ export default function DatabaseChart({
                   onOpenRow(r.id);
                 }}
               >
-                <span>{cellText(r.cells.title) || "Ohne Titel"}</span>
+                <span>{cellText(r.cells.title) || t("Ohne Titel", "Untitled")}</span>
                 {config.aggregate !== "count" && (
                   <small>{cellText(r.cells[config.yField || ""]) || "–"}</small>
                 )}
@@ -1309,7 +1303,7 @@ export default function DatabaseChart({
         </div>
         {!selectedPoint && (
           <p>
-            Diese Gruppe ist in der aktuellen Auswertung nicht mehr enthalten.
+            {t("Diese Gruppe ist in der aktuellen Auswertung nicht mehr enthalten.", "This group is no longer part of the current chart.")}
           </p>
         )}
         {selectedPoint && selectedPoint.rows.length > 50 && (
@@ -1319,7 +1313,7 @@ export default function DatabaseChart({
               disabled={!detailPage}
               onClick={() => setEntryPage(detailPage - 1)}
             >
-              Zurück
+              {t("Zurück", "Back")}
             </button>
             <span>
               {detailPage + 1} / {Math.ceil(selectedPoint.rows.length / 50)}
@@ -1329,7 +1323,7 @@ export default function DatabaseChart({
               disabled={(detailPage + 1) * 50 >= selectedPoint.rows.length}
               onClick={() => setEntryPage(detailPage + 1)}
             >
-              Weiter
+              {t("Weiter", "Next")}
             </button>
           </div>
         )}

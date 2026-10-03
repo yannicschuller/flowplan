@@ -1,6 +1,7 @@
 "use client";
 // Pictures and symbols for the board: openly licensed images (Openverse,
 // with credit) and the icon library in any of its colours.
+import { useT } from "../i18n";
 import { useState } from "react";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { Modal, api } from "../ui";
@@ -22,6 +23,7 @@ export function MediaSearch({
   onImage: (result: Result) => Promise<void>;
   onIcon: (value: string) => void;
 }) {
+  const t = useT();
   const [tab, setTab] = useState<"images" | "icons">(canSearchImages ? "images" : "icons");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[] | null>(null);
@@ -46,15 +48,15 @@ export function MediaSearch({
     ([name, words]) => !needle || name.toLowerCase().includes(needle) || words.includes(needle),
   );
   return (
-    <Modal open={open} onClose={onClose} title="Bilder und Symbole" wide className="wb-media-search">
-      <div className="journal-layout" role="tablist" aria-label="Art">
+    <Modal open={open} onClose={onClose} title={t("Bilder und Symbole", "Images and icons")} wide className="wb-media-search">
+      <div className="journal-layout" role="tablist" aria-label={t("Art", "Kind")}>
         {canSearchImages && (
           <button type="button" role="tab" aria-selected={tab === "images"} className={tab === "images" ? "active" : ""} onClick={() => setTab("images")}>
-            Bilder
+            {t("Bilder", "Images")}
           </button>
         )}
         <button type="button" role="tab" aria-selected={tab === "icons"} className={tab === "icons" ? "active" : ""} onClick={() => setTab("icons")}>
-          Symbole
+          {t("Symbole", "Icons")}
         </button>
       </div>
       {tab === "images" ? (
@@ -67,21 +69,21 @@ export function MediaSearch({
             }}
           >
             <MagnifyingGlass size={16} />
-            <input aria-label="Bilder suchen" placeholder="z. B. Berge, Team, Kaffee …" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
+            <input aria-label={t("Bilder suchen", "Search images")} placeholder="z. B. Berge, Team, Kaffee …" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
             <button className="button compact" disabled={busy === "search" || query.trim().length < 2}>
-              Suchen
+              {t("Suchen", "Search")}
             </button>
           </form>
-          <p className="muted wb-media-note">Frei lizenzierte Bilder von Openverse. Der Bildnachweis wird mitgespeichert.</p>
+          <p className="muted wb-media-note">{t("Frei lizenzierte Bilder von Openverse. Der Bildnachweis wird mitgespeichert.", "Openly licensed images from Openverse. The image credit is saved too.")}</p>
           {error && <p className="error" role="alert">{error}</p>}
-          {results && !results.length && <p className="muted">Keine Bilder gefunden.</p>}
+          {results && !results.length && <p className="muted">{t("Keine Bilder gefunden.", "No images found.")}</p>}
           <div className="wb-media-grid">
             {results?.map((r) => (
               <button
                 key={r.id}
                 type="button"
                 title={r.credit}
-                aria-label={r.title || "Bild"}
+                aria-label={r.title || t("Bild", "Image")}
                 disabled={!!busy}
                 className={busy === r.id ? "busy" : ""}
                 onClick={async () => {
@@ -106,9 +108,9 @@ export function MediaSearch({
         <>
           <div className="wb-media-query">
             <MagnifyingGlass size={16} />
-            <input aria-label="Symbole suchen" placeholder="Symbol suchen …" value={iconQuery} onChange={(e) => setIconQuery(e.target.value)} />
+            <input aria-label={t("Symbole suchen", "Search icons")} placeholder={t("Symbol suchen …", "Search icon …")} value={iconQuery} onChange={(e) => setIconQuery(e.target.value)} />
           </div>
-          <div className="wb-icon-colors" role="radiogroup" aria-label="Farbe">
+          <div className="wb-icon-colors" role="radiogroup" aria-label={t("Farbe", "Colour")}>
             {iconColors.map(([name, value]) => (
               <button
                 key={value}
@@ -125,7 +127,7 @@ export function MediaSearch({
           </div>
           <div className="wb-icon-grid">
             {icons.map(([name]) => (
-              <button key={name} type="button" aria-label={`Symbol ${name}`} title={name} onClick={() => onIcon(libraryIconValue(name, color))}>
+              <button key={name} type="button" aria-label={t(`Symbol ${name}`, `Icon ${name}`)} title={name} onClick={() => onIcon(libraryIconValue(name, color))}>
                 <LibraryIcon value={libraryIconValue(name, color)} size={26} />
               </button>
             ))}

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -55,6 +56,7 @@ export default function DatabaseFilterEditor({
   onSave: (group: FilterGroup, version: number) => Promise<unknown>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState(() => effectiveFilterGroup(view)),
     [baseVersion, setBaseVersion] = useState(version),
     [dirty, setDirty] = useState(false),
@@ -126,12 +128,12 @@ export default function DatabaseFilterEditor({
       isEmpty = valuelessOperators.has(node.op),
       multi = multiValueOperators.has(node.op),
       operators = operatorsFor(field);
-    const label = `Bedingung ${path.map((i) => i + 1).join(".")}`;
+    const label = t(`Bedingung ${path.map((i) => i + 1).join(".")}`, `Condition ${path.map((i) => i + 1).join(".")}`);
     const choices =
       field?.type === "relation"
         ? (related[field.relationPage || ""] || []).map((r) => ({
             value: r.id,
-            name: cellText(r.cells.title) || "Ohne Titel",
+            name: cellText(r.cells.title) || t("Ohne Titel", "Untitled"),
           }))
         : field && ["select", "multiselect"].includes(field.type)
           ? (field.options || []).map((value) => ({ value, name: value }))
@@ -139,8 +141,8 @@ export default function DatabaseFilterEditor({
             ? members.map((m) => ({ value: m.id, name: m.name }))
             : field?.type === "checkbox"
               ? [
-                  { value: "true", name: "Abgehakt" },
-                  { value: "false", name: "Nicht abgehakt" },
+                  { value: "true", name: t("Abgehakt", "Checked") },
+                  { value: "false", name: t("Nicht abgehakt", "Not checked") },
                 ]
               : null;
     return (
@@ -151,9 +153,9 @@ export default function DatabaseFilterEditor({
         className="advanced-filter-condition"
       >
         <label>
-          Eigenschaft
+          {t("Eigenschaft", "Property")}
           <Select
-            aria-label="Filter-Eigenschaft"
+            aria-label={t("Filter-Eigenschaft", "Filter property")}
             value={node.field}
             onChange={(e) => {
               const f = fields.find((f) => f.id === e.target.value);
@@ -169,7 +171,7 @@ export default function DatabaseFilterEditor({
             }}
           >
             {!field && (
-              <option value={node.field}>Gelöschte Eigenschaft</option>
+              <option value={node.field}>{t("Gelöschte Eigenschaft", "Deleted property")}</option>
             )}
             {fields.map((f) => (
               <option key={f.id} value={f.id}>
@@ -179,9 +181,9 @@ export default function DatabaseFilterEditor({
           </Select>
         </label>
         <label>
-          Bedingung
+          {t("Bedingung", "Condition")}
           <Select
-            aria-label="Filterbedingung"
+            aria-label={t("Filterbedingung", "Filter condition")}
             value={node.op}
             onChange={(e) => {
               const op = e.target.value as Filter["op"];
@@ -205,20 +207,20 @@ export default function DatabaseFilterEditor({
             }}
           >
             {!operators.includes(node.op) && (
-              <option value={node.op}>{operatorNames[node.op]}</option>
+              <option value={node.op}>{t(operatorNames[node.op])}</option>
             )}
             {operators.map((op) => (
               <option key={op} value={op}>
-                {operatorNames[op]}
+                {t(operatorNames[op])}
               </option>
             ))}
           </Select>
         </label>
         <label>
-          Wert
+          {t("Wert", "Value")}
           {isRelativeOperator(node.op) ? (
             <Select
-              aria-label="Relativer Zeitraum"
+              aria-label={t("Relativer Zeitraum", "Relative period")}
               value={node.value}
               onChange={(e) =>
                 patch(path, {
@@ -231,7 +233,7 @@ export default function DatabaseFilterEditor({
             >
               {Object.entries(relativeDateNames).map(([value, name]) => (
                 <option key={value} value={value}>
-                  {name}
+                  {t(name)}
                 </option>
               ))}
             </Select>
@@ -239,7 +241,7 @@ export default function DatabaseFilterEditor({
             <span
               className="filter-values"
               role="group"
-              aria-label="Filterwerte"
+              aria-label={t("Filterwerte", "Filter values")}
             >
               {choices.map((c) => (
                 <label className="checkbox-label" key={c.value}>
@@ -257,18 +259,18 @@ export default function DatabaseFilterEditor({
                   {c.name}
                 </label>
               ))}
-              {!choices.length && <span className="muted">Keine Werte</span>}
+              {!choices.length && <span className="muted">{t("Keine Werte", "No values")}</span>}
             </span>
           ) : choices ? (
             <Select
-              aria-label="Filterwert"
+              aria-label={t("Filterwert", "Filter value")}
               value={node.value}
               disabled={isEmpty}
               onChange={(e) => patch(path, { value: e.target.value })}
             >
-              <option value="">Auswählen …</option>
+              <option value="">{t("Auswählen …", "Select …")}</option>
               {node.value && !choices.some((c) => c.value === node.value) && (
-                <option value={node.value}>Nicht verfügbar</option>
+                <option value={node.value}>{t("Nicht verfügbar", "Not available")}</option>
               )}
               {choices.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -278,7 +280,7 @@ export default function DatabaseFilterEditor({
             </Select>
           ) : (
             <input
-              aria-label="Filterwert"
+              aria-label={t("Filterwert", "Filter value")}
               type={
                 (field &&
                   ["date", "created_at", "updated_at"].includes(field.type)) ||
@@ -300,9 +302,9 @@ export default function DatabaseFilterEditor({
         </label>
         {node.op === "between" && (
           <label>
-            Bis
+            {t("Bis", "To")}
             <input
-              aria-label="Filterwert bis"
+              aria-label={t("Filterwert bis", "Filter value to")}
               type={
                 field &&
                 ["date", "created_at", "updated_at"].includes(field.type)
@@ -318,7 +320,7 @@ export default function DatabaseFilterEditor({
         <button
           className="icon-button"
           type="button"
-          aria-label={`${label} entfernen`}
+          aria-label={t(`${label} entfernen`, `Remove ${label}`)}
           onClick={() => update(path, () => null)}
         >
           <Trash size={17} />
@@ -327,9 +329,9 @@ export default function DatabaseFilterEditor({
           <div className="relative-filter-options">
             {["past_days", "next_days"].includes(node.value) && (
               <label>
-                Anzahl Tage
+                {t("Anzahl Tage", "Number of days")}
                 <input
-                  aria-label="Anzahl Tage"
+                  aria-label={t("Anzahl Tage", "Number of days")}
                   type="number"
                   min={1}
                   max={36600}
@@ -344,9 +346,9 @@ export default function DatabaseFilterEditor({
               </label>
             )}
             <label>
-              Zeitzone
+              {t("Zeitzone", "Time zone")}
               <Select
-                aria-label="Filter-Zeitzone"
+                aria-label={t("Filter-Zeitzone", "Filter time zone")}
                 value={node.timeZone || "UTC"}
                 onChange={(e) => patch(path, { timeZone: e.target.value })}
               >
@@ -369,9 +371,7 @@ export default function DatabaseFilterEditor({
                 node.days,
                 new Date(filterNow),
               )}
-              . Wochen beginnen montags. Datumswerte ohne Uhrzeit bleiben
-              Kalendertage; Zeitstempel werden in der gewählten Zeitzone
-              ausgewertet.
+              {t(". Wochen beginnen montags. Datumswerte ohne Uhrzeit bleiben Kalendertage; Zeitstempel werden in der gewählten Zeitzone ausgewertet.", ". Weeks start on Monday. Dates without a time stay calendar days; timestamps are evaluated in the chosen time zone.")}
             </p>
           </div>
         )}
@@ -381,8 +381,8 @@ export default function DatabaseFilterEditor({
   function group(node: FilterGroup, path: number[] = []): React.ReactNode {
     const depth = path.length + 1,
       label = path.length
-        ? `Filtergruppe ${path.map((i) => i + 1).join(".")}`
-        : "Alle Filter";
+        ? t(`Filtergruppe ${path.map((i) => i + 1).join(".")}`, `Filter group ${path.map((i) => i + 1).join(".")}`)
+        : t("Alle Filter", "All filters");
     return (
       <fieldset
         className="advanced-filter-group"
@@ -392,9 +392,9 @@ export default function DatabaseFilterEditor({
         <legend>{label}</legend>
         <div className="filter-group-header">
           <label>
-            Verknüpfung
+            {t("Verknüpfung", "Link")}
             <Select
-              aria-label={`${label}: Verknüpfung`}
+              aria-label={t(`${label}: Verknüpfung`, `${label}: combination`)}
               value={node.join}
               onChange={(e) =>
                 update(path, (n) => ({
@@ -403,15 +403,15 @@ export default function DatabaseFilterEditor({
                 }))
               }
             >
-              <option value="and">UND – alle Bedingungen</option>
-              <option value="or">ODER – mindestens eine</option>
+              <option value="and">{t("UND – alle Bedingungen", "AND – all conditions")}</option>
+              <option value="or">{t("ODER – mindestens eine", "OR – at least one")}</option>
             </Select>
           </label>
           {path.length > 0 && (
             <button
               className="icon-button"
               type="button"
-              aria-label={`${label} entfernen`}
+              aria-label={t(`${label} entfernen`, `Remove ${label}`)}
               onClick={() => update(path, () => null)}
             >
               <Trash size={17} />
@@ -420,8 +420,7 @@ export default function DatabaseFilterEditor({
         </div>
         {node.rules.length === 0 && (
           <p className="muted">
-            Diese Gruppe enthält noch keine Bedingungen und schränkt die
-            Ergebnisse nicht ein.
+            {t("Diese Gruppe enthält noch keine Bedingungen und schränkt die Ergebnisse nicht ein.", "This group has no conditions yet and does not limit the results.")}
           </p>
         )}
         {node.rules.map((rule, index) =>
@@ -454,7 +453,7 @@ export default function DatabaseFilterEditor({
             }
           >
             <Plus size={15} />
-            Bedingung hinzufügen
+            {t("Bedingung hinzufügen", "Add condition")}
           </button>
           <button
             type="button"
@@ -486,7 +485,7 @@ export default function DatabaseFilterEditor({
             }
           >
             <Plus size={15} />
-            Gruppe hinzufügen
+            {t("Gruppe hinzufügen", "Add group")}
           </button>
         </div>
       </fieldset>
@@ -495,16 +494,14 @@ export default function DatabaseFilterEditor({
   return (
     <div className="advanced-filter-editor">
       <p className="muted">
-        Bedingungen und Gruppen kombinieren. Änderungen werden mit „Anwenden“
-        gespeichert.
+        {t("Bedingungen und Gruppen kombinieren. Änderungen werden mit „Anwenden“ gespeichert.", "Combine conditions and groups. Changes are saved with “Apply”.")}
       </p>
       <div className="filter-preview" role="status">
-        {preview} von {rows.length} Einträgen passen · {count} Bedingungen
+        {preview} {t("von", "of")}{" "}{rows.length} {t("Einträgen passen ·", "records match ·")}{" "}{count} {t("Bedingungen", "Conditions")}
       </div>
       {stale && (
         <div className="filter-conflict" role="alert">
-          Die Ansicht wurde inzwischen geändert. Dein Entwurf bleibt erhalten.
-          Lade vor dem Speichern den aktuellen Stand.
+          {t("Die Ansicht wurde inzwischen geändert. Dein Entwurf bleibt erhalten. Lade vor dem Speichern den aktuellen Stand.", "The view was changed in the meantime. Your draft is kept. Load the current state before saving.")}
           <button
             type="button"
             className="button compact"
@@ -515,7 +512,7 @@ export default function DatabaseFilterEditor({
               setError("");
             }}
           >
-            Entwurf verwerfen und neu laden
+            {t("Entwurf verwerfen und neu laden", "Discard draft and reload")}
           </button>
         </div>
       )}
@@ -524,8 +521,7 @@ export default function DatabaseFilterEditor({
       </fieldset>
       {!draftValidation.success && (
         <p role="alert">
-          Bitte einen gültigen Zeitraum, eine Zeitzone und 1 bis 36.600 ganze
-          Tage angeben.
+          {t("Bitte einen gültigen Zeitraum, eine Zeitzone und 1 bis 36.600 ganze Tage angeben.", "Please enter a valid period, a time zone and 1 to 36,600 whole days.")}
         </p>
       )}
       {error && <p role="alert">{error}</p>}
@@ -539,10 +535,10 @@ export default function DatabaseFilterEditor({
             setDirty(true);
           }}
         >
-          Alle Filter entfernen
+          {t("Alle Filter entfernen", "Remove all filters")}
         </button>
         <button type="button" className="button" onClick={onClose}>
-          {editable ? "Abbrechen" : "Schließen"}
+          {editable ? t("Abbrechen", "Cancel") : t("Schließen", "Close")}
         </button>
         {editable && (
           <button
@@ -558,7 +554,7 @@ export default function DatabaseFilterEditor({
                   onClose();
                 } else
                   setError(
-                    "Filter wurden nicht gespeichert. Dein Entwurf bleibt erhalten.",
+                    t("Filter wurden nicht gespeichert. Dein Entwurf bleibt erhalten.", "Filters were not saved. Your draft is kept."),
                   );
               } catch (e) {
                 setError((e as Error).message);
@@ -567,7 +563,7 @@ export default function DatabaseFilterEditor({
               }
             }}
           >
-            {busy ? "Wird gespeichert …" : "Anwenden"}
+            {busy ? t("Wird gespeichert …", "Saving …") : t("Anwenden", "Apply")}
           </button>
         )}
       </div>

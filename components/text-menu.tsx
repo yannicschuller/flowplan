@@ -41,7 +41,10 @@ export function TextMenu({
   useEffect(() => {
     if (!editor) return;
     // After selecting with the mouse or keyboard: above the selection.
+    // The view exists only while the editor is mounted.
+    const mounted = () => !editor.isDestroyed;
     const showForSelection = () => {
+      if (!mounted()) return;
       const { empty, from, to } = editor.state.selection;
       if (empty || !editor.view.hasFocus()) return;
       if (!editor.state.doc.textBetween(from, to, " ").trim()) return;
@@ -51,9 +54,13 @@ export function TextMenu({
     };
     // The browser reports a new selection shortly after the mouse or key is
     // released; the editor knows it only then.
-    const later = () => setTimeout(showForSelection, 40);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const later = () => {
+      clearTimeout(timer);
+      timer = setTimeout(showForSelection, 40);
+    };
     // In this editor (its element can be replaced while the editor lives).
-    const inEditor = (event: Event) => editor.view.dom.contains(event.target as Node);
+    const inEditor = (event: Event) => mounted() && editor.view.dom.contains(event.target as Node);
     // Only for presses that began in the text: a click elsewhere (a dialog
     // button that hands the focus back, a block handle) selects no text.
     let pressedInEditor = false;
@@ -89,6 +96,7 @@ export function TextMenu({
     document.addEventListener("contextmenu", onContext);
     editor.on("selectionUpdate", onSelection);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("mouseup", onMouseUp);
       document.removeEventListener("keyup", onKeyUp);

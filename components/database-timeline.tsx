@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import {
   useEffect,
@@ -68,6 +69,7 @@ export default function DatabaseTimeline({
   onSchedule: (input: Record<string, unknown>) => Promise<unknown>;
   onView: (patch: Partial<View>) => Promise<unknown>;
 }) {
+  const t = useT();
   const [anchor, setAnchor] = useState(todayKey),
     [localScale, setLocalScale] = useState<TimelineConfig["scale"]>(),
     [localWeekends, setLocalWeekends] = useState<boolean>(),
@@ -137,7 +139,7 @@ export default function DatabaseTimeline({
       JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
     );
   });
-  const title = (row: Row) => cellText(row.cells[fields[0]?.id]) || "Unbenannt";
+  const title = (row: Row) => cellText(row.cells[fields[0]?.id]) || t("Unbenannt", "Untitled");
   const label = (
     day: number,
     options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" },
@@ -159,7 +161,7 @@ export default function DatabaseTimeline({
       setDrag(null);
       suppressed.current = true;
       setError(
-        "Die Daten wurden während des Ziehens geändert. Bitte erneut versuchen.",
+        t("Die Daten wurden während des Ziehens geändert. Bitte erneut versuchen.", "The data changed while dragging. Please try again."),
       );
     }
   }, [rows, version, editable]);
@@ -282,11 +284,11 @@ export default function DatabaseTimeline({
     });
   }
   return (
-    <section className="timeline-view" aria-label="Timeline">
+    <section className="timeline-view" aria-label={t("Timeline", "Timeline")}>
       <div className="timeline-controls">
         <button
           className="icon-button"
-          aria-label="Timeline: vorheriger Zeitraum"
+          aria-label={t("Timeline: vorheriger Zeitraum", "Timeline: previous period")}
           disabled={period.start <= dateDay("0001-01-01")!}
           onClick={() => setAnchor(dayKey(period.start - 1))}
         >
@@ -296,11 +298,11 @@ export default function DatabaseTimeline({
           className="button compact"
           onClick={() => setAnchor(todayKey())}
         >
-          Heute
+          {t("Heute", "Today")}
         </button>
         <button
           className="icon-button"
-          aria-label="Timeline: nächster Zeitraum"
+          aria-label={t("Timeline: nächster Zeitraum", "Timeline: next period")}
           disabled={period.end > dateDay("9999-12-31")!}
           onClick={() => setAnchor(dayKey(period.end))}
         >
@@ -320,9 +322,9 @@ export default function DatabaseTimeline({
           })}
         </strong>
         <label>
-          Zeitraum
+          {t("Zeitraum", "Period")}
           <input
-            aria-label="Timeline: Datum"
+            aria-label={t("Timeline: Datum", "Timeline: date")}
             type="date"
             min="0001-01-01"
             max="9999-12-31"
@@ -334,9 +336,9 @@ export default function DatabaseTimeline({
           />
         </label>
         <label>
-          Maßstab
+          {t("Maßstab", "Scale")}
           <Select
-            aria-label="Timeline: Maßstab"
+            aria-label={t("Timeline: Maßstab", "Timeline: scale")}
             value={scale}
             disabled={busy}
             onChange={(event) =>
@@ -345,10 +347,10 @@ export default function DatabaseTimeline({
               })
             }
           >
-            <option value="week">Woche</option>
-            <option value="month">Monat</option>
-            <option value="quarter">Quartal</option>
-            <option value="year">Jahr</option>
+            <option value="week">{t("Woche", "Week")}</option>
+            <option value="month">{t("Monat", "Month")}</option>
+            <option value="quarter">{t("Quartal", "Quarter")}</option>
+            <option value="year">{t("Jahr", "Year")}</option>
           </Select>
         </label>
         <label className="checkbox-label">
@@ -360,23 +362,23 @@ export default function DatabaseTimeline({
               void configure({ showWeekends: event.target.checked })
             }
           />
-          Wochenenden markieren
+          {t("Wochenenden markieren", "Mark weekends")}
         </label>
         <label>
-          Abhängigkeiten
+          {t("Abhängigkeiten", "Dependencies")}
           <Select
-            aria-label="Timeline: Abhängigkeiten"
+            aria-label={t("Timeline: Abhängigkeiten", "Timeline: dependencies")}
             value={dependencyField?.id || ""}
             disabled={busy || !viewEditable || !relations.length}
             title={
               relations.length
                 ? undefined
-                : "Dafür eine Relation auf diese Datenbank anlegen."
+                : t("Dafür eine Relation auf diese Datenbank anlegen.", "Create a relation to this database for that.")
             }
             onChange={(event) => void configureDependencies(event.target.value)}
           >
             <option value="">
-              {relations.length ? "Keine" : "Keine Selbstrelation"}
+              {relations.length ? t("Keine", "None") : t("Keine Selbstrelation", "No self-relation")}
             </option>
             {relations.map((f) => (
               <option key={f.id} value={f.id}>
@@ -387,9 +389,9 @@ export default function DatabaseTimeline({
         </label>
         {dependencyField && (
           <label>
-            Verknüpfung
+            {t("Verknüpfung", "Link")}
             <Select
-              aria-label="Timeline: Art der Abhängigkeit"
+              aria-label={t("Timeline: Art der Abhängigkeit", "Timeline: kind of dependency")}
               value={dependencyType}
               disabled={busy || !viewEditable}
               onChange={(event) =>
@@ -426,29 +428,28 @@ export default function DatabaseTimeline({
               }
             }}
           >
-            Alle Konflikte nachziehen
+            {t("Alle Konflikte nachziehen", "Resolve all conflicts")}
           </button>
         )}
       </div>
       {!start || invalidEnd ? (
         <p className="timeline-notice">
-          In den Ansichtseinstellungen gültige, unterschiedliche Datumsfelder
-          für Beginn und Ende auswählen.
+          {t("In den Ansichtseinstellungen gültige, unterschiedliche Datumsfelder für Beginn und Ende auswählen.", "Choose valid, different date fields for start and end in the view settings.")}
         </p>
       ) : (
         <>
           <p className="muted timeline-help">
             {canEdit
               ? end
-                ? "Balken verschieben, an den Rändern verlängern oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag; zusätzlich Umschalt ändert das Ende, Strg den Beginn."
-                : "Balken verschieben oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag. Für längere Zeiträume in den Ansichtseinstellungen ein separates Enddatumsfeld auswählen."
-              : "Einträge öffnen oder den angezeigten Zeitraum ändern."}{" "}
-            Vorhandene Uhrzeiten bleiben erhalten.
+                ? t("Balken verschieben, an den Rändern verlängern oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag; zusätzlich Umschalt ändert das Ende, Strg den Beginn.", "Move bars, stretch them at the edges or plan via the calendar icon. Alt + arrow key moves by one day; adding Shift changes the end, Ctrl the start.")
+                : t("Balken verschieben oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag. Für längere Zeiträume in den Ansichtseinstellungen ein separates Enddatumsfeld auswählen.", "Move bars or plan via the calendar icon. Alt + arrow key moves by one day. For longer periods choose a separate end date field in the view settings.")
+              : t("Einträge öffnen oder den angezeigten Zeitraum ändern.", "Open records or change the period shown.")}{" "}
+            {t("Vorhandene Uhrzeiten bleiben erhalten.", "Existing times are kept.")}
           </p>
           <div
             className="timeline-scroll"
             tabIndex={0}
-            aria-label="Zeitleiste horizontal scrollen"
+            aria-label={t("Zeitleiste horizontal scrollen", "Scroll the timeline horizontally")}
           >
             <div
               className="timeline-grid"
@@ -465,7 +466,7 @@ export default function DatabaseTimeline({
               }
             >
               <div className="timeline-heading">
-                <strong>Eintrag</strong>
+                <strong>{t("Eintrag", "Record")}</strong>
                 <div className="timeline-axis">
                   {Array.from({ length: period.days }, (_, i) => {
                     const day = period.start + i,
@@ -577,12 +578,12 @@ export default function DatabaseTimeline({
                           role="img"
                           aria-label={
                             loop
-                              ? `${name}: zyklische Abhängigkeit`
+                              ? t(`${name}: zyklische Abhängigkeit`, `${name}: circular dependency`)
                               : `${name} ${dependencyConflict(dependencyType)} ${blockers.join(", ")}`
                           }
                           title={
                             loop
-                              ? "Zyklische Abhängigkeit"
+                              ? t("Zyklische Abhängigkeit", "Circular dependency")
                               : `${dependencyConflict(dependencyType).replace(/^./, (c) => c.toUpperCase())} ${blockers.join(", ")}`
                           }
                         >
@@ -592,8 +593,8 @@ export default function DatabaseTimeline({
                       {canEdit && !loop && shift > 0 && (
                         <button
                           className="icon-button"
-                          aria-label={`${name} hinter Vorgänger verschieben`}
-                          title={`Um ${shift} ${shift === 1 ? "Tag" : "Tage"} verschieben, damit die Abhängigkeit erfüllt ist`}
+                          aria-label={t(`${name} hinter Vorgänger verschieben`, `Move ${name} after its predecessor`)}
+                          title={t(`Um ${shift} ${shift === 1 ? "Tag" : "Tage"} verschieben, damit die Abhängigkeit erfüllt ist`, `Move by ${shift} ${shift === 1 ? "day" : "days"} so the dependency is met`)}
                           disabled={busy}
                           onClick={() =>
                             void apply(row, version, {
@@ -608,7 +609,7 @@ export default function DatabaseTimeline({
                       {canEdit && (
                         <button
                           className="icon-button"
-                          aria-label={`Zeitraum für ${name} bearbeiten`}
+                          aria-label={t(`Zeitraum für ${name} bearbeiten`, `Edit period of ${name}`)}
                           disabled={busy}
                           onClick={() => edit(row)}
                         >
@@ -686,7 +687,7 @@ export default function DatabaseTimeline({
                                   <button
                                     key={operation}
                                     className={`timeline-resize ${operation}`}
-                                    aria-label={`${operation === "resize-start" ? "Beginn" : "Ende"} von ${name} ziehen`}
+                                    aria-label={t(`${operation === "resize-start" ? "Beginn" : "Ende"} von ${name} ziehen`, `Drag ${operation === "resize-start" ? "start" : "end"} of ${name}`)}
                                     aria-disabled={busy}
                                     onPointerDown={(event) =>
                                       begin(event, row, operation)
@@ -720,8 +721,8 @@ export default function DatabaseTimeline({
                           }
                         >
                           {range
-                            ? "Zum Zeitraum springen"
-                            : "Ohne gültigen Zeitraum"}
+                            ? t("Zum Zeitraum springen", "Jump to the period")
+                            : t("Ohne gültigen Zeitraum", "Without a valid period")}
                         </button>
                       )}
                     </div>
@@ -730,7 +731,7 @@ export default function DatabaseTimeline({
               })}
               {!rows.length && (
                 <p className="timeline-notice">
-                  Keine Einträge für diese Suche oder Filter.
+                  {t("Keine Einträge für diese Suche oder Filter.", "No records for this search or filter.")}
                 </p>
               )}
             </div>
@@ -745,7 +746,7 @@ export default function DatabaseTimeline({
       {draft && (
         <Modal
           open
-          title="Zeitraum bearbeiten"
+          title={t("Zeitraum bearbeiten", "Edit period")}
           onClose={() => {
             if (!busy) {
               setDraft(null);
@@ -768,7 +769,7 @@ export default function DatabaseTimeline({
               <strong>{title(draft.row)}</strong>
             </p>
             <label>
-              Beginn
+              {t("Beginn", "Start")}
               <input
                 required
                 type="date"
@@ -783,7 +784,7 @@ export default function DatabaseTimeline({
             </label>
             {end && (
               <label>
-                Ende
+                {t("Ende", "End")}
                 <input
                   type="date"
                   min={draft.start || "0001-01-01"}
@@ -797,8 +798,7 @@ export default function DatabaseTimeline({
               </label>
             )}
             <p className="muted">
-              Ohne Enddatum wird der Eintrag an einem Tag angezeigt. Vorhandene
-              Uhrzeiten bleiben erhalten.
+              {t("Ohne Enddatum wird der Eintrag an einem Tag angezeigt. Vorhandene Uhrzeiten bleiben erhalten.", "Without an end date the record is shown on one day. Existing times are kept.")}
             </p>
             {error && (
               <p role="alert" className="lifecycle-error">
@@ -815,10 +815,10 @@ export default function DatabaseTimeline({
                   setError("");
                 }}
               >
-                Abbrechen
+                {t("Abbrechen", "Cancel")}
               </button>
               <button className="button primary" disabled={busy || !canEdit}>
-                Zeitraum speichern
+                {t("Zeitraum speichern", "Save period")}
               </button>
             </div>
           </form>

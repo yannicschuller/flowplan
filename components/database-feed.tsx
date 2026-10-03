@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import {
   useEffect,
   useState,
@@ -47,13 +48,14 @@ function FeedEntry({
   orderHandle: ReactNode;
   rowEvents: HTMLAttributes<HTMLElement>;
 }) {
+  const t = useT();
   const config = view.feed || defaultFeed;
   const [expanded, setExpanded] = useState(false),
     [comment, setComment] = useState(""),
     [sending, setSending] = useState(false);
   const name =
-    members.find((m) => m.id === row.created_by)?.name || "Unbekannte Person";
-  const title = cellText(row.cells[titleField.id]) || "Ohne Titel";
+    members.find((m) => m.id === row.created_by)?.name || t("Unbekannte Person", "Unknown person");
+  const title = cellText(row.cells[titleField.id]) || t("Ohne Titel", "Untitled");
   const date = new Date(
     row.created_at.includes("T")
       ? row.created_at
@@ -121,7 +123,7 @@ function FeedEntry({
                 {preview.text
                   ? [...preview.text].slice(0, 400).join("") +
                     ([...preview.text].length > 400 ? "…" : "")
-                  : "Dieser Eintrag enthält Medien."}
+                  : t("Dieser Eintrag enthält Medien.", "This record contains media.")}
               </p>
             )}
             {config.content === "compact" && (
@@ -131,33 +133,33 @@ function FeedEntry({
                 aria-expanded={expanded}
               >
                 {expanded
-                  ? "Inhaltsvorschau anzeigen"
-                  : "Vollständigen Inhalt anzeigen"}
+                  ? t("Inhaltsvorschau anzeigen", "Show content preview")
+                  : t("Vollständigen Inhalt anzeigen", "Show full content")}
               </button>
             )}
           </>
         ) : (
-          <p className="feed-empty muted">Kein Dokumentinhalt</p>
+          <p className="feed-empty muted">{t("Kein Dokumentinhalt", "No document content")}</p>
         ))}
       <footer className="feed-entry-footer">
         {config.showComments && (
           <button
             onClick={open}
-            aria-label={`${comments} Kommentare zu ${title}`}
+            aria-label={t(`${comments} Kommentare zu ${title}`, `${comments} comments on ${title}`)}
           >
             <ChatCircle size={17} />
-            {comments} {comments === 1 ? "Kommentar" : "Kommentare"}
+            {comments} {comments === 1 ? t("Kommentar", "Comment") : t("Kommentare", "Comments")}
           </button>
         )}
         {onEdit && (
           <button onClick={() => onEdit(!editing)} aria-pressed={editing}>
             <PencilSimple size={16} />
-            {editing ? "Fertig" : "Bearbeiten"}
+            {editing ? t("Fertig", "Done") : t("Bearbeiten", "Edit")}
           </button>
         )}
         <button onClick={open}>
           <ArrowSquareOut size={16} />
-          Eintrag öffnen
+          {t("Eintrag öffnen", "Open record")}
         </button>
       </footer>
       {config.showComments && onComment && (
@@ -175,8 +177,8 @@ function FeedEntry({
           }}
         >
           <input
-            aria-label={`Kommentar zu ${title}`}
-            placeholder="Kommentar schreiben …"
+            aria-label={t(`Kommentar zu ${title}`, `Comment on ${title}`)}
+            placeholder={t("Kommentar schreiben …", "Write a comment …")}
             value={comment}
             maxLength={5000}
             onChange={(e) => setComment(e.target.value)}
@@ -185,7 +187,7 @@ function FeedEntry({
             className="button compact"
             disabled={!comment.trim() || sending}
           >
-            Senden
+            {t("Senden", "Send")}
           </button>
         </form>
       )}
@@ -224,6 +226,7 @@ export default function DatabaseFeed({
   query: string;
   rowEvents: (row: Row) => HTMLAttributes<HTMLElement>;
 }) {
+  const t = useT();
   const [limit, setLimit] = useState(20),
     [editingRow, setEditingRow] = useState<string | null>(null);
   const selection = JSON.stringify([
@@ -239,9 +242,9 @@ export default function DatabaseFeed({
       counts.set(comment.row_id, (counts.get(comment.row_id) || 0) + 1);
   const properties = visibleFields.filter((f) => f.id !== fields[0].id);
   return (
-    <section className="database-feed" aria-label="Datenbank-Feed">
+    <section className="database-feed" aria-label={t("Datenbank-Feed", "Database feed")}>
       <p className="feed-count muted" role="status">
-        {Math.min(limit, rows.length)} von {rows.length} Einträgen
+        {Math.min(limit, rows.length)} {t("von", "of")}{" "}{rows.length} {t("Einträgen", "records")}
       </p>
       {rows.slice(0, limit).map((row) => (
         <FeedEntry
@@ -269,7 +272,7 @@ export default function DatabaseFeed({
           className="button feed-more"
           onClick={() => setLimit((n) => n + 20)}
         >
-          Weitere {Math.min(20, rows.length - limit)} Einträge anzeigen
+          {t("Weitere", "More")}{" "}{Math.min(20, rows.length - limit)} {t("Einträge anzeigen", "Show records")}
         </button>
       )}
     </section>

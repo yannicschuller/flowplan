@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computedCellsDetailed, cellText } from "@/lib/database";
@@ -35,6 +36,7 @@ export default function FormulaEditor({
   disabled: boolean;
   onChange: (source: string) => void;
 }) {
+  const t = useT();
   const source = field.formula || "",
     id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
@@ -143,13 +145,13 @@ export default function FormulaEditor({
     place(next.value, next.cursor);
   }
   return (
-    <section className="formula-editor" aria-label="Formeleditor">
-      <label htmlFor={`${id}-input`}>Formel</label>
+    <section className="formula-editor" aria-label={t("Formeleditor", "Formula editor")}>
+      <label htmlFor={`${id}-input`}>{t("Formel", "Formula")}</label>
       <div className="formula-source">
         <textarea
           id={`${id}-input`}
           ref={input}
-          aria-label="Formel"
+          aria-label={t("Formel", "Formula")}
           value={source}
           placeholder={'prop("Aufwand") * 2'}
           spellCheck={false}
@@ -206,7 +208,7 @@ export default function FormulaEditor({
             id={listId}
             className="formula-suggestions"
             role="listbox"
-            aria-label="Formelvorschläge"
+            aria-label={t("Formelvorschläge", "Formula suggestions")}
           >
             {suggestions.map((suggestion, index) => (
               <button
@@ -227,7 +229,7 @@ export default function FormulaEditor({
                 <strong>{suggestion.name}</strong>
                 <small>
                   {suggestion.kind === "property"
-                    ? "Eigenschaft"
+                    ? t("Eigenschaft", "Property")
                     : suggestion.fn.signature}
                 </small>
               </button>
@@ -237,7 +239,7 @@ export default function FormulaEditor({
       </div>
       <div className="formula-editor-meta">
         <small id={descriptionId}>
-          Vorschläge: ↑ ↓ und Enter · Neue Zeile: Umschalt+Enter
+          {t("Vorschläge: ↑ ↓ und Enter · Neue Zeile: Umschalt+Enter", "Suggestions: ↑ ↓ and Enter · New line: Shift+Enter")}
         </small>
         <small>
           {source.length}/{FORMULA_MAX_LENGTH}
@@ -245,8 +247,7 @@ export default function FormulaEditor({
       </div>
       {tooLong ? (
         <p className="error" role="alert">
-          Die Formel enthält zu viele Eigenschaftsbezüge. Teile die Berechnung
-          auf mehrere Formeleigenschaften auf.
+          {t("Die Formel enthält zu viele Eigenschaftsbezüge. Teile die Berechnung auf mehrere Formeleigenschaften auf.", "The formula contains too many property references. Split the calculation into several formula properties.")}
         </p>
       ) : syntax ? (
         <p className="error formula-diagnostic" role="alert">
@@ -258,78 +259,77 @@ export default function FormulaEditor({
               input.current?.setSelectionRange(syntax.start, syntax.end);
             }}
           >
-            Fehler markieren
+            {t("Fehler markieren", "Highlight errors")}
           </button>
           <small>
-            Zeile {source.slice(0, syntax.start).split("\n").length}, Zeichen{" "}
+            {t("Zeile", "Line")}{" "}{source.slice(0, syntax.start).split("\n").length}, Zeichen{" "}
             {syntax.start -
               source.lastIndexOf("\n", Math.max(0, syntax.start - 1))}
           </small>
         </p>
       ) : (
         <p className="formula-valid" role="status">
-          Formel ist gültig.
+          {t("Formel ist gültig.", "Formula is valid.")}
         </p>
       )}
-      <section className="formula-preview" aria-label="Formelvorschau">
+      <section className="formula-preview" aria-label={t("Formelvorschau", "Formula preview")}>
         <div className="formula-preview-heading">
-          <strong>Live-Vorschau</strong>
+          <strong>{t("Live-Vorschau", "Live preview")}</strong>
           {sampleRows.length > 0 && (
             <Select
-              aria-label="Vorschaueintrag"
+              aria-label={t("Vorschaueintrag", "Preview record")}
               value={row?.id || ""}
               onChange={(e) => setSample(e.target.value)}
             >
               {sampleRows.map((entry) => (
                 <option key={entry.id} value={entry.id}>
                   {cellText(entry.cells[fields[0]?.id || "title"]) ||
-                    "Ohne Titel"}
+                    t("Ohne Titel", "Untitled")}
                 </option>
               ))}
             </Select>
           )}
         </div>
         {!row && (
-          <small>Vorschau ohne Datensatz; Eigenschaften sind leer.</small>
+          <small>{t("Vorschau ohne Datensatz; Eigenschaften sind leer.", "Preview without a record; properties are empty.")}</small>
         )}
         {rows.length > 100 && (
-          <small>Die ersten 100 lesbaren Einträge stehen zur Auswahl.</small>
+          <small>{t("Die ersten 100 lesbaren Einträge stehen zur Auswahl.", "The first 100 readable records are available.")}</small>
         )}
         {syntax || tooLong ? (
-          <p className="muted">Behebe zuerst den Formelfehler.</p>
+          <p className="muted">{t("Behebe zuerst den Formelfehler.", "Fix the formula error first.")}</p>
         ) : error ? (
           <p role="alert" className="error">
             {error.code}: {error.message}
           </p>
         ) : (
-          <output aria-label="Formelergebnis">
-            {cellText(preview?.cells[field.id]) || "Leer"}
+          <output aria-label={t("Formelergebnis", "Formula result")}>
+            {cellText(preview?.cells[field.id]) || t("Leer", "Empty")}
           </output>
         )}
         {!syntax && !tooLong && error && (
           <small>
-            Dieser Eintrag kann noch nicht berechnet werden. Andere Einträge
-            können gültige Ergebnisse liefern.
+            {t("Dieser Eintrag kann noch nicht berechnet werden. Andere Einträge können gültige Ergebnisse liefern.", "This record cannot be calculated yet. Other records may give valid results.")}
           </small>
         )}
       </section>
       <details className="formula-catalog" open>
-        <summary>Funktionen und Eigenschaften</summary>
+        <summary>{t("Funktionen und Eigenschaften", "Functions and properties")}</summary>
         <div className="formula-catalog-filters">
           <input
             type="search"
-            aria-label="Funktionen und Eigenschaften suchen"
-            placeholder="Funktion oder Eigenschaft suchen …"
+            aria-label={t("Funktionen und Eigenschaften suchen", "Search functions and properties")}
+            placeholder={t("Funktion oder Eigenschaft suchen …", "Search function or property …")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <Select
-            aria-label="Formelkategorie"
+            aria-label={t("Formelkategorie", "Formula category")}
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           >
-            <option value="all">Alle Kategorien</option>
-            <option value="properties">Eigenschaften</option>
+            <option value="all">{t("Alle Kategorien", "All categories")}</option>
+            <option value="properties">{t("Eigenschaften", "Properties")}</option>
             {categories.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -346,7 +346,7 @@ export default function FormulaEditor({
                 type="button"
                 disabled={disabled}
                 onClick={() => insert(suggestion)}
-                aria-label={`${suggestion.kind === "property" ? "Eigenschaft" : "Funktion"} ${suggestion.name} einfügen`}
+                aria-label={t(`${suggestion.kind === "property" ? "Eigenschaft" : "Funktion"} ${suggestion.name} einfügen`, `Insert ${suggestion.kind === "property" ? "property" : "function"} ${suggestion.name}`)}
               >
                 <strong>
                   {suggestion.kind === "function"
@@ -355,7 +355,7 @@ export default function FormulaEditor({
                 </strong>
                 <small>
                   {suggestion.kind === "property"
-                    ? "Eigenschaft einfügen"
+                    ? t("Eigenschaft einfügen", "Insert property")
                     : suggestion.fn.description}
                 </small>
               </button>
@@ -364,7 +364,7 @@ export default function FormulaEditor({
                   type="button"
                   className="formula-example"
                   disabled={disabled}
-                  aria-label={`Beispiel für ${suggestion.name} einfügen`}
+                  aria-label={t(`Beispiel für ${suggestion.name} einfügen`, `Insert example for ${suggestion.name}`)}
                   onClick={() => {
                     const from = cursor.start,
                       to = cursor.end,
@@ -382,7 +382,7 @@ export default function FormulaEditor({
           ))}
           {!catalog.length && (
             <p className="muted">
-              Keine passenden Funktionen oder Eigenschaften.
+              {t("Keine passenden Funktionen oder Eigenschaften.", "No matching functions or properties.")}
             </p>
           )}
         </div>

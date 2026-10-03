@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "../i18n";
 import { useEffect, useState } from "react";
 import * as Y from "yjs";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
@@ -28,6 +29,7 @@ function decode(state: string): WhiteboardItem[] {
 }
 // The board as it is now; refreshed every few seconds while shown.
 export function useBoard(pageId: string) {
+  const t = useT();
   const [board, setBoard] = useState<Board | null>(null),
     [error, setError] = useState("");
   useEffect(() => {
@@ -42,11 +44,11 @@ export function useBoard(pageId: string) {
         if (!response.ok)
           throw new Error(
             response.status === 401
-              ? "Nur für angemeldete Mitglieder sichtbar."
-              : data.error || "Nicht verfügbar",
+              ? t("Nur für angemeldete Mitglieder sichtbar.", "Only visible to signed-in members.")
+              : data.error || t("Nicht verfügbar", "Not available"),
           );
         if (data.page?.kind !== "whiteboard" || !data.whiteboard)
-          throw new Error("Diese Seite ist kein Whiteboard.");
+          throw new Error(t("Diese Seite ist kein Whiteboard.", "This page is not a whiteboard."));
         if (alive)
           setBoard({
             title: data.page.title,
@@ -77,16 +79,17 @@ export function WhiteboardEmbedView({
   height?: number;
   pages?: PageRef[];
 }) {
+  const t = useT();
   const { board, error } = useBoard(pageId);
   return (
     <div className="whiteboard-embed" data-embedded-board={pageId}>
       <div className="whiteboard-embed-head">
         <PresentationChart size={16} />
         <strong>
-          {board?.title || (error ? "Whiteboard" : "Whiteboard wird geladen …")}
+          {board?.title || (error ? t("Whiteboard", "Whiteboard") : t("Whiteboard wird geladen …", "Loading whiteboard …"))}
         </strong>
         <a className="text-button" href={`/#page=${pageId}`}>
-          <ArrowSquareOut size={14} /> Öffnen
+          <ArrowSquareOut size={14} /> {t("Öffnen", "Open")}
         </a>
       </div>
       {error ? (
@@ -96,7 +99,7 @@ export function WhiteboardEmbedView({
           <WhiteboardStatic items={board.items} pages={pages} height={height} />
         ) : (
           <p className="muted whiteboard-embed-error">
-            Dieses Whiteboard ist noch leer.
+            {t("Dieses Whiteboard ist noch leer.", "This whiteboard is still empty.")}
           </p>
         )
       ) : (
@@ -106,6 +109,7 @@ export function WhiteboardEmbedView({
   );
 }
 function EmbedNodeView({ node, updateAttributes, editor }: NodeViewProps) {
+  const t = useT();
   const pageId = String(node.attrs.pageId || ""),
     height = Number(node.attrs.height) || 360;
   return (
@@ -115,12 +119,12 @@ function EmbedNodeView({ node, updateAttributes, editor }: NodeViewProps) {
         <div
           className="whiteboard-embed-size"
           role="group"
-          aria-label="Höhe des Whiteboards"
+          aria-label={t("Höhe des Whiteboards", "Whiteboard height")}
         >
           {[
-            [240, "Klein"],
-            [360, "Mittel"],
-            [560, "Groß"],
+            [240, t("Klein", "Small")],
+            [360, t("Mittel", "Medium")],
+            [560, t("Groß", "Large")],
           ].map(([value, label]) => (
             <button
               key={value}

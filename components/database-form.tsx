@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import { Check, Copy, SlidersHorizontal } from "@phosphor-icons/react";
@@ -39,6 +40,7 @@ export default function DatabaseForm({
   editable: boolean;
   act: (b: Record<string, unknown>) => Promise<unknown>;
 }) {
+  const t = useT();
   const config = form?.config || formConfigSchema.parse({});
   const [values, setValues] = useState<Record<string, unknown>>({}),
     [done, setDone] = useState(false),
@@ -76,7 +78,7 @@ export default function DatabaseForm({
         <h2>{config.title || page.title}</h2>
         <p>
           {config.description ||
-            "Deine Antworten werden als neuer Eintrag gespeichert."}
+            t("Deine Antworten werden als neuer Eintrag gespeichert.", "Your answers are saved as a new record.")}
         </p>
         {editable && (
           <button
@@ -87,7 +89,7 @@ export default function DatabaseForm({
             }}
           >
             <SlidersHorizontal />
-            Formular gestalten
+            {t("Formular gestalten", "Design form")}
           </button>
         )}
       </div>
@@ -103,7 +105,7 @@ export default function DatabaseForm({
               setValues({});
             }}
           >
-            Weitere Antwort
+            {t("Weitere Antwort", "Another answer")}
           </button>
         </div>
       ) : (
@@ -139,13 +141,13 @@ export default function DatabaseForm({
             }
           />
           <button className="button primary" disabled={!editable || busy}>
-            {busy ? "Wird gesendet …" : config.submitLabel}
+            {busy ? t("Wird gesendet …", "Sending …") : config.submitLabel}
           </button>
         </form>
       )}
       {editable && (
         <div className="form-sharing">
-          <h3>Formular teilen</h3>
+          <h3>{t("Formular teilen", "Share form")}</h3>
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -153,7 +155,7 @@ export default function DatabaseForm({
               disabled={sharingPending !== null}
               onChange={(e) => updateSharing("enabled", e.target.checked)}
             />
-            Formular aktivieren
+            {t("Formular aktivieren", "Enable form")}
           </label>
           <label className="checkbox-label">
             <input
@@ -162,7 +164,7 @@ export default function DatabaseForm({
               disabled={sharingPending !== null}
               onChange={(e) => updateSharing("internal", e.target.checked)}
             />
-            Nur für Mitglieder
+            {t("Nur für Mitglieder", "Members only")}
           </label>
           <label className="checkbox-label">
             <input
@@ -171,7 +173,7 @@ export default function DatabaseForm({
               disabled={sharingPending !== null}
               onChange={(e) => updateSharing("anonymous", e.target.checked)}
             />
-            Anonyme Antworten
+            {t("Anonyme Antworten", "Anonymous answers")}
           </label>
           {!!form?.enabled && (
             <button
@@ -183,7 +185,7 @@ export default function DatabaseForm({
               }
             >
               <Copy />
-              Formularlink kopieren
+              {t("Formularlink kopieren", "Copy form link")}
             </button>
           )}
         </div>
@@ -191,7 +193,7 @@ export default function DatabaseForm({
       <Modal
         open={design}
         onClose={() => setDesign(false)}
-        title="Formular gestalten"
+        title={t("Formular gestalten", "Design form")}
       >
         <form
           onSubmit={async (e) => {
@@ -206,7 +208,7 @@ export default function DatabaseForm({
           }}
         >
           <label>
-            Formulartitel
+            {t("Formulartitel", "Form title")}
             <input
               value={draft.title}
               maxLength={200}
@@ -215,9 +217,9 @@ export default function DatabaseForm({
             />
           </label>
           <label>
-            Beschreibung
+            {t("Beschreibung", "Description")}
             <textarea
-              aria-label="Beschreibung"
+              aria-label={t("Beschreibung", "Description")}
               value={draft.description}
               maxLength={3000}
               onChange={(e) =>
@@ -225,7 +227,7 @@ export default function DatabaseForm({
               }
             />
           </label>
-          <h3>Fragen</h3>
+          <h3>{t("Fragen", "Questions")}</h3>
           {designFields.map((f, index) => (
             <section className="form-field-design" key={f.id}>
               <div className="property-order">
@@ -233,7 +235,7 @@ export default function DatabaseForm({
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label={`${f.name} nach oben`}
+                  aria-label={t(`${f.name} nach oben`, `${f.name} up`)}
                   disabled={index === 0}
                   onClick={() => moveField(index, -1)}
                 >
@@ -242,7 +244,7 @@ export default function DatabaseForm({
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label={`${f.name} nach unten`}
+                  aria-label={t(`${f.name} nach unten`, `${f.name} down`)}
                   disabled={index === designFields.length - 1}
                   onClick={() => moveField(index, 1)}
                 >
@@ -263,12 +265,12 @@ export default function DatabaseForm({
                       })
                     }
                   />
-                  Sichtbar
+                  {t("Sichtbar", "Visible")}
                 </label>
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
-                    aria-label={`${f.name} ist Pflichtfeld`}
+                    aria-label={t(`${f.name} ist Pflichtfeld`, `${f.name} is required`)}
                     disabled={draft.hiddenFields.includes(f.id)}
                     checked={draft.requiredFields.includes(f.id)}
                     onChange={(e) =>
@@ -280,13 +282,13 @@ export default function DatabaseForm({
                       })
                     }
                   />
-                  Pflichtfeld
+                  {t("Pflichtfeld", "Required")}
                 </label>
                 {questionStyles(f).length > 0 && (
                   <label>
-                    Fragetyp
+                    {t("Fragetyp", "Question type")}
                     <Select
-                      aria-label={`Fragetyp für ${f.name}`}
+                      aria-label={t(`Fragetyp für ${f.name}`, `Question type for ${f.name}`)}
                       value={draft.questionStyles?.[f.id] || ""}
                       onChange={(e) => {
                         const next = { ...(draft.questionStyles || {}) };
@@ -296,14 +298,14 @@ export default function DatabaseForm({
                         setDraft({ ...draft, questionStyles: next });
                       }}
                     >
-                      <option value="">Standard</option>
+                      <option value="">{t("Standard", "Default")}</option>
                       {questionStyles(f).map((style) => (
                         <option key={style} value={style}>
                           {
                             {
-                              long: "Langer Text",
-                              buttons: "Auswahlknöpfe",
-                              scale: "Lineare Skala 1–10",
+                              long: t("Langer Text", "Long text"),
+                              buttons: t("Auswahlknöpfe", "Radio buttons"),
+                              scale: t("Lineare Skala 1–10", "Linear scale 1–10"),
                             }[style]
                           }
                         </option>
@@ -313,7 +315,7 @@ export default function DatabaseForm({
                 )}
               </div>
               <label>
-                Hinweis zu {f.name}
+                {t("Hinweis zu", "Hint for")}{" "}{f.name}
                 <input
                   maxLength={1000}
                   value={draft.descriptions[f.id] || ""}
@@ -331,7 +333,7 @@ export default function DatabaseForm({
             </section>
           ))}
           <label>
-            Beschriftung der Senden-Schaltfläche
+            {t("Beschriftung der Senden-Schaltfläche", "Submit button label")}
             <input
               required
               maxLength={80}
@@ -342,7 +344,7 @@ export default function DatabaseForm({
             />
           </label>
           <label>
-            Titel nach dem Absenden
+            {t("Titel nach dem Absenden", "Title after submitting")}
             <input
               required
               maxLength={200}
@@ -353,10 +355,10 @@ export default function DatabaseForm({
             />
           </label>
           <label>
-            Bestätigungstext
+            {t("Bestätigungstext", "Confirmation text")}
             <textarea
               maxLength={3000}
-              aria-label="Bestätigungstext"
+              aria-label={t("Bestätigungstext", "Confirmation text")}
               value={draft.successMessage}
               onChange={(e) =>
                 setDraft({ ...draft, successMessage: e.target.value })
@@ -364,7 +366,7 @@ export default function DatabaseForm({
             />
           </label>
           <button className="button primary" disabled={busy}>
-            {busy ? "Wird gespeichert …" : "Formular speichern"}
+            {busy ? t("Wird gespeichert …", "Saving …") : t("Formular speichern", "Save form")}
           </button>
         </form>
       </Modal>

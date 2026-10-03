@@ -215,17 +215,19 @@ export function columnSummary(
 export function summaryText(
   result: ColumnSummary,
   field?: Pick<Field, "type" | "format" | "timeFormat" | "decimals">,
+  // Translates the German labels (useT() of the client).
+  tr: (text: string) => string = (text) => text,
 ) {
   const label =
     result.calculation === "sum"
       ? "Σ"
       : result.calculation === "average"
         ? "Ø"
-        : calculationName(result.calculation);
+        : tr(calculationName(result.calculation));
   const value = result.overflow
-    ? "Zahlenbereich überschritten"
+    ? tr("Zahlenbereich überschritten")
     : result.value === null || result.value === undefined
-      ? "Keine Werte"
+      ? tr("Keine Werte")
       : typeof result.value === "number" &&
           field?.type === "number" &&
           (field.format || field.decimals !== undefined) &&
@@ -243,7 +245,7 @@ export function summaryText(
           : field?.type === "date"
             ? formatFieldDate(result.value, field, "UTC")
             : formatDateValue(result.value, "UTC");
-  return `${label} ${value}${result.errors ? ` (${result.errors} fehlerhaft)` : ""}`;
+  return `${label} ${value}${result.errors ? ` (${result.errors} ${tr("fehlerhaft")})` : ""}`;
 }
 
 // Rows must already contain computed cells and match the active filters.

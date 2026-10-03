@@ -84,7 +84,7 @@ export function RowAccess({
             >
               {rowAccessModes.map((mode) => (
                 <option key={mode} value={mode}>
-                  {rowAccessLabels[mode]}
+                  {t(rowAccessLabels[mode])}
                 </option>
               ))}
             </Select>

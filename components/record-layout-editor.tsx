@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import {
@@ -19,6 +20,7 @@ export function RecordLayoutEditor({
   fields: Field[];
   save: (layout: RecordLayout) => Promise<unknown>;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState(layout),
     [busy, setBusy] = useState(false);
   async function change(next: RecordLayout) {
@@ -31,11 +33,11 @@ export function RecordLayoutEditor({
     <div
       className="record-layout"
       role="group"
-      aria-label="Layout der Einträge"
+      aria-label={t("Layout der Einträge", "Record layout")}
     >
-      <p className="muted">Gilt für alle Einträge dieser Datenbank.</p>
+      <p className="muted">{t("Gilt für alle Einträge dieser Datenbank.", "Applies to all records of this database.")}</p>
       <label>
-        Einträge öffnen als
+        {t("Einträge öffnen als", "Open records as")}
         <Select
           value={draft.open}
           disabled={busy}
@@ -45,13 +47,13 @@ export function RecordLayoutEditor({
         >
           {recordOpenModes.map((mode) => (
             <option key={mode} value={mode}>
-              {recordOpenLabels[mode]}
+              {t(recordOpenLabels[mode])}
             </option>
           ))}
         </Select>
       </label>
       <label>
-        Position der Eigenschaften
+        {t("Position der Eigenschaften", "Position of properties")}
         <Select
           value={draft.properties}
           disabled={busy}
@@ -62,8 +64,8 @@ export function RecordLayoutEditor({
             })
           }
         >
-          <option value="top">Über dem Inhalt</option>
-          <option value="side">Neben dem Inhalt</option>
+          <option value="top">{t("Über dem Inhalt", "Above the content")}</option>
+          <option value="side">{t("Neben dem Inhalt", "Beside the content")}</option>
         </Select>
       </label>
       <label className="checkbox-label">
@@ -75,10 +77,10 @@ export function RecordLayoutEditor({
             void change({ ...draft, hideEmpty: e.target.checked })
           }
         />
-        Leere Eigenschaften einklappen
+        {t("Leere Eigenschaften einklappen", "Collapse empty properties")}
       </label>
       <fieldset>
-        <legend>Sichtbare Eigenschaften</legend>
+        <legend>{t("Sichtbare Eigenschaften", "Visible properties")}</legend>
         {fields.slice(1).map((f) => (
           <label className="checkbox-label" key={f.id}>
             <input

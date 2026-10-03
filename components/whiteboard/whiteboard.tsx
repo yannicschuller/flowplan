@@ -1,4 +1,5 @@
 "use client";
+import { useStatusLabel, useT } from "../i18n";
 import {
   useCallback,
   useEffect,
@@ -108,8 +109,12 @@ import {
 
 const EmojiPicker = dynamic(() => import("../emoji-picker"), {
   ssr: false,
-  loading: () => <p className="muted">Emojis werden geladen …</p>,
+  loading: () => <EmojiLoading />,
 });
+function EmojiLoading() {
+  const t = useT();
+  return <p className="muted">{t("Emojis werden geladen …", "Loading emojis …")}</p>;
+}
 const LOCAL = "local";
 const stampChoices = ["👍", "❤️", "⭐", "✅", "❓", "🔥", "💡", "🎉"];
 type Presence = {
@@ -177,17 +182,17 @@ type Gesture =
   | { kind: "create"; id: string; start: Point }
   | { kind: "connector"; id: string }
   | { kind: "pen"; id: string; points: Point[]; pressures: number[] | null };
-const shapeNames: Record<ShapeKind, string> = {
-  rectangle: "Rechteck",
-  rounded: "Abgerundet",
-  ellipse: "Ellipse",
-  triangle: "Dreieck",
-  diamond: "Raute",
-  star: "Stern",
-  hexagon: "Sechseck",
-  parallelogram: "Parallelogramm",
-  arrow: "Pfeilform",
-  cloud: "Wolke",
+const shapeNames: Record<ShapeKind, [string, string]> = {
+  rectangle: ["Rechteck", "Rectangle"],
+  rounded: ["Abgerundet", "Rounded"],
+  ellipse: ["Ellipse", "Ellipse"],
+  triangle: ["Dreieck", "Triangle"],
+  diamond: ["Raute", "Diamond"],
+  star: ["Stern", "Star"],
+  hexagon: ["Sechseck", "Hexagon"],
+  parallelogram: ["Parallelogramm", "Parallelogram"],
+  arrow: ["Pfeilform", "Arrow"],
+  cloud: ["Wolke", "Cloud"],
 };
 const personColors = [
   "#e03131",
@@ -230,6 +235,8 @@ export default function Whiteboard({
   onError: (message: string) => void;
   onOpenPage: (pageId: string) => void;
 }) {
+  const t = useT();
+  const statusLabel = useStatusLabel();
   const doc = useMemo(() => {
     const d = new Y.Doc();
     Y.applyUpdate(d, from64(state), "remote");
@@ -813,7 +820,7 @@ export default function Whiteboard({
     if (!voting?.active || !map || !userId) return;
     const has = !!(map.toJSON().votes || {})[userId];
     if (!has && myVotes >= voting.max)
-      return onError(`Du hast alle ${voting.max} Stimmen vergeben.`);
+      return onError(t(`Du hast alle ${voting.max} Stimmen vergeben.`, `You have used all ${voting.max} votes.`));
     change(() => {
       let votes = map.get("votes");
       if (!(votes instanceof Y.Map)) {
@@ -1169,7 +1176,7 @@ export default function Whiteboard({
           y: p.y,
           w: 1,
           h: 1,
-          text: "Rahmen",
+          text: t("Rahmen", "Frame"),
           fill: "#ffffff",
         });
       else if (kind === "connector") {
@@ -1879,7 +1886,7 @@ export default function Whiteboard({
     body.set("file", file);
     const response = await fetch("/api/upload", { method: "POST", body });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Upload fehlgeschlagen.");
+    if (!response.ok) throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
     return result.url as string;
   }
   const center = () => {
@@ -1888,9 +1895,9 @@ export default function Whiteboard({
   };
   async function addImage(file: File, at = center()) {
     if (!file.type.startsWith("image/"))
-      return onError("Nur Bilder können auf das Whiteboard gelegt werden.");
+      return onError(t("Nur Bilder können auf das Whiteboard gelegt werden.", "Only images can be placed on the whiteboard."));
     try {
-      setStatus("Bild wird hochgeladen …");
+      setStatus(t("Bild wird hochgeladen …", "Uploading image …"));
       const url = await upload(file);
       const size = await new Promise<{ w: number; h: number }>((resolve) => {
         const img = new Image();
@@ -1949,7 +1956,7 @@ export default function Whiteboard({
   function exportBoard(kind: "svg" | "png") {
     const node = svg.current;
     const box = contentBounds(items, byId);
-    if (!node || !box) return onError("Das Whiteboard ist leer.");
+    if (!node || !box) return onError(t("Das Whiteboard ist leer.", "The whiteboard is empty."));
     const clone = node.cloneNode(true) as SVGSVGElement;
     clone.querySelectorAll("[data-ui]").forEach((el) => el.remove());
     const world = clone.querySelector("[data-world]");
@@ -1993,12 +2000,12 @@ export default function Whiteboard({
         canvas.toBlob((b) => b && save(b, "png"));
       } catch {
         onError(
-          "Der Browser erlaubt keinen PNG-Export dieses Boards. Bitte SVG verwenden.",
+          t("Der Browser erlaubt keinen PNG-Export dieses Boards. Bitte SVG verwenden.", "The browser does not allow a PNG export of this board. Please use SVG."),
         );
       }
     };
     img.onerror = () =>
-      onError("PNG-Export fehlgeschlagen. Bitte SVG verwenden.");
+      onError(t("PNG-Export fehlgeschlagen. Bitte SVG verwenden.", "PNG export failed. Please use SVG."));
     img.src = URL.createObjectURL(blob);
   }
 
@@ -2047,7 +2054,7 @@ export default function Whiteboard({
         <div
           className="wb-style-bar"
           role="toolbar"
-          aria-label="Element gestalten"
+          aria-label={t("Element gestalten", "Style element")}
           style={{ left: Math.max(8, s.x), top: Math.max(8, s.y - 44) }}
           onPointerDown={(e) => e.stopPropagation()}
         >
@@ -2057,7 +2064,7 @@ export default function Whiteboard({
                 key={c}
                 className={`wb-swatch${first.fill === c ? " active" : ""}`}
                 style={{ background: c }}
-                aria-label={`Farbe ${c}`}
+                aria-label={t(`Farbe ${c}`, `Colour ${c}`)}
                 onClick={() => set({ fill: c })}
               />
             ))}
@@ -2067,7 +2074,7 @@ export default function Whiteboard({
                 key={c}
                 className={`wb-swatch${first.fill === c ? " active" : ""}${c === "transparent" ? " none" : ""}`}
                 style={{ background: c }}
-                aria-label={`Füllung ${c}`}
+                aria-label={t(`Füllung ${c}`, `Fill ${c}`)}
                 onClick={() => set({ fill: c })}
               />
             ))}
@@ -2081,12 +2088,12 @@ export default function Whiteboard({
                   key={c}
                   className={`wb-swatch line${first.stroke === c ? " active" : ""}`}
                   style={{ borderColor: c }}
-                  aria-label={`Linienfarbe ${c}`}
+                  aria-label={t(`Linienfarbe ${c}`, `Line colour ${c}`)}
                   onClick={() => set({ stroke: c })}
                 />
               ))}
               <Select
-                aria-label="Linienstärke"
+                aria-label={t("Linienstärke", "Line width")}
                 value={first.strokeWidth ?? 2}
                 onChange={(e) => set({ strokeWidth: Number(e.target.value) })}
               >
@@ -2102,7 +2109,7 @@ export default function Whiteboard({
             <>
               <span className="wb-sep" />
               <Select
-                aria-label="Schriftgröße"
+                aria-label={t("Schriftgröße", "Font size")}
                 value={first.fontSize || 16}
                 onChange={(e) => set({ fontSize: Number(e.target.value) })}
               >
@@ -2115,13 +2122,13 @@ export default function Whiteboard({
               <button
                 className={first.bold ? "active" : ""}
                 aria-pressed={!!first.bold}
-                aria-label="Fett"
+                aria-label={t("Fett", "Bold")}
                 onClick={() => set({ bold: !first.bold })}
               >
                 <strong>F</strong>
               </button>
               <Select
-                aria-label="Ausrichtung"
+                aria-label={t("Ausrichtung", "Alignment")}
                 value={
                   first.align || (first.type === "text" ? "left" : "center")
                 }
@@ -2129,16 +2136,16 @@ export default function Whiteboard({
                   set({ align: e.target.value as WhiteboardItem["align"] })
                 }
               >
-                <option value="left">Links</option>
-                <option value="center">Mitte</option>
-                <option value="right">Rechts</option>
+                <option value="left">{t("Links", "Left")}</option>
+                <option value="center">{t("Mitte", "Centre")}</option>
+                <option value="right">{t("Rechts", "Right")}</option>
               </Select>
               {strokeColors.slice(0, 6).map((c) => (
                 <button
                   key={`text-${c}`}
                   className={`wb-text-swatch${(first.textColor || "#1f2937") === c ? " active" : ""}`}
                   style={{ color: c }}
-                  aria-label={`Textfarbe ${c}`}
+                  aria-label={t(`Textfarbe ${c}`, `Text colour ${c}`)}
                   onClick={() => set({ textColor: c })}
                 >
                   A
@@ -2148,13 +2155,13 @@ export default function Whiteboard({
           )}
           {types.has("shape") && types.size === 1 && (
             <Select
-              aria-label="Form"
+              aria-label={t("Form", "Shape")}
               value={first.shape || "rectangle"}
               onChange={(e) => set({ shape: e.target.value as ShapeKind })}
             >
               {shapeKinds.map((k) => (
                 <option key={k} value={k}>
-                  {shapeNames[k]}
+                  {t(...shapeNames[k])}
                 </option>
               ))}
             </Select>
@@ -2162,15 +2169,15 @@ export default function Whiteboard({
           {types.has("connector") && types.size === 1 && (
             <>
               <Select
-                aria-label="Linienverlauf"
+                aria-label={t("Linienverlauf", "Line path")}
                 value={first.route || "straight"}
                 onChange={(e) =>
                   set({ route: e.target.value as WhiteboardItem["route"] })
                 }
               >
-                <option value="straight">Gerade</option>
-                <option value="elbow">Gewinkelt</option>
-                <option value="curved">Geschwungen</option>
+                <option value="straight">{t("Gerade", "Straight")}</option>
+                <option value="elbow">{t("Gewinkelt", "Elbow")}</option>
+                <option value="curved">{t("Geschwungen", "Curved")}</option>
               </Select>
               <button
                 className={first.startArrow ? "active" : ""}
@@ -2184,14 +2191,14 @@ export default function Whiteboard({
                 aria-pressed={first.endArrow !== false}
                 onClick={() => set({ endArrow: first.endArrow === false })}
               >
-                Pfeil →
+                {t("Pfeil →", "Arrow →")}
               </button>
               <button
                 className={first.dashed ? "active" : ""}
                 aria-pressed={!!first.dashed}
                 onClick={() => set({ dashed: !first.dashed })}
               >
-                Gestrichelt
+                {t("Gestrichelt", "Dashed")}
               </button>
             </>
           )}
@@ -2209,7 +2216,7 @@ export default function Whiteboard({
                 aria-pressed={first.header !== false}
                 onClick={() => set({ header: first.header === false })}
               >
-                Kopfzeile
+                {t("Kopfzeile", "Header row")}
               </button>
             </>
           )}
@@ -2218,33 +2225,33 @@ export default function Whiteboard({
               <span className="wb-sep" />
               <span className="wb-arrange">
                 <button
-                  aria-label="Anordnen"
+                  aria-label={t("Anordnen", "Arrange")}
                   aria-expanded={arrangeOpen}
-                  title="Ausrichten, verteilen, stapeln, gruppieren"
+                  title={t("Ausrichten, verteilen, stapeln, gruppieren", "Align, distribute, stack, group")}
                   onClick={() => setArrangeOpen(!arrangeOpen)}
                 >
-                  <Rows size={16} /> Anordnen
+                  <Rows size={16} /> {t("Anordnen", "Arrange")}
                 </button>
                 {arrangeOpen && (
                   <span className="wb-arrange-menu" role="menu">
-                    <small>Ausrichten</small>
+                    <small>{t("Ausrichten", "Align")}</small>
                     <span className="wb-arrange-row">
-                      <button role="menuitem" title="Links" aria-label="Links ausrichten" onClick={() => arrange("left")}><AlignLeft size={16} /></button>
-                      <button role="menuitem" title="Mitte" aria-label="Horizontal zentrieren" onClick={() => arrange("center")}><AlignCenterHorizontal size={16} /></button>
-                      <button role="menuitem" title="Rechts" aria-label="Rechts ausrichten" onClick={() => arrange("right")}><AlignRight size={16} /></button>
-                      <button role="menuitem" title="Oben" aria-label="Oben ausrichten" onClick={() => arrange("top")}><AlignTop size={16} /></button>
-                      <button role="menuitem" title="Mitte" aria-label="Vertikal zentrieren" onClick={() => arrange("middle")}><AlignCenterVertical size={16} /></button>
-                      <button role="menuitem" title="Unten" aria-label="Unten ausrichten" onClick={() => arrange("bottom")}><AlignBottom size={16} /></button>
+                      <button role="menuitem" title={t("Links", "Left")} aria-label={t("Links ausrichten", "Align left")} onClick={() => arrange("left")}><AlignLeft size={16} /></button>
+                      <button role="menuitem" title={t("Mitte", "Centre")} aria-label={t("Horizontal zentrieren", "Centre horizontally")} onClick={() => arrange("center")}><AlignCenterHorizontal size={16} /></button>
+                      <button role="menuitem" title={t("Rechts", "Right")} aria-label={t("Rechts ausrichten", "Align right")} onClick={() => arrange("right")}><AlignRight size={16} /></button>
+                      <button role="menuitem" title={t("Oben", "Top")} aria-label={t("Oben ausrichten", "Align top")} onClick={() => arrange("top")}><AlignTop size={16} /></button>
+                      <button role="menuitem" title={t("Mitte", "Centre")} aria-label={t("Vertikal zentrieren", "Centre vertically")} onClick={() => arrange("middle")}><AlignCenterVertical size={16} /></button>
+                      <button role="menuitem" title={t("Unten", "Bottom")} aria-label={t("Unten ausrichten", "Align bottom")} onClick={() => arrange("bottom")}><AlignBottom size={16} /></button>
                     </span>
-                    <button role="menuitem" onClick={() => arrange("hspread")}>Horizontal verteilen</button>
-                    <button role="menuitem" onClick={() => arrange("vspread")}>Vertikal verteilen</button>
-                    <button role="menuitem" onClick={() => arrange("row")}>Als Zeile stapeln</button>
-                    <button role="menuitem" onClick={() => arrange("column")}>Als Spalte stapeln</button>
-                    <small>Zettel sortieren</small>
-                    <button role="menuitem" onClick={() => arrange("color")}>Nach Farbe gruppieren</button>
-                    <button role="menuitem" onClick={() => arrange("author")}>Nach Person gruppieren</button>
-                    <button role="menuitem" onClick={() => arrange("votes")}>Nach Stimmen sortieren</button>
-                    <button role="menuitem" onClick={() => arrange("grid")}>Als Raster anordnen</button>
+                    <button role="menuitem" onClick={() => arrange("hspread")}>{t("Horizontal verteilen", "Distribute horizontally")}</button>
+                    <button role="menuitem" onClick={() => arrange("vspread")}>{t("Vertikal verteilen", "Distribute vertically")}</button>
+                    <button role="menuitem" onClick={() => arrange("row")}>{t("Als Zeile stapeln", "Stack as a row")}</button>
+                    <button role="menuitem" onClick={() => arrange("column")}>{t("Als Spalte stapeln", "Stack as a column")}</button>
+                    <small>{t("Zettel sortieren", "Sort notes")}</small>
+                    <button role="menuitem" onClick={() => arrange("color")}>{t("Nach Farbe gruppieren", "Group by colour")}</button>
+                    <button role="menuitem" onClick={() => arrange("author")}>{t("Nach Person gruppieren", "Group by person")}</button>
+                    <button role="menuitem" onClick={() => arrange("votes")}>{t("Nach Stimmen sortieren", "Sort by votes")}</button>
+                    <button role="menuitem" onClick={() => arrange("grid")}>{t("Als Raster anordnen", "Arrange as a grid")}</button>
                   </span>
                 )}
               </span>
@@ -2254,29 +2261,29 @@ export default function Whiteboard({
             treeEdges().some((e) => e.from === first.id || e.to === first.id) && (
               <>
                 <span className="wb-sep" />
-                <button aria-label="Mindmap anordnen" title="Mindmap anordnen (Tab: neuer Zweig, ⌥Enter: Geschwister)" onClick={() => layoutMindmap(first.id)}>
+                <button aria-label={t("Mindmap anordnen", "Arrange mind map")} title={t("Mindmap anordnen (Tab: neuer Zweig, ⌥Enter: Geschwister)", "Arrange mind map (Tab: new branch, ⌥Enter: sibling)")} onClick={() => layoutMindmap(first.id)}>
                   <TreeStructure size={16} />
                 </button>
               </>
             )}
           <span className="wb-sep" />
           <button
-            aria-label="Nach vorne"
-            title="Nach vorne"
+            aria-label={t("Nach vorne", "Bring forward")}
+            title={t("Nach vorne", "Bring forward")}
             onClick={() => order(true)}
           >
             <StackSimple size={16} />
           </button>
           <button
-            aria-label="Nach hinten"
-            title="Nach hinten"
+            aria-label={t("Nach hinten", "Send backward")}
+            title={t("Nach hinten", "Send backward")}
             onClick={() => order(false)}
           >
             <StackSimple size={16} style={{ transform: "scaleY(-1)" }} />
           </button>
           <button
-            aria-label="Duplizieren"
-            title="Duplizieren (⌘D)"
+            aria-label={t("Duplizieren", "Duplicate")}
+            title={t("Duplizieren (⌘D)", "Duplicate (⌘D)")}
             onClick={() => duplicate()}
           >
             <CopySimple size={16} />
@@ -2285,11 +2292,11 @@ export default function Whiteboard({
             (i) => !["frame", "connector", "comment"].includes(i.type),
           ) && (
             <button
-              aria-label={first.covered ? "Aufdecken" : "Verdecken"}
+              aria-label={first.covered ? t("Aufdecken", "Reveal") : t("Verdecken", "Hide")}
               title={
                 first.covered
-                  ? "Aufdecken – für alle sichtbar"
-                  : "Verdecken – Inhalt für alle ausblenden"
+                  ? t("Aufdecken – für alle sichtbar", "Reveal – visible to everyone")
+                  : t("Verdecken – Inhalt für alle ausblenden", "Hide – conceal the content for everyone")
               }
               className={first.covered ? "active" : ""}
               aria-pressed={!!first.covered}
@@ -2309,8 +2316,8 @@ export default function Whiteboard({
             </button>
           )}
           <button
-            aria-label={first.locked ? "Entsperren" : "Sperren"}
-            title={first.locked ? "Entsperren" : "Sperren"}
+            aria-label={first.locked ? t("Entsperren", "Unlock") : t("Sperren", "Lock")}
+            title={first.locked ? t("Entsperren", "Unlock") : t("Sperren", "Lock")}
             onClick={() =>
               change(() =>
                 selected.forEach((i) =>
@@ -2326,8 +2333,8 @@ export default function Whiteboard({
             )}
           </button>
           <button
-            aria-label="Löschen"
-            title="Löschen (Entf)"
+            aria-label={t("Löschen", "Delete")}
+            title={t("Löschen (Entf)", "Delete (Del)")}
             onClick={() => {
               removeSelected();
               setSelection(new Set());
@@ -2358,7 +2365,7 @@ export default function Whiteboard({
       return (
         <textarea
           className={`wb-editor wb-editor-${it.type}`}
-          aria-label="Text bearbeiten"
+          aria-label={t("Text bearbeiten", "Edit text")}
           ref={(el) => {
             if (!el || el.dataset.ready) return;
             el.dataset.ready = "1";
@@ -2417,27 +2424,27 @@ export default function Whiteboard({
       );
     })();
   const tools: [Tool, string, React.ReactNode, string][] = [
-    ["select", "Auswählen", <Cursor key="s" size={18} />, "V"],
-    ["hand", "Verschieben", <Hand key="h" size={18} />, "H"],
+    ["select", t("Auswählen", "Select"), <Cursor key="s" size={18} />, "V"],
+    ["hand", t("Verschieben", "Pan"), <Hand key="h" size={18} />, "H"],
     ...(editable
       ? ([
-          ["sticky", "Notizzettel", <Note key="n" size={18} />, "N"],
-          ["text", "Text", <TextT key="t" size={18} />, "T"],
-          ["shape", "Form", <Shapes key="r" size={18} />, "R"],
+          ["sticky", t("Notizzettel", "Sticky note"), <Note key="n" size={18} />, "N"],
+          ["text", t("Text", "Text"), <TextT key="t" size={18} />, "T"],
+          ["shape", t("Form", "Shape"), <Shapes key="r" size={18} />, "R"],
           [
             "connector",
-            "Verbindungslinie",
+            t("Verbindungslinie", "Connector"),
             <ArrowUpRight key="l" size={18} />,
             "L",
           ],
-          ["pen", "Stift", <PencilSimple key="p" size={18} />, "P"],
-          ["frame", "Rahmen", <FrameCorners key="f" size={18} />, "F"],
-          ["table", "Tabelle", <Table key="g" size={18} />, "G"],
-          ["comment", "Kommentar", <ChatCircle key="c" size={18} />, "C"],
-          ["stamp", "Stempel", <Seal key="e" size={18} />, "E"],
+          ["pen", t("Stift", "Pen"), <PencilSimple key="p" size={18} />, "P"],
+          ["frame", t("Rahmen", "Frame"), <FrameCorners key="f" size={18} />, "F"],
+          ["table", t("Tabelle", "Table"), <Table key="g" size={18} />, "G"],
+          ["comment", t("Kommentar", "Comment"), <ChatCircle key="c" size={18} />, "C"],
+          ["stamp", t("Stempel", "Stamp"), <Seal key="e" size={18} />, "E"],
         ] as [Tool, string, React.ReactNode, string][])
       : []),
-    ["laser", "Laserpointer", <CursorClick key="k" size={18} />, "K"],
+    ["laser", t("Laserpointer", "Laser pointer"), <CursorClick key="k" size={18} />, "K"],
   ];
   const cardPages = pages
     .filter(
@@ -2453,7 +2460,7 @@ export default function Whiteboard({
       ref={container}
       className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}`}
       tabIndex={0}
-      aria-label="Whiteboard"
+      aria-label={t("Whiteboard", "Whiteboard")}
       onKeyDown={onKeyDown}
       onKeyUp={(e) => e.key === " " && setSpace(false)}
       onPaste={onPaste}
@@ -2567,7 +2574,7 @@ export default function Whiteboard({
                     r={6 / view.zoom}
                     onPointerDown={(e) => onHandleDown(e, single, "rotate")}
                   >
-                    <title>Drehen</title>
+                    <title>{t("Drehen", "Rotate")}</title>
                   </circle>
                 )}
               </g>
@@ -2668,8 +2675,8 @@ export default function Whiteboard({
             key={p.user_id}
             type="button"
             className="wb-cursor-edge"
-            title={`Zu ${p.name} springen`}
-            aria-label={`Zu ${p.name} springen`}
+            title={t(`Zu ${p.name} springen`, `Jump to ${p.name}`)}
+            aria-label={t(`Zu ${p.name} springen`, `Jump to ${p.name}`)}
             style={{
               left: cx,
               top: cy,
@@ -2714,7 +2721,7 @@ export default function Whiteboard({
             <textarea
               key={`${cellEdit.r}:${cellEdit.c}`}
               className="wb-editor wb-cell-editor"
-              aria-label={`Zelle ${cellEdit.r + 1}/${cellEdit.c + 1}`}
+              aria-label={t(`Zelle ${cellEdit.r + 1}/${cellEdit.c + 1}`, `Cell ${cellEdit.r + 1}/${cellEdit.c + 1}`)}
               autoFocus
               style={{
                 left: s.x,
@@ -2767,7 +2774,7 @@ export default function Whiteboard({
             <div
               className="wb-comment-popover"
               role="dialog"
-              aria-label="Kommentar"
+              aria-label={t("Kommentar", "Comment")}
               style={{ left: Math.max(8, left), top: Math.max(8, s.y) }}
               onPointerDown={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
@@ -2777,7 +2784,7 @@ export default function Whiteboard({
             >
               <div className="wb-comment-head">
                 <strong>
-                  {item.resolved ? "Erledigter Kommentar" : "Kommentar"}
+                  {item.resolved ? t("Erledigter Kommentar", "Resolved comment") : t("Kommentar", "Comment")}
                 </strong>
                 {editable && !!item.messages?.length && (
                   <button
@@ -2787,12 +2794,12 @@ export default function Whiteboard({
                       )
                     }
                   >
-                    {item.resolved ? "Wieder öffnen" : "Erledigt"}
+                    {item.resolved ? t("Wieder öffnen", "Reopen") : t("Erledigt", "Resolve")}
                   </button>
                 )}
                 {editable && (
                   <button
-                    aria-label="Kommentar löschen"
+                    aria-label={t("Kommentar löschen", "Delete comment")}
                     onClick={() => {
                       change(() => itemsMap.delete(item.id));
                       setCommentOpen(null);
@@ -2801,7 +2808,7 @@ export default function Whiteboard({
                     <Trash size={14} />
                   </button>
                 )}
-                <button aria-label="Kommentar schließen" onClick={closeComment}>
+                <button aria-label={t("Kommentar schließen", "Close comment")} onClick={closeComment}>
                   <X size={14} />
                 </button>
               </div>
@@ -2838,13 +2845,13 @@ export default function Whiteboard({
                     name="message"
                     aria-label={
                       item.messages?.length
-                        ? "Antworten"
-                        : "Kommentar schreiben"
+                        ? t("Antworten", "Reply")
+                        : t("Kommentar schreiben", "Write a comment")
                     }
                     placeholder={
                       item.messages?.length
-                        ? "Antworten …"
-                        : "Kommentar schreiben …"
+                        ? t("Antworten …", "Reply …")
+                        : t("Kommentar schreiben …", "Write a comment …")
                     }
                     autoFocus
                     onKeyDown={(e) => {
@@ -2854,7 +2861,7 @@ export default function Whiteboard({
                       }
                     }}
                   />
-                  <button className="button primary compact">Senden</button>
+                  <button className="button primary compact">{t("Senden", "Send")}</button>
                 </form>
               )}
             </div>
@@ -2886,7 +2893,7 @@ export default function Whiteboard({
                 key={`vote-${item.id}`}
                 className={`wb-vote${mine ? " mine" : ""}`}
                 style={{ left: s.x - 18, top: s.y - 14 }}
-                aria-label={`Stimme für ${item.text || item.type}: ${count}`}
+                aria-label={t(`Stimme für ${item.text || item.type}: ${count}`, `Votes for ${item.text || item.type}: ${count}`)}
                 aria-pressed={mine}
                 disabled={!meta.voting?.active || !editable}
                 onPointerDown={(e) => e.stopPropagation()}
@@ -2909,7 +2916,7 @@ export default function Whiteboard({
               key={`stamps-${item.id}`}
               className="wb-stamps"
               style={{ left: s.x + 4, top: s.y - 14 }}
-              aria-label={`Stempel: ${[...counts].map(([e, n]) => `${e} ${n}`).join(", ")}`}
+              aria-label={t(`Stempel: ${[...counts].map(([e, n]) => `${e} ${n}`).join(", ")}`, `Stamps: ${[...counts].map(([e, n]) => `${e} ${n}`).join(", ")}`)}
             >
               {[...counts].map(([emoji, n]) => (
                 <span key={emoji} className={emoji === mine ? "mine" : ""}>
@@ -2925,27 +2932,27 @@ export default function Whiteboard({
           <UsersThree size={16} />
           {amPresenter ? (
             <>
-              <span>Alle folgen dir</span>
+              <span>{t("Alle folgen dir", "Everyone follows you")}</span>
               <button type="button" onClick={() => setMetaValue("presenter", undefined)}>
-                Beenden
+                {t("Beenden", "Stop")}
               </button>
             </>
           ) : following ? (
             <>
-              <span>Du folgst {presenter.name}</span>
+              <span>{t("Du folgst", "You follow")}{" "}{presenter.name}</span>
               <button type="button" onClick={() => setFollowing(false)}>
-                Nicht mehr folgen
+                {t("Nicht mehr folgen", "Unfollow")}
               </button>
             </>
           ) : (
             <>
-              <span>{presenter.name} präsentiert</span>
+              <span>{presenter.name} {t("präsentiert", "is presenting")}</span>
               <button type="button" onClick={() => setFollowing(true)}>
-                Folgen
+                {t("Folgen", "Follow")}
               </button>
               {editable && !presenterCursor && (
                 <button type="button" onClick={() => setMetaValue("presenter", undefined)}>
-                  Beenden
+                  {t("Beenden", "Stop")}
                 </button>
               )}
             </>
@@ -2956,12 +2963,12 @@ export default function Whiteboard({
         <div
           className={`wb-timer${remaining === 0 ? " done" : ""}`}
           role="timer"
-          aria-label="Timer"
+          aria-label={t("Timer", "Timer")}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <Timer size={16} />
           <strong>
-            {remaining === 0 ? "Zeit abgelaufen" : clock(remaining)}
+            {remaining === 0 ? t("Zeit abgelaufen", "Time is up") : clock(remaining)}
           </strong>
           {editable && (
             <>
@@ -2971,7 +2978,7 @@ export default function Whiteboard({
                     setMetaValue("timer", { ...timer, endsAt: null, remaining })
                   }
                 >
-                  Pause
+                  {t("Pause", "Pause")}
                 </button>
               ) : remaining > 0 ? (
                 <button
@@ -2982,7 +2989,7 @@ export default function Whiteboard({
                     })
                   }
                 >
-                  Weiter
+                  {t("Weiter", "Resume")}
                 </button>
               ) : null}
               <button
@@ -3001,7 +3008,7 @@ export default function Whiteboard({
                 +1 Min
               </button>
               <button
-                aria-label="Timer beenden"
+                aria-label={t("Timer beenden", "Stop timer")}
                 onClick={() => setMetaValue("timer", undefined)}
               >
                 <X size={14} />
@@ -3014,16 +3021,15 @@ export default function Whiteboard({
         <div
           className="wb-panel"
           role="dialog"
-          aria-label="Abstimmung"
+          aria-label={t("Abstimmung", "Vote")}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <strong>Abstimmung</strong>
+          <strong>{t("Abstimmung", "Vote")}</strong>
           {meta.voting?.active ? (
             <>
               <p>
-                Du hast noch {Math.max(0, meta.voting.max - myVotes)} von{" "}
-                {meta.voting.max} Stimmen. Klicke auf 👍 an Zetteln, Formen oder
-                Karten.
+                {t("Du hast noch", "You have")}{" "}{Math.max(0, meta.voting.max - myVotes)} {t("von", "of")}{" "}
+                {meta.voting.max} {t("Stimmen. Klicke auf 👍 an Zetteln, Formen oder Karten.", "votes left. Click 👍 on notes, shapes or cards.")}
               </p>
               <button
                 className="button"
@@ -3031,7 +3037,7 @@ export default function Whiteboard({
                   setMetaValue("voting", { ...meta.voting, active: false })
                 }
               >
-                Abstimmung beenden
+                {t("Abstimmung beenden", "End vote")}
               </button>
             </>
           ) : (
@@ -3051,11 +3057,11 @@ export default function Whiteboard({
               }}
             >
               <label>
-                Stimmen pro Person
+                {t("Stimmen pro Person", "Votes per person")}
                 <Select
                   name="max"
                   defaultValue="3"
-                  aria-label="Stimmen pro Person"
+                  aria-label={t("Stimmen pro Person", "Votes per person")}
                 >
                   {[1, 2, 3, 5, 10].map((n) => (
                     <option key={n} value={n}>
@@ -3066,16 +3072,16 @@ export default function Whiteboard({
               </label>
               <label className="wb-check">
                 <input type="checkbox" name="hidden" />
-                Verdeckt abstimmen – Zahlen erst nach dem Ende
+                {t("Verdeckt abstimmen – Zahlen erst nach dem Ende", "Hidden vote – counts only after the end")}
               </label>
-              <button className="button primary">Abstimmung starten</button>
+              <button className="button primary">{t("Abstimmung starten", "Start vote")}</button>
             </form>
           )}
           {meta.voting?.active && meta.voting.hidden ? (
-            <p className="muted">Verdeckte Abstimmung: Das Ergebnis erscheint, sobald sie beendet ist.</p>
+            <p className="muted">{t("Verdeckte Abstimmung: Das Ergebnis erscheint, sobald sie beendet ist.", "Hidden vote: the result appears once it has ended.")}</p>
           ) : items.some((i) => i.votes && Object.keys(i.votes).length) && (
             <>
-              <ol className="wb-results" aria-label="Ergebnis">
+              <ol className="wb-results" aria-label={t("Ergebnis", "Result")}>
                 {items
                   .filter((i) => i.votes && Object.keys(i.votes).length)
                   .sort(
@@ -3092,14 +3098,14 @@ export default function Whiteboard({
                           (i.type === "card"
                             ? pages.find((p) => p.id === i.pageId)?.title
                             : "") ||
-                          "Element"}
+                          t("Element", "Element")}
                       </span>
                       <strong>{Object.keys(i.votes!).length}</strong>
                     </li>
                   ))}
               </ol>
               <button className="text-button" onClick={resetVotes}>
-                Stimmen zurücksetzen
+                {t("Stimmen zurücksetzen", "Reset votes")}
               </button>
             </>
           )}
@@ -3109,10 +3115,10 @@ export default function Whiteboard({
         <div
           className="wb-panel"
           role="dialog"
-          aria-label="Timer einstellen"
+          aria-label={t("Timer einstellen", "Set timer")}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <strong>Timer</strong>
+          <strong>{t("Timer", "Timer")}</strong>
           <div className="wb-timer-presets">
             {[1, 3, 5, 10, 15].map((m) => (
               <button
@@ -3123,7 +3129,7 @@ export default function Whiteboard({
                   setTimerOpen(false);
                 }}
               >
-                {m} Min
+                {m} {t("Min", "min")}
               </button>
             ))}
           </div>
@@ -3144,7 +3150,7 @@ export default function Whiteboard({
             }}
           >
             <label>
-              Minuten
+              {t("Minuten", "Minutes")}
               <input
                 name="minutes"
                 type="number"
@@ -3152,10 +3158,10 @@ export default function Whiteboard({
                 max={180}
                 step={0.5}
                 defaultValue={5}
-                aria-label="Minuten"
+                aria-label={t("Minuten", "Minutes")}
               />
             </label>
-            <button className="button primary">Starten</button>
+            <button className="button primary">{t("Starten", "Start")}</button>
           </form>
         </div>
       )}
@@ -3163,7 +3169,7 @@ export default function Whiteboard({
       <div
         className="wb-toolbar"
         role="toolbar"
-        aria-label="Werkzeuge"
+        aria-label={t("Werkzeuge", "Tools")}
         onPointerDown={(e) => e.stopPropagation()}
       >
         {tools.map(([key, label, icon, shortcut]) => (
@@ -3188,43 +3194,43 @@ export default function Whiteboard({
         {editable && (
           <>
             <button
-              aria-label="Bild"
-              title="Bild einfügen"
+              aria-label={t("Bild", "Image")}
+              title={t("Bild einfügen", "Insert image")}
               onClick={() => fileInput.current?.click()}
             >
               <ImageSquare size={18} />
             </button>
             <button
-              aria-label="Bilder und Symbole suchen"
-              title="Bilder (Openverse) und Symbole"
+              aria-label={t("Bilder und Symbole suchen", "Search images and icons")}
+              title={t("Bilder (Openverse) und Symbole", "Images (Openverse) and icons")}
               onClick={() => setImagesOpen(true)}
             >
               <MagnifyingGlass size={18} />
             </button>
             <button
-              aria-label="Emoji"
-              title="Emoji oder Sticker"
+              aria-label={t("Emoji", "Emoji")}
+              title={t("Emoji oder Sticker", "Emoji or sticker")}
               onClick={() => setEmojiOpen(true)}
             >
               <Smiley size={18} />
             </button>
             <button
-              aria-label="Seite verknüpfen"
-              title="Seite, Datenbank oder Whiteboard verknüpfen"
+              aria-label={t("Seite verknüpfen", "Link page")}
+              title={t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard")}
               onClick={() => setCardOpen(true)}
             >
               <FileText size={18} />
             </button>
             <button
-              aria-label="Vorlagen"
-              title="Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm"
+              aria-label={t("Vorlagen", "Templates")}
+              title={t("Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm", "Templates: retro, kanban, mind map, SWOT, flowchart")}
               onClick={() => setTemplatesOpen(true)}
             >
               <SquaresFour size={18} />
             </button>
             <button
-              aria-label="Abstimmung"
-              title="Abstimmung"
+              aria-label={t("Abstimmung", "Vote")}
+              title={t("Abstimmung", "Vote")}
               className={meta.voting?.active ? "active" : ""}
               onClick={() => {
                 setVotingOpen((v) => !v);
@@ -3234,8 +3240,8 @@ export default function Whiteboard({
               <ThumbsUp size={18} />
             </button>
             <button
-              aria-label="Timer"
-              title="Timer"
+              aria-label={t("Timer", "Timer")}
+              title={t("Timer", "Timer")}
               className={timer ? "active" : ""}
               onClick={() => {
                 setTimerOpen((v) => !v);
@@ -3246,15 +3252,15 @@ export default function Whiteboard({
             </button>
             <span className="wb-sep" />
             <button
-              aria-label="Rückgängig"
-              title="Rückgängig (⌘Z)"
+              aria-label={t("Rückgängig", "Undo")}
+              title={t("Rückgängig (⌘Z)", "Undo (⌘Z)")}
               onClick={() => undo.undo()}
             >
               <ArrowCounterClockwise size={18} />
             </button>
             <button
-              aria-label="Wiederholen"
-              title="Wiederholen (⇧⌘Z)"
+              aria-label={t("Wiederholen", "Redo")}
+              title={t("Wiederholen (⇧⌘Z)", "Redo (⇧⌘Z)")}
               onClick={() => undo.redo()}
             >
               <ArrowClockwise size={18} />
@@ -3266,7 +3272,7 @@ export default function Whiteboard({
           type="file"
           hidden
           accept="image/*"
-          aria-label="Bild für das Whiteboard"
+          aria-label={t("Bild für das Whiteboard", "Image for the whiteboard")}
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
@@ -3278,7 +3284,7 @@ export default function Whiteboard({
         <div
           className="wb-shape-menu"
           role="menu"
-          aria-label="Formen"
+          aria-label={t("Formen", "Shapes")}
           onPointerDown={(e) => e.stopPropagation()}
         >
           {shapeKinds.map((k) => (
@@ -3287,8 +3293,8 @@ export default function Whiteboard({
               role="menuitemradio"
               aria-checked={shapeKind === k}
               className={shapeKind === k ? "active" : ""}
-              title={shapeNames[k]}
-              aria-label={shapeNames[k]}
+              title={t(...shapeNames[k])}
+              aria-label={t(...shapeNames[k])}
               onClick={() => {
                 setShapeKind(k);
                 setShapeMenu(false);
@@ -3309,7 +3315,7 @@ export default function Whiteboard({
       {editable && tool === "sticky" && (
         <div
           className="wb-shape-menu"
-          aria-label="Zettelfarbe"
+          aria-label={t("Zettelfarbe", "Note colour")}
           onPointerDown={(e) => e.stopPropagation()}
         >
           {stickyColors.map((c) => (
@@ -3317,36 +3323,36 @@ export default function Whiteboard({
               key={c}
               className={`wb-swatch${stickyColor === c ? " active" : ""}`}
               style={{ background: c }}
-              aria-label={`Zettelfarbe ${c}`}
+              aria-label={t(`Zettelfarbe ${c}`, `Note colour ${c}`)}
               onClick={() => setStickyColor(c)}
             />
           ))}
         </div>
       )}
       {editable && tool === "stamp" && (
-        <div className="wb-shape-menu" aria-label="Stempel wählen" onPointerDown={(e) => e.stopPropagation()}>
+        <div className="wb-shape-menu" aria-label={t("Stempel wählen", "Choose stamp")} onPointerDown={(e) => e.stopPropagation()}>
           {stampChoices.map((c) => (
             <button
               key={c}
               className={`wb-stamp-choice${stamp === c ? " active" : ""}`}
-              aria-label={`Stempel ${c}`}
+              aria-label={t(`Stempel ${c}`, `Stamp ${c}`)}
               aria-pressed={stamp === c}
               onClick={() => setStamp(c)}
             >
               {c}
             </button>
           ))}
-          <span className="wb-menu-hint">Auf Elemente klicken</span>
+          <span className="wb-menu-hint">{t("Auf Elemente klicken", "Click on elements")}</span>
         </div>
       )}
       {editable && tool === "pen" && (
-        <div className="wb-shape-menu" aria-label="Stift" onPointerDown={(e) => e.stopPropagation()}>
+        <div className="wb-shape-menu" aria-label={t("Stift", "Pen")} onPointerDown={(e) => e.stopPropagation()}>
           {strokeColors.map((c) => (
             <button
               key={c}
               className={`wb-swatch line${penColor === c ? " active" : ""}`}
               style={{ background: c }}
-              aria-label={`Stiftfarbe ${c}`}
+              aria-label={t(`Stiftfarbe ${c}`, `Pen colour ${c}`)}
               onClick={() => setPenColor(c)}
             />
           ))}
@@ -3359,36 +3365,36 @@ export default function Whiteboard({
                 store("flowplan-board-recognize", e.target.checked);
               }}
             />
-            Formen erkennen
+            {t("Formen erkennen", "Recognise shapes")}
           </label>
         </div>
       )}
       {tool === "laser" && (
         <div className="wb-shape-menu" onPointerDown={(e) => e.stopPropagation()}>
-          <span className="wb-menu-hint">Laserpointer: alle sehen deine Spur</span>
+          <span className="wb-menu-hint">{t("Laserpointer: alle sehen deine Spur", "Laser pointer: everyone sees your trail")}</span>
         </div>
       )}
       <div className="wb-zoom" onPointerDown={(e) => e.stopPropagation()}>
         <span className="wb-status" aria-live="polite">
-          {status}
+          {statusLabel(status)}
         </span>
-        <button aria-label="Verkleinern" onClick={() => zoomAt(1 / 1.2)}>
+        <button aria-label={t("Verkleinern", "Zoom out")} onClick={() => zoomAt(1 / 1.2)}>
           <Minus size={16} />
         </button>
         <button
-          aria-label="Zoom zurücksetzen"
+          aria-label={t("Zoom zurücksetzen", "Reset zoom")}
           className="wb-zoom-value"
           onClick={() => setView((v) => ({ ...v, zoom: 1 }))}
         >
           {Math.round(view.zoom * 100)} %
         </button>
-        <button aria-label="Vergrößern" onClick={() => zoomAt(1.2)}>
+        <button aria-label={t("Vergrößern", "Zoom in")} onClick={() => zoomAt(1.2)}>
           <Plus size={16} />
         </button>
         <button
-          aria-label="Am Raster ausrichten"
+          aria-label={t("Am Raster ausrichten", "Snap to grid")}
           aria-pressed={snapGrid}
-          title="Am Raster ausrichten (Hilfslinien gibt es immer; ⌥ beim Ziehen schaltet beides ab)"
+          title={t("Am Raster ausrichten (Hilfslinien gibt es immer; ⌥ beim Ziehen schaltet beides ab)", "Snap to grid (guides are always on; ⌥ while dragging turns both off)")}
           className={snapGrid ? "active" : ""}
           onClick={() => {
             setSnapGrid(!snapGrid);
@@ -3399,48 +3405,48 @@ export default function Whiteboard({
         </button>
         {editable && !presenter && (
           <button
-            aria-label="Folge mir"
-            title="Folge mir: alle sehen deinen Ausschnitt"
+            aria-label={t("Folge mir", "Follow me")}
+            title={t("Folge mir: alle sehen deinen Ausschnitt", "Follow me: everyone sees your view")}
             onClick={() => setMetaValue("presenter", { userId, name: userName || "Jemand", since: Date.now() })}
           >
             <UsersThree size={16} />
           </button>
         )}
         <button
-          aria-label="Alles anzeigen"
-          title="Alles anzeigen (⇧1)"
+          aria-label={t("Alles anzeigen", "Show everything")}
+          title={t("Alles anzeigen (⇧1)", "Show everything (⇧1)")}
           onClick={() => fitToContent()}
         >
           <ArrowsOut size={16} />
         </button>
         <button
-          aria-label={fullscreen ? "Vollbild beenden" : "Vollbild"}
+          aria-label={fullscreen ? t("Vollbild beenden", "Exit full screen") : t("Vollbild", "Full screen")}
           aria-pressed={fullscreen}
-          title={fullscreen ? "Vollbild beenden (Esc)" : "Vollbild"}
+          title={fullscreen ? t("Vollbild beenden (Esc)", "Exit full screen (Esc)") : t("Vollbild", "Full screen")}
           onClick={() => void toggleFullscreen()}
         >
           {fullscreen ? <CornersIn size={16} /> : <CornersOut size={16} />}
         </button>
         <button
           aria-label={
-            showComments ? "Kommentare ausblenden" : "Kommentare anzeigen"
+            showComments ? t("Kommentare ausblenden", "Hide comments") : t("Kommentare anzeigen", "Show comments")
           }
           aria-pressed={showComments}
-          title={showComments ? "Kommentare ausblenden" : "Kommentare anzeigen"}
+          title={showComments ? t("Kommentare ausblenden", "Hide comments") : t("Kommentare anzeigen", "Show comments")}
           onClick={() => setShowComments((v) => !v)}
         >
           <ChatCircle size={16} weight={showComments ? "fill" : "regular"} />
         </button>
         <button
-          aria-label="Als SVG exportieren"
-          title="Als SVG exportieren"
+          aria-label={t("Als SVG exportieren", "Export as SVG")}
+          title={t("Als SVG exportieren", "Export as SVG")}
           onClick={() => exportBoard("svg")}
         >
           <DownloadSimple size={16} /> SVG
         </button>
         <button
-          aria-label="Als PNG exportieren"
-          title="Als PNG exportieren"
+          aria-label={t("Als PNG exportieren", "Export as PNG")}
+          title={t("Als PNG exportieren", "Export as PNG")}
           onClick={() => exportBoard("png")}
         >
           <DownloadSimple size={16} /> PNG
@@ -3456,25 +3462,25 @@ export default function Whiteboard({
           }
         >
           <button
-            aria-label="Vorheriger Rahmen"
+            aria-label={t("Vorheriger Rahmen", "Previous frame")}
             disabled={presenting === 0}
             onClick={() => showSlide(presenting - 1)}
           >
             <CaretLeft size={18} />
           </button>
           <span>
-            {slides[presenting]?.text || "Rahmen"} · {presenting + 1} /{" "}
+            {slides[presenting]?.text || t("Rahmen", "Frame")} · {presenting + 1} /{" "}
             {slides.length}
           </span>
           <button
-            aria-label="Nächster Rahmen"
+            aria-label={t("Nächster Rahmen", "Next frame")}
             disabled={presenting >= slides.length - 1}
             onClick={() => showSlide(presenting + 1)}
           >
             <CaretRight size={18} />
           </button>
           <button
-            aria-label="Präsentation beenden"
+            aria-label={t("Präsentation beenden", "End presentation")}
             onClick={() => setPresenting(null)}
           >
             <X size={18} />
@@ -3490,14 +3496,14 @@ export default function Whiteboard({
               container.current?.focus({ preventScroll: true });
             }}
           >
-            <PresentationChart size={16} /> Präsentieren
+            <PresentationChart size={16} /> {t("Präsentieren", "Present")}
           </button>
         )
       )}
       <Modal
         open={templatesOpen}
         onClose={() => setTemplatesOpen(false)}
-        title="Vorlage einfügen"
+        title={t("Vorlage einfügen", "Insert template")}
       >
         <div className="wb-template-list">
           {(
@@ -3519,14 +3525,14 @@ export default function Whiteboard({
       {!items.length && (
         <div className="wb-empty" aria-hidden="true">
           {editable
-            ? "Doppelklick für einen Notizzettel – oder links ein Werkzeug wählen."
-            : "Dieses Whiteboard ist noch leer."}
+            ? t("Doppelklick für einen Notizzettel – oder links ein Werkzeug wählen.", "Double-click for a sticky note – or choose a tool on the left.")
+            : t("Dieses Whiteboard ist noch leer.", "This whiteboard is still empty.")}
         </div>
       )}
       <Modal
         open={emojiOpen}
         onClose={() => setEmojiOpen(false)}
-        title="Emoji einfügen"
+        title={t("Emoji einfügen", "Insert emoji")}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
           container.current?.focus({ preventScroll: true });
@@ -3591,7 +3597,7 @@ export default function Whiteboard({
           setCardOpen(false);
           setCardDb(null);
         }}
-        title="Seite verknüpfen"
+        title={t("Seite verknüpfen", "Link page")}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
           container.current?.focus({ preventScroll: true });
@@ -3599,8 +3605,8 @@ export default function Whiteboard({
       >
         <input
           autoFocus
-          aria-label="Seiten suchen"
-          placeholder="Seite, Datenbank oder Whiteboard suchen …"
+          aria-label={t("Seiten suchen", "Search pages")}
+          placeholder={t("Seite, Datenbank oder Whiteboard suchen …", "Search page, database or whiteboard …")}
           value={cardQuery}
           onChange={(e) => setCardQuery(e.target.value)}
           className="wb-card-search"
@@ -3608,11 +3614,11 @@ export default function Whiteboard({
         {cardDb ? (
           <div className="wb-card-list">
             <button type="button" className="text-button" onClick={() => setCardDb(null)}>
-              ← Zurück zu den Seiten
+              {t("← Zurück zu den Seiten", "← Back to pages")}
             </button>
-            <p className="muted">Einträge aus „{cardDb.title}“ – sie bleiben auf dem Board aktuell.</p>
+            <p className="muted">{t("Einträge aus „", "Records from “")}{cardDb.title}{t("“ – sie bleiben auf dem Board aktuell.", "” – they stay up to date on the board.")}</p>
             {!cardDb.rows ? (
-              <p className="muted">Einträge werden geladen …</p>
+              <p className="muted">{t("Einträge werden geladen …", "Loading records …")}</p>
             ) : (
               cardDb.rows
                 .filter((r) => !cardQuery.trim() || r.title.toLocaleLowerCase("de").includes(cardQuery.trim().toLocaleLowerCase("de")))
@@ -3631,8 +3637,8 @@ export default function Whiteboard({
                       setCardDb(null);
                     }}
                   >
-                    {r.title || "Ohne Titel"}
-                    <small>Eintrag</small>
+                    {r.title || t("Ohne Titel", "Untitled")}
+                    <small>{t("Eintrag", "Record")}</small>
                   </button>
                 ))
             )}
@@ -3665,18 +3671,18 @@ export default function Whiteboard({
                 setCardOpen(false);
               }}
             >
-              {p.title || "Ohne Titel"}
+              {p.title || t("Ohne Titel", "Untitled")}
               <small>
                 {p.kind === "database"
-                  ? "Datenbank"
+                  ? t("Datenbank", "Database")
                   : p.kind === "whiteboard"
-                    ? "Whiteboard"
-                    : "Dokument"}
+                    ? t("Whiteboard", "Whiteboard")
+                    : t("Dokument", "Document")}
               </small>
             </button>
           ))}
           {!cardPages.length && (
-            <p className="muted">Keine passenden Seiten.</p>
+            <p className="muted">{t("Keine passenden Seiten.", "No matching pages.")}</p>
           )}
           {cardPages
             .filter((p) => p.kind === "database")
@@ -3702,8 +3708,8 @@ export default function Whiteboard({
                   }
                 }}
               >
-                Eintrag aus „{p.title || "Ohne Titel"}“ …
-                <small>Datenbankeintrag als Karte</small>
+                {t("Eintrag aus „", "Record from “")}{p.title || t("Ohne Titel", "Untitled")}“ …
+                <small>{t("Datenbankeintrag als Karte", "Database record as a card")}</small>
               </button>
             ))}
         </div>

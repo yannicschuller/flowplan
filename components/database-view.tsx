@@ -534,7 +534,7 @@ export default function DatabaseView({
         <div className="record-open-modes" role="group" aria-label={t("Eintrag öffnen als", "Open record as")}>
           {recordOpenModes.map((mode) => {
             const Icon = recordModeIcons[mode];
-            const label = `${recordModeLabels[mode]}${mode === recordLayout.open ? " (Standard)" : ""}`;
+            const label = `${recordModeLabels[mode]}${mode === recordLayout.open ? t(" (Standard)", " (default)") : ""}`;
             return (
               <button
                 key={mode}
@@ -1416,7 +1416,7 @@ export default function DatabaseView({
             <option value="">{t("Keine", "None")}</option>
             {Object.entries(recurrenceLabels).map(([key, [label]]) => (
               <option key={key} value={key}>
-                {label}
+                {t(label)}
               </option>
             ))}
           </Select>
@@ -1440,7 +1440,7 @@ export default function DatabaseView({
                       void save({ ...rule, interval });
                   }}
                 />
-                {recurrenceLabels[rule.freq][1]}
+                {t(recurrenceLabels[rule.freq][1])}
               </label>
               <label>
                 {t("Endet", "Ends")}
@@ -1682,7 +1682,7 @@ export default function DatabaseView({
       return (
         summary && (
           <span key={f.id}>
-            {f.name}: {summaryText(summary, f)}
+            {f.name}: {summaryText(summary, f, t)}
           </span>
         )
       );
@@ -2553,7 +2553,7 @@ export default function DatabaseView({
                         {summary ? (
                           <>
                             <span>{f.name}: </span>
-                            <strong>{summaryText(summary, f)}</strong>
+                            <strong>{summaryText(summary, f, t)}</strong>
                           </>
                         ) : (
                           <span>{t("Berechnen", "Calculate")}</span>
@@ -4028,7 +4028,7 @@ export default function DatabaseView({
               >
                 {Object.entries(numberFormats).map(([key, label]) => (
                   <option key={key} value={key}>
-                    {label}
+                    {t(label)}
                   </option>
                 ))}
               </Select>
@@ -4143,7 +4143,7 @@ export default function DatabaseView({
                 >
                   {Object.entries(dateFormats).map(([key, label]) => (
                     <option key={key} value={key}>
-                      {label}
+                      {t(label)}
                     </option>
                   ))}
                 </Select>
@@ -4162,7 +4162,7 @@ export default function DatabaseView({
                 >
                   {Object.entries(timeFormats).map(([key, label]) => (
                     <option key={key} value={key}>
-                      {label}
+                      {t(label)}
                     </option>
                   ))}
                 </Select>
@@ -4322,7 +4322,7 @@ export default function DatabaseView({
                 >
                   {allowedAggregates(rollupProperty).map((a) => (
                     <option key={a} value={a}>
-                      {aggregateNames[a]}
+                      {t(aggregateNames[a])}
                     </option>
                   ))}
                 </Select>
