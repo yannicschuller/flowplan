@@ -1,7 +1,9 @@
 "use client";
+import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import { api } from "./ui";
 export default function PushSettings() {
+  const t = useT();
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
   const [key, setKey] = useState(""),
@@ -56,7 +58,7 @@ export default function PushSettings() {
       const permission = await Notification.requestPermission();
       if (permission !== "granted")
         throw new Error(
-          "Benachrichtigungen wurden nicht erlaubt. Du kannst die Berechtigung in den Geräte- oder Browsereinstellungen ändern.",
+          t("Benachrichtigungen wurden nicht erlaubt. Du kannst die Berechtigung in den Geräte- oder Browsereinstellungen ändern.", "Notifications were not allowed. You can change the permission in the device or browser settings."),
         );
       const bytes = Uint8Array.from(
         atob(key.replaceAll("-", "+").replaceAll("_", "/")),
@@ -74,7 +76,7 @@ export default function PushSettings() {
         subscription: sub.toJSON(),
       });
       setSubscribed(true);
-      setMessage("Push ist auf diesem Gerät aktiviert.");
+      setMessage(t("Push ist auf diesem Gerät aktiviert.", "Push is enabled on this device."));
     } catch (error) {
       setMessage((error as Error).message);
     } finally {
@@ -93,7 +95,7 @@ export default function PushSettings() {
         await sub.unsubscribe();
       }
       setSubscribed(false);
-      setMessage("Push ist auf diesem Gerät deaktiviert.");
+      setMessage(t("Push ist auf diesem Gerät deaktiviert.", "Push is disabled on this device."));
     } catch (error) {
       setMessage((error as Error).message);
     } finally {
@@ -102,34 +104,29 @@ export default function PushSettings() {
   }
   return (
     <section className="settings-section push-settings">
-      <h2>Push-Benachrichtigungen</h2>
+      <h2>{t("Push-Benachrichtigungen", "Push notifications")}</h2>
       <p>
-        Erhalte Hinweise zu neuen Kommentaren und Erwähnungen, auch wenn
-        Flowplan geschlossen ist. Auf dem Sperrbildschirm erscheint ein
-        allgemeiner Hinweis ohne Dokumentinhalt.
+        {t("Erhalte Hinweise zu neuen Kommentaren und Erwähnungen, auch wenn Flowplan geschlossen ist. Auf dem Sperrbildschirm erscheint ein allgemeiner Hinweis ohne Dokumentinhalt.", "Get notified about new comments and mentions even when Flowplan is closed. The lock screen shows a general notice without document content.")}
       </p>
       <p className="muted">
-        Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum
-        Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen
-        aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.
+        {t("Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.", "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.")}
       </p>
       {installRequired ? (
         <p role="status">
-          Öffne Flowplan zuerst über das Symbol auf deinem Home-Bildschirm.
+          {t("Öffne Flowplan zuerst über das Symbol auf deinem Home-Bildschirm.", "Open Flowplan from the icon on your Home Screen first.")}
         </p>
       ) : !supported ? (
         <p role="status">
-          Dieser Browser unterstützt Push hier nicht. Verwende eine sichere
-          HTTPS-Adresse und einen unterstützten Browser.
+          {t("Dieser Browser unterstützt Push hier nicht. Verwende eine sichere HTTPS-Adresse und einen unterstützten Browser.", "This browser does not support push here. Use a secure HTTPS address and a supported browser.")}
         </p>
       ) : (
         <>
           <p>
-            Status:{" "}
+            {t("Status:", "Status:")}{" "}
             <strong>
               {subscribed
-                ? "Auf diesem Gerät aktiviert"
-                : "Auf diesem Gerät deaktiviert"}
+                ? t("Auf diesem Gerät aktiviert", "Enabled on this device")
+                : t("Auf diesem Gerät deaktiviert", "Disabled on this device")}
             </strong>
           </p>
           <div className="modal-actions">
@@ -138,7 +135,7 @@ export default function PushSettings() {
               disabled={busy || !registration || !key}
               onClick={subscribed ? disable : enable}
             >
-              {subscribed ? "Push deaktivieren" : "Push aktivieren"}
+              {subscribed ? t("Push deaktivieren", "Disable push") : t("Push aktivieren", "Enable push")}
             </button>
             {subscribed && (
               <button
@@ -149,7 +146,7 @@ export default function PushSettings() {
                   try {
                     await api("/api/push", { action: "test" });
                     setMessage(
-                      "Testbenachrichtigung wurde zum Versand eingereiht.",
+                      t("Testbenachrichtigung wurde zum Versand eingereiht.", "The test notification has been queued."),
                     );
                   } catch (e) {
                     setMessage((e as Error).message);
@@ -158,7 +155,7 @@ export default function PushSettings() {
                   }
                 }}
               >
-                Testbenachrichtigung senden
+                {t("Testbenachrichtigung senden", "Send test notification")}
               </button>
             )}
           </div>
@@ -166,8 +163,7 @@ export default function PushSettings() {
       )}
       {message && <p role="status">{message}</p>}
       <p className="muted">
-        Die Aktivierung gilt für die aktuelle Anmeldung auf diesem Gerät. Nach
-        Abmeldung oder Ablauf der Sitzung ist eine erneute Aktivierung nötig.
+        {t("Die Aktivierung gilt für die aktuelle Anmeldung auf diesem Gerät. Nach Abmeldung oder Ablauf der Sitzung ist eine erneute Aktivierung nötig.", "Enabling applies to the current sign-in on this device. After signing out or when the session expires, enable it again.")}
       </p>
     </section>
   );

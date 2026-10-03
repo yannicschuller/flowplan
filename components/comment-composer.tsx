@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Node, Extension } from "@tiptap/core";
@@ -83,6 +84,7 @@ export function CommentComposer({
   autoFocus?: boolean;
   disabled?: boolean;
 }) {
+  const t = useT();
   const listId = useId();
   const [error, setError] = useState(""),
     [mention, setMention] = useState<MentionRange | null>(null),
@@ -257,7 +259,7 @@ export function CommentComposer({
     const timeout = setTimeout(() => {
       controller.abort();
       setLoading(false);
-      setError("Die Personensuche hat zu lange gedauert. Bitte erneut suchen.");
+      setError(t("Die Personensuche hat zu lange gedauert. Bitte erneut suchen.", "The person search took too long. Please search again."));
     }, 8000);
     const timer = setTimeout(() => {
       void fetch(
@@ -268,7 +270,7 @@ export function CommentComposer({
           const data = await r.json();
           if (!r.ok)
             throw new Error(
-              data.error || "Personen konnten nicht geladen werden.",
+              data.error || t("Personen konnten nicht geladen werden.", "People could not be loaded."),
             );
           if (!controller.signal.aborted) setChoices(data);
         })
@@ -289,55 +291,55 @@ export function CommentComposer({
   const actions = editor
     ? [
         {
-          name: "Fett",
+          name: t("Fett", "Bold"),
           icon: TextB,
           active: editor.isActive("bold"),
           run: () => editor.chain().focus().toggleBold().run(),
         },
         {
-          name: "Kursiv",
+          name: t("Kursiv", "Italic"),
           icon: TextItalic,
           active: editor.isActive("italic"),
           run: () => editor.chain().focus().toggleItalic().run(),
         },
         {
-          name: "Unterstreichen",
+          name: t("Unterstreichen", "Underline"),
           icon: TextUnderline,
           active: editor.isActive("underline"),
           run: () => editor.chain().focus().toggleUnderline().run(),
         },
         {
-          name: "Durchstreichen",
+          name: t("Durchstreichen", "Strikethrough"),
           icon: TextStrikethrough,
           active: editor.isActive("strike"),
           run: () => editor.chain().focus().toggleStrike().run(),
         },
         {
-          name: "Inline-Code",
+          name: t("Inline-Code", "Inline code"),
           icon: Code,
           active: editor.isActive("code"),
           run: () => editor.chain().focus().toggleCode().run(),
         },
         {
-          name: "Aufzählung",
+          name: t("Aufzählung", "Bulleted list"),
           icon: ListBullets,
           active: editor.isActive("bulletList"),
           run: () => editor.chain().focus().toggleBulletList().run(),
         },
         {
-          name: "Nummerierte Liste",
+          name: t("Nummerierte Liste", "Numbered list"),
           icon: ListNumbers,
           active: editor.isActive("orderedList"),
           run: () => editor.chain().focus().toggleOrderedList().run(),
         },
         {
-          name: "Zitat",
+          name: t("Zitat", "Quote"),
           icon: Quotes,
           active: editor.isActive("blockquote"),
           run: () => editor.chain().focus().toggleBlockquote().run(),
         },
         {
-          name: "Codeblock",
+          name: t("Codeblock", "Code block"),
           icon: Code,
           active: editor.isActive("codeBlock"),
           run: () => editor.chain().focus().toggleCodeBlock().run(),
@@ -356,7 +358,7 @@ export function CommentComposer({
           <button
             type="button"
             key={name}
-            aria-label={`Kommentar: ${name}`}
+            aria-label={t(`Kommentar: ${name}`, `Comment: ${name}`)}
             title={name}
             aria-pressed={active}
             disabled={disabled}
@@ -368,7 +370,7 @@ export function CommentComposer({
         ))}
         <button
           type="button"
-          aria-label="Kommentar: Link"
+          aria-label={t("Kommentar: Link", "Comment: link")}
           title="Link"
           disabled={!editor || disabled}
           onMouseDown={(e) => e.preventDefault()}
@@ -381,8 +383,8 @@ export function CommentComposer({
         </button>
         <button
           type="button"
-          aria-label="Person erwähnen"
-          title="Person erwähnen (@)"
+          aria-label={t("Person erwähnen", "Mention a person")}
+          title={t("Person erwähnen (@)", "Mention a person (@)")}
           disabled={!editor || disabled}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
@@ -399,9 +401,9 @@ export function CommentComposer({
       {link !== null && (
         <div className="comment-link-editor">
           <label>
-            Linkadresse
+            {t("Linkadresse", "Link address")}
             <input
-              aria-label="Kommentar-Linkadresse"
+              aria-label={t("Kommentar-Linkadresse", "Comment link address")}
               value={link}
               onChange={(e) => setLink(e.target.value)}
               autoFocus
@@ -419,7 +421,7 @@ export function CommentComposer({
               if (!editor) return;
               if (!safeCommentLink(link)) {
                 setError(
-                  "Bitte einen gültigen HTTP-, HTTPS- oder E-Mail-Link eingeben.",
+                  t("Bitte einen gültigen HTTP-, HTTPS- oder E-Mail-Link eingeben.", "Please enter a valid HTTP, HTTPS or e-mail link."),
                 );
                 return;
               }
@@ -436,7 +438,7 @@ export function CommentComposer({
               setError("");
             }}
           >
-            Link übernehmen
+            {t("Link übernehmen", "Apply link")}
           </button>
           <button
             type="button"
@@ -446,14 +448,14 @@ export function CommentComposer({
               setLink(null);
             }}
           >
-            Link entfernen
+            {t("Link entfernen", "Remove link")}
           </button>
           <button
             type="button"
             className="text-button"
             onClick={() => setLink(null)}
           >
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
         </div>
       )}
@@ -462,9 +464,9 @@ export function CommentComposer({
         <div className="comment-mention-picker">
           {mention.manual && (
             <label>
-              Person suchen
+              {t("Person suchen", "Search person")}
               <input
-                aria-label="Person suchen"
+                aria-label={t("Person suchen", "Search person")}
                 role="combobox"
                 aria-expanded="true"
                 aria-controls={listId}
@@ -511,7 +513,7 @@ export function CommentComposer({
           <div
             id={listId}
             role="listbox"
-            aria-label="Personen mit Seitenzugriff"
+            aria-label={t("Personen mit Seitenzugriff", "People with access to the page")}
           >
             {choices.map((person, index) => (
               <button
@@ -529,16 +531,16 @@ export function CommentComposer({
             ))}
           </div>
           {loading ? (
-            <p role="status">Personen werden geladen …</p>
+            <p role="status">{t("Personen werden geladen …", "Loading people …")}</p>
           ) : !choices.length ? (
-            <p role="status">Keine berechtigte Person gefunden.</p>
+            <p role="status">{t("Keine berechtigte Person gefunden.", "No person with access found.")}</p>
           ) : null}
           <button
             type="button"
             className="text-button"
             onClick={() => setMention(null)}
           >
-            Erwähnung abbrechen
+            {t("Erwähnung abbrechen", "Cancel mention")}
           </button>
         </div>
       )}
@@ -560,6 +562,7 @@ export function CommentBody({
   content?: CommentNode | null;
   body: string;
 }) {
+  const t = useT();
   function render(node: CommentNode, index: number): ReactNode {
     let child: ReactNode =
       node.type === "text" ? node.text : (node.content || []).map(render);
@@ -569,7 +572,7 @@ export function CommentBody({
           className="comment-mention"
           data-comment-mention={node.attrs?.userId || undefined}
           title={
-            node.attrs?.userId ? "Erwähnte Person" : "Historische Erwähnung"
+            node.attrs?.userId ? t("Erwähnte Person", "Mentioned person") : t("Historische Erwähnung", "Historic mention")
           }
         >
           @{node.attrs?.label}

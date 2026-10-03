@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { SpaceAppearance } from "./space-appearance";
 import { useState } from "react";
@@ -16,6 +17,7 @@ export function SpaceManager({
   onClose: () => void;
   onDone: () => Promise<unknown>;
 }) {
+  const t = useT();
   const [removing, setRemoving] = useState(purge),
     [duplicating, setDuplicating] = useState(false),
     [icon, setIcon] = useState(space.icon),
@@ -26,12 +28,12 @@ export function SpaceManager({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const title = purge
-    ? "Bereich endgültig löschen"
+    ? t("Bereich endgültig löschen", "Delete space permanently")
     : removing
-      ? "Bereich in den Papierkorb verschieben"
+      ? t("Bereich in den Papierkorb verschieben", "Move space to trash")
       : duplicating
-        ? "Bereich duplizieren"
-        : "Bereich verwalten";
+        ? t("Bereich duplizieren", "Duplicate space")
+        : t("Bereich verwalten", "Manage space");
   async function submit() {
     setBusy(true);
     setError("");
@@ -83,11 +85,11 @@ export function SpaceManager({
             </p>
             <p>
               {purge
-                ? "Alle Seiten, Einträge und Anhänge dieses Bereichs werden dauerhaft gelöscht. Das kann nicht rückgängig gemacht werden."
-                : "Alle Seiten dieses Bereichs werden in den Papierkorb verschoben. Der Bereich kann wiederhergestellt werden. Öffentliche Seiten, Freigabelinks und Formulare werden deaktiviert und bei der Wiederherstellung nicht erneut freigegeben."}
+                ? t("Alle Seiten, Einträge und Anhänge dieses Bereichs werden dauerhaft gelöscht. Das kann nicht rückgängig gemacht werden.", "All pages, records and attachments of this space are deleted permanently. This cannot be undone.")
+                : t("Alle Seiten dieses Bereichs werden in den Papierkorb verschoben. Der Bereich kann wiederhergestellt werden. Öffentliche Seiten, Freigabelinks und Formulare werden deaktiviert und bei der Wiederherstellung nicht erneut freigegeben.", "All pages of this space move to the trash. The space can be restored. Public pages, share links and forms are switched off and not shared again when restoring.")}
             </p>
             <label>
-              Bereichsname zur Bestätigung
+              {t("Bereichsname zur Bestätigung", "Space name to confirm")}
               <input
                 autoFocus
                 value={confirmation}
@@ -101,15 +103,11 @@ export function SpaceManager({
           <>
             {duplicating && (
               <p>
-                Alle aktiven Seiten, Datenbanken, Einträge und Anhänge werden
-                als unabhängige Kopien angelegt. Interne Links bleiben innerhalb
-                der Kopie verbunden. Kommentare, Verlauf, Freigaben und
-                Papierkorb werden nicht übernommen; kopierte Formulare sind
-                zunächst deaktiviert.
+                {t("Alle aktiven Seiten, Datenbanken, Einträge und Anhänge werden als unabhängige Kopien angelegt. Interne Links bleiben innerhalb der Kopie verbunden. Kommentare, Verlauf, Freigaben und Papierkorb werden nicht übernommen; kopierte Formulare sind zunächst deaktiviert.", "All active pages, databases, records and attachments are created as independent copies. Internal links stay connected within the copy. Comments, history, shares and trash are not copied; copied forms start switched off.")}
               </p>
             )}
             <label>
-              Name
+              {t("Name", "Name")}
               <input
                 autoFocus
                 required
@@ -120,7 +118,7 @@ export function SpaceManager({
               />
             </label>
             <label>
-              Sichtbarkeit
+              {t("Sichtbarkeit", "Visibility")}
               <Select
                 value={visibility}
                 onChange={(event) =>
@@ -128,8 +126,8 @@ export function SpaceManager({
                 }
                 disabled={busy}
               >
-                <option value="team">Gesamtes Team</option>
-                <option value="private">Nur Berechtigte</option>
+                <option value="team">{t("Gesamtes Team", "Whole team")}</option>
+                <option value="private">{t("Nur Berechtigte", "Only people with access")}</option>
               </Select>
             </label>
             {!duplicating && (
@@ -155,7 +153,7 @@ export function SpaceManager({
                     setVisibility("private");
                   }}
                 >
-                  Bereich duplizieren
+                  {t("Bereich duplizieren", "Duplicate space")}
                 </button>
                 <button
                   type="button"
@@ -163,7 +161,7 @@ export function SpaceManager({
                   onClick={() => setRemoving(true)}
                   disabled={busy}
                 >
-                  Bereich löschen
+                  {t("Bereich löschen", "Delete space")}
                 </button>
               </div>
             )}
@@ -181,7 +179,7 @@ export function SpaceManager({
             disabled={busy}
             onClick={onClose}
           >
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
           <button
             className={`button ${removing ? "danger" : "primary"}`}
@@ -190,14 +188,14 @@ export function SpaceManager({
             }
           >
             {busy
-              ? "Wird gespeichert …"
+              ? t("Wird gespeichert …", "Saving …")
               : purge
-                ? "Endgültig löschen"
+                ? t("Endgültig löschen", "Delete permanently")
                 : removing
-                  ? "In den Papierkorb"
+                  ? t("In den Papierkorb", "Move to trash")
                   : duplicating
-                    ? "Kopie erstellen"
-                    : "Speichern"}
+                    ? t("Kopie erstellen", "Create copy")
+                    : t("Speichern", "Save")}
           </button>
         </div>
       </form>

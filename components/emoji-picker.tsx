@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useMemo, useState } from "react";
 import { emojiGroups, searchEmojis } from "@/lib/emoji-data";
@@ -12,6 +13,7 @@ export default function EmojiPicker({
   onSelect: (icon: string) => Promise<void>;
   allowSymbols?: boolean;
 }) {
+  const t = useT();
   const [query, setQuery] = useState(""),
     [group, setGroup] = useState("all"),
     [tone, setTone] = useState("all"),
@@ -32,14 +34,14 @@ export default function EmojiPicker({
   return (
     <div className="emoji-picker">
       <label>
-        Emoji suchen
+        {t("Emoji suchen", "Search emoji")}
         <input
           autoFocus
           type="search"
           onKeyDown={(event) => {
             if (event.key === "Enter") event.preventDefault();
           }}
-          placeholder="Zum Beispiel Rakete, Herz, Katze oder rocket"
+          placeholder={t("Zum Beispiel Rakete, Herz, Katze oder rocket", "For example rocket, heart, cat")}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -49,16 +51,16 @@ export default function EmojiPicker({
       </label>
       <div className="emoji-filters">
         <label>
-          Kategorie
+          {t("Kategorie", "Category")}
           <Select
-            aria-label="Kategorie"
+            aria-label={t("Kategorie", "Category")}
             value={group}
             onChange={(e) => {
               setGroup(e.target.value);
               setLimit(200);
             }}
           >
-            <option value="all">Alle Kategorien</option>
+            <option value="all">{t("Alle Kategorien", "All categories")}</option>
             {emojiGroups.map((g) => (
               <option key={g.key} value={g.order}>
                 {g.message}
@@ -67,18 +69,18 @@ export default function EmojiPicker({
           </Select>
         </label>
         <label>
-          Hautton
+          {t("Hautton", "Skin tone")}
           <Select
-            aria-label="Hautton"
+            aria-label={t("Hautton", "Skin tone")}
             value={tone}
             onChange={(e) => {
               setTone(e.target.value);
               setLimit(200);
             }}
           >
-            <option value="all">Alle Hauttöne</option>
-            <option value="neutral">Ohne Hautton</option>
-            {["Hell", "Mittelhell", "Mittel", "Mitteldunkel", "Dunkel"].map(
+            <option value="all">{t("Alle Hauttöne", "All skin tones")}</option>
+            <option value="neutral">{t("Ohne Hautton", "No skin tone")}</option>
+            {[t("Hell", "Light"), t("Mittelhell", "Medium light"), t("Mittel", "Medium"), t("Mitteldunkel", "Medium dark"), t("Dunkel", "Dark")].map(
               (label, i) => (
                 <option key={label} value={i + 1}>
                   {label}
@@ -89,9 +91,9 @@ export default function EmojiPicker({
         </label>
       </div>
       <p className="muted" role="status">
-        {found.length} Emojis gefunden
+        {found.length} {t("Emojis gefunden", "emojis found")}
       </p>
-      <div className="emoji-grid" aria-label="Emoji-Auswahl">
+      <div className="emoji-grid" aria-label={t("Emoji-Auswahl", "Emoji picker")}>
         {found.slice(0, limit).map((e) => (
           <button
             key={e.hexcode}
@@ -112,12 +114,12 @@ export default function EmojiPicker({
           className="button"
           onClick={() => setLimit(limit + 200)}
         >
-          Weitere Emojis anzeigen
+          {t("Weitere Emojis anzeigen", "Show more emojis")}
         </button>
       )}
       {allowSymbols && (
         <details>
-          <summary>Symbole statt Emojis</summary>
+          <summary>{t("Symbole statt Emojis", "Icons instead of emojis")}</summary>
           <div className="icon-grid">
             {[
               "file",
@@ -134,7 +136,7 @@ export default function EmojiPicker({
               <button
                 key={icon}
                 type="button"
-                aria-label={`Symbol ${icon}`}
+                aria-label={t(`Symbol ${icon}`, `Icon ${icon}`)}
                 disabled={busy}
                 onClick={() => select(icon)}
               >

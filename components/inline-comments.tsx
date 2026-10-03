@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { CommentComposer, CommentBody } from "./comment-composer";
 import type { CommentNode } from "@/lib/comment-content";
@@ -44,6 +45,7 @@ export function InlineComments({
   generation: string;
   userId: string;
 }) {
+  const t = useT();
   const panel = useRef<HTMLElement | null>(null);
   const linkedThread = useRef<string | null>(null);
   const scrolledThread = useRef<string | null>(null);
@@ -113,7 +115,7 @@ export function InlineComments({
         const data = await response.json();
         if (!response.ok)
           throw new Error(
-            data.error || "Kommentare konnten nicht geladen werden.",
+            data.error || t("Kommentare konnten nicht geladen werden.", "Comments could not be loaded."),
           );
         if (mounted.current && inflight.current === controller) {
           setThreads(data);
@@ -289,29 +291,29 @@ export function InlineComments({
           className="button compact"
           onMouseDown={(e) => e.preventDefault()}
           onClick={begin}
-          title="Auswahl oder aktuellen Block kommentieren (⌘/Strg+Alt+M)"
+          title={t("Auswahl oder aktuellen Block kommentieren (⌘/Strg+Alt+M)", "Comment on the selection or current block (⌘/Ctrl+Alt+M)")}
         >
-          <ChatCircle /> Text kommentieren
+          <ChatCircle /> {t("Text kommentieren", "Comment on text")}
         </button>
         <button
           className="text-button"
           aria-expanded={open}
           onClick={() => (open ? close() : setOpen(true))}
         >
-          Textkommentare ({threads.filter((t) => !t.resolved).length})
+          {t("Textkommentare (", "Text comments (")}{threads.filter((t) => !t.resolved).length})
         </button>
       </div>
       {open && (
         <section
           ref={panel}
           className="inline-comment-panel"
-          aria-label="Textkommentare"
+          aria-label={t("Textkommentare", "Text comments")}
         >
           <header>
-            <h3>Textkommentare</h3>
+            <h3>{t("Textkommentare", "Text comments")}</h3>
             <button
               className="icon-button"
-              aria-label="Textkommentare schließen"
+              aria-label={t("Textkommentare schließen", "Close text comments")}
               onClick={close}
             >
               <X />
@@ -319,8 +321,7 @@ export function InlineComments({
           </header>
           {draftStorageFailed && (
             <p role="status">
-              Dein Entwurf bleibt im geöffneten Editor. Der Browser konnte ihn
-              für einen Seitenwechsel nicht sichern.
+              {t("Dein Entwurf bleibt im geöffneten Editor. Der Browser konnte ihn für einen Seitenwechsel nicht sichern.", "Your draft stays in the open editor. The browser could not keep it for a page change.")}
             </p>
           )}
           {error && (
@@ -360,7 +361,7 @@ export function InlineComments({
                 {draft.anchor.quote.replaceAll("\uFFFC", "[Medienblock]")}
               </blockquote>
               <CommentComposer
-                label="Kommentar zur Textstelle"
+                label={t("Kommentar zur Textstelle", "Comment on the passage")}
                 pageId={pageId}
                 rowId={rowId}
                 body={body}
@@ -377,7 +378,7 @@ export function InlineComments({
                   className="button primary"
                   disabled={busy || !body.trim()}
                 >
-                  Kommentar senden
+                  {t("Kommentar senden", "Send comment")}
                 </button>
                 <button
                   type="button"
@@ -385,22 +386,21 @@ export function InlineComments({
                   disabled={busy}
                   onClick={() => setDraft(null)}
                 >
-                  Abbrechen
+                  {t("Abbrechen", "Cancel")}
                 </button>
               </div>
               <p className="muted">
-                Die markierte Textstelle wird beim Speichern erneut geprüft. Bei
-                Änderungen bleibt dein Entwurf erhalten.
+                {t("Die markierte Textstelle wird beim Speichern erneut geprüft. Bei Änderungen bleibt dein Entwurf erhalten.", "The marked passage is checked again when saving. If it changed, your draft is kept.")}
               </p>
             </form>
           ) : active && !thread ? (
             <p role="status">
               {loadedActive === active
-                ? "Dieser Kommentar ist nicht mehr verfügbar oder gehört zu einer anderen Seite."
-                : "Thread wird geladen …"}
+                ? t("Dieser Kommentar ist nicht mehr verfügbar oder gehört zu einer anderen Seite.", "This comment is no longer available or belongs to another page.")
+                : t("Thread wird geladen …", "Loading thread …")}
             </p>
           ) : thread && !thread.complete ? (
-            <p role="status">Thread wird geladen …</p>
+            <p role="status">{t("Thread wird geladen …", "Loading thread …")}</p>
           ) : thread ? (
             <>
               <button
@@ -410,7 +410,7 @@ export function InlineComments({
                   setEditing(null);
                 }}
               >
-                ← Alle Textkommentare
+                {t("← Alle Textkommentare", "← All text comments")}
               </button>
               <blockquote>
                 {thread.anchor.quote.replaceAll("\uFFFC", "[Medienblock]")}
@@ -427,22 +427,22 @@ export function InlineComments({
                       setTimeout(() => setCopied(false), 2500);
                     } catch {
                       setError(
-                        "Der Link konnte nicht kopiert werden. Bitte erlaube den Zugriff auf die Zwischenablage.",
+                        t("Der Link konnte nicht kopiert werden. Bitte erlaube den Zugriff auf die Zwischenablage.", "The link could not be copied. Please allow access to the clipboard."),
                       );
                     }
                   }}
                 >
-                  <Link /> {copied ? "Link kopiert" : "Kommentarlink kopieren"}
+                  <Link /> {copied ? t("Link kopiert", "Link copied") : t("Kommentarlink kopieren", "Copy comment link")}
                 </button>
                 <button
                   className="text-button"
                   disabled={!range(thread)}
                   onClick={() => goToText(thread)}
                 >
-                  Zur Textstelle
+                  {t("Zur Textstelle", "Go to passage")}
                 </button>
                 {!range(thread) && (
-                  <span className="muted">Textstelle nicht mehr verfügbar</span>
+                  <span className="muted">{t("Textstelle nicht mehr verfügbar", "Passage no longer available")}</span>
                 )}
                 {thread.canResolve && (
                   <button
@@ -456,7 +456,7 @@ export function InlineComments({
                     }
                   >
                     {thread.resolved ? <ArrowCounterClockwise /> : <Check />}
-                    {thread.resolved ? "Wieder öffnen" : "Thread erledigen"}
+                    {thread.resolved ? t("Wieder öffnen", "Reopen") : t("Thread erledigen", "Resolve thread")}
                   </button>
                 )}
               </div>
@@ -490,7 +490,7 @@ export function InlineComments({
                       >
                         <CommentComposer
                           key={m.id}
-                          label="Kommentartext bearbeiten"
+                          label={t("Kommentartext bearbeiten", "Edit comment text")}
                           pageId={pageId}
                           rowId={rowId}
                           body={editing.body}
@@ -505,18 +505,18 @@ export function InlineComments({
                           className="button"
                           disabled={busy || !editing.body.trim()}
                         >
-                          Änderung speichern
+                          {t("Änderung speichern", "Save change")}
                         </button>
                         <button
                           type="button"
                           className="text-button"
                           onClick={() => setEditing(null)}
                         >
-                          Bearbeitung abbrechen
+                          {t("Bearbeitung abbrechen", "Cancel editing")}
                         </button>
                       </form>
                     ) : m.deleted ? (
-                      <p>Kommentar gelöscht</p>
+                      <p>{t("Kommentar gelöscht", "Comment deleted")}</p>
                     ) : (
                       <CommentBody content={m.content} body={m.body} />
                     )}
@@ -527,7 +527,7 @@ export function InlineComments({
                             className="reaction-button"
                             aria-pressed={r.mine}
                             title={r.names.join(", ")}
-                            aria-label={`${r.emoji} ${r.count} Reaktionen`}
+                            aria-label={t(`${r.emoji} ${r.count} Reaktionen`, `${r.emoji} ${r.count} reactions`)}
                             key={r.emoji}
                             disabled={busy}
                             onClick={() =>
@@ -543,7 +543,7 @@ export function InlineComments({
                         ))}
                         <button
                           className="icon-button"
-                          aria-label="Emoji-Reaktion hinzufügen"
+                          aria-label={t("Emoji-Reaktion hinzufügen", "Add emoji reaction")}
                           disabled={busy}
                           onClick={() => setReaction(m.id)}
                         >
@@ -553,7 +553,7 @@ export function InlineComments({
                           <>
                             <button
                               className="icon-button"
-                              aria-label="Kommentar bearbeiten"
+                              aria-label={t("Kommentar bearbeiten", "Edit comment")}
                               disabled={busy}
                               onClick={() =>
                                 setEditing({
@@ -567,7 +567,7 @@ export function InlineComments({
                             </button>
                             <button
                               className="icon-button"
-                              aria-label="Kommentar löschen"
+                              aria-label={t("Kommentar löschen", "Delete comment")}
                               disabled={busy}
                               onClick={() => setDeleting(m)}
                             >
@@ -581,7 +581,7 @@ export function InlineComments({
                 </article>
               ))}
               {thread.resolved ? (
-                <p className="muted">Dieser Thread ist erledigt.</p>
+                <p className="muted">{t("Dieser Thread ist erledigt.", "This thread is resolved.")}</p>
               ) : (
                 <form
                   onSubmit={async (e) => {
@@ -604,7 +604,7 @@ export function InlineComments({
                 >
                   <CommentComposer
                     key={thread.id}
-                    label="Antwort"
+                    label={t("Antwort", "Reply")}
                     pageId={pageId}
                     rowId={rowId}
                     body={reply}
@@ -616,7 +616,7 @@ export function InlineComments({
                     className="button primary"
                     disabled={busy || !reply.trim()}
                   >
-                    Antwort senden
+                    {t("Antwort senden", "Send reply")}
                   </button>
                 </form>
               )}
@@ -624,45 +624,44 @@ export function InlineComments({
           ) : (
             <>
               <label>
-                Anzeigen
+                {t("Anzeigen", "Show")}
                 <Select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                 >
-                  <option value="open">Offene Threads</option>
-                  <option value="resolved">Erledigte Threads</option>
-                  <option value="all">Alle Threads</option>
+                  <option value="open">{t("Offene Threads", "Open threads")}</option>
+                  <option value="resolved">{t("Erledigte Threads", "Resolved threads")}</option>
+                  <option value="all">{t("Alle Threads", "All threads")}</option>
                 </Select>
               </label>
               {threads
                 .filter(
-                  (t) =>
+                  (thread) =>
                     filter === "all" ||
-                    (filter === "resolved" ? t.resolved : !t.resolved),
+                    (filter === "resolved" ? thread.resolved : !thread.resolved),
                 )
-                .map((t) => (
+                .map((thread) => (
                   <button
                     className="inline-thread-link"
-                    key={t.id}
-                    onClick={() => navigate(t.id)}
+                    key={thread.id}
+                    onClick={() => navigate(thread.id)}
                   >
                     <blockquote>
-                      {t.anchor.quote.replaceAll("\uFFFC", "[Medienblock]")}
+                      {thread.anchor.quote.replaceAll("\uFFFC", "[Medienblock]")}
                     </blockquote>
                     <span>
-                      {t.messages.find((m) => !m.deleted)?.body ||
-                        "Kommentar gelöscht"}
+                      {thread.messages.find((m) => !m.deleted)?.body ||
+                        t("Kommentar gelöscht", "Comment deleted")}
                     </span>
                     <small>
-                      {t.messageCount} Beiträge
-                      {!range(t) ? " · Textstelle nicht mehr verfügbar" : ""}
+                      {thread.messageCount} {t("Beiträge", "posts")}
+                      {!range(thread) ? t(" · Textstelle nicht mehr verfügbar", " · passage no longer available") : ""}
                     </small>
                   </button>
                 ))}
               {!threads.length && (
                 <p className="muted">
-                  Wähle Text oder einen Block aus und klicke auf „Text
-                  kommentieren“.
+                  {t("Wähle Text oder einen Block aus und klicke auf „Text kommentieren“.", "Select text or a block and click “Comment on text”.")}
                 </p>
               )}
             </>
@@ -672,7 +671,7 @@ export function InlineComments({
       <Modal
         open={!!reaction}
         onClose={() => setReaction(null)}
-        title="Emoji-Reaktion"
+        title={t("Emoji-Reaktion", "Emoji reaction")}
       >
         <EmojiPicker
           allowSymbols={false}
@@ -692,10 +691,10 @@ export function InlineComments({
       <Modal
         open={!!deleting}
         onClose={() => setDeleting(null)}
-        title="Kommentar löschen"
+        title={t("Kommentar löschen", "Delete comment")}
       >
         <p>
-          Der Kommentar wird entfernt. Antworten bleiben im Thread erhalten.
+          {t("Der Kommentar wird entfernt. Antworten bleiben im Thread erhalten.", "The comment is removed. Replies stay in the thread.")}
         </p>
         <button
           className="button danger"
@@ -711,7 +710,7 @@ export function InlineComments({
               setDeleting(null);
           }}
         >
-          Kommentar endgültig löschen
+          {t("Kommentar endgültig löschen", "Delete comment permanently")}
         </button>
       </Modal>
     </>

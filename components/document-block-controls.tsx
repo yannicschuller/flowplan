@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import {
   useEffect,
@@ -81,6 +82,7 @@ export function DocumentBlockControls({
   children: ReactNode;
   allowLinkedCopies?: boolean;
 }) {
+  const t = useT();
   const surface = useRef<HTMLDivElement>(null);
   const selected = useRef<number[]>([]);
   const bookmarks = useRef<ReturnType<typeof captureBlockSelection>>([]);
@@ -188,7 +190,7 @@ export function DocumentBlockControls({
           setPointerActive(false);
           setDrop(null);
           setError(
-            "Das Dokument wurde geändert. Bitte den Block erneut ziehen.",
+            t("Das Dokument wurde geändert. Bitte den Block erneut ziehen.", "The document has changed. Please drag the block again."),
           );
         }
         const explicit = tr.getMeta(BLOCK_SELECTION_META) as
@@ -246,7 +248,7 @@ export function DocumentBlockControls({
   }
   function perform(action: "duplicate" | "delete" | "move", target?: number) {
     if (!editor?.isEditable) {
-      setError("Das Dokument kann nicht bearbeitet werden.");
+      setError(t("Das Dokument kann nicht bearbeitet werden.", "The document cannot be edited."));
       return;
     }
     try {
@@ -257,7 +259,7 @@ export function DocumentBlockControls({
         range.blocks.some((b) => hasLinkedBlocks(b.node))
       )
         throw new Error(
-          "Verknüpfte Datenbanken können über Gastlinks nicht dupliziert werden.",
+          t("Verknüpfte Datenbanken können über Gastlinks nicht dupliziert werden.", "Linked databases cannot be duplicated via guest links."),
         );
       const tr = changeBlocks(editor.state, selected.current, action, target);
       dragging.current = null;
@@ -273,7 +275,7 @@ export function DocumentBlockControls({
   }
   function placeBeside(target: number, side: "left" | "right") {
     if (!editor?.isEditable) {
-      setError("Das Dokument kann nicht bearbeitet werden.");
+      setError(t("Das Dokument kann nicht bearbeitet werden.", "The document cannot be edited."));
       return;
     }
     try {
@@ -541,7 +543,7 @@ export function DocumentBlockControls({
             setOpen(true);
           }}
         >
-          ⠿ Blöcke verwalten
+          {t("⠿ Blöcke verwalten", "⠿ Manage blocks")}
         </button>
       )}
       <div
@@ -550,7 +552,7 @@ export function DocumentBlockControls({
       >
         {children}
         {editor?.isEditable && (
-          <div className="block-handle-layer" aria-label="Blockgriffe">
+          <div className="block-handle-layer" aria-label={t("Blockgriffe", "Block handles")}>
             {blocks
               .filter((block) => !listContainers.includes(block.node.type.name))
               .map((block) => (
@@ -563,8 +565,8 @@ export function DocumentBlockControls({
                   left: Math.max(0, block.left - 25),
                   top: block.handleTop,
                 }}
-                aria-label={`Blockaktionen: ${block.label}`}
-                title="Ziehen oder Blockaktionen öffnen"
+                aria-label={t(`Blockaktionen: ${block.label}`, `Block actions: ${block.label}`)}
+                title={t("Ziehen oder Blockaktionen öffnen", "Drag or open block actions")}
                 onPointerDown={(event) => pointerDown(event, block)}
                 onPointerMove={pointerMove}
                 onPointerUp={(event) => {
@@ -582,7 +584,7 @@ export function DocumentBlockControls({
                     else if (target !== undefined) perform("move", target);
                     else
                       setError(
-                        "An dieser Position kann der Block nicht abgelegt werden.",
+                        t("An dieser Position kann der Block nicht abgelegt werden.", "The block cannot be dropped at this position."),
                       );
                     // A drag selects only for its own duration; the moved
                     // block's handle must not stay highlighted afterwards.
@@ -629,7 +631,7 @@ export function DocumentBlockControls({
       )}
       <Modal
         open={open}
-        title="Blöcke verwalten"
+        title={t("Blöcke verwalten", "Manage blocks")}
         onClose={() => setOpen(false)}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -637,7 +639,7 @@ export function DocumentBlockControls({
         }}
       >
         <p className="muted">
-          Wähle einen Block oder mehrere benachbarte Blöcke derselben Ebene.
+          {t("Wähle einen Block oder mehrere benachbarte Blöcke derselben Ebene.", "Choose a block or several neighbouring blocks on the same level.")}
         </p>
         <div className="document-block-list">
           {all.map((block) => (
@@ -670,9 +672,9 @@ export function DocumentBlockControls({
           if (!editor || only?.node.type.name !== "media") return null;
           return (
             <label className="block-media-width">
-              Breite
+              {t("Breite", "Width")}
               <Select
-                aria-label="Medienbreite"
+                aria-label={t("Medienbreite", "Media width")}
                 disabled={!editor.isEditable}
                 value={String(only.node.attrs.width || 100)}
                 onChange={(event) => {
@@ -701,7 +703,7 @@ export function DocumentBlockControls({
         })()}
         {selected.current.length > 0 && !rangeValid && (
           <p role="status">
-            Die Auswahl muss aus benachbarten Blöcken derselben Ebene bestehen.
+            {t("Die Auswahl muss aus benachbarten Blöcken derselben Ebene bestehen.", "The selection must consist of neighbouring blocks on the same level.")}
           </p>
         )}
         <div className="block-action-buttons">
@@ -711,7 +713,7 @@ export function DocumentBlockControls({
             disabled={!editor?.isEditable || !up}
             onClick={() => shift(-1)}
           >
-            Nach oben
+            {t("Nach oben", "Up")}
           </button>
           <button
             className="button"
@@ -719,7 +721,7 @@ export function DocumentBlockControls({
             disabled={!editor?.isEditable || !down}
             onClick={() => shift(1)}
           >
-            Nach unten
+            {t("Nach unten", "Down")}
           </button>
           <button
             className="button"
@@ -727,7 +729,7 @@ export function DocumentBlockControls({
             disabled={!editor?.isEditable || !rangeValid || !copyAllowed}
             onClick={() => perform("duplicate")}
           >
-            Duplizieren
+            {t("Duplizieren", "Duplicate")}
           </button>
           <button
             className="button"
@@ -735,29 +737,28 @@ export function DocumentBlockControls({
             disabled={!editor?.isEditable || !rangeValid}
             onClick={() => perform("delete")}
           >
-            Löschen
+            {t("Löschen", "Delete")}
           </button>
         </div>
         {!copyAllowed && (
           <p className="muted">
-            Verknüpfte Datenbanken lassen sich nur im Arbeitsbereich
-            duplizieren.
+            {t("Verknüpfte Datenbanken lassen sich nur im Arbeitsbereich duplizieren.", "Linked databases can only be duplicated in the workspace.")}
           </p>
         )}
         <label>
-          Zielposition
+          {t("Zielposition", "Target position")}
           <Select
-            aria-label="Block-Zielposition"
+            aria-label={t("Block-Zielposition", "Block target position")}
             value={destination}
             onChange={(event) => setDestination(event.target.value)}
           >
-            <option value="">Position auswählen …</option>
+            <option value="">{t("Position auswählen …", "Choose position …")}</option>
             {all.flatMap((b) => [
               <option key={`before-${b.pos}`} value={b.pos}>
-                Vor: {b.label}
+                {t("Vor:", "Before:")}{" "}{b.label}
               </option>,
               <option key={`after-${b.pos}`} value={b.end}>
-                Nach: {b.label}
+                {t("Nach:", "After:")}{" "}{b.label}
               </option>,
             ])}
           </Select>
@@ -768,7 +769,7 @@ export function DocumentBlockControls({
             className="button"
             onClick={() => setOpen(false)}
           >
-            Fertig
+            {t("Fertig", "Done")}
           </button>
           <button
             type="button"
@@ -776,7 +777,7 @@ export function DocumentBlockControls({
             disabled={!editor?.isEditable || !rangeValid || destination === ""}
             onClick={() => perform("move", Number(destination))}
           >
-            Verschieben
+            {t("Verschieben", "Move")}
           </button>
         </div>
         {error && (

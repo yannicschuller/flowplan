@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import { Modal } from "./ui";
@@ -13,6 +14,7 @@ export function PageExportDialog({
   onClose: () => void;
   onLegacy: () => void;
 }) {
+  const t = useT();
   const [format, setFormat] = useState("markdown"),
     [children, setChildren] = useState(false),
     [busy, setBusy] = useState(false),
@@ -38,7 +40,7 @@ export function PageExportDialog({
       });
       if (!response.ok)
         throw new Error(
-          (await response.json()).error || "Export fehlgeschlagen.",
+          (await response.json()).error || t("Export fehlgeschlagen.", "Export failed."),
         );
       const blob = await response.blob(),
         url = URL.createObjectURL(blob),
@@ -52,7 +54,7 @@ export function PageExportDialog({
       onClose();
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "Export fehlgeschlagen.",
+        error instanceof Error ? error.message : t("Export fehlgeschlagen.", "Export failed."),
       );
     } finally {
       setBusy(false);
@@ -61,7 +63,7 @@ export function PageExportDialog({
   return (
     <Modal
       open
-      title="Seite exportieren"
+      title={t("Seite exportieren", "Export page")}
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -73,19 +75,19 @@ export function PageExportDialog({
         }}
       >
         <label>
-          Format
+          {t("Format", "Format")}
           <Select
-            aria-label="Exportformat"
+            aria-label={t("Exportformat", "Export format")}
             value={format}
             disabled={busy}
             onChange={(event) => setFormat(event.target.value)}
           >
             <option value="markdown">Markdown (.md)</option>
-            <option value="zip">Markdown mit Dateien (.zip)</option>
+            <option value="zip">{t("Markdown mit Dateien (.zip)", "Markdown with files (.zip)")}</option>
             <option value="legacy">
               {page.kind === "document"
                 ? "HTML (.html)"
-                : "Datenbank-JSON (.json)"}
+                : t("Datenbank-JSON (.json)", "Database JSON (.json)")}
             </option>
           </Select>
         </label>
@@ -97,25 +99,23 @@ export function PageExportDialog({
               disabled={busy}
               onChange={(event) => setChildren(event.target.checked)}
             />
-            Zugängliche Unterseiten einschließen
+            {t("Zugängliche Unterseiten einschließen", "Include accessible sub-pages")}
           </label>
         )}
         <p className="muted">
           {format === "markdown"
-            ? "Eine Markdown-Datei. Datei- und Seitenlinks verweisen weiterhin auf Flowplan."
+            ? t("Eine Markdown-Datei. Datei- und Seitenlinks verweisen weiterhin auf Flowplan.", "One Markdown file. File and page links keep pointing to Flowplan.")
             : format === "zip"
-              ? "Lokale Anhänge und relative Links sind enthalten. Externe Medien bleiben Links."
-              : "Das vorhandene Exportformat dieser Seite."}
+              ? t("Lokale Anhänge und relative Links sind enthalten. Externe Medien bleiben Links.", "Local attachments and relative links are included. External media stay links.")
+              : t("Das vorhandene Exportformat dieser Seite.", "This page's existing export format.")}
         </p>
         {page.kind === "database" && format !== "legacy" && (
           <p className="muted">
-            Enthält alle Datensätze, Eigenschaften und Datensatzdokumente,
-            unabhängig von Ansichtfiltern. Im ZIP liegt zusätzlich eine
-            CSV-Tabelle.
+            {t("Enthält alle Datensätze, Eigenschaften und Datensatzdokumente, unabhängig von Ansichtfiltern. Im ZIP liegt zusätzlich eine CSV-Tabelle.", "Contains all records, properties and record documents regardless of view filters. The ZIP also contains a CSV table.")}
           </p>
         )}
         <p className="muted">
-          Offene Dokumentänderungen werden vor dem Download gespeichert.
+          {t("Offene Dokumentänderungen werden vor dem Download gespeichert.", "Open document changes are saved before the download.")}
         </p>
         {error && (
           <p role="alert" className="math-validation">
@@ -129,10 +129,10 @@ export function PageExportDialog({
             disabled={busy}
             onClick={onClose}
           >
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
           <button className="button primary" disabled={busy}>
-            {busy ? "Export wird erstellt …" : "Herunterladen"}
+            {busy ? t("Export wird erstellt …", "Creating export …") : t("Herunterladen", "Download")}
           </button>
         </div>
       </form>

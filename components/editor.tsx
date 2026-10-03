@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import {
   resolveSuggestions,
@@ -164,6 +165,7 @@ export default function DocumentEditor({
   onError: (v: string) => void;
   onHtml: (v: string) => void;
 }) {
+  const t = useT();
   const doc = useMemo(() => new Y.Doc(), [pageId, rowId]);
   // One id per open editor: the live channel does not echo its own changes
   // and cursor moves back to it.
@@ -318,7 +320,7 @@ export default function DocumentEditor({
           enabled: () => suggestingRef.current,
           user: () => ({
             id: userId,
-            name: memberNames.current.get(userId) || "Jemand",
+            name: memberNames.current.get(userId) || t("Jemand", "Someone"),
           }),
         }),
         BlockReactionAttribute,
@@ -348,7 +350,7 @@ export default function DocumentEditor({
             : false,
         }),
         Placeholder.configure({
-          placeholder: "Schreibe etwas oder tippe / für Befehle …",
+          placeholder: t("Schreibe etwas oder tippe / für Befehle …", "Write something or type / for commands …"),
         }),
         Highlight.configure({ multicolor: true }),
         TextColor,
@@ -378,7 +380,7 @@ export default function DocumentEditor({
         transformPasted: freshLinkedIds,
         attributes: {
           class: "document-editor",
-          "aria-label": "Dokumentinhalt",
+          "aria-label": t("Dokumentinhalt", "Document content"),
         },
         // Images and files from the clipboard or dropped on the page are
         // uploaded and inserted where the caret is.
@@ -601,10 +603,10 @@ export default function DocumentEditor({
       registerDocumentFlush(async () => {
         if (!editable) return;
         if (!ready.current)
-          throw new Error("Das Dokument wird noch geladen. Bitte kurz warten.");
+          throw new Error(t("Das Dokument wird noch geladen. Bitte kurz warten.", "The document is still loading. Please wait a moment."));
         if (!navigator.onLine)
           throw new Error(
-            "Zum Exportieren bitte die Verbindung wiederherstellen.",
+            t("Zum Exportieren bitte die Verbindung wiederherstellen.", "Please restore the connection to export."),
           );
         if (!dirty.current && !inflight.current) return;
         const result = await api<{ state: string }>("/api/command", {
@@ -661,7 +663,7 @@ export default function DocumentEditor({
       onStatus(
         navigator.onLine
           ? editable
-            ? "Synchronisieren …"
+            ? t("Synchronisieren …", "Syncing …")
             : "Gespeichert"
           : "Offline gespeichert",
       );
@@ -775,65 +777,65 @@ export default function DocumentEditor({
   }
   const commands: SlashItem[] = [
     {
-      name: "Text",
+      name: t("Text", "Text"),
       keywords: ["text", "p", "absatz", "paragraph"],
-      description: "Einfach losschreiben",
+      description: t("Einfach losschreiben", "Just start writing"),
       icon: TextAlignLeft,
       run: () => editor?.chain().focus().setParagraph().run(),
     },
     {
-      name: "Überschrift 1",
+      name: t("Überschrift 1", "Heading 1"),
       keywords: ["h1", "#", "titel", "heading1"],
-      description: "Große Überschrift",
+      description: t("Große Überschrift", "Large heading"),
       icon: TextHOne,
       run: () => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
     },
     {
-      name: "Überschrift 2",
+      name: t("Überschrift 2", "Heading 2"),
       keywords: ["h2", "##", "heading2"],
-      description: "Mittlere Überschrift",
+      description: t("Mittlere Überschrift", "Medium heading"),
       icon: TextHTwo,
       run: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
     },
     {
-      name: "Überschrift 3",
+      name: t("Überschrift 3", "Heading 3"),
       keywords: ["h3", "###", "heading3"],
-      description: "Kleine Überschrift",
+      description: t("Kleine Überschrift", "Small heading"),
       icon: TextHThree,
       run: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
     },
     {
-      name: "Aufgabenliste",
+      name: t("Aufgabenliste", "Task list"),
       keywords: ["todo", "aufgabe", "task", "checkbox", "[]"],
-      description: "Schritt für Schritt abhaken",
+      description: t("Schritt für Schritt abhaken", "Tick off step by step"),
       icon: CheckSquare,
       run: () => editor?.chain().focus().toggleTaskList().run(),
     },
     {
-      name: "Aufzählung",
+      name: t("Aufzählung", "Bulleted list"),
       keywords: ["ul", "liste", "bullet", "punkte", "-"],
-      description: "Eine Liste mit Punkten",
+      description: t("Eine Liste mit Punkten", "A list with bullets"),
       icon: ListBullets,
       run: () => editor?.chain().focus().toggleBulletList().run(),
     },
     {
-      name: "Nummerierte Liste",
+      name: t("Nummerierte Liste", "Numbered list"),
       keywords: ["ol", "1.", "nummer", "numbered"],
-      description: "Eine geordnete Liste",
+      description: t("Eine geordnete Liste", "An ordered list"),
       icon: ListNumbers,
       run: () => editor?.chain().focus().toggleOrderedList().run(),
     },
     {
-      name: "Zitat",
+      name: t("Zitat", "Quote"),
       keywords: ["quote", ">"],
-      description: "Einen Gedanken hervorheben",
+      description: t("Einen Gedanken hervorheben", "Highlight a thought"),
       icon: Quotes,
       run: () => editor?.chain().focus().toggleBlockquote().run(),
     },
     {
-      name: "Hinweis",
+      name: t("Hinweis", "Callout"),
       keywords: ["callout", "info", "note"],
-      description: "Wichtige Informationen",
+      description: t("Wichtige Informationen", "Important information"),
       icon: Info,
       run: () =>
         editor
@@ -844,30 +846,30 @@ export default function DocumentEditor({
             content: [
               {
                 type: "paragraph",
-                content: [{ type: "text", text: "Gut zu wissen …" }],
+                content: [{ type: "text", text: t("Gut zu wissen …", "Good to know …") }],
               },
             ],
           })
           .run(),
     },
     {
-      name: "Aufklappbarer Block",
+      name: t("Aufklappbarer Block", "Toggle"),
       keywords: ["toggle", "details", "aufklappen"],
-      description: "Details ein- und ausblenden",
+      description: t("Details ein- und ausblenden", "Show and hide details"),
       icon: CaretRight,
       run: () => setToggle(true),
     },
     {
       name: "Code",
       keywords: ["codeblock", "```"],
-      description: "Codeblock einfügen",
+      description: t("Codeblock einfügen", "Insert a code block"),
       icon: Code,
       run: () => editor?.chain().focus().toggleCodeBlock().run(),
     },
     {
-      name: "Tabelle",
+      name: t("Tabelle", "Table"),
       keywords: ["table"],
-      description: "Zeilen und Spalten",
+      description: t("Zeilen und Spalten", "Rows and columns"),
       icon: TableIcon,
       run: () =>
         editor
@@ -877,44 +879,44 @@ export default function DocumentEditor({
           .run(),
     },
     {
-      name: "Bild oder Datei",
+      name: t("Bild oder Datei", "Image or file"),
       keywords: ["bild", "image", "img", "datei", "file", "upload", "foto"],
-      description: "Datei vom Gerät hochladen",
+      description: t("Datei vom Gerät hochladen", "Upload a file from your device"),
       icon: ImageIcon,
       run: () => uploadRef.current?.click(),
     },
     {
-      name: "Mermaid-Diagramm",
+      name: t("Mermaid-Diagramm", "Mermaid diagram"),
       keywords: ["mermaid", "diagramm", "flowchart", "chart"],
-      description: "Abläufe, Sequenzen und Beziehungen",
+      description: t("Abläufe, Sequenzen und Beziehungen", "Flows, sequences and relationships"),
       icon: Code,
       run: () => setDiagram({ source: DEFAULT_DIAGRAM }),
     },
     {
-      name: "Formel",
+      name: t("Formel", "Formula"),
       keywords: ["math", "latex", "katex", "tex"],
-      description: "Mathematischer Ausdruck",
+      description: t("Mathematischer Ausdruck", "Mathematical expression"),
       icon: FunctionIcon,
       run: () => setMath({ type: "mathBlock", expression: "" }),
     },
     {
-      name: "Inline-Formel",
+      name: t("Inline-Formel", "Inline formula"),
       keywords: ["inlinemath"],
-      description: "Mathematik direkt im Satz",
+      description: t("Mathematik direkt im Satz", "Math right inside a sentence"),
       icon: FunctionIcon,
       run: () => openInlineMath(),
     },
     {
-      name: "Seite oder Person erwähnen",
+      name: t("Seite oder Person erwähnen", "Mention a page or person"),
       keywords: ["mention", "link", "@", "seite", "person"],
-      description: "Mit @ Wissen verknüpfen",
+      description: t("Mit @ Wissen verknüpfen", "Connect knowledge with @"),
       icon: LinkIcon,
       run: () => setReferences(true),
     },
     {
-      name: "Whiteboard",
+      name: t("Whiteboard", "Whiteboard"),
       keywords: ["board", "canvas"],
-      description: "Board anzeigen oder neu anlegen",
+      description: t("Board anzeigen oder neu anlegen", "Show or create a board"),
       icon: PresentationChart,
       run: () => {
         setBoardSearch("");
@@ -922,16 +924,16 @@ export default function DocumentEditor({
       },
     },
     {
-      name: "Sprachnotiz",
+      name: t("Sprachnotiz", "Voice note"),
       keywords: ["audio", "aufnahme", "mikrofon", "diktat", "voice", "sprache"],
-      description: transcription ? "Aufnehmen und als Text einfügen" : "Aufnehmen und als Audio einfügen",
+      description: transcription ? t("Aufnehmen und als Text einfügen", "Record and insert as text") : t("Aufnehmen und als Audio einfügen", "Record and insert as audio"),
       icon: Microphone,
       run: () => setVoice(true),
     },
     {
-      name: "Synchronisierter Block",
+      name: t("Synchronisierter Block", "Synced block"),
       keywords: ["sync", "synced", "synchron", "wiederverwenden"],
-      description: "Inhalt, der auf mehreren Seiten gleich bleibt",
+      description: t("Inhalt, der auf mehreren Seiten gleich bleibt", "Content that stays the same on several pages"),
       icon: ArrowsClockwise,
       run: async () => {
         try {
@@ -946,9 +948,9 @@ export default function DocumentEditor({
       },
     },
     {
-      name: "Synchronisierten Block einfügen",
+      name: t("Synchronisierten Block einfügen", "Insert synced block"),
       keywords: ["sync", "synced", "einfuegen", "kopie"],
-      description: "Einen bestehenden synchronisierten Block zeigen",
+      description: t("Einen bestehenden synchronisierten Block zeigen", "Show an existing synced block"),
       icon: ArrowsClockwise,
       run: async () => {
         const host = pages.find((p) => p.id === pageId);
@@ -963,9 +965,9 @@ export default function DocumentEditor({
       },
     },
     {
-      name: "Verknüpfte Datenbank",
+      name: t("Verknüpfte Datenbank", "Linked database"),
       keywords: ["datenbank", "db", "database", "linked"],
-      description: "Bestehende Einträge mit eigener Ansicht",
+      description: t("Bestehende Einträge mit eigener Ansicht", "Existing records with a view of their own"),
       icon: TableIcon,
       run: () => {
         setLinkedSearch("");
@@ -973,9 +975,9 @@ export default function DocumentEditor({
       },
     },
     {
-      name: "Zwei Spalten",
+      name: t("Zwei Spalten", "Two columns"),
       keywords: ["spalten", "columns", "cols"],
-      description: "Inhalte nebeneinander",
+      description: t("Inhalte nebeneinander", "Content side by side"),
       icon: TableIcon,
       run: () =>
         editor
@@ -991,23 +993,23 @@ export default function DocumentEditor({
           .run(),
     },
     {
-      name: "Einbetten",
+      name: t("Einbetten", "Embed"),
       keywords: ["embed", "youtube", "video", "figma", "loom"],
-      description: "YouTube, Vimeo, Loom, Spotify, Figma oder CodePen",
+      description: t("YouTube, Vimeo, Loom, Spotify, Figma oder CodePen", "YouTube, Vimeo, Loom, Spotify, Figma or CodePen"),
       icon: ImageIcon,
       run: () => setEmbed(true),
     },
     {
-      name: "Spoiler",
+      name: t("Spoiler", "Spoiler"),
       keywords: ["verdecken", "versteckt", "hide", "geheim"],
-      description: "Text verdecken, bis jemand darauf klickt",
+      description: t("Text verdecken, bis jemand darauf klickt", "Hide text until someone clicks it"),
       icon: EyeSlash,
       run: () => editor?.chain().focus().toggleMark("spoiler").run(),
     },
     {
-      name: "Trennlinie",
+      name: t("Trennlinie", "Divider"),
       keywords: ["hr", "divider", "linie", "---"],
-      description: "Inhalte voneinander trennen",
+      description: t("Inhalte voneinander trennen", "Separate content"),
       icon: Minus,
       run: () => editor?.chain().focus().setHorizontalRule().run(),
     },
@@ -1079,7 +1081,7 @@ export default function DocumentEditor({
           <div
             className="editor-toolbar"
             role="toolbar"
-            aria-label="Textformatierung"
+            aria-label={t("Textformatierung", "Text formatting")}
             // Buttons keep the caret and selection in the text; fields and
             // pickers still take focus.
             onMouseDown={(event) => {
@@ -1088,45 +1090,45 @@ export default function DocumentEditor({
             }}
           >
             <button
-              title="Rückgängig"
+              title={t("Rückgängig", "Undo")}
               onClick={() => editor?.chain().focus().undo().run()}
             >
               <ArrowUUpLeft />
             </button>
             <button
-              title="Wiederholen"
+              title={t("Wiederholen", "Redo")}
               onClick={() => editor?.chain().focus().redo().run()}
             >
               <ArrowUUpRight />
             </button>
             <span className="toolbar-separator" />
             <button
-              title="Fett"
+              title={t("Fett", "Bold")}
               className={editor?.isActive("bold") ? "active" : ""}
               onClick={() => editor?.chain().focus().toggleBold().run()}
             >
               <TextB />
             </button>
             <button
-              title="Kursiv"
+              title={t("Kursiv", "Italic")}
               onClick={() => editor?.chain().focus().toggleItalic().run()}
             >
               <TextItalic />
             </button>
             <button
-              title="Unterstrichen"
+              title={t("Unterstrichen", "Underline")}
               onClick={() => editor?.chain().focus().toggleUnderline().run()}
             >
               <TextUnderline />
             </button>
             <button
-              title="Durchgestrichen"
+              title={t("Durchgestrichen", "Strikethrough")}
               onClick={() => editor?.chain().focus().toggleStrike().run()}
             >
               <TextStrikethrough />
             </button>
             <button
-              title="Markieren"
+              title={t("Markieren", "Highlight")}
               onClick={() => editor?.chain().focus().toggleHighlight().run()}
             >
               <Highlighter />
@@ -1141,7 +1143,7 @@ export default function DocumentEditor({
               }}
             >
               <Dropdown.Trigger asChild>
-                <button title="Farbe" aria-label="Text- und Hintergrundfarbe">
+                <button title={t("Farbe", "Colour")} aria-label={t("Text- und Hintergrundfarbe", "Text and background colour")}>
                   <Palette />
                 </button>
               </Dropdown.Trigger>
@@ -1151,13 +1153,13 @@ export default function DocumentEditor({
                   sideOffset={6}
                   onCloseAutoFocus={(event) => event.preventDefault()}
                 >
-                  <div className="color-menu-label">Textfarbe</div>
+                  <div className="color-menu-label">{t("Textfarbe", "Text colour")}</div>
                   <div className="color-swatches">
                     {textColors.map(([name, color]) => (
                       <Dropdown.Item
                         key={color}
                         className="color-swatch"
-                        aria-label={`Textfarbe ${name}`}
+                        aria-label={t(`Textfarbe ${name}`, `Text colour ${name}`)}
                         title={name}
                         style={{ color }}
                         onSelect={() => colorChain()?.setTextColor(color).run()}
@@ -1166,13 +1168,13 @@ export default function DocumentEditor({
                       </Dropdown.Item>
                     ))}
                   </div>
-                  <div className="color-menu-label">Hintergrund</div>
+                  <div className="color-menu-label">{t("Hintergrund", "Background")}</div>
                   <div className="color-swatches">
                     {highlightColors.map(([name, color]) => (
                       <Dropdown.Item
                         key={color}
                         className="color-swatch"
-                        aria-label={`Hintergrund ${name}`}
+                        aria-label={t(`Hintergrund ${name}`, `Background ${name}`)}
                         title={name}
                         style={{ background: color }}
                         onSelect={() =>
@@ -1189,15 +1191,15 @@ export default function DocumentEditor({
                       colorChain()?.unsetTextColor().unsetHighlight().run()
                     }
                   >
-                    Farben entfernen
+                    {t("Farben entfernen", "Remove colours")}
                   </Dropdown.Item>
                 </Dropdown.Content>
               </Dropdown.Portal>
             </Dropdown.Root>
             {editor && selectedMediaWidth !== null && (
               <Select
-                aria-label="Medienbreite"
-                title="Breite des Videos oder der Einbettung"
+                aria-label={t("Medienbreite", "Media width")}
+                title={t("Breite des Videos oder der Einbettung", "Width of the video or embed")}
                 value={String(selectedMediaWidth)}
                 onChange={(e) =>
                   editor
@@ -1217,21 +1219,21 @@ export default function DocumentEditor({
               </Select>
             )}
             <button
-              title="Hochgestellt"
+              title={t("Hochgestellt", "Superscript")}
               className={editor?.isActive("superscript") ? "active" : ""}
               onClick={() => editor?.chain().focus().toggleSuperscript().run()}
             >
               <TextSuperscript />
             </button>
             <button
-              title="Tiefgestellt"
+              title={t("Tiefgestellt", "Subscript")}
               className={editor?.isActive("subscript") ? "active" : ""}
               onClick={() => editor?.chain().focus().toggleSubscript().run()}
             >
               <TextSubscript />
             </button>
             <button
-              title="Verdecken (Spoiler) · ⌘⌥H"
+              title={t("Verdecken (Spoiler) · ⌘⌥H", "Hide (spoiler) · ⌘⌥H")}
               aria-pressed={!!editor?.isActive("spoiler")}
               className={editor?.isActive("spoiler") ? "active" : ""}
               onClick={() => editor?.chain().focus().toggleMark("spoiler").run()}
@@ -1239,14 +1241,14 @@ export default function DocumentEditor({
               <EyeSlash />
             </button>
             <button
-              title={suggesting ? "Vorschlagen beenden – wieder direkt bearbeiten" : "Vorschlagen: Änderungen als Vorschläge markieren"}
-              aria-label="Vorschlagen"
+              title={suggesting ? t("Vorschlagen beenden – wieder direkt bearbeiten", "Stop suggesting – edit directly again") : t("Vorschlagen: Änderungen als Vorschläge markieren", "Suggest: mark changes as suggestions")}
+              aria-label={t("Vorschlagen", "Suggest")}
               aria-pressed={suggesting}
               className={`suggest-toggle${suggesting ? " active" : ""}`}
               onClick={() => setSuggesting(!suggesting)}
             >
               <PencilLine />
-              {suggesting && <span>Vorschlagen</span>}
+              {suggesting && <span>{t("Vorschlagen", "Suggest")}</span>}
             </button>
             <button
               title="Link"
@@ -1259,7 +1261,7 @@ export default function DocumentEditor({
             </button>
             <span className="toolbar-separator" />
             <button
-              title="Überschrift"
+              title={t("Überschrift", "Heading")}
               onClick={() =>
                 editor?.chain().focus().toggleHeading({ level: 2 }).run()
               }
@@ -1267,15 +1269,15 @@ export default function DocumentEditor({
               <TextHTwo />
             </button>
             <button
-              title="Aufgabenliste"
+              title={t("Aufgabenliste", "Task list")}
               onClick={() => editor?.chain().focus().toggleTaskList().run()}
             >
               <CheckSquare />
             </button>
             {editor?.isActive("taskItem") && (
               <button
-                title="Fälligkeit setzen"
-                aria-label="Fälligkeit setzen"
+                title={t("Fälligkeit setzen", "Set due date")}
+                aria-label={t("Fälligkeit setzen", "Set due date")}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => editor && pickTaskDue(editor.view, e.currentTarget)}
               >
@@ -1283,30 +1285,30 @@ export default function DocumentEditor({
               </button>
             )}
             <button
-              title="Zentrieren"
+              title={t("Zentrieren", "Centre")}
               onClick={() =>
                 editor?.chain().focus().setTextAlign("center").run()
               }
             >
               <TextAlignCenter />
             </button>
-            <button title="Block nach oben" onClick={() => moveBlock(-1)}>
+            <button title={t("Block nach oben", "Move block up")} onClick={() => moveBlock(-1)}>
               ↑
             </button>
-            <button title="Block nach unten" onClick={() => moveBlock(1)}>
+            <button title={t("Block nach unten", "Move block down")} onClick={() => moveBlock(1)}>
               ↓
             </button>
             <button
-              title="Inhaltsverzeichnis"
+              title={t("Inhaltsverzeichnis", "Table of contents")}
               onClick={() => setOutline(!outline)}
             >
               <ListBullets />
             </button>
-            <button title="Inline-Formel" onClick={openInlineMath}>
+            <button title={t("Inline-Formel", "Inline formula")} onClick={openInlineMath}>
               <FunctionIcon />
             </button>
             <button
-              title="Block hinzufügen"
+              title={t("Block hinzufügen", "Add block")}
               onClick={() => {
                 if (!editor) return;
                 setSlash({
@@ -1329,18 +1331,18 @@ export default function DocumentEditor({
           const apply = (accept: boolean, test: (a: { id: string; kind: string }) => boolean) =>
             editor.view.dispatch(resolveSuggestions(editor.state, accept, test));
           return (
-            <div className="suggestion-bar" role="region" aria-label="Vorschläge">
+            <div className="suggestion-bar" role="region" aria-label={t("Vorschläge", "Suggestions")}>
               <button type="button" className="suggestion-count" aria-expanded={suggestionList} onClick={() => setSuggestionList(!suggestionList)}>
                 <PencilLine size={15} />
-                {ids.size} {ids.size === 1 ? "Vorschlag" : "Vorschläge"}
+                {ids.size} {ids.size === 1 ? t("Vorschlag", "Suggestion") : t("Vorschläge", "Suggestions")}
               </button>
               {editable && (
                 <>
                   <button type="button" className="text-button" onClick={() => apply(true, () => true)}>
-                    Alle annehmen
+                    {t("Alle annehmen", "Accept all")}
                   </button>
                   <button type="button" className="text-button" onClick={() => apply(false, () => true)}>
-                    Alle ablehnen
+                    {t("Alle ablehnen", "Reject all")}
                   </button>
                 </>
               )}
@@ -1357,16 +1359,16 @@ export default function DocumentEditor({
                           (node.nodeType === 1 ? node : node.parentElement)?.scrollIntoView({ block: "center" });
                         }}
                       >
-                        <strong>{g.name || "Jemand"}</strong>
-                        <span>{g.kind === "insert" ? "fügt ein" : "löscht"}</span>
+                        <strong>{g.name || t("Jemand", "Someone")}</strong>
+                        <span>{g.kind === "insert" ? t("fügt ein", "inserts") : t("löscht", "deletes")}</span>
                         <q>{g.text.length > 80 ? `${g.text.slice(0, 78)}…` : g.text}</q>
                       </button>
                       {editable && (
                         <span className="suggestion-actions">
-                          <button type="button" aria-label="Annehmen" title="Annehmen" onClick={() => apply(true, (a) => a.id === g.id)}>
+                          <button type="button" aria-label={t("Annehmen", "Accept")} title={t("Annehmen", "Accept")} onClick={() => apply(true, (a) => a.id === g.id)}>
                             <Check size={15} />
                           </button>
-                          <button type="button" aria-label="Ablehnen" title="Ablehnen" onClick={() => apply(false, (a) => a.id === g.id)}>
+                          <button type="button" aria-label={t("Ablehnen", "Reject")} title={t("Ablehnen", "Reject")} onClick={() => apply(false, (a) => a.id === g.id)}>
                             <X size={15} />
                           </button>
                         </span>
@@ -1379,8 +1381,8 @@ export default function DocumentEditor({
           );
         })()}
         {outline && (
-          <nav className="document-outline" aria-label="Inhaltsverzeichnis">
-            <strong>Inhalt</strong>
+          <nav className="document-outline" aria-label={t("Inhaltsverzeichnis", "Table of contents")}>
+            <strong>{t("Inhalt", "Content")}</strong>
             {headings.map((h) => (
               <button
                 key={h.pos}
@@ -1391,7 +1393,7 @@ export default function DocumentEditor({
                     node.scrollIntoView({ block: "center" });
                 }}
               >
-                {h.text || "Überschrift"}
+                {h.text || t("Überschrift", "Heading")}
               </button>
             ))}
           </nav>
@@ -1414,10 +1416,10 @@ export default function DocumentEditor({
               + Spalte
             </button>
             <button onClick={() => editor.chain().focus().deleteRow().run()}>
-              Zeile löschen
+              {t("Zeile löschen", "Delete row")}
             </button>
             <button onClick={() => editor.chain().focus().deleteColumn().run()}>
-              Spalte löschen
+              {t("Spalte löschen", "Delete column")}
             </button>
           </div>
         )}
@@ -1512,7 +1514,7 @@ export default function DocumentEditor({
                 .focus()
                 .insertContent(paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })))
                 .run();
-            else onError("In der Aufnahme wurde keine Sprache erkannt.");
+            else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
           } catch (error) {
             onError((error as Error).message);
           } finally {
@@ -1522,7 +1524,7 @@ export default function DocumentEditor({
       />
       <Modal
         open={!!syncedPicker}
-        title="Synchronisierten Block einfügen"
+        title={t("Synchronisierten Block einfügen", "Insert synced block")}
         onClose={() => setSyncedPicker(null)}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -1534,19 +1536,19 @@ export default function DocumentEditor({
             syncedPicker.map((block) => (
               <button key={block.id} className="synced-choice" onClick={() => insertSynced(block.id)}>
                 <strong>{block.preview}</strong>
-                {block.origin && <small>aus „{block.origin}“</small>}
+                {block.origin && <small>{t("aus „", "from “")}{block.origin}“</small>}
               </button>
             ))
           ) : (
             <p className="muted">
-              Noch keine synchronisierten Blöcke. Lege mit /sync einen an.
+              {t("Noch keine synchronisierten Blöcke. Lege mit /sync einen an.", "No synced blocks yet. Create one with /sync.")}
             </p>
           )}
         </div>
       </Modal>
       <Modal
         open={boardPicker}
-        title="Whiteboard einbetten"
+        title={t("Whiteboard einbetten", "Embed whiteboard")}
         onClose={() => setBoardPicker(false)}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -1554,11 +1556,11 @@ export default function DocumentEditor({
         }}
       >
         <input
-          aria-label="Whiteboard suchen"
+          aria-label={t("Whiteboard suchen", "Search whiteboard")}
           autoFocus
           value={boardSearch}
           onChange={(event) => setBoardSearch(event.target.value)}
-          placeholder="Whiteboard suchen …"
+          placeholder={t("Whiteboard suchen …", "Search whiteboards …")}
         />
         <div className="linked-source-list">
           <button
@@ -1572,7 +1574,7 @@ export default function DocumentEditor({
                   workspaceId: host.workspace_id,
                   spaceId: host.space_id,
                   ...(rowId ? {} : { parentId: host.id }),
-                  title: boardSearch.trim() || "Whiteboard",
+                  title: boardSearch.trim() || t("Whiteboard", "Whiteboard"),
                   kind: "whiteboard",
                 });
                 insertBoard(created.id);
@@ -1581,7 +1583,7 @@ export default function DocumentEditor({
               }
             }}
           >
-            Neues Whiteboard anlegen
+            {t("Neues Whiteboard anlegen", "Create new whiteboard")}
           </button>
           {pages
             .filter(
@@ -1603,7 +1605,7 @@ export default function DocumentEditor({
       </Modal>
       <Modal
         open={linkedPicker}
-        title="Datenbank verknüpfen"
+        title={t("Datenbank verknüpfen", "Link database")}
         onClose={() => {
           if (!linking) setLinkedPicker(false);
         }}
@@ -1613,15 +1615,14 @@ export default function DocumentEditor({
         }}
       >
         <p>
-          Einträge bleiben in der Quelldatenbank. Filter und Darstellung gelten
-          nur für diese Einbettung.
+          {t("Einträge bleiben in der Quelldatenbank. Filter und Darstellung gelten nur für diese Einbettung.", "Records stay in the source database. Filters and layout only apply to this embed.")}
         </p>
         <input
-          aria-label="Datenquelle suchen"
+          aria-label={t("Datenquelle suchen", "Search data source")}
           autoFocus
           value={linkedSearch}
           onChange={(event) => setLinkedSearch(event.target.value)}
-          placeholder="Datenbank suchen …"
+          placeholder={t("Datenbank suchen …", "Search databases …")}
         />
         <div className="linked-source-list">
           {pages
@@ -1684,10 +1685,10 @@ export default function DocumentEditor({
               p.kind === "database" &&
               !p.deleted_at &&
               p.title.toLowerCase().includes(linkedSearch.toLowerCase()),
-          ) && <p className="muted">Keine passende Datenbank.</p>}
+          ) && <p className="muted">{t("Keine passende Datenbank.", "No matching database.")}</p>}
         </div>
       </Modal>
-      <Modal open={link} onClose={() => setLink(false)} title="Link einfügen">
+      <Modal open={link} onClose={() => setLink(false)} title={t("Link einfügen", "Insert link")}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1698,11 +1699,11 @@ export default function DocumentEditor({
             ) {
               editor?.chain().focus().setLink({ href: linkUrl }).run();
               setLink(false);
-            } else onError("Bitte eine gültige URL eingeben.");
+            } else onError(t("Bitte eine gültige URL eingeben.", "Please enter a valid URL."));
           }}
         >
           <label>
-            Adresse
+            {t("Adresse", "Address")}
             <input
               autoFocus
               value={linkUrl}
@@ -1719,9 +1720,9 @@ export default function DocumentEditor({
                 setLink(false);
               }}
             >
-              Link entfernen
+              {t("Link entfernen", "Remove link")}
             </button>
-            <button className="button primary">Einfügen</button>
+            <button className="button primary">{t("Einfügen", "Insert")}</button>
           </div>
         </form>
       </Modal>
@@ -1746,10 +1747,10 @@ export default function DocumentEditor({
         }}
         open={references}
         onClose={() => setReferences(false)}
-        title="Seite oder Person erwähnen"
+        title={t("Seite oder Person erwähnen", "Mention a page or person")}
       >
         <div className="reference-list">
-          <h3>Seiten</h3>
+          <h3>{t("Seiten", "Pages")}</h3>
           {pages
             .filter((p) => p.id !== pageId)
             .map((p) => (
@@ -1774,7 +1775,7 @@ export default function DocumentEditor({
                 {p.title}
               </button>
             ))}
-          <h3>Personen</h3>
+          <h3>{t("Personen", "People")}</h3>
           {members.map((u) => (
             <button
               key={u.id}
@@ -1802,7 +1803,7 @@ export default function DocumentEditor({
         }}
         open={embed}
         onClose={() => setEmbed(false)}
-        title="Inhalt einbetten"
+        title={t("Inhalt einbetten", "Embed content")}
       >
         <form
           onSubmit={async (e) => {
@@ -1866,8 +1867,7 @@ export default function DocumentEditor({
           }}
         >
           <label>
-            Link (YouTube, Vimeo, Loom, Spotify, Figma, CodePen oder jede andere
-            Seite als Vorschaukarte)
+            {t("Link (YouTube, Vimeo, Loom, Spotify, Figma, CodePen oder jede andere Seite als Vorschaukarte)", "Link (YouTube, Vimeo, Loom, Spotify, Figma, CodePen or any other page as a preview card)")}
             <input
               autoFocus
               type="url"
@@ -1875,7 +1875,7 @@ export default function DocumentEditor({
               onChange={(e) => setEmbedUrl(e.target.value)}
             />
           </label>
-          <button className="button primary">Einbetten</button>
+          <button className="button primary">{t("Einbetten", "Embed")}</button>
         </form>
       </Modal>
       <Modal
@@ -1885,7 +1885,7 @@ export default function DocumentEditor({
         }}
         open={toggle}
         onClose={() => setToggle(false)}
-        title="Aufklappbarer Block"
+        title={t("Aufklappbarer Block", "Toggle")}
       >
         <form
           onSubmit={(e) => {
@@ -1895,7 +1895,7 @@ export default function DocumentEditor({
               .focus()
               .insertContent({
                 type: "toggle",
-                attrs: { title: toggleTitle || "Details" },
+                attrs: { title: toggleTitle || t("Details", "Details") },
                 content: [{ type: "paragraph" }],
               })
               .run();
@@ -1903,14 +1903,14 @@ export default function DocumentEditor({
           }}
         >
           <label>
-            Titel
+            {t("Titel", "Title")}
             <input
               autoFocus
               value={toggleTitle}
               onChange={(e) => setToggleTitle(e.target.value)}
             />
           </label>
-          <button className="button primary">Einfügen</button>
+          <button className="button primary">{t("Einfügen", "Insert")}</button>
         </form>
       </Modal>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 // Records a voice note in the browser (MediaRecorder); the recording is
 // uploaded as audio and, if the server has Whisper, turned into text.
+import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { Microphone, Stop, Trash } from "@phosphor-icons/react";
 import { Modal } from "./ui";
@@ -25,6 +26,7 @@ export function VoiceRecorder({
   onClose: () => void;
   onInsert: (file: File, transcribe: boolean) => void;
 }) {
+  const t = useT();
   const [state, setState] = useState<"idle" | "recording" | "done">("idle");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState("");
@@ -61,11 +63,11 @@ export function VoiceRecorder({
     setError("");
     const type = pickType();
     if (!type || !navigator.mediaDevices?.getUserMedia)
-      return setError("Dieser Browser kann nicht aufnehmen.");
+      return setError(t("Dieser Browser kann nicht aufnehmen.", "This browser cannot record."));
     try {
       stream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      return setError("Kein Zugriff auf das Mikrofon. Erlaube es in den Browser-Einstellungen.");
+      return setError(t("Kein Zugriff auf das Mikrofon. Erlaube es in den Browser-Einstellungen.", "No access to the microphone. Allow it in the browser settings."));
     }
     const chunks: Blob[] = [];
     const rec = new MediaRecorder(stream.current, { mimeType: type });
@@ -75,7 +77,7 @@ export function VoiceRecorder({
       const base = type.split(";")[0];
       const ext = base.includes("mp4") ? "m4a" : base.includes("ogg") ? "ogg" : "webm";
       const stamp = new Date().toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }).replace(/[/:, ]+/g, "-");
-      setFile(new File(chunks, `Sprachnotiz-${stamp}.${ext}`, { type: base }));
+      setFile(new File(chunks, t(`Sprachnotiz-${stamp}.${ext}`, `Voice-note-${stamp}.${ext}`), { type: base }));
       setState("done");
     };
     recorder.current = rec;
@@ -90,44 +92,44 @@ export function VoiceRecorder({
     }, 1000);
   };
   return (
-    <Modal open={open} onClose={onClose} title="Sprachnotiz">
+    <Modal open={open} onClose={onClose} title={t("Sprachnotiz", "Voice note")}>
       <div className="voice-recorder">
         {state === "recording" ? (
           <>
             <span className="voice-live" aria-hidden="true" />
             <strong className="voice-time" aria-live="polite">{clock(seconds)}</strong>
-            <small>Höchstens {MAX_SECONDS / 60} Minuten</small>
+            <small>{t("Höchstens", "At most")}{" "}{MAX_SECONDS / 60} {t("Minuten", "minutes")}</small>
             <button type="button" className="button primary voice-button" onClick={() => recorder.current?.stop()}>
-              <Stop size={18} weight="fill" /> Aufnahme beenden
+              <Stop size={18} weight="fill" /> {t("Aufnahme beenden", "Stop recording")}
             </button>
           </>
         ) : state === "done" && file ? (
           <>
-            {url && <audio controls src={url} aria-label="Aufnahme anhören" />}
+            {url && <audio controls src={url} aria-label={t("Aufnahme anhören", "Listen to the recording")} />}
             <small>{clock(seconds)} · {(file.size / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB</small>
             {transcription ? (
               <label className="voice-option">
                 <input type="checkbox" checked={toText} onChange={(e) => setToText(e.target.checked)} />
-                Gesprochenes als Text einfügen
+                {t("Gesprochenes als Text einfügen", "Insert the spoken words as text")}
               </label>
             ) : (
-              <small className="muted">Transkription ist auf diesem Server nicht eingerichtet; die Aufnahme wird als Audio eingefügt.</small>
+              <small className="muted">{t("Transkription ist auf diesem Server nicht eingerichtet; die Aufnahme wird als Audio eingefügt.", "Transcription is not set up on this server; the recording is inserted as audio.")}</small>
             )}
             <div className="modal-actions">
               <button type="button" className="button" onClick={() => { setFile(null); setState("idle"); }}>
-                <Trash size={16} /> Verwerfen
+                <Trash size={16} /> {t("Verwerfen", "Discard")}
               </button>
               <button type="button" className="button primary" onClick={() => onInsert(file, transcription && toText)}>
-                Einfügen
+                {t("Einfügen", "Insert")}
               </button>
             </div>
           </>
         ) : (
           <>
-            <button type="button" className="voice-start" onClick={() => void start()} aria-label="Aufnahme starten">
+            <button type="button" className="voice-start" onClick={() => void start()} aria-label={t("Aufnahme starten", "Start recording")}>
               <Microphone size={34} />
             </button>
-            <small>Tippen, um die Aufnahme zu starten</small>
+            <small>{t("Tippen, um die Aufnahme zu starten", "Tap to start recording")}</small>
           </>
         )}
         {error && <p className="error" role="alert">{error}</p>}

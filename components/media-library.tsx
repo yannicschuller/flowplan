@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { PdfThumbnail } from "./pdf-viewer";
 import { useEffect, useState } from "react";
 import {
@@ -10,13 +11,13 @@ import {
 } from "@phosphor-icons/react";
 import type { MediaItem, MediaKind } from "@/lib/media-library";
 
-const kinds: [MediaKind, string][] = [
-  ["all", "Alle"],
-  ["image", "Bilder"],
-  ["video", "Videos"],
-  ["audio", "Audio"],
-  ["pdf", "PDF"],
-  ["other", "Sonstige"],
+const kinds: [MediaKind, string, string][] = [
+  ["all", "Alle", "All"],
+  ["image", "Bilder", "Images"],
+  ["video", "Videos", "Videos"],
+  ["audio", "Audio", "Audio"],
+  ["pdf", "PDF", "PDF"],
+  ["other", "Sonstige", "Other"],
 ];
 const size = (bytes: number) =>
   bytes < 1024 * 1024
@@ -31,6 +32,7 @@ export function MediaLibrary({
   workspaceId: string;
   onOpen: (pageId: string) => void;
 }) {
+  const t = useT();
   const [kind, setKind] = useState<MediaKind>("all"),
     [query, setQuery] = useState(""),
     [items, setItems] = useState<MediaItem[]>([]),
@@ -77,16 +79,16 @@ export function MediaLibrary({
     <div className="utility-content media-library">
       <div className="utility-title">
         <Images size={30} />
-        <h1>Medien</h1>
+        <h1>{t("Medien", "Media")}</h1>
         <p>
-          Bilder, Videos und Dateien aus allen Seiten, die du lesen kannst.
+          {t("Bilder, Videos und Dateien aus allen Seiten, die du lesen kannst.", "Images, videos and files from all pages you can read.")}
           {total > 0 &&
             ` ${total} ${total === 1 ? "Datei" : "Dateien"} · ${size(bytes)}`}
         </p>
       </div>
       <div className="media-filters">
-        <div role="radiogroup" aria-label="Medientyp">
-          {kinds.map(([id, label]) => (
+        <div role="radiogroup" aria-label={t("Medientyp", "Media type")}>
+          {kinds.map(([id, de, en]) => (
             <button
               key={id}
               role="radio"
@@ -94,14 +96,14 @@ export function MediaLibrary({
               className={`chip${kind === id ? " active" : ""}`}
               onClick={() => setKind(id)}
             >
-              {label}
+              {t(de, en)}
             </button>
           ))}
         </div>
         <input
           type="search"
-          aria-label="Dateien suchen"
-          placeholder="Dateiname suchen …"
+          aria-label={t("Dateien suchen", "Search files")}
+          placeholder={t("Dateiname suchen …", "Search file name …")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -111,7 +113,7 @@ export function MediaLibrary({
           {error}
         </p>
       )}
-      <ul className="media-grid" aria-label="Dateien">
+      <ul className="media-grid" aria-label={t("Dateien", "Files")}>
         {items.map((item) => (
           <li key={item.id} className="media-item">
             <a
@@ -119,7 +121,7 @@ export function MediaLibrary({
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`${item.name} öffnen`}
+              aria-label={t(`${item.name} öffnen`, `Open ${item.name}`)}
               data-pdf={item.kind === "pdf" ? item.name : undefined}
             >
               {item.kind === "image" ? (
@@ -147,7 +149,7 @@ export function MediaLibrary({
             <button
               className="text-button media-page"
               onClick={() => onOpen(item.pageId)}
-              title={`Seite „${item.pageTitle}“ öffnen`}
+              title={t(`Seite „${item.pageTitle}“ öffnen`, `Open page “${item.pageTitle}”`)}
             >
               {item.pageTitle}
             </button>
@@ -157,11 +159,11 @@ export function MediaLibrary({
       {!loading && !items.length && !error && (
         <div className="empty-state">
           <Images size={38} />
-          <h3>Keine Dateien</h3>
+          <h3>{t("Keine Dateien", "No files")}</h3>
           <p>
             {query || kind !== "all"
-              ? "Keine Datei passt zu diesem Filter."
-              : "Lade Bilder oder Dateien in eine Seite hoch."}
+              ? t("Keine Datei passt zu diesem Filter.", "No file matches this filter.")
+              : t("Lade Bilder oder Dateien in eine Seite hoch.", "Upload images or files to a page.")}
           </p>
         </div>
       )}
@@ -171,7 +173,7 @@ export function MediaLibrary({
           disabled={loading}
           onClick={() => void load(items.length)}
         >
-          Weitere laden
+          {t("Weitere laden", "Load more")}
         </button>
       )}
     </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { RowAccess, rowAccessSummary } from "./row-access";
 import { RecordLayoutEditor } from "./record-layout-editor";
@@ -178,26 +179,26 @@ export type DatabaseData = {
   role?: string;
   groups?: { id: string; name: string }[];
 };
-const fieldNames: Record<FieldType, string> = {
-  text: "Text",
-  number: "Zahl",
-  date: "Datum",
-  select: "Auswahl",
-  multiselect: "Mehrfachauswahl",
-  checkbox: "Checkbox",
-  url: "URL",
-  email: "E-Mail",
-  phone: "Telefon",
-  checklist: "Checkliste",
-  person: "Person",
-  relation: "Relation",
-  rollup: "Rollup",
-  formula: "Formel",
-  created_at: "Erstellt am",
-  updated_at: "Bearbeitet am",
-  created_by: "Erstellt von",
-  updated_by: "Bearbeitet von",
-  files: "Dateien",
+const fieldNames: Record<FieldType, [string, string]> = {
+  text: ["Text", "Text"],
+  number: ["Zahl", "Number"],
+  date: ["Datum", "Date"],
+  select: ["Auswahl", "Select"],
+  multiselect: ["Mehrfachauswahl", "Multi-select"],
+  checkbox: ["Checkbox", "Checkbox"],
+  url: ["URL", "URL"],
+  email: ["E-Mail", "Email"],
+  phone: ["Telefon", "Phone"],
+  checklist: ["Checkliste", "Checklist"],
+  person: ["Person", "Person"],
+  relation: ["Relation", "Relation"],
+  rollup: ["Rollup", "Rollup"],
+  formula: ["Formel", "Formula"],
+  created_at: ["Erstellt am", "Created at"],
+  updated_at: ["Bearbeitet am", "Edited at"],
+  created_by: ["Erstellt von", "Created by"],
+  updated_by: ["Bearbeitet von", "Edited by"],
+  files: ["Dateien", "Files"],
 };
 type RowMove = {
   viewId: string;
@@ -248,6 +249,7 @@ export default function DatabaseView({
   mutate: (b: Record<string, unknown>) => Promise<unknown>;
   onError: (s: string) => void;
 }) {
+  const t = useT();
   // The server sends this database's rows once (as rows); relations to
   // itself and rollups read them from here.
   const related = useMemo(
@@ -480,7 +482,7 @@ export default function DatabaseView({
       setSelection(new Map());
       setBulk(null);
       onError(
-        `${selectionRows.length} Einträge ${operation === "update" ? "aktualisiert" : operation === "duplicate" ? "dupliziert" : "gelöscht"}. Vorheriger Stand im Versionsverlauf gesichert.`,
+        t(`${selectionRows.length} Einträge ${operation === "update" ? "aktualisiert" : operation === "duplicate" ? "dupliziert" : "gelöscht"}. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records ${operation === "update" ? "updated" : operation === "duplicate" ? "duplicated" : "deleted"}. The previous state was saved in the version history.`),
       );
     }
   }
@@ -517,9 +519,9 @@ export default function DatabaseView({
     editable && (data.role === "owner" || row.created_by === userId);
   const recordModeIcons = { center: AppWindow, side: SquareHalf, full: ArrowsOut };
   const recordModeLabels = {
-    center: "Als Dialog öffnen",
-    side: "In der Seitenleiste öffnen",
-    full: "Als ganze Seite öffnen",
+    center: t("Als Dialog öffnen", "Open as dialog"),
+    side: t("In der Seitenleiste öffnen", "Open in side panel"),
+    full: t("Als ganze Seite öffnen", "Open as full page"),
   };
   // The record's header: how it opens, favorite, permissions, layout.
   const recordActions = (row: Row) => {
@@ -529,7 +531,7 @@ export default function DatabaseView({
       access === "inherit" ? UsersThree : access === "private" ? LockSimple : LockSimpleOpen;
     return (
       <>
-        <div className="record-open-modes" role="group" aria-label="Eintrag öffnen als">
+        <div className="record-open-modes" role="group" aria-label={t("Eintrag öffnen als", "Open record as")}>
           {recordOpenModes.map((mode) => {
             const Icon = recordModeIcons[mode];
             const label = `${recordModeLabels[mode]}${mode === recordLayout.open ? " (Standard)" : ""}`;
@@ -553,8 +555,8 @@ export default function DatabaseView({
           type="button"
           className={`icon-button record-star${starred ? " active" : ""}`}
           aria-pressed={starred}
-          aria-label={starred ? "Aus Favoriten entfernen" : "Zu Favoriten"}
-          title={starred ? "Aus Favoriten entfernen" : "Zu Favoriten"}
+          aria-label={starred ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites")}
+          title={starred ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites")}
           onClick={() =>
             act({ action: "favorite.row", rowId: row.id, value: !starred })
           }
@@ -566,8 +568,8 @@ export default function DatabaseView({
             type="button"
             className={`icon-button record-access-button${access !== "inherit" ? " restricted" : ""}`}
             aria-expanded={accessOpen}
-            aria-label={`${rowAccessSummary(row)} · Rechte des Eintrags`}
-            title={`${rowAccessSummary(row)} · Rechte des Eintrags`}
+            aria-label={t(`${rowAccessSummary(row, t)} · Rechte des Eintrags`, `${rowAccessSummary(row, t)} · record permissions`)}
+            title={t(`${rowAccessSummary(row, t)} · Rechte des Eintrags`, `${rowAccessSummary(row, t)} · record permissions`)}
             onClick={() => {
               setAccessOpen((v) => !v);
               setLayoutOpen(false);
@@ -575,7 +577,7 @@ export default function DatabaseView({
           >
             <AccessIcon size={17} />
             {access !== "inherit" && (
-              <span>{access === "private" ? "Privat" : "Nur lesen"}</span>
+              <span>{access === "private" ? t("Privat", "Private") : t("Nur lesen", "Read only")}</span>
             )}
           </button>
         )}
@@ -584,8 +586,8 @@ export default function DatabaseView({
             type="button"
             className="icon-button"
             aria-expanded={layoutOpen}
-            aria-label="Layout anpassen"
-            title="Layout anpassen"
+            aria-label={t("Layout anpassen", "Adjust layout")}
+            title={t("Layout anpassen", "Adjust layout")}
             onClick={() => {
               setLayoutOpen((v) => !v);
               setAccessOpen(false);
@@ -620,7 +622,7 @@ export default function DatabaseView({
   const emptyHidden = emptyFields.size;
   useEffect(() => {
     if (rowId && !selected)
-      onError("Dieser Datensatz ist nicht mehr verfügbar.");
+      onError(t("Dieser Datensatz ist nicht mehr verfügbar.", "This record is no longer available."));
   }, [rowId, selected, onError]);
   const groupField = groupingField(fields, view);
   const dateField =
@@ -752,9 +754,9 @@ export default function DatabaseView({
             version: target.database.version,
             error:
               target.role === "viewer"
-                ? "Für Rückrelationen brauchst du Bearbeitungsrechte auf beide Datenbanken."
+                ? t("Für Rückrelationen brauchst du Bearbeitungsrechte auf beide Datenbanken.", "Two-way relations need edit rights on both databases.")
                 : target.page.locked
-                  ? "Die verknüpfte Datenbank ist gesperrt."
+                  ? t("Die verknüpfte Datenbank ist gesperrt.", "The linked database is locked.")
                   : undefined,
           });
       })
@@ -840,7 +842,7 @@ export default function DatabaseView({
       if (result) {
         setMoveDialog(null);
         setSortMove(null);
-        setOrderStatus(`Reihenfolge in „${view.name}“ gespeichert.`);
+        setOrderStatus(t(`Reihenfolge in „${view.name}“ gespeichert.`, `Order in “${view.name}” saved.`));
       }
     } finally {
       orderPending.current = false;
@@ -915,7 +917,7 @@ export default function DatabaseView({
             change.subgroup.from !== change.subgroup.to &&
             !canSubEdit))
       ) {
-        onError("Diese Gruppierung kann nicht bearbeitet werden.");
+        onError(t("Diese Gruppierung kann nicht bearbeitet werden.", "This grouping cannot be edited."));
         return;
       }
       const bounds = e.currentTarget.getBoundingClientRect();
@@ -1089,7 +1091,7 @@ export default function DatabaseView({
       if (!drop) return;
       const change = groupChange(groupKey, drop.groupKey);
       if (change.group.from !== change.group.to && !canGroupEdit) {
-        onError("Diese Gruppierung kann nicht bearbeitet werden.");
+        onError(t("Diese Gruppierung kann nicht bearbeitet werden.", "This grouping cannot be edited."));
         return drag.cancel();
       }
       const landed = drag;
@@ -1129,8 +1131,8 @@ export default function DatabaseView({
       <button
         type="button"
         className="row-order-handle"
-        aria-label={`Eintrag verschieben: ${cellText(row.cells[fields[0].id]) || "Ohne Titel"}`}
-        title="Ziehen oder Position wählen · Alt + Pfeil hoch/runter"
+        aria-label={t(`Eintrag verschieben: ${cellText(row.cells[fields[0].id]) || "Ohne Titel"}`, `Move record: ${cellText(row.cells[fields[0].id]) || "Untitled"}`)}
+        title={t("Ziehen oder Position wählen · Alt + Pfeil hoch/runter", "Drag or choose a position · Alt + arrow up/down")}
         disabled={orderBusy}
         draggable={!orderBusy && !plainBoard}
         onDragStart={(e) => {
@@ -1196,7 +1198,7 @@ export default function DatabaseView({
         templateId ||
         (templateId !== null && data.rowTemplates?.some((t) => t.is_default))
           ? cells
-          : { [fields[0].id]: "Neue Aufgabe", ...cells },
+          : { [fields[0].id]: t("Neue Aufgabe", "New task"), ...cells },
       templateId,
     })) as { id: string } | null;
     if (r && open) {
@@ -1206,13 +1208,13 @@ export default function DatabaseView({
   }
   async function uploadFile(file: File) {
     if (file.size > 10 * 1024 * 1024)
-      throw new Error(`${file.name}: maximal 10 MB pro Datei.`);
+      throw new Error(t(`${file.name}: maximal 10 MB pro Datei.`, `${file.name}: at most 10 MB per file.`));
     const body = new FormData();
     body.set("pageId", page.id);
     body.set("file", file);
     const response = await fetch("/api/upload", { method: "POST", body });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Upload fehlgeschlagen.");
+    if (!response.ok) throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
     return result.url as string;
   }
   function display(r: Row, f: Field) {
@@ -1292,11 +1294,11 @@ export default function DatabaseView({
                 })}
                 onClick={(e) => e.stopPropagation()}
               >
-                {cellText(target.cells.title) || "Ohne Titel"}
+                {cellText(target.cells.title) || t("Ohne Titel", "Untitled")}
               </a>
             ) : (
               <span key={rid} className="muted">
-                Nicht verfügbar
+                {t("Nicht verfügbar", "Not available")}
               </span>
             );
           })}
@@ -1363,7 +1365,7 @@ export default function DatabaseView({
           )}
           <strong>
             {r.icon && <PageIcon name={r.icon} size={16} />}
-            {cellText(r.cells[fields[0].id]) || "Ohne Titel"}
+            {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
           </strong>
           <div className="card-properties">
             {visibleFields
@@ -1397,10 +1399,10 @@ export default function DatabaseView({
     const base: Recurrence = rule || { freq: "weekly", interval: 1 };
     return (
       <div className="row-property recurrence-property">
-        <span>Wiederholung</span>
+        <span>{t("Wiederholung", "Recurrence")}</span>
         <span className="recurrence-choice">
           <Select
-            aria-label="Wiederholung"
+            aria-label={t("Wiederholung", "Recurrence")}
             disabled={!rowEditable(row)}
             value={rule?.freq || ""}
             onChange={(e) =>
@@ -1411,7 +1413,7 @@ export default function DatabaseView({
               )
             }
           >
-            <option value="">Keine</option>
+            <option value="">{t("Keine", "None")}</option>
             {Object.entries(recurrenceLabels).map(([key, [label]]) => (
               <option key={key} value={key}>
                 {label}
@@ -1421,12 +1423,12 @@ export default function DatabaseView({
           {rule && (
             <>
               <label>
-                Alle
+                {t("Alle", "Every")}
                 <input
                   type="number"
                   min={1}
                   max={99}
-                  aria-label="Wiederholungsintervall"
+                  aria-label={t("Wiederholungsintervall", "Recurrence interval")}
                   disabled={!rowEditable(row)}
                   defaultValue={rule.interval}
                   onBlur={(e) => {
@@ -1441,10 +1443,10 @@ export default function DatabaseView({
                 {recurrenceLabels[rule.freq][1]}
               </label>
               <label>
-                Endet
+                {t("Endet", "Ends")}
                 <input
                   type="date"
-                  aria-label="Wiederholung endet am"
+                  aria-label={t("Wiederholung endet am", "Recurrence ends on")}
                   disabled={!rowEditable(row)}
                   defaultValue={rule.until || ""}
                   onBlur={(e) => {
@@ -1455,10 +1457,10 @@ export default function DatabaseView({
                 />
               </label>
               <label>
-                Termin auslassen
+                {t("Termin auslassen", "Skip occurrence")}
                 <input
                   type="date"
-                  aria-label="Termin auslassen am"
+                  aria-label={t("Termin auslassen am", "Skip occurrence on")}
                   disabled={!rowEditable(row)}
                   onChange={(e) => {
                     const date = e.target.value;
@@ -1511,23 +1513,23 @@ export default function DatabaseView({
     const hint = !reminder
       ? ""
       : !target
-        ? "Diese Erinnerung passt nicht zum aktuellen Datum und ist inaktiv."
+        ? t("Diese Erinnerung passt nicht zum aktuellen Datum und ist inaktiv.", "This reminder does not fit the current date and is inactive.")
         : target.epochMilliseconds < Date.now() - ARM_GRACE_MS
-          ? "Der Erinnerungszeitpunkt liegt in der Vergangenheit."
-          : `Erinnerung am ${new Date(target.epochMilliseconds).toLocaleString(
+          ? t("Der Erinnerungszeitpunkt liegt in der Vergangenheit.", "The reminder time is in the past.")
+          : t(`Erinnerung am ${new Date(target.epochMilliseconds).toLocaleString(
               "de-DE",
               {
                 timeZone: reminder.timeZone,
                 dateStyle: "medium",
                 timeStyle: "short",
               },
-            )}`;
+            )}`, `Reminder on ${new Date(target.epochMilliseconds).toLocaleString("en-GB", { timeZone: reminder.timeZone, dateStyle: "medium", timeStyle: "short" })}`);
     return (
       <label className="row-property reminder-property">
-        <span>Erinnerung</span>
+        <span>{t("Erinnerung", "Reminder")}</span>
         <span className="reminder-choice">
           <Select
-            aria-label={`Erinnerung für ${field.name}`}
+            aria-label={t(`Erinnerung für ${field.name}`, `Reminder for ${field.name}`)}
             disabled={reminderBusy || !validDateValue(value)}
             value={reminder ? String(reminder.offset) : ""}
             onChange={async (e) => {
@@ -1545,7 +1547,7 @@ export default function DatabaseView({
               }
             }}
           >
-            <option value="">Keine Erinnerung</option>
+            <option value="">{t("Keine Erinnerung", "No reminder")}</option>
             {reminder && !offsets.includes(reminder.offset) && (
               <option value={reminder.offset} disabled>
                 {reminderLabel(reminder.offset, !isTimed(value))}
@@ -1581,7 +1583,7 @@ export default function DatabaseView({
       else next.delete(key);
     }
     if (next.size > 1000) {
-      onError("Maximal 1.000 eingeklappte Gruppen je Ansicht.");
+      onError(t("Maximal 1.000 eingeklappte Gruppen je Ansicht.", "At most 1,000 collapsed groups per view."));
       return;
     }
     await updateView({
@@ -1606,14 +1608,14 @@ export default function DatabaseView({
     const index = groups.findIndex((g) => g.key === group.key);
     const Before = horizontal ? CaretLeft : CaretUp;
     const After = horizontal ? CaretRight : CaretDown;
-    const before = horizontal ? "nach links" : "nach oben";
-    const after = horizontal ? "nach rechts" : "nach unten";
+    const before = horizontal ? t("nach links", "to the left") : t("nach oben", "up");
+    const after = horizontal ? t("nach rechts", "to the right") : t("nach unten", "down");
     return (
       <span className="group-move">
         <button
           className="icon-button"
-          aria-label={`Gruppe ${group.label} ${before} verschieben`}
-          title={`Gruppe ${before} verschieben`}
+          aria-label={t(`Gruppe ${group.label} ${before} verschieben`, `Move group ${group.label} ${before}`)}
+          title={t(`Gruppe ${before} verschieben`, `Move group ${before}`)}
           disabled={schemaBusy || index <= 0}
           onClick={() => void moveGroup(group.key, index - 1)}
         >
@@ -1621,8 +1623,8 @@ export default function DatabaseView({
         </button>
         <button
           className="icon-button"
-          aria-label={`Gruppe ${group.label} ${after} verschieben`}
-          title={`Gruppe ${after} verschieben`}
+          aria-label={t(`Gruppe ${group.label} ${after} verschieben`, `Move group ${group.label} ${after}`)}
+          title={t(`Gruppe ${after} verschieben`, `Move group ${after}`)}
           disabled={schemaBusy || index >= groups.length - 1}
           onClick={() => void moveGroup(group.key, index + 1)}
         >
@@ -1792,12 +1794,12 @@ export default function DatabaseView({
       <div
         className={`database-group-header database-subgroup-header database-group-level-${level}`}
         role="group"
-        aria-label={`Gruppe ${g.label} in ${where}`}
+        aria-label={t(`Gruppe ${g.label} in ${where}`, `Group ${g.label} in ${where}`)}
       >
         <button
           className="group-toggle"
           aria-expanded={!closed}
-          aria-label={`Gruppe ${g.label} in ${where} ${closed ? "ausklappen" : "einklappen"}`}
+          aria-label={t(`Gruppe ${g.label} in ${where} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} group ${g.label} in ${where}`)}
           disabled={schemaBusy}
           onClick={() =>
             void setGroupsCollapsed(
@@ -1817,7 +1819,7 @@ export default function DatabaseView({
         {canCreate && (
           <button
             className="icon-button"
-            title={`Eintrag in ${where} / ${g.label} hinzufügen`}
+            title={t(`Eintrag in ${where} / ${g.label} hinzufügen`, `Add record in ${where} / ${g.label}`)}
             onClick={() => createRow(deepCells(path))}
           >
             <Plus size={16} />
@@ -1843,12 +1845,12 @@ export default function DatabaseView({
           <section
             key={JSON.stringify(keys)}
             className={`board-card-section database-group-level-${keys.length}`}
-            aria-label={`Abschnitt ${g.label}`}
+            aria-label={t(`Abschnitt ${g.label}`, `Section ${g.label}`)}
           >
             <button
               className="group-toggle"
               aria-expanded={!closed}
-              aria-label={`Abschnitt ${g.label} ${closed ? "ausklappen" : "einklappen"}`}
+              aria-label={t(`Abschnitt ${g.label} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} section ${g.label}`)}
               disabled={schemaBusy}
               onClick={() =>
                 void setGroupsCollapsed([pathCollapseKey(keys)], !closed)
@@ -1873,7 +1875,7 @@ export default function DatabaseView({
       <div
         className="database-group-header database-subgroup-header"
         role="group"
-        aria-label={`Untergruppe ${sub.label} in ${group.label}`}
+        aria-label={t(`Untergruppe ${sub.label} in ${group.label}`, `Sub-group ${sub.label} in ${group.label}`)}
         onDragOver={(e) => {
           if (
             editable &&
@@ -1887,7 +1889,7 @@ export default function DatabaseView({
         <button
           className="group-toggle"
           aria-expanded={!closed}
-          aria-label={`Untergruppe ${sub.label} in ${group.label} ${closed ? "ausklappen" : "einklappen"}`}
+          aria-label={t(`Untergruppe ${sub.label} in ${group.label} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} sub-group ${sub.label} in ${group.label}`)}
           disabled={schemaBusy}
           onClick={() =>
             void setGroupsCollapsed(
@@ -1907,7 +1909,7 @@ export default function DatabaseView({
         {canSubEdit && (
           <button
             className="icon-button"
-            title={`Eintrag in ${group.label} / ${sub.label} hinzufügen`}
+            title={t(`Eintrag in ${group.label} / ${sub.label} hinzufügen`, `Add record in ${group.label} / ${sub.label}`)}
             onClick={() =>
               createRow({
                 [groupField!.id]: groupCellValue(groupField!, group.value),
@@ -1938,7 +1940,7 @@ export default function DatabaseView({
         <button
           className="group-toggle"
           aria-expanded={!collapsed(group.key)}
-          aria-label={`Gruppe ${group.label} ${collapsed(group.key) ? "ausklappen" : "einklappen"}`}
+          aria-label={t(`Gruppe ${group.label} ${collapsed(group.key) ? "ausklappen" : "einklappen"}`, `${collapsed(group.key) ? "Expand" : "Collapse"} group ${group.label}`)}
           disabled={schemaBusy}
           onClick={() =>
             void setGroupsCollapsed([group.key], !collapsed(group.key))
@@ -1956,7 +1958,7 @@ export default function DatabaseView({
         {editable && view.type === "table" && (
           <input
             type="checkbox"
-            aria-label={`Gruppe ${group.label} auswählen`}
+            aria-label={t(`Gruppe ${group.label} auswählen`, `Select group ${group.label}`)}
             disabled={bulkBusy || !group.rows.length}
             checked={
               group.rows.length > 0 &&
@@ -1980,7 +1982,7 @@ export default function DatabaseView({
         {editable && canGroupEdit && (
           <button
             className="icon-button"
-            title={`Eintrag in ${group.label} hinzufügen`}
+            title={t(`Eintrag in ${group.label} hinzufügen`, `Add record in ${group.label}`)}
             onClick={() =>
               createRow({
                 [groupField!.id]: groupCellValue(groupField!, group.value),
@@ -2008,7 +2010,7 @@ export default function DatabaseView({
               {orderHandle(r, groupKey)}
               <input
                 type="checkbox"
-                aria-label={`${cellText(r.cells[fields[0].id]) || "Ohne Titel"} auswählen`}
+                aria-label={t(`${cellText(r.cells[fields[0].id]) || "Ohne Titel"} auswählen`, `Select ${cellText(r.cells[fields[0].id]) || "Untitled"}`)}
                 disabled={bulkBusy}
                 checked={selection.has(r.id)}
                 onChange={(e) => selectRow(r, e.target.checked)}
@@ -2078,7 +2080,7 @@ export default function DatabaseView({
         <button onClick={() => setRowId(r.id)}>
           <span>
             {r.icon && <PageIcon name={r.icon} size={16} />}
-            {cellText(r.cells[fields[0].id]) || "Ohne Titel"}
+            {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
           </span>
           <span>
             {visibleFields.slice(1, 4).map((f) => (
@@ -2109,7 +2111,7 @@ export default function DatabaseView({
         {viewEditable && (
           <button
             className="icon-button"
-            title="Ansicht hinzufügen"
+            title={t("Ansicht hinzufügen", "Add view")}
             onClick={() => setNewView(true)}
           >
             <Plus />
@@ -2123,17 +2125,17 @@ export default function DatabaseView({
             onClick={() => setFilterOpen(true)}
           >
             <Funnel size={16} />
-            Filtern
+            {t("Filtern", "Filter")}
             {activeFilterCount > 0 && (
               <span className="count">{activeFilterCount}</span>
             )}
           </button>
           <button onClick={() => setConfig(true)}>
             <SortAscending size={17} />
-            Sortieren
+            {t("Sortieren", "Sort")}
           </button>
           <button
-            title="Ansicht und Eigenschaften"
+            title={t("Ansicht und Eigenschaften", "View and properties")}
             onClick={() => setConfig(true)}
           >
             <SlidersHorizontal size={17} />
@@ -2143,8 +2145,8 @@ export default function DatabaseView({
           <div className="table-search">
             <MagnifyingGlass size={16} />
             <input
-              aria-label="Datenbank durchsuchen"
-              placeholder="Suchen …"
+              aria-label={t("Datenbank durchsuchen", "Search database")}
+              placeholder={t("Suchen …", "Search …")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -2179,10 +2181,10 @@ export default function DatabaseView({
                 onClick={() => createRow()}
               >
                 <Plus size={16} />
-                Neu
+                {t("Neu", "New")}
               </button>{" "}
               <button
-                title="Datensatzvorlagen"
+                title={t("Datensatzvorlagen", "Record templates")}
                 onClick={() => setManageTemplates(true)}
               >
                 <DotsThree size={20} />
@@ -2195,9 +2197,9 @@ export default function DatabaseView({
         <div
           className="bulk-toolbar"
           role="toolbar"
-          aria-label="Ausgewählte Einträge"
+          aria-label={t("Ausgewählte Einträge", "Selected records")}
         >
-          <strong>{selectionRows.length} ausgewählt</strong>
+          <strong>{selectionRows.length} {t("ausgewählt", "selected")}</strong>
           <button
             className="button compact"
             disabled={bulkBusy}
@@ -2209,34 +2211,34 @@ export default function DatabaseView({
               setBulk("update");
             }}
           >
-            Gemeinsam bearbeiten
+            {t("Gemeinsam bearbeiten", "Edit together")}
           </button>
           <button
             className="button compact"
             disabled={bulkBusy}
             onClick={() => bulkAction("duplicate")}
           >
-            Duplizieren
+            {t("Duplizieren", "Duplicate")}
           </button>
           <button
             className="button compact danger"
             disabled={bulkBusy}
             onClick={() => setBulk("delete")}
           >
-            Löschen
+            {t("Löschen", "Delete")}
           </button>
           <button
             className="button compact"
             onClick={() => setSelection(new Map())}
           >
-            Auswahl aufheben
+            {t("Auswahl aufheben", "Clear selection")}
           </button>
         </div>
       )}
       {grouped && (
         <div className="group-view-toolbar">
           <span>
-            {groups.length} Gruppen · {shown.length} Einträge
+            {groups.length} {t("Gruppen ·", "Groups ·")}{" "}{shown.length} {t("Einträge", "records")}
           </span>
           <button
             className="button compact"
@@ -2248,7 +2250,7 @@ export default function DatabaseView({
               )
             }
           >
-            Alle einklappen
+            {t("Alle einklappen", "Collapse all")}
           </button>
           <button
             className="button compact"
@@ -2260,7 +2262,7 @@ export default function DatabaseView({
               )
             }
           >
-            Alle ausklappen
+            {t("Alle ausklappen", "Expand all")}
           </button>
         </div>
       )}
@@ -2288,7 +2290,7 @@ export default function DatabaseView({
                   <th className="selection-cell">
                     <input
                       type="checkbox"
-                      aria-label="Alle sichtbaren Einträge auswählen"
+                      aria-label={t("Alle sichtbaren Einträge auswählen", "Select all visible records")}
                       disabled={bulkBusy}
                       checked={
                         selectableRows.length > 0 &&
@@ -2342,7 +2344,7 @@ export default function DatabaseView({
                       }
                       title={
                         !allowFieldChanges
-                          ? "Eigenschaften in der Quelldatenbank bearbeiten"
+                          ? t("Eigenschaften in der Quelldatenbank bearbeiten", "Edit properties in the source database")
                           : undefined
                       }
                       onClick={() => {
@@ -2462,7 +2464,7 @@ export default function DatabaseView({
                 {editable && (
                   <th className="add-property">
                     <button
-                      aria-label="Eigenschaft hinzufügen"
+                      aria-label={t("Eigenschaft hinzufügen", "Add property")}
                       disabled={!allowFieldChanges}
                       onClick={() => {
                         setFieldVersion(data.database.version);
@@ -2483,7 +2485,7 @@ export default function DatabaseView({
             </thead>
             {grouped ? (
               groups.map((g) => (
-                <tbody key={g.key} aria-label={`Gruppe ${g.label}`}>
+                <tbody key={g.key} aria-label={t(`Gruppe ${g.label}`, `Group ${g.label}`)}>
                   <tr className="database-group-row">
                     <th
                       colSpan={Math.max(
@@ -2519,10 +2521,10 @@ export default function DatabaseView({
                   {editable && (
                     <button className="new-record" onClick={() => createRow()}>
                       <Plus size={15} />
-                      Neue Zeile
+                      {t("Neue Zeile", "New row")}
                     </button>
                   )}
-                  <span className="record-count">{shown.length} Einträge</span>
+                  <span className="record-count">{shown.length} {t("Einträge", "records")}</span>
                 </td>
               </tr>
               <tr className="table-count column-calculations">
@@ -2537,7 +2539,7 @@ export default function DatabaseView({
                     <td key={f.id}>
                       <button
                         className="column-calculation"
-                        aria-label={`Berechnung für ${f.name}`}
+                        aria-label={t(`Berechnung für ${f.name}`, `Calculation for ${f.name}`)}
                         disabled={schemaBusy}
                         onClick={() =>
                           setCalculationEdit({
@@ -2554,7 +2556,7 @@ export default function DatabaseView({
                             <strong>{summaryText(summary, f)}</strong>
                           </>
                         ) : (
-                          <span>Berechnen</span>
+                          <span>{t("Berechnen", "Calculate")}</span>
                         )}
                       </button>
                     </td>
@@ -2573,12 +2575,12 @@ export default function DatabaseView({
               <header
                 key={g.key}
                 className={`board-lane-column${collapsed(g.key) ? " collapsed" : ""}`}
-                aria-label={`Spalte ${g.label}`}
+                aria-label={t(`Spalte ${g.label}`, `Column ${g.label}`)}
               >
                 <button
                   className="icon-button group-toggle"
                   aria-expanded={!collapsed(g.key)}
-                  aria-label={`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`}
+                  aria-label={t(`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`, `${collapsed(g.key) ? "Expand" : "Collapse"} group ${g.label}`)}
                   disabled={schemaBusy}
                   onClick={() =>
                     void setGroupsCollapsed([g.key], !collapsed(g.key))
@@ -2607,13 +2609,13 @@ export default function DatabaseView({
               <section
                 key={lane.key}
                 className="board-lane"
-                aria-label={`Swimlane ${lane.label}`}
+                aria-label={t(`Swimlane ${lane.label}`, `Swimlane ${lane.label}`)}
               >
                 <div className="board-lane-title">
                   <button
                     className="group-toggle"
                     aria-expanded={!closed}
-                    aria-label={`Swimlane ${lane.label} ${closed ? "ausklappen" : "einklappen"}`}
+                    aria-label={t(`Swimlane ${lane.label} ${closed ? "ausklappen" : "einklappen"}`, `${closed ? "Expand" : "Collapse"} swimlane ${lane.label}`)}
                     disabled={schemaBusy}
                     onClick={() => void setGroupsCollapsed([laneKey], !closed)}
                   >
@@ -2664,7 +2666,7 @@ export default function DatabaseView({
                               {canSubEdit && (
                                 <button
                                   className="new-record"
-                                  title={`Eintrag in ${g.label} / ${lane.label} hinzufügen`}
+                                  title={t(`Eintrag in ${g.label} / ${lane.label} hinzufügen`, `Add record in ${g.label} / ${lane.label}`)}
                                   onClick={() =>
                                     createRow({
                                       [groupField!.id]: groupCellValue(
@@ -2679,7 +2681,7 @@ export default function DatabaseView({
                                   }
                                 >
                                   <Plus size={16} />
-                                  Neu
+                                  {t("Neu", "New")}
                                 </button>
                               )}
                             </>
@@ -2701,7 +2703,7 @@ export default function DatabaseView({
               className={`board-column${collapsed(g.key) ? " collapsed" : ""}${groupDrop === g.key ? " group-drop" : ""}`}
               key={g.key}
               data-group-key={g.key}
-              aria-label={`Gruppe ${g.label}`}
+              aria-label={t(`Gruppe ${g.label}`, `Group ${g.label}`)}
               onDragOver={(e) => {
                 if (
                   viewEditable &&
@@ -2755,7 +2757,7 @@ export default function DatabaseView({
                 <button
                   className="icon-button group-toggle"
                   aria-expanded={!collapsed(g.key)}
-                  aria-label={`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`}
+                  aria-label={t(`Gruppe ${g.label} ${collapsed(g.key) ? "ausklappen" : "einklappen"}`, `${collapsed(g.key) ? "Expand" : "Collapse"} group ${g.label}`)}
                   disabled={schemaBusy}
                   onClick={() =>
                     void setGroupsCollapsed([g.key], !collapsed(g.key))
@@ -2775,7 +2777,7 @@ export default function DatabaseView({
                 {viewEditable && (
                   <button
                     className="group-drag"
-                    aria-label={`Gruppe ${g.label} ziehen`}
+                    aria-label={t(`Gruppe ${g.label} ziehen`, `Drag group ${g.label}`)}
                     disabled={schemaBusy}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -2812,7 +2814,7 @@ export default function DatabaseView({
                 {editable && !collapsed(g.key) && (
                   <button
                     className="icon-button"
-                    title={`Eintrag in ${g.label} hinzufügen`}
+                    title={t(`Eintrag in ${g.label} hinzufügen`, `Add record in ${g.label}`)}
                     onClick={() =>
                       createRow(
                         groupField && canGroupEdit
@@ -2860,7 +2862,7 @@ export default function DatabaseView({
                   }
                 >
                   <Plus size={16} />
-                  Neue Aufgabe
+                  {t("Neue Aufgabe", "New task")}
                 </button>
               )}
             </section>
@@ -2955,7 +2957,7 @@ export default function DatabaseView({
             ? groups.map((g) => (
                 <section
                   key={g.key}
-                  aria-label={`Gruppe ${g.label}`}
+                  aria-label={t(`Gruppe ${g.label}`, `Group ${g.label}`)}
                   className="database-list-group"
                 >
                   {groupHeader(g)}
@@ -3050,11 +3052,11 @@ export default function DatabaseView({
       {shown.length === 0 && view.type !== "form" && view.type !== "chart" && (
         <div className="empty-state">
           <Funnel size={30} />
-          <h3>Keine Einträge</h3>
+          <h3>{t("Keine Einträge", "No records")}</h3>
           <p>
             {query || activeFilterCount
-              ? "Passe deine Suche oder Filter an."
-              : "Füge deinen ersten Eintrag hinzu."}
+              ? t("Passe deine Suche oder Filter an.", "Adjust your search or filters.")
+              : t("Füge deinen ersten Eintrag hinzu.", "Add your first record.")}
           </p>
         </div>
       )}
@@ -3071,7 +3073,7 @@ export default function DatabaseView({
             skipEmptyLines: true,
           });
           if (result.errors.length) {
-            onError("CSV konnte nicht gelesen werden.");
+            onError(t("CSV konnte nicht gelesen werden.", "The CSV could not be read."));
             return;
           }
           const imported = result.data.map((row) =>
@@ -3103,7 +3105,7 @@ export default function DatabaseView({
         <Modal
           open
           onClose={() => setFilterOpen(false)}
-          title="Filter bearbeiten"
+          title={t("Filter bearbeiten", "Edit filters")}
           wide
         >
           <DatabaseFilterEditor
@@ -3133,7 +3135,7 @@ export default function DatabaseView({
       <Modal
         open={config}
         onClose={() => setConfig(false)}
-        title="Ansicht konfigurieren"
+        title={t("Ansicht konfigurieren", "Configure view")}
       >
         <fieldset
           className="schema-settings"
@@ -3141,7 +3143,7 @@ export default function DatabaseView({
           aria-busy={schemaBusy}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               defaultValue={view.name}
               disabled={!viewEditable}
@@ -3154,11 +3156,11 @@ export default function DatabaseView({
           </label>
           {view.type === "feed" && (
             <div className="settings-section">
-              <h3>Feed-Darstellung</h3>
+              <h3>{t("Feed-Darstellung", "Feed layout")}</h3>
               <label>
-                Dokumentinhalt
+                {t("Dokumentinhalt", "Document content")}
                 <Select
-                  aria-label="Feed-Dokumentinhalt"
+                  aria-label={t("Feed-Dokumentinhalt", "Feed document content")}
                   disabled={!viewEditable}
                   value={(view.feed || defaultFeed).content}
                   onChange={(e) =>
@@ -3171,16 +3173,16 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  <option value="full">Vollständig anzeigen</option>
-                  <option value="compact">Kompakte Textvorschau</option>
-                  <option value="hidden">Ausblenden</option>
+                  <option value="full">{t("Vollständig anzeigen", "Show in full")}</option>
+                  <option value="compact">{t("Kompakte Textvorschau", "Compact text preview")}</option>
+                  <option value="hidden">{t("Ausblenden", "Hide")}</option>
                 </Select>
               </label>
               {(
                 [
-                  ["showAuthor", "Verfasser anzeigen"],
-                  ["showDate", "Erstellungsdatum anzeigen"],
-                  ["showComments", "Kommentaranzahl anzeigen"],
+                  ["showAuthor", t("Verfasser anzeigen", "Show author")],
+                  ["showDate", t("Erstellungsdatum anzeigen", "Show creation date")],
+                  ["showComments", t("Kommentaranzahl anzeigen", "Show comment count")],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="checkbox-label">
@@ -3203,11 +3205,11 @@ export default function DatabaseView({
             </div>
           )}
           <div className="settings-section">
-            <h3>Filter</h3>
+            <h3>{t("Filter", "Filters")}</h3>
             <p className="muted">
               {activeFilterCount
-                ? `${activeFilterCount} Bedingungen aktiv`
-                : "Keine Filter aktiv"}
+                ? t(`${activeFilterCount} Bedingungen aktiv`, `${activeFilterCount} conditions active`)
+                : t("Keine Filter aktiv", "No filters active")}
             </p>
             <button
               className="button compact"
@@ -3216,16 +3218,16 @@ export default function DatabaseView({
                 setFilterOpen(true);
               }}
             >
-              Filter bearbeiten
+              {t("Filter bearbeiten", "Edit filters")}
             </button>
           </div>
           <div className="settings-section">
-            <h3>Sortierung</h3>
+            <h3>{t("Sortierung", "Sorting")}</h3>
             {view.sorts.map((s, i) => (
               <div className="filter-line" key={i}>
                 <Select
                   value={s.field}
-                  aria-label="Sortier-Eigenschaft"
+                  aria-label={t("Sortier-Eigenschaft", "Sort property")}
                   onChange={(e) =>
                     updateView({
                       sorts: view.sorts.map((x, j) =>
@@ -3242,7 +3244,7 @@ export default function DatabaseView({
                 </Select>
                 <Select
                   value={s.direction}
-                  aria-label="Sortierrichtung"
+                  aria-label={t("Sortierrichtung", "Sort direction")}
                   onChange={(e) =>
                     updateView({
                       sorts: view.sorts.map((x, j) =>
@@ -3256,12 +3258,12 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  <option value="asc">Aufsteigend</option>
-                  <option value="desc">Absteigend</option>
+                  <option value="asc">{t("Aufsteigend", "Ascending")}</option>
+                  <option value="desc">{t("Absteigend", "Descending")}</option>
                 </Select>
                 <button
                   className="icon-button"
-                  aria-label="Sortierung entfernen"
+                  aria-label={t("Sortierung entfernen", "Remove sorting")}
                   onClick={() =>
                     updateView({ sorts: view.sorts.filter((_, j) => i !== j) })
                   }
@@ -3282,7 +3284,7 @@ export default function DatabaseView({
               }
             >
               <Plus />
-              Sortierung hinzufügen
+              {t("Sortierung hinzufügen", "Add sorting")}
             </button>
           </div>
           {view.type === "gallery" && (
@@ -3290,11 +3292,11 @@ export default function DatabaseView({
               disabled={!viewEditable || schemaBusy}
               className="gallery-settings"
             >
-              <legend>Galerie-Cover</legend>
+              <legend>{t("Galerie-Cover", "Gallery cover")}</legend>
               <label>
-                Bildquelle
+                {t("Bildquelle", "Image source")}
                 <Select
-                  aria-label="Galerie-Bildquelle"
+                  aria-label={t("Galerie-Bildquelle", "Gallery image source")}
                   value={
                     galleryConfig.cover === "field"
                       ? `field:${galleryConfig.fieldId}`
@@ -3319,10 +3321,10 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  <option value="none">Keine Bilder</option>
-                  <option value="record">Datensatz-Cover</option>
+                  <option value="none">{t("Keine Bilder", "No images")}</option>
+                  <option value="record">{t("Datensatz-Cover", "Record cover")}</option>
                   <option value="document">
-                    Erstes Bild im Eintragsinhalt
+                    {t("Erstes Bild im Eintragsinhalt", "First image in the record content")}
                   </option>
                   {fields
                     .filter((field) => field.type === "files")
@@ -3334,9 +3336,9 @@ export default function DatabaseView({
                 </Select>
               </label>
               <label>
-                Bilddarstellung
+                {t("Bilddarstellung", "Image display")}
                 <Select
-                  aria-label="Galerie-Bilddarstellung"
+                  aria-label={t("Galerie-Bilddarstellung", "Gallery image display")}
                   value={galleryConfig.fit}
                   onChange={(event) =>
                     updateView({
@@ -3347,14 +3349,14 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  <option value="cover">Fläche ausfüllen</option>
-                  <option value="contain">Ganzes Bild anzeigen</option>
+                  <option value="cover">{t("Fläche ausfüllen", "Fill the area")}</option>
+                  <option value="contain">{t("Ganzes Bild anzeigen", "Show the whole image")}</option>
                 </Select>
               </label>
               <label>
-                Kartengröße
+                {t("Kartengröße", "Card size")}
                 <Select
-                  aria-label="Galerie-Kartengröße"
+                  aria-label={t("Galerie-Kartengröße", "Gallery card size")}
                   value={galleryConfig.size}
                   onChange={(event) =>
                     updateView({
@@ -3366,17 +3368,17 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  <option value="small">Klein</option>
-                  <option value="medium">Mittel</option>
-                  <option value="large">Groß</option>
+                  <option value="small">{t("Klein", "Small")}</option>
+                  <option value="medium">{t("Mittel", "Medium")}</option>
+                  <option value="large">{t("Groß", "Large")}</option>
                 </Select>
               </label>
             </fieldset>
           )}
           <label>
-            Gruppieren nach
+            {t("Gruppieren nach", "Group by")}
             <Select
-              aria-label="Gruppieren nach"
+              aria-label={t("Gruppieren nach", "Group by")}
               disabled={!viewEditable}
               value={view.groupBy || ""}
               onChange={(e) =>
@@ -3394,7 +3396,7 @@ export default function DatabaseView({
               }
             >
               <option value="">
-                {view.type === "board" ? "Automatisch" : "Keine Gruppierung"}
+                {view.type === "board" ? t("Automatisch", "Automatic") : t("Keine Gruppierung", "No grouping")}
               </option>
               {fields.filter(canGroupField).map((f) => (
                 <option key={f.id} value={f.id}>
@@ -3405,10 +3407,10 @@ export default function DatabaseView({
           </label>
           {groupField && ["table", "list", "board"].includes(view.type) && (
             <label>
-              {view.type === "board" ? "Swimlanes nach" : "Untergruppen nach"}
+              {view.type === "board" ? t("Swimlanes nach", "Swimlanes by") : t("Untergruppen nach", "Sub-groups by")}
               <Select
                 aria-label={
-                  view.type === "board" ? "Swimlanes nach" : "Untergruppen nach"
+                  view.type === "board" ? t("Swimlanes nach", "Swimlanes by") : t("Untergruppen nach", "Sub-groups by")
                 }
                 disabled={!viewEditable}
                 value={subField?.id || ""}
@@ -3431,8 +3433,8 @@ export default function DatabaseView({
               >
                 <option value="">
                   {view.type === "board"
-                    ? "Keine Swimlanes"
-                    : "Keine Untergruppen"}
+                    ? t("Keine Swimlanes", "No swimlanes")
+                    : t("Keine Untergruppen", "No sub-groups")}
                 </option>
                 {fields
                   .filter((f) => canGroupField(f) && f.id !== groupField!.id)
@@ -3454,11 +3456,11 @@ export default function DatabaseView({
                   subField.id,
                   ...deeperFields.slice(0, i).map((f) => f.id),
                 ]);
-                const label = `Gruppenebene ${i + 3}`;
+                const label = t(`Gruppenebene ${i + 3}`, `Group level ${i + 3}`);
                 return (
                   <label key={label}>
                     {view.type === "board"
-                      ? `Abschnitte (Ebene ${i + 3})`
+                      ? t(`Abschnitte (Ebene ${i + 3})`, `Sections (level ${i + 3})`)
                       : label}
                     <Select
                       aria-label={label}
@@ -3489,7 +3491,7 @@ export default function DatabaseView({
                         })
                       }
                     >
-                      <option value="">Keine weitere Ebene</option>
+                      <option value="">{t("Keine weitere Ebene", "No further level")}</option>
                       {fields
                         .filter((f) => canGroupField(f) && !used.has(f.id))
                         .map((f) => (
@@ -3518,12 +3520,12 @@ export default function DatabaseView({
                     })
                   }
                 />
-                Leere Gruppen ausblenden
+                {t("Leere Gruppen ausblenden", "Hide empty groups")}
               </label>
               <label>
-                Gruppen sortieren
+                {t("Gruppen sortieren", "Sort groups")}
                 <Select
-                  aria-label="Gruppen sortieren"
+                  aria-label={t("Gruppen sortieren", "Sort groups")}
                   disabled={!viewEditable}
                   value={groupSettings.sort}
                   onChange={(e) =>
@@ -3537,11 +3539,11 @@ export default function DatabaseView({
                 >
                   <option value="manual">
                     {groupSettings.order?.length
-                      ? "Eigene Reihenfolge"
-                      : "Eigenschaftsreihenfolge"}
+                      ? t("Eigene Reihenfolge", "Custom order")
+                      : t("Eigenschaftsreihenfolge", "Property order")}
                   </option>
-                  <option value="asc">Bezeichnung aufsteigend</option>
-                  <option value="desc">Bezeichnung absteigend</option>
+                  <option value="asc">{t("Bezeichnung aufsteigend", "Label ascending")}</option>
+                  <option value="desc">{t("Bezeichnung absteigend", "Label descending")}</option>
                 </Select>
               </label>
               {!!groupSettings.order?.length && (
@@ -3554,18 +3556,18 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  Gruppenreihenfolge zurücksetzen
+                  {t("Gruppenreihenfolge zurücksetzen", "Reset group order")}
                 </button>
               )}
             </div>
           )}
           <label>
-            Datumsfeld
+            {t("Datumsfeld", "Date field")}
             <Select
               value={view.dateField || ""}
               onChange={(e) => updateView({ dateField: e.target.value })}
             >
-              <option value="">Automatisch</option>
+              <option value="">{t("Automatisch", "Automatic")}</option>
               {fields
                 .filter((f) => f.type === "date")
                 .map((f) => (
@@ -3576,12 +3578,12 @@ export default function DatabaseView({
             </Select>
           </label>
           <label>
-            Enddatum
+            {t("Enddatum", "End date")}
             <Select
               value={view.endDateField || ""}
               onChange={(e) => updateView({ endDateField: e.target.value })}
             >
-              <option value="">Kein Enddatum</option>
+              <option value="">{t("Kein Enddatum", "No end date")}</option>
               {fields
                 .filter((f) => f.type === "date")
                 .map((f) => (
@@ -3592,7 +3594,7 @@ export default function DatabaseView({
             </Select>
           </label>
           <div className="settings-section">
-            <h3>Eigenschaften und Spalten</h3>
+            <h3>{t("Eigenschaften und Spalten", "Properties and columns")}</h3>
             {orderedFields.map((f, index) => (
               <div className="property-order" key={f.id}>
                 <label className="checkbox-label">
@@ -3612,7 +3614,7 @@ export default function DatabaseView({
                 </label>
                 <button
                   className="icon-button"
-                  aria-label={`${f.name} nach oben`}
+                  aria-label={t(`${f.name} nach oben`, `${f.name} up`)}
                   disabled={!viewEditable || index === 0}
                   onClick={() => moveColumn(f.id, orderedFields[index - 1].id)}
                 >
@@ -3620,7 +3622,7 @@ export default function DatabaseView({
                 </button>
                 <button
                   className="icon-button"
-                  aria-label={`${f.name} nach unten`}
+                  aria-label={t(`${f.name} nach unten`, `${f.name} down`)}
                   disabled={!viewEditable || index === orderedFields.length - 1}
                   onClick={() => moveColumn(orderedFields[index + 1].id, f.id)}
                 >
@@ -3630,7 +3632,7 @@ export default function DatabaseView({
                   <input
                     type="number"
                     className="column-width-input"
-                    aria-label={`${f.name} Breite in Pixeln`}
+                    aria-label={t(`${f.name} Breite in Pixeln`, `${f.name} width in pixels`)}
                     min={80}
                     max={800}
                     disabled={!viewEditable}
@@ -3666,7 +3668,7 @@ export default function DatabaseView({
                 setConfig(false);
               }}
             >
-              Ansicht löschen
+              {t("Ansicht löschen", "Delete view")}
             </button>
           )}
         </fieldset>
@@ -3678,20 +3680,19 @@ export default function DatabaseView({
         }}
         title={
           bulk === "delete"
-            ? "Einträge löschen"
-            : "Einträge gemeinsam bearbeiten"
+            ? t("Einträge löschen", "Delete records")
+            : t("Einträge gemeinsam bearbeiten", "Edit records together")
         }
       >
         <p>
-          {selectionRows.length} ausgewählte Einträge. Vor der Änderung wird
-          eine Datenbankversion gesichert.
+          {selectionRows.length} {t("ausgewählte Einträge. Vor der Änderung wird eine Datenbankversion gesichert.", "selected records. A database version is saved before the change.")}
         </p>
         {bulk === "update" && (
           <>
             <label>
-              Eigenschaft
+              {t("Eigenschaft", "Property")}
               <Select
-                aria-label="Eigenschaft"
+                aria-label={t("Eigenschaft", "Property")}
                 value={bulkField}
                 onChange={(e) => {
                   setBulkField(e.target.value);
@@ -3709,7 +3710,7 @@ export default function DatabaseView({
             </label>
             {fields.find((f) => f.id === bulkField) && (
               <label>
-                Neuer Wert
+                {t("Neuer Wert", "New value")}
                 <CellInput
                   key={bulkField}
                   field={fields.find((f) => f.id === bulkField)!}
@@ -3739,10 +3740,10 @@ export default function DatabaseView({
           }}
         >
           {bulkBusy
-            ? "Wird gespeichert …"
+            ? t("Wird gespeichert …", "Saving …")
             : bulk === "delete"
-              ? "Einträge löschen"
-              : "Änderung anwenden"}
+              ? t("Einträge löschen", "Delete records")
+              : t("Änderung anwenden", "Apply change")}
         </button>
       </Modal>
       <p role="status" className="sr-only">
@@ -3751,18 +3752,17 @@ export default function DatabaseView({
       <Modal
         open={!!moveDialog}
         onClose={() => setMoveDialog(null)}
-        title="Eintrag verschieben"
+        title={t("Eintrag verschieben", "Move record")}
       >
         <p>
           „
           {moveRow
-            ? cellText(moveRow.cells[fields[0].id]) || "Ohne Titel"
-            : "Eintrag"}
-          “ in Ansicht „{view.name}“ anordnen.
+            ? cellText(moveRow.cells[fields[0].id]) || t("Ohne Titel", "Untitled")
+            : t("Eintrag", "Record")}
+          {t("“ in Ansicht „", "” in view “")}{view.name}“ anordnen.
         </p>
         <p className="muted">
-          Die Reihenfolge gilt für diese Ansicht. Ausgeblendete Einträge
-          behalten ihre relative Reihenfolge.
+          {t("Die Reihenfolge gilt für diese Ansicht. Ausgeblendete Einträge behalten ihre relative Reihenfolge.", "The order applies to this view. Hidden records keep their relative order.")}
         </p>
         <div className="row-move-actions">
           <button
@@ -3778,7 +3778,7 @@ export default function DatabaseView({
               )
             }
           >
-            An den Anfang
+            {t("An den Anfang", "To the top")}
           </button>
           <button
             className="button"
@@ -3793,7 +3793,7 @@ export default function DatabaseView({
               )
             }
           >
-            Nach oben
+            {t("Nach oben", "Up")}
           </button>
           <button
             className="button"
@@ -3813,7 +3813,7 @@ export default function DatabaseView({
               )
             }
           >
-            Nach unten
+            {t("Nach unten", "Down")}
           </button>
           <button
             className="button"
@@ -3833,35 +3833,35 @@ export default function DatabaseView({
               )
             }
           >
-            Ans Ende
+            {t("Ans Ende", "To the end")}
           </button>
         </div>
         <label>
-          Position
+          {t("Position", "Position")}
           <Select
-            aria-label="Verschiebeposition"
+            aria-label={t("Verschiebeposition", "Move position")}
             value={movePlacement}
             onChange={(e) =>
               setMovePlacement(e.target.value as "before" | "after")
             }
           >
-            <option value="before">Vor dem Eintrag</option>
-            <option value="after">Nach dem Eintrag</option>
+            <option value="before">{t("Vor dem Eintrag", "Before the record")}</option>
+            <option value="after">{t("Nach dem Eintrag", "After the record")}</option>
           </Select>
         </label>
         <label>
-          Bezugseintrag
+          {t("Bezugseintrag", "Reference record")}
           <Select
-            aria-label="Bezugseintrag"
+            aria-label={t("Bezugseintrag", "Reference record")}
             value={moveTarget}
             onChange={(e) => setMoveTarget(e.target.value)}
           >
-            <option value="">Eintrag auswählen …</option>
+            <option value="">{t("Eintrag auswählen …", "Choose record …")}</option>
             {moveSiblings
               .filter((r) => r.id !== moveRow?.id)
               .map((r) => (
                 <option key={r.id} value={r.id}>
-                  {cellText(r.cells[fields[0].id]) || "Ohne Titel"}
+                  {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
                 </option>
               ))}
           </Select>
@@ -3875,19 +3875,17 @@ export default function DatabaseView({
               moveTo(moveRow, moveTarget, movePlacement, moveDialog?.groupKey)
             }
           >
-            Hierhin verschieben
+            {t("Hierhin verschieben", "Move here")}
           </button>
         </div>
       </Modal>
       <Modal
         open={!!sortMove}
         onClose={() => setSortMove(null)}
-        title="Sortierung aufheben?"
+        title={t("Sortierung aufheben?", "Remove sorting?")}
       >
         <p>
-          Diese Ansicht wird automatisch sortiert. Zum manuellen Verschieben
-          werden ihre Sortierregeln aufgehoben. Die bisherige Sortierung wird
-          als Ausgangsreihenfolge gespeichert.
+          {t("Diese Ansicht wird automatisch sortiert. Zum manuellen Verschieben werden ihre Sortierregeln aufgehoben. Die bisherige Sortierung wird als Ausgangsreihenfolge gespeichert.", "This view is sorted automatically. Moving by hand removes its sorting rules. The current sorting is saved as the starting order.")}
         </p>
         <div className="modal-actions">
           <button
@@ -3895,14 +3893,14 @@ export default function DatabaseView({
             disabled={orderBusy}
             onClick={() => setSortMove(null)}
           >
-            Abbrechen
+            {t("Abbrechen", "Cancel")}
           </button>
           <button
             className="button primary"
             disabled={orderBusy}
             onClick={() => sortMove && submitMove(sortMove, true)}
           >
-            Sortierung aufheben und verschieben
+            {t("Sortierung aufheben und verschieben", "Remove sorting and move")}
           </button>
         </div>
       </Modal>
@@ -3911,8 +3909,8 @@ export default function DatabaseView({
         onClose={() => setNewField(false)}
         title={
           fields.some((f) => f.id === fieldDraft.id)
-            ? "Eigenschaft bearbeiten"
-            : "Eigenschaft hinzufügen"
+            ? t("Eigenschaft bearbeiten", "Edit property")
+            : t("Eigenschaft hinzufügen", "Add property")
         }
       >
         <form
@@ -3928,7 +3926,7 @@ export default function DatabaseView({
             if (formulaProblem || formulaTooLong) {
               setFieldError(
                 formulaProblem?.message ||
-                  "Die Formel enthält zu viele Eigenschaftsbezüge.",
+                  t("Die Formel enthält zu viele Eigenschaftsbezüge.", "The formula contains too many property references."),
               );
               return;
             }
@@ -3965,16 +3963,16 @@ export default function DatabaseView({
             if (r) setNewField(false);
             else
               setFieldError(
-                "Die Eigenschaft konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.",
+                t("Die Eigenschaft konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.", "The property could not be saved. Your draft is kept."),
               );
           }}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               required
               autoFocus
-              aria-label="Eigenschaftsname"
+              aria-label={t("Eigenschaftsname", "Property name")}
               value={fieldDraft.name}
               disabled={!editable || !allowFieldChanges || schemaBusy}
               onChange={(e) =>
@@ -3983,9 +3981,9 @@ export default function DatabaseView({
             />
           </label>
           <label>
-            Typ
+            {t("Typ", "Type")}
             <Select
-              aria-label="Eigenschaftstyp"
+              aria-label={t("Eigenschaftstyp", "Property type")}
               value={fieldDraft.type}
               disabled={
                 !editable || !allowFieldChanges || schemaBusy || !!relationPair
@@ -3999,14 +3997,14 @@ export default function DatabaseView({
             >
               {Object.entries(fieldNames).map(([k, n]) => (
                 <option key={k} value={k}>
-                  {n}
+                  {t(n[0], n[1])}
                 </option>
               ))}
             </Select>
           </label>
           {["select", "multiselect"].includes(fieldDraft.type) && (
             <label>
-              Optionen, durch Komma getrennt
+              {t("Optionen, durch Komma getrennt", "Options, separated by commas")}
               <input
                 value={fieldDraft.options?.join(", ") || ""}
                 onChange={(e) =>
@@ -4020,9 +4018,9 @@ export default function DatabaseView({
           )}
           {(fieldDraft.type === "number" || fieldDraft.type === "formula") && (
             <label>
-              Format
+              {t("Format", "Format")}
               <Select
-                aria-label="Zahlenformat"
+                aria-label={t("Zahlenformat", "Number format")}
                 value={fieldDraft.format || ""}
                 onChange={(e) =>
                   setFieldDraft((f) => ({ ...f, format: e.target.value }))
@@ -4039,9 +4037,9 @@ export default function DatabaseView({
           {fieldDraft.type === "number" && (
             <>
               <label>
-                Nachkommastellen
+                {t("Nachkommastellen", "Decimal places")}
                 <Select
-                  aria-label="Nachkommastellen"
+                  aria-label={t("Nachkommastellen", "Decimal places")}
                   value={fieldDraft.decimals ?? ""}
                   onChange={(e) =>
                     setFieldDraft((f) => ({
@@ -4053,7 +4051,7 @@ export default function DatabaseView({
                     }))
                   }
                 >
-                  <option value="">Automatisch</option>
+                  <option value="">{t("Automatisch", "Automatic")}</option>
                   {[0, 1, 2, 3, 4, 5, 6].map((n) => (
                     <option key={n} value={n}>
                       {n}
@@ -4062,9 +4060,9 @@ export default function DatabaseView({
                 </Select>
               </label>
               <label>
-                Darstellung
+                {t("Darstellung", "Display")}
                 <Select
-                  aria-label="Zahlendarstellung"
+                  aria-label={t("Zahlendarstellung", "Number display")}
                   value={fieldDraft.rollupDisplay || "number"}
                   onChange={(e) =>
                     setFieldDraft((f) => {
@@ -4080,17 +4078,17 @@ export default function DatabaseView({
                     })
                   }
                 >
-                  <option value="number">Zahl</option>
-                  <option value="bar">Fortschrittsbalken</option>
-                  <option value="ring">Fortschrittsring</option>
-                  <option value="rating">Bewertung (Sterne)</option>
+                  <option value="number">{t("Zahl", "Number")}</option>
+                  <option value="bar">{t("Fortschrittsbalken", "Progress bar")}</option>
+                  <option value="ring">{t("Fortschrittsring", "Progress ring")}</option>
+                  <option value="rating">{t("Bewertung (Sterne)", "Rating (stars)")}</option>
                 </Select>
               </label>
               {fieldDraft.rollupDisplay === "rating" && (
                 <label>
-                  Anzahl Sterne
+                  {t("Anzahl Sterne", "Number of stars")}
                   <input
-                    aria-label="Anzahl Sterne"
+                    aria-label={t("Anzahl Sterne", "Number of stars")}
                     type="number"
                     min="1"
                     max="10"
@@ -4113,9 +4111,9 @@ export default function DatabaseView({
                 fieldDraft.rollupDisplay !== "number" &&
                 fieldDraft.rollupDisplay !== "rating" && (
                   <label>
-                    Zielwert
+                    {t("Zielwert", "Target value")}
                     <input
-                      aria-label="Zielwert"
+                      aria-label={t("Zielwert", "Target value")}
                       type="number"
                       min="0.000001"
                       step="any"
@@ -4135,9 +4133,9 @@ export default function DatabaseView({
           {fieldDraft.type === "date" && (
             <>
               <label>
-                Datumsformat
+                {t("Datumsformat", "Date format")}
                 <Select
-                  aria-label="Datumsformat"
+                  aria-label={t("Datumsformat", "Date format")}
                   value={fieldDraft.format || ""}
                   onChange={(e) =>
                     setFieldDraft((f) => ({ ...f, format: e.target.value }))
@@ -4151,9 +4149,9 @@ export default function DatabaseView({
                 </Select>
               </label>
               <label>
-                Zeitformat
+                {t("Zeitformat", "Time format")}
                 <Select
-                  aria-label="Zeitformat"
+                  aria-label={t("Zeitformat", "Time format")}
                   value={fieldDraft.timeFormat || "24"}
                   onChange={(e) =>
                     setFieldDraft((f) => ({
@@ -4185,9 +4183,9 @@ export default function DatabaseView({
           {fieldDraft.type === "relation" && (
             <>
               <label>
-                Verknüpfte Datenbank
+                {t("Verknüpfte Datenbank", "Linked database")}
                 <Select
-                  aria-label="Verknüpfte Datenbank"
+                  aria-label={t("Verknüpfte Datenbank", "Linked database")}
                   required
                   value={fieldDraft.relationPage || ""}
                   disabled={!editable || !allowFieldChanges || !!relationPair}
@@ -4198,7 +4196,7 @@ export default function DatabaseView({
                     }))
                   }
                 >
-                  <option value="">Auswählen …</option>
+                  <option value="">{t("Auswählen …", "Select …")}</option>
                   {pages
                     .filter((p) => p.kind === "database" && !p.deleted_at)
                     .map((p) => (
@@ -4222,13 +4220,13 @@ export default function DatabaseView({
                     }))
                   }
                 />
-                Bidirektional verknüpfen
+                {t("Bidirektional verknüpfen", "Link in both directions")}
               </label>
               {bidirectional && !relationPair && (
                 <label>
-                  Name der Rückrelation
+                  {t("Name der Rückrelation", "Name of the reverse relation")}
                   <input
-                    aria-label="Name der Rückrelation"
+                    aria-label={t("Name der Rückrelation", "Name of the reverse relation")}
                     maxLength={100}
                     value={fieldDraft.inverseName ?? page.title.slice(0, 100)}
                     onChange={(e) =>
@@ -4239,26 +4237,21 @@ export default function DatabaseView({
                     }
                   />
                   <small>
-                    Eine neue Eigenschaft in der Zieldatenbank zeigt die
-                    zugehörigen Einträge. Änderungen werden in beide Richtungen
-                    übernommen.
+                    {t("Eine neue Eigenschaft in der Zieldatenbank zeigt die zugehörigen Einträge. Änderungen werden in beide Richtungen übernommen.", "A new property in the target database shows the related records. Changes apply in both directions.")}
                   </small>
                 </label>
               )}
               {relationPair && (
                 <p className="muted">
-                  Verknüpft mit „{inverseName || "Rückrelation"}“. Beim
-                  Deaktivieren oder Löschen bleiben die andere Eigenschaft und
-                  ihre Werte erhalten. Zum Ändern des Typs oder Ziels zuerst
-                  deaktivieren und speichern.
+                  {t("Verknüpft mit „", "Linked with “")}{inverseName || t("Rückrelation", "Reverse relation")}{t("“. Beim Deaktivieren oder Löschen bleiben die andere Eigenschaft und ihre Werte erhalten. Zum Ändern des Typs oder Ziels zuerst deaktivieren und speichern.", "”. When disabling or deleting, the other property and its values stay. To change the type or target, disable and save first.")}
                 </p>
               )}
               {relationChanged && (
                 <p role="status" className="muted">
                   {relationTarget?.error ||
                     (!relationReady
-                      ? "Berechtigungen werden geprüft …"
-                      : "Bearbeitungsrechte für beide Datenbanken vorhanden.")}
+                      ? t("Berechtigungen werden geprüft …", "Checking permissions …")
+                      : t("Bearbeitungsrechte für beide Datenbanken vorhanden.", "Edit rights for both databases are present."))}
                 </p>
               )}
             </>
@@ -4268,7 +4261,7 @@ export default function DatabaseView({
               <label>
                 Relation
                 <Select
-                  aria-label="Rollup-Relation"
+                  aria-label={t("Rollup-Relation", "Rollup relation")}
                   required
                   value={fieldDraft.relationField || ""}
                   onChange={(e) =>
@@ -4280,7 +4273,7 @@ export default function DatabaseView({
                     }))
                   }
                 >
-                  <option value="">Auswählen …</option>
+                  <option value="">{t("Auswählen …", "Select …")}</option>
                   {fields
                     .filter((f) => f.type === "relation")
                     .map((f) => (
@@ -4291,9 +4284,9 @@ export default function DatabaseView({
                 </Select>
               </label>
               <label>
-                Eigenschaft
+                {t("Eigenschaft", "Property")}
                 <Select
-                  aria-label="Rollup-Eigenschaft"
+                  aria-label={t("Rollup-Eigenschaft", "Rollup property")}
                   value={fieldDraft.rollupField || ""}
                   onChange={(e) =>
                     setFieldDraft((f) => ({
@@ -4303,21 +4296,21 @@ export default function DatabaseView({
                     }))
                   }
                 >
-                  <option value="">Nur verknüpfte Einträge zählen</option>
+                  <option value="">{t("Nur verknüpfte Einträge zählen", "Only linked records count")}</option>
                   {rollupFields.map((f) => (
                     <option key={f.id} value={f.id}>
-                      {f.name} · {fieldNames[f.type]}
+                      {f.name} · {t(...fieldNames[f.type])}
                     </option>
                   ))}
                 </Select>
                 {rollupRelation && !rollupFields.length && (
-                  <small>Die verknüpfte Datenbank ist nicht zugänglich.</small>
+                  <small>{t("Die verknüpfte Datenbank ist nicht zugänglich.", "The linked database is not accessible.")}</small>
                 )}
               </label>
               <label>
-                Berechnung
+                {t("Berechnung", "Calculation")}
                 <Select
-                  aria-label="Rollup-Berechnung"
+                  aria-label={t("Rollup-Berechnung", "Rollup calculation")}
                   value={fieldDraft.aggregate || "count"}
                   onChange={(e) =>
                     setFieldDraft((f) => ({
@@ -4342,9 +4335,9 @@ export default function DatabaseView({
               ].includes(fieldDraft.aggregate || "count") && (
                 <>
                   <label>
-                    Darstellung
+                    {t("Darstellung", "Display")}
                     <Select
-                      aria-label="Rollup-Darstellung"
+                      aria-label={t("Rollup-Darstellung", "Rollup display")}
                       value={fieldDraft.rollupDisplay || "number"}
                       onChange={(e) =>
                         setFieldDraft((f) => ({
@@ -4354,18 +4347,18 @@ export default function DatabaseView({
                         }))
                       }
                     >
-                      <option value="number">Zahl</option>
-                      <option value="bar">Fortschrittsbalken</option>
-                      <option value="ring">Fortschrittsring</option>
+                      <option value="number">{t("Zahl", "Number")}</option>
+                      <option value="bar">{t("Fortschrittsbalken", "Progress bar")}</option>
+                      <option value="ring">{t("Fortschrittsring", "Progress ring")}</option>
                     </Select>
                   </label>
                   {fieldDraft.rollupDisplay &&
                     fieldDraft.rollupDisplay !== "number" &&
                     !percentAggregate(fieldDraft.aggregate) && (
                       <label>
-                        Zielwert
+                        {t("Zielwert", "Target value")}
                         <input
-                          aria-label="Rollup-Zielwert"
+                          aria-label={t("Rollup-Zielwert", "Rollup target value")}
                           type="number"
                           min="0.000001"
                           step="any"
@@ -4387,7 +4380,7 @@ export default function DatabaseView({
           {(fieldError || fieldVersion !== data.database.version) && (
             <p role="alert" className="error">
               {fieldVersion !== data.database.version
-                ? "Die Datenbank wurde zwischenzeitlich geändert. Dein Entwurf bleibt erhalten. Schließe den Dialog und öffne die Eigenschaft erneut, um den aktuellen Stand zu bearbeiten."
+                ? t("Die Datenbank wurde zwischenzeitlich geändert. Dein Entwurf bleibt erhalten. Schließe den Dialog und öffne die Eigenschaft erneut, um den aktuellen Stand zu bearbeiten.", "The database was changed in the meantime. Your draft is kept. Close the dialog and open the property again to edit the current state.")
                 : fieldError}
             </p>
           )}
@@ -4409,11 +4402,11 @@ export default function DatabaseView({
                       if (result) setNewField(false);
                       else
                         setFieldError(
-                          "Die Eigenschaft konnte nicht gelöscht werden. Dein Entwurf bleibt erhalten.",
+                          t("Die Eigenschaft konnte nicht gelöscht werden. Dein Entwurf bleibt erhalten.", "The property could not be deleted. Your draft is kept."),
                         );
                     }}
                   >
-                    Löschen
+                    {t("Löschen", "Delete")}
                   </button>
                 )}
               <button
@@ -4425,7 +4418,7 @@ export default function DatabaseView({
                   formulaTooLong
                 }
               >
-                Speichern
+                {t("Speichern", "Save")}
               </button>
             </div>
           )}
@@ -4446,7 +4439,7 @@ export default function DatabaseView({
               (v) => v.id === calculationEdit.viewId,
             );
             if (!target)
-              throw new Error("Diese Ansicht ist nicht mehr verfügbar.");
+              throw new Error(t("Diese Ansicht ist nicht mehr verfügbar.", "This view is no longer available."));
             const calculations = {
               ...target.calculations,
               ...(choice === undefined
@@ -4469,7 +4462,7 @@ export default function DatabaseView({
       <Modal
         open={newView}
         onClose={() => setNewView(false)}
-        title="Ansicht hinzufügen"
+        title={t("Ansicht hinzufügen", "Add view")}
       >
         <form
           onSubmit={async (e) => {
@@ -4492,7 +4485,7 @@ export default function DatabaseView({
           }}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               required
               autoFocus
@@ -4501,7 +4494,7 @@ export default function DatabaseView({
             />
           </label>
           <label>
-            Darstellung
+            {t("Darstellung", "Display")}
             <Select
               value={viewType}
               onChange={(e) => setViewType(e.target.value as View["type"])}
@@ -4513,17 +4506,16 @@ export default function DatabaseView({
               ))}
             </Select>
           </label>
-          <button className="button primary">Ansicht erstellen</button>
+          <button className="button primary">{t("Ansicht erstellen", "Create view")}</button>
         </form>
       </Modal>
       <Modal
         open={manageTemplates}
         onClose={() => setManageTemplates(false)}
-        title="Datensatzvorlagen"
+        title={t("Datensatzvorlagen", "Record templates")}
       >
         <p className="muted">
-          Speichere einen Eintrag mit seinen Eigenschaften und Inhalten als
-          Vorlage.
+          {t("Speichere einen Eintrag mit seinen Eigenschaften und Inhalten als Vorlage.", "Save a record with its properties and content as a template.")}
         </p>
         <button
           className="button"
@@ -4532,40 +4524,40 @@ export default function DatabaseView({
             void createRow({}, true, null);
           }}
         >
-          Leeren Eintrag erstellen
+          {t("Leeren Eintrag erstellen", "Create empty record")}
         </button>
-        {data.rowTemplates?.map((t) => (
-          <div className="row-template-item" key={t.id}>
-            <strong>{t.name}</strong>
+        {data.rowTemplates?.map((template) => (
+          <div className="row-template-item" key={template.id}>
+            <strong>{template.name}</strong>
             <label className="checkbox-label">
               <input
                 type="checkbox"
-                checked={!!t.is_default}
+                checked={!!template.is_default}
                 onChange={(e) =>
                   act({
                     action: "row.template.default",
-                    templateId: t.id,
+                    templateId: template.id,
                     enabled: e.target.checked,
                   })
                 }
               />
-              Standardvorlage
+              {t("Standardvorlage", "Default template")}
             </label>
             <div>
               <button
                 className="button compact"
                 onClick={() => {
                   setManageTemplates(false);
-                  void createRow({}, true, t.id);
+                  void createRow({}, true, template.id);
                 }}
               >
-                Verwenden
+                {t("Verwenden", "Use")}
               </button>
               <button
                 className="icon-button danger"
-                title={`Vorlage ${t.name} löschen`}
+                title={t(`Vorlage ${template.name} löschen`, `Delete template ${template.name}`)}
                 onClick={() =>
-                  act({ action: "row.template.delete", templateId: t.id })
+                  act({ action: "row.template.delete", templateId: template.id })
                 }
               >
                 <Trash />
@@ -4577,7 +4569,7 @@ export default function DatabaseView({
       <Modal
         open={!!selected}
         onClose={() => setRowId(null)}
-        title="Eintrag"
+        title={t("Eintrag", "Record")}
         wide
         actions={selected && recordActions(selected)}
         className={
@@ -4596,7 +4588,7 @@ export default function DatabaseView({
               parseRecurrence(selected.recurrence) && (
                 <div className="occurrence-banner" role="status">
                   <span>
-                    Termin am{" "}
+                    {t("Termin am", "Occurrence on")}{" "}
                     {new Date(`${occurrence.date}T00:00:00`).toLocaleDateString(
                       "de-DE",
                       {
@@ -4606,14 +4598,14 @@ export default function DatabaseView({
                         year: "numeric",
                       },
                     )}{" "}
-                    aus einer Serie. Änderungen hier gelten für alle Termine.
+                    {t("aus einer Serie. Änderungen hier gelten für alle Termine.", "from a series. Changes here apply to all occurrences.")}
                   </span>
                   {selectedEditable && (
                     <span className="occurrence-actions">
                       {(
                         [
-                          ["single", "Nur diesen Termin bearbeiten"],
-                          ["following", "Diesen und alle folgenden"],
+                          ["single", t("Nur diesen Termin bearbeiten", "Edit only this occurrence")],
+                          ["following", t("Diesen und alle folgenden", "This and all following")],
                         ] as const
                       ).map(([mode, label]) => (
                         <button
@@ -4663,7 +4655,7 @@ export default function DatabaseView({
                     className="button compact cover-change"
                     onClick={() => setRowCoverPicker(true)}
                   >
-                    Cover ändern
+                    {t("Cover ändern", "Change cover")}
                   </button>
                 )}
               </div>
@@ -4679,7 +4671,7 @@ export default function DatabaseView({
             )}
             {selected.role === "viewer" && (
               <p className="row-access-note" role="note">
-                Dieser Eintrag ist für dich schreibgeschützt.
+                {t("Dieser Eintrag ist für dich schreibgeschützt.", "This record is read-only for you.")}
               </p>
             )}
             {accessOpen && canManageAccess(selected) && (
@@ -4698,14 +4690,14 @@ export default function DatabaseView({
                   onClick={() => setRowIconPicker(true)}
                 >
                   <Smiley size={15} />{" "}
-                  {selected.icon ? "Symbol ändern" : "Symbol hinzufügen"}
+                  {selected.icon ? t("Symbol ändern", "Change icon") : t("Symbol hinzufügen", "Add icon")}
                 </button>
                 {!selected.cover && (
                   <button
                     className="text-button"
                     onClick={() => setRowCoverPicker(true)}
                   >
-                    <ImageIcon size={15} /> Cover hinzufügen
+                    <ImageIcon size={15} /> {t("Cover hinzufügen", "Add cover")}
                   </button>
                 )}
               </div>
@@ -4726,7 +4718,7 @@ export default function DatabaseView({
                   onSave={(title) => updateCell(selected, fields[0], title)}
                 />
               ) : (
-                cellText(selected.cells[fields[0].id]) || "Ohne Titel"
+                cellText(selected.cells[fields[0].id]) || t("Ohne Titel", "Untitled")
               )}
             </h2>
             <div
@@ -4778,7 +4770,7 @@ export default function DatabaseView({
                     onClick={() => setShowEmpty((v) => !v)}
                   >
                     {showEmpty
-                      ? "Leere Eigenschaften ausblenden"
+                      ? t("Leere Eigenschaften ausblenden", "Hide empty properties")
                       : `${emptyHidden} leere ${emptyHidden === 1 ? "Eigenschaft" : "Eigenschaften"} anzeigen`}
                   </button>
                 )}
@@ -4801,7 +4793,7 @@ export default function DatabaseView({
                   onChanged={onRefresh}
                 />
                 <div className="settings-section">
-                  <h3>Kommentare</h3>
+                  <h3>{t("Kommentare", "Comments")}</h3>
                   {data.comments
                     .filter((c) => c.row_id === selected.id)
                     .map((c) => (
@@ -4842,9 +4834,9 @@ export default function DatabaseView({
                     <input
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
-                      placeholder="Kommentar schreiben …"
+                      placeholder={t("Kommentar schreiben …", "Write a comment …")}
                     />
-                    <button className="button compact">Senden</button>
+                    <button className="button compact">{t("Senden", "Send")}</button>
                   </form>
                 </div>
               </div>
@@ -4858,7 +4850,7 @@ export default function DatabaseView({
                 }}
               >
                 <Trash />
-                Eintrag löschen
+                {t("Eintrag löschen", "Delete record")}
               </button>
             )}
           </div>
@@ -4867,18 +4859,18 @@ export default function DatabaseView({
       {selected && rowIconPicker && (
         <Modal
           open
-          title="Symbol des Eintrags"
+          title={t("Symbol des Eintrags", "Record icon")}
           onClose={() => setRowIconPicker(false)}
         >
           <div
             className="icon-tabs"
             role="tablist"
-            aria-label="Art des Symbols"
+            aria-label={t("Art des Symbols", "Kind of icon")}
           >
             {(
               [
-                ["emoji", "Emoji"],
-                ["image", "Bild"],
+                ["emoji", t("Emoji", "Emoji")],
+                ["image", t("Bild", "Image")],
               ] as const
             ).map(([tab, label]) => (
               <button
@@ -4906,7 +4898,7 @@ export default function DatabaseView({
                     setRowIconPicker(false);
                 }}
               >
-                Symbol entfernen
+                {t("Symbol entfernen", "Remove icon")}
               </button>
             )}
           </div>
@@ -4980,6 +4972,7 @@ function MoreRows({
   colSpan?: number;
   auto?: boolean;
 }) {
+  const t = useT();
   const ref = useRef<HTMLButtonElement>(null);
   const more = useRef(onMore);
   more.current = onMore;
@@ -4995,7 +4988,7 @@ function MoreRows({
   }, [auto, remaining]);
   const button = (
     <button ref={ref} type="button" className="text-button more-rows" onClick={() => onMore()}>
-      Weitere {Math.min(remaining, ROW_STEP)} von {remaining} anzeigen
+      {t("Weitere", "More")}{" "}{Math.min(remaining, ROW_STEP)} {t("von", "of")}{" "}{remaining} anzeigen
     </button>
   );
   return table ? (
@@ -5027,6 +5020,7 @@ function RowTitle({
   focus: boolean;
   onSave: (title: string) => unknown;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState(value);
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => setDraft(value), [value]);
@@ -5057,8 +5051,8 @@ function RowTitle({
     <textarea
       ref={input}
       className="row-title-input"
-      aria-label="Titel des Eintrags"
-      placeholder="Ohne Titel"
+      aria-label={t("Titel des Eintrags", "Record title")}
+      placeholder={t("Ohne Titel", "Untitled")}
       rows={1}
       value={draft}
       onChange={(e) => setDraft(e.target.value.replace(/\n/g, ""))}
@@ -5098,6 +5092,7 @@ function RelationBacklinks({
   pageId: string;
   rowId: string;
 }) {
+  const t = useT();
   const [links, setLinks] = useState<Backlink[] | null>(null);
   useEffect(() => {
     let active = true;
@@ -5110,8 +5105,8 @@ function RelationBacklinks({
   }, [pageId, rowId]);
   if (!links?.length) return null;
   return (
-    <section className="row-backlinks" aria-label="Verknüpft von">
-      <h3>Verknüpft von</h3>
+    <section className="row-backlinks" aria-label={t("Verknüpft von", "Linked from")}>
+      <h3>{t("Verknüpft von", "Linked from")}</h3>
       <ul>
         {links.map((link) => (
           <li key={`${link.rowId}-${link.field}`}>
@@ -5144,6 +5139,7 @@ function AddBoardGroup({
   disabled: boolean;
   onAdd: (name: string) => Promise<unknown>;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -5151,7 +5147,7 @@ function AddBoardGroup({
     const value = name.trim();
     if (!value) return setOpen(false);
     if (existing.some((o) => o.toLocaleLowerCase("de") === value.toLocaleLowerCase("de")))
-      return setError("Diese Gruppe gibt es schon.");
+      return setError(t("Diese Gruppe gibt es schon.", "This group already exists."));
     const result = await onAdd(value);
     if (result === null) return;
     setName("");
@@ -5168,8 +5164,8 @@ function AddBoardGroup({
     >
       <input
         autoFocus
-        aria-label="Name der neuen Gruppe"
-        placeholder="Name der Gruppe"
+        aria-label={t("Name der neuen Gruppe", "Name of the new group")}
+        placeholder={t("Name der Gruppe", "Name of the group")}
         value={name}
         maxLength={100}
         disabled={disabled}
@@ -5192,7 +5188,7 @@ function AddBoardGroup({
       )}
       <div className="board-add-group-actions">
         <button type="submit" className="button primary compact" disabled={disabled || !name.trim()}>
-          Hinzufügen
+          {t("Hinzufügen", "Add")}
         </button>
         <button
           type="button"
@@ -5203,14 +5199,14 @@ function AddBoardGroup({
             setError("");
           }}
         >
-          Abbrechen
+          {t("Abbrechen", "Cancel")}
         </button>
       </div>
     </form>
   ) : (
     <button type="button" className="board-add-group" onClick={() => setOpen(true)}>
       <Plus size={16} />
-      Gruppe hinzufügen
+      {t("Gruppe hinzufügen", "Add group")}
     </button>
   );
 }

@@ -1926,7 +1926,7 @@ export default function WorkspaceApp({
                             >
                               <PageIcon name={p.icon} size={16} />
                               <span>{p.title || t("Ohne Titel", "Untitled")}</span>
-                              <small>{ago(visit.seenAt, clock)}</small>
+                              <small>{ago(visit.seenAt, clock ?? Date.now(), locale)}</small>
                             </button>,
                           ]
                         : [];

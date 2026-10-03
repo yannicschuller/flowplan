@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import {
@@ -12,12 +13,12 @@ type Grant = { userId?: string; groupId?: string; role: "viewer" | "editor" };
 
 // Record permissions: read-only or private records with exceptions for
 // people and groups. Shown to database owners and the record's creator.
-export const rowAccessSummary = (row: Row) =>
+export const rowAccessSummary = (row: Row, t: (de: string, en: string) => string = (de) => de) =>
   (row.access || "inherit") === "inherit"
-    ? "Rechte wie Datenbank"
+    ? t("Rechte wie Datenbank", "Same as database")
     : row.access === "private"
-      ? "Privater Eintrag"
-      : "Schreibgeschützter Eintrag";
+      ? t("Privater Eintrag", "Private record")
+      : t("Schreibgeschützter Eintrag", "Read-only record");
 
 // The panel; the button that opens it sits in the record's header.
 export function RowAccess({
@@ -31,6 +32,7 @@ export function RowAccess({
   groups: { id: string; name: string }[];
   act: (b: Record<string, unknown>) => Promise<unknown>;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false),
     [access, setAccess] = useState<RowAccessMode>(row.access || "inherit"),
     [grants, setGrants] = useState<Grant[]>(
@@ -43,15 +45,15 @@ export function RowAccess({
   const key = (g: Grant) => (g.userId ? `u:${g.userId}` : `g:${g.groupId}`);
   const name = (g: Grant) =>
     g.userId
-      ? members.find((m) => m.id === g.userId)?.name || "Unbekannt"
-      : `Gruppe ${groups.find((x) => x.id === g.groupId)?.name || "?"}`;
+      ? members.find((m) => m.id === g.userId)?.name || t("Unbekannt", "Unknown")
+      : t(`Gruppe ${groups.find((x) => x.id === g.groupId)?.name || "?"}`, `Group ${groups.find((x) => x.id === g.groupId)?.name || "?"}`);
   const candidates = [
     ...members
       .filter((m) => !grants.some((g) => g.userId === m.id))
       .map((m) => ({ value: `u:${m.id}`, label: m.name })),
     ...groups
       .filter((x) => !grants.some((g) => g.groupId === x.id))
-      .map((x) => ({ value: `g:${x.id}`, label: `Gruppe ${x.name}` })),
+      .map((x) => ({ value: `g:${x.id}`, label: t(`Gruppe ${x.name}`, `Group ${x.name}`) })),
   ];
   async function save() {
     setBusy(true);
@@ -63,7 +65,7 @@ export function RowAccess({
       grants: access === "inherit" ? [] : grants,
     });
     setBusy(false);
-    if (result) setStatus("Rechte gespeichert");
+    if (result) setStatus(t("Rechte gespeichert", "Permissions saved"));
   }
   return (
     <div className="row-access">
@@ -71,10 +73,10 @@ export function RowAccess({
         <div
           className="row-access-panel"
           role="group"
-          aria-label="Eintragsrechte"
+          aria-label={t("Eintragsrechte", "Record permissions")}
         >
           <label>
-            Zugriff
+            {t("Zugriff", "Access")}
             <Select
               value={access}
               disabled={busy}
@@ -91,15 +93,15 @@ export function RowAccess({
             <>
               <p className="muted">
                 {access === "private"
-                  ? "Nur Besitzer der Datenbank, wer den Eintrag angelegt hat und die Freigaben unten sehen ihn."
-                  : "Alle mit Zugriff auf die Datenbank sehen den Eintrag; ändern dürfen ihn nur Besitzer, wer ihn angelegt hat und Freigaben mit „Bearbeiten“."}{" "}
-                Freigaben gehen nie über die Rechte an der Datenbank hinaus.
+                  ? t("Nur Besitzer der Datenbank, wer den Eintrag angelegt hat und die Freigaben unten sehen ihn.", "Only the database's owners, whoever created the record and the shares below see it.")
+                  : t("Alle mit Zugriff auf die Datenbank sehen den Eintrag; ändern dürfen ihn nur Besitzer, wer ihn angelegt hat und Freigaben mit „Bearbeiten“.", "Everyone with access to the database sees the record; only owners, whoever created it and shares with “Edit” may change it.")}{" "}
+                {t("Freigaben gehen nie über die Rechte an der Datenbank hinaus.", "Shares never go beyond the permissions on the database.")}
               </p>
               {grants.map((g) => (
                 <div className="row-access-grant" key={key(g)}>
                   <span>{name(g)}</span>
                   <Select
-                    aria-label={`Recht für ${name(g)}`}
+                    aria-label={t(`Recht für ${name(g)}`, `Permission for ${name(g)}`)}
                     value={g.role}
                     disabled={busy}
                     onChange={(e) =>
@@ -112,25 +114,25 @@ export function RowAccess({
                       )
                     }
                   >
-                    <option value="viewer">Ansehen</option>
-                    <option value="editor">Bearbeiten</option>
+                    <option value="viewer">{t("Ansehen", "View")}</option>
+                    <option value="editor">{t("Bearbeiten", "Edit")}</option>
                   </Select>
                   <button
                     type="button"
                     className="text-button"
                     disabled={busy}
-                    aria-label={`Freigabe für ${name(g)} entfernen`}
+                    aria-label={t(`Freigabe für ${name(g)} entfernen`, `Remove share for ${name(g)}`)}
                     onClick={() =>
                       setGrants(grants.filter((x) => key(x) !== key(g)))
                     }
                   >
-                    Entfernen
+                    {t("Entfernen", "Remove")}
                   </button>
                 </div>
               ))}
               {candidates.length > 0 && (
                 <Select
-                  aria-label="Person oder Gruppe freigeben"
+                  aria-label={t("Person oder Gruppe freigeben", "Share with a person or group")}
                   value=""
                   disabled={busy}
                   onChange={(e) => {
@@ -144,7 +146,7 @@ export function RowAccess({
                       ]);
                   }}
                 >
-                  <option value="">Person oder Gruppe hinzufügen …</option>
+                  <option value="">{t("Person oder Gruppe hinzufügen …", "Add person or group …")}</option>
                   {candidates.map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
@@ -161,7 +163,7 @@ export function RowAccess({
               disabled={busy}
               onClick={() => void save()}
             >
-              Rechte speichern
+              {t("Rechte speichern", "Save permissions")}
             </button>
             {status && <span role="status">{status}</span>}
           </div>

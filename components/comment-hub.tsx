@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useCallback, useEffect, useState } from "react";
 import { ChatCircle, Quotes } from "@phosphor-icons/react";
@@ -29,6 +30,7 @@ export function CommentHub({
   act: (b: Record<string, unknown>) => Promise<unknown>;
   time: (value: string) => string;
 }) {
+  const t = useT();
   const [threads, setThreads] = useState<InlineThread[]>([]),
     [kind, setKind] = useState<"all" | "page" | "text">("all"),
     [status, setStatus] = useState<"open" | "resolved" | "all">("open"),
@@ -71,12 +73,12 @@ export function CommentHub({
   return (
     <div className="comment-hub">
       <div className="comment-hub-filters">
-        <div role="group" aria-label="Art der Kommentare" className="chips">
+        <div role="group" aria-label={t("Art der Kommentare", "Kind of comments")} className="chips">
           {(
             [
-              ["all", `Alle (${open.page + open.text})`],
-              ["page", `Seite (${open.page})`],
-              ["text", `Textstellen (${open.text})`],
+              ["all", t(`Alle (${open.page + open.text})`, `All (${open.page + open.text})`)],
+              ["page", t(`Seite (${open.page})`, `Page (${open.page})`)],
+              ["text", t(`Textstellen (${open.text})`, `Passages (${open.text})`)],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -90,13 +92,13 @@ export function CommentHub({
           ))}
         </div>
         <Select
-          aria-label="Status der Kommentare"
+          aria-label={t("Status der Kommentare", "Status of comments")}
           value={status}
           onChange={(e) => setStatus(e.target.value as typeof status)}
         >
-          <option value="open">Offen</option>
-          <option value="resolved">Erledigt</option>
-          <option value="all">Alle</option>
+          <option value="open">{t("Offen", "Open")}</option>
+          <option value="resolved">{t("Erledigt", "Resolved")}</option>
+          <option value="all">{t("Alle", "All")}</option>
         </Select>
       </div>
       {error && (
@@ -142,8 +144,8 @@ export function CommentHub({
                   }
                 >
                   {item.comment.resolved
-                    ? "Wieder öffnen"
-                    : "Als erledigt markieren"}
+                    ? t("Wieder öffnen", "Reopen")
+                    : t("Als erledigt markieren", "Mark as resolved")}
                 </button>
               )}
             </div>
@@ -152,12 +154,12 @@ export function CommentHub({
           <div
             className={`comment comment-text ${item.thread.resolved ? "resolved" : ""}`}
             key={item.thread.id}
-            aria-label={`Textkommentar zu „${item.thread.anchor.quote.slice(0, 60)}“`}
+            aria-label={t(`Textkommentar zu „${item.thread.anchor.quote.slice(0, 60)}“`, `Text comment on “${item.thread.anchor.quote.slice(0, 60)}”`)}
             role="group"
           >
             <Avatar name={item.thread.messages[0]?.name || "?"} small />
             <div>
-              <strong>{item.thread.messages[0]?.name || "Unbekannt"}</strong>
+              <strong>{item.thread.messages[0]?.name || t("Unbekannt", "Unknown")}</strong>
               <small>{time(item.thread.created_at)}</small>
               <blockquote>
                 <Quotes size={12} />{" "}
@@ -170,8 +172,8 @@ export function CommentHub({
                   href={pageLocationHash({ pageId, threadId: item.thread.id })}
                 >
                   {item.thread.messageCount > 1
-                    ? `${item.thread.messageCount - 1} ${item.thread.messageCount === 2 ? "Antwort" : "Antworten"} · Zur Textstelle`
-                    : "Zur Textstelle und antworten"}
+                    ? t(`${item.thread.messageCount - 1} ${item.thread.messageCount === 2 ? "Antwort" : "Antworten"} · Zur Textstelle`, `${item.thread.messageCount - 1} ${item.thread.messageCount === 2 ? "reply" : "replies"} · Go to passage`)
+                    : t("Zur Textstelle und antworten", "Go to passage and reply")}
                 </a>
                 {item.thread.canResolve && (
                   <button
@@ -188,8 +190,8 @@ export function CommentHub({
                     }}
                   >
                     {item.thread.resolved
-                      ? "Wieder öffnen"
-                      : "Als erledigt markieren"}
+                      ? t("Wieder öffnen", "Reopen")
+                      : t("Als erledigt markieren", "Mark as resolved")}
                   </button>
                 )}
               </span>
@@ -202,8 +204,8 @@ export function CommentHub({
           <ChatCircle size={30} />
           <p>
             {status === "open" && (comments.length || threads.length)
-              ? "Keine offenen Kommentare."
-              : "Ein guter Austausch beginnt mit einem Kommentar."}
+              ? t("Keine offenen Kommentare.", "No open comments.")
+              : t("Ein guter Austausch beginnt mit einem Kommentar.", "A good conversation starts with a comment.")}
           </p>
         </div>
       )}

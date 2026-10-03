@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Clock, Plus, SquaresFour } from "@phosphor-icons/react";
@@ -31,8 +32,9 @@ export default function RowDocument({
   onError: (s: string) => void;
   onChanged: () => Promise<unknown>;
 }) {
+  const t = useT();
   const [data, setData] = useState<RowDocumentData | null>(null),
-    [status, setStatus] = useState("Laden …"),
+    [status, setStatus] = useState(t("Laden …", "Loading …")),
     [history, setHistory] = useState(false),
     [changes, setChanges] = useState<string | null>(null),
     [saveTemplate, setSaveTemplate] = useState(false),
@@ -69,13 +71,13 @@ export default function RowDocument({
   return (
     <section className="row-document">
       <div className="row-document-heading">
-        <h3>Inhalt</h3>
+        <h3>{t("Inhalt", "Content")}</h3>
         <span className="muted" role="status">
           {status}
         </span>
         <button
           className="icon-button"
-          title="Datensatz-Versionen"
+          title={t("Datensatz-Versionen", "Record versions")}
           onClick={() => setHistory(true)}
         >
           <Clock size={18} />
@@ -86,7 +88,7 @@ export default function RowDocument({
             onClick={() => setSaveTemplate(true)}
           >
             <SquaresFour />
-            Als Vorlage speichern
+            {t("Als Vorlage speichern", "Save as template")}
           </button>
         )}
       </div>
@@ -107,12 +109,12 @@ export default function RowDocument({
           onHtml={onHtml}
         />
       ) : (
-        <p className="muted">Dokument wird geladen …</p>
+        <p className="muted">{t("Dokument wird geladen …", "Loading document …")}</p>
       )}
       <Modal
         open={history}
         onClose={() => setHistory(false)}
-        title="Datensatz-Versionen"
+        title={t("Datensatz-Versionen", "Record versions")}
       >
         {editable && (
           <button
@@ -120,7 +122,7 @@ export default function RowDocument({
             onClick={() => act("row.snapshot")}
           >
             <Plus />
-            Aktuelle Version sichern
+            {t("Aktuelle Version sichern", "Save current version")}
           </button>
         )}
         {data?.snapshots.map((s) => (
@@ -138,7 +140,7 @@ export default function RowDocument({
                 setChanges(s.id);
               }}
             >
-              Änderungen
+              {t("Änderungen", "Changes")}
             </button>
             {editable && (
               <button
@@ -148,13 +150,13 @@ export default function RowDocument({
                     setHistory(false);
                 }}
               >
-                Wiederherstellen
+                {t("Wiederherstellen", "Restore")}
               </button>
             )}
           </div>
         ))}
         {!data?.snapshots.length && (
-          <p className="muted">Noch keine gesicherten Versionen.</p>
+          <p className="muted">{t("Noch keine gesicherten Versionen.", "No saved versions yet.")}</p>
         )}
       </Modal>
       {changes && data && (
@@ -182,7 +184,7 @@ export default function RowDocument({
       <Modal
         open={saveTemplate}
         onClose={() => setSaveTemplate(false)}
-        title="Datensatzvorlage speichern"
+        title={t("Datensatzvorlage speichern", "Save record template")}
       >
         <form
           onSubmit={async (e) => {
@@ -194,7 +196,7 @@ export default function RowDocument({
           }}
         >
           <label>
-            Name
+            {t("Name", "Name")}
             <input
               autoFocus
               required
@@ -204,18 +206,17 @@ export default function RowDocument({
             />
           </label>
           <p className="muted">
-            Eigenschaften und gespeicherter Dokumentinhalt werden übernommen.
-            Berechnete Werte entstehen für jeden neuen Eintrag neu.
+            {t("Eigenschaften und gespeicherter Dokumentinhalt werden übernommen. Berechnete Werte entstehen für jeden neuen Eintrag neu.", "Properties and the saved document content are taken over. Calculated values are created anew for every new record.")}
           </p>
           <button
             className="button primary"
             disabled={status !== "Gespeichert"}
           >
-            Vorlage speichern
+            {t("Vorlage speichern", "Save template")}
           </button>
           {status !== "Gespeichert" && (
             <p className="muted">
-              Bitte warten, bis der Dokumentinhalt gespeichert ist.
+              {t("Bitte warten, bis der Dokumentinhalt gespeichert ist.", "Please wait until the document content is saved.")}
             </p>
           )}
         </form>

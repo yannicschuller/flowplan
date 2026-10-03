@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import type { Bootstrap } from "@/lib/types";
@@ -10,6 +11,7 @@ export function WorkspaceLifecycle({
   boot: Bootstrap;
   onExit: (id: string | null) => Promise<unknown> | void;
 }) {
+  const t = useT();
   const [mode, setMode] = useState<"delete" | "leave" | null>(null),
     [confirmation, setConfirmation] = useState(""),
     [error, setError] = useState(""),
@@ -54,14 +56,13 @@ export function WorkspaceLifecycle({
   }
   return (
     <section className="settings-section workspace-lifecycle">
-      <h2>Arbeitsbereich verlassen oder löschen</h2>
+      <h2>{t("Arbeitsbereich verlassen oder löschen", "Leave or delete workspace")}</h2>
       <p>
-        Beim Verlassen bleiben die Inhalte für die übrigen Mitglieder erhalten.
+        {t("Beim Verlassen bleiben die Inhalte für die übrigen Mitglieder erhalten.", "When you leave, the content stays for the other members.")}
       </p>
       {lastOwner && (
         <p className="muted">
-          Übertrage zuerst unter „Mitglieder“ die Eigentümerrolle an ein aktives
-          Mitglied, bevor du den Arbeitsbereich verlässt.
+          {t("Übertrage zuerst unter „Mitglieder“ die Eigentümerrolle an ein aktives Mitglied, bevor du den Arbeitsbereich verlässt.", "First pass the owner role to an active member under “Members” before you leave the workspace.")}
         </p>
       )}
       <div className="lifecycle-buttons">
@@ -70,7 +71,7 @@ export function WorkspaceLifecycle({
           disabled={lastOwner || (owned && !owners.length)}
           onClick={() => open("leave")}
         >
-          Arbeitsbereich verlassen
+          {t("Arbeitsbereich verlassen", "Leave workspace")}
         </button>
         {boot.workspace.role === "owner" && (
           <button
@@ -78,14 +79,13 @@ export function WorkspaceLifecycle({
             disabled={!canDelete}
             onClick={() => open("delete")}
           >
-            Arbeitsbereich löschen
+            {t("Arbeitsbereich löschen", "Delete workspace")}
           </button>
         )}
       </div>
       {boot.workspace.role === "owner" && !canDelete && (
         <p className="muted">
-          Lege zuerst einen weiteren Arbeitsbereich an, um diesen endgültig
-          löschen zu können.
+          {t("Lege zuerst einen weiteren Arbeitsbereich an, um diesen endgültig löschen zu können.", "Create another workspace first to be able to delete this one permanently.")}
         </p>
       )}
       {mode && (
@@ -93,8 +93,8 @@ export function WorkspaceLifecycle({
           open
           title={
             mode === "delete"
-              ? "Arbeitsbereich endgültig löschen"
-              : "Arbeitsbereich verlassen"
+              ? t("Arbeitsbereich endgültig löschen", "Delete workspace permanently")
+              : t("Arbeitsbereich verlassen", "Leave workspace")
           }
           onClose={() => {
             if (!busy) setMode(null);
@@ -111,12 +111,12 @@ export function WorkspaceLifecycle({
             </p>
             <p>
               {mode === "delete"
-                ? "Alle Bereiche, Seiten, Einträge, Vorlagen und Anhänge werden für sämtliche Mitglieder endgültig gelöscht, auch private Inhalte und der Papierkorb. Veröffentlichungen, Freigabelinks und Formulare werden widerrufen. Diese Aktion kann nicht rückgängig gemacht werden."
-                : "Du verlierst deinen Zugriff auf diesen Arbeitsbereich. Eine erneute Einladung ist nötig, um wieder beizutreten. Deine anderen Arbeitsbereiche und deine Anmeldung bleiben erhalten."}
+                ? t("Alle Bereiche, Seiten, Einträge, Vorlagen und Anhänge werden für sämtliche Mitglieder endgültig gelöscht, auch private Inhalte und der Papierkorb. Veröffentlichungen, Freigabelinks und Formulare werden widerrufen. Diese Aktion kann nicht rückgängig gemacht werden.", "All spaces, pages, records, templates and attachments are deleted permanently for all members, including private content and the trash. Publications, share links and forms are revoked. This cannot be undone.")
+                : t("Du verlierst deinen Zugriff auf diesen Arbeitsbereich. Eine erneute Einladung ist nötig, um wieder beizutreten. Deine anderen Arbeitsbereiche und deine Anmeldung bleiben erhalten.", "You lose access to this workspace. A new invitation is needed to join again. Your other workspaces and your sign-in stay.")}
             </p>
             {mode === "leave" && owned && (
               <label>
-                Eigene Bereiche übertragen an
+                {t("Eigene Bereiche übertragen an", "Hand your own spaces over to")}
                 <Select
                   value={target}
                   onChange={(event) => setTarget(event.target.value)}
@@ -129,13 +129,12 @@ export function WorkspaceLifecycle({
                   ))}
                 </Select>
                 <small>
-                  Dies umfasst deine privaten Bereiche und Bereiche im
-                  Papierkorb. Der gewählte Eigentümer erhält Zugriff darauf.
+                  {t("Dies umfasst deine privaten Bereiche und Bereiche im Papierkorb. Der gewählte Eigentümer erhält Zugriff darauf.", "This includes your private spaces and spaces in the trash. The chosen owner gets access to them.")}
                 </small>
               </label>
             )}
             <label>
-              Arbeitsbereichsname zur Bestätigung
+              {t("Arbeitsbereichsname zur Bestätigung", "Workspace name to confirm")}
               <input
                 autoFocus
                 value={confirmation}
@@ -156,7 +155,7 @@ export function WorkspaceLifecycle({
                 onClick={() => setMode(null)}
                 disabled={busy}
               >
-                Abbrechen
+                {t("Abbrechen", "Cancel")}
               </button>
               <button
                 className="button danger"
@@ -167,10 +166,10 @@ export function WorkspaceLifecycle({
                 }
               >
                 {busy
-                  ? "Wird ausgeführt …"
+                  ? t("Wird ausgeführt …", "Working …")
                   : mode === "delete"
-                    ? "Endgültig löschen"
-                    : "Verlassen"}
+                    ? t("Endgültig löschen", "Delete permanently")
+                    : t("Verlassen", "Leave")}
               </button>
             </div>
           </form>

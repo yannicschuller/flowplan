@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import { Modal } from "./ui";
@@ -27,6 +28,7 @@ export function CoverPicker({
   ) => Promise<boolean>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [base] = useState(() => pageAppearance(page));
   const [cover, setCover] = useState(base.cover);
   const [position, setPosition] = useState(base.coverPosition);
@@ -49,7 +51,7 @@ export function CoverPicker({
   return (
     <Modal
       open
-      title="Cover auswählen"
+      title={t("Cover auswählen", "Choose cover")}
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -61,11 +63,11 @@ export function CoverPicker({
         {image ? (
           <img
             src={cover}
-            alt="Cover-Vorschau"
+            alt={t("Cover-Vorschau", "Cover preview")}
             style={{ objectPosition: `50% ${position}%` }}
           />
         ) : (
-          !cover && <span className="muted">Kein Cover</span>
+          !cover && <span className="muted">{t("Kein Cover", "No cover")}</span>
         )}
       </div>
       <fieldset disabled={busy} className="cover-controls">
@@ -80,7 +82,7 @@ export function CoverPicker({
           ].map((color) => (
             <button
               type="button"
-              aria-label={`Cover ${color}`}
+              aria-label={t(`Cover ${color}`, `Cover ${color}`)}
               aria-pressed={cover === color}
               key={color}
               style={{ background: color }}
@@ -89,18 +91,18 @@ export function CoverPicker({
           ))}
         </div>
         <label>
-          Coverbild hochladen
+          {t("Coverbild hochladen", "Upload cover image")}
           <input
             type="file"
             accept={imageAccept}
-            aria-label="Coverbild hochladen"
+            aria-label={t("Coverbild hochladen", "Upload cover image")}
             onChange={async (event) => {
               const picked = event.target.files?.[0];
               event.target.value = "";
               if (!picked) return;
               const file = await compressImage(picked);
               if (file.size > 10 * 1024 * 1024) {
-                setError("Maximal 10 MB pro Bild.");
+                setError(t("Maximal 10 MB pro Bild.", "At most 10 MB per image."));
                 return;
               }
               setBusy(true);
@@ -116,7 +118,7 @@ export function CoverPicker({
                 });
                 const result = await response.json();
                 if (!response.ok)
-                  throw new Error(result.error || "Upload fehlgeschlagen.");
+                  throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
                 setUploads((prior) => [...prior, result]);
                 setCover(result.url);
                 setPosition(50);
@@ -128,19 +130,19 @@ export function CoverPicker({
             }}
           />
         </label>
-        <p className="muted">PNG, JPEG, GIF, WebP oder AVIF · maximal 10 MB</p>
+        <p className="muted">{t("PNG, JPEG, GIF, WebP oder AVIF · maximal 10 MB", "PNG, JPEG, GIF, WebP or AVIF · at most 10 MB")}</p>
         {[...uploads, ...images].length > 0 && (
           <label>
-            Vorhandenes Bild
+            {t("Vorhandenes Bild", "Existing image")}
             <Select
-              aria-label="Vorhandenes Bild"
+              aria-label={t("Vorhandenes Bild", "Existing image")}
               value={image ? cover : ""}
               onChange={(event) => {
                 setCover(event.target.value);
                 setPosition(50);
               }}
             >
-              <option value="">Bild auswählen</option>
+              <option value="">{t("Bild auswählen", "Choose image")}</option>
               {[
                 ...new Map(
                   [...uploads, ...images].map((item) => [item.url, item]),
@@ -155,18 +157,18 @@ export function CoverPicker({
         )}
         {image && positioned && (
           <label>
-            Bildausschnitt · {Math.round(position)} %
+            {t("Bildausschnitt ·", "Image crop ·")}{" "}{Math.round(position)} %
             <input
               type="range"
-              aria-label="Vertikale Coverposition"
+              aria-label={t("Vertikale Coverposition", "Vertical cover position")}
               min="0"
               max="100"
               value={position}
               onChange={(event) => setPosition(Number(event.target.value))}
             />
             <span className="cover-position-labels">
-              <small>Oben</small>
-              <small>Unten</small>
+              <small>{t("Oben", "Top")}</small>
+              <small>{t("Unten", "Bottom")}</small>
             </span>
           </label>
         )}
@@ -178,17 +180,17 @@ export function CoverPicker({
       )}
       <div className="modal-actions">
         <button className="button" disabled={busy} onClick={() => save("")}>
-          Cover entfernen
+          {t("Cover entfernen", "Remove cover")}
         </button>
         <button className="button" disabled={busy} onClick={onClose}>
-          Abbrechen
+          {t("Abbrechen", "Cancel")}
         </button>
         <button
           className="button primary"
           disabled={busy}
           onClick={() => save()}
         >
-          {busy ? "Bitte warten …" : "Speichern"}
+          {busy ? t("Bitte warten …", "Please wait …") : t("Speichern", "Save")}
         </button>
       </div>
     </Modal>
