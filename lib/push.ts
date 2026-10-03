@@ -8,6 +8,7 @@ import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import type { Identity, Page } from "./types";
+import { userLocale } from "./user-locale";
 const runtime = globalThis as unknown as {
   flowplanPushTimer?: ReturnType<typeof setInterval>;
   flowplanPushRun?: Promise<void>;
@@ -238,7 +239,10 @@ export async function flushPushQueue(send: Sender = webpush.sendNotification) {
           },
           JSON.stringify({
             title: "Flowplan",
-            body: "Du hast eine neue Benachrichtigung im Posteingang.",
+            body:
+              userLocale(job.user_id) === "de"
+                ? "Du hast eine neue Benachrichtigung im Posteingang."
+                : "You have a new notification in your inbox.",
             url: notificationUrl(job),
             tag: `flowplan-${job.notification_id}`,
           }),

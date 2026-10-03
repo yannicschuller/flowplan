@@ -2,6 +2,7 @@ import { currentUser } from "@/lib/auth";
 import { bootstrap } from "@/lib/api";
 import { ensureWorkspace } from "@/lib/seed";
 import { withContentLocale } from "@/lib/content-locale";
+import { rememberLocale } from "@/lib/user-locale";
 import { requestLocale } from "@/lib/i18n-server";
 import WorkspaceApp from "@/components/workspace-app";
 import PublicHome from "@/components/landing/public-home";
@@ -34,7 +35,9 @@ export default async function Home({
         demoEnabled={instanceSettings().publicDemo}
       />
     );
-  withContentLocale(await requestLocale(), () => ensureWorkspace(user.id));
+  const locale = await requestLocale();
+  rememberLocale(user.id, locale);
+  withContentLocale(locale, () => ensureWorkspace(user.id));
   const { useTemplate } = await searchParams;
   return (
     <WorkspaceApp

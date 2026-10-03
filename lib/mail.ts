@@ -6,6 +6,10 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
+import { contentLocale, ct } from "./content-locale";
+import { translate, type Locale } from "./i18n";
+import { englishMessage } from "./i18n-errors";
+import { userLocale } from "./user-locale";
 
 export type MailConfig = {
   host: string;
@@ -67,12 +71,21 @@ const appUrl = () => (process.env.APP_URL || "http://localhost:3000").replace(/\
 const instanceName = () => instanceSettings().name || "Flowplan";
 
 // Plain, readable HTML: one column, the brand colour for the button.
-function layout(title: string, paragraphs: string[], action?: { label: string; url: string }) {
+function layout(
+  title: string,
+  paragraphs: string[],
+  action?: { label: string; url: string },
+  locale: Locale = contentLocale(),
+) {
+  const footer =
+    locale === "de"
+      ? `Diese E-Mail kommt von ${escape(appUrl())}. Benachrichtigungen per E-Mail stellst du in Flowplan unter Einstellungen → Benachrichtigungen ein.`
+      : `This e-mail comes from ${escape(appUrl())}. You can change e-mail notifications in Flowplan under Settings → Notifications.`;
   const body = paragraphs.map((p) => `<p style="margin:0 0 14px">${p}</p>`).join("");
   const button = action
     ? `<p style="margin:22px 0"><a href="${escape(action.url)}" style="background:#3b3fd8;color:#ffffff;padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">${escape(action.label)}</a></p>`
     : "";
-  return `<!doctype html><html lang="de"><body style="margin:0;background:#f6f4ef;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d1c22"><div style="max-width:520px;margin:0 auto;padding:32px 20px"><p style="font-weight:700;font-size:15px;margin:0 0 20px;color:#3b3fd8">${escape(instanceName())}</p><h1 style="font-size:21px;margin:0 0 16px">${escape(title)}</h1>${body}${button}<p style="margin:28px 0 0;font-size:12px;color:#8a8691">Diese E-Mail kommt von ${escape(appUrl())}. Benachrichtigungen per E-Mail stellst du in Flowplan unter Einstellungen → Benachrichtigungen ein.</p></div></body></html>`;
+  return `<!doctype html><html lang="${locale}"><body style="margin:0;background:#f6f4ef;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d1c22"><div style="max-width:520px;margin:0 auto;padding:32px 20px"><p style="font-weight:700;font-size:15px;margin:0 0 20px;color:#3b3fd8">${escape(instanceName())}</p><h1 style="font-size:21px;margin:0 0 16px">${escape(title)}</h1>${body}${button}<p style="margin:28px 0 0;font-size:12px;color:#8a8691">${footer}</p></div></body></html>`;
 }
 
 export function queueMail(to: string, subject: string, text: string, html: string) {
@@ -110,16 +123,33 @@ export function queueInviteMail(input: {
   guest: boolean;
 }) {
   const url = appUrl();
-  const role = input.guest ? "als Gast " : "";
-  const subject = `${input.inviter} hat dich ${role}zu „${input.workspace}“ eingeladen`;
-  const text = `${input.inviter} hat dich ${role}zum Arbeitsbereich „${input.workspace}“ in ${instanceName()} eingeladen.\n\nMelde dich mit dieser E-Mail-Adresse an, dann ist der Arbeitsbereich sofort da:\n${url}\n`;
+  // The invited person's language if they have an account, else the inviter's.
+  const known = one<{ id: string }>("SELECT id FROM users WHERE lower(email)=lower(?)", input.email);
+  const locale = known ? userLocale(known.id) : contentLocale();
+  const t = translate(locale);
+  const role = input.guest ? t("als Gast ", "as a guest ") : "";
+  const subject = t(
+    `${input.inviter} hat dich ${role}zu „${input.workspace}“ eingeladen`,
+    `${input.inviter} invited you ${role}to “${input.workspace}”`,
+  );
+  const text = t(
+    `${input.inviter} hat dich ${role}zum Arbeitsbereich „${input.workspace}“ in ${instanceName()} eingeladen.\n\nMelde dich mit dieser E-Mail-Adresse an, dann ist der Arbeitsbereich sofort da:\n${url}\n`,
+    `${input.inviter} invited you ${role}to the workspace “${input.workspace}” in ${instanceName()}.\n\nSign in with this e-mail address and the workspace is there right away:\n${url}\n`,
+  );
   const html = layout(
-    `Einladung zu „${input.workspace}“`,
+    t(`Einladung zu „${input.workspace}“`, `Invitation to “${input.workspace}”`),
     [
-      `${escape(input.inviter)} hat dich ${role}zum Arbeitsbereich <strong>${escape(input.workspace)}</strong> eingeladen.`,
-      "Melde dich mit dieser E-Mail-Adresse an, dann ist der Arbeitsbereich sofort da.",
+      t(
+        `${escape(input.inviter)} hat dich ${role}zum Arbeitsbereich <strong>${escape(input.workspace)}</strong> eingeladen.`,
+        `${escape(input.inviter)} invited you ${role}to the workspace <strong>${escape(input.workspace)}</strong>.`,
+      ),
+      t(
+        "Melde dich mit dieser E-Mail-Adresse an, dann ist der Arbeitsbereich sofort da.",
+        "Sign in with this e-mail address and the workspace is there right away.",
+      ),
     ],
-    { label: "Flowplan öffnen", url },
+    { label: t("Flowplan öffnen", "Open Flowplan"), url },
+    locale,
   );
   return queueMail(input.email, subject, text, html);
 }
@@ -156,24 +186,33 @@ export function queueNotificationDigests(now = Date.now()) {
   transaction(() => {
     for (const items of byUser.values()) {
       const first = items[0];
+      const locale = userLocale(first.user_id);
+      const t = translate(locale);
+      const body = (n: (typeof items)[number]) => (locale === "de" ? n.body : englishMessage(n.body));
       const link = (n: (typeof items)[number]) =>
         n.page_id
           ? `${url}/#page=${n.page_id}${n.row_id ? `&row=${n.row_id}` : ""}${n.thread_id ? `&thread=${n.thread_id}` : ""}`
           : `${url}/#inbox`;
       const shown = items.slice(0, 20);
       const more = items.length - shown.length;
+      const andMore = t(`… und ${more} weitere`, `… and ${more} more`);
       const subject =
-        items.length === 1 ? first.body : `${items.length} neue Benachrichtigungen in ${instanceName()}`;
-      const text = `Hallo ${first.name},\n\n${shown.map((n) => `• ${n.body}\n  ${link(n)}`).join("\n")}${more > 0 ? `\n… und ${more} weitere` : ""}\n\nPosteingang: ${url}/#inbox\n`;
+        items.length === 1
+          ? body(first)
+          : t(`${items.length} neue Benachrichtigungen in ${instanceName()}`, `${items.length} new notifications in ${instanceName()}`);
+      const text = `${t("Hallo", "Hello")} ${first.name},\n\n${shown.map((n) => `• ${body(n)}\n  ${link(n)}`).join("\n")}${more > 0 ? `\n${andMore}` : ""}\n\n${t("Posteingang", "Inbox")}: ${url}/#inbox\n`;
       const html = layout(
-        items.length === 1 ? "Neue Benachrichtigung" : `${items.length} neue Benachrichtigungen`,
+        items.length === 1
+          ? t("Neue Benachrichtigung", "New notification")
+          : t(`${items.length} neue Benachrichtigungen`, `${items.length} new notifications`),
         [
-          `Hallo ${escape(first.name)}, das ist in Flowplan passiert:`,
+          t(`Hallo ${escape(first.name)}, das ist in Flowplan passiert:`, `Hello ${escape(first.name)}, this happened in Flowplan:`),
           `<ul style="padding-left:18px;margin:0">${shown
-            .map((n) => `<li style="margin:0 0 8px"><a href="${escape(link(n))}" style="color:#3b3fd8">${escape(n.body)}</a></li>`)
-            .join("")}${more > 0 ? `<li>… und ${more} weitere</li>` : ""}</ul>`,
+            .map((n) => `<li style="margin:0 0 8px"><a href="${escape(link(n))}" style="color:#3b3fd8">${escape(body(n))}</a></li>`)
+            .join("")}${more > 0 ? `<li>${andMore}</li>` : ""}</ul>`,
         ],
-        { label: "Posteingang öffnen", url: `${url}/#inbox` },
+        { label: t("Posteingang öffnen", "Open inbox"), url: `${url}/#inbox` },
+        locale,
       );
       if (queueMail(first.email, subject, text, html)) queued++;
       for (const n of items)
@@ -262,9 +301,11 @@ export async function sendTestMail(to: string) {
   try {
     await send(config, {
       to,
-      subject: `Test-E-Mail von ${instanceName()}`,
-      text: `Der E-Mail-Versand von ${appUrl()} funktioniert.`,
-      html: layout("E-Mail-Versand funktioniert", [`Diese Test-E-Mail wurde von ${escape(appUrl())} gesendet.`]),
+      subject: ct(`Test-E-Mail von ${instanceName()}`, `Test e-mail from ${instanceName()}`),
+      text: ct(`Der E-Mail-Versand von ${appUrl()} funktioniert.`, `Sending e-mail from ${appUrl()} works.`),
+      html: layout(ct("E-Mail-Versand funktioniert", "Sending e-mail works"), [
+        ct(`Diese Test-E-Mail wurde von ${escape(appUrl())} gesendet.`, `This test e-mail was sent from ${escape(appUrl())}.`),
+      ]),
     });
   } catch (error) {
     throw new HttpError(502, `Senden fehlgeschlagen: ${(error as Error).message}`);

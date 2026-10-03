@@ -152,6 +152,14 @@ test("invitations and unread notifications go out by e-mail when SMTP is set", a
   assert.equal(digest.to, "ben@example.test");
   assert.match(digest.subject, /2 neue Benachrichtigungen/);
   assert.doesNotMatch(digest.text, /Gelesen/);
+  // Someone who uses Flowplan in English gets the summary in English.
+  run("UPDATE users SET locale='en' WHERE id=?", ben.id);
+  run("INSERT INTO notifications(id,user_id,body,page_id,kind,created_at) VALUES(?,?,?,?,?,?)", id(), ben.id, "Ana hat dich in „Plan“ erwähnt", db, "mention", old);
+  assert.equal(mail.queueNotificationDigests(), 1);
+  await mail.flushMailQueue();
+  assert.equal(sent.at(-1)!.subject, "Ana mentioned you in “Plan”");
+  assert.match(sent.at(-1)!.text, /^Hello Ben,/);
+  run("UPDATE users SET locale=NULL WHERE id=?", ben.id);
   // Switched off: no e-mail for that kind.
   command(ben, { action: "notification.prefs", kind: "comment", inbox: true, push: true, email: false });
   run("INSERT INTO notifications(id,user_id,body,page_id,kind,created_at) VALUES(?,?,?,?,?,?)", id(), ben.id, "Kommentar", db, "comment", old);
