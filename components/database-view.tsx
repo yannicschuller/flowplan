@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -1215,7 +1216,7 @@ export default function DatabaseView({
     body.set("file", file);
     const response = await fetch("/api/upload", { method: "POST", body });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
+    if (!response.ok) throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
     return result.url as string;
   }
   function display(r: Row, f: Field) {
@@ -4249,7 +4250,7 @@ export default function DatabaseView({
               )}
               {relationChanged && (
                 <p role="status" className="muted">
-                  {relationTarget?.error ||
+                  {serverMessage(relationTarget?.error) ||
                     (!relationReady
                       ? t("Berechtigungen werden geprüft …", "Checking permissions …")
                       : t("Bearbeitungsrechte für beide Datenbanken vorhanden.", "Edit rights for both databases are present."))}

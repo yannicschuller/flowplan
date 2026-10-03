@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 // The page behind a reset link: set a new password, then sign in.
 import { useState, type FormEvent } from "react";
 import { BrandMark } from "./brand-mark";
@@ -27,7 +28,7 @@ export default function ResetPassword({ token }: { token: string }) {
     const data = (await response.json().catch(() => ({}))) as { error?: string };
     setBusy(false);
     if (response.ok) setDone(true);
-    else setMessage(data.error || response.statusText);
+    else setMessage(serverMessage(data.error) || response.statusText);
   };
   return (
     <main className="login">

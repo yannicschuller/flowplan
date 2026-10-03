@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -294,11 +295,11 @@ export async function api<T = Record<string, unknown>>(
     data = await r.json();
   } catch {
     // An HTML page instead of JSON: a proxy or gateway answered.
-    throw new ApiError(unavailableMessage, r.ok ? 502 : r.status, true);
+    throw new ApiError(serverMessage(unavailableMessage), r.ok ? 502 : r.status, true);
   }
   if (!r.ok)
     throw new ApiError(
-      data?.error || "Anfrage fehlgeschlagen",
+      serverMessage(data?.error || "Anfrage fehlgeschlagen"),
       r.status,
       [502, 503, 504].includes(r.status),
     );

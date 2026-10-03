@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { tr } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,7 +30,7 @@ async function post(body: Record<string, unknown>) {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new HttpFailure(result.error || tr("Fehler", "Error"), response.status);
+    throw new HttpFailure(serverMessage(result.error) || tr("Fehler", "Error"), response.status);
   return result;
 }
 async function currentRows(pageId: string): Promise<Row[]> {

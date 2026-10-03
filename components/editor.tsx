@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import {
@@ -727,7 +728,7 @@ export default function DocumentEditor({
     try {
       const r = await fetch("/api/upload", { method: "POST", body: form });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      if (!r.ok) throw new Error(serverMessage(data.error));
       if (file.type.startsWith("image/"))
         editor
           ?.chain()
@@ -1503,7 +1504,7 @@ export default function DocumentEditor({
             form.set("file", file);
             const response = await fetch("/api/transcribe", { method: "POST", body: form });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error);
+            if (!response.ok) throw new Error(serverMessage(data.error));
             const paragraphs = String(data.text || "")
               .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÄÖÜ])/)
               .map((p) => p.trim())

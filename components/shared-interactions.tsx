@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useRef, useState } from "react";
 import { useSharedLive } from "./shared-live";
@@ -71,7 +72,7 @@ export function SharedInteractions({
         body: form,
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) throw new Error(serverMessage(result.error));
       const file = result as CellFile;
       setUploaded((list) => [...list, file]);
       return file;
@@ -95,7 +96,7 @@ export function SharedInteractions({
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) throw new Error(serverMessage(result.error));
       setData(result);
       return result as Content;
     } catch (e) {
@@ -117,7 +118,7 @@ export function SharedInteractions({
         cache: "no-store",
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) throw new Error(serverMessage(result.error));
       setData(result);
       setTitle(result.title);
       setHtml(result.html);

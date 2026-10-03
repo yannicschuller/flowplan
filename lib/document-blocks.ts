@@ -1,3 +1,4 @@
+import { tr } from "./locale-tag";
 import { Fragment, Slice, type Node, type NodeType } from "@tiptap/pm/model";
 import {
   NodeSelection,
@@ -16,25 +17,25 @@ export type DocumentBlock = {
   label: string;
 };
 const names: Record<string, string> = {
-  paragraph: "Absatz",
-  heading: "Überschrift",
-  bulletList: "Aufzählung",
-  orderedList: "Nummerierte Liste",
-  taskList: "Aufgabenliste",
-  listItem: "Listeneintrag",
-  taskItem: "Aufgabe",
-  blockquote: "Zitat",
-  codeBlock: "Code",
-  table: "Tabelle",
-  image: "Bild",
-  callout: "Hinweis",
-  toggle: "Toggle",
-  mathBlock: "Formel",
-  mermaidBlock: "Diagramm",
-  columns: "Spalten",
-  media: "Medium",
-  linkedDatabase: "Verknüpfte Datenbank",
-  horizontalRule: "Trennlinie",
+  paragraph: tr("Absatz", "Paragraph"),
+  heading: tr("Überschrift", "Heading"),
+  bulletList: tr("Aufzählung", "Bulleted list"),
+  orderedList: tr("Nummerierte Liste", "Numbered list"),
+  taskList: tr("Aufgabenliste", "Task list"),
+  listItem: tr("Listeneintrag", "List item"),
+  taskItem: tr("Aufgabe", "Task"),
+  blockquote: tr("Zitat", "Quote"),
+  codeBlock: tr("Code", "Code"),
+  table: tr("Tabelle", "Table"),
+  image: tr("Bild", "Image"),
+  callout: tr("Hinweis", "Callout"),
+  toggle: tr("Toggle", "Toggle"),
+  mathBlock: tr("Formel", "Formula"),
+  mermaidBlock: tr("Diagramm", "Diagram"),
+  columns: tr("Spalten", "Columns"),
+  media: tr("Medium", "Media"),
+  linkedDatabase: tr("Verknüpfte Datenbank", "Linked database"),
+  horizontalRule: tr("Trennlinie", "Divider"),
 };
 export function documentBlocks(doc: Node): DocumentBlock[] {
   const blocks: DocumentBlock[] = [];

@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 // Settings → General → your profile: name, password and passkeys of an
 // account with e-mail and password. SSO accounts are managed by their
 // provider.
@@ -16,7 +17,7 @@ async function post<T = { ok: true; passkeys: Passkey[] }>(path: string, body?: 
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error((data as { error?: string }).error || response.statusText);
+  if (!response.ok) throw new Error(serverMessage((data as { error?: string }).error) || response.statusText);
   return data as T;
 }
 

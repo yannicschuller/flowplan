@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { WorkspaceIconPicker } from "./workspace-icon";
 import { Select } from "./select";
@@ -590,7 +591,7 @@ export default function Settings({
                           `/api/backup?workspace=${boot.workspace.id}`,
                         );
                         if (!response.ok)
-                          throw new Error((await response.json()).error);
+                          throw new Error(serverMessage((await response.json()).error));
                         const blob = await response.blob();
                         const url = URL.createObjectURL(blob),
                           link = document.createElement("a");
@@ -744,7 +745,7 @@ export default function Settings({
                         const result = await response.json();
                         if (!response.ok)
                           throw new Error(
-                            result.error || t("Import fehlgeschlagen.", "Import failed."),
+                            serverMessage(result.error) || t("Import fehlgeschlagen.", "Import failed."),
                           );
                         setZipResult(
                           t(`${result.pages} Seiten, ${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.pages} pages, ${result.rows} records and ${result.files} files imported.`),
@@ -792,7 +793,7 @@ export default function Settings({
                           },
                         );
                         const result = await r.json();
-                        if (!r.ok) throw new Error(result.error);
+                        if (!r.ok) throw new Error(serverMessage(result.error));
                         await onRefresh();
                         onError(
                           t(`${result.pages} ${result.pages === 1 ? "Seite" : "Seiten"} und ${result.files} ${result.files === 1 ? "Datei" : "Dateien"} importiert.${result.omittedRelations ? ` ${result.omittedRelations} Verknüpfungen zu nicht enthaltenen Einträgen konnten nicht übernommen werden.` : ""}`, `${result.pages} ${result.pages === 1 ? "page" : "pages"} and ${result.files} ${result.files === 1 ? "file" : "files"} imported.${result.omittedRelations ? ` ${result.omittedRelations} links to records not included could not be kept.` : ""}`),

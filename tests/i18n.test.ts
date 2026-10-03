@@ -13,3 +13,30 @@ test("the language: the reader's choice first, then the browser, English otherwi
   assert.equal(pickLocale("xx", null), "en");
   assert.equal(translate("en")("Anmelden", "Sign in"), "Sign in");
 });
+
+test("server messages have an English version, with values kept", async () => {
+  const { englishMessage } = await import("../lib/i18n-errors");
+  assert.equal(englishMessage("Seite nicht gefunden."), "Page not found.");
+  assert.equal(
+    englishMessage("Speicherkontingent des Arbeitsbereichs erschöpft (12,5 MB von 10 MB belegt)."),
+    "The workspace's storage quota is used up (12,5 MB of 10 MB used).",
+  );
+  assert.equal(englishMessage("Eigenschaft „Status“ wurde nicht gefunden."), "Property “Status” was not found.");
+  assert.equal(englishMessage("Something else"), "Something else");
+});
+
+test("every German HttpError message has an English version", async () => {
+  const { englishMessage } = await import("../lib/i18n-errors");
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const files = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? files(join(dir, e.name)) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : [],
+    );
+  const missing = [];
+  for (const file of [...files("lib"), ...files("app")])
+    for (const [, text] of readFileSync(file, "utf8").matchAll(/new HttpError\(\s*\d+,\s*"([^"]+)"/g))
+      if (/[äöüß]|\b(nicht|kein|Keine?|Bitte|Ungültig\w*|fehlt)\b/.test(text) && englishMessage(text) === text)
+        missing.push(`${file}: ${text}`);
+  assert.deepEqual(missing, []);
+});

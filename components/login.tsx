@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 // Sign-in page: e-mail and password, passkeys, single sign-on (OIDC) – as
 // far as the instance offers them. Also creating an account (the first
 // account sets the instance up) and asking for a password reset link.
@@ -24,7 +25,7 @@ async function post(path: string, body?: unknown) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error((data as { error?: string }).error || response.statusText);
+  if (!response.ok) throw new Error(serverMessage((data as { error?: string }).error) || response.statusText);
   return data;
 }
 

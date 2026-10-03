@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { PdfThumbnail } from "./pdf-viewer";
@@ -55,7 +56,7 @@ export function MediaLibrary({
         { signal, cache: "no-store" },
       );
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      if (!response.ok) throw new Error(serverMessage(data.error));
       setItems((current) =>
         offset ? [...current, ...data.items] : data.items,
       );

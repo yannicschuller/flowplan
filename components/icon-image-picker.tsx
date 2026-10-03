@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useState } from "react";
 import { imageAccept, type PageImage } from "@/lib/page-appearance";
@@ -64,7 +65,7 @@ export function IconImagePicker({
               });
               const result = await response.json();
               if (!response.ok)
-                throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
+                throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
               setUploads((prior) => [...prior, result]);
               await onSelect(result.url);
             } catch (e) {

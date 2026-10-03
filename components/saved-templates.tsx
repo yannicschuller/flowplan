@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { tr } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -99,7 +100,7 @@ export default function SavedTemplates({
       });
       const result = await response.json();
       if (!response.ok)
-        throw new Error(result.error || t("Import fehlgeschlagen.", "Import failed."));
+        throw new Error(serverMessage(result.error) || t("Import fehlgeschlagen.", "Import failed."));
       await refresh();
     } catch (e) {
       onError((e as Error).message);

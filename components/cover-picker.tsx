@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
@@ -118,7 +119,7 @@ export function CoverPicker({
                 });
                 const result = await response.json();
                 if (!response.ok)
-                  throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
+                  throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
                 setUploads((prior) => [...prior, result]);
                 setCover(result.url);
                 setPosition(50);

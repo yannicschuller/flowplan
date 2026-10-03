@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 // A synced block inside a document: the content of its synced page, edited
 // right here with its own live editor. Changes show up on every page that
 // shows the block.
@@ -50,7 +51,7 @@ function SyncedView({ node, deleteNode, extension, editor, selected }: NodeViewP
               ? t("Dieser synchronisierte Block wurde gelöscht.", "This synced block was deleted.")
               : response.status === 403
                 ? t("Du hast keinen Zugriff auf diesen synchronisierten Block.", "You have no access to this synced block.")
-                : body.error || t("Nicht verfügbar", "Not available"),
+                : serverMessage(body.error) || t("Nicht verfügbar", "Not available"),
           );
         if (alive) {
           setData(body);

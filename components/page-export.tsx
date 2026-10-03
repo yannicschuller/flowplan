@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
@@ -40,7 +41,7 @@ export function PageExportDialog({
       });
       if (!response.ok)
         throw new Error(
-          (await response.json()).error || t("Export fehlgeschlagen.", "Export failed."),
+          serverMessage((await response.json()).error) || t("Export fehlgeschlagen.", "Export failed."),
         );
       const blob = await response.blob(),
         url = URL.createObjectURL(blob),

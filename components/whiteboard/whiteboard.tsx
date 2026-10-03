@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "../i18n";
 import {
@@ -1887,7 +1888,7 @@ export default function Whiteboard({
     body.set("file", file);
     const response = await fetch("/api/upload", { method: "POST", body });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || t("Upload fehlgeschlagen.", "Upload failed."));
+    if (!response.ok) throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
     return result.url as string;
   }
   const center = () => {

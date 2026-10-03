@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, PageIcon } from "./ui";
@@ -196,7 +197,7 @@ export function LinkPreview({
           {card.preview.excerpt && <p>{card.preview.excerpt}</p>}
         </>
       ) : (
-        <small>{card.error || t("Vorschau wird geladen …", "Loading preview …")}</small>
+        <small>{serverMessage(card.error) || t("Vorschau wird geladen …", "Loading preview …")}</small>
       )}
     </div>
   );

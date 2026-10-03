@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "../i18n";
 import { useEffect, useState } from "react";
 import * as Y from "yjs";
@@ -45,7 +46,7 @@ export function useBoard(pageId: string) {
           throw new Error(
             response.status === 401
               ? t("Nur für angemeldete Mitglieder sichtbar.", "Only visible to signed-in members.")
-              : data.error || t("Nicht verfügbar", "Not available"),
+              : serverMessage(data.error) || t("Nicht verfügbar", "Not available"),
           );
         if (data.page?.kind !== "whiteboard" || !data.whiteboard)
           throw new Error(t("Diese Seite ist kein Whiteboard.", "This page is not a whiteboard."));

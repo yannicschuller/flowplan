@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -271,7 +272,7 @@ export function CommentComposer({
           const data = await r.json();
           if (!r.ok)
             throw new Error(
-              data.error || t("Personen konnten nicht geladen werden.", "People could not be loaded."),
+              serverMessage(data.error) || t("Personen konnten nicht geladen werden.", "People could not be loaded."),
             );
           if (!controller.signal.aborted) setChoices(data);
         })

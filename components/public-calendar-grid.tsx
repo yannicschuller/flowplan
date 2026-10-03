@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
@@ -62,7 +63,7 @@ export function PublicCalendarGrid({
         cache: "no-store",
       });
       const data = await current.json();
-      if (!current.ok) throw new Error(data.error);
+      if (!current.ok) throw new Error(serverMessage(data.error));
       const offset = between(entry.start, day);
       const keep = (value: unknown) =>
         typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)
@@ -85,7 +86,7 @@ export function PublicCalendarGrid({
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) throw new Error(serverMessage(result.error));
       setMoving(null);
       router.refresh();
     } catch (e) {

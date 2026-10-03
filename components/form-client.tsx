@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useState } from "react";
 import { Check } from "@phosphor-icons/react";
@@ -96,7 +97,7 @@ export default function FormClient({
                   });
                   if (!response.ok)
                     throw new Error(
-                      (await response.json().catch(() => ({}))).error ||
+                      serverMessage((await response.json().catch(() => ({}))).error) ||
                         t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."),
                     );
                 }

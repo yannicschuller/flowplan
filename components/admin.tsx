@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useEffect, useState } from "react";
@@ -877,7 +878,7 @@ function InstanceBackup({
                 const r = await fetch("/api/admin/instance-backup", {
                   method: "DELETE",
                 });
-                if (!r.ok) throw new Error((await r.json()).error);
+                if (!r.ok) throw new Error(serverMessage((await r.json()).error));
                 await onChange();
               } catch (e) {
                 onError((e as Error).message);
@@ -909,7 +910,7 @@ function InstanceBackup({
                   headers: { "Content-Type": "application/zip" },
                   body: file,
                 });
-                if (!r.ok) throw new Error((await r.json()).error);
+                if (!r.ok) throw new Error(serverMessage((await r.json()).error));
                 await onChange();
               } catch (e) {
                 onError((e as Error).message);

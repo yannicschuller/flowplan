@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -116,7 +117,7 @@ export function InlineComments({
         const data = await response.json();
         if (!response.ok)
           throw new Error(
-            data.error || t("Kommentare konnten nicht geladen werden.", "Comments could not be loaded."),
+            serverMessage(data.error) || t("Kommentare konnten nicht geladen werden.", "Comments could not be loaded."),
           );
         if (mounted.current && inflight.current === controller) {
           setThreads(data);

@@ -1,4 +1,5 @@
 "use client";
+import { serverMessage } from "@/lib/i18n-errors";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 
@@ -82,7 +83,7 @@ export function useSharedLive({
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) throw new Error(serverMessage(result.error));
       if (result.reset || !pgen.current || !d) {
         // A new projection (first load or restored version) replaces the doc.
         const next = new Y.Doc();
