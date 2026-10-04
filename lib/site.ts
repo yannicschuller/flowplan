@@ -1,7 +1,6 @@
-// The product website (landing page and the public demo) runs only on the
-// official instance (flowplan.org). Self-hosted instances leave
-// FLOWPLAN_PUBLIC_SITE unset: visitors get the sign-in page and there is no
-// demo.
+// The official instance (app.flowplan.org) may offer the public demo that
+// the website (flowplan.org, its own project) links to. Self-hosted
+// instances leave FLOWPLAN_PUBLIC_SITE unset: there is no demo.
 export function publicSite() {
   return process.env.FLOWPLAN_PUBLIC_SITE === "true";
 }

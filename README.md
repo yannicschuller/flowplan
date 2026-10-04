@@ -2,7 +2,7 @@
 
 **Documents, databases, whiteboards and a daily journal for teams – open source, self-hosted or hosted in Germany.**
 
-[Website](https://flowplan.org) · [Documentation](https://flowplan.org/docs) · [Self-hosting guide](https://flowplan.org/docs/installation) · [Configuration](https://flowplan.org/docs/configuration) · [Changelog](https://github.com/yannicschuller/flowplan/commits/main)
+[Website](https://flowplan.org) · [Documentation](https://docs.flowplan.org) · [Self-hosting guide](https://docs.flowplan.org/installation) · [Configuration](https://docs.flowplan.org/configuration) · [Changelog](https://github.com/yannicschuller/flowplan/commits/main)
 
 [![CI](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml/badge.svg)](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml)
 [![Docker image](https://github.com/yannicschuller/flowplan/actions/workflows/docker.yml/badge.svg)](https://github.com/yannicschuller/flowplan/pkgs/container/flowplan)
@@ -52,14 +52,14 @@ All data lives in the volume on `/app/data`. Run **exactly one** container per d
 
 More in the documentation:
 
-- [Installation with Docker](https://flowplan.org/docs/installation)
-- [Sign-in: password, passkeys and OIDC](https://flowplan.org/docs/sign-in)
-- [Configuration (all environment variables)](https://flowplan.org/docs/configuration)
-- [Storage, S3 and backups](https://flowplan.org/docs/storage-and-backups)
-- [Coolify and reverse proxies](https://flowplan.org/docs/coolify-and-proxy)
-- [Operations and troubleshooting](https://flowplan.org/docs/operations)
+- [Installation with Docker](https://docs.flowplan.org/installation)
+- [Sign-in: password, passkeys and OIDC](https://docs.flowplan.org/sign-in)
+- [Configuration (all environment variables)](https://docs.flowplan.org/configuration)
+- [Storage, S3 and backups](https://docs.flowplan.org/storage-and-backups)
+- [Coolify and reverse proxies](https://docs.flowplan.org/coolify-and-proxy)
+- [Operations and troubleshooting](https://docs.flowplan.org/operations)
 
-Every instance also serves the documentation itself under `/docs`.
+The documentation and the website are separate projects: [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org) and [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org). This repository contains only the app (app.flowplan.org).
 
 ## Development
 
@@ -82,11 +82,11 @@ Development mode also offers **Open local workspace**, a shared local example ac
 | `npm run test:e2e` | Browser tests (Playwright, desktop and mobile); start a server with its own `FLOWPLAN_DATA_DIR` and set `TEST_BASE_URL` |
 | `npm run check:standalone` | Runs the standalone build like the container and checks health, persistence and restore |
 
-Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror with Yjs, Zod and Playwright. The source of the documentation is in [`content/docs`](content/docs).
+Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror with Yjs, Zod and Playwright. The documentation lives in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs), the website in [flowplan-website](https://github.com/yannicschuller/flowplan-website).
 
 ## Hosted version
 
-[flowplan.org](https://flowplan.org) runs Flowplan in a data centre in Germany. The website and the public demo there are not part of the self-hosted version: a self-hosted instance opens with its sign-in page.
+[app.flowplan.org](https://app.flowplan.org) runs Flowplan in a data centre in Germany. The website [flowplan.org](https://flowplan.org) and its public demo are not part of the self-hosted version: a self-hosted instance opens with its sign-in page.
 
 ## Contributing and security
 

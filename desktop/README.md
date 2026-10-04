@@ -26,7 +26,7 @@ lokale Tests auch `http://localhost:3000`). Ändern: Menü „Server wechseln �
 Vorgeben lässt sich die Adresse mit `--server=<URL>` oder `FLOWPLAN_SERVER`.
 
 Mehr dazu in der Dokumentation:
-[Betrieb und Fehlersuche → Desktop-App bauen](https://flowplan.org/docs/operations#desktop-app-bauen).
+[Betrieb und Fehlersuche → Desktop-App bauen](https://docs.flowplan.org/operations#desktop-app-bauen).
 
 ## Bauen
 

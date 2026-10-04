@@ -237,7 +237,7 @@ export default function Login({
               "Die Anmeldung wird über deinen OIDC-Anbieter eingerichtet. Wie das geht, steht in der Dokumentation unter „Anmeldung mit OIDC“.",
               "Sign-in is set up with your OIDC provider. The documentation explains how under “Sign-in with OIDC”.",
             )}{" "}
-            <a href="/docs/sign-in">/docs/anmeldung-oidc</a>
+            <a href="https://docs.flowplan.org/sign-in">docs.flowplan.org/sign-in</a>
           </div>
         )}
         {demo && mode === "signin" && (

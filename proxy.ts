@@ -42,8 +42,7 @@ export function contentSecurityPolicy(nonce: string | null, dev: boolean) {
 
 export function proxy(request: NextRequest) {
   const dev = process.env.NODE_ENV === "development";
-  const staticPage = request.nextUrl.pathname.startsWith("/docs");
-  const nonce = staticPage ? null : Buffer.from(crypto.randomUUID()).toString("base64");
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const policy = contentSecurityPolicy(nonce, dev);
   const headers = new Headers(request.headers);
   if (nonce) headers.set("x-nonce", nonce);

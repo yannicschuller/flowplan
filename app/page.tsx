@@ -5,9 +5,7 @@ import { withContentLocale } from "@/lib/content-locale";
 import { rememberLocale } from "@/lib/user-locale";
 import { requestLocale } from "@/lib/i18n-server";
 import WorkspaceApp from "@/components/workspace-app";
-import PublicHome from "@/components/landing/public-home";
 import { instanceSettings } from "@/lib/instance-settings";
-import { publicSite } from "@/lib/site";
 import Login from "@/components/login";
 import { loginOptions } from "@/lib/local-auth";
 export const dynamic = "force-dynamic";
@@ -17,22 +15,13 @@ export default async function Home({
   searchParams: Promise<{ authError?: string; useTemplate?: string }>;
 }) {
   const user = await currentUser();
-  // Self-hosted: straight to signing in; the website is flowplan.org's.
-  if (!user && !publicSite())
+  // Visitors sign in; the website (flowplan.org) is its own project.
+  if (!user)
     return (
       <Login
         {...loginOptions()}
         error={(await searchParams).authError}
         instanceName={instanceSettings().name}
-      />
-    );
-  if (!user)
-    return (
-      <PublicHome
-        {...loginOptions()}
-        error={(await searchParams).authError}
-        instanceName={instanceSettings().name}
-        demoEnabled={instanceSettings().publicDemo}
       />
     );
   const locale = await requestLocale();

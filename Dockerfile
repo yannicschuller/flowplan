@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.title="Flowplan" \
   org.opencontainers.image.description="Documents, databases, whiteboards and a daily journal for teams – self-hosted." \
   org.opencontainers.image.source="https://github.com/yannicschuller/flowplan" \
   org.opencontainers.image.url="https://flowplan.org" \
-  org.opencontainers.image.documentation="https://flowplan.org/docs/installation" \
+  org.opencontainers.image.documentation="https://docs.flowplan.org/installation" \
   org.opencontainers.image.licenses="AGPL-3.0-only"
 WORKDIR /app
 # Certificates for HTTPS to the S3 endpoint (Litestream is a static binary);

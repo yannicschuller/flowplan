@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import * as Y from "yjs";
 
-process.env.FLOWPLAN_PUBLIC_SITE = "true"; // the demo belongs to the website
+process.env.FLOWPLAN_PUBLIC_SITE = "true"; // the demo exists only on the official instance
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-catalog-"));
 const { run, one, all, id } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");

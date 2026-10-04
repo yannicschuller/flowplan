@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-process.env.FLOWPLAN_PUBLIC_SITE = "true"; // the demo belongs to the website
+process.env.FLOWPLAN_PUBLIC_SITE = "true"; // the demo exists only on the official instance
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-demo-"));
 const { run, one, all } = await import("../lib/db");
 const { startDemo, endDemo, cleanupDemos, demoAllows } = await import("../lib/demo");

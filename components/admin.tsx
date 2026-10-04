@@ -726,7 +726,7 @@ function InstanceSettingsForm({
           onChange={(e) => setDraft({ ...draft, publicDemo: e.target.checked })}
         />
         <span>
-          {t("Demo auf der Startseite anbieten", "Offer a demo on the start page")}
+          {t("Demo auf flowplan.org anbieten", "Offer a demo on flowplan.org")}
           <small className="muted">
             {t("Besucher erhalten ohne Konto einen eigenen Arbeitsbereich mit Beispielen. Er wird nach 45 Minuten ohne Aktivität (spätestens nach 3 Stunden) oder mit „Demo beenden“ gelöscht. Demo-Konten können nichts veröffentlichen, teilen oder einladen.", "Visitors get their own workspace with examples without an account. It is deleted after 45 minutes without activity (after 3 hours at the latest) or with “End demo”. Demo accounts cannot publish, share or invite.")}
           </small>

@@ -24,7 +24,7 @@ Node.js 22.13 or newer. Without OIDC settings the development server offers a lo
 - Match the surrounding code: naming, comment density, no new dependencies without a reason.
 - Add or update tests: core logic in `tests/*.test.ts`, user-facing behaviour in `tests/browser/*.spec.ts` (desktop and mobile).
 - Run `npm run typecheck`, `npm test` and, for UI changes, the relevant browser tests. Never point tests at a data directory you care about – browser tests need a server with its own `FLOWPLAN_DATA_DIR`.
-- Update the documentation in `content/docs` when behaviour changes.
+- Update the documentation ([flowplan-docs](https://github.com/yannicschuller/flowplan-docs)) when behaviour changes.
 - The user interface is German and English; add both texts for new UI strings.
 
 By contributing you agree that your contributions are licensed under the [AGPL-3.0](LICENSE).

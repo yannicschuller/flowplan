@@ -128,7 +128,7 @@ Regeln:
 
 ## Startseite (Persuade)
 
-`components/landing/` – die einzige laute Fläche. Gleiche Tokens und
+Im Repository [flowplan-website](https://github.com/yannicschuller/flowplan-website) (`components/landing/`) – die einzige laute Fläche. Gleiche Tokens und
 Schriften, aber:
 
 - Instrument Serif groß für alle Abschnittsüberschriften, kursiver
