@@ -26,6 +26,9 @@ test("visitors get the product page with sign-in and sign-up; deep links still a
   // Both actions are always reachable (header and hero).
   await expect(page.getByRole("link", { name: /Registrieren/ }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Anmelden" }).first()).toBeVisible();
+  // The source code is one click away (menu bar and hero).
+  await expect(page.getByRole("link", { name: "Quellcode auf GitHub" }).first()).toHaveAttribute("href", "https://github.com/yannicschuller/flowplan");
+  await expect(page.getByRole("link", { name: /Open Source \(AGPL\)/ })).toBeVisible();
   // All page types and the feature index are on the page.
   for (const title of ["Dokumente", "Datenbanken", "Whiteboards", "Journal"])
     await expect(page.getByRole("heading", { name: title, exact: true }).first()).toBeAttached();

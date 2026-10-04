@@ -698,6 +698,9 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
         </nav>
         <div className={s.actions}>
           <LanguageSwitch className={s.lang} />
+          <a className={s.githubLink} href={GITHUB_URL} rel="noopener" aria-label={c.header.github} title={c.header.github}>
+            <GithubLogo size={20} />
+          </a>
           {demoEnabled && <DemoButton className={s.ghost} short />}
           <a className={registerHref ? s.ghost : s.primary} href={loginHref}>
             {c.header.login}
@@ -744,8 +747,16 @@ export default function Landing({ loginHref, registerHref, instanceName, demoEna
               {demoEnabled && <DemoButton className={s.secondaryLarge} />}
             </div>
             <ul className={`${s.facts} ${s.rise}`} style={{ "--d": 4 } as React.CSSProperties}>
-              {c.hero.facts.map((fact) => (
-                <li key={fact}>{fact}</li>
+              {c.hero.facts.map((fact, i) => (
+                <li key={fact}>
+                  {i === 0 ? (
+                    <a href={GITHUB_URL} rel="noopener">
+                      <GithubLogo size={14} /> {fact}
+                    </a>
+                  ) : (
+                    fact
+                  )}
+                </li>
               ))}
             </ul>
           </div>

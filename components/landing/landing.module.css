@@ -346,6 +346,38 @@
   align-items: center;
   gap: 8px;
 }
+.facts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+  transition: color 0.2s ease;
+}
+.facts li:has(> a)::before {
+  display: none;
+}
+.facts a:hover {
+  color: var(--text);
+}
+.githubLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--secondary);
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+.githubLink:hover {
+  color: var(--text);
+  background: var(--hover, color-mix(in srgb, currentColor 8%, transparent));
+}
 .facts li::before {
   content: "";
   width: 5px;

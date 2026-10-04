@@ -11,6 +11,7 @@ const de = {
     docs: "Doku",
     login: "Anmelden",
     register: "Registrieren",
+    github: "Quellcode auf GitHub",
   },
   nav: {
     seitentypen: "Funktionen",
@@ -319,6 +320,7 @@ const en: LandingCopy = {
     docs: "Docs",
     login: "Sign in",
     register: "Sign up",
+    github: "Source code on GitHub",
   },
   nav: {
     seitentypen: "Features",
