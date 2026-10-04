@@ -9358,6 +9358,22 @@ pre,
   .login-card h1 {
     font-size: 34px;
   }
+  /* Phones: the logo row sits centred above the card, which then needs no
+     second logo; less outer margin leaves room for the form. */
+  .login {
+    padding: max(28px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  }
+  .login-brand {
+    align-self: center;
+    margin-bottom: 22px;
+  }
+  .login-card {
+    margin: 0 auto auto;
+    padding: 32px 22px;
+  }
+  .login-card .login-mark {
+    display: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .login-card:hover .login-mark .brand-mark {
