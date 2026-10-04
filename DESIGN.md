@@ -125,18 +125,3 @@ Regeln:
   Akzentschrift.
 - **Leere Zustände und Skelette** nutzen `--surface`/`--hover`, keine
   eigenen Grautöne.
-
-## Startseite (Persuade)
-
-Im Repository [flowplan-website](https://github.com/yannicschuller/flowplan-website) (`components/landing/`) – die einzige laute Fläche. Gleiche Tokens und
-Schriften, aber:
-
-- Instrument Serif groß für alle Abschnittsüberschriften, kursiver
-  Ultramarin-Akzent nur im Hero.
-- Produkt wird mit echten, animierten UI-Szenen gezeigt (Dokument,
-  Datenbank-Ansichtswechsel, Whiteboard, Journal, Zusammenarbeit), nicht mit
-  Screenshots. Szenen laufen nur, solange sie sichtbar sind.
-- Der Abschnitt „Betrieb“ ist invertiert (Tinte), als Gegengewicht.
-- Hell/Dunkel folgt `prefers-color-scheme` (keine App-Einstellung vorhanden).
-- Bei reduzierter Bewegung zeigen alle Szenen ihren Endzustand.
-- Texte: konkret, nur belegbare Funktionen, keine Superlative.

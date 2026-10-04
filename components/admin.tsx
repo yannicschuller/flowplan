@@ -57,7 +57,6 @@ type AdminData = {
     effectiveQuotaMb: number;
   }[];
   settings: InstanceSettings;
-  publicSite?: boolean;
   localLogin?: boolean;
   localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number }>;
   mail: {
@@ -436,7 +435,6 @@ export default function Admin({
             <>
               <InstanceSettingsForm
                 initial={data.settings}
-                publicSite={!!data.publicSite}
                 localLogin={!!data.localLogin}
                 onSave={async (settings) => {
                   await act({ action: "admin.settings", settings });
@@ -602,12 +600,10 @@ function SignupSwitch({ open, onChange }: { open: boolean; onChange: (open: bool
 // Instance-wide settings; empty numbers fall back to the environment.
 function InstanceSettingsForm({
   initial,
-  publicSite,
   localLogin,
   onSave,
 }: {
   initial: InstanceSettings;
-  publicSite: boolean;
   localLogin: boolean;
   onSave: (settings: InstanceSettings) => Promise<void>;
 }) {
@@ -718,7 +714,6 @@ function InstanceSettingsForm({
           </span>
         </label>
       )}
-      {publicSite && (
       <label className="checkbox-label">
         <input
           type="checkbox"
@@ -726,13 +721,12 @@ function InstanceSettingsForm({
           onChange={(e) => setDraft({ ...draft, publicDemo: e.target.checked })}
         />
         <span>
-          {t("Demo auf flowplan.org anbieten", "Offer a demo on flowplan.org")}
+          {t("Öffentliche Demo anbieten", "Offer a public demo")}
           <small className="muted">
-            {t("Besucher erhalten ohne Konto einen eigenen Arbeitsbereich mit Beispielen. Er wird nach 45 Minuten ohne Aktivität (spätestens nach 3 Stunden) oder mit „Demo beenden“ gelöscht. Demo-Konten können nichts veröffentlichen, teilen oder einladen.", "Visitors get their own workspace with examples without an account. It is deleted after 45 minutes without activity (after 3 hours at the latest) or with “End demo”. Demo accounts cannot publish, share or invite.")}
+            {t("Besucher erhalten ohne Konto einen eigenen Arbeitsbereich mit Beispielen. Er wird nach 45 Minuten ohne Aktivität (spätestens nach 3 Stunden) oder mit „Demo beenden“ gelöscht. Demo-Konten können nichts veröffentlichen, teilen oder einladen. Die Demo startet unter /demo.", "Visitors get their own workspace with examples without an account. It is deleted after 45 minutes without activity (after 3 hours at the latest) or with “End demo”. Demo accounts cannot publish, share or invite. The demo starts at /demo.")}
           </small>
         </span>
       </label>
-      )}
       <label className="checkbox-label">
         <input
           type="checkbox"

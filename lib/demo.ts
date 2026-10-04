@@ -3,7 +3,6 @@
 // (at most three hours) or with "Demo beenden"; then account, workspace and
 // files are deleted. Demo accounts cannot publish, share, invite or create
 // further workspaces, and new demos are limited per address and in total.
-import { publicSite } from "./site";
 import { createHash, randomUUID } from "node:crypto";
 import { all, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
@@ -61,9 +60,9 @@ function scheduleCleanup() {
   cleanupTimer.unref?.();
 }
 
-// Only on the official website (see lib/site.ts).
+// A public demo: switched on in the administration.
 export function demoEnabled() {
-  return publicSite() && instanceSettings().publicDemo;
+  return instanceSettings().publicDemo;
 }
 
 export function startDemo(address: string) {

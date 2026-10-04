@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { loginOptions } from "@/lib/local-auth";
 import { demoEnabled } from "@/lib/demo";
 
-// What the website (flowplan.org) may offer: sign-up and the demo follow the
-// administration's switches. Public, without personal data.
+// Public facts about this instance: whether sign-up and the demo are open
+// (administration). Without personal data.
 export const dynamic = "force-dynamic";
 export function GET() {
   const options = loginOptions();

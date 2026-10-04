@@ -22,10 +22,8 @@ export function useT() {
   return (de: string, en?: string) =>
     en === undefined ? translateLabel(de, locale) : pick(de, en);
 }
-// On flowplan.org the choice is shared with the website and the docs.
 export function setLocale(locale: Locale) {
-  const domain = /(^|\.)flowplan\.org$/.test(location.hostname) ? "; domain=flowplan.org" : "";
-  document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax${domain}`;
+  document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax`;
   location.reload();
 }
 // "DE · EN": the other language is a button.

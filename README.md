@@ -86,7 +86,7 @@ Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), Ti
 
 ## Hosted version
 
-[app.flowplan.org](https://app.flowplan.org) runs Flowplan in a data centre in Germany. The website [flowplan.org](https://flowplan.org) and its public demo are not part of the self-hosted version: a self-hosted instance opens with its sign-in page.
+[app.flowplan.org](https://app.flowplan.org) runs Flowplan in a data centre in Germany. Every instance, hosted or self-hosted, opens with its sign-in page; the website [flowplan.org](https://flowplan.org) is a separate project.
 
 ## Contributing and security
 

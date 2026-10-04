@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await serverT())("Demo · Flowplan", "Demo · Flowplan") };
 }
-// "Demo ausprobieren" on the website leads here; the demo account is created
-// by a request from this page (same origin).
+// Starts a demo account (administration → public demo); the account is
+// created by a request from this page.
 export default async function DemoPage() {
   if (await currentUser()) redirect("/");
   if (!demoEnabled()) redirect("/login");

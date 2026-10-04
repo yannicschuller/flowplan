@@ -15,7 +15,7 @@ export default async function Home({
   searchParams: Promise<{ authError?: string; useTemplate?: string }>;
 }) {
   const user = await currentUser();
-  // Visitors sign in; the website (flowplan.org) is its own project.
+  // Visitors sign in.
   if (!user)
     return (
       <Login
