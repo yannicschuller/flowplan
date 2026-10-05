@@ -34,6 +34,21 @@ test("calculate in a document: hint after =, selection and fractions", async ({ 
   await page.keyboard.press("Escape");
   await expect(editor.locator(".calc-hint")).toHaveCount(0);
 
+  // A fraction written as a formula counts too; the result is a formula.
+  await page.keyboard.press("Enter");
+  await page.evaluate(() => {
+    const el = document.querySelector(".ProseMirror") as HTMLElement & {
+      editor: { chain: () => { focus: () => { insertContent: (c: object) => { run: () => void } } } };
+    };
+    el.editor.chain().focus().insertContent({ type: "mathInline", attrs: { expression: "\\frac{12}{23}" } }).run();
+  });
+  await page.keyboard.type(" +3,5=");
+  await expect(editor.locator(".calc-hint")).toContainText("185/46");
+  await page.keyboard.press("Tab");
+  await expect(editor.locator(".calc-hint")).toHaveCount(0);
+  await expect(editor.locator(".math-inline")).toHaveCount(2);
+  await expect(editor.locator(".math-inline").nth(1)).toHaveAttribute("data-math", "\\frac{185}{46}");
+
   // A selected term: the text menu offers to expand and factor.
   await page.keyboard.press("Enter");
   await page.keyboard.type("x² − 9");
@@ -60,6 +75,6 @@ test("calculate in a document: hint after =, selection and fractions", async ({ 
   await dialog.getByRole("group", { name: "Rechnen" }).getByRole("button", { name: /Ergebnis/ }).click();
   await expect(latex).toHaveValue("\\frac{3}{4} + \\frac{1}{6} = \\frac{11}{12}");
   await dialog.getByRole("button", { name: "Einfügen" }).click();
-  await expect(editor.locator(".math-inline .katex")).toHaveCount(1);
+  await expect(editor.locator(".math-inline .katex")).toHaveCount(3);
   expect(errors).toEqual([]);
 });
