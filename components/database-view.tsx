@@ -4,6 +4,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { RowAccess, rowAccessSummary } from "./row-access";
+import TicketThread from "./ticket-thread";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
   defaultRecordLayout,
@@ -4793,6 +4794,13 @@ export default function DatabaseView({
                   editable={selectedEditable}
                   onError={onError}
                   onChanged={onRefresh}
+                />
+                <TicketThread
+                  key={`ticket-${selected.id}`}
+                  pageId={page.id}
+                  rowId={selected.id}
+                  editable={selectedEditable}
+                  onError={onError}
                 />
                 <div className="settings-section">
                   <h3>{t("Kommentare", "Comments")}</h3>

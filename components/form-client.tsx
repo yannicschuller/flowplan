@@ -29,6 +29,8 @@ export default function FormClient({
   const t = useT();
   const [values, setValues] = useState<Record<string, unknown>>({}),
     [done, setDone] = useState(false),
+    // Customer portal: the private link to the request.
+    [ticket, setTicket] = useState<{ url: string; mailed: boolean } | null>(null),
     [error, setError] = useState(""),
     [errors, setErrors] = useState<Record<string, string>>({}),
     [busy, setBusy] = useState(false);
@@ -52,6 +54,24 @@ export default function FormClient({
             <Check />
             <h2>{config.successTitle}</h2>
             <p>{config.successMessage}</p>
+            {ticket && (
+              <div className="ticket-link">
+                <p>
+                  {ticket.mailed
+                    ? t(
+                        "Unter diesem Link siehst du den Stand deiner Anfrage und kannst antworten. Wir haben ihn dir auch per E-Mail geschickt.",
+                        "At this link you can see the status of your request and reply. We also sent it to you by e-mail.",
+                      )
+                    : t(
+                        "Unter diesem Link siehst du den Stand deiner Anfrage und kannst antworten. Speichere ihn dir.",
+                        "At this link you can see the status of your request and reply. Save it.",
+                      )}
+                </p>
+                <a className="button primary" href={ticket.url}>
+                  {t("Anfrage ansehen", "View request")}
+                </a>
+              </div>
+            )}
           </div>
         ) : (
           <form
@@ -74,8 +94,9 @@ export default function FormClient({
                   ([, v]) =>
                     Array.isArray(v) && v.some((x) => x instanceof File),
                 );
+                let result: { ticket?: string; mailed?: boolean } = {};
                 if (!files.length)
-                  await api(`/api/forms/${token}`, { cells: values });
+                  result = await api(`/api/forms/${token}`, { cells: values });
                 else {
                   const body = new FormData();
                   body.set(
@@ -95,12 +116,15 @@ export default function FormClient({
                     method: "POST",
                     body,
                   });
+                  const data = await response.json().catch(() => ({}));
                   if (!response.ok)
                     throw new Error(
-                      serverMessage((await response.json().catch(() => ({}))).error) ||
+                      serverMessage(data.error) ||
                         t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."),
                     );
+                  result = data;
                 }
+                if (result.ticket) setTicket({ url: `/ticket/${result.ticket}`, mailed: !!result.mailed });
                 setDone(true);
               } catch (e) {
                 setError((e as Error).message);

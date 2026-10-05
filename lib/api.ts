@@ -1,3 +1,4 @@
+import { teamReply } from "./service-desk";
 import {
   restoreWhiteboardSnapshot,
   syncWhiteboard,
@@ -1904,6 +1905,11 @@ export function command(
         );
         break;
       }
+      case "ticket.reply":
+        // A team answer to a customer request; e-mailed to the customer.
+        write();
+        result = teamReply(user, pid(), uuid.parse(b.rowId), b.body);
+        break;
       case "form.submit":
         write();
         database(pid());

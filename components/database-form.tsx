@@ -62,6 +62,26 @@ export default function DatabaseForm({
       setSharingPending(null);
     }
   }
+  // Properties a customer may see: no people, relations or files.
+  const portalCandidates = fields.filter(
+    (f) => !["person", "relation", "created_by", "updated_by", "files"].includes(f.type),
+  );
+  const [portalBusy, setPortalBusy] = useState(false);
+  async function updatePortal(change: Partial<FormConfig>) {
+    const next = { ...config, ...change };
+    // Switching it on shows a status property right away, if there is one.
+    if (change.portal && !config.portalFields.length) {
+      const status = portalCandidates.find((f) => f.type === "select" && /status|stand/i.test(f.name))
+        || portalCandidates.find((f) => f.type === "select");
+      if (status) next.portalFields = [status.id];
+    }
+    setPortalBusy(true);
+    try {
+      await act({ action: "form.update", config: next });
+    } finally {
+      setPortalBusy(false);
+    }
+  }
   const designFields = [...publicFormFields(fields, !!form?.internal)].sort(
     (a, b) =>
       (draft.fieldOrder.includes(a.id) ? draft.fieldOrder.indexOf(a.id) : 999) -
@@ -175,6 +195,43 @@ export default function DatabaseForm({
             />
             {t("Anonyme Antworten", "Anonymous answers")}
           </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={config.portal}
+              disabled={portalBusy}
+              onChange={(e) => updatePortal({ portal: e.target.checked })}
+            />
+            {t("Kundenportal: Einsendende sehen den Stand ihrer Anfrage", "Customer portal: senders see the status of their request")}
+          </label>
+          {config.portal && (
+            <fieldset className="portal-fields">
+              <legend>{t("Im Kundenportal sichtbar", "Visible in the customer portal")}</legend>
+              <p className="muted">
+                {t(
+                  "Wer das Formular absendet, bekommt einen privaten Link (per E-Mail, wenn eine E-Mail-Frage beantwortet wurde) und kann dort dem Team antworten. Antworten gebt ihr im Eintrag.",
+                  "Whoever sends the form gets a private link (by e-mail if an e-mail question was answered) and can reply to the team there. You answer in the record.",
+                )}
+              </p>
+              {portalCandidates.map((f) => (
+                <label className="checkbox-label" key={f.id}>
+                  <input
+                    type="checkbox"
+                    checked={config.portalFields.includes(f.id)}
+                    disabled={portalBusy}
+                    onChange={(e) =>
+                      updatePortal({
+                        portalFields: e.target.checked
+                          ? [...config.portalFields, f.id]
+                          : config.portalFields.filter((id) => id !== f.id),
+                      })
+                    }
+                  />
+                  {f.name}
+                </label>
+              ))}
+            </fieldset>
+          )}
           {!!form?.enabled && (
             <button
               className="button"

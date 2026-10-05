@@ -32,6 +32,8 @@ const BLOCKED = new Set([
   "calendar.feed",
   "token.create",
   "webhook.delete",
+  // Would e-mail people outside the demo.
+  "ticket.reply",
 ]);
 export function demoAllows(action: string, input: Record<string, unknown>) {
   if (BLOCKED.has(action) || action.startsWith("admin.")) return false;

@@ -76,9 +76,13 @@ function layout(
   paragraphs: string[],
   action?: { label: string; url: string },
   locale: Locale = contentLocale(),
+  customer = false,
 ) {
-  const footer =
-    locale === "de"
+  const footer = customer
+    ? locale === "de"
+      ? `Diese E-Mail kommt von ${escape(appUrl())}, weil du dort über ein Formular eine Anfrage gestellt hast.`
+      : `This e-mail comes from ${escape(appUrl())} because you sent a request there through a form.`
+    : locale === "de"
       ? `Diese E-Mail kommt von ${escape(appUrl())}. Benachrichtigungen per E-Mail stellst du in Flowplan unter Einstellungen → Benachrichtigungen ein.`
       : `This e-mail comes from ${escape(appUrl())}. You can change e-mail notifications in Flowplan under Settings → Notifications.`;
   const body = paragraphs.map((p) => `<p style="margin:0 0 14px">${p}</p>`).join("");
@@ -113,6 +117,22 @@ export function queueLinkMail(input: {
 }) {
   const text = `${input.lines.join("\n\n")}\n\n${input.url}\n`;
   const html = layout(input.title, input.lines.map(escape), { label: input.label, url: input.url });
+  return queueMail(input.to, input.subject, text, html);
+}
+
+// E-mails to people outside the instance (customer portal): their own
+// language, a footer that says why they get it.
+export function queueCustomerMail(input: {
+  to: string;
+  subject: string;
+  title: string;
+  lines: string[];
+  label: string;
+  url: string;
+  locale: Locale;
+}) {
+  const text = `${input.lines.join("\n\n")}\n\n${input.url}\n`;
+  const html = layout(input.title, input.lines.map(escape), { label: input.label, url: input.url }, input.locale, true);
   return queueMail(input.to, input.subject, text, html);
 }
 

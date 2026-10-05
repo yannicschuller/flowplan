@@ -13,7 +13,10 @@ import {
 import { one, run, id, transaction, onTransactionRollback } from "@/lib/db";
 import { enforceQuota } from "@/lib/instance-ops";
 import { clientAddress } from "@/lib/client-address";
-export async function POST(
+import { withRequestLocale } from "@/lib/content-locale";
+import { createTicket } from "@/lib/service-desk";
+
+async function handlePOST(
   req: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
@@ -71,6 +74,8 @@ export async function POST(
     const fingerprint = hash(
       `${token}|${user?.id || clientAddress(req.headers)}`,
     );
+    // Assigned inside the transaction.
+    let ticket = null as { token: string; mailed: boolean } | null;
     transaction(() => {
       const count =
         one<{ n: number }>(
@@ -107,7 +112,10 @@ export async function POST(
           return `/api/files/${fid}`;
         });
       }
-      saveFormSubmission(form.page_id, user, cells);
+      const saved = saveFormSubmission(form.page_id, user, cells);
+      // Customer portal: a private link to follow the request.
+      if (form.config.portal)
+        ticket = createTicket({ pageId: form.page_id, rowId: saved.id, title: form.title, fields: form.fields, cells });
       run(
         "INSERT INTO form_submissions VALUES(?,?,?,?)",
         id(),
@@ -116,7 +124,7 @@ export async function POST(
         Date.now(),
       );
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(ticket ? { ok: true, ticket: ticket.token, mailed: ticket.mailed } : { ok: true });
   } catch (e) {
     return NextResponse.json(
       {
@@ -138,3 +146,4 @@ export async function POST(
     );
   }
 }
+export const POST = withRequestLocale(handlePOST);

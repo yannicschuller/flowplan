@@ -296,6 +296,12 @@ function migrate(d: DatabaseSync) {
     y REAL NOT NULL,
     seen INTEGER NOT NULL,
     PRIMARY KEY(page_id,user_id));`);
+  // Customer portal: a private link per form request, and the conversation
+  // between the customer and the team. No foreign key on the record, so a
+  // ticket comes back when its record is restored from the trash.
+  d.exec(`CREATE TABLE IF NOT EXISTS tickets(token TEXT PRIMARY KEY,row_id TEXT NOT NULL UNIQUE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,email TEXT,locale TEXT NOT NULL DEFAULT 'de',created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS ticket_messages(id TEXT PRIMARY KEY,row_id TEXT NOT NULL,author_id TEXT,author_name TEXT NOT NULL DEFAULT '',body TEXT NOT NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS ticket_messages_row ON ticket_messages(row_id,created_at);`);
   d.exec(`CREATE TABLE IF NOT EXISTS share_live_requests(token TEXT NOT NULL,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS share_live_requests_token ON share_live_requests(token,created_at);`);
   // Per share link and document: the guest projection for live editing.

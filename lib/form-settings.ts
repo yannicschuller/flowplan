@@ -19,6 +19,10 @@ export const formConfigSchema = z.object({
   questionStyles: z
     .record(z.string(), z.enum(["long", "buttons", "scale"]))
     .default({}),
+  // Customer portal: each request gets a private link with its status and a
+  // conversation with the team; these properties are shown there.
+  portal: z.boolean().default(false),
+  portalFields: z.array(z.string()).max(80).default([]),
 });
 export type QuestionStyle = "long" | "buttons" | "scale";
 export const SCALE_MIN = 1,

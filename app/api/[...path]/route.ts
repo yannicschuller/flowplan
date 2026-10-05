@@ -1,4 +1,5 @@
 import { withRequestLocale } from "@/lib/content-locale";
+import { teamThread } from "@/lib/service-desk";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -403,9 +404,15 @@ async function handleGET(
       const query = metricSchema.parse(Object.fromEntries(url.searchParams));
       return NextResponse.json(computeMetric(user, query), { headers: { "Cache-Control": "no-store" } });
     }
+    if (path[0] === "ticket-thread") {
+      // The customer conversation of a record (service desk).
+      const pageId = z.uuid().parse(url.searchParams.get("page")),
+        rowId = z.uuid().parse(url.searchParams.get("row"));
+      return NextResponse.json(teamThread(user, pageId, rowId), { headers: { "Cache-Control": "no-store" } });
+    }
     if (path[0] === "dashboard-sources") {
       // The workspace of the page the dashboard is on.
-      const wid = requirePage(user, z.string().uuid().parse(url.searchParams.get("page"))).workspace_id;
+      const wid = requirePage(user, z.uuid().parse(url.searchParams.get("page"))).workspace_id;
       requireMember(user, wid);
       return NextResponse.json(metricSources(user, wid), { headers: { "Cache-Control": "no-store" } });
     }

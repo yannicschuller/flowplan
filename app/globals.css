@@ -13665,3 +13665,151 @@ h3 .block-reactions {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
+
+/* ---------- Customer portal (app/ticket, components/ticket-*.tsx) ---------- */
+.ticket-page {
+  max-width: 680px;
+}
+.ticket-page h1 {
+  margin: 4px 0 6px;
+  font: 400 34px/1.15 var(--font-display);
+}
+.ticket-kicker {
+  color: var(--blue);
+  font-weight: 600;
+  font-size: 13px;
+}
+.ticket-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 22px 0 8px;
+}
+.ticket-status div {
+  min-width: 140px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.ticket-status dt,
+.ticket-answers dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ticket-status dd {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.ticket-section {
+  margin-top: 34px;
+}
+.ticket-section h2 {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+.ticket-answers {
+  display: grid;
+  gap: 12px;
+}
+.ticket-answers dd {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ticket-messages {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.ticket-messages li {
+  max-width: 88%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.ticket-messages li.team {
+  border-color: transparent;
+  background: var(--blue-light);
+}
+.ticket-page .ticket-messages li.customer,
+.ticket-thread .ticket-messages li.team {
+  justify-self: end;
+}
+.ticket-meta {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 4px;
+  font-size: 12.5px;
+}
+.ticket-meta time {
+  color: var(--muted);
+}
+.ticket-messages p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ticket-reply {
+  display: grid;
+  gap: 8px;
+}
+.ticket-reply label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.ticket-reply textarea {
+  width: 100%;
+  resize: vertical;
+}
+.ticket-reply .button {
+  justify-self: start;
+}
+.ticket-note {
+  margin-top: 34px;
+  font-size: 12.5px;
+}
+.ticket-thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-bottom: 12px;
+}
+.ticket-thread-meta .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ticket-link {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-align: center;
+}
+.portal-fields {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.portal-fields legend {
+  padding: 0 4px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.portal-fields p {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+}
