@@ -50,8 +50,7 @@ export function normalize(text: string, locale: Locale): { expr: string; unit: s
     .replace(/[×·⋅∙]/g, "*")
     .replace(/[÷]/g, "/")
     .replace(/π/g, " pi ")
-    .replace(/²/g, "^2")
-    .replace(/³/g, "^3")
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (digits) => `^${[...digits].map((d) => "⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(d)).join("")}`)
     .replace(/√\s*\(/g, "sqrt(")
     .replace(/√\s*([0-9a-zA-Z.,]+)/g, "sqrt($1)")
     .replace(/(\d)\s*%/g, "$1/100");
@@ -169,7 +168,12 @@ function decimal(value: number, locale: Locale) {
 }
 // Two ways of writing the same thing ("(a+b)^2" and "(a + b)²").
 const sameWriting = (a: string, b: string) => {
-  const plain = (x: string) => x.replace(/[\s*·]/g, "").replace(/\^\((\d+)\)/g, "^$1").replace(/[−–]/g, "-").replace(/\^2/g, "²").replace(/\^3/g, "³");
+  const plain = (x: string) =>
+    x
+      .replace(/[\s*·]/g, "")
+      .replace(/\^\((\d+)\)/g, "^$1")
+      .replace(/[−–]/g, "-")
+      .replace(/\^(\d+)/g, (_, n: string) => superscript(Number(n)));
   return plain(a) === plain(b);
 };
 // A fraction as text: "11/12", "−3", "2.400" (whole numbers with grouping).
@@ -289,106 +293,321 @@ function rationalRoots(c: Fraction[]): { roots: Fraction[]; rest: Fraction[] } {
 }
 
 type Factored = { text: string; latex: string };
-// (q·x − p) for the root p/q, written with whole numbers.
-function linearFactor(v: string, r: Fraction, locale: Locale): Factored {
-  const q = r.d.toString(),
-    p = r.abs().n.toString();
-  const lead = q === "1" ? v : `${q}${v}`;
-  if (r.equals(0)) return { text: v, latex: v };
-  const op = r.s < 0 ? "+" : "−";
-  return { text: `(${lead} ${op} ${decimal(Number(p), locale)})`, latex: `\\left(${lead} ${op === "+" ? "+" : "-"} ${p}\\right)` };
-}
-function joinFactors(lead: Fraction, factors: Factored[], rest: Poly | null, locale: Locale): Factored | null {
-  const counts = new Map<string, { f: Factored; n: number }>();
-  for (const f of factors) counts.set(f.text, { f, n: (counts.get(f.text)?.n || 0) + 1 });
-  const parts = [...counts.values()];
-  const text =
-    (lead.equals(1) ? "" : lead.equals(-1) ? "−" : fracText(lead, locale)) +
-    parts.map(({ f, n }) => f.text + (n > 1 ? superscript(n) : "")).join("") +
-    (rest ? `(${polyText(rest, locale)})` : "");
-  const latex =
-    (lead.equals(1) ? "" : lead.equals(-1) ? "-" : fracLatex(lead)) +
-    parts.map(({ f, n }) => f.latex + (n > 1 ? `^{${n}}` : "")).join("") +
-    (rest ? `\\left(${polyLatex(rest)}\\right)` : "");
-  return parts.length || rest ? { text, latex } : null;
-}
-function factor(p: Poly, locale: Locale): Factored | null {
-  if (p.size < 2) return null;
+
+const termDegree = (t: Term) => Object.values(t.mono).reduce((s, e) => s + e, 0);
+const fromTerms = (terms: Term[]) => {
+  const out: Poly = new Map();
+  for (const t of terms) addTo(out, t.mono, t.coef);
+  return out;
+};
+// The same polynomial written the same way (for comparing factors).
+const polyKey = (p: Poly) => sortedTerms(p).map((t) => `${t.coef.toFraction()}*${keyOf(t.mono)}`).join("+");
+const leadingTerm = (p: Poly) => sortedTerms(p)[0];
+// p = content · primitive: whole, coprime coefficients and a positive
+// leading coefficient ("2x + 3" from "4/3·x + 2").
+function primitive(p: Poly): { content: Fraction; poly: Poly } {
   const terms = [...p.values()];
-  // Common factor: number and variables in every term.
+  if (!terms.length) return { content: ZERO, poly: p };
   const num = terms.reduce((g, t) => gcd(g, t.coef.n), 0n);
   const den = terms.reduce((l, t) => lcm(l, t.coef.d), 1n);
-  let lead = fraction(`${num}/${den}`);
-  if (terms[0] && sortedTerms(p)[0].coef.s < 0) lead = lead.neg();
+  let content = fraction(`${num}/${den}`);
+  if (leadingTerm(p).coef.s < 0) content = content.neg();
+  return { content, poly: scale(p, ONE.div(content)) };
+}
+// a / b when b divides a exactly, else null (division with a graded order).
+function divideExact(a: Poly, b: Poly): Poly | null {
+  if (!b.size) return null;
+  const lb = leadingTerm(b);
+  let rest: Poly = new Map(a);
+  const quotient: Poly = new Map();
+  for (let guard = 0; rest.size && guard < 400; guard++) {
+    const lr = leadingTerm(rest);
+    const mono: Monomial = { ...lr.mono };
+    for (const [v, e] of Object.entries(lb.mono)) {
+      mono[v] = (mono[v] || 0) - e;
+      if (mono[v] < 0) return null;
+      if (!mono[v]) delete mono[v];
+    }
+    const step = new Map([[keyOf(mono), { mono, coef: lr.coef.div(lb.coef) }]]);
+    addTo(quotient, mono, lr.coef.div(lb.coef));
+    rest = add(rest, mul(step, b), -1);
+  }
+  return rest.size ? null : quotient;
+}
+// √p for a perfect square polynomial, else null.
+function polySqrt(p: Poly): Poly | null {
+  if (!p.size) return new Map();
+  const squareRoot = (f: Fraction) => {
+    if (f.s < 0) return null;
+    const n = BigInt(Math.round(Math.sqrt(Number(f.n)))),
+      d = BigInt(Math.round(Math.sqrt(Number(f.d))));
+    return n * n === f.n && d * d === f.d ? fraction(`${n}/${d}`) : null;
+  };
+  const lt = leadingTerm(p);
+  const c = squareRoot(lt.coef);
+  if (!c || Object.values(lt.mono).some((e) => e % 2)) return null;
+  const rootMono = Object.fromEntries(Object.entries(lt.mono).map(([v, e]) => [v, e / 2]));
+  let root = fromTerms([{ mono: rootMono, coef: c }]);
+  for (let guard = 0; guard < 60; guard++) {
+    const rest = add(p, mul(root, root), -1);
+    if (!rest.size) return root;
+    const lr = leadingTerm(rest);
+    const step = divideExact(fromTerms([lr]), fromTerms([{ mono: rootMono, coef: c.mul(2) }]));
+    if (!step || step.size !== 1) return null;
+    root = add(root, step);
+  }
+  return null;
+}
+// The rational root p/q of the variable as the factor q·v − p.
+const linearIn = (v: string, r: Fraction): Poly =>
+  primitive(add(variable(v), constant(r), -1)).poly;
+
+// Ways to split a primitive polynomial into two factors, tried in order.
+function split(q: Poly): [Poly, Poly] | null {
+  const vars = variablesOf(q);
+  const terms = [...q.values()];
+  const tryFactor = (f: Poly) => {
+    const g = primitive(f).poly;
+    if (isConstant(g) || polyKey(g) === polyKey(q)) return null;
+    const rest = divideExact(q, g);
+    return rest ? ([g, rest] as [Poly, Poly]) : null;
+  };
+  // One variable: rational roots.
+  if (vars.length === 1) {
+    const v = vars[0];
+    const { roots } = rationalRoots(coefficients(q, v));
+    if (roots.length && degree(q) > 1) return tryFactor(linearIn(v, roots[0]));
+    return null;
+  }
+  // All terms powers of one monomial (x²y² − 1, a⁴b² − c⁰ …): substitute u.
+  {
+    const vectors = terms.map((t) => vars.map((v) => t.mono[v] || 0));
+    const base = vectors.find((vec) => vec.some((e) => e));
+    if (base) {
+      const g = base.reduce((a, b) => Number(gcd(BigInt(a), BigInt(b))), 0);
+      const unit = base.map((e) => e / g);
+      const powers = vectors.map((vec) => {
+        const k = unit.findIndex((u) => u) >= 0 ? vec[unit.findIndex((u) => u)] / unit[unit.findIndex((u) => u)] : 0;
+        return Number.isInteger(k) && vec.every((e, i) => e === unit[i] * k) ? k : -1;
+      });
+      if (powers.every((k) => k >= 0) && Math.max(...powers) > 1) {
+        const c = Array.from({ length: Math.max(...powers) + 1 }, () => ZERO);
+        terms.forEach((t, i) => (c[powers[i]] = c[powers[i]].add(t.coef)));
+        const { roots } = rationalRoots(c);
+        if (roots.length) {
+          const mono = Object.fromEntries(vars.map((v, i) => [v, unit[i]]).filter(([, e]) => e));
+          const found = tryFactor(add(fromTerms([{ mono, coef: fraction(roots[0].d.toString()) }]), constant(fraction(roots[0].s < 0 ? `-${roots[0].n}` : roots[0].n.toString())), -1));
+          if (found) return found;
+        }
+      }
+    }
+  }
+  // Homogeneous in two variables (a³ − b³, x² + 2xy + y² …): t = x / y.
+  if (vars.length === 2 && new Set(terms.map(termDegree)).size === 1) {
+    const [x, y] = vars;
+    const n = termDegree(terms[0]);
+    const c = Array.from({ length: n + 1 }, () => ZERO);
+    for (const t of terms) c[t.mono[x] || 0] = c[t.mono[x] || 0].add(t.coef);
+    const { roots } = rationalRoots(c);
+    if (roots.length) {
+      const r = roots[0];
+      const found = tryFactor(add(scale(variable(x), fraction(r.d.toString())), scale(variable(y), fraction(r.s < 0 ? `-${r.n}` : r.n.toString())), -1));
+      if (found) return found;
+    }
+  }
+  // Quadratic in one variable with a perfect-square discriminant:
+  // x² + 2xy + y² − 1 = (x + y − 1)(x + y + 1), (x + 1)² − y² …
+  for (const v of vars) {
+    if (degree(q, v) !== 2) continue;
+    const part = (k: number) => {
+      const out: Poly = new Map();
+      for (const t of terms)
+        if ((t.mono[v] || 0) === k) {
+          const mono = { ...t.mono };
+          delete mono[v];
+          addTo(out, mono, t.coef);
+        }
+      return out;
+    };
+    const A = part(2),
+      B = part(1),
+      C = part(0);
+    if (!isConstant(A)) continue;
+    const a = constantOf(A);
+    const S = polySqrt(add(mul(B, B), scale(C, a.mul(4)), -1));
+    if (!S) continue;
+    // v − (−B + S)/(2a)
+    const root = scale(add(scale(B, fraction(-1)), S), ONE.div(a.mul(2)));
+    const found = tryFactor(add(variable(v), root, -1));
+    if (found) return found;
+  }
+  // Grouping: ax + ay + bx + by = (a + b)(x + y), also 3 + 3 terms.
+  if (terms.length === 4 || terms.length === 6) {
+    const half = terms.length / 2;
+    const choose = (from: number[], k: number): number[][] =>
+      k === 0 ? [[]] : from.flatMap((i, j) => choose(from.slice(j + 1), k - 1).map((rest) => [i, ...rest]));
+    for (const group of choose([...terms.keys()], half)) {
+      if (!group.includes(0)) continue;
+      const one = fromTerms(group.map((i) => terms[i]));
+      const found = tryFactor(primitive(commonFree(one)).poly);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+// p without the monomial every term shares (6x²y + 9xy → 6x + 9).
+function commonFree(p: Poly): Poly {
+  const terms = [...p.values()];
   const common: Monomial = {};
   for (const v of variablesOf(p)) {
     const min = Math.min(...terms.map((t) => t.mono[v] || 0));
     if (min) common[v] = min;
   }
-  let inner: Poly = new Map();
-  for (const t of terms) {
-    const mono: Monomial = { ...t.mono };
-    for (const [v, e] of Object.entries(common)) {
-      mono[v] -= e;
-      if (!mono[v]) delete mono[v];
+  return divideExact(p, fromTerms([{ mono: common, coef: ONE }])) || p;
+}
+
+// Factors with whole coefficients and a leading number: 6x² − 6 →
+// 6 · (x − 1) · (x + 1).
+function factorPoly(p: Poly): { lead: Fraction; factors: Poly[] } {
+  if (!p.size) return { lead: ZERO, factors: [] };
+  const { content, poly } = primitive(p);
+  let lead = content;
+  const factors: Poly[] = [];
+  // Variables in every term.
+  const free = commonFree(poly);
+  const common = divideExact(poly, free)!;
+  for (const [v, e] of Object.entries(leadingTerm(common).mono)) for (let i = 0; i < e; i++) factors.push(variable(v));
+  const queue = [primitive(free).poly];
+  lead = lead.mul(primitive(free).content);
+  for (let guard = 0; queue.length && guard < 40; guard++) {
+    const q = queue.shift()!;
+    if (isConstant(q)) {
+      lead = lead.mul(constantOf(q));
+      continue;
     }
-    addTo(inner, mono, t.coef.div(lead));
-  }
-  const commonText = Object.keys(common)
-    .sort()
-    .map((v) => ({ text: common[v] === 1 ? v : `${v}${superscript(common[v])}`, latex: common[v] === 1 ? v : `${v}^{${common[v]}}` }));
-  const vars = variablesOf(inner);
-  const factors: Factored[] = [...commonText];
-  let rest: Poly | null = inner;
-  if (vars.length === 1 && degree(inner) >= 2) {
-    const v = vars[0];
-    const { roots, rest: remaining } = rationalRoots(coefficients(inner, v));
-    if (roots.length) {
-      // The leading factor of each root (q·x − p) carries q; adjust the lead.
-      let adjust = ONE;
-      for (const r of roots) {
-        factors.push(linearFactor(v, r, locale));
-        adjust = adjust.mul(fraction(r.d.toString()));
-      }
-      lead = lead.div(adjust);
-      if (remaining.length > 1) {
-        const restPoly: Poly = new Map();
-        remaining.forEach((k, i) => !k.equals(0) && addTo(restPoly, i ? { [v]: i } : {}, k));
-        rest = restPoly;
-      } else {
-        lead = lead.mul(remaining[0] || ONE);
-        rest = null;
-      }
+    const parts = split(q);
+    if (!parts) {
+      factors.push(q);
+      continue;
     }
-  } else if (vars.length === 2 && degree(inner) === 2 && [...inner.values()].every((t) => degree(new Map([["", t]])) === 2)) {
-    // A·x² + B·xy + C·y²: the binomial formulas and their relatives.
-    const [x, y] = vars;
-    const A = inner.get(`${x}^2`)?.coef || ZERO,
-      B = inner.get(`${x}^1*${y}^1`)?.coef || ZERO,
-      C = inner.get(`${y}^2`)?.coef || ZERO;
-    const roots = A.equals(0) ? [] : rationalRoots([C, B, A]).roots;
-    if (roots.length === 2) {
-      let adjust = ONE;
-      for (const r of roots) {
-        const f = linearFactor(x, r, locale);
-        factors.push({ text: f.text.replace(/\)$/, `${y})`).replace(/ 1\)$/, ")").replace(/(\d)\)$/, "$1)"), latex: f.latex.replace(/\\right\)$/, `${y}\\right)`) });
-        adjust = adjust.mul(fraction(r.d.toString()));
-      }
-      // "1y" reads as "y".
-      for (const f of factors) {
-        f.text = f.text.replace(/ 1([a-zA-Z])\)/, " $1)");
-        f.latex = f.latex.replace(/ 1([a-zA-Z])\\right\)/, " $1\\right)");
-      }
-      lead = lead.mul(A).div(adjust);
-      rest = null;
+    for (const part of parts) {
+      const { content: c, poly: f } = primitive(part);
+      lead = lead.mul(c);
+      queue.push(f);
     }
   }
-  if (rest && factors.length === 0 && lead.equals(1)) return null;
-  if (rest && degree(rest) === 0) {
-    lead = lead.mul(constantOf(rest));
-    rest = null;
+  return { lead, factors };
+}
+function factoredWriting(lead: Fraction, factors: Poly[], locale: Locale): Factored | null {
+  const groups = new Map<string, { f: Poly; n: number }>();
+  for (const f of factors) groups.set(polyKey(f), { f, n: (groups.get(polyKey(f))?.n || 0) + 1 });
+  const parts = [...groups.values()].sort((a, b) => a.f.size - b.f.size || degree(a.f) - degree(b.f));
+  if (!parts.length) return null;
+  const write = (f: Poly, n: number, tex: boolean) => {
+    const inner = tex ? polyLatex(f) : polyText(f, locale);
+    const wrapped = f.size > 1 || (n > 1 && !/^[a-zA-Z]$/.test(inner)) ? (tex ? `\\left(${inner}\\right)` : `(${inner})`) : inner;
+    return wrapped + (n > 1 ? (tex ? `^{${n}}` : superscript(n)) : "");
+  };
+  const lone = parts.length === 1 && parts[0].n === 1;
+  const prefix = (tex: boolean) =>
+    lead.equals(1) ? "" : lead.equals(-1) ? (tex ? "-" : "−") : tex ? fracLatex(lead) : fracText(lead, locale) + (lead.d !== 1n ? "·" : "");
+  // A single factor without a number in front is no factorization.
+  if (lone && lead.abs().equals(1)) return null;
+  return {
+    text: prefix(false) + parts.map(({ f, n }) => write(f, n, false)).join(lone ? "" : ""),
+    latex: prefix(true) + parts.map(({ f, n }) => write(f, n, true)).join(""),
+  };
+}
+function factor(p: Poly, locale: Locale): Factored | null {
+  if (p.size < 2) return null;
+  const { lead, factors } = factorPoly(p);
+  return factoredWriting(lead, factors, locale);
+}
+
+/* ---------- Fractions with variables ---------- */
+
+// The least common multiple of two denominators (by their factors).
+function commonMultiple(a: Poly, b: Poly): Poly {
+  if (isConstant(a)) return b;
+  if (isConstant(b)) return a;
+  const count = (fs: Poly[]) => {
+    const out = new Map<string, { f: Poly; n: number }>();
+    for (const f of fs) out.set(polyKey(f), { f, n: (out.get(polyKey(f))?.n || 0) + 1 });
+    return out;
+  };
+  const fa = count(factorPoly(a).factors),
+    fb = count(factorPoly(b).factors);
+  let out = constant(ONE);
+  for (const key of new Set([...fa.keys(), ...fb.keys()])) {
+    const f = (fa.get(key) || fb.get(key))!.f;
+    for (let i = 0; i < Math.max(fa.get(key)?.n || 0, fb.get(key)?.n || 0); i++) out = mul(out, f);
   }
-  return joinFactors(lead, factors, rest, locale);
+  return out;
+}
+
+type Rational = { num: Poly; den: Poly };
+const ratConst = (p: Poly): Rational => ({ num: p, den: constant(ONE) });
+function toRational(node: MathNode): Rational {
+  switch (node.type) {
+    case "ParenthesisNode":
+      return toRational((node as unknown as { content: MathNode }).content);
+    case "OperatorNode": {
+      const { fn, args } = node as unknown as { fn: string; args: MathNode[] };
+      if (fn === "unaryMinus") {
+        const r = toRational(args[0]);
+        return { num: scale(r.num, fraction(-1)), den: r.den };
+      }
+      if (fn === "unaryPlus") return toRational(args[0]);
+      if (fn === "pow") {
+        const base = toRational(args[0]);
+        const e = toPoly(args[1]);
+        const k = constantOf(e);
+        if (!isConstant(e) || k.d !== 1n || Number(k.abs().n) > MAX_DEGREE) throw new NotPolynomial("power");
+        let out: Rational = ratConst(constant(ONE));
+        for (let i = 0; i < Number(k.abs().n); i++) out = { num: mul(out.num, base.num), den: mul(out.den, base.den) };
+        return k.s < 0 ? { num: out.den, den: out.num } : out;
+      }
+      const [a, b] = args.map(toRational);
+      if (fn === "add" || fn === "subtract")
+        return { num: add(mul(a.num, b.den), mul(b.num, a.den), fn === "add" ? 1 : -1), den: mul(a.den, b.den) };
+      if (fn === "multiply") return { num: mul(a.num, b.num), den: mul(a.den, b.den) };
+      if (fn === "divide") {
+        if (!b.num.size) throw new NotPolynomial("division by zero");
+        return { num: mul(a.num, b.den), den: mul(a.den, b.num) };
+      }
+      throw new NotPolynomial(fn);
+    }
+    default:
+      return ratConst(toPoly(node));
+  }
+}
+// Cancels common factors: (x² − 1)/(x − 1) = x + 1. The denominator keeps a
+// positive leading number of 1.
+function reduceRational(r: Rational): Rational {
+  if (isConstant(r.den)) return ratConst(scale(r.num, ONE.div(constantOf(r.den))));
+  const n = factorPoly(r.num),
+    d = factorPoly(r.den);
+  const denLeft = [...d.factors];
+  const numLeft: Poly[] = [];
+  for (const f of n.factors) {
+    const i = denLeft.findIndex((g) => polyKey(g) === polyKey(f));
+    if (i >= 0) denLeft.splice(i, 1);
+    else numLeft.push(f);
+  }
+  const product = (fs: Poly[]) => fs.reduce((acc, f) => mul(acc, f), constant(ONE));
+  const lead = n.lead.div(d.lead);
+  return { num: scale(product(numLeft), lead), den: product(denLeft) };
+}
+function rationalWriting(r: Rational, locale: Locale): Factored {
+  if (isConstant(r.den)) return { text: polyText(r.num, locale), latex: polyLatex(r.num) };
+  const den = factorPoly(r.den);
+  const denText = factoredWriting(den.lead, den.factors, locale);
+  const wrap = (p: Poly) => (p.size > 1 ? `(${polyText(p, locale)})` : polyText(p, locale));
+  const denPlain = denText && den.factors.length > 1 ? denText.text : wrap(r.den);
+  return {
+    text: `${wrap(r.num)}/${denPlain.startsWith("(") || r.den.size === 1 ? denPlain : `(${denPlain})`}`,
+    latex: `\\frac{${polyLatex(r.num)}}{${denText && den.factors.length > 1 ? denText.latex : polyLatex(r.den)}}`,
+  };
 }
 
 /* ---------- Solving ---------- */
@@ -404,8 +623,11 @@ function surd(value: Fraction): { outside: Fraction; inside: bigint } {
     }
   return { outside: fraction(`${outside}/${value.d}`), inside: k };
 }
-function solve(p: Poly, v: string, locale: Locale): MathAction | null {
+// Solves p = 0 for v. Values that make `den` zero (a denominator in the
+// equation) are no solutions and are named as excluded.
+function solve(p: Poly, v: string, locale: Locale, den?: Poly): MathAction | null {
   const c = coefficients(p, v);
+  const denAt = (x: number) => (den ? coefficients(den, v).reduceRight((acc, k) => acc * x + k.valueOf(), 0) : 1);
   if (c.length < 2 || c.slice(1).every((k) => k.equals(0))) return null;
   const solution = (values: string[], latex: string[]): MathAction => ({
     kind: "solve",
@@ -414,7 +636,9 @@ function solve(p: Poly, v: string, locale: Locale): MathAction | null {
     latex: values.length ? `\\Rightarrow ${latex.join(",\\ ")}` : "\\Rightarrow \\emptyset",
   });
   const { roots, rest } = rationalRoots(c);
-  const unique = [...new Map(roots.map((r) => [r.toFraction(), r])).values()].sort((a, b) => a.compare(b));
+  const all = [...new Map(roots.map((r) => [r.toFraction(), r])).values()].sort((a, b) => a.compare(b));
+  const excluded = den ? all.filter((r) => evaluateAt(coefficients(den, v), r).equals(0)) : [];
+  const unique = all.filter((r) => !excluded.includes(r));
   const texts = unique.map((r) => `${v} = ${fracText(r, locale)}`);
   const latex = unique.map((r) => `${v} = ${fracLatex(r)}`);
   if (rest.length === 3) {
@@ -427,11 +651,19 @@ function solve(p: Poly, v: string, locale: Locale): MathAction | null {
       const root = `${spread.equals(1) ? "" : fracText(spread, locale) + "·"}√${inside}`;
       const around = center.equals(0) ? `±${root}` : `${fracText(center, locale)} ± ${root}`;
       const approx = [center.valueOf() - spread.valueOf() * Math.sqrt(Number(inside)), center.valueOf() + spread.valueOf() * Math.sqrt(Number(inside))];
+      if (approx.some((x) => Math.abs(denAt(x)) < 1e-9)) return null;
       texts.push(`${v} = ${around} (≈ ${approx.map((n) => decimal(n, locale)).join(locale === "de" ? "; " : ", ")})`);
       latex.push(`${v} = ${center.equals(0) ? "" : fracLatex(center)} \\pm ${spread.equals(1) ? "" : fracLatex(spread)}\\sqrt{${inside}}`);
     }
   } else if (rest.length > 3) return null;
-  return solution(texts, latex);
+  const action = solution(texts, latex);
+  if (excluded.length) {
+    // Only excluded values: there is no solution at all (not "no real one").
+    if (!texts.length) action.text = locale === "de" ? "⇒ keine Lösung" : "⇒ no solution";
+    const list = excluded.map((r) => `${v} = ${fracText(r, locale)}`).join(", ");
+    action.text += locale === "de" ? ` (${list} entfällt: Nenner wäre 0)` : ` (${list} excluded: a denominator would be 0)`;
+  }
+  return action;
 }
 
 /* ---------- Actions ---------- */
@@ -448,7 +680,30 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
     if (input.expr.includes("=")) {
       const [left, right] = input.expr.split("=");
       if (!left.trim() || !right.trim()) return [];
-      const p = add(toPoly(parse(left)), toPoly(parse(right)), -1);
+      const rawLeft = toRational(parse(left)),
+        rawRight = toRational(parse(right));
+      // Every denominator as written: its zeros are never solutions.
+      const domain = mul(rawLeft.den, rawRight.den);
+      const l = reduceRational(rawLeft),
+        r = reduceRational(rawRight);
+      // Multiplied by the common denominator, as in school: N = 0.
+      const lcd = commonMultiple(l.den, r.den);
+      const both = {
+        num: add(mul(l.num, divideExact(lcd, l.den)!), mul(r.num, divideExact(lcd, r.den)!), -1),
+        den: lcd,
+      };
+      if (!isConstant(domain)) {
+        const vars = [...new Set([...variablesOf(both.num), ...variablesOf(domain)])];
+        if (vars.length !== 1) return [];
+        if (isConstant(both.num)) {
+          // Nothing left to solve for: no solution, or every allowed value.
+          const none = !both.num.size ? null : de ? "⇒ keine Lösung" : "⇒ no solution";
+          return none ? [{ kind: "solve", label: de ? `Nach ${vars[0]} auflösen` : `Solve for ${vars[0]}`, text: none, latex: "\\Rightarrow \\emptyset" }] : [];
+        }
+        const s = solve(both.num, vars[0], locale, domain);
+        return s ? [s] : [];
+      }
+      const p = scale(both.num, ONE.div(constantOf(both.den)));
       const vars = variablesOf(p);
       if (vars.length === 1) {
         const s = solve(p, vars[0], locale);
@@ -467,7 +722,15 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
     const node = parse(input.expr);
     let poly: Poly | null = null;
     try {
-      poly = toPoly(node);
+      const rational = reduceRational(toRational(node));
+      if (!isConstant(rational.den)) {
+        // Fractions with variables: reduce or combine into one fraction.
+        const written = rationalWriting(rational, locale);
+        return sameWriting(written.text, input.expr)
+          ? []
+          : [{ kind: "expand", label: de ? "Vereinfachen" : "Simplify", text: `= ${written.text}`, latex: `= ${written.latex}` }];
+      }
+      poly = rational.num;
     } catch (error) {
       if (!(error instanceof NotPolynomial)) throw error;
     }

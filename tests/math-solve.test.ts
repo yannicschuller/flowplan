@@ -36,6 +36,33 @@ test("terms: binomial formulas, expanding and factoring", () => {
   assert.deepEqual(texts("x/2 + x/3"), ["expand: = 5/6·x"]);
 });
 
+test("factoring with several variables, grouping and higher powers", () => {
+  assert.deepEqual(texts("ax + ay + bx + by"), ["factor: = (x + y)(a + b)"]);
+  assert.deepEqual(texts("x²y² − 1"), ["factor: = (xy − 1)(xy + 1)"]);
+  assert.deepEqual(texts("a³ − b³"), ["factor: = (a − b)(a² + ab + b²)"]);
+  assert.deepEqual(texts("x⁴ − y⁴"), ["factor: = (x − y)(x + y)(x² + y²)"]);
+  assert.deepEqual(texts("x² + 2xy + y² − 1"), ["factor: = (x + y − 1)(x + y + 1)"]);
+  assert.deepEqual(texts("4x² − 9y²"), ["factor: = (2x − 3y)(2x + 3y)"]);
+  assert.deepEqual(texts("2a²b − 8b"), ["factor: = 2b(a − 2)(a + 2)"]);
+  assert.deepEqual(texts("x³ + x² − x − 1"), ["factor: = (x − 1)(x + 1)²"]);
+  assert.deepEqual(texts("x^4 - 5x^2 + 4"), ["factor: = (x − 1)(x + 1)(x − 2)(x + 2)"]);
+  // Nothing to factor: nothing offered.
+  assert.deepEqual(texts("x² + x + 1"), []);
+});
+
+test("fractions with variables: reduce, combine and solve with the domain", () => {
+  assert.deepEqual(texts("(x² − 1)/(x − 1)"), ["expand: = x + 1"]);
+  assert.deepEqual(texts("(x+2)/(x²-4)"), ["expand: = 1/(x − 2)"]);
+  assert.deepEqual(texts("1/x + 1/(x+1)"), ["expand: = (2x + 1)/(x(x + 1))"]);
+  assert.deepEqual(texts("3/(x-1) = 1"), ["solve: ⇒ x = 4"]);
+  assert.deepEqual(texts("2/x + 1 = 5/x"), ["solve: ⇒ x = 3"]);
+  assert.deepEqual(texts("x/(x-1) = 1/(x-1)"), ["solve: ⇒ keine Lösung (x = 1 entfällt: Nenner wäre 0)"]);
+  assert.deepEqual(texts("(x²-1)/(x-1) = 2"), ["solve: ⇒ keine Lösung (x = 1 entfällt: Nenner wäre 0)"]);
+  assert.deepEqual(texts("1/(x+1) + 1/(x-1) = 0"), ["solve: ⇒ x = 0"]);
+  assert.deepEqual(texts("1/x = 0"), ["solve: ⇒ keine Lösung"]);
+  assert.deepEqual(texts("x/(x-1) = 1/(x-1)", "en"), ["solve: ⇒ no solution (x = 1 excluded: a denominator would be 0)"]);
+});
+
 test("equations are solved for their variable", () => {
   assert.deepEqual(texts("2x + 3 = 11"), ["solve: ⇒ x = 4"]);
   assert.deepEqual(texts("x² − 5x + 6 = 0"), ["solve: ⇒ x = 2, x = 3"]);

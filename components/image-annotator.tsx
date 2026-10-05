@@ -196,12 +196,13 @@ export function ImageAnnotator({
     if (!draft) return;
     const p = point(event);
     if (draft.type === "pen" || draft.type === "marker") setDraft({ ...draft, points: [...draft.points, p] });
-    else if (draft.type !== "text") setDraft({ ...draft, to: p });
+    else if (draft.type === "arrow" || draft.type === "rect" || draft.type === "ellipse") setDraft({ ...draft, to: p });
   }
   function onUp() {
     if (!draft) return;
     const tiny =
-      draft.type !== "pen" && draft.type !== "marker" && draft.type !== "text" && Math.hypot(draft.to[0] - draft.from[0], draft.to[1] - draft.from[1]) < 3;
+      (draft.type === "arrow" || draft.type === "rect" || draft.type === "ellipse") &&
+      Math.hypot(draft.to[0] - draft.from[0], draft.to[1] - draft.from[1]) < 3;
     if (!tiny) add(draft);
     setDraft(null);
   }
