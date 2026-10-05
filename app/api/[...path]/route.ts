@@ -1,4 +1,5 @@
 import { withRequestLocale } from "@/lib/content-locale";
+import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { storageOverview } from "@/lib/storage-overview";
 import { avatarFor } from "@/lib/avatars";
@@ -648,13 +649,12 @@ async function handlePOST(
   try {
     checkOrigin(req);
     const { path } = await params;
-    // ZIP imports may be as large as content archives.
-    if (
-      Number(req.headers.get("content-length") || 0) >
-      (path[0] === "import" || path[1] === "import"
-        ? ARCHIVE_LIMIT + 1_000_000
-        : 12_000_000)
-    )
+    // ZIP imports may be as large as content archives. File uploads must
+    // state their size, so the limit holds before anything is read.
+    const maxBody = path[0] === "import" || path[1] === "import" ? ARCHIVE_LIMIT + 1_000_000 : 12_000_000;
+    if (req.headers.get("content-type")?.startsWith("multipart/form-data"))
+      requireBodySize(req, maxBody, "Anfrage zu groß.");
+    else if (Number(req.headers.get("content-length") || 0) > maxBody)
       throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
     if (path.length === 1 && path[0] === "webhooks") {
@@ -856,23 +856,28 @@ async function handlePOST(
         );
       const fid = id(),
         dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+      // The type must match the content; photos lose their location.
+      const raw = Buffer.from(await file.arrayBuffer());
+      const mime = verifiedMime(file.type, raw);
+      const content = stripLocation(raw, mime);
+      const name = sanitizeFileName(file.name);
       await mkdir(dir, { recursive: true });
-      await writeFile(resolve(dir, fid), Buffer.from(await file.arrayBuffer()));
+      await writeFile(resolve(dir, fid), content);
       run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
         fid,
         pageId,
-        file.name,
-        file.type,
-        file.size,
+        name,
+        mime,
+        content.length,
         user.id,
       );
-      audit(user.id, "file.upload", pageId, file.name);
+      audit(user.id, "file.upload", pageId, name);
       return NextResponse.json({
         id: fid,
         url: `/api/files/${fid}`,
-        name: file.name,
-        mime: file.type,
+        name,
+        mime,
       });
     }
     throw new HttpError(404, "Nicht gefunden.");

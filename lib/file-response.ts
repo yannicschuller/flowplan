@@ -29,6 +29,9 @@ export async function fileResponse(
       "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
+      // Opened directly, a file can never run anything (defence in depth).
+      "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+      "Cross-Origin-Resource-Policy": "same-origin",
       "Accept-Ranges": "bytes",
     };
     let start = 0,

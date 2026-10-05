@@ -12,6 +12,7 @@ const exact: Record<string, string> = {
   "Kein Profilbild.": "No profile picture.",
   "Datei fehlt.": "File missing.",
   "Anfrage zu groß.": "Request too large.",
+  "Die Größe der Anfrage fehlt.": "The request does not state its size.",
   "Mit einem API-Token nicht erlaubt.": "Not allowed with an API token.",
   "Cursoranfrage zu groß.": "Cursor request too large.",
   "Ungültige Cursoranfrage.": "Invalid cursor request.",

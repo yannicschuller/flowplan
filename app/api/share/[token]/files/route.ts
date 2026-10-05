@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireBodySize } from "@/lib/upload-safety";
 import { z } from "zod";
 import { checkOrigin, HttpError } from "@/lib/auth";
 import { guestUpload, MAX_GUEST_UPLOAD } from "@/lib/shared-uploads";
@@ -16,11 +17,7 @@ export async function POST(
 ) {
   try {
     checkOrigin(req);
-    if (
-      Number(req.headers.get("content-length") || 0) >
-      MAX_GUEST_UPLOAD + 100000
-    )
-      throw new HttpError(413, "Gäste können Dateien bis 10 MB hochladen.");
+    requireBodySize(req, MAX_GUEST_UPLOAD + 100000, "Gäste können Dateien bis 10 MB hochladen.");
     const { token } = await params,
       form = await req.formData(),
       file = form.get("file");

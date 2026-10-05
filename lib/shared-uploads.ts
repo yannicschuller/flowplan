@@ -1,4 +1,5 @@
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { sanitizeFileName, stripLocation } from "./upload-safety";
 import { resolve } from "node:path";
 import { all, id, onTransactionRollback, run, transaction, audit } from "./db";
 import { HttpError } from "./auth";
@@ -44,7 +45,9 @@ export async function guestUpload(token: string, pageId: string, file: File) {
       415,
       "Erlaubt sind Bilder (PNG, JPEG, GIF, WebP), PDF und Text.",
     );
-  const data = Buffer.from(await file.arrayBuffer());
+  const raw = Buffer.from(await file.arrayBuffer());
+  // Photos lose their location (EXIF GPS) before they are stored.
+  const data = stripLocation(raw, file.type);
   const signature = signatures.find(([mime]) => mime === file.type)?.[1];
   if (signature && !signature(data))
     throw new HttpError(415, "Der Dateiinhalt passt nicht zum Dateityp.");
@@ -68,9 +71,7 @@ export async function guestUpload(token: string, pageId: string, file: File) {
       } catch {}
     });
     writeFileSync(path, data, { flag: "wx" });
-    const name =
-      file.name.replace(/[\u0000-\u001f/\\]/g, "").slice(0, 200) ||
-      `datei.${allowed[file.type]}`;
+    const name = sanitizeFileName(file.name, `datei.${allowed[file.type]}`);
     run(
       "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,NULL)",
       fid,

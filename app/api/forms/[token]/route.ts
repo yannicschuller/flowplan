@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { z } from "zod";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -25,11 +26,7 @@ export async function POST(
     let raw: string;
     const uploads = new Map<string, File[]>();
     if (req.headers.get("content-type")?.startsWith("multipart/form-data")) {
-      if (
-        Number(req.headers.get("content-length") || 0) >
-        FORM_TOTAL_BYTES + 200_000
-      )
-        throw new HttpError(413, "Antwort zu groß.");
+      requireBodySize(req, FORM_TOTAL_BYTES + 200_000, "Antwort zu groß.");
       const data = await req.formData();
       raw = String(data.get("payload") || "");
       let total = 0;
@@ -90,17 +87,20 @@ export async function POST(
       const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       if (buffers.size) mkdirSync(dir, { recursive: true });
       for (const [fieldId, files] of buffers) {
-        cells[fieldId] = files.map(({ file, data }) => {
+        cells[fieldId] = files.map(({ file, data: raw }) => {
           const fid = id(),
             path = resolve(dir, fid);
+          // The type must match the content; photos lose their location.
+          const mime = verifiedMime(file.type, raw);
+          const data = stripLocation(raw, mime);
           writeFileSync(path, data);
           onTransactionRollback(() => unlinkSync(path));
           run(
             "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
             fid,
             form.page_id,
-            (file.name || "Datei").slice(0, 200),
-            (file.type || "application/octet-stream").slice(0, 200),
+            sanitizeFileName(file.name, "Datei"),
+            mime,
             data.length,
             form.anonymous ? null : user?.id || null,
           );
