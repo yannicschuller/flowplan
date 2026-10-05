@@ -35,6 +35,15 @@ export function ReadOnlyDocument({
       void import("@/lib/function-plot").then(({ mountPlot, parsePlot }) => {
         for (const element of plots) mountPlot(element, parsePlot(element.dataset.functionPlot), { editable: false });
       });
+    // Dashboard numbers: fetched for whoever reads the page ("–" without access).
+    const metrics = Array.from(root.querySelectorAll<HTMLElement>("[data-metric]"));
+    const metricHandles: { destroy(): void }[] = [];
+    let unmounted = false;
+    if (metrics.length)
+      void import("./metric-view").then(({ mountMetric, parseMetric }) => {
+        if (unmounted) return;
+        for (const element of metrics) metricHandles.push(mountMetric(element, parseMetric(element.dataset.metric), { editable: false }));
+      });
     for (const image of root.querySelectorAll("img")) image.loading = "lazy";
     for (const code of root.querySelectorAll<HTMLElement>("pre > code")) {
       const text = code.textContent || "";
@@ -135,6 +144,8 @@ export function ReadOnlyDocument({
     });
     return () => {
       diagrams.forEach((cancel) => cancel());
+      unmounted = true;
+      metricHandles.forEach((handle) => handle.destroy());
       // Unmount after React finishes this commit.
       setTimeout(() => boards.forEach((board) => board.unmount()));
     };

@@ -5,6 +5,7 @@ import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
 import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
 import { FunctionPlotView } from "./function-plot-view";
+import { MetricView } from "./metric-view";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -375,6 +376,7 @@ export default function DocumentEditor({
         ...mathNodeViews(setMath),
         mermaidNodeView(setDiagram),
         FunctionPlotView,
+        MetricView.configure({ pageId }),
         Mention,
         Columns,
         Column,
@@ -939,6 +941,42 @@ export default function DocumentEditor({
           ?.chain()
           .focus()
           .insertContent({ type: "functionPlot", attrs: { plot: JSON.stringify({ functions: [{ expr: "x²", color: "#3b3fd8" }] }) } })
+          .run(),
+    },
+    {
+      name: t("Kennzahl", "Metric"),
+      keywords: ["metric", "kpi", "zahl", "anzahl", "summe", "dashboard"],
+      description: t("Eine Zahl aus einer Datenbank, aktuell gehalten", "A number from a database, kept up to date"),
+      icon: ChartLine,
+      run: () => editor?.chain().focus().insertContent({ type: "metricBlock" }).run(),
+    },
+    {
+      name: t("Dashboard", "Dashboard"),
+      keywords: ["dashboard", "kennzahlen", "metrics", "kpi", "übersicht", "overview"],
+      description: t("Drei Kennzahlen nebeneinander, darunter Diagramme einbinden", "Three metrics side by side, embed charts below"),
+      icon: ChartLine,
+      run: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent([
+            {
+              type: "columns",
+              content: [0, 1, 2].map(() => ({ type: "column", content: [{ type: "metricBlock" }, { type: "paragraph" }] })),
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: t(
+                    "Diagramme: /Verknüpfte Datenbank einfügen und dort eine Diagramm-Ansicht wählen.",
+                    "Charts: insert /Linked database and choose a chart view there.",
+                  ),
+                },
+              ],
+            },
+          ])
           .run(),
     },
     {

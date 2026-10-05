@@ -20,6 +20,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import { Subscript, Superscript, TextColor } from "./text-marks";
 import { MermaidBlock } from "./mermaid-node";
 import { FunctionPlot } from "./function-plot-node";
+import { MetricBlock } from "./metric-node";
 import { FlowCodeBlock } from "./code-block";
 // Images that were marked up keep their original and the markings
 // (components/image-annotator.tsx), so they can be edited again.
@@ -449,6 +450,7 @@ export const documentExtensions = [
   FlowCodeBlock,
   MermaidBlock,
   FunctionPlot,
+  MetricBlock,
   TaskList,
   FlowTaskItem.configure({ nested: true }),
   BlockReactionAttribute,

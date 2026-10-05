@@ -1,4 +1,5 @@
 import { withRequestLocale } from "@/lib/content-locale";
+import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { storageOverview } from "@/lib/storage-overview";
@@ -396,6 +397,17 @@ async function handleGET(
       return NextResponse.json(await resolveEmbed(raw), {
         headers: { "Cache-Control": "no-store" },
       });
+    }
+    // Dashboards: one number from a database, and the databases to choose from.
+    if (path[0] === "dashboard-metric") {
+      const query = metricSchema.parse(Object.fromEntries(url.searchParams));
+      return NextResponse.json(computeMetric(user, query), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "dashboard-sources") {
+      // The workspace of the page the dashboard is on.
+      const wid = requirePage(user, z.string().uuid().parse(url.searchParams.get("page"))).workspace_id;
+      requireMember(user, wid);
+      return NextResponse.json(metricSources(user, wid), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "media") {
       const wid = url.searchParams.get("workspace") || "";

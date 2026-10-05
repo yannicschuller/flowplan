@@ -45,6 +45,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-math",
         "data-mermaid",
         "data-function-plot",
+        "data-metric",
         "data-code-wrap",
         "data-linked-database",
         "data-whiteboard",

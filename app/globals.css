@@ -13568,3 +13568,100 @@ h3 .block-reactions {
   background: var(--hover);
   color: var(--text);
 }
+
+/* ---------- Dashboard metrics (components/metric-view.ts) ---------- */
+.metric-block {
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.metric-card {
+  position: relative;
+  padding: 14px 16px 12px;
+}
+.metric-label {
+  padding-right: 28px;
+  color: var(--secondary);
+  font: 600 12.5px var(--font-ui);
+  letter-spacing: 0.01em;
+}
+.metric-value {
+  margin-top: 4px;
+  color: var(--text);
+  font: 400 40px/1.05 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.metric-caption {
+  margin-top: 6px;
+  min-height: 1.2em;
+  color: var(--muted);
+  font-size: 12px;
+}
+.metric-gear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.metric-block:hover .metric-gear,
+.metric-gear:focus-visible,
+.ProseMirror-selectednode .metric-gear {
+  opacity: 1;
+}
+.metric-gear:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+@media (hover: none) {
+  .metric-gear {
+    opacity: 1;
+  }
+}
+.metric-settings {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 0 0 12px 12px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.metric-settings[hidden] {
+  display: none;
+}
+.metric-field {
+  display: grid;
+  gap: 3px;
+}
+.metric-field span {
+  font-weight: 600;
+  font-size: 12px;
+}
+.metric-field select,
+.metric-field input {
+  width: 100%;
+  min-width: 0;
+}
+.metric-done {
+  justify-self: start;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: var(--blue);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.ProseMirror-selectednode > .metric-block,
+.metric-block.ProseMirror-selectednode {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
