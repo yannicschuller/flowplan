@@ -523,6 +523,55 @@ function factor(p: Poly, locale: Locale): Factored | null {
   const { lead, factors } = factorPoly(p);
   return factoredWriting(lead, factors, locale);
 }
+// Factoring over the real numbers: quadratic factors that have no rational
+// roots but real ones become two factors with roots,
+// x² − 2 = (x − √2)(x + √2), x² + 2x − 4 = (x + 1 − √5)(x + 1 + √5).
+// Null when nothing changes compared with the rational factoring.
+function factorWithRoots(p: Poly, locale: Locale): Factored | null {
+  if (p.size < 2 || variablesOf(p).length !== 1) return null;
+  const v = variablesOf(p)[0];
+  const { lead, factors } = factorPoly(p);
+  let changed = false;
+  let scaleBy = lead;
+  const parts: { text: string; latex: string; key: string }[] = [];
+  for (const f of factors) {
+    const c = coefficients(f, v);
+    if (c.length === 3) {
+      const [cc, bb, aa] = c;
+      const D = bb.mul(bb).sub(aa.mul(cc).mul(4));
+      if (D.s > 0) {
+        const { outside, inside } = surd(D);
+        if (inside !== 1n) {
+          changed = true;
+          scaleBy = scaleBy.mul(aa);
+          // Roots −b/(2a) ± √D/(2a); the factor is v − root.
+          const center = bb.neg().div(aa.mul(2));
+          const spread = outside.div(aa.mul(2)).abs();
+          for (const sign of [1, -1]) {
+            const shift = center.neg();
+            const text = `(${v}${shift.equals(0) ? "" : shift.s < 0 ? ` − ${fracText(shift.abs(), locale)}` : ` + ${fracText(shift, locale)}`} ${sign < 0 ? "+" : "−"} ${surdText(spread, inside, locale)})`;
+            const tex = `\\left(${v}${shift.equals(0) ? "" : shift.s < 0 ? ` - ${fracLatex(shift.abs())}` : ` + ${fracLatex(shift)}`} ${sign < 0 ? "+" : "-"} ${surdLatex(spread, inside)}\\right)`;
+            parts.push({ text, latex: tex, key: text });
+          }
+          continue;
+        }
+      }
+    }
+    const inner = polyText(f, locale);
+    const wrapped = f.size > 1 ? `(${inner})` : inner;
+    parts.push({ text: wrapped, latex: f.size > 1 ? `\\left(${polyLatex(f)}\\right)` : polyLatex(f), key: polyKey(f) });
+  }
+  if (!changed) return null;
+  // Equal factors as powers.
+  const grouped = new Map<string, { text: string; latex: string; n: number }>();
+  for (const part of parts) grouped.set(part.key, { ...part, n: (grouped.get(part.key)?.n || 0) + 1 });
+  const prefix = (tex: boolean) =>
+    scaleBy.equals(1) ? "" : scaleBy.equals(-1) ? (tex ? "-" : "−") : tex ? fracLatex(scaleBy) : fracText(scaleBy, locale) + (scaleBy.d !== 1n ? "·" : "");
+  return {
+    text: prefix(false) + [...grouped.values()].map((g) => g.text + (g.n > 1 ? superscript(g.n) : "")).join(""),
+    latex: prefix(true) + [...grouped.values()].map((g) => g.latex + (g.n > 1 ? `^{${g.n}}` : "")).join(""),
+  };
+}
 
 /* ---------- Fractions with variables ---------- */
 
@@ -612,6 +661,62 @@ function rationalWriting(r: Rational, locale: Locale): Factored {
 
 /* ---------- Solving ---------- */
 
+// Real roots of a polynomial (coefficients lowest degree first), found
+// numerically: all complex roots at once (Durand–Kerner), the real ones
+// polished with Newton's method.
+function realRoots(coef: number[]): number[] {
+  const c = coef.slice();
+  while (c.length > 1 && c[c.length - 1] === 0) c.pop();
+  const n = c.length - 1;
+  if (n < 1) return [];
+  const lead = c[n];
+  const monic = c.map((k) => k / lead);
+  const value = (re: number, im: number) => {
+    let r = 0,
+      i = 0;
+    for (let k = n; k >= 0; k--) [r, i] = [r * re - i * im + monic[k], r * im + i * re];
+    return [r, i];
+  };
+  const bound = 1 + Math.max(...monic.slice(0, n).map(Math.abs));
+  let roots = Array.from({ length: n }, (_, k) => [bound * Math.cos((2 * Math.PI * k) / n + 0.4), bound * Math.sin((2 * Math.PI * k) / n + 0.4)]);
+  for (let iteration = 0; iteration < 500; iteration++) {
+    let moved = 0;
+    roots = roots.map(([re, im], k) => {
+      let [nr, ni] = value(re, im);
+      for (let j = 0; j < n; j++) {
+        if (j === k) continue;
+        const dr = re - roots[j][0],
+          di = im - roots[j][1];
+        const d = dr * dr + di * di || 1e-30;
+        [nr, ni] = [(nr * dr + ni * di) / d, (ni * dr - nr * di) / d];
+      }
+      moved = Math.max(moved, Math.hypot(nr, ni));
+      return [re - nr, im - ni];
+    });
+    if (moved < 1e-14) break;
+  }
+  const f = (x: number) => c.reduceRight((acc, k) => acc * x + k, 0);
+  const derivative = (x: number) => c.slice(1).reduceRight((acc, k, i) => acc * x + (i + 1) * k, 0);
+  const real = roots
+    .filter(([re, im]) => Math.abs(im) < 1e-6 * (1 + Math.abs(re)))
+    .map(([re]) => {
+      let x = re;
+      for (let i = 0; i < 30; i++) {
+        const d = derivative(x);
+        if (!d) break;
+        const step = f(x) / d;
+        x -= step;
+        if (Math.abs(step) < 1e-15) break;
+      }
+      return x;
+    })
+    .sort((a, b) => a - b);
+  return real.filter((x, i) => i === 0 || Math.abs(x - real[i - 1]) > 1e-7 * (1 + Math.abs(x)));
+}
+// "x ≈ 1,324718" for a numeric root.
+const approxText = (v: string, x: number, locale: Locale) => `${v} ≈ ${decimal(Math.abs(x) < 1e-12 ? 0 : x, locale)}`;
+const approxLatex = (v: string, x: number, locale: Locale) => `${v} \\approx ${decimal(Math.abs(x) < 1e-12 ? 0 : x, locale).replace(",", "{,}").replace("−", "-")}`;
+
 // √(n/d) as p·√r with whole numbers: √(8/9) = 2/3·√2.
 function surd(value: Fraction): { outside: Fraction; inside: bigint } {
   let k = value.n * value.d;
@@ -625,6 +730,20 @@ function surd(value: Fraction): { outside: Fraction; inside: bigint } {
 }
 // Solves p = 0 for v. Values that make `den` zero (a denominator in the
 // equation) are no solutions and are named as excluded.
+// q·√k as text: "√5", "3√2", "√6/2"; empty q·√1 is just q.
+function surdText(q: Fraction, k: bigint, locale: Locale) {
+  if (k === 1n) return fracText(q, locale);
+  const n = q.abs().n,
+    d = q.d;
+  return `${q.s < 0 ? "−" : ""}${n === 1n ? "" : decimal(Number(n), locale)}√${k}${d === 1n ? "" : `/${d}`}`;
+}
+function surdLatex(q: Fraction, k: bigint) {
+  if (k === 1n) return fracLatex(q);
+  const n = q.abs().n,
+    d = q.d;
+  const core = `${n === 1n ? "" : n}\\sqrt{${k}}`;
+  return `${q.s < 0 ? "-" : ""}${d === 1n ? core : `\\frac{${core}}{${d}}`}`;
+}
 function solve(p: Poly, v: string, locale: Locale, den?: Poly): MathAction | null {
   const c = coefficients(p, v);
   const denAt = (x: number) => (den ? coefficients(den, v).reduceRight((acc, k) => acc * x + k.valueOf(), 0) : 1);
@@ -655,7 +774,52 @@ function solve(p: Poly, v: string, locale: Locale, den?: Poly): MathAction | nul
       texts.push(`${v} = ${around} (≈ ${approx.map((n) => decimal(n, locale)).join(locale === "de" ? "; " : ", ")})`);
       latex.push(`${v} = ${center.equals(0) ? "" : fracLatex(center)} \\pm ${spread.equals(1) ? "" : fracLatex(spread)}\\sqrt{${inside}}`);
     }
-  } else if (rest.length > 3) return null;
+  } else if (rest.length > 3 && rest.slice(1, -1).every((k) => k.equals(0))) {
+    // a·xⁿ + c = 0: xⁿ = q, exactly as an n-th root.
+    const n = rest.length - 1;
+    const q = rest[0].neg().div(rest[n]);
+    const root = (tex: boolean) =>
+      tex ? `\\sqrt[${n}]{${fracLatex(q.abs())}}` : `${n === 3 ? "∛" : n === 4 ? "∜" : `${superscript(n)}√`}${fracText(q.abs(), locale).replace(/^(.*\/.*)$/, "($1)")}`;
+    const value = Math.pow(q.abs().valueOf(), 1 / n);
+    if (n % 2) {
+      const x = q.s < 0 ? -value : value;
+      if (Math.abs(denAt(x)) >= 1e-9) {
+        texts.push(`${v} = ${q.s < 0 ? "−" : ""}${root(false)} (≈ ${decimal(x, locale)})`);
+        latex.push(`${v} = ${q.s < 0 ? "-" : ""}${root(true)}`);
+      }
+    } else if (q.s > 0 && Math.abs(denAt(value)) >= 1e-9 && Math.abs(denAt(-value)) >= 1e-9) {
+      texts.push(`${v} = ±${root(false)} (≈ ±${decimal(value, locale)})`);
+      latex.push(`${v} = \\pm ${root(true)}`);
+    }
+  } else if (rest.length > 3) {
+    const even = rest.every((k, i) => i % 2 === 0 || k.equals(0));
+    const numeric: number[] = [];
+    if (even) {
+      // Only even powers: u = x², exact where u is rational.
+      const u = rest.filter((_, i) => i % 2 === 0);
+      const { roots: uRoots, rest: uRest } = rationalRoots(u);
+      for (const r of [...new Map(uRoots.map((x) => [x.toFraction(), x])).values()].sort((a, b) => a.compare(b))) {
+        if (r.s < 0) continue;
+        const { outside, inside } = surd(r);
+        const value = Math.sqrt(r.valueOf());
+        if (Math.abs(denAt(value)) < 1e-9 || Math.abs(denAt(-value)) < 1e-9) continue;
+        if (r.equals(0)) {
+          texts.push(`${v} = 0`);
+          latex.push(`${v} = 0`);
+        } else {
+          texts.push(`${v} = ±${surdText(outside, inside, locale)}` + (inside === 1n ? "" : ` (≈ ±${decimal(value, locale)})`));
+          latex.push(`${v} = \\pm ${surdLatex(outside, inside)}`);
+        }
+      }
+      for (const uValue of uRest.length > 1 ? realRoots(uRest.map((k) => k.valueOf())) : [])
+        if (uValue >= 0) numeric.push(-Math.sqrt(uValue), Math.sqrt(uValue));
+    } else numeric.push(...realRoots(rest.map((k) => k.valueOf())));
+    for (const x of numeric.sort((a, b) => a - b)) {
+      if (Math.abs(denAt(x)) < 1e-9) continue;
+      texts.push(approxText(v, x, locale));
+      latex.push(approxLatex(v, x, locale));
+    }
+  }
   const action = solution(texts, latex);
   if (excluded.length) {
     // Only excluded values: there is no solution at all (not "no real one").
@@ -770,6 +934,9 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
     const factored = factor(poly, locale);
     if (factored && !sameWriting(factored.text, expanded) && !sameWriting(factored.text, input.expr))
       actions.push({ kind: "factor", label: de ? "Faktorisieren" : "Factor", text: `= ${factored.text}`, latex: `= ${factored.latex}` });
+    const withRoots = factorWithRoots(poly, locale);
+    if (withRoots)
+      actions.push({ kind: "factor", label: de ? "Faktorisieren mit Wurzeln" : "Factor with roots", text: `= ${withRoots.text}`, latex: `= ${withRoots.latex}` });
     return actions;
   } catch {
     return [];

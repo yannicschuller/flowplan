@@ -90,3 +90,19 @@ test("formulas in LaTeX can be calculated", async () => {
   assert.deepEqual(texts(latexToExpression("\\left(a+b\\right)^{2}")!), ["expand: = a² + 2ab + b²"]);
   assert.equal(latexToExpression("\\int_0^1 x\\,dx"), null);
 });
+
+test("factors with roots and equations of higher degree", () => {
+  assert.deepEqual(texts("x² − 2"), ["factor: = (x − √2)(x + √2)"]);
+  assert.deepEqual(texts("x² + 2x − 4"), ["factor: = (x + 1 − √5)(x + 1 + √5)"]);
+  assert.deepEqual(texts("2x² − 3"), ["factor: = 2(x − √6/2)(x + √6/2)"]);
+  assert.deepEqual(texts("x³ − 2x"), ["factor: = x(x² − 2)", "factor: = x(x − √2)(x + √2)"]);
+  assert.deepEqual(texts("x² + 1"), []);
+  assert.deepEqual(texts("x^4 - 5x^2 + 6 = 0"), ["solve: ⇒ x = ±√2 (≈ ±1,414214), x = ±√3 (≈ ±1,732051)"]);
+  assert.deepEqual(texts("x^3 - 2 = 0"), ["solve: ⇒ x = ∛2 (≈ 1,259921)"]);
+  assert.deepEqual(texts("x^3 + 5 = 0"), ["solve: ⇒ x = −∛5 (≈ −1,709976)"]);
+  assert.deepEqual(texts("2x^4 - 10 = 0"), ["solve: ⇒ x = ±∜5 (≈ ±1,495349)"]);
+  assert.deepEqual(texts("x^3 + x - 1 = 0"), ["solve: ⇒ x ≈ 0,682328"]);
+  assert.deepEqual(texts("x^5 - x - 1 = 0"), ["solve: ⇒ x ≈ 1,167304"]);
+  assert.deepEqual(texts("x^4 - 3x^2 + 1 = 0"), ["solve: ⇒ x ≈ −1,618034, x ≈ −0,618034, x ≈ 0,618034, x ≈ 1,618034"]);
+  assert.deepEqual(texts("x^4 + 1 = 0"), ["solve: ⇒ keine reelle Lösung"]);
+});
