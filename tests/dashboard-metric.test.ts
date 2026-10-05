@@ -27,6 +27,7 @@ const fields: Field[] = [
   { id: "title", name: "Name", type: "text" },
   { id: "status", name: "Status", type: "select", options: ["Open", "Done"] },
   { id: "hours", name: "Hours", type: "number" },
+  { id: "double", name: "Double", type: "formula", formula: "{Hours} * 2" },
 ];
 const views: View[] = [
   { id: "all", name: "All", type: "table", filters: [], sorts: [] },
@@ -58,13 +59,15 @@ test("sum, average, minimum and maximum of a number property", () => {
   assert.equal(metric({ aggregate: "min", field: "hours" }).value, 2);
   assert.equal(metric({ aggregate: "max", field: "hours", view: "open" }).value, 4.5);
   assert.throws(() => metric({ aggregate: "sum" }), /Eigenschaft fehlt/);
+  // Formulas are calculated before they are added up.
+  assert.equal(metric({ aggregate: "sum", field: "double", view: "open" }).value, 13);
 });
 
 test("only for people who can read the database", () => {
   assert.throws(() => metric({}, stranger));
   const sources = metricSources(owner, wid);
   const tickets = sources.find((s) => s.id === source)!;
-  assert.deepEqual(tickets.numbers.map((n) => n.id), ["hours"]);
+  assert.deepEqual(tickets.numbers.map((n) => n.id), ["hours", "double"]);
   assert.deepEqual(tickets.views.map((v) => v.id), ["all", "open"]);
   assert.equal(metricSources(stranger, wid).length, 0);
 });

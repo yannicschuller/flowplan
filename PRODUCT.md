@@ -13,6 +13,12 @@ on to the new day, days without an entry of their own disappear again.
 Functionally it covers what AppFlowy and Notion offer for teams, plus
 Miro-style whiteboards. **Deliberately without AI features.**
 
+Pages can be **dashboards**: metric cards that count or add up records from
+any database (optionally through a view's filters), next to linked chart
+views. Forms can run a **customer portal**: senders get a private link to
+their request with its status and a conversation with the team, who reply
+from the record.
+
 Documents also calculate when asked: results after "=", reducing fractions,
 expanding and factoring terms, solving equations, function graphs that are
 edited live – and photos can be marked up with pen, arrows, shapes and
@@ -64,6 +70,7 @@ under licences that allow redistribution and commercial use.
 | Journal and day pages | Operate | capture the day, lose nothing that is open |
 | Settings, administration | Operate | find a setting and change it safely |
 | Published pages, template gallery for visitors | Read | understand the content, copy it if wanted |
+| Forms and the customer portal (request pages) | Operate | send a request, see where it stands, reply |
 | Sign-in, sign-up, password reset, demo start | Operate | get in without detours |
 | Desktop app (setup, offline page) | Operate | connect to the server, find the connection again |
 
