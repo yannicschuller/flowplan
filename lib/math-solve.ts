@@ -24,7 +24,7 @@ const MAX_INPUT = 300;
 
 /* ---------- Reading what people write ---------- */
 
-const FUNCTIONS = new Set(["sqrt", "pi"]);
+const FUNCTIONS = new Set(["sqrt", "pi", "sin", "cos", "tan", "exp", "log", "abs", "log10"]);
 const VULGAR: Record<string, string> = {
   "½": "1/2", "⅓": "1/3", "⅔": "2/3", "¼": "1/4", "¾": "3/4", "⅕": "1/5", "⅖": "2/5", "⅗": "3/5", "⅘": "4/5",
   "⅙": "1/6", "⅚": "5/6", "⅐": "1/7", "⅛": "1/8", "⅜": "3/8", "⅝": "5/8", "⅞": "7/8", "⅑": "1/9", "⅒": "1/10",
@@ -32,7 +32,8 @@ const VULGAR: Record<string, string> = {
 
 // Turns written maths into mathjs syntax. Returns null when the text is not
 // a calculation (words, no operator, too long).
-export function normalize(text: string, locale: Locale): { expr: string; unit: string } | null {
+// `loose`: a single number or variable is fine too (graphs: "f(x) = x").
+export function normalize(text: string, locale: Locale, loose = false): { expr: string; unit: string } | null {
   let s = text.trim();
   if (!s || s.length > MAX_INPUT) return null;
   // A trailing "=" asks for the result.
@@ -58,14 +59,14 @@ export function normalize(text: string, locale: Locale): { expr: string; unit: s
   if (locale === "de")
     s = s.replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+/g, (n) => n.replace(/\./g, "").replace(",", "."));
   else s = s.replace(/\d{1,3}(?:,\d{3})+(?:\.\d+)?/g, (n) => n.replace(/,/g, ""));
-  // Division written as ":" between operands.
-  s = s.replace(/:/g, "/");
+  // Division written as ":" between operands; ln and lg as mathjs knows them.
+  s = s.replace(/:/g, "/").replace(/\bln\s*\(/g, "log(").replace(/\blg\s*\(/g, "log10(");
   if (/[^0-9a-zA-Z.+\-*/^()=\s]/.test(s)) return null;
   // Words are text, not maths; "ab" is a product of two variables.
   for (const word of s.match(/[a-zA-Z]{3,}/g) || []) if (!FUNCTIONS.has(word)) return null;
   s = s.replace(/[a-zA-Z]+/g, (word) => (FUNCTIONS.has(word) ? word : word.split("").join("*")));
   // Something to calculate: an operator, a function or a power.
-  if (!/[+\-*/^]|sqrt|pi/.test(s.replace(/^\s*-/, ""))) return null;
+  if (!loose && !/[+\-*/^]|sqrt|pi|sin|cos|tan|exp|log|abs/.test(s.replace(/^\s*-/, ""))) return null;
   if ((s.match(/=/g) || []).length > 1) return null;
   return { expr: s.replace(/\s+/g, " ").trim(), unit };
 }
@@ -989,4 +990,18 @@ export function latexToExpression(latex: string): string | null {
   }
   if (/\\|_/.test(s)) return null;
   return s;
+}
+
+// A function of x for a graph: "x² − 2", "y = 2x + 1", "f(x) = sin(x)".
+// Returns mathjs syntax, or null when it is no function of x alone.
+export function functionExpression(text: string, locale: Locale): string | null {
+  const body = text
+    .trim()
+    .replace(/^(?:y|[a-zA-Z]\s*\(\s*x\s*\))\s*[=:]\s*/, "")
+    .replace(/=\s*$/, "");
+  if (!body || body.includes("=")) return null;
+  const input = normalize(body, locale, true);
+  if (!input) return null;
+  const letters = input.expr.replace(/sqrt|pi|sin|cos|tan|exp|log10|log|abs/g, "").match(/[a-zA-Z]/g) || [];
+  return letters.every((l) => l === "x") ? input.expr : null;
 }

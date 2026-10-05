@@ -29,6 +29,12 @@ export function ReadOnlyDocument({
         element.tagName === "SPAN",
       );
     }
+    // Function graphs: drawn here, movable but not saved.
+    const plots = Array.from(root.querySelectorAll<HTMLElement>("[data-function-plot]"));
+    if (plots.length)
+      void import("@/lib/function-plot").then(({ mountPlot, parsePlot }) => {
+        for (const element of plots) mountPlot(element, parsePlot(element.dataset.functionPlot), { editable: false });
+      });
     for (const image of root.querySelectorAll("img")) image.loading = "lazy";
     for (const code of root.querySelectorAll<HTMLElement>("pre > code")) {
       const text = code.textContent || "";

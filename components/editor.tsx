@@ -2,8 +2,9 @@
 import { serverMessage } from "@/lib/i18n-errors";
 import { useLocale, useT } from "./i18n";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
-import { CalcHint } from "@/lib/calc-hint-plugin";
+import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
 import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
+import { FunctionPlotView } from "./function-plot-view";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -111,6 +112,7 @@ import {
   X,
   CalendarBlank,
   PencilSimpleLine,
+  ChartLine,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
 import { withPdfView } from "./pdf-node";
@@ -372,6 +374,7 @@ export default function DocumentEditor({
         Toggle,
         ...mathNodeViews(setMath),
         mermaidNodeView(setDiagram),
+        FunctionPlotView,
         Mention,
         Columns,
         Column,
@@ -425,6 +428,12 @@ export default function DocumentEditor({
         handleKeyDown: (_view, event) => {
           if (_view.state.selection.$from.parent.type.name === "codeBlock")
             return false;
+          // Tab and Escape belong to a visible calculation hint ("3/4 =" also
+          // opened the slash menu with its "/").
+          if ((event.key === "Tab" || event.key === "Escape") && calcHintShown(_view.state)) {
+            setSlash(null);
+            return false;
+          }
           if (event.key === "@" && editable) {
             setReferences(true);
             return true;
@@ -919,6 +928,18 @@ export default function DocumentEditor({
       description: t("Mathematik direkt im Satz", "Math right inside a sentence"),
       icon: FunctionIcon,
       run: () => openInlineMath(),
+    },
+    {
+      name: t("Funktionsgraph", "Function graph"),
+      keywords: ["graph", "plot", "funktion", "function", "kurve", "diagramm"],
+      description: t("Funktionen von x zeichnen, live bearbeitbar", "Draw functions of x, editable live"),
+      icon: ChartLine,
+      run: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({ type: "functionPlot", attrs: { plot: JSON.stringify({ functions: [{ expr: "x²", color: "#3b3fd8" }] }) } })
+          .run(),
     },
     {
       name: t("Bruch", "Fraction"),

@@ -11,6 +11,7 @@ import {
   ChatCircle,
   Code,
   Copy,
+  ChartLine,
   Equals,
   HighlighterCircle,
   LinkSimple,
@@ -42,6 +43,8 @@ export function TextMenu({
   const [place, setPlace] = useState<Place | null>(null);
   // Results for a selected calculation ("3/4 + 1/6", "(a + b)²", "2x = 8").
   const [calc, setCalc] = useState<MathAction[]>([]);
+  // The selection as a function of x, for "Graph zeichnen".
+  const [graph, setGraph] = useState<string | null>(null);
   const menu = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPlace(null), []);
   useEffect(() => {
@@ -145,13 +148,18 @@ export function TextMenu({
   }, [place, close, editor]);
   useEffect(() => {
     setCalc([]);
+    setGraph(null);
     if (!place || !editor || !editable) return;
     const { from, to, empty } = editor.state.selection;
     if (empty) return;
     const text = editor.state.doc.textBetween(from, to, " ");
     if (text.length > 300 || !/[\d)a-z]\s*[-+−*/×·÷:^²³=]|√/.test(text)) return;
     let current = true;
-    void import("@/lib/math-solve").then(({ mathActions }) => current && setCalc(mathActions(text, locale).slice(0, 4)));
+    void import("@/lib/math-solve").then(({ mathActions, functionExpression }) => {
+      if (!current) return;
+      setCalc(mathActions(text, locale).slice(0, 4));
+      setGraph(/x/.test(text) && functionExpression(text, locale) ? text.trim().replace(/^(?:y|[a-zA-Z]\s*\(\s*x\s*\))\s*[=:]\s*/, "").replace(/=\s*$/, "") : null);
+    });
     return () => {
       current = false;
     };
@@ -237,8 +245,27 @@ export function TextMenu({
           </button>
         </div>
       )}
-      {calc.length > 0 && (
+      {(calc.length > 0 || graph) && (
         <div className="text-menu-calc" role="group" aria-label={t("Rechnen", "Calculate")}>
+          {graph && (
+            <button
+              type="button"
+              role="menuitem"
+              title={t("Funktionsgraph unter dem Absatz einfügen", "Insert a function graph below the paragraph")}
+              onClick={run(() => {
+                const $to = editor.state.doc.resolve(to);
+                const after = $to.after(Math.max(1, $to.depth));
+                editor
+                  .chain()
+                  .insertContentAt(after, { type: "functionPlot", attrs: { plot: JSON.stringify({ functions: [{ expr: graph, color: "#3b3fd8" }] }) } })
+                  .run();
+              })}
+            >
+              <ChartLine size={15} />
+              <span>{t("Graph zeichnen", "Draw graph")}</span>
+              <strong>{`f(x) = ${graph}`}</strong>
+            </button>
+          )}
           {calc.map((action) => (
             <button
               key={action.kind + action.text}

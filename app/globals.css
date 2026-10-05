@@ -13430,3 +13430,141 @@ h3 .block-reactions {
 .ProseMirror img {
   cursor: default;
 }
+
+/* ---------- Function graphs (lib/function-plot.ts) ---------- */
+.function-plot {
+  position: relative;
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.plot-stage {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  line-height: 0;
+}
+.plot-stage.dragging {
+  cursor: grabbing;
+}
+.plot-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.plot-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.plot-axis {
+  stroke: var(--muted);
+  stroke-width: 1.4;
+}
+.plot-tick {
+  fill: var(--muted);
+  font: 11px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.plot-curve {
+  fill: none;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.plot-zero {
+  fill: var(--bg);
+  stroke-width: 2;
+}
+.plot-legend text {
+  fill: var(--text);
+  font: 600 12.5px var(--font-ui);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+}
+.plot-legend text.plot-invalid {
+  fill: var(--muted);
+  text-decoration: line-through;
+}
+.plot-zoom {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.plot-zoom button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 16px;
+  color: var(--secondary);
+}
+.plot-zoom button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.plot-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+}
+.plot-controls:empty {
+  display: none;
+}
+.plot-function {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 240px;
+  margin: 0;
+}
+.plot-function button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 16px;
+}
+.plot-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  flex: none;
+}
+.plot-name {
+  font: 600 13px var(--font-ui);
+  color: var(--secondary);
+  white-space: nowrap;
+}
+.plot-function input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  font: 13px var(--font-mono);
+}
+.plot-function input.invalid {
+  border-color: var(--signal);
+}
+.plot-controls button {
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.plot-controls button:hover {
+  background: var(--hover);
+  color: var(--text);
+}

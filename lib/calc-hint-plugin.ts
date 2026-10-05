@@ -17,6 +17,11 @@ const loadSolver = () =>
     throw error;
   }));
 
+// Whether a hint is shown right now (other key handlers let it go first).
+export function calcHintShown(state: EditorState) {
+  const hint = key.getState(state);
+  return !!hint && hint.pos === state.selection.from;
+}
 // The line up to the cursor, if it ends with "=".
 function lineBeforeCursor(state: EditorState) {
   const { selection } = state;
