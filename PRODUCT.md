@@ -1,125 +1,143 @@
-# Flowplan – Produktkontext
+# Flowplan – product context
 
-Dauerhafter Kontext für Design- und Produktentscheidungen. Belegt aus
-README, `docs/` und dem Code; Offenes ist als offen markiert.
+Lasting context for design and product decisions. Backed by the README, the
+documentation and the code; open points are marked as open.
 
-## Was Flowplan ist
+## What Flowplan is
 
-Ein selbst betriebener Arbeitsbereich für Dokumente, Wissen, Projekte und
-gemeinsames Denken: Dokumente, Datenbanken (Tabelle, Board, Kalender,
-Timeline, Galerie, Liste, Feed, Diagramm, Formular), Whiteboards und Journale
-in einem Seitenbaum. Ein **Journal** legt jeden Tag eine Tagesseite an
-(Tagebuch und Aufgaben): offene Aufgaben wandern in den neuen Tag, Tage ohne
-eigenen Eintrag werden wieder entfernt. Orientierung ist der Funktionsumfang von AppFlowy (Referenz
-0.14.5), ergänzt um Whiteboards im Stil von Miro. **Bewusst ohne
-AI-Funktionen.**
+An open-source workspace for documents, knowledge, projects and thinking
+together: documents, databases (table, board, calendar, timeline, gallery,
+list, feed, chart, form), whiteboards and journals in one page tree. A
+**journal** creates a page for every day (diary and tasks): open tasks move
+on to the new day, days without an entry of their own disappear again.
+Functionally it covers what AppFlowy and Notion offer for teams, plus
+Miro-style whiteboards. **Deliberately without AI features.**
 
-Betrieb: eine Instanz pro Organisation (Next.js, SQLite, ein Container),
-Anmeldung über den eigenen OIDC-Anbieter, Administration über eine
-Admin-Gruppe. Daten verlassen die eigene Infrastruktur nicht.
+Documents also calculate when asked: results after "=", reducing fractions,
+expanding and factoring terms, solving equations, function graphs that are
+edited live – and photos can be marked up with pen, arrows, shapes and
+text.
 
-## Für wen
+## How it is offered
 
-- **Teams einer Organisation**, die ihre Inhalte selbst hosten wollen und
-  sich über ihren bestehenden Login-Anbieter anmelden.
-- **Gäste** mit Freigabelinks (lesen, kommentieren, live mitbearbeiten) und
-  anonyme Besucher öffentlicher Seiten und Formulare.
-- **Admins** der Instanz, die Konten, Arbeitsbereiche, Speicher und
-  Sicherungen verwalten.
+- **Open source under AGPL-3.0**: [github.com/yannicschuller/flowplan](https://github.com/yannicschuller/flowplan).
+- **Hosted** at [app.flowplan.org](https://app.flowplan.org) on servers in
+  Germany, or **self-hosted**: one container per organisation (Next.js,
+  SQLite, optional S3 backup), image `ghcr.io/yannicschuller/flowplan`
+  (`latest` for releases, `beta` for the newest state).
+- Three repositories, three sites: the app (this repository,
+  app.flowplan.org), the website ([flowplan-website](https://github.com/yannicschuller/flowplan-website),
+  flowplan.org) and the documentation ([flowplan-docs](https://github.com/yannicschuller/flowplan-docs),
+  docs.flowplan.org). The app contains nothing of the website.
+- Sign-in with e-mail and password, passkeys or single sign-on (OIDC,
+  optional). The first account administers the instance; sign-up is open or
+  invitation-only (administration). A public demo can be switched on in the
+  administration (off by default).
+- Releases at the push of a button (GitHub Actions); release notes and
+  `CHANGELOG.md` come from the commit messages, so these are written as
+  clear English sentences.
 
-**Entwicklungsphase:** vorerst ein eigenes Projekt. Später Open Source oder
-ein eigenes Produkt. Daraus folgt: Alles, was mit der App ausgeliefert wird
-(Schriften, Symbole, Bilder, Abhängigkeiten), muss unter Lizenzen stehen, die
-Weitergabe und kommerzielle Nutzung erlauben.
+## For whom
 
-## Oberflächen und Modus
+- **Teams and organisations** that want their content in their own hands –
+  self-hosted, or hosted in Germany – and sign in with a password, a passkey
+  or their existing identity provider.
+- **Guests** with share links (read, comment, edit live) and anonymous
+  visitors of published pages and forms.
+- **Administrators** of an instance, who manage accounts, sign-up,
+  workspaces, storage and backups.
+- **People who self-host** and want one container they understand, with
+  documentation for installation, configuration and operations.
 
-| Oberfläche | Modus | Erfolg heißt |
+Everything shipped with the app (fonts, icons, images, dependencies) must be
+under licences that allow redistribution and commercial use.
+
+## Surfaces and modes
+
+| Surface | Mode | Success means |
 | --- | --- | --- |
-| Arbeitsbereich: Seitenleiste, Startseite, Suche, Posteingang | Operate | schnell finden und weitermachen |
-| Dokument-Editor, Datensatzseiten | Operate | ungestört schreiben und strukturieren |
-| Datenbankansichten | Operate | Daten erfassen, sortieren, planen |
-| Whiteboard | Operate | gemeinsam denken, workshoppen, präsentieren |
-| Journal und Tagesseiten | Operate | den Tag festhalten, Offenes nicht verlieren |
-| Einstellungen, Administration | Operate | eine Einstellung finden und sicher ändern |
-| Öffentliche Seiten, Vorlagengalerie für Besucher | Read | Inhalt verstehen, ggf. kopieren |
-| Startseite für Besucher (`/`, nicht angemeldet) | Persuade | verstehen, was Flowplan kann, und sich registrieren oder anmelden |
-| Anmeldung (`/login`) | Operate | ohne Umweg hinein |
-| Desktop-App (Einrichtung, Offline-Seite) | Operate | Server verbinden, Verbindung wiederfinden |
+| Workspace: sidebar, home, search, inbox, my tasks | Operate | find things fast and carry on |
+| Document editor, record pages | Operate | write and structure without distraction |
+| Calculating, function graphs, image markup | Operate | get a result or a picture without leaving the text |
+| Database views | Operate | capture, sort and plan data |
+| Whiteboard | Operate | think together, run workshops, present |
+| Journal and day pages | Operate | capture the day, lose nothing that is open |
+| Settings, administration | Operate | find a setting and change it safely |
+| Published pages, template gallery for visitors | Read | understand the content, copy it if wanted |
+| Sign-in, sign-up, password reset, demo start | Operate | get in without detours |
+| Desktop app (setup, offline page) | Operate | connect to the server, find the connection again |
 
-Die Startseite ist die einzige Marketing-Oberfläche: ein Onepager, der
-Seitentypen, Ansichten, Zusammenarbeit, alle Funktionen und den Betrieb zeigt.
-Aussagen dort müssen durch den Code gedeckt sein; keine Werbefloskeln.
+The marketing surface (the one-page website) and the documentation live in
+their own repositories; claims there must be backed by the app's code – no
+sales phrases.
 
-## Plattformen
+## Platforms
 
-- Web, responsiv: Desktop und Mobil (ab ca. 375 px), iOS als Web-App mit
-  Push.
-- Desktop-Apps für macOS und Windows (Electron-Hülle um die Instanz).
-- Hell und Dunkel, Offline-Nutzung per Opt-in, reduzierte Bewegung wird
-  respektiert.
+- Web, responsive: desktop and phone (from about 375 px), iOS as a web app
+  with push.
+- Desktop apps for macOS and Windows (Electron shell around an instance).
+- Light and dark, offline use as an opt-in, reduced motion is respected.
 
-## Sprache und Ton
+## Language and tone
 
-- Oberfläche vollständig **Deutsch**, Anrede **du**.
-- Ruhig, konkret, handlungsorientiert: Knöpfe benennen die Handlung
-  („Rechte speichern“, „Als erledigt markieren“), Fehlermeldungen sagen, was
-  passiert ist und was zu tun ist.
-- Keine Werbesprache in der Anwendung; kurze Leitsätze nur an Einstiegen
-  (Anmeldung, Startseite).
+- The interface is complete in **German and English**: the browser's
+  language decides, a switch changes it. German addresses people as **du**.
+- Content the server creates (first workspace, templates, demo, e-mails,
+  notifications) follows the language of the person it is for.
+- Calm, concrete, action-oriented: buttons name the action ("Save
+  permissions", "Mark as done"), errors say what happened and what to do.
+- No sales language inside the app; short taglines only at entrances
+  (sign-in, home greeting).
 
-## Marke
+## Brand
 
-**Entscheidung: Flowplan bekommt eine eigene, unverwechselbare Markenwelt**
-statt der geliehenen AppFlowy/Notion-Anmutung. Funktional bleibt AppFlowy die
-Referenz, visuell nicht. Die Marke muss
+Flowplan has a brand world of its own instead of the borrowed
+AppFlowy/Notion look; functionally AppFlowy and Notion are references,
+visually they are not. The brand has to
 
-- in einer dichten Arbeitsoberfläche tragen (Operate): Ausdruck in präzisen
-  Details, Farbe, Typografie und Bewegung – nicht in Dekoration, die beim
-  Arbeiten stört;
-- hell und dunkel gleich gut funktionieren;
-- ohne externe Dienste auskommen (selbst gehostet, offline-fähig);
-- später als Open-Source-Projekt oder Produkt bestehen können.
+- hold up in a dense working interface (Operate): expression lives in
+  precise details, colour, type and motion – not in decoration that gets in
+  the way;
+- work equally well in light and dark;
+- need no external services (self-hosted, works offline);
+- stand as an open-source project and as a hosted product.
 
-**Entscheidung: eigene Schrift** statt Systemschrift. Bedingungen: offene
-Lizenz (z. B. SIL Open Font License), mit der App ausgeliefert (keine
-Google-Fonts-Einbindung), deutsche Zeichen und Tabellenziffern, gut lesbar in
-kleinen Größen der Oberfläche. Gewählt: Instrument Sans (Oberfläche),
-Instrument Serif (nur Markenmomente), JetBrains Mono (Code).
-
-**Entscheidung: Name und Logo.** Der Name „Flowplan“ bleibt. Das Logo wird
-aus der bisherigen Ebenen-Marke weiterentwickelt (eigene Bildmarke statt
-Phosphor-Symbol). Details, Farben und Regeln stehen in
+Fonts ship with the app (no Google Fonts), under the SIL Open Font
+License: Instrument Sans (interface), Instrument Serif (brand moments only),
+JetBrains Mono (code). The name stays "Flowplan"; the logo is the layered
+mark on an ultramarine tile. Details, colours and rules are in
 [DESIGN.md](DESIGN.md).
 
-Das bisherige Erscheinungsbild (unten) ist Ausgangspunkt und Beleg dafür, was
-funktioniert, aber kein Maßstab für die neue Markenwelt.
+## Visual direction
 
-## Visuelle Richtung
+"Paper and ink": warm neutrals, one ultramarine accent, a rare signal
+colour, our own fonts and mark. Binding description in [DESIGN.md](DESIGN.md).
 
-„Papier und Tinte“: warme Neutraltöne, ein Ultramarin-Akzent, ein seltener
-Signalton, eigene Schriften und eine eigene Bildmarke. Verbindlich
-beschrieben in [DESIGN.md](DESIGN.md). Die frühere AppFlowy/Notion-nahe
-Anmutung (kühles Weiß, Blau `#3479e7`, Systemschrift, Phosphor-„Stack“ als
-Logo) ist abgelöst.
+## Quality bar
 
-## Qualitätsansprüche
+- Keyboard and screen readers: real roles, labels and focus; native form
+  elements stay underneath custom controls (for example below the styled
+  dropdowns).
+- Permissions are checked on the server; the interface only hides what
+  would be refused anyway.
+- Security by default: uploads are checked against their content and
+  served so that nothing can run, photos lose their location, sign-in
+  attempts are rate-limited, a content security policy applies to every
+  page.
+- Every feature is covered by core and browser tests (desktop and phone);
+  CI builds the image for amd64 and arm64.
 
-- Tastatur und Screenreader: echte Rollen, Beschriftungen, Fokus; native
-  Formularelemente bleiben als Basis erhalten (z. B. unter den gestalteten
-  Dropdowns).
-- Rechte werden serverseitig geprüft; die Oberfläche blendet nur aus, was
-  ohnehin verweigert würde.
-- Jede Funktion ist mit Kern- und Browser-Tests (Desktop und Mobil)
-  abgesichert.
+## Non-goals
 
-## Nicht-Ziele
+- No AI features.
+- No tracking, no advertising, no sharing of data with third parties.
+- No imitation of other brands in the look – not of AppFlowy, Notion or
+  Miro either.
+- No lock-in: everything can be exported (Markdown, ZIP, backups), and the
+  hosted version runs the same code as a self-hosted one.
 
-- Keine AI-Funktionen.
-- Kein Cloud-Dienst des Herstellers; kein Tracking.
-- Keine Imitation fremder Marken im Erscheinungsbild – auch nicht von
-  AppFlowy, Notion oder Miro.
+## Open questions
 
-## Offene Fragen
-
-- Konkrete Zielgruppe, sobald das Projekt veröffentlicht wird.
+- Pricing and limits of the hosted version at app.flowplan.org.
+- Which target group to address first in public (teams, schools and
+  learners for the calculating features, self-hosters).
