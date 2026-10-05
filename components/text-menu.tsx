@@ -1,8 +1,9 @@
 "use client";
 // The menu for text: selecting text shows it above the selection, a right
 // click opens it at the pointer (Shift + right click keeps the browser's
-// own menu). Reactions for the paragraph, formatting, a comment, copying.
-import { useT } from "./i18n";
+// own menu). Reactions for the paragraph, formatting, calculating a
+// selected expression, a comment, copying.
+import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
@@ -10,6 +11,7 @@ import {
   ChatCircle,
   Code,
   Copy,
+  Equals,
   HighlighterCircle,
   LinkSimple,
   TextB,
@@ -19,6 +21,7 @@ import {
 } from "@phosphor-icons/react";
 import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-reactions";
 import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
+import type { MathAction } from "@/lib/math-solve";
 
 const reactions = ["👍", "❤️", "🎉", "😄", "👀", "✅", "🙏", "🔥"];
 type Place = { x: number; y: number; mode: "selection" | "context" };
@@ -35,7 +38,10 @@ export function TextMenu({
   onLink: () => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const [place, setPlace] = useState<Place | null>(null);
+  // Results for a selected calculation ("3/4 + 1/6", "(a + b)²", "2x = 8").
+  const [calc, setCalc] = useState<MathAction[]>([]);
   const menu = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPlace(null), []);
   useEffect(() => {
@@ -137,6 +143,19 @@ export function TextMenu({
       window.removeEventListener("resize", close);
     };
   }, [place, close, editor]);
+  useEffect(() => {
+    setCalc([]);
+    if (!place || !editor || !editable) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    const text = editor.state.doc.textBetween(from, to, " ");
+    if (text.length > 300 || !/[\d)a-z]\s*[-+−*/×·÷:^²³=]|√/.test(text)) return;
+    let current = true;
+    void import("@/lib/math-solve").then(({ mathActions }) => current && setCalc(mathActions(text, locale).slice(0, 4)));
+    return () => {
+      current = false;
+    };
+  }, [place, editor, editable, locale]);
   // Keep the menu on screen.
   const [shift, setShift] = useState({ x: 0, y: 0 });
   useEffect(() => {
@@ -216,6 +235,23 @@ export function TextMenu({
           <button type="button" aria-label="Link" title="Link" onClick={run(onLink)}>
             <LinkSimple size={16} />
           </button>
+        </div>
+      )}
+      {calc.length > 0 && (
+        <div className="text-menu-calc" role="group" aria-label={t("Rechnen", "Calculate")}>
+          {calc.map((action) => (
+            <button
+              key={action.kind + action.text}
+              type="button"
+              role="menuitem"
+              title={t("Hinter der Auswahl einfügen", "Insert after the selection")}
+              onClick={run(() => editor.view.dispatch(editor.state.tr.insertText(` ${action.text}`, to)))}
+            >
+              <Equals size={15} />
+              <span>{action.label}</span>
+              <strong>{action.text.replace(/^[=⇒]\s*/, "")}</strong>
+            </button>
+          ))}
         </div>
       )}
       <div className="text-menu-actions" role="group">

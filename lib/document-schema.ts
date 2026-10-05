@@ -20,6 +20,26 @@ import TextAlign from "@tiptap/extension-text-align";
 import { Subscript, Superscript, TextColor } from "./text-marks";
 import { MermaidBlock } from "./mermaid-node";
 import { FlowCodeBlock } from "./code-block";
+// Images that were marked up keep their original and the markings
+// (components/image-annotator.tsx), so they can be edited again.
+export const AnnotatedImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      original: {
+        default: null,
+        parseHTML: (el) => el.getAttribute("data-original"),
+        renderHTML: (attrs) => (attrs.original ? { "data-original": attrs.original } : {}),
+      },
+      annotations: {
+        default: null,
+        parseHTML: (el) => el.getAttribute("data-annotations"),
+        renderHTML: (attrs) => (attrs.annotations ? { "data-annotations": attrs.annotations } : {}),
+      },
+    };
+  },
+});
+
 export const Callout = Node.create({
   name: "callout",
   group: "block",
@@ -436,7 +456,7 @@ export const documentExtensions = [
   TableRow,
   TableCell,
   TableHeader,
-  Image.configure({ allowBase64: false }),
+  AnnotatedImage.configure({ allowBase64: false }),
   Highlight.configure({ multicolor: true }),
   TextColor,
   Superscript,

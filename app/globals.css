@@ -12671,6 +12671,95 @@ h3 .block-reactions {
   background: var(--hover);
   color: var(--text);
 }
+/* Calculating a selected expression: one row per result. */
+.text-menu-calc {
+  display: grid;
+  gap: 1px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  flex-basis: 100%;
+}
+.text-menu-calc button {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  justify-content: start;
+  gap: 8px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--secondary);
+  text-align: left;
+}
+.text-menu-calc button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.text-menu-calc strong {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+/* Formula editor: building blocks and results. */
+.math-snippets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0;
+}
+.math-snippets button {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  font-size: 14px;
+  color: var(--text);
+}
+.math-snippets button:hover {
+  background: var(--hover);
+}
+.math-calc {
+  display: grid;
+  gap: 2px;
+  margin: 10px 0;
+}
+.math-calc button {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.math-calc button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.math-calc strong {
+  color: var(--text);
+  font-weight: 600;
+}
+/* The result after a typed "=": greyed out until Tab writes it. */
+.calc-hint {
+  color: var(--muted);
+  pointer-events: none;
+  user-select: none;
+}
+.calc-hint kbd {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: 600 10.5px var(--font-ui);
+  vertical-align: 1px;
+}
 .text-menu.selection {
   flex-direction: row;
   flex-wrap: wrap;
@@ -13250,4 +13339,94 @@ h3 .block-reactions {
   .pdf-viewer {
     display: none;
   }
+}
+
+/* ---------- Marking up images (image-annotator.tsx) ---------- */
+.annotator {
+  display: grid;
+  gap: 12px;
+}
+.annotator-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.annotator-tools > div {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.annotator-tools button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--secondary);
+}
+.annotator-tools button:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.annotator-tools button.active {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.annotator-tools button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.annotator-tools .annotator-color {
+  width: 26px;
+  height: 26px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.annotator-tools .annotator-color.active {
+  background: var(--swatch);
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.annotator-width {
+  display: block;
+  width: 18px;
+  border-radius: 4px;
+  background: currentColor;
+}
+.annotator-stage {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: auto;
+}
+.annotator-canvas {
+  position: relative;
+  line-height: 0;
+}
+.annotator-canvas canvas {
+  touch-action: none;
+  cursor: crosshair;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.annotator-canvas canvas[data-tool="text"] {
+  cursor: text;
+}
+.annotator-text {
+  position: absolute;
+  min-width: 140px;
+  padding: 2px 6px;
+  border: 1px dashed var(--blue);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.85);
+  font: 600 16px system-ui, sans-serif;
+  line-height: 1.3;
+}
+.ProseMirror img {
+  cursor: default;
 }

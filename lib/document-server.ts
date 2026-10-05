@@ -61,7 +61,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-link-image",
       ],
       a: ["href", "name", "target", "rel"],
-      img: ["src", "alt", "width", "height"],
+      img: ["src", "alt", "width", "height", "data-original", "data-annotations"],
       input: ["type", "checked", "disabled"],
       ol: ["start"],
       td: ["colspan", "rowspan", "colwidth"],

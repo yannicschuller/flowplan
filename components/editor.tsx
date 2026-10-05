@@ -1,7 +1,9 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
-import { useT } from "./i18n";
+import { useLocale, useT } from "./i18n";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
+import { CalcHint } from "@/lib/calc-hint-plugin";
+import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -58,7 +60,6 @@ import {
   TableHeader,
   TableRow,
 } from "@tiptap/extension-table";
-import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
@@ -109,6 +110,7 @@ import {
   Check,
   X,
   CalendarBlank,
+  PencilSimpleLine,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
 import { withPdfView } from "./pdf-node";
@@ -130,6 +132,7 @@ import {
   Spoiler,
   Indent,
   MEDIA_WIDTHS,
+  AnnotatedImage,
 } from "@/lib/document-schema";
 import { compressImage } from "@/lib/image-compress";
 export default function DocumentEditor({
@@ -167,6 +170,7 @@ export default function DocumentEditor({
   onHtml: (v: string) => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const doc = useMemo(() => new Y.Doc(), [pageId, rowId]);
   // One id per open editor: the live channel does not echo its own changes
   // and cursor moves back to it.
@@ -197,6 +201,8 @@ export default function DocumentEditor({
     [linkUrl, setLinkUrl] = useState(""),
     [diagram, setDiagram] = useState<DiagramTarget | null>(null),
     [math, setMath] = useState<MathTarget | null>(null),
+    // The image being marked up (position and its attributes).
+    [annotate, setAnnotate] = useState<{ pos: number; src: string; original: string | null; annotations: string | null } | null>(null),
     [toggle, setToggle] = useState(false),
     [toggleTitle, setToggleTitle] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -316,6 +322,7 @@ export default function DocumentEditor({
         TaskList,
         FlowTaskItem.configure({ nested: true }),
         TaskDue,
+        CalcHint.configure({ locale }),
         Suggestion,
         SuggestChanges.configure({
           enabled: () => suggestingRef.current,
@@ -334,7 +341,7 @@ export default function DocumentEditor({
         TableCell,
         TableHeader,
         // Images are resized by their side handles, keeping proportions.
-        Image.extend({
+        AnnotatedImage.extend({
           addNodeView() {
             const render = this.parent?.();
             return render ? commentMarkedNodeView(render, "img") : null;
@@ -407,6 +414,12 @@ export default function DocumentEditor({
               ),
             );
           for (const file of files) void uploadFile.current(file);
+          return true;
+        },
+        // Double-clicking a photo opens it for marking up.
+        handleDoubleClickOn: (_view, pos, node) => {
+          if (!editable || node.type.name !== "image") return false;
+          setAnnotate({ pos, src: node.attrs.src, original: node.attrs.original, annotations: node.attrs.annotations });
           return true;
         },
         handleKeyDown: (_view, event) => {
@@ -908,6 +921,13 @@ export default function DocumentEditor({
       run: () => openInlineMath(),
     },
     {
+      name: t("Bruch", "Fraction"),
+      keywords: ["fraction", "bruch", "frac", "geteilt"],
+      description: t("Zähler über Nenner, im Satz", "Numerator over denominator, inside a sentence"),
+      icon: FunctionIcon,
+      run: () => setMath({ type: "mathInline", expression: "\\frac{}{}" }),
+    },
+    {
       name: t("Seite oder Person erwähnen", "Mention a page or person"),
       keywords: ["mention", "link", "@", "seite", "person"],
       description: t("Mit @ Wissen verknüpfen", "Connect knowledge with @"),
@@ -1062,6 +1082,35 @@ export default function DocumentEditor({
   function moveBlock(direction: -1 | 1) {
     moveSelectedBlock(editor, direction);
   }
+  // Marks up the selected image (toolbar button).
+  function annotateSelectedImage() {
+    if (!editor) return;
+    const { selection } = editor.state;
+    const node = "node" in selection ? (selection as unknown as { node: { type: { name: string }; attrs: Record<string, string | null> } }).node : null;
+    if (node?.type.name !== "image") return;
+    setAnnotate({ pos: selection.from, src: node.attrs.src || "", original: node.attrs.original, annotations: node.attrs.annotations });
+  }
+  // Uploads the marked-up image and keeps original and markings on it.
+  async function saveAnnotation(target: NonNullable<typeof annotate>, result: AnnotationResult) {
+    const current = editor?.state.doc.nodeAt(target.pos);
+    if (!editor || current?.type.name !== "image" || current.attrs.src !== target.src)
+      throw new Error(t("Das Bild wurde inzwischen geändert. Bitte erneut öffnen.", "The image was changed in the meantime. Please open it again."));
+    const form = new FormData();
+    form.set("pageId", pageId);
+    form.set("file", new File([result.blob], `${(current.attrs.alt || "bild").replace(/\.[a-z0-9]+$/i, "")}-markiert.${result.blob.type === "image/png" ? "png" : "jpg"}`, { type: result.blob.type }));
+    const response = await fetch("/api/upload", { method: "POST", body: form });
+    const data = await response.json();
+    if (!response.ok) throw new Error(serverMessage(data.error));
+    // Without markings the original comes back.
+    const attrs = result.shapes
+      ? { ...current.attrs, src: data.url, original: result.original, annotations: result.shapes }
+      : { ...current.attrs, src: result.original, original: null, annotations: null };
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(target.pos, undefined, attrs));
+  }
+  const imageSelected = useEditorState({
+    editor,
+    selector: ({ editor: current }) => !!current?.isActive("image"),
+  });
   // The toolbar follows the selection for the width of videos and embeds.
   const selectedMediaWidth = useEditorState({
     editor,
@@ -1102,6 +1151,15 @@ export default function DocumentEditor({
             >
               <ArrowUUpRight />
             </button>
+            {imageSelected && (
+              <button
+                title={t("Bild markieren (Doppelklick)", "Mark up image (double-click)")}
+                aria-label={t("Bild markieren", "Mark up image")}
+                onClick={annotateSelectedImage}
+              >
+                <PencilSimpleLine />
+              </button>
+            )}
             <span className="toolbar-separator" />
             <button
               title={t("Fett", "Bold")}
@@ -1732,6 +1790,15 @@ export default function DocumentEditor({
           editor={editor}
           target={diagram}
           onClose={() => setDiagram(null)}
+        />
+      )}
+      {annotate && (
+        <ImageAnnotator
+          src={annotate.src}
+          original={annotate.original}
+          annotations={annotate.annotations}
+          onSave={(result) => saveAnnotation(annotate, result)}
+          onClose={() => setAnnotate(null)}
         />
       )}
       {math && (
