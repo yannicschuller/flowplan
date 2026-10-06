@@ -1,5 +1,6 @@
 import { teamReply } from "./service-desk";
 import { validateTicketPrefix } from "./ticket-refs";
+import { prepareSubtaskFields } from "./subtasks-server";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1475,6 +1476,7 @@ export function command(
           new Set(views.map((v) => v.id)).size !== views.length
         )
           throw new HttpError(400, "Doppelte Eigenschaft oder Ansicht.");
+        prepareSubtaskFields(write(), fields, databaseSettings(pid()));
         validateDatabaseRelations(user, write(), fields, d.fields);
         validateTicketPrefix(write(), fields);
         for (const v of views) {
@@ -1689,7 +1691,13 @@ export function command(
         // Optional settings (done rule, workflow, automations, sprints …).
         const p = write();
         autoDatabaseSnapshot(user, p);
-        result = clientSettings(updateDatabaseSettings(user, p, database(p.id).fields, b.settings));
+        const before = database(p.id).fields;
+        const saved = updateDatabaseSettings(user, p, before, b.settings);
+        // Progress properties follow the done rule.
+        const fieldsNow = prepareSubtaskFields(p, structuredClone(before), saved);
+        if (JSON.stringify(fieldsNow) !== JSON.stringify(before))
+          run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify(fieldsNow), p.id);
+        result = clientSettings(saved);
         break;
       }
       case "database.recordLayout": {

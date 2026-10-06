@@ -33,6 +33,7 @@ export const field = z.object({
     "updated_by",
     "files",
     "id",
+    "progress",
   ]),
   options: z.array(z.string().max(100)).max(100).optional(),
   formula: z.string().max(2000).optional(),
@@ -45,6 +46,10 @@ export const field = z.object({
   format: z.string().max(40).optional(),
   timeFormat: z.enum(["24", "12"]).optional(),
   decimals: z.number().int().min(0).max(10).optional(),
+  parent: z.boolean().optional(),
+  parentField: z.string().max(500).optional(),
+  doneField: z.string().max(500).optional(),
+  doneValues: z.array(z.string().max(100)).max(50).optional(),
   prefix: z.string().regex(/^[A-Z][A-Z0-9]{0,9}$/, "Präfix: Großbuchstaben und Ziffern, z. B. WEB.").optional(),
 });
 export const view = z
@@ -73,6 +78,7 @@ export const view = z
       .array(z.object({ field: str, direction: z.enum(["asc", "desc"]) }))
       .max(20),
     groupBy: z.string().optional(),
+    tree: z.boolean().optional(),
     subGroupBy: z.string().max(200).optional(),
     groupLevels: z.array(z.string().max(200)).max(3).optional(),
     groupSettings: z

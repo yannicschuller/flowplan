@@ -24,6 +24,7 @@ const computed = [
   "created_by",
   "updated_by",
   "id",
+  "progress",
 ];
 export function validateCellPatch(
   user: Identity,
@@ -76,6 +77,8 @@ export function validateCellPatch(
       result[key] = list;
     } else if (f.type === "relation") {
       const ids = z.array(z.string().uuid()).max(500).parse(value);
+      if (f.parent && ids.length > 1)
+        throw new HttpError(400, "Ein Eintrag hat höchstens einen übergeordneten Eintrag.");
       if (!f.relationPage && ids.length)
         throw new HttpError(400, "Relationsziel fehlt.");
       if (f.relationPage) {

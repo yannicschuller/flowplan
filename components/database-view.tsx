@@ -1,12 +1,14 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
 import { suggestedPrefix } from "@/lib/ticket-ids";
+import { parentField, treeOrder } from "@/lib/subtasks";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { RowAccess, rowAccessSummary } from "./row-access";
 import TicketThread from "./ticket-thread";
 import { DatabaseTools } from "./database-tools";
+import { RecordSubtasks } from "./record-subtasks";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
   defaultRecordLayout,
@@ -205,6 +207,7 @@ const fieldNames: Record<FieldType, [string, string]> = {
   updated_by: ["Bearbeitet von", "Edited by"],
   files: ["Dateien", "Files"],
   id: ["ID (Ticketnummer)", "ID (ticket number)"],
+  progress: ["Fortschritt der Unteraufgaben", "Subtask progress"],
 };
 type RowMove = {
   viewId: string;
@@ -220,6 +223,7 @@ const rowDragType = "application/x-flowplan-row-order";
 const groupDragType = "application/x-flowplan-group-order";
 const computedTypes = [
   "id",
+  "progress",
   "formula",
   "rollup",
   "created_at",
@@ -516,6 +520,10 @@ export default function DatabaseView({
   );
   const selected = data.rows.find((r) => r.id === rowId);
   const selectedEditable = editable && selected?.role !== "viewer";
+  // Subtasks: the parent property and, in tables, the tree.
+  const subtaskParent = parentField(fields);
+  const treeParent = view.type === "table" && view.tree ? subtaskParent : undefined;
+  const [treeCollapsed, setTreeCollapsed] = useState<Set<string>>(() => new Set());
   // Another record: its permissions panel starts closed.
   const [accessFor, setAccessFor] = useState(selected?.id);
   if (accessFor !== selected?.id) {
@@ -1251,6 +1259,15 @@ export default function DatabaseView({
       );
     }
     if (f.type === "rollup") return <RollupValue field={f} value={v} />;
+    if (f.type === "progress")
+      return typeof v === "number" ? (
+        <span className="progress-cell" title={`${Math.round(v * 100)} %`}>
+          <span className="progress-track">
+            <span style={{ width: `${Math.round(v * 100)}%` }} />
+          </span>
+          {Math.round(v * 100)} %
+        </span>
+      ) : null;
     if (["person", "created_by", "updated_by"].includes(f.type)) {
       const u = members.find((m) => m.id === v);
       return u ? (
@@ -2002,7 +2019,7 @@ export default function DatabaseView({
       </div>
     );
   }
-  function tableRow(r: Row, groupKey?: string) {
+  function tableRow(r: Row, groupKey?: string, tree?: { depth: number; children: number }) {
     return (
       <tr
         key={r.id}
@@ -2058,7 +2075,34 @@ export default function DatabaseView({
                 />
               </span>
             ) : (
-              <span className={f.id === fields[0].id ? "title-cell" : ""}>
+              <span
+                className={f.id === fields[0].id ? "title-cell" : ""}
+                style={tree && f.id === fields[0].id ? { paddingLeft: tree.depth * 18 } : undefined}
+              >
+                {tree && f.id === fields[0].id && (
+                  <button
+                    type="button"
+                    className="tree-toggle"
+                    aria-label={
+                      treeCollapsed.has(r.id)
+                        ? t(`${tree.children} Unteraufgaben zeigen`, `Show ${tree.children} subtasks`)
+                        : t("Unteraufgaben ausblenden", "Hide subtasks")
+                    }
+                    aria-expanded={!treeCollapsed.has(r.id)}
+                    style={{ visibility: tree.children ? "visible" : "hidden" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTreeCollapsed((current) => {
+                        const next = new Set(current);
+                        if (next.has(r.id)) next.delete(r.id);
+                        else next.add(r.id);
+                        return next;
+                      });
+                    }}
+                  >
+                    <CaretRight size={12} />
+                  </button>
+                )}
                 {f.id === fields[0].id && r.icon && (
                   <PageIcon name={r.icon} size={15} className="row-icon" />
                 )}
@@ -2511,7 +2555,11 @@ export default function DatabaseView({
               ))
             ) : (
               <tbody>
-                {shown.slice(0, rowLimit).map((r) => tableRow(r))}
+                {treeParent
+                  ? treeOrder(shown, treeParent, treeCollapsed)
+                      .slice(0, rowLimit)
+                      .map((x) => tableRow(x.row, undefined, { depth: x.depth, children: x.children }))
+                  : shown.slice(0, rowLimit).map((r) => tableRow(r))}
                 {shown.length > rowLimit && (
                   <MoreRows
                     table
@@ -3384,6 +3432,17 @@ export default function DatabaseView({
               </label>
             </fieldset>
           )}
+          {view.type === "table" && subtaskParent && (
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                disabled={!viewEditable}
+                checked={!!view.tree}
+                onChange={(e) => updateView({ tree: e.target.checked || undefined, ...(e.target.checked ? { groupBy: undefined, subGroupBy: undefined, groupLevels: undefined } : {}) })}
+              />
+              {t("Unteraufgaben als Baum zeigen", "Show subtasks as a tree")}
+            </label>
+          )}
           <label>
             {t("Gruppieren nach", "Group by")}
             <Select
@@ -3993,16 +4052,21 @@ export default function DatabaseView({
             {t("Typ", "Type")}
             <Select
               aria-label={t("Eigenschaftstyp", "Property type")}
-              value={fieldDraft.type}
+              value={fieldDraft.parent ? "@parent" : fieldDraft.type}
               disabled={
                 !editable || !allowFieldChanges || schemaBusy || !!relationPair
               }
               onChange={(e) =>
-                setFieldDraft((f) => ({
-                  ...f,
-                  type: e.target.value as FieldType,
-                  ...(e.target.value === "id" && !f.prefix ? { prefix: suggestedPrefix(page.title) } : {}),
-                }))
+                setFieldDraft((f) =>
+                  e.target.value === "@parent"
+                    ? { ...f, type: "relation", parent: true, relationPage: page.id }
+                    : {
+                        ...f,
+                        type: e.target.value as FieldType,
+                        parent: undefined,
+                        ...(e.target.value === "id" && !f.prefix ? { prefix: suggestedPrefix(page.title) } : {}),
+                      },
+                )
               }
             >
               {Object.entries(fieldNames).map(([k, n]) => (
@@ -4010,6 +4074,7 @@ export default function DatabaseView({
                   {t(n[0], n[1])}
                 </option>
               ))}
+              <option value="@parent">{t("Übergeordneter Eintrag (Unteraufgaben)", "Parent record (subtasks)")}</option>
             </Select>
           </label>
           {fieldDraft.type === "id" && (
@@ -4211,7 +4276,22 @@ export default function DatabaseView({
               onChange={(formula) => setFieldDraft((f) => ({ ...f, formula }))}
             />
           )}
-          {fieldDraft.type === "relation" && (
+          {fieldDraft.parent && (
+            <p className="muted">
+              {t(
+                "Einträge können unter einem anderen Eintrag dieser Datenbank stehen – Epic, Story, Aufgabe. Tabellen zeigen sie als Baum, Boards als Swimlanes, der Fortschritt läuft nach oben.",
+                "Records can sit below another record of this database – epic, story, task. Tables show them as a tree, boards as swimlanes, progress rolls up.",
+              )}
+            </p>
+          )}
+          {fieldDraft.type === "progress" && (
+            <p className="muted">
+              {fields.some((f) => f.parent)
+                ? t("Zeigt, wie viel der Unteraufgaben erledigt ist (über alle Ebenen).", "Shows how much of the subtasks is done (across all levels).")
+                : t("Lege zuerst eine Eigenschaft „Übergeordneter Eintrag“ an.", "First add a “Parent record” property.")}
+            </p>
+          )}
+          {fieldDraft.type === "relation" && !fieldDraft.parent && (
             <>
               <label>
                 {t("Verknüpfte Datenbank", "Linked database")}
@@ -4823,6 +4903,17 @@ export default function DatabaseView({
                   onError={onError}
                   onChanged={onRefresh}
                 />
+                {subtaskParent && (
+                  <RecordSubtasks
+                    pageId={page.id}
+                    row={selected}
+                    rows={data.rows}
+                    database={data.database}
+                    parent={subtaskParent}
+                    editable={selectedEditable}
+                    act={act}
+                  />
+                )}
                 <TicketThread
                   key={`ticket-${selected.id}`}
                   pageId={page.id}

@@ -12,6 +12,7 @@ import { computedCells } from "./database";
 import { matchesFilterGroup } from "./database-filters";
 import { databaseSettings } from "./database-settings";
 import { doneRule, isDone, type Automation, type AutomationAction, type DatabaseSettings } from "./database-settings-schema";
+import { createsCycle, parentField } from "./subtasks";
 import type { Field, Identity, Page, Row } from "./types";
 
 type Cells = Record<string, unknown>;
@@ -41,6 +42,23 @@ export function checkWorkflow(user: Identity | null | "system", page: Page, fiel
   if (missing.length) throw new HttpError(400, `„${to}“ braucht: ${missing.map((f) => f.name).join(", ")}.`);
   if (to && flow.ownersOnly.includes(to) && user !== "system" && (!user || pageRole(user, page) !== "owner"))
     throw new HttpError(403, `„${to}“ dürfen nur Verantwortliche der Datenbank setzen.`);
+}
+
+/* ---------- Subtasks ---------- */
+
+// A record cannot sit below itself, directly or further down.
+function checkParent(page: Page, rowId: string, fields: Field[], before: Cells, after: Cells) {
+  const field = parentField(fields);
+  if (!field) return;
+  const next = Array.isArray(after[field.id]) ? (after[field.id] as string[])[0] : undefined;
+  if (!next || text(before[field.id]) === text(after[field.id])) return;
+  const parentOf = (id: string) => {
+    const r = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", id, page.id);
+    const v = r ? JSON.parse(r.cells)[field.id] : null;
+    return Array.isArray(v) && typeof v[0] === "string" ? v[0] : null;
+  };
+  if (next === rowId || createsCycle(rowId, next, parentOf))
+    throw new HttpError(400, "Ein Eintrag kann nicht unter sich selbst oder seinen Unteraufgaben stehen.");
 }
 
 /* ---------- Automations ---------- */
@@ -151,6 +169,7 @@ export function recordStatusChange(pageId: string, rowId: string, fields: Field[
 export function rowChanged(user: Identity | null | "system", page: Page, rowId: string, before: Cells, after: Cells, fields?: Field[]) {
   const settings = databaseSettings(page.id);
   const props = fields || (JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[]);
+  checkParent(page, rowId, props, before, after);
   checkWorkflow(user, page, props, settings, before, after);
   recordStatusChange(page.id, rowId, props, settings, before, after);
   runAutomations({ page, rowId, actor: user === "system" ? null : user, event: "updated", before });

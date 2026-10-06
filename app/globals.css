@@ -13946,3 +13946,76 @@ h3 .block-reactions {
   gap: 10px;
   cursor: pointer;
 }
+
+/* ---------- Subtasks (lib/subtasks.ts) ---------- */
+.tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 2px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  vertical-align: middle;
+}
+.tree-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.tree-toggle:hover {
+  background: var(--hover);
+}
+.progress-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}
+.progress-track {
+  display: inline-block;
+  width: 64px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--hover);
+}
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--blue);
+}
+.record-subtasks h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.record-subtasks ul {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.record-subtasks li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.record-subtasks li[data-done="true"] a {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.subtask-add {
+  display: flex;
+  gap: 6px;
+}
+.subtask-add input {
+  flex: 1;
+  min-width: 0;
+}

@@ -101,6 +101,7 @@ export function CellInput({
         rows={related[f.relationPage || ""]}
         value={Array.isArray(value) ? (value as string[]) : []}
         disabled={disabled}
+        single={!!f.parent}
         onChange={onChange}
       />
     );
@@ -234,12 +235,15 @@ function RelationPicker({
   rows,
   value,
   disabled,
+  single = false,
   onChange,
 }: {
   name: string;
   rows?: Row[];
   value: string[];
   disabled?: boolean;
+  // One record only (parent record of subtasks).
+  single?: boolean;
   onChange: (value: string[]) => void | Promise<unknown>;
 }) {
   const t = useT();
@@ -294,7 +298,9 @@ function RelationPicker({
               onChange={(e) =>
                 change(
                   e.target.checked
-                    ? [...selection, r.id]
+                    ? single
+                      ? [r.id]
+                      : [...selection, r.id]
                     : selection.filter((v) => v !== r.id),
                 )
               }

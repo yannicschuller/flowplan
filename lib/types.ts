@@ -83,7 +83,8 @@ export type FieldType =
   | "created_by"
   | "updated_by"
   | "files"
-  | "id";
+  | "id"
+  | "progress";
 export type Field = {
   id: string;
   name: string;
@@ -101,6 +102,13 @@ export type Field = {
   decimals?: number;
   // "id": the ticket prefix, e.g. WEB for WEB-123.
   prefix?: string;
+  // "relation" to the own database holding the parent record (subtasks).
+  parent?: boolean;
+  // "progress": share of done subtasks below a record. The done rule is
+  // copied from the database settings by the server.
+  parentField?: string;
+  doneField?: string;
+  doneValues?: string[];
 };
 export type Row = {
   id: string;
@@ -163,6 +171,8 @@ export type View = {
   sorts: { field: string; direction: "asc" | "desc" }[];
   groupBy?: string;
   subGroupBy?: string;
+  // Table: records below their parent record, as a tree (subtasks).
+  tree?: boolean;
   // Further grouping levels below the subgroups (levels 3 to 5).
   groupLevels?: string[];
   groupSettings?: {
