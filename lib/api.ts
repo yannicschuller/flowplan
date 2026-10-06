@@ -4,6 +4,7 @@ import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
 import { gitSetup } from "./git-integration";
+import { deleteRecordView, saveRecordView } from "./cross-records";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1944,6 +1945,12 @@ export function command(
         result = sprintCommand(user, p, action, b);
         break;
       }
+      case "recordView.save":
+        result = saveRecordView(user, b);
+        break;
+      case "recordView.delete":
+        result = deleteRecordView(user, b);
+        break;
       case "git.setup":
       case "git.disable":
         result = gitSetup(write(), action);

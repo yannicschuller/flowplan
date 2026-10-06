@@ -4,6 +4,7 @@ import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
 import { recordTime, timeReport } from "@/lib/time-tracking";
 import { sprintCharts } from "@/lib/sprints";
 import { gitConfig, gitLinks } from "@/lib/git-integration";
+import { crossRecords, recordViews } from "@/lib/cross-records";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -414,6 +415,20 @@ async function handleGET(
       const page = requirePage(user, z.uuid().parse(url.searchParams.get("page")));
       return NextResponse.json(
         recordTime(user, page, z.uuid().parse(url.searchParams.get("row")), z.string().max(500).parse(url.searchParams.get("field"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "records") {
+      // Records across all databases (My tasks → records).
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      let filter: unknown = {};
+      try {
+        filter = JSON.parse(url.searchParams.get("filter") || "{}");
+      } catch {
+        throw new HttpError(400, "Ungültiger Filter.");
+      }
+      return NextResponse.json(
+        { ...crossRecords(user, wid, filter), views: recordViews(user, wid) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }

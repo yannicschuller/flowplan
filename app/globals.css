@@ -14513,3 +14513,106 @@ h3 .block-reactions {
   grid-column: 2;
   font-size: 12px;
 }
+
+/* ---------- Records across databases (components/my-records.tsx) ---------- */
+.my-tasks-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.my-tasks-tabs button {
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--secondary);
+  font-weight: 600;
+}
+.my-tasks-tabs button[aria-selected="true"] {
+  border-color: var(--blue);
+  color: var(--text);
+}
+.record-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.chip-group {
+  display: inline-flex;
+  align-items: center;
+}
+.chip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px;
+}
+.chip-button[aria-selected="true"] {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+.chip-remove {
+  width: 22px;
+  height: 22px;
+  margin-left: -4px;
+}
+.record-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+}
+.record-filters input[type="search"] {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.record-view-name {
+  display: flex;
+  gap: 6px;
+}
+.my-records-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.my-records-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 4px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.my-records-list li > button {
+  display: flex;
+  flex: 1 1 260px;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  color: var(--text);
+  text-align: left;
+}
+.my-records-list li[data-done="true"] .my-record-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.my-record-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-record-db {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--secondary);
+  font-size: 12.5px;
+}

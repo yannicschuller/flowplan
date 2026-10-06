@@ -7,6 +7,7 @@ import { useT } from "./i18n";
 import { useCallback, useEffect, useState } from "react";
 import { CheckSquare, X } from "@phosphor-icons/react";
 import { api, PageIcon } from "./ui";
+import { MyRecords } from "./my-records";
 import { dueLabel, dueState, localToday } from "@/lib/task-due-plugin";
 
 type Task = {
@@ -75,6 +76,7 @@ export function MyTasks({
   const [others, setOthers] = useState<Others>([]);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState("");
+  const [tab, setTab] = useState<"tasks" | "records">("tasks");
   const load = useCallback(async () => {
     try {
       const result = await api<{ tasks: Task[]; others?: Others }>(
@@ -167,6 +169,18 @@ export function MyTasks({
           {t("Aufgaben, die dir mit @Name gegeben wurden, deine eigenen mit Datum und alle Aufgaben aus deinen Journalen.", "Tasks given to you with @name, your own with a date and all tasks from your journals.")}
         </p>
       </div>
+      <div className="my-tasks-tabs" role="tablist" aria-label={t("Bereich", "Section")}>
+        <button role="tab" aria-selected={tab === "tasks"} onClick={() => setTab("tasks")}>
+          {t("Aufgaben aus Dokumenten", "Tasks from documents")}
+        </button>
+        <button role="tab" aria-selected={tab === "records"} onClick={() => setTab("records")}>
+          {t("Einträge aus Datenbanken", "Records from databases")}
+        </button>
+      </div>
+      {tab === "records" ? (
+        <MyRecords workspaceId={workspaceId} onOpen={(pageId, rowId) => onOpen(pageId, rowId)} onError={onError} />
+      ) : (
+      <>
       <label className="my-tasks-done">
         <input type="checkbox" checked={done} onChange={(e) => setDone(e.target.checked)} />
         {t("Erledigte zeigen", "Show completed")}
@@ -205,6 +219,8 @@ export function MyTasks({
             </section>
           ))}
         </section>
+      )}
+      </>
       )}
     </div>
   );

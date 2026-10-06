@@ -14,6 +14,8 @@ const exact: Record<string, string> = {
   "Anfrage zu groß.": "Request too large.",
   "Eigenschaft fehlt.": "Property missing.",
   "Unbekannte Einstellung.": "Unknown setting.",
+  "Höchstens 30 gespeicherte Ansichten.": "At most 30 saved views.",
+  "Ungültiger Filter.": "Invalid filter.",
   "Das sieht nicht nach einem Jira-CSV-Export aus (Spalte „Summary“ fehlt).": "This does not look like a Jira CSV export (column “Summary” is missing).",
   "Das sieht nicht nach einem Trello-Export aus (Karten oder Listen fehlen).": "This does not look like a Trello export (cards or lists are missing).",
   "Die Datei ist kein gültiges JSON.": "The file is not valid JSON.",
