@@ -13,7 +13,8 @@ import { matchesFilterGroup } from "./database-filters";
 import { databaseSettings } from "./database-settings";
 import { doneRule, isDone, type Automation, type AutomationAction, type DatabaseSettings } from "./database-settings-schema";
 import { createsCycle, parentField } from "./subtasks";
-import type { Field, Identity, Page, Row } from "./types";
+import { groupKey, groupingField } from "./database-groups";
+import type { Field, Identity, Page, Row, View } from "./types";
 
 type Cells = Record<string, unknown>;
 type Event = "created" | "form" | "updated" | "overdue";
@@ -59,6 +60,32 @@ function checkParent(page: Page, rowId: string, fields: Field[], before: Cells, 
   };
   if (next === rowId || createsCycle(rowId, next, parentOf))
     throw new HttpError(400, "Ein Eintrag kann nicht unter sich selbst oder seinen Unteraufgaben stehen.");
+}
+
+/* ---------- WIP limits ---------- */
+
+// A board column with a locked limit takes no further records, however the
+// record gets there (board, table, record view, automations of others).
+function checkWipLimits(page: Page, fields: Field[], before: Cells, after: Cells) {
+  const raw = one<{ views: string }>("SELECT views FROM databases WHERE page_id=?", page.id);
+  const views = JSON.parse(raw?.views || "[]") as View[];
+  for (const view of views) {
+    if (view.type !== "board" || !view.wip) continue;
+    const field = groupingField(fields, view);
+    if (!field || text(before[field.id]) === text(after[field.id])) continue;
+    const values = Array.isArray(after[field.id]) ? (after[field.id] as unknown[]) : [after[field.id]];
+    const old = new Set((Array.isArray(before[field.id]) ? (before[field.id] as unknown[]) : [before[field.id]]).map(groupKey));
+    for (const value of values) {
+      const key = groupKey(value);
+      const limit = view.wip[key];
+      if (!limit?.lock || old.has(key)) continue;
+      const count = all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=?", page.id).filter((r) => {
+        const v = JSON.parse(r.cells)[field.id];
+        return (Array.isArray(v) ? v : [v]).some((x) => groupKey(x) === key);
+      }).length;
+      if (count > limit.max) throw new HttpError(409, `„${text(value)}“ ist voll (höchstens ${limit.max}).`);
+    }
+  }
 }
 
 /* ---------- Automations ---------- */
@@ -170,6 +197,7 @@ export function rowChanged(user: Identity | null | "system", page: Page, rowId: 
   const settings = databaseSettings(page.id);
   const props = fields || (JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[]);
   checkParent(page, rowId, props, before, after);
+  checkWipLimits(page, props, before, after);
   checkWorkflow(user, page, props, settings, before, after);
   recordStatusChange(page.id, rowId, props, settings, before, after);
   runAutomations({ page, rowId, actor: user === "system" ? null : user, event: "updated", before });

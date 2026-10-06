@@ -14019,3 +14019,50 @@ h3 .block-reactions {
   flex: 1;
   min-width: 0;
 }
+
+/* ---------- Board WIP limits (components/board-wip.tsx) ---------- */
+.wip-count {
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.wip-count.full {
+  background: var(--hover);
+  color: var(--text);
+}
+.wip-count.over {
+  background: color-mix(in srgb, var(--signal) 18%, transparent);
+  color: var(--signal);
+  font-weight: 600;
+}
+.board-column:has(.wip-count.over) {
+  box-shadow: inset 0 3px 0 var(--signal);
+}
+.board-wip {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.board-wip legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.board-wip p {
+  margin: 0;
+}
+.board-wip-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px auto;
+  align-items: center;
+  gap: 8px;
+}
+.board-wip-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

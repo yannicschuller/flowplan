@@ -173,6 +173,9 @@ export type View = {
   subGroupBy?: string;
   // Table: records below their parent record, as a tree (subtasks).
   tree?: boolean;
+  // Board: work-in-progress limits per column (group key); `lock` refuses
+  // further records instead of only marking the column.
+  wip?: Record<string, { max: number; lock?: boolean }>;
   // Further grouping levels below the subgroups (levels 3 to 5).
   groupLevels?: string[];
   groupSettings?: {

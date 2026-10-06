@@ -9,6 +9,7 @@ import { RowAccess, rowAccessSummary } from "./row-access";
 import TicketThread from "./ticket-thread";
 import { DatabaseTools } from "./database-tools";
 import { RecordSubtasks } from "./record-subtasks";
+import { BoardWipSettings, WipCount } from "./board-wip";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
   defaultRecordLayout,
@@ -2653,7 +2654,7 @@ export default function DatabaseView({
                 <span className={`tag tag-${tagColor(g.label)}`}>
                   {g.label}
                 </span>
-                <span className="muted">{g.rows.length}</span>
+                <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
 
                 {!collapsed(g.key) && groupMoveButtons(g, true)}
               </header>
@@ -2830,7 +2831,7 @@ export default function DatabaseView({
                 <span className={`tag tag-${tagColor(g.label)}`}>
                   {g.label}
                 </span>
-                <span className="muted">{g.rows.length}</span>
+                <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
                 {viewEditable && (
                   <button
                     className="group-drag"
@@ -3431,6 +3432,15 @@ export default function DatabaseView({
                 </Select>
               </label>
             </fieldset>
+          )}
+          {view.type === "board" && groupField && (
+            <BoardWipSettings
+              key={`${view.id}-${groupField.id}`}
+              columns={groups.map((g) => ({ key: g.key, label: g.label }))}
+              wip={view.wip || {}}
+              disabled={!viewEditable}
+              onChange={(wip) => updateView({ wip })}
+            />
           )}
           {view.type === "table" && subtaskParent && (
             <label className="checkbox-label">

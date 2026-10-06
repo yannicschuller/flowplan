@@ -476,6 +476,7 @@ const patterns: [RegExp, string][] = [
   [/^Neuer Gasteintrag in „(.+)“$/, "New guest record in “$1”"],
   [/^Neuer Gastkommentar auf „(.+)“$/, "New guest comment on “$1”"],
   [/^Neue Kundenantwort zu „(.+)“$/, "New customer reply on “$1”"],
+  [/^„(.+)“ ist voll \(höchstens (\d+)\)\.$/, "“$1” is full (at most $2)."],
   [/^Von „(.+)“ nach „(.+)“ ist im Workflow nicht vorgesehen\.$/, "Changing from “$1” to “$2” is not part of the workflow."],
   [/^„(.+)“ braucht: (.+)\.$/, "“$1” needs: $2."],
   [/^„(.+)“ dürfen nur Verantwortliche der Datenbank setzen\.$/, "Only owners of the database may set “$1”."],

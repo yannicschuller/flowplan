@@ -79,6 +79,10 @@ export const view = z
       .max(20),
     groupBy: z.string().optional(),
     tree: z.boolean().optional(),
+    wip: z
+      .record(z.string().max(2000), z.object({ max: z.number().int().min(1).max(999), lock: z.boolean().optional() }))
+      .refine((limits) => Object.keys(limits).length <= 100)
+      .optional(),
     subGroupBy: z.string().max(200).optional(),
     groupLevels: z.array(z.string().max(200)).max(3).optional(),
     groupSettings: z
