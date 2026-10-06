@@ -300,6 +300,8 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS time_entries_row ON time_entries(row_id,start);
     CREATE INDEX IF NOT EXISTS time_entries_page ON time_entries(page_id,start);
     CREATE INDEX IF NOT EXISTS time_entries_running ON time_entries(user_id) WHERE end IS NULL;`);
+  // CalDAV: two-way calendar sync per person and calendar view.
+  d.exec(`CREATE TABLE IF NOT EXISTS caldav_accesses(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,view_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL);`);
   // Saved filters over all databases ("My tasks" → records).
   d.exec(`CREATE TABLE IF NOT EXISTS record_views(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,config TEXT NOT NULL,created_at INTEGER NOT NULL);`);
   // Git connection: commits and pull requests linked to records.

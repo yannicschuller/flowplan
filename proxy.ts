@@ -40,7 +40,20 @@ export function contentSecurityPolicy(nonce: string | null, dev: boolean) {
   ].join("; ");
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  // CalDAV speaks PROPFIND and REPORT, which route handlers do not accept.
+  if (path.startsWith("/api/caldav") || path.startsWith("/.well-known/caldav")) {
+    const { handleCalDav } = await import("./lib/caldav");
+    return handleCalDav(request);
+  }
+  // Trailing slashes are kept for CalDAV (next.config.ts); pages redirect
+  // to the address without one, as before.
+  if (path.length > 1 && path.endsWith("/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = path.replace(/\/+$/, "");
+    return NextResponse.redirect(url, 308);
+  }
   const dev = process.env.NODE_ENV === "development";
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const policy = contentSecurityPolicy(nonce, dev);
@@ -54,6 +67,10 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/api/caldav",
+    "/api/caldav/:path*",
+    "/.well-known/caldav",
+    "/.well-known/caldav/:path*",
     {
       // Pages only: API answers, build files, icons and fonts need no policy.
       source:

@@ -14616,3 +14616,21 @@ h3 .block-reactions {
   color: var(--secondary);
   font-size: 12.5px;
 }
+
+/* ---------- CalDAV (components/calendar-subscribe.tsx) ---------- */
+.caldav-sync {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.caldav-sync h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.caldav-sync label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}

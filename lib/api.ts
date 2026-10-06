@@ -5,6 +5,7 @@ import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
 import { gitSetup } from "./git-integration";
 import { deleteRecordView, saveRecordView } from "./cross-records";
+import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -2271,6 +2272,12 @@ export function command(
         break;
       case "calendar.feed.revoke":
         revokeCalendarFeed(user, pid(), z.string().max(100).parse(b.viewId));
+        break;
+      case "calendar.caldav":
+        result = createCalDavAccess(user, pid(), z.string().max(100).parse(b.viewId));
+        break;
+      case "calendar.caldav.revoke":
+        revokeCalDavAccess(user, pid(), z.string().max(100).parse(b.viewId));
         break;
       case "token.create":
         result = createApiToken(user, b);

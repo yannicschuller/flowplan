@@ -8,6 +8,8 @@ const config: NextConfig = {
     ? { distDir: process.env.FLOWPLAN_DIST_DIR }
     : {}),
   turbopack: { root: process.cwd() },
+  // CalDAV collections end in "/"; proxy.ts redirects pages itself.
+  skipTrailingSlashRedirect: true,
   serverExternalPackages: ["node:sqlite", "pdfjs-dist", "tesseract.js"],
   // The PDF text worker loads pdf.js and its worker module at runtime.
   outputFileTracingIncludes: {

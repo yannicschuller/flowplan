@@ -5,6 +5,7 @@ import { recordTime, timeReport } from "@/lib/time-tracking";
 import { sprintCharts } from "@/lib/sprints";
 import { gitConfig, gitLinks } from "@/lib/git-integration";
 import { crossRecords, recordViews } from "@/lib/cross-records";
+import { hasCalDavAccess } from "@/lib/caldav";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -143,6 +144,7 @@ async function handleGET(
           z.uuid().parse(url.searchParams.get("page")),
           z.string().max(100).parse(url.searchParams.get("view")),
         ),
+        caldav: hasCalDavAccess(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(100).parse(url.searchParams.get("view"))),
       });
     if (path.length === 2 && path[0] === "admin" && path[1] === "audit.csv") {
       requireAdmin(user);
