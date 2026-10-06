@@ -19,6 +19,22 @@ views. Forms can run a **customer portal**: senders get a private link to
 their request with its status and a conversation with the team, who reply
 from the record.
 
+For teams that work with tickets there are optional project tools, each
+switched on per database and invisible until then:
+- ticket numbers (WEB-123, linked in text);
+- subtasks and epics with rolled-up progress;
+- workflows with allowed status changes and required fields;
+- automations (when …, only if …, then …);
+- WIP limits on boards;
+- sprints with burndown and velocity;
+- time tracking;
+- a Git connection for GitHub, GitLab and Gitea;
+- a Jira and Trello import;
+- "My tasks" across all databases with saved views.
+
+Calendar views also sync both ways over CalDAV, and the version history
+restores single paragraphs.
+
 Documents also calculate when asked: results after "=", reducing fractions,
 expanding and factoring terms, solving equations, function graphs that are
 edited live – and photos can be marked up with pen, arrows, shapes and
