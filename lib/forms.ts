@@ -11,6 +11,7 @@ import {
 import type { Identity, Field, Page } from "./types";
 import { emitWebhook } from "./webhooks";
 import { rowCreated } from "./automations";
+import { ct } from "./content-locale";
 export function formSettings(pageId: string) {
   const raw = one<{
     token: string;
@@ -172,6 +173,12 @@ export function saveFormSubmission(
     form?.anonymous ? null : user?.id || null,
   );
   run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  // Survey answers without a title get a running one ("Antwort 12").
+  const titleField = fields[0];
+  if (config.survey?.enabled && titleField?.type === "text" && !result.cells[titleField.id]) {
+    const number = one<{ number: number }>("SELECT number FROM rows WHERE id=?", rid)?.number;
+    if (number) run("UPDATE rows SET cells=? WHERE id=?", JSON.stringify({ ...result.cells, [titleField.id]: `${ct("Antwort", "Response")} ${number}` }), rid);
+  }
   // Automations: "a new record arrives through a form".
   rowCreated(user, page, rid, true);
   const workspace = one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", pageId);

@@ -13,6 +13,8 @@ export type CatalogTemplate = {
   description: string;
   icon: string;
   kind: "document" | "database";
+  // Database templates: set up as a survey (lib/survey-server.ts).
+  survey?: boolean;
   html?: string;
   fields?: Field[];
   views?: View[];
@@ -472,6 +474,17 @@ export const templateCatalog: Record<string, CatalogTemplate> = {
       { cells: { title: "Lena Hoffmann", role: "Design", stage: "Erstgespräch", email: "lena@example.com", date: "@-5" } },
       { cells: { title: "Tim Berger", role: "Entwicklung", stage: "Eingang", email: "tim@example.com", date: "@-1" } },
     ],
+  },
+  survey: {
+    name: "Umfrage",
+    category: "other",
+    icon: "📊",
+    kind: "database",
+    description: "Umfrage mit Builder: Sterne, NPS, Skalen, Matrix, Bedingungen – öffentlich teilbar, mit Auswertung.",
+    survey: true,
+    fields: [{ id: "title", name: "Antwort", type: "text" }],
+    views: [view("survey", "Umfrage", "form"), view("table", "Antworten", "table")],
+    rows: [],
   },
   inventory: {
     name: "Inventar",

@@ -131,7 +131,7 @@ const fileSize = (bytes: number) =>
     ? `${Math.max(1, Math.round(bytes / 1024)).toLocaleString(LOCALE_TAG)} KB`
     : `${(bytes / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: 1 })} MB`;
 // Files stay in the browser until the answer is submitted.
-function FormFiles({
+export function FormFiles({
   name,
   value,
   disabled,

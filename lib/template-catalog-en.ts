@@ -454,6 +454,17 @@ export const templateCatalogEn: Record<TemplateKey, CatalogTemplate> = {
       { cells: { title: "Tim Berger", role: "Engineering", stage: "Received", email: "tim@example.com", date: "@-1" } },
     ],
   },
+  survey: {
+    name: "Survey",
+    category: "other",
+    icon: "📊",
+    kind: "database",
+    description: "A survey with a builder: stars, NPS, scales, matrix, conditions – shareable in public, with results.",
+    survey: true,
+    fields: [{ id: "title", name: "Response", type: "text" }],
+    views: [view("survey", "Survey", "form"), view("table", "Responses", "table")],
+    rows: [],
+  },
   inventory: {
     name: "Inventory",
     category: "other",

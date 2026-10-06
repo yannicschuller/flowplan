@@ -6,6 +6,7 @@ import { htmlState } from "./document-server";
 import { resolveCatalogDates, templateCatalog, type TemplateKey } from "./template-catalog";
 import { catalogFor } from "./template-catalogs";
 import { contentLocale } from "./content-locale";
+import { starterSurvey } from "./survey-server";
 
 export const starterTemplates = templateCatalog;
 export type StarterTemplateKey = TemplateKey;
@@ -24,6 +25,7 @@ export function applyStarterTemplate(pageId: string, userId: string, key: Starte
     JSON.stringify(template.views || []),
     pageId,
   );
+  if (template.survey) starterSurvey(pageId, contentLocale() === "de");
   (template.rows || []).forEach((row, i) =>
     run(
       "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",

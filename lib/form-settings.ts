@@ -2,6 +2,7 @@ import { numberCell } from "./field-format";
 import { z } from "zod";
 import { validDateValue } from "./date-values";
 import type { Field } from "./types";
+import { surveySchema, validateSurvey } from "./survey";
 export const formConfigSchema = z.object({
   title: z.string().max(200).default(""),
   description: z.string().max(3000).default(""),
@@ -23,6 +24,8 @@ export const formConfigSchema = z.object({
   // conversation with the team; these properties are shown there.
   portal: z.boolean().default(false),
   portalFields: z.array(z.string()).max(80).default([]),
+  // Survey mode (lib/survey.ts): question types, pages, conditions …
+  survey: surveySchema.optional(),
 });
 export type QuestionStyle = "long" | "buttons" | "scale";
 export const SCALE_MIN = 1,
@@ -83,6 +86,21 @@ export function validateFormValues(
   values: Record<string, unknown>,
   internal = false,
 ) {
+  if (config.survey?.enabled) {
+    const result = validateSurvey(config.survey, fields, values);
+    // Files: the uploaded addresses the form route put in (or File objects
+    // in the browser); checked like in ordinary forms.
+    for (const item of config.survey.items)
+      if (item.kind === "question" && item.type === "file") {
+        const value = values[item.field];
+        if (Array.isArray(value) && value.length) {
+          if (value.length > FORM_FILES_PER_QUESTION) result.errors[item.field] = "Zu viele Dateien.";
+          else if (value.every((v) => typeof v === "string" && /^\/api\/files\/[0-9a-f-]{36}$/i.test(v))) result.cells[item.field] = value;
+          else if (!value.every((v) => typeof File !== "undefined" && v instanceof File)) result.errors[item.field] = "Ungültige Datei.";
+        } else if (item.required && item.kind === "question") result.errors[item.field] = "Bitte eine Datei wählen.";
+      }
+    return result;
+  }
   const cells: Record<string, unknown> = {},
     errors: Record<string, string> = {};
   for (const f of orderedFormFields(fields, config, internal)) {

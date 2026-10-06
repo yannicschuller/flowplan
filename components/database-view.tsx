@@ -3152,6 +3152,8 @@ export default function DatabaseView({
             >
           }
           upload={editable ? uploadFile : undefined}
+          rows={data.rows}
+          version={data.database.version}
         />
       )}
       {shown.length === 0 && view.type !== "form" && view.type !== "chart" && (

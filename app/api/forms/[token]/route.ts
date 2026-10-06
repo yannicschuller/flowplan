@@ -15,6 +15,7 @@ import { enforceQuota } from "@/lib/instance-ops";
 import { clientAddress } from "@/lib/client-address";
 import { withRequestLocale } from "@/lib/content-locale";
 import { createTicket } from "@/lib/service-desk";
+import { surveyClosed } from "@/lib/survey";
 
 async function handlePOST(
   req: Request,
@@ -77,6 +78,15 @@ async function handlePOST(
     // Assigned inside the transaction.
     let ticket = null as { token: string; mailed: boolean } | null;
     transaction(() => {
+      // Surveys: closing date, response limit, one answer per person.
+      const survey = form.config.survey?.enabled ? form.config.survey : null;
+      if (survey) {
+        const total = one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token)?.n || 0;
+        const closed = surveyClosed(survey, total);
+        if (closed) throw new HttpError(410, closed === "full" ? "Diese Umfrage hat genug Antworten." : "Diese Umfrage ist geschlossen.");
+        if (survey.onePerPerson && one("SELECT 1 FROM form_submissions WHERE form_token=? AND fingerprint=?", token, fingerprint))
+          throw new HttpError(409, "Du hast an dieser Umfrage schon teilgenommen.");
+      }
       const count =
         one<{ n: number }>(
           "SELECT count(*) n FROM form_submissions WHERE form_token=? AND fingerprint=? AND created_at>?",

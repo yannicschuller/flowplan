@@ -7,6 +7,7 @@ import { gitSetup } from "./git-integration";
 import { deleteRecordView, saveRecordView } from "./cross-records";
 import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
 import { restoreBlock } from "./restore-block";
+import { saveSurvey } from "./survey-server";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1951,6 +1952,14 @@ export function command(
         result = sprintCommand(user, p, action, b);
         break;
       }
+      case "survey.save": {
+        // The survey builder saves questions (properties) and settings at once.
+        const p = write();
+        if (p.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
+        autoDatabaseSnapshot(user, p);
+        result = saveSurvey(p, b);
+        break;
+      }
       case "recordView.save":
         result = saveRecordView(user, b);
         break;
@@ -2398,6 +2407,7 @@ const editActions = new Set([
   "document.sync",
   "database.update",
   "database.settings",
+  "survey.save",
   "row.schedule",
   "timeline.cascade",
   "row.move",

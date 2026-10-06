@@ -13,7 +13,9 @@ import {
   questionStyles,
   type QuestionStyle,
 } from "@/lib/form-settings";
-import type { Field, Page } from "@/lib/types";
+import type { Field, Page, Row } from "@/lib/types";
+import { SurveyBuilder } from "./survey-builder";
+import { SurveyRunner } from "./survey-runner";
 type Form = {
   token: string;
   enabled: number;
@@ -30,7 +32,11 @@ export default function DatabaseForm({
   members = [],
   related = {},
   upload,
+  rows = [],
+  version = 0,
 }: {
+  rows?: Row[];
+  version?: number;
   members?: { id: string; name: string }[];
   related?: Record<string, { id: string; cells: { title: string } }[]>;
   upload?: (file: File) => Promise<string>;
@@ -46,6 +52,7 @@ export default function DatabaseForm({
     [done, setDone] = useState(false),
     [errors, setErrors] = useState<Record<string, string>>({}),
     [design, setDesign] = useState(false),
+    [builder, setBuilder] = useState(false),
     [draft, setDraft] = useState(config),
     [busy, setBusy] = useState(false);
   const [sharingPending, setSharingPending] = useState<Partial<
@@ -92,8 +99,45 @@ export default function DatabaseForm({
     [order[index], order[index + delta]] = [order[index + delta], order[index]];
     setDraft({ ...draft, fieldOrder: order });
   }
+  const survey = config.survey?.enabled ? config.survey : null;
+  const builderModal = (
+    <Modal open={builder} onClose={() => setBuilder(false)} title={t("Umfrage bauen", "Build survey")} wide className="survey-builder-modal">
+      {builder && <SurveyBuilder pageTitle={page.title} fields={fields} version={version} form={form} rows={rows} editable={editable} act={act} />}
+    </Modal>
+  );
+  if (survey)
+    return (
+      <div className="form-preview survey-in-app">
+        <div className="survey-form-cta">
+          <button className="button primary" onClick={() => setBuilder(true)}>
+            <SlidersHorizontal /> {editable ? t("Umfrage bearbeiten", "Edit survey") : t("Umfrage ansehen", "View survey")}
+          </button>
+          <span className="muted">
+            {t(`${rows.length} Antworten`, `${rows.length} answers`)} · {form?.enabled ? t("geöffnet", "open") : t("nicht geöffnet", "not open")}
+          </span>
+        </div>
+        <SurveyRunner
+          key={done ? "again" : "first"}
+          survey={survey}
+          fields={fields}
+          texts={{ title: config.title || page.title, description: config.description, submitLabel: config.submitLabel, successTitle: config.successTitle, successMessage: config.successMessage }}
+          onSubmit={async (answers) => {
+            const files = Object.values(answers).some((v) => Array.isArray(v) && v.some((x) => x instanceof File));
+            if (files) throw new Error(t("Dateien lassen sich nur über den Link der Umfrage hochladen.", "Files can only be uploaded through the survey link."));
+            if (!(await act({ action: "form.submit", cells: answers }))) throw new Error(t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."));
+          }}
+          after={
+            <button className="button" onClick={() => setDone((d) => !d)}>
+              {t("Weitere Antwort", "Another answer")}
+            </button>
+          }
+        />
+        {builderModal}
+      </div>
+    );
   return (
     <div className="form-preview">
+      {builderModal}
       <div className="form-heading">
         <h2>{config.title || page.title}</h2>
         <p>
@@ -110,6 +154,11 @@ export default function DatabaseForm({
           >
             <SlidersHorizontal />
             {t("Formular gestalten", "Design form")}
+          </button>
+        )}
+        {editable && (
+          <button className="button" onClick={() => setBuilder(true)}>
+            {t("Als Umfrage gestalten", "Turn into a survey")}
           </button>
         )}
       </div>

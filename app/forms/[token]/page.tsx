@@ -2,6 +2,8 @@ import { serverT } from "@/lib/i18n-server";
 import { currentUser, HttpError } from "@/lib/auth";
 import { getForm } from "@/lib/forms";
 import FormClient from "@/components/form-client";
+import { surveyClosed } from "@/lib/survey";
+import { one } from "@/lib/db";
 export const dynamic = "force-dynamic";
 export default async function FormPage({
   params,
@@ -12,8 +14,11 @@ export default async function FormPage({
   const { token } = await params;
   try {
     const form = getForm(token, await currentUser());
+    const survey = form.config.survey?.enabled ? form.config.survey : null;
+    const state = survey ? surveyClosed(survey, one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token)?.n || 0) : null;
     return (
       <FormClient
+        closed={state === "full" ? t("Diese Umfrage hat genug Antworten – danke für dein Interesse.", "This survey has enough answers – thank you for your interest.") : state ? t("Diese Umfrage ist geschlossen.", "This survey is closed.") : ""}
         token={token}
         config={form.config}
         title={form.title}
