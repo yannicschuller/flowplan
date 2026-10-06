@@ -3,6 +3,7 @@ import { teamThread } from "@/lib/service-desk";
 import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
 import { recordTime, timeReport } from "@/lib/time-tracking";
 import { sprintCharts } from "@/lib/sprints";
+import { gitConfig, gitLinks } from "@/lib/git-integration";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -415,6 +416,12 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    if (path[0] === "git-config")
+      return NextResponse.json(gitConfig(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
+    if (path[0] === "git-links")
+      return NextResponse.json(gitLinks(user, z.uuid().parse(url.searchParams.get("page")), z.uuid().parse(url.searchParams.get("row"))), {
+        headers: { "Cache-Control": "no-store" },
+      });
     if (path[0] === "sprint-charts") {
       return NextResponse.json(
         sprintCharts(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(60).parse(url.searchParams.get("sprint"))),

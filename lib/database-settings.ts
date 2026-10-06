@@ -60,8 +60,9 @@ export function updateDatabaseSettings(user: Identity, page: Page, fields: Field
 export function storeSettings(pageId: string, settings: DatabaseSettings) {
   run("UPDATE databases SET settings=?,version=version+1 WHERE page_id=?", JSON.stringify(settings), pageId);
 }
-// What clients see: the Git secret only as a hint that one exists.
+// What clients see: whether Git is connected, never the token or secret
+// (those come from /api/git-config for people who may edit).
 export function clientSettings(settings: DatabaseSettings) {
   const { git, ...rest } = settings;
-  return git ? { ...rest, git: { token: git.token, secret: git.secret, createdAt: git.createdAt } } : rest;
+  return git ? { ...rest, git: { token: "", secret: "", createdAt: git.createdAt } } : rest;
 }

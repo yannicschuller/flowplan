@@ -14,6 +14,8 @@ const exact: Record<string, string> = {
   "Anfrage zu groß.": "Request too large.",
   "Eigenschaft fehlt.": "Property missing.",
   "Unbekannte Einstellung.": "Unknown setting.",
+  "Signatur ungültig.": "Invalid signature.",
+  "Nur JSON-Webhooks werden unterstützt.": "Only JSON webhooks are supported.",
   "Unbekannter Sprint.": "Unknown sprint.",
   "Sprint nicht gefunden.": "Sprint not found.",
   "Das Ende liegt vor dem Start.": "The end is before the start.",

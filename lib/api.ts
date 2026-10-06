@@ -3,6 +3,7 @@ import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
+import { gitSetup } from "./git-integration";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1943,6 +1944,10 @@ export function command(
         result = sprintCommand(user, p, action, b);
         break;
       }
+      case "git.setup":
+      case "git.disable":
+        result = gitSetup(write(), action);
+        break;
       case "time.start":
       case "time.stop":
       case "time.add":

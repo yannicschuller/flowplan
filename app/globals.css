@@ -14455,3 +14455,61 @@ h3 .block-reactions {
   display: grid;
   gap: 12px;
 }
+
+/* ---------- Git connection ---------- */
+.git-settings {
+  display: grid;
+  gap: 12px;
+}
+.git-settings label {
+  display: grid;
+  gap: 4px;
+}
+.copy-field {
+  display: flex;
+  gap: 6px;
+}
+.copy-field input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.git-settings details p {
+  margin: 6px 0 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.callout-inline {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--blue-light);
+  color: var(--accent-strong);
+  font-size: 13px;
+}
+.record-git ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.record-git li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 2px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.record-git li svg {
+  margin-top: 2px;
+  color: var(--secondary);
+}
+.record-git li[data-state="merged"] svg {
+  color: var(--blue);
+}
+.record-git li span {
+  grid-column: 2;
+  font-size: 12px;
+}

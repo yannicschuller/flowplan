@@ -300,6 +300,8 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS time_entries_row ON time_entries(row_id,start);
     CREATE INDEX IF NOT EXISTS time_entries_page ON time_entries(page_id,start);
     CREATE INDEX IF NOT EXISTS time_entries_running ON time_entries(user_id) WHERE end IS NULL;`);
+  // Git connection: commits and pull requests linked to records.
+  d.exec(`CREATE TABLE IF NOT EXISTS git_links(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,kind TEXT NOT NULL,ref TEXT NOT NULL,title TEXT NOT NULL,url TEXT NOT NULL,author TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT '',at INTEGER NOT NULL,UNIQUE(row_id,url));`);
   // Optional database settings: done rule, workflow, automations, sprints,
   // time tracking, Git (lib/database-settings.ts).
   if (!(d.prepare("PRAGMA table_info(databases)").all() as { name: string }[]).some((c) => c.name === "settings"))

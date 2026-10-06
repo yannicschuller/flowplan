@@ -11,6 +11,7 @@ import { DatabaseTools } from "./database-tools";
 import { RecordSubtasks } from "./record-subtasks";
 import { BoardWipSettings, WipCount } from "./board-wip";
 import { RecordTime } from "./record-time";
+import { RecordGit } from "./record-git";
 import { formatDuration } from "@/lib/durations";
 import { DatabaseSprints } from "./database-sprints";
 import { SprintContext } from "./sprint-context";
@@ -5006,6 +5007,7 @@ export default function DatabaseView({
                     act={act}
                   />
                 )}
+                {data.database.settings?.git && <RecordGit key={`git-${selected.id}`} pageId={page.id} rowId={selected.id} />}
                 <TicketThread
                   key={`ticket-${selected.id}`}
                   pageId={page.id}
