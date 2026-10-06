@@ -82,7 +82,8 @@ export type FieldType =
   | "updated_at"
   | "created_by"
   | "updated_by"
-  | "files";
+  | "files"
+  | "id";
 export type Field = {
   id: string;
   name: string;
@@ -98,6 +99,8 @@ export type Field = {
   format?: string;
   timeFormat?: "24" | "12";
   decimals?: number;
+  // "id": the ticket prefix, e.g. WEB for WEB-123.
+  prefix?: string;
 };
 export type Row = {
   id: string;
@@ -109,6 +112,8 @@ export type Row = {
   created_by: string;
   updated_by: string;
   version: number;
+  // Running number in its database (ticket numbers).
+  number?: number | null;
   content?: string;
   icon?: string;
   cover?: string;

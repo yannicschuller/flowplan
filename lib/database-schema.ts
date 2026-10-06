@@ -32,6 +32,7 @@ export const field = z.object({
     "created_by",
     "updated_by",
     "files",
+    "id",
   ]),
   options: z.array(z.string().max(100)).max(100).optional(),
   formula: z.string().max(2000).optional(),
@@ -44,6 +45,7 @@ export const field = z.object({
   format: z.string().max(40).optional(),
   timeFormat: z.enum(["24", "12"]).optional(),
   decimals: z.number().int().min(0).max(10).optional(),
+  prefix: z.string().regex(/^[A-Z][A-Z0-9]{0,9}$/, "Präfix: Großbuchstaben und Ziffern, z. B. WEB.").optional(),
 });
 export const view = z
   .object({

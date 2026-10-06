@@ -2,6 +2,7 @@ import { lockedPageIds } from "./journal-extras";
 import { all, one, run, transaction } from "./db";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
+import { ticketId } from "./ticket-ids";
 import type { Field, Identity, Page } from "./types";
 
 // Full-text index over page titles, document text, record cells and record
@@ -62,8 +63,8 @@ function indexPage(pageId: string) {
 }
 function indexRow(pageId: string, rowId: string, fields: Field[]) {
   run("DELETE FROM search_index WHERE page_id=? AND row_id=?", pageId, rowId);
-  const row = one<{ cells: string; content: string; html: string | null }>(
-    "SELECT r.cells,r.content,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=? AND r.page_id=?",
+  const row = one<{ cells: string; content: string; html: string | null; number: number | null }>(
+    "SELECT r.cells,r.content,r.number,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=? AND r.page_id=?",
     rowId,
     pageId,
   );
@@ -73,7 +74,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
   const title = titleField ? cellWords(cells[titleField.id]) : "";
   const values = rest
     .filter((f) => !IGNORED.includes(f.type))
-    .map((f) => cellWords(cells[f.id]))
+    .map((f) => (f.type === "id" ? ticketId(f, row.number) : cellWords(cells[f.id])))
     .filter(Boolean);
   const content = row.html ?? row.content ?? "";
   run(

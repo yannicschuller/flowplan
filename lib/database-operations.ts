@@ -23,6 +23,7 @@ const computed = [
   "updated_at",
   "created_by",
   "updated_by",
+  "id",
 ];
 export function validateCellPatch(
   user: Identity,

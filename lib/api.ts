@@ -1,4 +1,5 @@
 import { teamReply } from "./service-desk";
+import { validateTicketPrefix } from "./ticket-refs";
 import {
   restoreWhiteboardSnapshot,
   syncWhiteboard,
@@ -1472,6 +1473,7 @@ export function command(
         )
           throw new HttpError(400, "Doppelte Eigenschaft oder Ansicht.");
         validateDatabaseRelations(user, write(), fields, d.fields);
+        validateTicketPrefix(write(), fields);
         for (const v of views) {
           try {
             if (v.calculations)

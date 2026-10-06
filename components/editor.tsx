@@ -6,6 +6,7 @@ import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
 import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
 import { FunctionPlotView } from "./function-plot-view";
 import { MetricView } from "./metric-view";
+import { TicketRefs } from "@/lib/ticket-ref-plugin";
 import {
   resolveSuggestions,
   suggestionGroups,
@@ -326,6 +327,7 @@ export default function DocumentEditor({
         FlowTaskItem.configure({ nested: true }),
         TaskDue,
         CalcHint.configure({ locale }),
+        TicketRefs.configure({ pageId }),
         Suggestion,
         SuggestChanges.configure({
           enabled: () => suggestingRef.current,

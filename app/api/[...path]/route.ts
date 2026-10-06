@@ -1,5 +1,6 @@
 import { withRequestLocale } from "@/lib/content-locale";
 import { teamThread } from "@/lib/service-desk";
+import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -403,6 +404,15 @@ async function handleGET(
     if (path[0] === "dashboard-metric") {
       const query = metricSchema.parse(Object.fromEntries(url.searchParams));
       return NextResponse.json(computeMetric(user, query), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "ticket-refs" || path[0] === "ticket-ref") {
+      // Ticket numbers (WEB-123) in the workspace of a page.
+      const page = requirePage(user, z.uuid().parse(url.searchParams.get("page")));
+      if (path[0] === "ticket-refs")
+        return NextResponse.json(readablePrefixes(user, page.workspace_id), { headers: { "Cache-Control": "no-store" } });
+      const found = resolveTicket(user, page.workspace_id, z.string().max(30).parse(url.searchParams.get("key")));
+      if (!found) throw new HttpError(404, "Eintrag nicht gefunden.");
+      return NextResponse.json(found, { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "ticket-thread") {
       // The customer conversation of a record (service desk).

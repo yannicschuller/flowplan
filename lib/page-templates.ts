@@ -193,6 +193,7 @@ export function applyPageTemplate(
                 "updated_at",
                 "created_by",
                 "updated_by",
+                "id",
               ].includes(f.type) && Object.hasOwn(values, f.id),
           )
           .map((f) => {

@@ -13,6 +13,7 @@ import {
   type FormulaDiagnostic,
 } from "./formula";
 export { formula } from "./formula";
+import { ticketId } from "./ticket-ids";
 export function computedCells(
   row: Row,
   fields: Field[],
@@ -55,6 +56,7 @@ export function computedCellsDetailed(
       )
     )
       value = record[field.type as "created_at"];
+    if (field.type === "id") value = ticketId(field, record.number);
     if (field.type === "rollup") {
       const relation = properties.find(
         (f) => f.id === field.relationField && f.type === "relation",

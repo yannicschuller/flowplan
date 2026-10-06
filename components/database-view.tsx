@@ -1,5 +1,6 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
+import { suggestedPrefix } from "@/lib/ticket-ids";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -202,6 +203,7 @@ const fieldNames: Record<FieldType, [string, string]> = {
   created_by: ["Erstellt von", "Created by"],
   updated_by: ["Bearbeitet von", "Edited by"],
   files: ["Dateien", "Files"],
+  id: ["ID (Ticketnummer)", "ID (ticket number)"],
 };
 type RowMove = {
   viewId: string;
@@ -216,6 +218,7 @@ type RowMove = {
 const rowDragType = "application/x-flowplan-row-order";
 const groupDragType = "application/x-flowplan-group-order";
 const computedTypes = [
+  "id",
   "formula",
   "rollup",
   "created_at",
@@ -3995,6 +3998,7 @@ export default function DatabaseView({
                 setFieldDraft((f) => ({
                   ...f,
                   type: e.target.value as FieldType,
+                  ...(e.target.value === "id" && !f.prefix ? { prefix: suggestedPrefix(page.title) } : {}),
                 }))
               }
             >
@@ -4005,6 +4009,27 @@ export default function DatabaseView({
               ))}
             </Select>
           </label>
+          {fieldDraft.type === "id" && (
+            <label>
+              {t("Präfix", "Prefix")}
+              <input
+                required
+                maxLength={10}
+                pattern="[A-Z][A-Z0-9]{0,9}"
+                aria-describedby="ticket-prefix-hint"
+                value={fieldDraft.prefix || ""}
+                onChange={(e) =>
+                  setFieldDraft((f) => ({ ...f, prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))
+                }
+              />
+              <small id="ticket-prefix-hint" className="muted">
+                {t(
+                  `Jeder Eintrag bekommt automatisch eine Nummer wie ${fieldDraft.prefix || "WEB"}-123. Im Text wird sie zum Link, in Git-Commits zur Referenz.`,
+                  `Every record automatically gets a number like ${fieldDraft.prefix || "WEB"}-123. In text it becomes a link, in Git commits a reference.`,
+                )}
+              </small>
+            </label>
+          )}
           {["select", "multiselect"].includes(fieldDraft.type) && (
             <label>
               {t("Optionen, durch Komma getrennt", "Options, separated by commas")}

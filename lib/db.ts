@@ -269,6 +269,22 @@ function migrate(d: DatabaseSync) {
   for (const column of ["icon", "cover", "recurrence"])
     if (!rowColumns.some((c) => c.name === column))
       d.exec(`ALTER TABLE rows ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+  // Ticket numbers: every record gets the next number of its database when
+  // it is created (any insert path), shown by an "ID" property as WEB-123.
+  if (!rowColumns.some((c) => c.name === "number")) {
+    d.exec("ALTER TABLE rows ADD COLUMN number INTEGER");
+    d.exec(
+      "UPDATE rows SET number=(SELECT count(*) FROM rows r2 WHERE r2.page_id=rows.page_id AND (r2.created_at<rows.created_at OR (r2.created_at=rows.created_at AND r2.rowid<=rows.rowid)))",
+    );
+  }
+  // A counter per database, so numbers of deleted records are never reused.
+  d.exec(`CREATE INDEX IF NOT EXISTS rows_number ON rows(page_id,number);
+    CREATE TABLE IF NOT EXISTS row_counters(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,last INTEGER NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS rows_number_counter AFTER INSERT ON rows WHEN NEW.number IS NULL BEGIN
+      INSERT INTO row_counters(page_id,last) VALUES(NEW.page_id,(SELECT COALESCE(MAX(number),0) FROM rows WHERE page_id=NEW.page_id)) ON CONFLICT(page_id) DO NOTHING;
+      UPDATE row_counters SET last=last+1 WHERE page_id=NEW.page_id;
+      UPDATE rows SET number=(SELECT last FROM row_counters WHERE page_id=NEW.page_id) WHERE id=NEW.id;
+    END;`);
   // Per record access: inherited, read-only or private, plus grants.
   if (!rowColumns.some((c) => c.name === "access"))
     d.exec(

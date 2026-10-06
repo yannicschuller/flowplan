@@ -635,7 +635,7 @@ export default function WorkspaceApp({
           notify(t("Dieser Seitenlink ist ungültig.", "This page link is invalid."));
           return;
         }
-        if (currentId.current !== target.pageId || screenRef.current !== "page")
+        if (currentId.current !== target.pageId || screenRef.current !== "page" || target.rowId)
           void openPage(target.pageId, target);
       } else if (
         ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin"].includes(
