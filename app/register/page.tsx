@@ -7,7 +7,13 @@ import { instanceSettings } from "@/lib/instance-settings";
 import { serverT } from "@/lib/i18n-server";
 export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: (await serverT())("Konto erstellen · Flowplan", "Create account · Flowplan") };
+  const t = await serverT();
+  return {
+    title: t("Konto erstellen · Flowplan", "Create account · Flowplan"),
+    description: t("Erstelle ein Flowplan-Konto: Dokumente, Datenbanken, Whiteboards und Journal in einem Arbeitsbereich.", "Create a Flowplan account: documents, databases, whiteboards and a journal in one workspace."),
+    alternates: { canonical: "/register" },
+    robots: { index: true, follow: true },
+  };
 }
 // Creating an account; where sign-ups are closed the page offers signing in.
 export default async function RegisterPage() {

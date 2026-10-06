@@ -14,6 +14,26 @@ import type { Row } from "@/lib/types";
 import { templateCategories } from "@/lib/template-categories";
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const t = await serverT();
+  const { id } = await params;
+  const builtIn = id.startsWith("starter-") ? catalogFor(await requestLocale())[id.slice(8)] : undefined;
+  let name = builtIn?.name,
+    description = builtIn?.description;
+  if (!builtIn)
+    try {
+      name = publicTemplate(id).name;
+    } catch {
+      return { robots: { index: false, follow: false } };
+    }
+  return {
+    title: `${name} · ${t("Vorlage", "Template")} · Flowplan`,
+    description: description || t(`Vorlage „${name}“ für Flowplan – ansehen und übernehmen.`, `Template “${name}” for Flowplan – view it and take it over.`),
+    alternates: { canonical: `/templates/${id}` },
+    robots: { index: true, follow: true },
+  };
+}
+
 export default async function TemplatePreview({
   params,
 }: {

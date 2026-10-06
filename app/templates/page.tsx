@@ -6,7 +6,16 @@ import { catalogFor } from "@/lib/template-catalogs";
 import { requestLocale } from "@/lib/i18n-server";
 export const dynamic = "force-dynamic";
 export async function generateMetadata() {
-  return { title: (await serverT())("Vorlagen · Flowplan", "Templates · Flowplan") };
+  const t = await serverT();
+  return {
+    title: t("Vorlagen · Flowplan", "Templates · Flowplan"),
+    description: t(
+      "Fertige Seiten und Datenbanken für Flowplan: Projektplanung, Meeting-Notizen, Team-Wiki, OKRs, Kontakte und mehr – ansehen ohne Konto, mit einem Klick übernehmen.",
+      "Ready-made pages and databases for Flowplan: project plans, meeting notes, a team wiki, OKRs, contacts and more – view without an account, take over in one click.",
+    ),
+    alternates: { canonical: "/templates" },
+    robots: { index: true, follow: true },
+  };
 }
 
 // Public template gallery, readable without an account.

@@ -7,7 +7,13 @@ import { instanceSettings } from "@/lib/instance-settings";
 import { serverT } from "@/lib/i18n-server";
 export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: (await serverT())("Anmelden · Flowplan", "Sign in · Flowplan") };
+  const t = await serverT();
+  return {
+    title: t("Anmelden · Flowplan", "Sign in · Flowplan"),
+    description: t("Melde dich bei Flowplan an – mit Passkey, Passwort oder Single Sign-on.", "Sign in to Flowplan – with a passkey, password or single sign-on."),
+    alternates: { canonical: "/login" },
+    robots: { index: true, follow: true },
+  };
 }
 export default async function LoginPage({
   searchParams,

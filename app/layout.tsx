@@ -2,15 +2,31 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import { requestLocale } from "@/lib/i18n-server";
+import { siteUrl } from "@/lib/seo";
 import { LocaleProvider } from "@/components/i18n";
 import { PdfViewerHost } from "@/components/pdf-viewer";
 export async function generateMetadata(): Promise<Metadata> {
   const de = (await requestLocale()) === "de";
+  const title = de ? "Flowplan — Dein Raum für Ideen" : "Flowplan — Room for your ideas";
+  const description = de
+    ? "Flowplan: Dokumente, Datenbanken, Whiteboards und Journal in einem Arbeitsbereich. Open Source, ohne Tracking."
+    : "Flowplan: documents, databases, whiteboards and a journal in one workspace. Open source, without tracking.";
   return {
-  title: de ? "Flowplan — Dein Raum für Ideen" : "Flowplan — Room for your ideas",
-  description: de
-    ? "Wissen, Notizen und Projekte. Gemeinsam an einem Ort."
-    : "Knowledge, notes and projects. Together in one place.",
+  metadataBase: new URL(siteUrl()),
+  title,
+  description,
+  applicationName: "Flowplan",
+  // Workspaces are private; the public pages switch indexing on.
+  robots: { index: false, follow: false },
+  openGraph: {
+    type: "website",
+    siteName: "Flowplan",
+    title,
+    description,
+    locale: de ? "de_DE" : "en_US",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Flowplan" }],
+  },
+  twitter: { card: "summary_large_image", title, description, images: ["/opengraph-image"] },
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Flowplan", statusBarStyle: "default" },
   other: { "apple-mobile-web-app-capable": "yes" },
