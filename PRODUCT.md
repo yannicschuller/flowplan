@@ -32,7 +32,9 @@ switched on per database and invisible until then:
 - a Jira and Trello import;
 - "My tasks" across all databases with saved views.
 
-Calendar views also sync both ways over CalDAV, and the version history
+Forms can become surveys (a SurveyMonkey-style builder with 19 question
+types, conditions, pages, limits and results), shared publicly or with
+members; every answer is a record. Calendar views also sync both ways over CalDAV, and the version history
 restores single paragraphs.
 
 Documents also calculate when asked: results after "=", reducing fractions,
