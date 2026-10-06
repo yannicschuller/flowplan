@@ -61,6 +61,7 @@ import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
+import { importTracker } from "@/lib/tracker-import";
 import { relationBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
@@ -874,6 +875,18 @@ async function handlePOST(
           Buffer.from(await file.arrayBuffer()),
           data.get("private") === "true" ? "private" : "workspace",
         ),
+      );
+    }
+    if (path[0] === "import" && path[1] === "tracker") {
+      // Jira (CSV) or Trello (JSON) into a new database.
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > 30 * 1024 * 1024) throw new HttpError(413, "Die Datei darf maximal 30 MB groß sein.");
+      const text = await file.text();
+      const kind = /\.json$/i.test(file.name) || text.trimStart().startsWith("{") ? "trello" : "jira";
+      return NextResponse.json(
+        importTracker(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), kind, text, file.name),
       );
     }
     if (path[0] === "import" && path[1] === "zip") {

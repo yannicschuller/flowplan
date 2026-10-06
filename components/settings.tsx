@@ -115,6 +115,7 @@ export default function Settings({
     [settings, setSettings] = useState<SettingsData | null>(null),
     [groupId, setGroupId] = useState<string | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [trackerBusy, setTrackerBusy] = useState(false);
   const [zipBusy, setZipBusy] = useState(false),
     [zipResult, setZipResult] = useState(""),
     [importSpace, setImportSpace] = useState("");
@@ -696,6 +697,48 @@ export default function Settings({
                   }
                 }}
               />
+              <section className="settings-section">
+                <h2>{t("Aus Jira oder Trello importieren", "Import from Jira or Trello")}</h2>
+                <p>
+                  {t(
+                    "Jira: Vorgänge als CSV exportieren (alle Felder). Trello: Board-Menü → Drucken, exportieren und teilen → Als JSON exportieren. Daraus wird eine neue Datenbank mit Status, Priorität, Zuständigen, Labels, Story Points und Unteraufgaben; Beschreibungen werden zum Inhalt, Kommentare zu Kommentaren, Anhänge zu Links.",
+                    "Jira: export issues as CSV (all fields). Trello: board menu → Print, export and share → Export as JSON. This becomes a new database with status, priority, assignees, labels, story points and subtasks; descriptions become the content, comments comments, attachments links.",
+                  )}
+                </p>
+                <label className="button file-label">
+                  <UploadSimple />
+                  {trackerBusy ? t("Import läuft …", "Importing …") : t("CSV oder JSON auswählen", "Choose CSV or JSON")}
+                  <input
+                    type="file"
+                    accept=".csv,.json,text/csv,application/json"
+                    hidden
+                    aria-label={t("Jira- oder Trello-Export importieren", "Import Jira or Trello export")}
+                    disabled={boot.workspace.role === "viewer" || trackerBusy}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      setTrackerBusy(true);
+                      try {
+                        const body = new FormData();
+                        body.set("workspaceId", boot.workspace.id);
+                        body.set("spaceId", importSpace || boot.spaces[0]?.id || "");
+                        body.set("file", file);
+                        const response = await fetch("/api/import/tracker", { method: "POST", body });
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(serverMessage(result.error) || t("Import fehlgeschlagen.", "Import failed."));
+                        await onRefresh();
+                        onError(t(`${result.rows} Einträge und ${result.comments} Kommentare importiert.`, `${result.rows} records and ${result.comments} comments imported.`));
+                        location.hash = `#page=${result.pageId}`;
+                      } catch (err) {
+                        onError((err as Error).message);
+                      } finally {
+                        setTrackerBusy(false);
+                      }
+                    }}
+                  />
+                </label>
+              </section>
               <section className="settings-section">
                 <h2>{t("Notion-, AppFlowy- oder Markdown-Export importieren", "Import a Notion, AppFlowy or Markdown export")}</h2>
                 <p>
