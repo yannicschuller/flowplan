@@ -14634,3 +14634,9 @@ h3 .block-reactions {
   gap: 4px;
   font-size: 13px;
 }
+
+.diff-restore {
+  float: right;
+  margin-left: 10px;
+  font-size: 12px;
+}

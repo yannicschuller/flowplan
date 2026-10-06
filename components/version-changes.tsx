@@ -17,8 +17,11 @@ export function VersionChanges({
   snapshotId,
   label,
   versions = [],
+  editable = false,
   onClose,
 }: {
+  // Paragraphs can be restored one by one (comparison with the current state).
+  editable?: boolean;
   pageId: string;
   rowId?: string;
   snapshotId: string;
@@ -30,7 +33,9 @@ export function VersionChanges({
   const t = useT();
   const [result, setResult] = useState<Result | null>(null),
     [error, setError] = useState(""),
-    [against, setAgainst] = useState("");
+    [against, setAgainst] = useState(""),
+    [reload, setReload] = useState(0),
+    [restored, setRestored] = useState(0);
   useEffect(() => {
     let active = true;
     setResult(null);
@@ -44,7 +49,17 @@ export function VersionChanges({
     return () => {
       active = false;
     };
-  }, [pageId, rowId, snapshotId, against]);
+  }, [pageId, rowId, snapshotId, against, reload]);
+  // One paragraph of the old version back into the document.
+  const restore = async (text: string, after: string | null, replace: string | null) => {
+    try {
+      await api("/api/command", { action: "snapshot.restoreBlock", pageId, rowId: rowId || null, snapshotId, text, after, replace });
+      setRestored((n) => n + 1);
+      setReload((n) => n + 1);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
   const others = versions.filter((v) => v.id !== snapshotId);
   return (
     <Modal open wide title={t(`Änderungen seit ${label}`, `Changes since ${label}`)} onClose={onClose}>
@@ -66,6 +81,11 @@ export function VersionChanges({
         </label>
       )}
       {error && <p role="alert">{error}</p>}
+      {restored > 0 && (
+        <p role="status" className="muted small">
+          {t(`${restored} Absatz/Absätze wiederhergestellt.`, `${restored} paragraph(s) restored.`)}
+        </p>
+      )}
       {!result && !error && <p className="muted">{t("Vergleich wird geladen …", "Loading comparison …")}</p>}
       {result?.kind === "document" &&
         (result.changes === null ? (
@@ -75,7 +95,14 @@ export function VersionChanges({
         ) : !result.changes.some((c) => c.type !== "same") ? (
           <p role="status">{t("Keine Textänderungen.", "No text changes.")}</p>
         ) : (
-          <TextChanges changes={result.changes} />
+          <>
+            {editable && !against && !restored && (
+              <p className="muted small">
+                {t("Einzelne Absätze lassen sich mit „Wiederherstellen“ zurückholen – der Rest bleibt, wie er ist.", "Single paragraphs can be brought back with “Restore” – the rest stays as it is.")}
+              </p>
+            )}
+            <TextChanges changes={result.changes} onRestore={editable && !against ? restore : undefined} />
+          </>
         ))}
       {result?.kind === "database" && (
         <DatabaseSummary changes={result.changes} />
@@ -123,8 +150,31 @@ function DatabaseSummary({ changes }: { changes: DatabaseChanges }) {
 }
 
 // Paragraph and word changes, as in the version history.
-export function TextChanges({ changes }: { changes: TextChange[] }) {
+export function TextChanges({
+  changes,
+  onRestore,
+}: {
+  changes: TextChange[];
+  onRestore?: (text: string, after: string | null, replace: string | null) => void;
+}) {
   const t = useT();
+  // Old and new text of each change, and the old paragraph before it.
+  const oldText = (c: TextChange) =>
+    c.type === "changed" ? c.parts.filter((p) => p.type !== "added").map((p) => p.text).join("") : c.type === "added" ? null : c.text;
+  const newText = (c: TextChange) => (c.type === "changed" ? c.parts.filter((p) => p.type !== "removed").map((p) => p.text).join("") : null);
+  const previous = (i: number) => {
+    for (let j = i - 1; j >= 0; j--) {
+      const text = oldText(changes[j]);
+      if (text) return text;
+    }
+    return null;
+  };
+  const restoreButton = (i: number) =>
+    onRestore && (changes[i].type === "removed" || changes[i].type === "changed") ? (
+      <button type="button" className="text-button diff-restore" onClick={() => onRestore(oldText(changes[i])!, previous(i), newText(changes[i]))}>
+        {t("Wiederherstellen", "Restore")}
+      </button>
+    ) : null;
   return (
           <div className="version-diff" aria-label={t("Textänderungen", "Text changes")}>
             <p className="muted">
@@ -133,6 +183,7 @@ export function TextChanges({ changes }: { changes: TextChange[] }) {
             {changes.map((change, i) =>
               change.type === "changed" ? (
                 <p key={i} className="diff-changed">
+                  {restoreButton(i)}
                   {change.parts.map((part, j) =>
                     part.type === "added" ? (
                       <ins key={j}>{part.text}</ins>
@@ -149,6 +200,7 @@ export function TextChanges({ changes }: { changes: TextChange[] }) {
                 </p>
               ) : change.type === "removed" ? (
                 <p key={i} className="diff-removed">
+                  {restoreButton(i)}
                   <del>{change.text}</del>
                 </p>
               ) : (

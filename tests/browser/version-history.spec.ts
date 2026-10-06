@@ -64,6 +64,13 @@ test("version history marks manual versions and shows word-level changes since a
   await page.screenshot({
     path: `test-results/version-history-verification/${testInfo.project.name}-diff.png`,
   });
+  // A single paragraph comes back; the editor gets it live.
+  await diff.getByRole("button", { name: "Wiederherstellen" }).click();
+  await expect.poll(html, { timeout: 15000 }).toContain("Der Hund bellt laut");
+  await expect(changes.getByText(/1 Absatz\/Absätze wiederhergestellt/)).toBeVisible();
+  await changes.getByRole("button", { name: "Schließen", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(editor).toContainText("Der Hund bellt laut");
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: p.id });
 });

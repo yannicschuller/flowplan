@@ -3181,6 +3181,7 @@ export default function WorkspaceApp({
       {versionChanges && data && (
         <VersionChanges
           pageId={data.page.id}
+          editable={editable && data.page.kind === "document"}
           snapshotId={versionChanges.id}
           label={versionChanges.label}
           versions={data.snapshots.map((s) => ({

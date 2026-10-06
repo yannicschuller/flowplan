@@ -6,6 +6,7 @@ import { sprintCommand } from "./sprints";
 import { gitSetup } from "./git-integration";
 import { deleteRecordView, saveRecordView } from "./cross-records";
 import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
+import { restoreBlock } from "./restore-block";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1273,6 +1274,10 @@ export function command(
         result = { id: sid };
         break;
       }
+      case "snapshot.restoreBlock":
+        // One paragraph from an older version back into the document.
+        afterCommit.push(restoreBlock(user, b));
+        break;
       case "snapshot.restore": {
         const p = write(),
           s = one<{

@@ -14,6 +14,7 @@ const exact: Record<string, string> = {
   "Anfrage zu groß.": "Request too large.",
   "Eigenschaft fehlt.": "Property missing.",
   "Unbekannte Einstellung.": "Unknown setting.",
+  "Der Absatz steht nicht in dieser Version.": "The paragraph is not in this version.",
   "Kein Termin im Kalenderdaten-Text.": "No event in the calendar data.",
   "Unbekanntes Datumsformat.": "Unknown date format.",
   "Termin ohne Beginn.": "Event without a start.",

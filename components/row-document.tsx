@@ -164,6 +164,7 @@ export default function RowDocument({
         <VersionChanges
           pageId={pageId}
           rowId={rowId}
+          editable={editable}
           snapshotId={changes}
           label={new Date(
             (
