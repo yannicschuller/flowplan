@@ -13,6 +13,7 @@ import {
   MAX_CELL_FILES,
 } from "@/lib/file-cells";
 import type { Field, Row, User } from "@/lib/types";
+import { useSprints } from "./sprint-context";
 export type CellFile = { url: string; name: string; mime: string };
 export function CellInput({
   field: f,
@@ -37,6 +38,7 @@ export function CellInput({
   onChange: (v: unknown) => void | Promise<unknown>;
 }) {
   const t = useT();
+  const sprints = useSprints();
   const [draft, setDraft] = useState(cellText(value));
   useEffect(() => setDraft(cellText(value)), [value]);
   if (f.type === "date")
@@ -106,6 +108,20 @@ export function CellInput({
       />
     );
   }
+  if (f.type === "sprint")
+    return (
+      <Select aria-label={f.name} disabled={disabled} value={cellText(value)} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{t("Backlog (kein Sprint)", "Backlog (no sprint)")}</option>
+        {sprints
+          .filter((s) => s.state !== "closed" || s.id === value)
+          .map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+              {s.state === "active" ? t(" (läuft)", " (active)") : ""}
+            </option>
+          ))}
+      </Select>
+    );
   if (["select", "person"].includes(f.type)) {
     const options =
       f.type === "person"

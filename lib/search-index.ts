@@ -18,6 +18,7 @@ const IGNORED: Field["type"][] = [
   "updated_by",
   "formula",
   "rollup",
+  "sprint",
 ];
 
 export function htmlText(html: string) {

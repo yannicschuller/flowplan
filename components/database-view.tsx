@@ -12,6 +12,8 @@ import { RecordSubtasks } from "./record-subtasks";
 import { BoardWipSettings, WipCount } from "./board-wip";
 import { RecordTime } from "./record-time";
 import { formatDuration } from "@/lib/durations";
+import { DatabaseSprints } from "./database-sprints";
+import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
   defaultRecordLayout,
@@ -212,6 +214,7 @@ const fieldNames: Record<FieldType, [string, string]> = {
   id: ["ID (Ticketnummer)", "ID (ticket number)"],
   progress: ["Fortschritt der Unteraufgaben", "Subtask progress"],
   time: ["Zeiterfassung", "Time tracking"],
+  sprint: ["Sprint", "Sprint"],
 };
 type RowMove = {
   viewId: string;
@@ -224,6 +227,18 @@ type RowMove = {
   subgroup?: { from: string; to: string };
 };
 const rowDragType = "application/x-flowplan-row-order";
+const viewTypeNames: Record<View["type"], [string, string]> = {
+  table: ["Tabelle", "Table"],
+  board: ["Board", "Board"],
+  calendar: ["Kalender", "Calendar"],
+  gallery: ["Galerie", "Gallery"],
+  list: ["Liste", "List"],
+  timeline: ["Zeitleiste", "Timeline"],
+  form: ["Formular", "Form"],
+  chart: ["Diagramm", "Chart"],
+  feed: ["Feed", "Feed"],
+  sprint: ["Sprints (Backlog und Planung)", "Sprints (backlog and planning)"],
+};
 const groupDragType = "application/x-flowplan-group-order";
 const computedTypes = [
   "id",
@@ -1264,6 +1279,10 @@ export default function DatabaseView({
       );
     }
     if (f.type === "rollup") return <RollupValue field={f} value={v} />;
+    if (f.type === "sprint") {
+      const sprint = data.database.settings?.sprints?.find((s) => s.id === v);
+      return sprint ? <span className={`sprint-chip sprint-${sprint.state}`}>{sprint.name}</span> : null;
+    }
     if (f.type === "time") {
       const spent = typeof v === "number" ? v : 0;
       const estimate = f.estimateField ? Number(r.cells[f.estimateField]) : NaN;
@@ -2160,6 +2179,7 @@ export default function DatabaseView({
   }
 
   return (
+    <SprintContext.Provider value={data.database.settings?.sprints || []}>
     <div className="database" ref={boardRef}>
       <div className="database-tabs">
         {data.database.views.map((v) => {
@@ -2959,6 +2979,17 @@ export default function DatabaseView({
               />
             )}
         </div>
+      )}
+      {view.type === "sprint" && (
+        <DatabaseSprints
+          pageId={page.id}
+          database={data.database}
+          rows={shown}
+          members={members}
+          editable={editable}
+          act={act}
+          onOpen={setRowId}
+        />
       )}
       {view.type === "feed" && (
         <DatabaseFeed
@@ -4657,9 +4688,9 @@ export default function DatabaseView({
               value={viewType}
               onChange={(e) => setViewType(e.target.value as View["type"])}
             >
-              {Object.keys(viewIcons).map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {(Object.keys(viewIcons) as View["type"][]).map((type) => (
+                <option key={type} value={type}>
+                  {t(...viewTypeNames[type])}
                 </option>
               ))}
             </Select>
@@ -5144,6 +5175,7 @@ export default function DatabaseView({
         />
       )}
     </div>
+    </SprintContext.Provider>
   );
 }
 // Rows drawn at once; more follow on scrolling or with the button, so a

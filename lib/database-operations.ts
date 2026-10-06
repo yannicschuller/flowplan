@@ -99,6 +99,8 @@ export function validateCellPatch(
       const text = z.string().max(10000).parse(value);
       if (f.type === "select" && text && !f.options?.includes(text))
         throw new HttpError(400, "Unbekannte Auswahl.");
+      if (f.type === "sprint" && text && !databaseSettings(page.id).sprints?.some((s) => s.id === text))
+        throw new HttpError(400, "Unbekannter Sprint.");
       if (
         f.type === "person" &&
         text &&
@@ -292,3 +294,4 @@ export function bulkRows(
 }
 import { exportInlineComments } from "./inline-comment-archive";
 import { rowChanged } from "./automations";
+import { databaseSettings } from "./database-settings";

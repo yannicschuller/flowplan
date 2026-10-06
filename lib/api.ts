@@ -2,6 +2,7 @@ import { teamReply } from "./service-desk";
 import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
+import { sprintCommand } from "./sprints";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1928,6 +1929,18 @@ export function command(
               : 0,
           JSON.stringify(config),
         );
+        break;
+      }
+      case "sprint.setup":
+      case "sprint.create":
+      case "sprint.update":
+      case "sprint.start":
+      case "sprint.complete":
+      case "sprint.delete":
+      case "sprint.points": {
+        const p = write();
+        autoDatabaseSnapshot(user, p);
+        result = sprintCommand(user, p, action, b);
         break;
       }
       case "time.start":

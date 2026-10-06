@@ -78,7 +78,7 @@ export function groupCellValue(
 }
 
 export const canGroupField = (field: Field) =>
-  !["files", "checklist"].includes(field.type);
+  !["files", "checklist", "sprint", "time", "progress"].includes(field.type);
 export function groupingField(fields: Field[], view: View) {
   return (
     fields.find((f) => f.id === view.groupBy && canGroupField(f)) ||

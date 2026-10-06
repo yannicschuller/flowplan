@@ -2,6 +2,7 @@ import { withRequestLocale } from "@/lib/content-locale";
 import { teamThread } from "@/lib/service-desk";
 import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
 import { recordTime, timeReport } from "@/lib/time-tracking";
+import { sprintCharts } from "@/lib/sprints";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -411,6 +412,12 @@ async function handleGET(
       const page = requirePage(user, z.uuid().parse(url.searchParams.get("page")));
       return NextResponse.json(
         recordTime(user, page, z.uuid().parse(url.searchParams.get("row")), z.string().max(500).parse(url.searchParams.get("field"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "sprint-charts") {
+      return NextResponse.json(
+        sprintCharts(user, z.uuid().parse(url.searchParams.get("page")), z.string().max(60).parse(url.searchParams.get("sprint"))),
         { headers: { "Cache-Control": "no-store" } },
       );
     }

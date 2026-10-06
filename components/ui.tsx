@@ -94,6 +94,7 @@ export const viewIcons = {
   form: ClipboardText,
   chart: ChartBar,
   feed: Article,
+  sprint: Flag,
 };
 export function Modal({
   open,

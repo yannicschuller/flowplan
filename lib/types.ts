@@ -85,7 +85,8 @@ export type FieldType =
   | "files"
   | "id"
   | "progress"
-  | "time";
+  | "time"
+  | "sprint";
 export type Field = {
   id: string;
   name: string;
@@ -163,7 +164,8 @@ export type View = {
     | "timeline"
     | "form"
     | "chart"
-    | "feed";
+    | "feed"
+    | "sprint";
   gallery?: import("./database-gallery").GalleryConfig;
   feed?: import("./database-feed").FeedConfig;
   timeline?: import("./database-timeline").TimelineConfig;
