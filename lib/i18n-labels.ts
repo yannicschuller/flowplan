@@ -100,6 +100,7 @@ const labels: Record<string, string> = {
   Erwähnungen: "Mentions",
   "Kommentare und Antworten": "Comments and replies",
   "Datums-Erinnerungen": "Date reminders",
+  "Automationen in Datenbanken": "Database automations",
   "Gastkommentare und Gasteinträge": "Guest comments and guest records",
   "Änderungen an Seiten, denen du folgst": "Changes to pages you follow",
   // charts

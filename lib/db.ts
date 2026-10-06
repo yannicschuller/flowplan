@@ -290,6 +290,15 @@ function migrate(d: DatabaseSync) {
     d.exec(
       "ALTER TABLE rows ADD COLUMN access TEXT NOT NULL DEFAULT 'inherit'",
     );
+  // Automations: overdue rules fire once per record and due date; the
+  // status log records when records became done (sprint charts).
+  d.exec(`CREATE TABLE IF NOT EXISTS automation_runs(automation_id TEXT NOT NULL,row_id TEXT NOT NULL,key TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(automation_id,row_id,key));
+    CREATE TABLE IF NOT EXISTS row_status_log(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,done INTEGER NOT NULL,at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS row_status_log_page ON row_status_log(page_id,at);`);
+  // Optional database settings: done rule, workflow, automations, sprints,
+  // time tracking, Git (lib/database-settings.ts).
+  if (!(d.prepare("PRAGMA table_info(databases)").all() as { name: string }[]).some((c) => c.name === "settings"))
+    d.exec("ALTER TABLE databases ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'");
   if (
     !(
       d.prepare("PRAGMA table_info(databases)").all() as { name: string }[]

@@ -239,6 +239,7 @@ export function bulkRows(
         user.id,
         row.id,
       );
+      rowChanged(user, page, row.id, JSON.parse(row.cells), cells, fields);
     } else if (operation === "delete") {
       trashRow(user, page, row.id);
     } else {
@@ -286,3 +287,4 @@ export function bulkRows(
   };
 }
 import { exportInlineComments } from "./inline-comment-archive";
+import { rowChanged } from "./automations";

@@ -10,6 +10,7 @@ import {
 } from "./form-settings";
 import type { Identity, Field, Page } from "./types";
 import { emitWebhook } from "./webhooks";
+import { rowCreated } from "./automations";
 export function formSettings(pageId: string) {
   const raw = one<{
     token: string;
@@ -171,6 +172,8 @@ export function saveFormSubmission(
     form?.anonymous ? null : user?.id || null,
   );
   run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id=?", pageId);
+  // Automations: "a new record arrives through a form".
+  rowCreated(user, page, rid, true);
   const workspace = one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", pageId);
   if (workspace) {
     const payload = { pageId, rowId: rid, cells: result.cells, anonymous: !!form?.anonymous };

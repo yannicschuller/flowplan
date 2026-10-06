@@ -11,6 +11,7 @@ import {
 } from "./database-timeline";
 import { calendarChangeSchema, calendarPatch } from "./database-calendar";
 import type { Field, Identity, View } from "./types";
+import { rowChanged } from "./automations";
 const changeSchema = z.discriminatedUnion("operation", [
   z.object({
     operation: z.literal("set"),
@@ -81,6 +82,7 @@ export function scheduleRow(
     user.id,
     rid,
   );
+  rowChanged(user, page, rid, cells, JSON.parse(nextCells), db.fields);
   return { ok: true };
 }
 

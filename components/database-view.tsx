@@ -6,6 +6,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { RowAccess, rowAccessSummary } from "./row-access";
 import TicketThread from "./ticket-thread";
+import { DatabaseTools } from "./database-tools";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
   defaultRecordLayout,
@@ -2189,12 +2190,14 @@ export default function DatabaseView({
                 <Plus size={16} />
                 {t("Neu", "New")}
               </button>{" "}
-              <button
-                title={t("Datensatzvorlagen", "Record templates")}
-                onClick={() => setManageTemplates(true)}
-              >
-                <DotsThree size={20} />
-              </button>
+              <DatabaseTools
+                page={page}
+                database={data.database}
+                members={members}
+                editable={editable}
+                act={act}
+                onTemplates={() => setManageTemplates(true)}
+              />
             </>
           )}
         </div>

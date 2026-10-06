@@ -1,5 +1,6 @@
 import { teamReply } from "./service-desk";
 import { validateTicketPrefix } from "./ticket-refs";
+import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
   syncWhiteboard,
@@ -163,14 +164,16 @@ export function database(pid: string): Database {
     views: string;
     version: number;
     record_layout?: string;
+    settings?: string;
   }>("SELECT * FROM databases WHERE page_id=?", pid);
   if (!raw) throw new HttpError(404, "Datenbank nicht gefunden.");
-  const { record_layout, ...rest } = raw;
+  const { record_layout, settings: _settings, ...rest } = raw;
   return {
     ...rest,
     fields: JSON.parse(raw.fields),
     views: JSON.parse(raw.views),
     recordLayout: parseRecordLayout(record_layout),
+    settings: clientSettings(databaseSettings(pid)),
   };
 }
 export function rows(pid: string): Row[] {
@@ -1558,6 +1561,7 @@ export function command(
           user.id,
         );
         if (template) replaceRowDocument(rid, template.html, user.id);
+        rowCreated(user, requirePage(user, pid()), rid);
         result = { id: rid };
         break;
       }
@@ -1650,9 +1654,11 @@ export function command(
             400,
             "Dokumentinhalt über den Dokumenteditor bearbeiten.",
           );
+        const before = JSON.parse(row.cells);
+        const fieldsNow = database(pid()).fields;
         const cells = {
-          ...JSON.parse(row.cells),
-          ...validateCellPatch(user, p, database(pid()).fields, b.cells || {}),
+          ...before,
+          ...validateCellPatch(user, p, fieldsNow, b.cells || {}),
         };
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
@@ -1665,6 +1671,7 @@ export function command(
           user.id,
           rid,
         );
+        rowChanged(user, p, rid, before, cells, fieldsNow);
         break;
       }
       case "row.delete": {
@@ -1678,6 +1685,13 @@ export function command(
       case "row.trash.restore":
         result = restoreTrashedRow(user, b);
         break;
+      case "database.settings": {
+        // Optional settings (done rule, workflow, automations, sprints …).
+        const p = write();
+        autoDatabaseSnapshot(user, p);
+        result = clientSettings(updateDatabaseSettings(user, p, database(p.id).fields, b.settings));
+        break;
+      }
       case "database.recordLayout": {
         const p = write();
         const fields = database(p.id).fields;
@@ -2331,6 +2345,7 @@ export function commentReactions(user: Identity, commentId: string) {
 const editActions = new Set([
   "document.sync",
   "database.update",
+  "database.settings",
   "row.schedule",
   "timeline.cascade",
   "row.move",
@@ -2438,3 +2453,4 @@ import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
+import { rowChanged, rowCreated } from "./automations";

@@ -24,6 +24,7 @@ import {
   MAX_CELL_FILES,
 } from "./file-cells";
 import { documentChanged } from "./document-live";
+import { rowChanged, rowCreated } from "./automations";
 
 export const publicField = (f: Field) =>
   ![
@@ -458,6 +459,7 @@ export function mutateSharedContent(token: string, input: unknown) {
         `Neuer Gasteintrag in „${s.page.title}“`,
         s.page.id,
       );
+      rowCreated(null, s.page, rid);
       audit("guest", "share.create", s.page.id, rid);
       return { ...sharedContent(token, b.pageId), createdRowId: rid };
     }
@@ -479,6 +481,7 @@ export function mutateSharedContent(token: string, input: unknown) {
         JSON.stringify(cells),
         s.row.id,
       );
+      rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
       audit("guest", "share.cells", s.page.id, s.row.id);
       return sharedContent(token, b.pageId, b.rowId);
     }
@@ -521,6 +524,7 @@ export function mutateSharedContent(token: string, input: unknown) {
           JSON.stringify(cells),
           s.row.id,
         );
+        rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
       } else if (
         b.html !== undefined &&
         (s.page.kind === "document" || s.row)
@@ -568,6 +572,7 @@ export function mutateSharedContent(token: string, input: unknown) {
             canonical,
             s.row.id,
           );
+          rowChanged(null, s.page, s.row.id, s.cells, cells, s.fields);
         } else {
           run(
             "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",

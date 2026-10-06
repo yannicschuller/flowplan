@@ -187,6 +187,7 @@ export type Database = {
   views: View[];
   version: number;
   recordLayout?: import("./record-layout").RecordLayout;
+  settings?: import("./database-settings-schema").DatabaseSettings;
 };
 export type Comment = {
   id: string;

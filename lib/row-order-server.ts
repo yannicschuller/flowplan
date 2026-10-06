@@ -20,6 +20,7 @@ import {
   orderedRowIds,
 } from "./row-order";
 import type { Identity, Row, View, Field } from "./types";
+import { rowChanged } from "./automations";
 function records(pageId: string) {
   return all<Omit<Row, "cells"> & { cells: string }>(
     "SELECT * FROM rows WHERE page_id=? ORDER BY position",
@@ -264,6 +265,7 @@ export function moveRow(
         user.id,
         row.id,
       );
+      rowChanged(user, page, row.id, row.cells, cells, d.fields);
     }
   }
   order = order.filter((r) => r !== row.id);
