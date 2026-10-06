@@ -10,6 +10,8 @@ import TicketThread from "./ticket-thread";
 import { DatabaseTools } from "./database-tools";
 import { RecordSubtasks } from "./record-subtasks";
 import { BoardWipSettings, WipCount } from "./board-wip";
+import { RecordTime } from "./record-time";
+import { formatDuration } from "@/lib/durations";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
   defaultRecordLayout,
@@ -209,6 +211,7 @@ const fieldNames: Record<FieldType, [string, string]> = {
   files: ["Dateien", "Files"],
   id: ["ID (Ticketnummer)", "ID (ticket number)"],
   progress: ["Fortschritt der Unteraufgaben", "Subtask progress"],
+  time: ["Zeiterfassung", "Time tracking"],
 };
 type RowMove = {
   viewId: string;
@@ -225,6 +228,7 @@ const groupDragType = "application/x-flowplan-group-order";
 const computedTypes = [
   "id",
   "progress",
+  "time",
   "formula",
   "rollup",
   "created_at",
@@ -1260,6 +1264,17 @@ export default function DatabaseView({
       );
     }
     if (f.type === "rollup") return <RollupValue field={f} value={v} />;
+    if (f.type === "time") {
+      const spent = typeof v === "number" ? v : 0;
+      const estimate = f.estimateField ? Number(r.cells[f.estimateField]) : NaN;
+      if (!spent && !Number.isFinite(estimate)) return null;
+      return (
+        <span className={`time-cell${Number.isFinite(estimate) && spent > estimate * 3600 ? " over" : ""}`}>
+          {formatDuration(spent)}
+          {Number.isFinite(estimate) && <span className="muted"> / {estimate} h</span>}
+        </span>
+      );
+    }
     if (f.type === "progress")
       return typeof v === "number" ? (
         <span className="progress-cell" title={`${Math.round(v * 100)} %`}>
@@ -4294,6 +4309,28 @@ export default function DatabaseView({
               )}
             </p>
           )}
+          {fieldDraft.type === "time" && (
+            <label>
+              {t("Schätzung aus (optional)", "Estimate from (optional)")}
+              <Select
+                aria-label={t("Eigenschaft mit der Schätzung in Stunden", "Property with the estimate in hours")}
+                value={fieldDraft.estimateField || ""}
+                onChange={(e) => setFieldDraft((f) => ({ ...f, estimateField: e.target.value || undefined }))}
+              >
+                <option value="">{t("Keine Schätzung", "No estimate")}</option>
+                {fields
+                  .filter((f) => f.type === "number")
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+              </Select>
+              <small className="muted">
+                {t("Start/Stopp und Nachtragen im Eintrag; Auswertung über das Menü „…“.", "Start/stop and adding time in the record; report in the “…” menu.")}
+              </small>
+            </label>
+          )}
           {fieldDraft.type === "progress" && (
             <p className="muted">
               {fields.some((f) => f.parent)
@@ -4913,6 +4950,20 @@ export default function DatabaseView({
                   onError={onError}
                   onChanged={onRefresh}
                 />
+                {fields
+                  .filter((f) => f.type === "time")
+                  .map((f) => (
+                    <RecordTime
+                      key={`time-${selected.id}-${f.id}`}
+                      pageId={page.id}
+                      row={selected}
+                      field={f}
+                      estimate={f.estimateField && Number.isFinite(Number(selected.cells[f.estimateField])) && selected.cells[f.estimateField] !== null && selected.cells[f.estimateField] !== "" ? Number(selected.cells[f.estimateField]) : null}
+                      editable={selectedEditable}
+                      onChanged={onRefresh}
+                      onError={onError}
+                    />
+                  ))}
                 {subtaskParent && (
                   <RecordSubtasks
                     pageId={page.id}

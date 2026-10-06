@@ -295,6 +295,11 @@ function migrate(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS automation_runs(automation_id TEXT NOT NULL,row_id TEXT NOT NULL,key TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(automation_id,row_id,key));
     CREATE TABLE IF NOT EXISTS row_status_log(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,done INTEGER NOT NULL,at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS row_status_log_page ON row_status_log(page_id,at);`);
+  // Time tracking: entries per record and person; a running timer has no end.
+  d.exec(`CREATE TABLE IF NOT EXISTS time_entries(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL,field_id TEXT NOT NULL,user_id TEXT NOT NULL,start INTEGER NOT NULL,end INTEGER,note TEXT NOT NULL DEFAULT '');
+    CREATE INDEX IF NOT EXISTS time_entries_row ON time_entries(row_id,start);
+    CREATE INDEX IF NOT EXISTS time_entries_page ON time_entries(page_id,start);
+    CREATE INDEX IF NOT EXISTS time_entries_running ON time_entries(user_id) WHERE end IS NULL;`);
   // Optional database settings: done rule, workflow, automations, sprints,
   // time tracking, Git (lib/database-settings.ts).
   if (!(d.prepare("PRAGMA table_info(databases)").all() as { name: string }[]).some((c) => c.name === "settings"))

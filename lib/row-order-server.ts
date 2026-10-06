@@ -187,6 +187,7 @@ export function moveRow(
         "updated_by",
         "id",
         "progress",
+        "time",
       ].includes(f.type);
     if (locked(field) || (b.subgroup && locked(subfield)))
       throw new HttpError(400, "Gruppe kann nicht bearbeitet werden.");

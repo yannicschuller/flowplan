@@ -35,7 +35,6 @@ export function updateDatabaseSettings(user: Identity, page: Page, fields: Field
   check(next.done?.field);
   check(next.workflow?.field);
   check(next.pointsField);
-  check(next.estimateField);
   for (const a of next.automations || []) {
     if (a.trigger.type === "changed" || a.trigger.type === "overdue") check(a.trigger.field);
     for (const c of a.conditions) check(c.field);

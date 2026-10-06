@@ -1,6 +1,7 @@
 import { withRequestLocale } from "@/lib/content-locale";
 import { teamThread } from "@/lib/service-desk";
 import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
+import { recordTime, timeReport } from "@/lib/time-tracking";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -404,6 +405,18 @@ async function handleGET(
     if (path[0] === "dashboard-metric") {
       const query = metricSchema.parse(Object.fromEntries(url.searchParams));
       return NextResponse.json(computeMetric(user, query), { headers: { "Cache-Control": "no-store" } });
+    }
+    if (path[0] === "time-entries") {
+      // Time worked on a record (time tracking property).
+      const page = requirePage(user, z.uuid().parse(url.searchParams.get("page")));
+      return NextResponse.json(
+        recordTime(user, page, z.uuid().parse(url.searchParams.get("row")), z.string().max(500).parse(url.searchParams.get("field"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (path[0] === "time-report") {
+      const weeks = Math.min(26, Math.max(1, Number(url.searchParams.get("weeks")) || 8));
+      return NextResponse.json(timeReport(user, z.uuid().parse(url.searchParams.get("page")), weeks), { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "ticket-refs" || path[0] === "ticket-ref") {
       // Ticket numbers (WEB-123) in the workspace of a page.

@@ -242,6 +242,7 @@ export function saveRowTemplate(
         "updated_by",
         "id",
         "progress",
+        "time",
       ].includes(f.type)
     )
       delete cells[f.id];

@@ -1,6 +1,7 @@
 import { teamReply } from "./service-desk";
 import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
+import { timeCommand } from "./time-tracking";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1929,6 +1930,12 @@ export function command(
         );
         break;
       }
+      case "time.start":
+      case "time.stop":
+      case "time.add":
+      case "time.delete":
+        result = timeCommand(user, requirePage(user, pid()), action, b);
+        break;
       case "ticket.reply":
         // A team answer to a customer request; e-mailed to the customer.
         write();

@@ -34,6 +34,7 @@ export const field = z.object({
     "files",
     "id",
     "progress",
+    "time",
   ]),
   options: z.array(z.string().max(100)).max(100).optional(),
   formula: z.string().max(2000).optional(),
@@ -50,6 +51,7 @@ export const field = z.object({
   parentField: z.string().max(500).optional(),
   doneField: z.string().max(500).optional(),
   doneValues: z.array(z.string().max(100)).max(50).optional(),
+  estimateField: z.string().max(500).optional(),
   prefix: z.string().regex(/^[A-Z][A-Z0-9]{0,9}$/, "Präfix: Großbuchstaben und Ziffern, z. B. WEB.").optional(),
 });
 export const view = z

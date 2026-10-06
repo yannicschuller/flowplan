@@ -58,6 +58,7 @@ export function publicFormFields(fields: Field[], internal = false) {
         "updated_by",
         "id",
         "progress",
+        "time",
         ...(internal ? [] : ["person", "relation"]),
       ].includes(f.type),
   );

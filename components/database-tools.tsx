@@ -1,14 +1,15 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { DotsThree, Lightning, FlowArrow, Copy } from "@phosphor-icons/react";
+import { DotsThree, Lightning, FlowArrow, Copy, Timer } from "@phosphor-icons/react";
+import { TimeReport } from "./time-report";
 import { useT } from "./i18n";
 import { Modal } from "./ui";
 import { DatabaseAutomations } from "./database-automations";
 import { DatabaseWorkflow } from "./database-workflow";
 import type { Database, Page, User } from "@/lib/types";
 
-export type ToolPanel = "automations" | "workflow";
+export type ToolPanel = "automations" | "workflow" | "time";
 
 // The "…" menu of a database: record templates and the optional tools.
 // Nothing here changes how a database works until it is set up.
@@ -53,11 +54,15 @@ export function DatabaseTools({
             <Dropdown.Separator className="dropdown-separator" />
             {item(<Lightning />, t("Automationen", "Automations"), () => setPanel("automations"), rules ? String(rules) : undefined)}
             {item(<FlowArrow />, t("Workflow und Erledigt", "Workflow and done"), () => setPanel("workflow"), settings.workflow ? "✓" : undefined)}
+            {database.fields.some((f) => f.type === "time") && item(<Timer />, t("Zeiten auswerten", "Time report"), () => setPanel("time"))}
           </Dropdown.Content>
         </Dropdown.Portal>
       </Dropdown.Root>
       <Modal open={panel === "automations"} onClose={() => setPanel(null)} title={t(`Automationen · ${page.title}`, `Automations · ${page.title}`)} wide>
         <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} />
+      </Modal>
+      <Modal open={panel === "time"} onClose={() => setPanel(null)} title={t(`Zeiten · ${page.title}`, `Time · ${page.title}`)} wide>
+        {panel === "time" && <TimeReport pageId={page.id} title={page.title} />}
       </Modal>
       <Modal open={panel === "workflow"} onClose={() => setPanel(null)} title={t("Workflow und Erledigt", "Workflow and done")} wide>
         <DatabaseWorkflow

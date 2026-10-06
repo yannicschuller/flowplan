@@ -14066,3 +14066,117 @@ h3 .block-reactions {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- Time tracking ---------- */
+.time-cell {
+  font-variant-numeric: tabular-nums;
+}
+.time-cell.over,
+.record-time-head strong.over,
+.time-report-records .over {
+  color: var(--signal);
+}
+.record-time-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.record-time-head strong {
+  font: 400 26px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+.record-time-head .button {
+  margin-left: auto;
+}
+.record-time-clock {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.progress-track.wide {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+}
+.progress-track span.over {
+  background: var(--signal);
+}
+.record-time-add {
+  display: grid;
+  grid-template-columns: 110px 150px minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+@media (max-width: 640px) {
+  .record-time-add {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.record-time-entries {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.record-time-entries li {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.4fr) auto 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+.record-time-entries li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.time-report-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.time-report-scroll {
+  overflow-x: auto;
+}
+.time-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.time-report-table caption {
+  margin-bottom: 6px;
+  color: var(--muted);
+  text-align: left;
+}
+.time-report-table th,
+.time-report-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.time-report-table th[scope="row"],
+.time-report-table thead th:first-child {
+  text-align: left;
+}
+.time-report h3 {
+  margin: 18px 0 8px;
+}
+.time-report-records {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.time-report-records li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}

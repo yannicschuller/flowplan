@@ -84,7 +84,8 @@ export type FieldType =
   | "updated_by"
   | "files"
   | "id"
-  | "progress";
+  | "progress"
+  | "time";
 export type Field = {
   id: string;
   name: string;
@@ -109,6 +110,8 @@ export type Field = {
   parentField?: string;
   doneField?: string;
   doneValues?: string[];
+  // "time": a number property with the estimate in hours.
+  estimateField?: string;
 };
 export type Row = {
   id: string;

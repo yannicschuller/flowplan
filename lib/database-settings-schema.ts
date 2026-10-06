@@ -66,8 +66,6 @@ export const settingsSchema = z.object({
   sprints: z.array(sprintSchema).max(200).optional(),
   // A number property with story points or hours; empty counts records.
   pointsField: fid.optional(),
-  // A number property with the estimate in hours (time tracking).
-  estimateField: fid.optional(),
   git: z.object({ token: z.string().max(80), secret: z.string().max(120), createdAt: z.string().max(40) }).optional(),
 });
 export type DatabaseSettings = z.infer<typeof settingsSchema>;

@@ -25,6 +25,7 @@ const computed = [
   "updated_by",
   "id",
   "progress",
+  "time",
 ];
 export function validateCellPatch(
   user: Identity,
