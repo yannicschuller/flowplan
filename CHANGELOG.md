@@ -2,6 +2,29 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.2.0 – 2026-10-06
+
+- README: project tools, surveys and CalDAV; record templates test uses the new menu ([f571fbd](https://github.com/yannicschuller/flowplan/commit/f571fbda6d44f12078a1852f9af0c0e5533d502d))
+- PRODUCT.md: survey builder ([541ad41](https://github.com/yannicschuller/flowplan/commit/541ad4147f6a9fec7a264d13854c092cefb5a294))
+- Survey builder: surveys like SurveyMonkey, in any database, public or for members ([8da382f](https://github.com/yannicschuller/flowplan/commit/8da382fa8f9cc813e2055b27160b57af14cac061))
+- Keep series occurrences open on record links; steadier browser tests ([21ead16](https://github.com/yannicschuller/flowplan/commit/21ead16fdee09dfd26e86914eb6a65f2af62888d))
+- PRODUCT.md: optional project tools, CalDAV sync and paragraph restore ([8a57116](https://github.com/yannicschuller/flowplan/commit/8a571162f1b72718514bb3bda6422daa97decb7e))
+- Version history: restore single paragraphs ([3765bcf](https://github.com/yannicschuller/flowplan/commit/3765bcff5efa10417ca85214b752fab145741ba4))
+- Two-way calendar sync over CalDAV ([2895070](https://github.com/yannicschuller/flowplan/commit/28950700a1770f9cf8f3c4aa16c0b21009bc1950))
+- Records from all databases in My tasks, with saved views ([0e7587e](https://github.com/yannicschuller/flowplan/commit/0e7587e442fd8f8da56696376cbc97ef0715a16b))
+- Import from Jira and Trello into a new database ([0a0f69e](https://github.com/yannicschuller/flowplan/commit/0a0f69e23d9a741a70cd18fdca31980e40b55e7d))
+- Git connection: commits and pull requests on records (optional) ([29c864d](https://github.com/yannicschuller/flowplan/commit/29c864df641749963289594f8f1d1ae60fd33344))
+- Sprints: planning view with backlog, burndown and velocity (optional) ([3b88a4e](https://github.com/yannicschuller/flowplan/commit/3b88a4e8ea89ae985a799931a8bf61a37b148f20))
+- Time tracking for database records (optional) ([577ad89](https://github.com/yannicschuller/flowplan/commit/577ad8956650cbd2b9cf25b63888758a645bd1ca))
+- WIP limits for board columns (optional) ([da11139](https://github.com/yannicschuller/flowplan/commit/da11139e6edce1aed21ab6709f35261260130d0e))
+- Subtasks and epics in databases (optional) ([87c2b65](https://github.com/yannicschuller/flowplan/commit/87c2b655ef2368108fa35b54985c970bd474cad0))
+- Automations and status workflows for databases (optional) ([af11683](https://github.com/yannicschuller/flowplan/commit/af11683b2f97560a5c30d4a299bf16a640e07896))
+- Ticket numbers: an ID property numbers records as WEB-123, linked in text ([fe81ef5](https://github.com/yannicschuller/flowplan/commit/fe81ef59b6ecb1bb503a15a0856645409bf9e6f8))
+- SEO and GEO: only sign-in, sign-up and the template gallery are indexed ([e273f8b](https://github.com/yannicschuller/flowplan/commit/e273f8b5bc1564fc8f0940881da7528b4d3b2c2b))
+- PRODUCT.md and tests: dashboards and the customer portal; metrics over formula properties ([97a7e5c](https://github.com/yannicschuller/flowplan/commit/97a7e5c6656ddca1ef04a194581ce85692678a74))
+- Customer portal: form senders follow their request and talk to the team ([f76aa17](https://github.com/yannicschuller/flowplan/commit/f76aa17f2e86f71b9c4681c1ad682472cc1e53be))
+- Dashboards: metric cards with a count, sum, average, minimum or maximum from any database ([e67cc9f](https://github.com/yannicschuller/flowplan/commit/e67cc9f7996bf0c1506f458939f96af88cecd623))
+
 ## v0.1.1 – 2026-10-05
 
 - PRODUCT.md in English and up to date: open source, hosted and self-hosted, three repositories, German and English, sign-in options, calculating and graphs ([f6b4ff6](https://github.com/yannicschuller/flowplan/commit/f6b4ff63c4a6c8fa623bdefb3defc0e6e723152c))
