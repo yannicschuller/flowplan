@@ -15,12 +15,14 @@ The interface, the start page and the documentation are available in English and
 ## Features
 
 - **Block editor** – headings, lists, tasks with due dates and assignees, tables, code with syntax highlighting, callouts, toggles, columns, math (KaTeX), Mermaid diagrams, embeds, synced blocks, voice notes, slash menu and Markdown shortcuts.
-- **Databases** – table, board, calendar, timeline, gallery, list, feed, chart and form views; relations, rollups, formulas, recurring dates, reminders, record templates and per-record permissions.
+- **Databases** – table, board, calendar, timeline, gallery, list, feed, chart, form and sprint views; relations, rollups, formulas, recurring dates, reminders, record templates, per-record permissions and two-way calendar sync over CalDAV.
+- **Projects and tickets** (optional, per database) – ticket numbers like `WEB-123` linked in text, subtasks and epics with rolled-up progress, sprints with backlog, burndown and velocity, automations (when … only if … then …), status workflows with required fields, WIP limits, time tracking with weekly reports, a Git connection for GitHub, GitLab and Gitea, dashboards with metrics, a customer portal for form requests, records from all databases in "My tasks", and an import from Jira and Trello.
+- **Surveys** – a builder with 19 question types (stars, NPS, scales, sliders, matrix, ranking, files …), pages, conditions, welcome and thank-you screens, closing dates, answer limits and results; shared publicly or with members, every answer is a record.
 - **Whiteboards** – sticky notes, shapes, connectors, frames, pen, images, templates, voting, timer and presentation mode.
 - **Journal** – one page per day with templates, trackers, review, memories and an optional PIN lock.
 - **Collaboration** – live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, inbox, e-mail digests and Web Push.
 - **Sharing** – public pages, guest links for reading, commenting or editing, forms for anonymous answers.
-- **Search, import and export** – full-text search including OCR for scanned PDFs, Markdown/HTML/CSV/Notion import, Markdown and ZIP export, version history and restorable content archives.
+- **Search, import and export** – full-text search including OCR for scanned PDFs, Markdown/HTML/CSV/Notion import, Markdown and ZIP export, version history with comparisons and single-paragraph restore, and restorable content archives.
 - **Sign-in** – e-mail and password, passkeys (WebAuthn) and optional single sign-on with OpenID Connect and groups.
 - **Administration** – workspaces and spaces, quotas, audit log, session management, backups to S3 with Litestream, Prometheus metrics, API tokens and webhooks.
 - **Apps** – installable web app with offline support; a desktop app (Electron) can be built from `desktop/`.

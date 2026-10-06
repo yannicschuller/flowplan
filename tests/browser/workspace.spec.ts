@@ -209,9 +209,9 @@ test("rich record documents and reusable templates persist", async ({
     .getByRole("dialog", { name: "Eintrag", exact: true })
     .getByRole("button", { name: "Schließen", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Datensatzvorlagen", exact: true })
-    .click();
+  // Record templates sit in the database's "…" menu.
+  await page.getByRole("button", { name: "Weitere Werkzeuge", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Datensatzvorlagen" }).click();
   await page
     .getByRole("dialog", { name: "Datensatzvorlagen", exact: true })
     .getByRole("button", { name: "Verwenden", exact: true })
