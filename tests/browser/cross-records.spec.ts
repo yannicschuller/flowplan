@@ -32,9 +32,9 @@ test("records across databases in My tasks", async ({ page }, info) => {
   await page.getByRole("tab", { name: "Einträge aus Datenbanken" }).click();
   await expect(page.getByRole("button", { name: title })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "Als Ansicht speichern" }).click();
-  await page.getByLabel("Name der Ansicht").fill(`Tickets ${info.project.name}`);
+  await page.getByLabel("Name der Ansicht").fill(`Tickets ${info.project.name} ${Date.now() % 100000}`);
   await page.getByRole("button", { name: "Speichern" }).click();
-  await expect(page.getByRole("tab", { name: `Tickets ${info.project.name}` })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: /^Tickets / , selected: true })).toBeVisible();
   await page.getByRole("button", { name: title }).click();
   await expect(page).toHaveURL(/row=/);
   expect(errors).toEqual([]);

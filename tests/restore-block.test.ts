@@ -30,7 +30,7 @@ test("single paragraphs come back from an older version", () => {
   act({ action: "page.snapshot", pageId });
   const snapshotId = one<{ id: string }>("SELECT id FROM snapshots WHERE page_id=? ORDER BY created_at DESC", pageId)!.id;
   seed("<p>Intro</p><p>Middle text changed</p><p>End</p>");
-  const changes = snapshotChanges(owner, pageId, snapshotId).changes!;
+  const changes = snapshotChanges(owner, pageId, snapshotId).changes as { type: string }[];
   assert.deepEqual(changes.map((c) => c.type), ["same", "removed", "changed", "same"]);
   // The removed paragraph returns after "Intro", with its formatting.
   act({ action: "snapshot.restoreBlock", pageId, snapshotId, text: "Keep this one", after: "Intro" });

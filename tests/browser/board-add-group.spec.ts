@@ -23,7 +23,9 @@ test("a new status becomes its own board column; a due date can be removed", asy
   await expect(page.locator(".board-column").first()).toBeVisible();
   const before = await page.locator(".board-column").count();
   await page.locator("button.board-add-group").click();
-  await page.getByLabel("Name der neuen Gruppe").fill("in arbeit");
+  // An existing column in other letter case (the template follows the language).
+  const existing = (await page.locator(".board-column .tag").first().textContent())!.trim();
+  await page.getByLabel("Name der neuen Gruppe").fill(existing.toLowerCase());
   await page.getByRole("button", { name: "Hinzufügen", exact: true }).click();
   await expect(page.locator(".board-add-group [role=alert]")).toContainText("gibt es schon");
   await page.getByLabel("Name der neuen Gruppe").fill("Warten auf Kunde");
@@ -38,17 +40,20 @@ test("a new status becomes its own board column; a due date can be removed", asy
   await record.getByRole("button", { name: "Schließen" }).first().click();
   await expect(column.locator(".record-card").first()).toBeVisible();
 
-  // Removing a date in a record.
-  await page.locator(".database-tabs").getByText("Alle Aufgaben", { exact: true }).click();
-  await page.getByText("Meilensteine planen").first().click();
-  const remove = page.getByRole("button", { name: "Fällig am entfernen" }).first();
+  // Removing a date in a record (names come from the template's language).
+  const data = await (await page.request.get(`/api/pages/${pageId}`)).json();
+  const due = data.database.fields.find((f: { id: string }) => f.id === "date");
+  const dated = data.rows.find((r: { cells: Record<string, unknown> }) => r.cells.date);
+  await page.locator(".database-tabs").getByText(data.database.views[0].name, { exact: true }).click();
+  await page.getByText(String(dated.cells.title)).first().click();
+  const remove = page.getByRole("button", { name: `${due.name} entfernen` }).first();
   await expect(remove).toBeVisible();
   await remove.click();
-  await expect(page.getByLabel("Fällig am", { exact: true }).first()).toHaveValue("");
+  await expect(page.getByLabel(due.name, { exact: true }).first()).toHaveValue("");
   await expect
     .poll(async () => {
-      const data = await (await page.request.get(`/api/pages/${pageId}`)).json();
-      return data.rows.find((r: { cells: Record<string, unknown> }) => r.cells.title === "Meilensteine planen").cells.date ?? "";
+      const now = await (await page.request.get(`/api/pages/${pageId}`)).json();
+      return now.rows.find((r: { id: string }) => r.id === dated.id).cells.date ?? "";
     })
     .toBe("");
   expect(errors).toEqual([]);
