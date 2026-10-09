@@ -35,7 +35,7 @@
     "@tesseract.js-data/deu": "^1.0.0",
     "@tesseract.js-data/eng": "^1.0.0",
     "@tiptap/core": "^3.31.3",
-    "@tiptap/extension-code-block-lowlight": "^3.31.3",
+    "@tiptap/extension-code-block-lowlight": "^3.31.4",
     "@tiptap/extension-collaboration": "^3.31.3",
     "@tiptap/extension-highlight": "^3.31.3",
     "@tiptap/extension-image": "^3.31.3",
