@@ -8,6 +8,7 @@ import { deleteRecordView, saveRecordView } from "./cross-records";
 import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
 import { restoreBlock } from "./restore-block";
 import { saveSurvey } from "./survey-server";
+import { transferRows } from "./row-transfer";
 import { clientSettings, databaseSettings, updateDatabaseSettings } from "./database-settings";
 import {
   restoreWhiteboardSnapshot,
@@ -1535,6 +1536,13 @@ export function command(
       case "row.move":
         result = moveRow(user, pid(), b);
         break;
+      case "rows.transfer": {
+        // Copy or move records into another database.
+        const p = requirePage(user, pid());
+        autoDatabaseSnapshot(user, p);
+        result = transferRows(user, p.id, b);
+        break;
+      }
       case "rows.bulk":
         result = bulkRows(user, pid(), b);
         break;
@@ -2412,6 +2420,7 @@ const editActions = new Set([
   "timeline.cascade",
   "row.move",
   "rows.bulk",
+  "rows.transfer",
   "row.create",
   "row.document.sync",
   "rows.import",

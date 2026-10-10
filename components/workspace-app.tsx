@@ -301,7 +301,8 @@ export default function WorkspaceApp({
     [templateTitle, setTemplateTitle] = useState("");
   const [treeDrop, setTreeDrop] = useState<{
     id: string;
-    placement: "before" | "after" | "inside";
+    // "records": records from a database dropped onto another database.
+    placement: "before" | "after" | "inside" | "records";
   } | null>(null);
   // Profile pictures for every Avatar below, from the current member list.
   setAvatarDirectory([...boot.members, boot.user]);
@@ -1005,6 +1006,13 @@ export default function WorkspaceApp({
               }}
               onDragEnd={() => setTreeDrop(null)}
               onDragOver={(e) => {
+                // A record dragged from a database onto another database.
+                if (p.kind === "database" && e.dataTransfer.types.includes("application/x-flowplan-row-order")) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+                  setTreeDrop({ id: p.id, placement: "records" });
+                  return;
+                }
                 if (
                   !canCreate ||
                   !e.dataTransfer.types.includes("application/x-flowplan-page")
@@ -1026,6 +1034,22 @@ export default function WorkspaceApp({
               onDrop={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                const record = e.dataTransfer.getData("application/x-flowplan-row-order");
+                if (record && p.kind === "database") {
+                  setTreeDrop(null);
+                  let from: { pageId?: string; rowId?: string } = {};
+                  try {
+                    from = JSON.parse(record);
+                  } catch {}
+                  if (!from.pageId || !from.rowId || from.pageId === p.id) return;
+                  // Moves; with Alt (⌥) held it copies.
+                  const mode = e.altKey ? "copy" : "move";
+                  void act({ action: "rows.transfer", pageId: from.pageId, rowIds: [from.rowId], targetPageId: p.id, mode }).then((result) => {
+                    if (result)
+                      notify(mode === "move" ? t(`Eintrag nach „${p.title}“ verschoben.`, `Record moved to “${p.title}”.`) : t(`Eintrag nach „${p.title}“ kopiert.`, `Record copied to “${p.title}”.`));
+                  });
+                  return;
+                }
                 const source = e.dataTransfer.getData(
                   "application/x-flowplan-page",
                 );

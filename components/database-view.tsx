@@ -12,6 +12,7 @@ import { RecordSubtasks } from "./record-subtasks";
 import { BoardWipSettings, WipCount } from "./board-wip";
 import { RecordTime } from "./record-time";
 import { RecordGit } from "./record-git";
+import { RecordMenu, TransferDialog } from "./record-transfer";
 import { formatDuration } from "@/lib/durations";
 import { DatabaseSprints } from "./database-sprints";
 import { SprintContext } from "./sprint-context";
@@ -371,6 +372,9 @@ export default function DatabaseView({
     groupKey?: string;
   } | null>(null);
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
+  // Right-click on records, and copying or moving them elsewhere.
+  const [recordMenu, setRecordMenu] = useState<{ x: number; y: number; rowIds: string[] } | null>(null);
+  const [transfer, setTransfer] = useState<{ rowIds: string[]; mode: "copy" | "move" } | null>(null);
   const [bulk, setBulk] = useState<"update" | "delete" | null>(null),
     [bulkField, setBulkField] = useState(""),
     [bulkValue, setBulkValue] = useState<unknown>(undefined),
@@ -509,6 +513,21 @@ export default function DatabaseView({
     const order = orderedFields.map((f) => f.id).filter((id) => id !== source);
     order.splice(order.indexOf(target), 0, source);
     await updateView({ fieldOrder: order });
+  }
+  // Duplicate or delete the records of the right-click menu.
+  async function recordsAction(rowIds: string[], operation: "duplicate" | "delete") {
+    const list = data.rows.filter((r) => rowIds.includes(r.id));
+    if (operation === "delete" && list.length > 1 && !window.confirm(t(`${list.length} Einträge löschen?`, `Delete ${list.length} records?`))) return;
+    const result = await act({ action: "rows.bulk", operation, rows: list.map((r) => ({ id: r.id, version: r.version })) });
+    if (result) {
+      setSelection(new Map());
+      if (list.length > 1 || operation === "delete")
+        onError(
+          operation === "delete"
+            ? t(`${list.length} ${list.length === 1 ? "Eintrag" : "Einträge"} in den Papierkorb gelegt.`, `${list.length} ${list.length === 1 ? "record" : "records"} moved to the trash.`)
+            : t(`${list.length} Einträge dupliziert.`, `${list.length} records duplicated.`),
+        );
+    }
   }
   async function bulkAction(operation: "update" | "duplicate" | "delete") {
     setBulkBusy(true);
@@ -2193,7 +2212,22 @@ export default function DatabaseView({
 
   return (
     <SprintContext.Provider value={data.database.settings?.sprints || []}>
-    <div className="database" ref={boardRef}>
+    <div
+      className="database"
+      ref={boardRef}
+      onContextMenu={(e) => {
+        // Records (rows, cards, list items) get their own menu; fields
+        // being edited keep the browser's.
+        const target = e.target as HTMLElement;
+        if (target.closest("input, textarea, select, [contenteditable=true], .modal, .ProseMirror")) return;
+        const record = target.closest<HTMLElement>("[data-row-id]");
+        const rowId = record?.dataset.rowId;
+        if (!rowId || !data.rows.some((r) => r.id === rowId)) return;
+        e.preventDefault();
+        const rowIds = selection.has(rowId) && selection.size > 1 ? [...selection.keys()] : [rowId];
+        setRecordMenu({ x: e.clientX, y: e.clientY, rowIds });
+      }}
+    >
       <div className="database-tabs">
         {data.database.views.map((v) => {
           const Icon = viewIcons[v.type];
@@ -2324,6 +2358,9 @@ export default function DatabaseView({
             onClick={() => bulkAction("duplicate")}
           >
             {t("Duplizieren", "Duplicate")}
+          </button>
+          <button className="button compact" disabled={bulkBusy} onClick={() => setTransfer({ rowIds: [...selection.keys()], mode: "move" })}>
+            {t("Verschieben / kopieren nach …", "Move / copy to …")}
           </button>
           <button
             className="button compact danger"
@@ -5200,6 +5237,35 @@ export default function DatabaseView({
               cover: appearance.cover,
             }))
           }
+        />
+      )}
+      {recordMenu && (
+        <RecordMenu
+          x={recordMenu.x}
+          y={recordMenu.y}
+          count={recordMenu.rowIds.length}
+          editable={editable}
+          onOpen={() => setRowId(recordMenu.rowIds[0])}
+          onDuplicate={() => void recordsAction(recordMenu.rowIds, "duplicate")}
+          onDelete={() => void recordsAction(recordMenu.rowIds, "delete")}
+          onTransfer={(mode) => setTransfer({ rowIds: recordMenu.rowIds, mode })}
+          onClose={() => setRecordMenu(null)}
+        />
+      )}
+      {transfer && (
+        <TransferDialog
+          pageId={page.id}
+          rowIds={transfer.rowIds}
+          initialMode={transfer.mode}
+          canMove={editable}
+          act={act}
+          onClose={() => setTransfer(null)}
+          onDone={(message) => {
+            setTransfer(null);
+            setSelection(new Map());
+            if (transfer.rowIds.includes(rowId || "")) setRowId(null);
+            onError(message);
+          }}
         />
       )}
     </div>

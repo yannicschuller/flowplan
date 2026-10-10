@@ -14,6 +14,8 @@ const exact: Record<string, string> = {
   "Anfrage zu groß.": "Request too large.",
   "Eigenschaft fehlt.": "Property missing.",
   "Unbekannte Einstellung.": "Unknown setting.",
+  "Bitte eine andere Datenbank wählen.": "Please choose another database.",
+  "Nur innerhalb eines Arbeitsbereichs.": "Only within one workspace.",
   "Diese Umfrage hat genug Antworten.": "This survey has enough answers.",
   "Diese Umfrage ist geschlossen.": "This survey is closed.",
   "Du hast an dieser Umfrage schon teilgenommen.": "You have already taken part in this survey.",

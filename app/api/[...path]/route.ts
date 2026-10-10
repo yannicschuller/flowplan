@@ -6,6 +6,7 @@ import { sprintCharts } from "@/lib/sprints";
 import { gitConfig, gitLinks } from "@/lib/git-integration";
 import { crossRecords, recordViews } from "@/lib/cross-records";
 import { hasCalDavAccess } from "@/lib/caldav";
+import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
@@ -420,6 +421,8 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    if (path[0] === "transfer-targets")
+      return NextResponse.json(transferTargets(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
     if (path[0] === "records") {
       // Records across all databases (My tasks → records).
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
