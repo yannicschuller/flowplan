@@ -15723,13 +15723,24 @@ h3 .block-reactions {
 }
 .segmented {
   display: inline-flex;
+  gap: 2px;
   justify-self: start;
+  width: max-content;
   padding: 3px;
   border-radius: 9px;
   background: var(--hover);
 }
+.segmented label,
+.transfer-target {
+  margin: 0;
+}
 .segmented label {
   position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
   padding: 6px 14px;
   border-radius: 7px;
   font-size: 13px;
@@ -15760,6 +15771,7 @@ h3 .block-reactions {
 .transfer-target {
   position: relative;
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
