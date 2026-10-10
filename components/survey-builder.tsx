@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -141,9 +141,21 @@ export function SurveyBuilder({
   const [selected, setSelected] = useState<string | null>(initial.survey.items[0]?.id ?? null);
   const [tab, setTab] = useState<"questions" | "preview" | "settings" | "share" | "results">("questions");
   const [picker, setPicker] = useState(!initial.survey.items.length);
-  const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(!config?.survey?.enabled);
-  const [error, setError] = useState("");
+  // Saved automatically shortly after the last change; nothing is saved
+  // before the first change (opening the builder alone changes nothing).
+  const [dirty, setDirtyState] = useState(false);
+  const [status, setStatus] = useState<"saved" | "saving" | "failed">("saved");
+  const revision = useRef(0);
+  const failedRevision = useRef(-1);
+  const saving = useRef(false);
+  const knownVersion = useRef(version);
+  useEffect(() => {
+    if (version > knownVersion.current) knownVersion.current = version;
+  }, [version]);
+  const setDirty = (on: true) => {
+    revision.current += 1;
+    setDirtyState(on);
+  };
   const [copied, setCopied] = useState(false);
   // Sharing switches answer at once and fall back when saving fails.
   const [share, setShare] = useState({ enabled: !!form?.enabled, public: form ? form.internal === 0 : false, anonymous: !!form?.anonymous });
@@ -192,22 +204,72 @@ export function SurveyBuilder({
     change(items.filter((x) => x.id !== id).map((x) => (x.kind !== "page" && x.showIf && fieldsOf.includes(x.showIf.field) ? { ...x, showIf: undefined } : x)));
     setSelected(null);
   };
-  const save = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const questions = Object.fromEntries(items.filter(isQuestion).map((q) => [q.id, texts[q.id]]));
-      const result = (await act({ action: "survey.save", version, survey, questions, form: formTexts })) as { survey: Survey } | null;
-      if (result) {
-        setSurvey(result.survey);
-        setDirty(false);
+  // What keeps the draft from being saved (checked here, so typing does not
+  // produce error messages from the server).
+  const problem = useMemo(() => {
+    for (const q of items.filter(isQuestion)) {
+      const text = texts[q.id];
+      const name = text?.title.trim();
+      if (!name) return t("Eine Frage hat noch keinen Text.", "A question has no text yet.");
+      if (["single", "dropdown", "multiple", "ranking", "yesno"].includes(q.type)) {
+        const options = text.options || [];
+        if (!options.length) return t(`„${name}“ braucht mindestens eine Antwort.`, `“${name}” needs at least one answer.`);
+        if (options.some((o) => !o.trim())) return t(`„${name}“ hat eine leere Antwort.`, `“${name}” has an empty answer.`);
       }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
+      if (q.type === "matrix" && (!q.rows.length || q.columns.length < 2 || q.rows.some((r) => !r.label.trim()) || q.columns.some((c) => !c.trim())))
+        return t(`„${name}“: Jede Zeile und Spalte braucht einen Text.`, `“${name}”: every row and column needs a text.`);
+      if (q.type === "scale" && (q.min ?? 1) >= (q.max ?? 5)) return t(`„${name}“: „Bis“ muss größer sein als „Von“.`, `“${name}”: “To” must be larger than “From”.`);
     }
+    return "";
+  }, [items, texts, t]);
+  const save = async () => {
+    if (saving.current || !editable) return;
+    saving.current = true;
+    const at = revision.current;
+    setStatus("saving");
+    const questions = Object.fromEntries(items.filter(isQuestion).map((q) => [q.id, texts[q.id]]));
+    const result = (await act({ action: "survey.save", version: knownVersion.current, survey, questions, form: formTexts })) as { fields: Record<string, string> } | null;
+    saving.current = false;
+    if (!result) {
+      failedRevision.current = at;
+      setStatus("failed");
+      return;
+    }
+    knownVersion.current += 1;
+    // New questions got their properties; the draft (which may have changed
+    // while saving) takes the ids over.
+    const id = (ref: string) => result.fields[ref] || ref;
+    setSurvey((now) => ({
+      ...now,
+      items: now.items.map((i) =>
+        i.kind === "page"
+          ? i
+          : {
+              ...i,
+              ...(i.showIf ? { showIf: { ...i.showIf, field: id(i.showIf.field) } } : {}),
+              ...(isQuestion(i) ? { field: id(i.field), rows: i.rows.map((r) => ({ ...r, field: id(r.field) })) } : {}),
+            },
+      ),
+    }));
+    if (revision.current === at) setDirtyState(false);
+    setStatus("saved");
   };
+  const latestSave = useRef(save);
+  latestSave.current = save;
+  const pending = useRef({ dirty, problem });
+  pending.current = { dirty, problem };
+  useEffect(() => {
+    if (!editable || !dirty || status === "saving" || problem || failedRevision.current === revision.current) return;
+    const timer = setTimeout(() => void latestSave.current(), 900);
+    return () => clearTimeout(timer);
+  }, [survey, texts, formTexts, dirty, status, problem, editable]);
+  // Closing the builder right after typing still saves.
+  useEffect(
+    () => () => {
+      if (pending.current.dirty && !pending.current.problem) void latestSave.current();
+    },
+    [],
+  );
   // Fields for the preview: saved ones plus drafts of new questions.
   const previewFields: Field[] = useMemo(() => {
     const list = [...fields];
@@ -246,29 +308,43 @@ export function SurveyBuilder({
           ))}
         </div>
         {editable && (
-          <button className="button primary" disabled={busy || !dirty} onClick={() => void save()}>
-            {busy ? t("Wird gespeichert …", "Saving …") : dirty ? t("Umfrage speichern", "Save survey") : t("Gespeichert", "Saved")}
-          </button>
+          <SaveStatus
+            state={status === "failed" ? "failed" : dirty && problem ? "paused" : status === "saving" ? "saving" : dirty ? "pending" : "saved"}
+            problem={problem}
+            onRetry={() => {
+              failedRevision.current = -1;
+              void save();
+            }}
+          />
         )}
       </div>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
       {tab === "questions" && (
         <div className="survey-builder-body">
-          <div className="survey-outline">
+          <nav className="survey-outline" aria-label={t("Ablauf der Umfrage", "Survey outline")}>
             <ol>
               {items.map((i, index) => {
                 const Icon = i.kind === "question" ? typeInfo[i.type].icon : i.kind === "text" ? Article : Rows;
                 const label = i.kind === "question" ? texts[i.id]?.title : i.kind === "text" ? i.title || t("Textblock", "Text block") : i.title || t("Neue Seite", "New page");
+                const number = i.kind === "question" ? items.slice(0, index + 1).filter(isQuestion).length : null;
+                const page = i.kind === "page" ? items.slice(0, index + 1).filter((x) => x.kind === "page").length + 1 : null;
                 return (
-                  <li key={i.id} className={`${selected === i.id ? "selected" : ""} kind-${i.kind}`}>
-                    <button type="button" className="survey-outline-item" aria-current={selected === i.id} onClick={() => setSelected(i.id)}>
-                      <Icon aria-hidden />
-                      <span>{label}</span>
-                      {i.kind === "question" && i.required && <span className="survey-required">*</span>}
+                  <li key={i.id} className={`${selected === i.id && !picker ? "selected" : ""} kind-${i.kind}`}>
+                    <button
+                      type="button"
+                      className="survey-outline-item"
+                      aria-current={selected === i.id && !picker}
+                      onClick={() => {
+                        setSelected(i.id);
+                        setPicker(false);
+                      }}
+                    >
+                      {number !== null ? <span className="survey-outline-number">{number}</span> : <Icon aria-hidden />}
+                      <span className="survey-outline-title">{page !== null ? `${t(`Seite ${page}`, `Page ${page}`)}${i.title ? ` · ${i.title}` : ""}` : label || <em>{t("Ohne Text", "No text")}</em>}</span>
+                      {i.kind === "question" && i.required && (
+                        <span className="survey-required" title={t("Pflichtfrage", "Required")}>
+                          *
+                        </span>
+                      )}
                       {i.kind !== "page" && i.showIf && <span className="survey-if">{t("wenn", "if")}</span>}
                     </button>
                     {editable && (
@@ -290,41 +366,67 @@ export function SurveyBuilder({
             </ol>
             {editable && (
               <div className="survey-add">
-                <button className="button primary" onClick={() => setPicker(!picker)} aria-expanded={picker}>
-                  <Plus /> {t("Frage hinzufügen", "Add question")}
+                <button type="button" className="survey-add-question" onClick={() => setPicker(true)} aria-pressed={picker}>
+                  <Plus aria-hidden /> {t("Frage hinzufügen", "Add question")}
                 </button>
-                <button className="button" onClick={() => add("text")}>
-                  <Article /> {t("Text", "Text")}
-                </button>
-                <button className="button" onClick={() => add("page")}>
-                  <Rows /> {t("Seitenumbruch", "Page break")}
-                </button>
+                <div className="survey-add-more">
+                  <button type="button" onClick={() => add("text")}>
+                    <Article aria-hidden /> {t("Text", "Text")}
+                  </button>
+                  <button type="button" onClick={() => add("page")}>
+                    <Rows aria-hidden /> {t("Seitenumbruch", "Page break")}
+                  </button>
+                </div>
               </div>
             )}
-            {picker && editable && (
-              <div className="survey-type-grid" role="group" aria-label={t("Fragetyp wählen", "Choose question type")}>
-                {(Object.keys(typeInfo) as SurveyType[]).map((type) => {
-                  const Icon = typeInfo[type].icon;
-                  return (
-                    <button key={type} type="button" onClick={() => add(type)}>
-                      <Icon aria-hidden />
-                      {de ? typeInfo[type].de : typeInfo[type].en}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          </nav>
           <div className="survey-editor">
-            {!item ? (
-              <p className="muted">{items.length ? t("Wähle links eine Frage, um sie zu bearbeiten.", "Choose a question on the left to edit it.") : t("Füge die erste Frage hinzu.", "Add the first question.")}</p>
+            {picker && editable ? (
+              <div className="survey-type-picker">
+                <div className="survey-pane-head">
+                  <h3>{t("Welche Art von Frage?", "What kind of question?")}</h3>
+                  {items.length > 0 && (
+                    <button type="button" className="text-button" onClick={() => setPicker(false)}>
+                      {t("Abbrechen", "Cancel")}
+                    </button>
+                  )}
+                </div>
+                {typeGroups.map((group) => (
+                  <section key={group.en} aria-label={de ? group.de : group.en}>
+                    <h4>{de ? group.de : group.en}</h4>
+                    <div className="survey-type-grid" role="group">
+                      {group.types.map((type) => {
+                        const Icon = typeInfo[type].icon;
+                        return (
+                          <button key={type} type="button" onClick={() => add(type)}>
+                            <Icon aria-hidden />
+                            {de ? typeInfo[type].de : typeInfo[type].en}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : !item ? (
+              <div className="survey-editor-empty">
+                <p>{items.length ? t("Wähle links eine Frage, um sie zu bearbeiten.", "Choose a question on the left to edit it.") : t("Füge die erste Frage hinzu.", "Add the first question.")}</p>
+              </div>
             ) : item.kind === "page" ? (
-              <label>
-                {t("Titel der neuen Seite (optional)", "Title of the new page (optional)")}
-                <input disabled={!editable} value={item.title} maxLength={300} onChange={(e) => update(item.id, { title: e.target.value })} />
-              </label>
+              <div className="survey-card">
+                <p className="survey-eyebrow">
+                  <Rows aria-hidden /> {t("Seitenumbruch", "Page break")}
+                </p>
+                <label>
+                  {t("Titel der neuen Seite (optional)", "Title of the new page (optional)")}
+                  <input disabled={!editable} value={item.title} maxLength={300} onChange={(e) => update(item.id, { title: e.target.value })} />
+                </label>
+              </div>
             ) : item.kind === "text" ? (
-              <>
+              <div className="survey-card">
+                <p className="survey-eyebrow">
+                  <Article aria-hidden /> {t("Textblock", "Text block")}
+                </p>
                 <label>
                   {t("Überschrift", "Heading")}
                   <input disabled={!editable} value={item.title} maxLength={300} onChange={(e) => update(item.id, { title: e.target.value })} />
@@ -334,18 +436,27 @@ export function SurveyBuilder({
                   <textarea disabled={!editable} rows={5} value={item.body} maxLength={5000} onChange={(e) => update(item.id, { body: e.target.value })} />
                 </label>
                 <ConditionEditor condition={item.showIf} before={questionsBefore(item.id)} texts={texts} fields={previewFields} disabled={!editable} onChange={(c) => update(item.id, { showIf: c })} />
-              </>
+              </div>
             ) : (
-              <QuestionEditor
-                q={item}
-                text={texts[item.id] || { title: "" }}
-                fields={previewFields}
-                before={questionsBefore(item.id)}
-                texts={texts}
-                disabled={!editable}
-                onChange={(patch) => update(item.id, patch)}
-                onText={(patch) => setText(item.id, patch)}
-              />
+              <div className="survey-card">
+                <p className="survey-eyebrow">
+                  {(() => {
+                    const Icon = typeInfo[item.type].icon;
+                    return <Icon aria-hidden />;
+                  })()}
+                  {t(`Frage ${items.filter(isQuestion).indexOf(item) + 1}`, `Question ${items.filter(isQuestion).indexOf(item) + 1}`)} · {de ? typeInfo[item.type].de : typeInfo[item.type].en}
+                </p>
+                <QuestionEditor
+                  q={item}
+                  text={texts[item.id] || { title: "" }}
+                  fields={previewFields}
+                  before={questionsBefore(item.id)}
+                  texts={texts}
+                  disabled={!editable}
+                  onChange={(patch) => update(item.id, patch)}
+                  onText={(patch) => setText(item.id, patch)}
+                />
+              </div>
             )}
           </div>
         </div>
@@ -435,7 +546,7 @@ export function SurveyBuilder({
       )}
       {tab === "share" && (
         <div className="survey-share">
-          {dirty && <p className="callout-inline">{t("Speichere die Umfrage, damit Teilnehmende den aktuellen Stand sehen.", "Save the survey so people see the current version.")}</p>}
+          {dirty && problem && <p className="callout-inline">{t(`Noch nicht gespeichert – ${problem}`, `Not saved yet – ${problem}`)}</p>}
           <label className="checkbox-label">
             <input type="checkbox" disabled={!editable} checked={share.enabled} onChange={(e) => void toggle("enabled", e.target.checked)} />
             {t("Umfrage ist geöffnet (Link aktiv)", "Survey is open (link active)")}
@@ -481,6 +592,32 @@ export function SurveyBuilder({
     </div>
   );
 }
+// The question types in the picker, grouped like people look for them.
+const typeGroups: { de: string; en: string; types: SurveyType[] }[] = [
+  { de: "Auswahl", en: "Choice", types: ["single", "multiple", "dropdown", "yesno", "ranking"] },
+  { de: "Bewertung", en: "Rating", types: ["rating", "nps", "scale", "slider", "matrix"] },
+  { de: "Text und Angaben", en: "Text and details", types: ["short", "long", "number", "email", "phone", "url", "date", "time", "file"] },
+];
+
+// The quiet save indicator: a dot and one short word. While typing it does
+// not change its text; only a failed save or a draft that cannot be saved
+// asks for attention.
+function SaveStatus({ state, problem, onRetry }: { state: "saved" | "pending" | "saving" | "paused" | "failed"; problem: string; onRetry: () => void }) {
+  const t = useT();
+  const calm = state === "saved" || state === "pending" || state === "saving";
+  return (
+    <div className={`survey-save-status is-${state}`} title={state === "paused" ? problem : calm ? t("Änderungen werden automatisch gespeichert", "Changes are saved automatically") : undefined}>
+      <span className="survey-save-dot" aria-hidden />
+      <span role="status">{calm ? t("Automatisch gespeichert", "Saved automatically") : state === "paused" ? t(`Entwurf – ${problem}`, `Draft – ${problem}`) : t("Nicht gespeichert", "Not saved")}</span>
+      {state === "failed" && (
+        <button type="button" className="text-button" onClick={onRetry}>
+          {t("Erneut versuchen", "Try again")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 const toLocal = (iso: string) => {
   const d = new Date(iso);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
@@ -511,13 +648,22 @@ function QuestionEditor({
   const num = (v: string) => (v === "" ? undefined : Number(v));
   return (
     <div className="question-editor">
-      <label>
+      <label className="question-title">
         {t("Frage", "Question")}
-        <input value={text.title} disabled={disabled} maxLength={300} onChange={(e) => onText({ title: e.target.value })} />
+        <textarea
+          rows={1}
+          aria-label={t("Frage", "Question")}
+          placeholder={t("Wie lautet die Frage?", "What is the question?")}
+          value={text.title}
+          disabled={disabled}
+          maxLength={300}
+          onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+          onChange={(e) => onText({ title: e.target.value.replace(/\s*\n\s*/g, " ") })}
+        />
       </label>
       <label>
         {t("Hinweis (optional)", "Hint (optional)")}
-        <input value={q.description} disabled={disabled} maxLength={1000} onChange={(e) => onChange({ description: e.target.value })} />
+        <input placeholder={t("Erklärt die Frage, falls nötig", "Explains the question if needed")} value={q.description} disabled={disabled} maxLength={1000} onChange={(e) => onChange({ description: e.target.value })} />
       </label>
       <div className="question-editor-row">
         <label>

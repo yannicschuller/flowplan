@@ -20,8 +20,17 @@ test("survey builder, public survey and results", async ({ page, browser }, info
   await builder.getByRole("button", { name: /Frage hinzufügen|Add question/ }).click();
   await builder.getByRole("button", { name: /^(Sterne|Star rating)$/ }).click();
   await builder.getByLabel(/^(Frage|Question)$/).fill("Wie gefällt dir das Design?");
-  await builder.getByRole("button", { name: /Umfrage speichern|Save survey/ }).click();
-  await expect(builder.getByRole("button", { name: /^(Gespeichert|Saved)$/ })).toBeVisible();
+  // Saved by itself shortly after typing; the indicator stays calm.
+  const status = builder.locator(".survey-save-status");
+  await expect(status).toHaveClass(/is-pending|is-saving/);
+  await expect(status).toHaveText(/Automatisch gespeichert|Saved automatically/);
+  await expect(status).toHaveClass(/is-saved/, { timeout: 10_000 });
+  // An empty question is not saved and says why.
+  await builder.getByLabel(/^(Frage|Question)$/).fill("");
+  await expect(status).toHaveClass(/is-paused/);
+  await expect(status).toContainText(/keinen Text|no text/);
+  await builder.getByLabel(/^(Frage|Question)$/).fill("Wie gefällt dir das Design?");
+  await expect(status).toHaveClass(/is-saved/, { timeout: 10_000 });
   await builder.getByRole("tab", { name: /Teilen|Share/ }).click();
   await builder.getByLabel(/Umfrage ist geöffnet|Survey is open/).check();
   await builder.getByLabel(/Öffentlich|Public/).check();
@@ -56,5 +65,8 @@ test("survey builder, public survey and results", async ({ page, browser }, info
   await expect(results.locator(".result-summary strong")).toHaveText("1");
   await expect(results).toContainText("-100");
   await expect(results).toContainText("Mehr Vorlagen");
+  // The question typed before is there after reopening (autosave).
+  await builder.getByRole("tab", { name: /Fragen|Questions/ }).click();
+  await expect(builder.locator(".survey-outline")).toContainText("Wie gefällt dir das Design?");
   expect(errors).toEqual([]);
 });
