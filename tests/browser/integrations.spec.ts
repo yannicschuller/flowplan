@@ -46,7 +46,7 @@ test("tokens, calendar subscriptions, e-mail channel and admin backup work from 
   });
   expect(row.ok()).toBe(true);
   await page.goto(`/#page=${db}`);
-  await page.locator(".database-tabs").getByRole("button", { name: "Kalender", exact: true }).click();
+  await page.locator(".database-tabs").getByRole("tab", { name: "Kalender", exact: true }).click();
   await page.getByRole("button", { name: "Abonnieren" }).click();
   await page.getByRole("button", { name: "Link erzeugen" }).click();
   const url = await page.getByRole("textbox", { name: "Abo-Link" }).inputValue();

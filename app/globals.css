@@ -1315,6 +1315,30 @@ kbd,
   padding: 0;
   width: 27px;
 }
+.database-tabs > button.dragging {
+  opacity: 0.45;
+}
+.database-tabs > button.view-drop-before {
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+.database-tabs > button.view-drop-after {
+  box-shadow: inset -2px 0 0 var(--blue);
+}
+.view-tab-rename {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 2px solid var(--blue);
+  color: var(--secondary);
+}
+.view-tab-rename input {
+  width: 14ch;
+  height: 28px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
 .database-toolbar {
   display: flex;
   justify-content: space-between;

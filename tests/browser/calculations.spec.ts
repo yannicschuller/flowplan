@@ -174,12 +174,12 @@ test("column calculations persist per view, follow filters and groups and align 
   await page.getByPlaceholder("Suchen …", { exact: true }).fill("");
   await page
     .locator(".database-tabs")
-    .getByRole("button", { name: "Andere", exact: true })
+    .getByRole("tab", { name: "Andere", exact: true })
     .click();
   await expect(f.footer).toContainText("Aufwand: Σ 6");
   await page
     .locator(".database-tabs")
-    .getByRole("button", { name: "Tabelle", exact: true })
+    .getByRole("tab", { name: "Tabelle", exact: true })
     .click();
   await expect(f.footer).toContainText("Aufwand: Ø 2");
   await f.updateView({

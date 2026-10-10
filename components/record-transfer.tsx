@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon, api } from "./ui";
+import { ContextMenu, type ContextMenuItem } from "./context-menu";
 
 type Target = { id: string; title: string; icon: string };
 
@@ -30,54 +31,18 @@ export function RecordMenu({
   onClose: () => void;
 }) {
   const t = useT();
-  const menu = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const away = (e: Event) => !menu.current?.contains(e.target as Node) && onClose();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("mousedown", away, true);
-    document.addEventListener("keydown", key);
-    window.addEventListener("scroll", onClose, true);
-    menu.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
-    return () => {
-      document.removeEventListener("mousedown", away, true);
-      document.removeEventListener("keydown", key);
-      window.removeEventListener("scroll", onClose, true);
-    };
-  }, [onClose]);
-  // Stays inside the window.
-  const left = Math.min(x, (typeof window === "undefined" ? 1200 : window.innerWidth) - 240);
-  const top = Math.min(y, (typeof window === "undefined" ? 800 : window.innerHeight) - 230);
-  const item = (icon: React.ReactNode, label: string, run: () => void, danger = false) => (
-    <button
-      type="button"
-      role="menuitem"
-      className={`dropdown-item${danger ? " danger" : ""}`}
-      onClick={() => {
-        onClose();
-        run();
-      }}
-      onKeyDown={(e) => {
-        const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]") || [])];
-        const i = items.indexOf(e.currentTarget);
-        if (e.key === "ArrowDown") items[(i + 1) % items.length]?.focus();
-        if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length]?.focus();
-      }}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
-  );
   const many = count > 1;
-  return (
-    <div ref={menu} className="dropdown record-menu" role="menu" aria-label={t("Eintrag", "Record")} style={{ position: "fixed", left, top }}>
-      {onOpen && !many && item(<ArrowSquareOut />, t("Öffnen", "Open"), onOpen)}
-      {editable && item(<CopySimple />, many ? t(`${count} duplizieren`, `Duplicate ${count}`) : t("Duplizieren", "Duplicate"), onDuplicate)}
-      {item(<Copy />, many ? t(`${count} kopieren nach …`, `Copy ${count} to …`) : t("Kopieren nach …", "Copy to …"), () => onTransfer("copy"))}
-      {editable && item(<ArrowsLeftRight />, many ? t(`${count} verschieben nach …`, `Move ${count} to …`) : t("Verschieben nach …", "Move to …"), () => onTransfer("move"))}
-      {editable && <div className="dropdown-separator" />}
-      {editable && item(<Trash />, many ? t(`${count} löschen`, `Delete ${count}`) : t("Löschen", "Delete"), onDelete, true)}
-    </div>
-  );
+  const items: ContextMenuItem[] = [];
+  if (onOpen && !many) items.push({ icon: <ArrowSquareOut />, label: t("Öffnen", "Open"), run: onOpen });
+  if (editable) items.push({ icon: <CopySimple />, label: many ? t(`${count} duplizieren`, `Duplicate ${count}`) : t("Duplizieren", "Duplicate"), run: onDuplicate });
+  items.push({ icon: <Copy />, label: many ? t(`${count} kopieren nach …`, `Copy ${count} to …`) : t("Kopieren nach …", "Copy to …"), run: () => onTransfer("copy") });
+  if (editable)
+    items.push(
+      { icon: <ArrowsLeftRight />, label: many ? t(`${count} verschieben nach …`, `Move ${count} to …`) : t("Verschieben nach …", "Move to …"), run: () => onTransfer("move") },
+      "separator",
+      { icon: <Trash />, label: many ? t(`${count} löschen`, `Delete ${count}`) : t("Löschen", "Delete"), run: onDelete, danger: true },
+    );
+  return <ContextMenu x={x} y={y} label={t("Eintrag", "Record")} items={items} onClose={onClose} />;
 }
 
 // Choosing the database to copy or move records into.

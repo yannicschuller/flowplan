@@ -13,6 +13,7 @@ import { BoardWipSettings, WipCount } from "./board-wip";
 import { RecordTime } from "./record-time";
 import { RecordGit } from "./record-git";
 import { RecordMenu, TransferDialog } from "./record-transfer";
+import { ContextMenu } from "./context-menu";
 import { formatDuration } from "@/lib/durations";
 import { DatabaseSprints } from "./database-sprints";
 import { SprintContext } from "./sprint-context";
@@ -130,6 +131,10 @@ import {
   UsersThree,
   Smiley,
   Image as ImageIcon,
+  PencilSimple,
+  CopySimple,
+  ArrowLeft,
+  ArrowRight,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
 import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
@@ -374,6 +379,11 @@ export default function DatabaseView({
   const [selection, setSelection] = useState<Map<string, number>>(new Map());
   // Right-click on records, and copying or moving them elsewhere.
   const [recordMenu, setRecordMenu] = useState<{ x: number; y: number; rowIds: string[] } | null>(null);
+  // View tabs: right-click menu, renaming in place, reordering by dragging.
+  const [viewMenu, setViewMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const [renamingView, setRenamingView] = useState<string | null>(null);
+  const [draggedView, setDraggedView] = useState<string | null>(null);
+  const [viewDrop, setViewDrop] = useState<{ id: string; after: boolean } | null>(null);
   const [transfer, setTransfer] = useState<{ rowIds: string[]; mode: "copy" | "move" } | null>(null);
   const [bulk, setBulk] = useState<"update" | "delete" | null>(null),
     [bulkField, setBulkField] = useState(""),
@@ -872,6 +882,31 @@ export default function DatabaseView({
     } finally {
       setSchemaBusy(false);
     }
+  }
+  const views = data.database.views;
+  function renameView(id: string, name: string) {
+    return updateSchema(fields, views.map((v) => (v.id === id ? { ...v, name } : v)));
+  }
+  function reorderView(id: string, beside: string, after: boolean) {
+    const moving = views.find((v) => v.id === id);
+    if (!moving || id === beside) return;
+    const rest = views.filter((v) => v.id !== id);
+    const at = rest.findIndex((v) => v.id === beside) + (after ? 1 : 0);
+    return updateSchema(fields, [...rest.slice(0, at), moving, ...rest.slice(at)]);
+  }
+  async function duplicateView(id: string) {
+    const source = views.find((v) => v.id === id);
+    if (!source) return;
+    const copy: View = { ...structuredClone(source), id: crypto.randomUUID(), name: t(`${source.name} (Kopie)`, `${source.name} (copy)`).slice(0, 80) };
+    const at = views.indexOf(source) + 1;
+    if (await updateSchema(fields, [...views.slice(0, at), copy, ...views.slice(at)])) setViewId(copy.id);
+  }
+  async function deleteView(id: string) {
+    if (views.length < 2) return;
+    const gone = views.find((v) => v.id === id);
+    if (!gone || !window.confirm(t(`Ansicht „${gone.name}“ löschen? Die Einträge bleiben erhalten.`, `Delete the view “${gone.name}”? The records are kept.`))) return;
+    const rest = views.filter((v) => v.id !== id);
+    if (await updateSchema(fields, rest)) if (viewId === id) setViewId(rest[Math.max(0, views.indexOf(gone) - 1)].id);
   }
   async function updateView(patch: Partial<View>) {
     return updateSchema(
@@ -2228,14 +2263,72 @@ export default function DatabaseView({
         setRecordMenu({ x: e.clientX, y: e.clientY, rowIds });
       }}
     >
-      <div className="database-tabs">
+      <div className="database-tabs" role="tablist" aria-label={t("Ansichten", "Views")}>
         {data.database.views.map((v) => {
           const Icon = viewIcons[v.type];
+          if (renamingView === v.id)
+            return (
+              <span key={v.id} className="view-tab-rename">
+                <Icon size={17} />
+                <input
+                  autoFocus
+                  aria-label={t("Name der Ansicht", "View name")}
+                  defaultValue={v.name}
+                  maxLength={80}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") {
+                      e.currentTarget.value = v.name;
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const name = e.currentTarget.value.trim();
+                    setRenamingView(null);
+                    if (name && name !== v.name) void renameView(v.id, name);
+                  }}
+                />
+              </span>
+            );
           return (
             <button
-              className={v.id === view.id ? "selected" : ""}
-              onClick={() => setViewId(v.id)}
               key={v.id}
+              role="tab"
+              aria-selected={v.id === view.id}
+              className={`${v.id === view.id ? "selected" : ""}${viewDrop?.id === v.id ? (viewDrop.after ? " view-drop-after" : " view-drop-before") : ""}${draggedView === v.id ? " dragging" : ""}`}
+              onClick={() => setViewId(v.id)}
+              onDoubleClick={() => viewEditable && setRenamingView(v.id)}
+              onContextMenu={(e) => {
+                if (!viewEditable) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setViewMenu({ x: e.clientX, y: e.clientY, id: v.id });
+              }}
+              draggable={viewEditable}
+              onDragStart={(e) => {
+                setDraggedView(v.id);
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("application/x-flowplan-view", v.id);
+              }}
+              onDragOver={(e) => {
+                if (!draggedView || draggedView === v.id) return;
+                e.preventDefault();
+                const box = e.currentTarget.getBoundingClientRect();
+                const after = e.clientX > box.left + box.width / 2;
+                if (viewDrop?.id !== v.id || viewDrop.after !== after) setViewDrop({ id: v.id, after });
+              }}
+              onDragLeave={() => setViewDrop((d) => (d?.id === v.id ? null : d))}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggedView && viewDrop) void reorderView(draggedView, viewDrop.id, viewDrop.after);
+                setViewDrop(null);
+                setDraggedView(null);
+              }}
+              onDragEnd={() => {
+                setDraggedView(null);
+                setViewDrop(null);
+              }}
             >
               <Icon size={17} />
               {v.name}
@@ -5239,6 +5332,30 @@ export default function DatabaseView({
           }
         />
       )}
+      {viewMenu &&
+        (() => {
+          const index = views.findIndex((v) => v.id === viewMenu.id);
+          const v = views[index];
+          if (!v) return null;
+          return (
+            <ContextMenu
+              x={viewMenu.x}
+              y={viewMenu.y}
+              label={t("Ansicht", "View")}
+              onClose={() => setViewMenu(null)}
+              items={[
+                { icon: <PencilSimple />, label: t("Umbenennen", "Rename"), run: () => setRenamingView(v.id) },
+                { icon: <CopySimple />, label: t("Duplizieren", "Duplicate"), run: () => void duplicateView(v.id) },
+                { icon: <SlidersHorizontal />, label: t("Einstellungen …", "Settings …"), run: () => (setViewId(v.id), setConfig(true)) },
+                "separator",
+                { icon: <ArrowLeft />, label: t("Nach links", "Move left"), disabled: index === 0, run: () => void reorderView(v.id, views[index - 1].id, false) },
+                { icon: <ArrowRight />, label: t("Nach rechts", "Move right"), disabled: index === views.length - 1, run: () => void reorderView(v.id, views[index + 1].id, true) },
+                "separator",
+                { icon: <Trash />, label: t("Ansicht löschen", "Delete view"), danger: true, disabled: views.length < 2, run: () => void deleteView(v.id) },
+              ]}
+            />
+          );
+        })()}
       {recordMenu && (
         <RecordMenu
           x={recordMenu.x}
