@@ -238,7 +238,19 @@ const viewTypeNames: Record<View["type"], [string, string]> = {
   form: ["Formular", "Form"],
   chart: ["Diagramm", "Chart"],
   feed: ["Feed", "Feed"],
-  sprint: ["Sprints (Backlog und Planung)", "Sprints (backlog and planning)"],
+  sprint: ["Sprints", "Sprints"],
+};
+const viewTypeHints: Record<View["type"], [string, string]> = {
+  table: ["Zeilen und Spalten", "Rows and columns"],
+  board: ["Karten in Spalten, z. B. nach Status", "Cards in columns, e.g. by status"],
+  calendar: ["Einträge an ihrem Datum", "Records on their date"],
+  gallery: ["Karten mit Bildern", "Cards with pictures"],
+  list: ["Kompakte Liste", "Compact list"],
+  timeline: ["Balken über die Zeit", "Bars over time"],
+  form: ["Fragen, die Einträge anlegen", "Questions that create records"],
+  chart: ["Balken, Linien, Torten", "Bars, lines, pies"],
+  feed: ["Einträge mit Inhalt untereinander", "Records with their content"],
+  sprint: ["Backlog und Sprintplanung", "Backlog and sprint planning"],
 };
 const groupDragType = "application/x-flowplan-group-order";
 const computedTypes = [
@@ -2200,7 +2212,10 @@ export default function DatabaseView({
           <button
             className="icon-button"
             title={t("Ansicht hinzufügen", "Add view")}
-            onClick={() => setNewView(true)}
+            onClick={() => {
+              setViewName(t(...viewTypeNames[viewType]));
+              setNewView(true);
+            }}
           >
             <Plus />
           </button>
@@ -4655,6 +4670,7 @@ export default function DatabaseView({
         open={newView}
         onClose={() => setNewView(false)}
         title={t("Ansicht hinzufügen", "Add view")}
+        wide
       >
         <form
           onSubmit={async (e) => {
@@ -4676,27 +4692,35 @@ export default function DatabaseView({
             }
           }}
         >
+          <fieldset className="view-type-picker">
+            <legend>{t("Darstellung", "Display")}</legend>
+            <div role="radiogroup" aria-label={t("Darstellung", "Display")} className="view-type-grid">
+              {(Object.keys(viewIcons) as View["type"][]).map((type) => {
+                const Icon = viewIcons[type];
+                return (
+                  <label key={type} className="view-type-card" data-active={viewType === type}>
+                    <input
+                      type="radio"
+                      name="view-type"
+                      value={type}
+                      checked={viewType === type}
+                      onChange={() => {
+                        // The name follows the type until it is typed in.
+                        if (!viewName || Object.values(viewTypeNames).some(([de, en]) => viewName === t(de, en))) setViewName(t(...viewTypeNames[type]));
+                        setViewType(type);
+                      }}
+                    />
+                    <Icon size={20} aria-hidden />
+                    <strong>{t(...viewTypeNames[type])}</strong>
+                    <small>{t(...viewTypeHints[type])}</small>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
           <label>
             {t("Name", "Name")}
-            <input
-              required
-              autoFocus
-              value={viewName}
-              onChange={(e) => setViewName(e.target.value)}
-            />
-          </label>
-          <label>
-            {t("Darstellung", "Display")}
-            <Select
-              value={viewType}
-              onChange={(e) => setViewType(e.target.value as View["type"])}
-            >
-              {(Object.keys(viewIcons) as View["type"][]).map((type) => (
-                <option key={type} value={type}>
-                  {t(...viewTypeNames[type])}
-                </option>
-              ))}
-            </Select>
+            <input required value={viewName} placeholder={t(...viewTypeNames[viewType])} onChange={(e) => setViewName(e.target.value)} />
           </label>
           <button className="button primary">{t("Ansicht erstellen", "Create view")}</button>
         </form>

@@ -152,9 +152,7 @@ test("linked databases insert, filter independently, edit source records, add vi
     exact: true,
   });
   await add.getByLabel("Name", { exact: true }).fill("Lokale Liste");
-  await add
-    .getByRole("combobox", { name: "Darstellung", exact: true })
-    .selectOption("list");
+  await add.getByRole("radio", { name: /^Liste/ }).check();
   await add
     .getByRole("button", { name: "Ansicht erstellen", exact: true })
     .click();

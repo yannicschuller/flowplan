@@ -2094,9 +2094,7 @@ test("chart views aggregate filtered rows, persist settings, export and open sou
     exact: true,
   });
   await create.getByLabel("Name", { exact: true }).fill("Auswertung");
-  await create
-    .getByRole("combobox", { name: "Darstellung", exact: true })
-    .selectOption("chart");
+  await create.getByRole("radio", { name: /^Diagramm/ }).check();
   await create
     .getByRole("button", { name: "Ansicht erstellen", exact: true })
     .click();
@@ -2341,9 +2339,7 @@ test("feed views show rich documents, load more entries and preserve searchable 
     exact: true,
   });
   await create.getByLabel("Name", { exact: true }).fill("Feed");
-  await create
-    .getByRole("combobox", { name: "Darstellung", exact: true })
-    .selectOption("feed");
+  await create.getByRole("radio", { name: /^Feed/ }).check();
   await create
     .getByRole("button", { name: "Ansicht erstellen", exact: true })
     .click();
