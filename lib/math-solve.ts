@@ -8,7 +8,7 @@
 import { evaluate, fraction, parse, type Fraction, type MathNode } from "mathjs";
 import type { Locale } from "./i18n";
 
-export type MathActionKind = "result" | "decimal" | "reduce" | "expand" | "factor" | "solve";
+export type MathActionKind = "result" | "decimal" | "reduce" | "expand" | "factor" | "solve" | "vector";
 export type MathAction = {
   kind: MathActionKind;
   label: string;
@@ -831,11 +831,290 @@ function solve(p: Poly, v: string, locale: Locale, den?: Poly): MathAction | nul
   return action;
 }
 
+/* ---------- Vectors ---------- */
+
+// Vectors as written in school and in notes: (1 | 2 | 3), (1; 2), (1, 2, 3)
+// in English, "(1, 2, 3)" or "(1,2,3)" in German too (a comma between digits
+// is a decimal comma otherwise). Sums, multiples, the dot product (· or *),
+// the cross product (×), the magnitude |v| and the angle between two
+// vectors; exact with fractions and roots as long as possible.
+type VNum = { f: Fraction | null; x: number; root?: { q: Fraction; k: bigint } };
+type VHow = { op: "literal" | "dot" | "cross" | "abs" | "other"; a?: VValue; b?: VValue };
+type VValue = ({ kind: "s"; s: VNum } | { kind: "v"; v: VNum[] }) & { how: VHow };
+type VToken = { t: "num"; f: Fraction } | { t: "(" | ")" | "|" | ";" | "+" | "-" | "·" | "×" | "/" | "^" };
+class NotVector extends Error {}
+
+const vnum = (f: Fraction): VNum => ({ f, x: f.valueOf() });
+const vapprox = (x: number): VNum => ({ f: null, x });
+function vop(a: VNum, b: VNum, op: "+" | "-" | "*" | "/"): VNum {
+  if (op === "/" && (b.f ? b.f.equals(0) : b.x === 0)) throw new NotVector();
+  if (a.f && b.f) return vnum(op === "+" ? a.f.add(b.f) : op === "-" ? a.f.sub(b.f) : op === "*" ? a.f.mul(b.f) : a.f.div(b.f));
+  return vapprox(op === "+" ? a.x + b.x : op === "-" ? a.x - b.x : op === "*" ? a.x * b.x : a.x / b.x);
+}
+function vsqrt(a: VNum): VNum {
+  if (!a.f) return vapprox(Math.sqrt(a.x));
+  const { outside, inside } = surd(a.f);
+  return inside === 1n ? vnum(outside) : { f: null, x: Math.sqrt(a.x), root: { q: outside, k: inside } };
+}
+
+// Commas that separate components in German: followed by a space, or in a
+// bracket of three or more whole numbers ("(1,2,3)").
+function separatorCommas(s: string): Set<number> {
+  const commas = new Set<number>();
+  const open: number[] = [];
+  [...s].forEach((c, i) => {
+    if (c === "," && /\s/.test(s[i + 1] || "")) commas.add(i);
+    if (c === "(" || c === "[") open.push(i);
+    if ((c === ")" || c === "]") && open.length) {
+      const start = open.pop()!;
+      if (/^\s*-?\d+(?:\s*,\s*-?\d+){2,}\s*$/.test(s.slice(start + 1, i)))
+        for (let j = start + 1; j < i; j++) if (s[j] === ",") commas.add(j);
+    }
+  });
+  return commas;
+}
+
+function vectorTokens(text: string, locale: Locale): { tokens: VToken[]; separator: string } | null {
+  const s = text
+    .trim()
+    .replace(/=\s*$/, "")
+    .replace(/[−–—]/g, "-")
+    .replace(/[*⋅∙]/g, "·")
+    .replace(/‖/g, "|")
+    .replace(/[÷:]/g, "/")
+    .replace(/²/g, "^2")
+    .replace(/³/g, "^3");
+  if (!s || s.length > MAX_INPUT) return null;
+  const commas = locale === "de" ? separatorCommas(s) : null;
+  const tokens: VToken[] = [];
+  let separator = "";
+  for (let i = 0; i < s.length; ) {
+    const c = s[i];
+    if (/\s/.test(c)) {
+      i++;
+      continue;
+    }
+    if (/\d/.test(c) || (c === "." && /\d/.test(s[i + 1] || ""))) {
+      let j = i;
+      while (j < s.length && (/\d/.test(s[j]) || ((s[j] === "." || (s[j] === "," && commas && !commas.has(j))) && /\d/.test(s[j + 1] || "")))) j++;
+      tokens.push({ t: "num", f: fraction(s.slice(i, j).replace(",", ".")) });
+      i = j;
+      continue;
+    }
+    const sep = c === ";" || c === ",";
+    if (sep && !separator) separator = c;
+    const map: Record<string, VToken["t"]> = { "(": "(", "[": "(", ")": ")", "]": ")", "|": "|", ";": ";", ",": ";", "+": "+", "-": "-", "·": "·", "×": "×", "/": "/", "^": "^" };
+    if (!map[c]) return null;
+    tokens.push({ t: map[c] } as VToken);
+    i++;
+  }
+  return { tokens, separator };
+}
+
+function parseVectors(tokens: VToken[]): { value: VValue; sawVector: boolean; bar: boolean } {
+  let i = 0;
+  let sawVector = false,
+    bar = false;
+  const peek = () => tokens[i]?.t;
+  const expect = (t: string) => {
+    if (peek() !== t) throw new NotVector();
+    i++;
+  };
+  const scalar = (s: VNum, how: VHow = { op: "other" }): VValue => ({ kind: "s", s, how });
+  const vector = (v: VNum[], how: VHow = { op: "other" }): VValue => ({ kind: "v", v, how });
+  const add = (a: VValue, b: VValue, op: "+" | "-"): VValue => {
+    if (a.kind === "s" && b.kind === "s") return scalar(vop(a.s, b.s, op));
+    if (a.kind === "v" && b.kind === "v" && a.v.length === b.v.length) return vector(a.v.map((x, k) => vop(x, b.v[k], op)));
+    throw new NotVector();
+  };
+  const times = (a: VValue, b: VValue, op: "·" | "×" | "/"): VValue => {
+    if (a.kind === "s" && b.kind === "s") return scalar(vop(a.s, b.s, op === "/" ? "/" : "*"));
+    if (op === "/") {
+      if (a.kind === "v" && b.kind === "s") return vector(a.v.map((x) => vop(x, b.s, "/")));
+      throw new NotVector();
+    }
+    if (a.kind === "s" && b.kind === "v") return vector(b.v.map((x) => vop(a.s, x, "*")));
+    if (a.kind === "v" && b.kind === "s") return vector(a.v.map((x) => vop(x, b.s, "*")));
+    if (a.kind !== "v" || b.kind !== "v" || a.v.length !== b.v.length) throw new NotVector();
+    if (op === "·") return scalar(a.v.map((x, k) => vop(x, b.v[k], "*")).reduce((sum, x) => vop(sum, x, "+")), { op: "dot", a, b });
+    if (a.v.length !== 3) throw new NotVector();
+    const [a1, a2, a3] = a.v,
+      [b1, b2, b3] = b.v;
+    const cross = (p: VNum, q: VNum, r: VNum, t: VNum) => vop(vop(p, q, "*"), vop(r, t, "*"), "-");
+    return vector([cross(a2, b3, a3, b2), cross(a3, b1, a1, b3), cross(a1, b2, a2, b1)], { op: "cross", a, b });
+  };
+  const magnitude = (a: VValue): VValue => {
+    if (a.kind === "s") return scalar(a.s.f ? vnum(a.s.f.abs()) : vapprox(Math.abs(a.s.x)), { op: "abs", a });
+    return scalar(vsqrt(a.v.reduce((sum, x) => vop(sum, vop(x, x, "*"), "+"), vnum(ZERO))), { op: "abs", a });
+  };
+  function expr(): VValue {
+    let left = term();
+    while (peek() === "+" || peek() === "-") {
+      const op = peek() as "+" | "-";
+      i++;
+      left = add(left, term(), op);
+    }
+    return left;
+  }
+  function term(): VValue {
+    let left = unary();
+    for (;;) {
+      const t = peek();
+      if (t === "·" || t === "×" || t === "/") {
+        i++;
+        left = times(left, unary(), t);
+      } else if (t === "(") left = times(left, unary(), "·");
+      else return left;
+    }
+  }
+  function unary(): VValue {
+    if (peek() === "-") {
+      i++;
+      return times(scalar(vnum(fraction(-1))), unary(), "·");
+    }
+    if (peek() === "+") i++;
+    return power();
+  }
+  function power(): VValue {
+    const base = primary();
+    if (peek() !== "^") return base;
+    i++;
+    const exponent = tokens[i++];
+    if (exponent?.t !== "num" || base.kind !== "s" || exponent.f.d !== 1n || exponent.f.n > 10n) throw new NotVector();
+    let result = scalar(vnum(ONE));
+    for (let k = 0n; k < exponent.f.n; k++) result = times(result, base, "·");
+    return scalar(result.kind === "s" ? result.s : vnum(ZERO));
+  }
+  function primary(): VValue {
+    const token = tokens[i++];
+    if (!token) throw new NotVector();
+    if (token.t === "num") return scalar(vnum(token.f));
+    if (token.t === "(") {
+      const parts = [expr()];
+      while (peek() === ";" || peek() === "|") {
+        if (peek() === "|") bar = true;
+        i++;
+        parts.push(expr());
+      }
+      expect(")");
+      if (parts.length === 1) return parts[0];
+      if (parts.length > 10 || parts.some((p) => p.kind !== "s")) throw new NotVector();
+      sawVector = true;
+      return vector(parts.map((p) => (p as { s: VNum }).s), { op: "literal" });
+    }
+    if (token.t === "|") {
+      const inner = expr();
+      expect("|");
+      return magnitude(inner);
+    }
+    throw new NotVector();
+  }
+  const value = expr();
+  if (i !== tokens.length) throw new NotVector();
+  return { value, sawVector, bar };
+}
+
+function vnumText(n: VNum, locale: Locale) {
+  if (n.f) return fracText(n.f, locale);
+  if (n.root) return surdText(n.root.q, n.root.k, locale);
+  return decimal(Math.abs(n.x) < 1e-12 ? 0 : n.x, locale);
+}
+function vnumLatex(n: VNum, locale: Locale) {
+  if (n.f) return fracLatex(n.f);
+  if (n.root) return surdLatex(n.root.q, n.root.k);
+  return decimal(Math.abs(n.x) < 1e-12 ? 0 : n.x, locale).replace(",", "{,}").replace("−", "-");
+}
+const vexact = (v: VValue) => (v.kind === "s" ? !!(v.s.f || v.s.root) : v.v.every((n) => n.f || n.root));
+
+// What can be done with a vector expression; null when the text has no
+// vector in it (then it is ordinary maths).
+export function vectorActions(text: string, locale: Locale): MathAction[] | null {
+  if (/[a-zA-Z]/.test(text)) return null;
+  const read = vectorTokens(text, locale);
+  if (!read) return null;
+  let parsed: ReturnType<typeof parseVectors>;
+  try {
+    parsed = parseVectors(read.tokens);
+  } catch {
+    return null;
+  }
+  if (!parsed.sawVector) return null;
+  const de = locale === "de";
+  const sep = parsed.bar ? " | " : read.separator === "," && !de ? ", " : "; ";
+  const vectorText = (v: VNum[]) => `(${v.map((n) => vnumText(n, locale)).join(sep)})`;
+  const vectorLatex = (v: VNum[]) => `\\begin{pmatrix}${v.map((n) => vnumLatex(n, locale)).join(" \\\\ ")}\\end{pmatrix}`;
+  const { value } = parsed;
+  const actions: MathAction[] = [];
+  const length = (v: VNum[]) => vsqrt(v.reduce((sum, x) => vop(sum, vop(x, x, "*"), "+"), vnum(ZERO)));
+  if (value.how.op === "literal" && value.kind === "v") {
+    // A vector alone: its magnitude and unit vector.
+    const size = length(value.v);
+    const approx = size.root ? ` ≈ ${decimal(size.x, locale)}` : "";
+    actions.push({
+      kind: "vector",
+      label: de ? "Betrag" : "Magnitude",
+      text: `⇒ |v| = ${vnumText(size, locale)}${approx}`,
+      latex: `\\Rightarrow |\\vec{v}| = ${vnumLatex(size, locale)}`,
+    });
+    if (size.x > 1e-12 && Math.abs(size.x - 1) > 1e-12) {
+      // v / (q·√k) = v·√k / (q·k), so roots stay exact.
+      const unit = value.v.map((n): VNum => {
+        if (!n.f) return vapprox(n.x / size.x);
+        if (size.f) return vnum(n.f.div(size.f));
+        const q = n.f.div(size.root!.q.mul(fraction(`${size.root!.k}`)));
+        return q.equals(0) ? vnum(ZERO) : { f: null, x: n.x / size.x, root: { q, k: size.root!.k } };
+      });
+      actions.push({
+        kind: "vector",
+        label: de ? "Einheitsvektor" : "Unit vector",
+        text: `⇒ v⁰ = ${vectorText(unit)}`,
+        latex: `\\Rightarrow \\vec{v}^{\\,0} = ${vectorLatex(unit)}`,
+      });
+    }
+    return actions;
+  }
+  const label = { dot: de ? "Skalarprodukt" : "Dot product", cross: de ? "Kreuzprodukt" : "Cross product", abs: de ? "Betrag" : "Magnitude" }[value.how.op as string] || (de ? "Ergebnis" : "Result");
+  const exact = vexact(value);
+  const eq = exact ? "=" : "≈";
+  const eqLatex = exact ? "=" : "\\approx";
+  if (value.kind === "v") actions.push({ kind: exact ? "result" : "decimal", label, text: `${eq} ${vectorText(value.v)}`, latex: `${eqLatex} ${vectorLatex(value.v)}` });
+  else {
+    actions.push({ kind: exact ? "result" : "decimal", label, text: `${eq} ${vnumText(value.s, locale)}`, latex: `${eqLatex} ${vnumLatex(value.s, locale)}` });
+    if (exact && (value.s.root || value.s.f!.d !== 1n))
+      actions.push({
+        kind: "decimal",
+        label: de ? "Als Dezimalzahl" : "As a decimal",
+        text: `≈ ${decimal(value.s.x, locale)}`,
+        latex: `\\approx ${decimal(value.s.x, locale).replace(",", "{,}").replace("−", "-")}`,
+      });
+  }
+  // The angle between the two vectors of a dot product.
+  const { a, b } = value.how;
+  if (value.how.op === "dot" && a?.kind === "v" && b?.kind === "v" && value.kind === "s") {
+    const product = length(a.v).x * length(b.v).x;
+    if (product > 1e-12) {
+      const degrees = (Math.acos(Math.min(1, Math.max(-1, value.s.x / product))) * 180) / Math.PI;
+      const round = Math.round(degrees * 100) / 100;
+      const whole = Math.abs(degrees - Math.round(degrees)) < 1e-9;
+      const shown = decimal(whole ? Math.round(degrees) : round, locale);
+      actions.push({
+        kind: "vector",
+        label: de ? "Winkel" : "Angle",
+        text: `⇒ ∠ ${whole ? "=" : "≈"} ${shown}°`,
+        latex: `\\Rightarrow \\angle ${whole ? "=" : "\\approx"} ${shown.replace(",", "{,}")}^\\circ`,
+      });
+    }
+  }
+  return actions;
+}
+
 /* ---------- Actions ---------- */
 
 // What can be done with a written expression, best first. Empty when it is
 // not a calculation.
 export function mathActions(text: string, locale: Locale): MathAction[] {
+  const vector = vectorActions(text, locale);
+  if (vector) return vector;
   const input = normalize(text, locale);
   if (!input) return [];
   const de = locale === "de";
@@ -950,7 +1229,7 @@ export function trailingExpression(line: string): string | null {
   if (!/=\s*$/.test(line)) return null;
   const body = line.replace(/=\s*$/, "");
   // The longest end of the line made of maths characters and short words.
-  const match = body.match(/(?:[0-9a-zA-Z.,+\-−–*/×·÷:^²³√π()€$£%½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅐⅛⅜⅝⅞⅑⅒\s])+$/);
+  const match = body.match(/(?:[0-9a-zA-Z.,;|‖+\-−–*/×·⋅÷:^²³√π()[\]€$£%½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅐⅛⅜⅝⅞⅑⅒\s])+$/);
   if (!match) return null;
   let candidate = match[0];
   // Drop leading words (text before the calculation).
@@ -969,8 +1248,15 @@ export function latexToExpression(latex: string): string | null {
   if (!s || s.length > MAX_INPUT * 2) return null;
   s = s
     .replace(/\\left|\\right/g, "")
+    // Vectors: \begin{pmatrix}1\\2\end{pmatrix} → (1; 2).
+    .replace(/\\begin\{([pbv]?)matrix\}([\s\S]*?)\\end\{\1matrix\}/g, (_, _kind: string, body: string) => {
+      const parts = body.split(/\\\\|&/).map((p) => p.trim()).filter(Boolean);
+      return parts.length > 1 ? `(${parts.join("; ")})` : `(${parts[0] || ""})`;
+    })
     .replace(/\\[,;: !]|~/g, " ")
-    .replace(/\\(cdot|times|ast)/g, "*")
+    .replace(/\\[lr]?vert|\\[lr]?Vert|\\\|/g, "|")
+    .replace(/\\(cdot|ast)/g, "*")
+    .replace(/\\times/g, "×")
     .replace(/\\div/g, "/")
     .replace(/\\pi/g, "π")
     .replace(/\\(dfrac|tfrac)/g, "\\frac");

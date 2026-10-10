@@ -157,7 +157,7 @@ export const CalcHint = Extension.create<{ locale: Locale }>({
                 const expression = trailingExpression(readable);
                 const action = expression
                   ? mathActions(expression, locale).find(
-                      (a) => a.kind !== "solve",
+                      (a) => a.kind !== "solve" && a.kind !== "vector",
                     )
                   : undefined;
                 if (!action) return;

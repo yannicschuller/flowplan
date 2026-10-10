@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mathActions, normalize, trailingExpression } from "../lib/math-solve";
+import { latexToExpression, mathActions, normalize, trailingExpression } from "../lib/math-solve";
 
 const texts = (s: string, locale: "de" | "en" = "de") => mathActions(s, locale).map((a) => `${a.kind}: ${a.text}`);
 
@@ -105,4 +105,33 @@ test("factors with roots and equations of higher degree", () => {
   assert.deepEqual(texts("x^5 - x - 1 = 0"), ["solve: ⇒ x ≈ 1,167304"]);
   assert.deepEqual(texts("x^4 - 3x^2 + 1 = 0"), ["solve: ⇒ x ≈ −1,618034, x ≈ −0,618034, x ≈ 0,618034, x ≈ 1,618034"]);
   assert.deepEqual(texts("x^4 + 1 = 0"), ["solve: ⇒ keine reelle Lösung"]);
+});
+
+test("vectors: sums, multiples, dot and cross product, magnitude and angle", () => {
+  assert.deepEqual(texts("(1|2|3) + (4|5|6)"), ["result: = (5 | 7 | 9)"]);
+  assert.deepEqual(texts("2·(1; −2) − (3; 1)"), ["result: = (−1; −5)"]);
+  assert.deepEqual(texts("(1, 2, 3) + (1, 1, 1)", "en"), ["result: = (2, 3, 4)"]);
+  assert.deepEqual(texts("(1,2,3) + (1,1,1)"), ["result: = (2; 3; 4)"]);
+  assert.deepEqual(texts("(1,5; 2) · 2"), ["result: = (3; 4)"]);
+  assert.deepEqual(texts("(1|0|0) × (0|1|0)"), ["result: = (0 | 0 | 1)"]);
+  assert.deepEqual(texts("(1; 2) · (3; 4)"), ["result: = 11", "vector: ⇒ ∠ ≈ 10,3°"]);
+  assert.deepEqual(texts("(1; 0) · (0; 1)"), ["result: = 0", "vector: ⇒ ∠ = 90°"]);
+  assert.deepEqual(texts("|(3; 4)|"), ["result: = 5"]);
+  assert.deepEqual(texts("|(1; 1)|"), ["result: = √2", "decimal: ≈ 1,414214"]);
+  assert.deepEqual(texts("(3; 4)"), ["vector: ⇒ |v| = 5", "vector: ⇒ v⁰ = (3/5; 4/5)"]);
+  assert.deepEqual(texts("(1|1)"), ["vector: ⇒ |v| = √2 ≈ 1,414214", "vector: ⇒ v⁰ = (√2/2 | √2/2)"]);
+  assert.equal(mathActions("(1; 2) · (3; 4)", "de")[0].label, "Skalarprodukt");
+  assert.equal(mathActions("(1|0|0) × (0|1|0)", "de")[0].latex, "= \\begin{pmatrix}0 \\\\ 0 \\\\ 1\\end{pmatrix}");
+  // Not vectors: ordinary maths stays as it was.
+  assert.deepEqual(texts("(1,5 + 2)"), ["result: = 7/2", "decimal: ≈ 3,5"]);
+  assert.deepEqual(texts("(1; 2) × (3; 4)"), []);
+  assert.deepEqual(texts("(1; 2) + (1; 2; 3)"), []);
+});
+
+test("vectors in formulas and at the end of a line", () => {
+  assert.equal(latexToExpression("\\begin{pmatrix}1\\\\2\\end{pmatrix} \\times \\begin{pmatrix}3\\\\4\\end{pmatrix}"), "(1; 2) × (3; 4)");
+  assert.deepEqual(texts(latexToExpression("\\begin{pmatrix}1\\\\0\\\\0\\end{pmatrix} \\times \\begin{pmatrix}0\\\\1\\\\0\\end{pmatrix}")!), ["result: = (0; 0; 1)"]);
+  assert.equal(latexToExpression("\\begin{pmatrix} 3 \\\\ 4 \\end{pmatrix}"), "(3; 4)");
+  assert.equal(trailingExpression("Summe: (1|2) + (3|4) ="), "(1|2) + (3|4)");
+  assert.equal(trailingExpression("Länge |(3; 4)| ="), "|(3; 4)|");
 });
