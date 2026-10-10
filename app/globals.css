@@ -13500,6 +13500,37 @@ h3 .block-reactions {
   stroke-linejoin: round;
   stroke-linecap: round;
 }
+.plot-name-arrow {
+  fill: none;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.plot-legend .plot-name-arrow {
+  color: var(--text);
+}
+.plot-name.vector {
+  position: relative;
+  font-style: italic;
+}
+.plot-name.vector::before {
+  content: "→";
+  position: absolute;
+  top: -0.85em;
+  left: -0.05em;
+  font-size: 0.8em;
+  font-style: normal;
+}
+.plot-vector line {
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.plot-vector text {
+  font: italic 600 13px var(--font-ui);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
 .plot-zero {
   fill: var(--bg);
   stroke-width: 2;

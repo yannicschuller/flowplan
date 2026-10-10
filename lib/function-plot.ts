@@ -2,9 +2,11 @@
 // grid, axes and zeros. The block stores what was written ("x² − 2") and an
 // optional view; the drawing is made in the browser. Dragging moves the view,
 // the buttons and ⌘/Ctrl + scroll zoom. In the editor the functions are
-// edited below the graph and redrawn while typing.
+// edited below the graph and redrawn while typing. An entry can also be a
+// vector in the plane – "(3; 2)", "(1 | 2) + (3 | 1)" – drawn as an arrow
+// from the origin.
 import { compile } from "mathjs";
-import { functionExpression } from "./math-solve";
+import { functionExpression, vectorValue } from "./math-solve";
 import { LOCALE_TAG, tr } from "./locale-tag";
 
 export type PlotFunction = { expr: string; color: string };
@@ -56,11 +58,37 @@ function compileFunction(expr: string): Compiled {
     return null;
   }
 }
-export const isValidFunction = (expr: string) => !!compileFunction(expr);
+// A vector in the plane, or null.
+function planeVector(expr: string): [number, number] | null {
+  const v = vectorValue(expr, locale());
+  return v && v.length === 2 ? [v[0], v[1]] : null;
+}
+export const isValidFunction = (expr: string) => !!compileFunction(expr) || !!planeVector(expr);
+// Names in the legend: f, g, h … for functions, a⃗, b⃗, c⃗ … for vectors.
+function entryNames(config: PlotConfig) {
+  let functions = 0,
+    vectors = 0;
+  return config.functions.map((f) => (planeVector(f.expr) ? String.fromCharCode(97 + vectors++) : String.fromCharCode(102 + functions++)));
+}
 
 // A view that shows the interesting part: x from −6 to 6 (zeros, vertex,
 // a period of sin), y from what the functions do there, outliers cut off.
-function autoView(fns: Compiled[]): PlotView {
+function autoView(fns: Compiled[], vectors: [number, number][] = []): PlotView {
+  if (vectors.length) {
+    // Vectors need the same scale on both axes, so angles look right.
+    const xs = [0, ...vectors.map((v) => v[0])],
+      ys = [0, ...vectors.map((v) => v[1])];
+    const base = fns.some(Boolean) ? autoView(fns) : null;
+    let xMin = Math.min(...xs, base?.xMin ?? 0),
+      xMax = Math.max(...xs, base?.xMax ?? 0),
+      yMin = Math.min(...ys, base?.yMin ?? 0),
+      yMax = Math.max(...ys, base?.yMax ?? 0);
+    const ratio = (W - 2 * PAD) / (H - 2 * PAD);
+    const width = Math.max(xMax - xMin, (yMax - yMin) * ratio, 2) * 1.25;
+    const cx = (xMin + xMax) / 2,
+      cy = (yMin + yMax) / 2;
+    return { xMin: cx - width / 2, xMax: cx + width / 2, yMin: cy - width / ratio / 2, yMax: cy + width / ratio / 2 };
+  }
   const ys: number[] = [];
   for (const f of fns)
     if (f)
@@ -92,9 +120,14 @@ const number = (n: number) => {
 };
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// The small arrow over a vector's name (the fonts have no combining arrow).
+const nameArrow = (x: number, y: number, color: string) =>
+  `<path class="plot-name-arrow" d="M${x - 4},${y} h8 m-2.5,-2.2 l2.5,2.2 l-2.5,2.2" stroke="${color}"/>`;
 // The SVG of a graph for a view.
 export function plotSvg(config: PlotConfig, view: PlotView, label: string): string {
   const fns = config.functions.map((f) => compileFunction(f.expr));
+  const vectors = config.functions.map((f) => planeVector(f.expr));
+  const names = entryNames(config);
   const sx = (x: number) => PAD + ((x - view.xMin) / (view.xMax - view.xMin)) * (W - 2 * PAD);
   const sy = (y: number) => PAD + ((view.yMax - y) / (view.yMax - view.yMin)) * (H - 2 * PAD);
   const parts: string[] = [];
@@ -159,11 +192,36 @@ export function plotSvg(config: PlotConfig, view: PlotView, label: string): stri
         `<circle class="plot-zero" cx="${sx(z)}" cy="${sy(0)}" r="3.5" stroke="${color}"><title>${tr("Nullstelle", "Zero")} x ≈ ${number(z)}</title></circle>`,
       );
   });
+  // Vectors: arrows from the origin, named at the tip.
+  vectors.forEach((v, i) => {
+    if (!v) return;
+    const color = config.functions[i].color;
+    const x0 = sx(0),
+      y0 = sy(0),
+      x1 = sx(v[0]),
+      y1 = sy(v[1]);
+    const length = Math.hypot(x1 - x0, y1 - y0);
+    if (length < 1) {
+      parts.push(`<circle cx="${x0}" cy="${y0}" r="3" fill="${color}"/>`);
+      return;
+    }
+    const ux = (x1 - x0) / length,
+      uy = (y1 - y0) / length;
+    const head = Math.min(12, length * 0.4);
+    const bx = x1 - ux * head,
+      by = y1 - uy * head;
+    const tip = `${x1.toFixed(1)},${y1.toFixed(1)} ${(bx - uy * head * 0.45).toFixed(1)},${(by + ux * head * 0.45).toFixed(1)} ${(bx + uy * head * 0.45).toFixed(1)},${(by - ux * head * 0.45).toFixed(1)}`;
+    parts.push(
+      `<g class="plot-vector"><title>${escape(`${tr("Vektor", "Vector")} ${names[i]} = (${number(v[0])} | ${number(v[1])})`)}</title><line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="${color}"/><polygon points="${tip}" fill="${color}"/><text x="${(x1 + ux * 10 + uy * 8).toFixed(1)}" y="${(y1 + uy * 10 - ux * 8 + 4).toFixed(1)}" fill="${color}" text-anchor="middle">${escape(names[i])}</text>${nameArrow(x1 + ux * 10 + uy * 8, y1 + uy * 10 - ux * 8 - 8, color)}</g>`,
+    );
+  });
   // Legend.
   config.functions.forEach((f, i) => {
-    const valid = !!fns[i];
+    const vector = vectors[i];
+    const valid = !!fns[i] || !!vector;
+    const text = vector ? `${names[i]} = ${f.expr}` : `${names[i]}(x) = ${f.expr}`;
     parts.push(
-      `<g class="plot-legend" transform="translate(${PAD + 10},${PAD + 16 + i * 20})"><rect x="0" y="-9" width="14" height="4" rx="2" fill="${f.color}"/><text x="20" y="-3"${valid ? "" : ' class="plot-invalid"'}>${escape(`${String.fromCharCode(102 + i)}(x) = ${f.expr}`)}</text></g>`,
+      `<g class="plot-legend" transform="translate(${PAD + 10},${PAD + 16 + i * 20})"><rect x="0" y="-9" width="14" height="4" rx="2" fill="${f.color}"/><text x="20" y="-3"${valid ? "" : ' class="plot-invalid"'}>${escape(text)}</text>${vector ? nameArrow(24, -14, "currentColor") : ""}</g>`,
     );
   });
   return `<svg class="plot-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escape(label)}">${parts.join("")}</svg>`;
@@ -185,8 +243,15 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
   const controls = document.createElement("div");
   controls.className = "plot-controls";
   element.append(stage, controls);
-  const currentView = () => config.view || autoView(config.functions.map((f) => compileFunction(f.expr)));
-  const label = () => tr("Funktionsgraph: ", "Function graph: ") + config.functions.map((f) => f.expr).join(", ");
+  const currentView = () =>
+    config.view ||
+    autoView(
+      config.functions.map((f) => compileFunction(f.expr)),
+      config.functions.map((f) => planeVector(f.expr)).filter((v): v is [number, number] => !!v),
+    );
+  const label = () =>
+    (config.functions.every((f) => planeVector(f.expr)) ? tr("Vektoren: ", "Vectors: ") : tr("Funktionsgraph: ", "Function graph: ")) +
+    config.functions.map((f) => f.expr).join(", ");
   const draw = () => {
     stage.innerHTML = plotSvg(config, currentView(), label());
   };
@@ -286,16 +351,23 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
       swatch.style.background = f.color;
       const name = document.createElement("span");
       name.className = "plot-name";
-      name.textContent = `${String.fromCharCode(102 + i)}(x) =`;
+      const named = entryNames(config)[i];
+      const setName = (vector: boolean, n: string) => {
+        name.textContent = vector ? `${n} =` : `${n}(x) =`;
+        name.classList.toggle("vector", vector);
+      };
+      setName(!!planeVector(f.expr), named);
       const input = document.createElement("input");
       input.value = f.expr;
       input.maxLength = 200;
       input.spellcheck = false;
-      input.setAttribute("aria-label", tr(`Funktion ${String.fromCharCode(102 + i)}`, `Function ${String.fromCharCode(102 + i)}`));
+      input.placeholder = tr("x² − 2 oder (3; 2)", "x² − 2 or (3, 2)");
+      input.setAttribute("aria-label", planeVector(f.expr) ? tr(`Vektor ${named}`, `Vector ${named}`) : tr(`Funktion ${named}`, `Function ${named}`));
       input.classList.toggle("invalid", !isValidFunction(f.expr));
       input.addEventListener("input", () => {
         config = { ...config, functions: config.functions.map((g, j) => (j === i ? { ...g, expr: input.value } : g)) };
         input.classList.toggle("invalid", !!input.value.trim() && !isValidFunction(input.value));
+        setName(!!planeVector(input.value), entryNames(config)[i]);
         draw();
         changed();
       });

@@ -1026,6 +1026,33 @@ function vnumLatex(n: VNum, locale: Locale) {
 }
 const vexact = (v: VValue) => (v.kind === "s" ? !!(v.s.f || v.s.root) : v.v.every((n) => n.f || n.root));
 
+// The value of a vector expression as plain numbers ("(1; 2) + (3; 1)" →
+// [4, 3]), or null when the text is not a vector.
+export function vectorValue(text: string, locale: Locale): number[] | null {
+  if (/[a-zA-Z]/.test(text)) return null;
+  const read = vectorTokens(text, locale);
+  if (!read) return null;
+  try {
+    const { value, sawVector } = parseVectors(read.tokens);
+    return sawVector && value.kind === "v" && value.v.every((n) => Number.isFinite(n.x)) ? value.v.map((n) => n.x) : null;
+  } catch {
+    return null;
+  }
+}
+
+// What to draw for a selected vector expression: each written 2D vector and,
+// when something is calculated, the result. Null when there is nothing to
+// draw (no vectors, or not in the plane).
+export function plotVectors(text: string, locale: Locale): string[] | null {
+  const whole = text.trim().replace(/=\s*$/, "").trim();
+  const value = vectorValue(whole, locale);
+  if (!value || value.length !== 2) return null;
+  const literals = (whole.match(/[([][^()[\]]*[)\]]/g) || []).map((m) => m.trim()).filter((m) => vectorValue(m, locale)?.length === 2);
+  const unique = [...new Set(literals)];
+  if (!unique.includes(whole)) unique.push(whole);
+  return unique.slice(0, 6);
+}
+
 // What can be done with a vector expression; null when the text has no
 // vector in it (then it is ordinary maths).
 export function vectorActions(text: string, locale: Locale): MathAction[] | null {

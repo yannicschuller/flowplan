@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { latexToExpression, mathActions, normalize, trailingExpression } from "../lib/math-solve";
+import { latexToExpression, mathActions, normalize, plotVectors, trailingExpression, vectorValue } from "../lib/math-solve";
 
 const texts = (s: string, locale: "de" | "en" = "de") => mathActions(s, locale).map((a) => `${a.kind}: ${a.text}`);
 
@@ -134,4 +134,14 @@ test("vectors in formulas and at the end of a line", () => {
   assert.equal(latexToExpression("\\begin{pmatrix} 3 \\\\ 4 \\end{pmatrix}"), "(3; 4)");
   assert.equal(trailingExpression("Summe: (1|2) + (3|4) ="), "(1|2) + (3|4)");
   assert.equal(trailingExpression("Länge |(3; 4)| ="), "|(3; 4)|");
+});
+
+test("vectors to draw: each written vector and the result", () => {
+  assert.deepEqual(plotVectors("(1; 2) + (3; 1)", "de"), ["(1; 2)", "(3; 1)", "(1; 2) + (3; 1)"]);
+  assert.deepEqual(plotVectors("(3 | 4)", "de"), ["(3 | 4)"]);
+  assert.deepEqual(plotVectors("2·(1; −2) =", "de"), ["(1; −2)", "2·(1; −2)"]);
+  assert.equal(plotVectors("(1|0|0) × (0|1|0)", "de"), null);
+  assert.equal(plotVectors("(1; 2) · (3; 4)", "de"), null);
+  assert.equal(plotVectors("3 + 4", "de"), null);
+  assert.deepEqual(vectorValue("(1, 2) + (3, 1)", "en"), [4, 3]);
 });

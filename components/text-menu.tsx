@@ -45,6 +45,8 @@ export function TextMenu({
   const [calc, setCalc] = useState<MathAction[]>([]);
   // The selection as a function of x, for "Graph zeichnen".
   const [graph, setGraph] = useState<string | null>(null);
+  // Vectors in the plane to draw ("(1; 2) + (3; 1)" → a⃗, b⃗ and the sum).
+  const [arrows, setArrows] = useState<string[] | null>(null);
   const menu = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPlace(null), []);
   useEffect(() => {
@@ -152,14 +154,16 @@ export function TextMenu({
   useEffect(() => {
     setCalc([]);
     setGraph(null);
+    setArrows(null);
     if (!place || !editor || !editable) return;
     const { from, to, empty } = editor.state.selection;
     if (empty) return;
     const text = editor.state.doc.textBetween(from, to, " ");
-    if (text.length > 300 || !/[\d)a-z]\s*[-+−*/×·÷:^²³=]|√/.test(text)) return;
+    if (text.length > 300 || !/[\d)a-z]\s*[-+−*/×·÷:^²³=]|√|[([][^()[\]]*[;|,][^()[\]]*[)\]]/.test(text)) return;
     let current = true;
-    void import("@/lib/math-solve").then(({ mathActions, functionExpression }) => {
+    void import("@/lib/math-solve").then(({ mathActions, functionExpression, plotVectors }) => {
       if (!current) return;
+      setArrows(plotVectors(text, locale));
       setCalc(mathActions(text, locale).slice(0, 4));
       setGraph(/x/.test(text) && functionExpression(text, locale) ? text.trim().replace(/^(?:y|[a-zA-Z]\s*\(\s*x\s*\))\s*[=:]\s*/, "").replace(/=\s*$/, "") : null);
     });
@@ -248,7 +252,7 @@ export function TextMenu({
           </button>
         </div>
       )}
-      {(calc.length > 0 || graph) && (
+      {(calc.length > 0 || graph || arrows) && (
         <div className="text-menu-calc" role="group" aria-label={t("Rechnen", "Calculate")}>
           {graph && (
             <button
@@ -267,6 +271,26 @@ export function TextMenu({
               <ChartLine size={15} />
               <span>{t("Graph zeichnen", "Draw graph")}</span>
               <strong>{`f(x) = ${graph}`}</strong>
+            </button>
+          )}
+          {arrows && (
+            <button
+              type="button"
+              role="menuitem"
+              title={t("Die Vektoren unter dem Absatz zeichnen", "Draw the vectors below the paragraph")}
+              onClick={run(() => {
+                const $to = editor.state.doc.resolve(to);
+                const after = $to.after(Math.max(1, $to.depth));
+                const colors = ["#3b3fd8", "#e03131", "#2f9e44", "#f08c00", "#9c36b5", "#1098ad"];
+                editor
+                  .chain()
+                  .insertContentAt(after, { type: "functionPlot", attrs: { plot: JSON.stringify({ functions: arrows.map((expr, i) => ({ expr, color: colors[i % colors.length] })) }) } })
+                  .run();
+              })}
+            >
+              <ChartLine size={15} />
+              <span>{t("Vektoren zeichnen", "Draw vectors")}</span>
+              <strong>{arrows.length === 1 ? arrows[0] : t(`${arrows.length} Pfeile`, `${arrows.length} arrows`)}</strong>
             </button>
           )}
           {calc.map((action) => (
