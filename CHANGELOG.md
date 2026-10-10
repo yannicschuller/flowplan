@@ -2,6 +2,14 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.3.0 – 2026-10-10
+
+- Survey builder redesign with autosave ([7191201](https://github.com/yannicschuller/flowplan/commit/71912016ec2d4f750bfb05de78ab8ada617e751a))
+- Vectors in calculations: sums, dot and cross product, magnitude, unit vector and angle ([d9f6a04](https://github.com/yannicschuller/flowplan/commit/d9f6a0451ad046fd5acd6983cb820180cecf1b84))
+- Copy and move records between databases ([40ab75f](https://github.com/yannicschuller/flowplan/commit/40ab75f04711568d4c48c1af38f628fed284b834))
+- Add view: every display type as a card with a short description ([b69c6a5](https://github.com/yannicschuller/flowplan/commit/b69c6a5f74b9cbb810c8bbecf8f5308b0dd4bd4d))
+- Fixes: no calculation hint before an existing result, images keep their context menu, form actions aligned ([6f305cf](https://github.com/yannicschuller/flowplan/commit/6f305cf4d95cb642422b78347c76949f0e78e213))
+
 ## v0.2.0 – 2026-10-06
 
 - README: project tools, surveys and CalDAV; record templates test uses the new menu ([f571fbd](https://github.com/yannicschuller/flowplan/commit/f571fbda6d44f12078a1852f9af0c0e5533d502d))
