@@ -2563,6 +2563,30 @@ tr:hover .row-open {
 .admin-page .callout {
   margin-bottom: 25px;
 }
+.admin-build {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.admin-build strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.admin-build code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--secondary);
+  font: 12px var(--font-mono);
+}
+.admin-build a:hover code {
+  color: var(--blue);
+}
 .audit-row {
   display: flex;
   align-items: center;

@@ -1,3 +1,4 @@
+import { buildInfo } from "./build-info";
 import { storageStatus } from "./storage";
 import { timingSafeEqual } from "node:crypto";
 import { statSync } from "node:fs";
@@ -187,6 +188,8 @@ export function prometheusMetrics() {
   gauge("demos_active", "Public demo sessions currently running.", m.demosActive);
   metric("demos_started_total", "Public demos started on this instance.", "counter", [[{}, m.demosStarted]]);
   gauge("uptime_seconds", "Process uptime in seconds.", m.uptimeSeconds);
+  const build = buildInfo();
+  metric("build_info", "The running version and commit (always 1).", "gauge", [[{ version: build.version, commit: build.commit.slice(0, 12) }, 1]]);
   const usage = workspaceUsage();
   metric(
     "workspace_bytes",

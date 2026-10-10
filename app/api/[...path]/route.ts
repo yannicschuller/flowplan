@@ -85,6 +85,7 @@ import {
 } from "@/lib/journal-extras";
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
+import { buildInfo } from "@/lib/build-info";
 import { exportTemplate, importTemplate } from "@/lib/template-exchange";
 import {
   enforceQuota,
@@ -637,6 +638,7 @@ async function handleGET(
     if (path[0] === "admin") {
       requireAdmin(user);
       return NextResponse.json({
+        build: buildInfo(),
         users: all(
           "SELECT id,name,email,disabled,created_at,last_login_at FROM users WHERE demo_until IS NULL ORDER BY created_at DESC",
         ),

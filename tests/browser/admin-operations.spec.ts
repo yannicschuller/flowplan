@@ -60,6 +60,11 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
     await expect(
       admin.getByRole("heading", { name: "Administration" }),
     ).toBeVisible();
+    // The running version and commit (the test server runs from a checkout).
+    const build = admin.getByLabel("Laufende Version");
+    await expect(build).toContainText(/^v\d+\.\d+\.\d+/);
+    await expect(build.getByRole("link")).toHaveAttribute("href", /github\.com\/yannicschuller\/flowplan\/commit\/[0-9a-f]{40}$/);
+    await admin.screenshot({ path: `test-results/admin-verification/${testInfo.project.name}-version.png` });
     await admin.getByRole("button", { name: "Betrieb", exact: true }).click();
     const metrics = admin.getByLabel("Betriebsmetriken");
     await expect(metrics).toContainText("Datenbank");

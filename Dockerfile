@@ -8,6 +8,10 @@ COPY . .
 # app runs as node, so everything that ends up in the image must be readable.
 RUN chmod -R a+rX /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# The commit shown in the administration (.git is not in the build context):
+# our workflow passes GIT_COMMIT, Coolify passes SOURCE_COMMIT.
+ARG GIT_COMMIT=""
+ARG SOURCE_COMMIT=""
 RUN npm run build
 FROM litestream/litestream:0.5.17 AS litestream
 FROM node:26-bookworm-slim AS runtime

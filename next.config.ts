@@ -1,7 +1,28 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+// What is running, shown in the administration: the version from
+// package.json and the commit – from the build (GIT_COMMIT in our Docker
+// workflow, SOURCE_COMMIT in Coolify) or from the checkout.
+function gitCommit() {
+  const given = process.env.GIT_COMMIT || process.env.SOURCE_COMMIT;
+  if (given) return given;
+  try {
+    return execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  } catch {
+    return "";
+  }
+}
+const pkg = JSON.parse(readFileSync("./package.json", "utf8")) as { version: string };
 
 const config: NextConfig = {
   output: "standalone",
+  env: {
+    FLOWPLAN_VERSION: pkg.version,
+    FLOWPLAN_COMMIT: gitCommit(),
+    FLOWPLAN_BUILT_AT: new Date().toISOString(),
+  },
   // A second development server (e.g. for isolated browser tests) needs its
   // own build directory.
   ...(process.env.FLOWPLAN_DIST_DIR

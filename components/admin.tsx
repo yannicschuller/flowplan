@@ -1,6 +1,7 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import type { BuildInfo } from "@/lib/build-info";
 import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import {
@@ -30,6 +31,7 @@ type AdminData = {
     created_at: string;
   }[];
   adminGroup: string;
+  build?: BuildInfo;
   oidcConfigured: boolean;
   metrics: {
     databaseBytes: number;
@@ -205,6 +207,23 @@ export default function Admin({
           {t("Admin-Gruppe:", "Admin group:")}{" "}<strong>{data.adminGroup}</strong> · OIDC{" "}
           {data.oidcConfigured ? "konfiguriert" : t("nicht konfiguriert", "not configured")}
         </span>
+        {data.build && (
+          <span className="admin-build" aria-label={t("Laufende Version", "Running version")}>
+            {data.build.version && <strong>v{data.build.version}</strong>}
+            {data.build.commit ? (
+              <a href={`${data.build.repository}/commit/${data.build.commit}`} target="_blank" rel="noreferrer" title={t(`Commit ${data.build.commit} auf GitHub ansehen`, `View commit ${data.build.commit} on GitHub`)}>
+                <code>{data.build.commit.slice(0, 7)}</code>
+              </a>
+            ) : (
+              <span title={t("Beim Bauen war kein Commit bekannt (GIT_COMMIT oder SOURCE_COMMIT).", "No commit was known when building (GIT_COMMIT or SOURCE_COMMIT).")}>{t("Commit unbekannt", "commit unknown")}</span>
+            )}
+            {data.build.builtAt && (
+              <span title={new Date(data.build.builtAt).toLocaleString(LOCALE_TAG)}>
+                {t("gebaut", "built")} {new Date(data.build.builtAt).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short", year: "numeric" })}
+              </span>
+            )}
+          </span>
+        )}
       </div>
       <div className="settings-layout">
         <nav className="settings-tabs" aria-label={t("Bereiche der Administration", "Administration sections")}>
