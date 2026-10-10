@@ -26,6 +26,12 @@ test("calculate in a document: hint after =, selection and fractions", async ({ 
   await page.keyboard.press("Tab");
   await expect(editor.locator(".calc-hint")).toHaveCount(0);
   await expect(editor).toContainText("Budget: 12 × 2.400 € = 28.800 €");
+  // Back in front of the written result: no second hint.
+  await page.keyboard.press("ArrowLeft", { delay: 20 });
+  for (let i = 0; i < " 28.800 €".length - 1; i++) await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(400);
+  await expect(editor.locator(".calc-hint")).toHaveCount(0);
+  await page.keyboard.press("End");
 
   // Without Tab nothing is written.
   await page.keyboard.press("Enter");

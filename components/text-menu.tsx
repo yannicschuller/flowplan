@@ -88,6 +88,9 @@ export function TextMenu({
     };
     const onContext = (event: MouseEvent) => {
       if (event.shiftKey || !inEditor(event)) return;
+      // Images, videos and embedded files keep the browser's own menu
+      // (copy image, save image …).
+      if ((event.target as HTMLElement | null)?.closest?.("img, video, audio, canvas, iframe, object, embed")) return;
       event.preventDefault();
       // Right click outside the selection moves the caret there first.
       const at = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });

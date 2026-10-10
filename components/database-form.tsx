@@ -2,7 +2,7 @@
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
-import { Check, Copy, SlidersHorizontal } from "@phosphor-icons/react";
+import { ChartBar, Check, Copy, SlidersHorizontal } from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import FormQuestions from "./form-questions";
 import {
@@ -145,21 +145,22 @@ export default function DatabaseForm({
             t("Deine Antworten werden als neuer Eintrag gespeichert.", "Your answers are saved as a new record.")}
         </p>
         {editable && (
-          <button
-            className="button"
-            onClick={() => {
-              setDraft(config);
-              setDesign(true);
-            }}
-          >
-            <SlidersHorizontal />
-            {t("Formular gestalten", "Design form")}
-          </button>
-        )}
-        {editable && (
-          <button className="button" onClick={() => setBuilder(true)}>
-            {t("Als Umfrage gestalten", "Turn into a survey")}
-          </button>
+          <div className="form-heading-actions">
+            <button
+              className="button"
+              onClick={() => {
+                setDraft(config);
+                setDesign(true);
+              }}
+            >
+              <SlidersHorizontal />
+              {t("Formular gestalten", "Design form")}
+            </button>
+            <button className="button" onClick={() => setBuilder(true)}>
+              <ChartBar />
+              {t("Als Umfrage gestalten", "Turn into a survey")}
+            </button>
+          </div>
         )}
       </div>
       {done ? (

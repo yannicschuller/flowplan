@@ -30,6 +30,10 @@ function lineBeforeCursor(state: EditorState) {
   const $pos = selection.$from;
   if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) return null;
   const text = $pos.parent.textBetween(0, $pos.parentOffset, undefined, "￼");
+  // Something already stands after the cursor (e.g. a result written
+  // before): no hint, only at the end of what was typed.
+  const after = $pos.parent.textBetween($pos.parentOffset, $pos.parent.content.size, undefined, "￼");
+  if (after.trim()) return null;
   return /=\s?$/.test(text) && !/=\s?=\s?$/.test(text) ? text : null;
 }
 

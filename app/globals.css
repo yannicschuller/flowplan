@@ -15392,3 +15392,18 @@ h3 .block-reactions {
   height: 18px;
   margin: 0;
 }
+
+/* Form view: the two design actions side by side, same size. */
+.form-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 14px;
+}
+.form-heading-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
