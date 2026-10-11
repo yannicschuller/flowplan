@@ -1315,6 +1315,13 @@ kbd,
   padding: 0;
   width: 27px;
 }
+.view-default-mark {
+  margin-left: -2px;
+  color: var(--muted);
+}
+.database-tabs > button.selected .view-default-mark {
+  color: var(--blue);
+}
 .database-tabs > button.dragging {
   opacity: 0.45;
 }

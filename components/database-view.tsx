@@ -306,7 +306,7 @@ export default function DatabaseView({
     () => ({ ...data.related, [page.id]: data.rows }),
     [data.related, data.rows, page.id],
   );
-  const [viewId, setViewId] = useState(data.database.views[0].id),
+  const [viewId, setViewId] = useState((data.database.views.find((v) => v.default) || data.database.views[0]).id),
     [query, setQuery] = useState(""),
     // Large databases: rows are drawn in steps (see MoreRows).
     [rowLimit, setRowLimit] = useState(ROW_STEP),
@@ -897,9 +897,14 @@ export default function DatabaseView({
   async function duplicateView(id: string) {
     const source = views.find((v) => v.id === id);
     if (!source) return;
-    const copy: View = { ...structuredClone(source), id: crypto.randomUUID(), name: t(`${source.name} (Kopie)`, `${source.name} (copy)`).slice(0, 80) };
+    const copy: View = { ...structuredClone(source), id: crypto.randomUUID(), default: undefined, name: t(`${source.name} (Kopie)`, `${source.name} (copy)`).slice(0, 80) };
     const at = views.indexOf(source) + 1;
     if (await updateSchema(fields, [...views.slice(0, at), copy, ...views.slice(at)])) setViewId(copy.id);
+  }
+  // One view per database opens first; choosing it again goes back to the first tab.
+  function setDefaultView(id: string) {
+    const on = !views.find((v) => v.id === id)?.default;
+    return updateSchema(fields, views.map((v) => ({ ...v, default: on && v.id === id ? true : undefined })));
   }
   async function deleteView(id: string) {
     if (views.length < 2) return;
@@ -2263,7 +2268,7 @@ export default function DatabaseView({
         setRecordMenu({ x: e.clientX, y: e.clientY, rowIds });
       }}
     >
-      <div className="database-tabs" role="tablist" aria-label={t("Ansichten", "Views")}>
+      <div className="database-tabs" role="group" aria-label={t("Ansichten", "Views")}>
         {data.database.views.map((v) => {
           const Icon = viewIcons[v.type];
           if (renamingView === v.id)
@@ -2294,8 +2299,7 @@ export default function DatabaseView({
           return (
             <button
               key={v.id}
-              role="tab"
-              aria-selected={v.id === view.id}
+              aria-current={v.id === view.id ? "true" : undefined}
               className={`${v.id === view.id ? "selected" : ""}${viewDrop?.id === v.id ? (viewDrop.after ? " view-drop-after" : " view-drop-before") : ""}${draggedView === v.id ? " dragging" : ""}`}
               onClick={() => setViewId(v.id)}
               onDoubleClick={() => viewEditable && setRenamingView(v.id)}
@@ -2332,6 +2336,9 @@ export default function DatabaseView({
             >
               <Icon size={17} />
               {v.name}
+              {v.default && views.length > 1 && (
+                <Star className="view-default-mark" size={11} weight="fill" aria-hidden />
+              )}
             </button>
           );
         })}
@@ -3930,6 +3937,12 @@ export default function DatabaseView({
             ))}
           </div>
           {viewEditable && data.database.views.length > 1 && (
+            <label className="checkbox-label">
+              <input type="checkbox" checked={!!view.default} onChange={() => void setDefaultView(view.id)} />
+              {t("Standardansicht – öffnet sich zuerst", "Default view – opens first")}
+            </label>
+          )}
+          {viewEditable && data.database.views.length > 1 && (
             <button
               className="button danger"
               onClick={async () => {
@@ -5347,6 +5360,11 @@ export default function DatabaseView({
                 { icon: <PencilSimple />, label: t("Umbenennen", "Rename"), run: () => setRenamingView(v.id) },
                 { icon: <CopySimple />, label: t("Duplizieren", "Duplicate"), run: () => void duplicateView(v.id) },
                 { icon: <SlidersHorizontal />, label: t("Einstellungen …", "Settings …"), run: () => (setViewId(v.id), setConfig(true)) },
+                {
+                  icon: <Star weight={v.default ? "fill" : "regular"} />,
+                  label: v.default ? t("Nicht mehr Standardansicht", "No longer the default view") : t("Als Standardansicht festlegen", "Set as default view"),
+                  run: () => void setDefaultView(v.id),
+                },
                 "separator",
                 { icon: <ArrowLeft />, label: t("Nach links", "Move left"), disabled: index === 0, run: () => void reorderView(v.id, views[index - 1].id, false) },
                 { icon: <ArrowRight />, label: t("Nach rechts", "Move right"), disabled: index === views.length - 1, run: () => void reorderView(v.id, views[index + 1].id, true) },

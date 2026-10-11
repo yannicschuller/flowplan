@@ -23,12 +23,12 @@ test("view tabs can be renamed, duplicated, reordered and deleted", async ({ pag
   const rest = start.slice(1);
   await page.goto(`/#page=${id}`);
   const tabs = page.locator(".database-tabs");
-  const tab = (name: string) => tabs.getByRole("tab", { name, exact: true });
+  const tab = (name: string) => tabs.getByRole("button", { name, exact: true });
 
   // Duplicate, then rename the copy from the menu.
   await tab(first).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Duplizieren" }).click();
-  await expect(tab(`${first} (Kopie)`)).toHaveAttribute("aria-selected", "true");
+  await expect(tab(`${first} (Kopie)`)).toHaveAttribute("aria-current", "true");
   await tab(`${first} (Kopie)`).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Umbenennen" }).click();
   await tabs.getByLabel("Name der Ansicht").fill("Offen");
@@ -57,10 +57,23 @@ test("view tabs can be renamed, duplicated, reordered and deleted", async ({ pag
   await tab("Offen").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Ansicht löschen" }).click();
   await expect.poll(viewNames).toEqual(start);
-  await expect(tab(first)).toHaveAttribute("aria-selected", "true");
+  await expect(tab(first)).toHaveAttribute("aria-current", "true");
   await tab(first).click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Ansicht löschen" })).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
+
+  // A default view opens first, also after reloading.
+  const second = start[1];
+  await tab(second).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Als Standardansicht festlegen" }).click();
+  await expect.poll(async () => ((await (await page.request.get(`/api/pages/${id}`)).json()).database.views as { name: string; default?: boolean }[]).filter((v) => v.default).map((v) => v.name)).toEqual([second]);
+  await page.reload();
+  await expect(tab(second)).toHaveAttribute("aria-current", "true");
+  await expect(async () => {
+    await tab(second).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Nicht mehr Standardansicht" }).click({ timeout: 2000 });
+  }).toPass({ timeout: 20_000 });
+  await expect.poll(async () => ((await (await page.request.get(`/api/pages/${id}`)).json()).database.views as { default?: boolean }[]).some((v) => v.default)).toBe(false);
   expect(errors).toEqual([]);
 });

@@ -153,6 +153,7 @@ export type FilterGroup = {
 };
 export type FilterNode = (Filter & { kind: "condition" }) | FilterGroup;
 export type View = {
+  default?: boolean;
   id: string;
   name: string;
   type:

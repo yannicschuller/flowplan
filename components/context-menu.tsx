@@ -11,17 +11,20 @@ export function ContextMenu({ x, y, label, items, onClose }: { x: number; y: num
   close.current = onClose;
   useEffect(() => {
     const shut = () => close.current();
+    // Scrolling closes the menu – not the layout settling right after opening.
+    const opened = Date.now();
+    const scrolled = () => Date.now() - opened > 300 && shut();
     const away = (e: Event) => !menu.current?.contains(e.target as Node) && shut();
     const key = (e: KeyboardEvent) => e.key === "Escape" && shut();
     document.addEventListener("mousedown", away, true);
     document.addEventListener("keydown", key);
-    window.addEventListener("scroll", shut, true);
+    window.addEventListener("scroll", scrolled, true);
     window.addEventListener("resize", shut);
     menu.current?.querySelector<HTMLElement>("[role=menuitem]:not(:disabled)")?.focus();
     return () => {
       document.removeEventListener("mousedown", away, true);
       document.removeEventListener("keydown", key);
-      window.removeEventListener("scroll", shut, true);
+      window.removeEventListener("scroll", scrolled, true);
       window.removeEventListener("resize", shut);
     };
   }, []);

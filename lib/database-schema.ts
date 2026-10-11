@@ -82,6 +82,8 @@ export const view = z
       .array(z.object({ field: str, direction: z.enum(["asc", "desc"]) }))
       .max(20),
     groupBy: z.string().optional(),
+    // Opens first when the database is opened (otherwise the first view).
+    default: z.boolean().optional(),
     tree: z.boolean().optional(),
     wip: z
       .record(z.string().max(2000), z.object({ max: z.number().int().min(1).max(999), lock: z.boolean().optional() }))
