@@ -74,10 +74,15 @@ export function chatTextToHtml(text: string): string {
     .replace(new RegExp(`[${OPEN}${INLINE_OPEN}](\\d+)[${CLOSE}${INLINE_CLOSE}]`, "g"), (_, i: string) => `<span data-math="${tex(i)}"></span>`);
 }
 
-// Copied web pages (ChatGPT in the browser) render formulas with KaTeX or
-// MathML; the LaTeX inside becomes a formula again instead of letter soup.
+// Formulas written as text: \[ … \] and $$ … $$ (display), \( … \) (inline).
+export const LATEX_PATTERN = /\\\[([\s\S]+?)\\\]|\$\$([\s\S]+?)\$\$|\\\(([\s\S]+?)\\\)/g;
+export const hasLatexText = (text: string) => /\\\[[\s\S]+?\\\]|\$\$[\s\S]+?\$\$|\\\([\s\S]+?\\\)/.test(text);
+
+// Copied web pages (ChatGPT in the browser): formulas rendered with KaTeX or
+// MathML, or still written as \[ … \] text, become formulas; paragraphs of
+// "☐" lines become task lists.
 export function mathFromPastedHtml(html: string): string {
-  if (!/katex|<math[\s>]/i.test(html) || typeof DOMParser === "undefined") return html;
+  if (!/katex|<math[\s>]|\\\[|\\\(|\$\$|☐|☑/i.test(html) || typeof DOMParser === "undefined") return html;
   const doc = new DOMParser().parseFromString(html, "text/html");
   const texOf = (el: Element) => el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim() || "";
   for (const el of [...doc.querySelectorAll(".katex-display, .katex, math")]) {
@@ -89,6 +94,50 @@ export function mathFromPastedHtml(html: string): string {
     const node = doc.createElement(display ? "div" : "span");
     node.setAttribute("data-math", tex);
     target.replaceWith(node);
+  }
+  const formula = (tag: "div" | "span", tex: string) => {
+    const node = doc.createElement(tag);
+    node.setAttribute("data-math", tex.trim());
+    return node;
+  };
+  // Paragraphs made only of display formulas become formula blocks.
+  for (const p of [...doc.querySelectorAll("p, div:not([data-math])")]) {
+    if (p.children.length) continue;
+    const text = p.textContent || "";
+    const parts = [...text.matchAll(LATEX_PATTERN)];
+    if (!parts.length || parts.some((m) => m[3] !== undefined) || text.replace(LATEX_PATTERN, "").trim()) continue;
+    p.replaceWith(...parts.map((m) => formula("div", m[1] ?? m[2])));
+  }
+  // Formulas inside text become inline formulas.
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (hasLatexText(n.nodeValue || "") && !n.parentElement?.closest("pre, code, [data-math]")) texts.push(n as Text);
+  for (const node of texts) {
+    const value = node.nodeValue || "";
+    const pieces: (string | Element)[] = [];
+    let last = 0;
+    for (const m of value.matchAll(LATEX_PATTERN)) {
+      pieces.push(value.slice(last, m.index));
+      pieces.push(formula("span", m[1] ?? m[2] ?? m[3]));
+      last = m.index! + m[0].length;
+    }
+    pieces.push(value.slice(last));
+    node.replaceWith(...pieces.filter((x) => x !== ""));
+  }
+  // "☐ a<br>☐ b" paragraphs: task lists.
+  for (const p of [...doc.querySelectorAll("p")]) {
+    const lines = p.innerHTML.split(/<br\s*\/?>/i).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length || !lines.every((l) => /^(☐|☑|☒|✅)\s*/.test(l))) continue;
+    const list = doc.createElement("ul");
+    list.setAttribute("data-type", "taskList");
+    for (const line of lines) {
+      const li = doc.createElement("li");
+      li.setAttribute("data-type", "taskItem");
+      li.setAttribute("data-checked", String(!line.startsWith("☐")));
+      li.innerHTML = `<p>${line.replace(/^(☐|☑|☒|✅)\s*/, "")}</p>`;
+      list.append(li);
+    }
+    p.replaceWith(list);
   }
   return doc.body.innerHTML;
 }

@@ -29,7 +29,10 @@ import {
   CheckSquare,
   Quotes,
   CodeBlock,
+  MathOperations,
 } from "@phosphor-icons/react";
+import { hasLatexText } from "@/lib/chat-paste";
+import { latexToFormulas } from "@/lib/latex-convert";
 import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-reactions";
 import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
 import type { MathAction } from "@/lib/math-solve";
@@ -57,6 +60,8 @@ export function TextMenu({
   const [graph, setGraph] = useState<string | null>(null);
   // Vectors in the plane to draw ("(1; 2) + (3; 1)" → a⃗, b⃗ and the sum).
   const [arrows, setArrows] = useState<string[] | null>(null);
+  // Formulas written as text in the selection (\[ … \], \( … \)).
+  const [latex, setLatex] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPlace(null), []);
   useEffect(() => {
@@ -165,10 +170,12 @@ export function TextMenu({
     setCalc([]);
     setGraph(null);
     setArrows(null);
+    setLatex(false);
     if (!place || !editor || !editable) return;
     const { from, to, empty } = editor.state.selection;
     if (empty) return;
     const text = editor.state.doc.textBetween(from, to, " ");
+    if (hasLatexText(text)) setLatex(true);
     if (text.length > 300 || !/[\d)a-z]\s*[-+−*/×·÷:^²³=]|√|[([][^()[\]]*[;|,][^()[\]]*[)\]]/.test(text)) return;
     let current = true;
     void import("@/lib/math-solve").then(({ mathActions, functionExpression, plotVectors }) => {
@@ -298,6 +305,23 @@ export function TextMenu({
               </button>
             );
           })}
+        </div>
+      )}
+      {editable && latex && (
+        <div className="text-menu-calc" role="group" aria-label={t("Formeln", "Formulas")}>
+          <button
+            type="button"
+            role="menuitem"
+            title={t("\\[ … \\] und \\( … \\) als Formeln darstellen", "Show \\[ … \\] and \\( … \\) as formulas")}
+            onClick={run(() => {
+              const { from, to } = editor.state.selection;
+              const tr = latexToFormulas(editor.state, from, to);
+              if (tr) editor.view.dispatch(tr);
+            })}
+          >
+            <MathOperations size={15} />
+            <span>{t("In Formeln umwandeln", "Turn into formulas")}</span>
+          </button>
         </div>
       )}
       {(calc.length > 0 || graph || arrows) && (
