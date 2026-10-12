@@ -1040,14 +1040,14 @@ export function vectorValue(text: string, locale: Locale): number[] | null {
   }
 }
 
-// What to draw for a selected vector expression: each written 2D vector and,
-// when something is calculated, the result. Null when there is nothing to
-// draw (no vectors, or not in the plane).
+// What to draw for a selected vector expression: each written vector and,
+// when something is calculated, the result – in the plane or in space. Null
+// when there is nothing to draw.
 export function plotVectors(text: string, locale: Locale): string[] | null {
   const whole = text.trim().replace(/=\s*$/, "").trim();
   const value = vectorValue(whole, locale);
-  if (!value || value.length !== 2) return null;
-  const literals = (whole.match(/[([][^()[\]]*[)\]]/g) || []).map((m) => m.trim()).filter((m) => vectorValue(m, locale)?.length === 2);
+  if (!value || (value.length !== 2 && value.length !== 3)) return null;
+  const literals = (whole.match(/[([][^()[\]]*[)\]]/g) || []).map((m) => m.trim()).filter((m) => vectorValue(m, locale)?.length === value.length);
   const unique = [...new Set(literals)];
   if (!unique.includes(whole)) unique.push(whole);
   return unique.slice(0, 6);

@@ -140,7 +140,7 @@ test("vectors to draw: each written vector and the result", () => {
   assert.deepEqual(plotVectors("(1; 2) + (3; 1)", "de"), ["(1; 2)", "(3; 1)", "(1; 2) + (3; 1)"]);
   assert.deepEqual(plotVectors("(3 | 4)", "de"), ["(3 | 4)"]);
   assert.deepEqual(plotVectors("2·(1; −2) =", "de"), ["(1; −2)", "2·(1; −2)"]);
-  assert.equal(plotVectors("(1|0|0) × (0|1|0)", "de"), null);
+  assert.deepEqual(plotVectors("(1|0|0) × (0|1|0)", "de"), ["(1|0|0)", "(0|1|0)", "(1|0|0) × (0|1|0)"]);
   assert.equal(plotVectors("(1; 2) · (3; 4)", "de"), null);
   assert.equal(plotVectors("3 + 4", "de"), null);
   assert.deepEqual(vectorValue("(1, 2) + (3, 1)", "en"), [4, 3]);

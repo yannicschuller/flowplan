@@ -88,3 +88,47 @@ test("draw selected vectors as arrows and add one in the graph", async ({ page }
     .toContain("x/2");
   expect(errors).toEqual([]);
 });
+
+// Vectors in space turn the graph 3D; dragging turns the view and is saved.
+test("draw vectors in space and turn the view", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Selecting text with the mouse is desktop-only here.");
+  test.setTimeout(150_000);
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const created = await page.request.post("/api/command", {
+    headers: { origin },
+    data: { action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title: `Raum ${Date.now()}`, kind: "document" },
+  });
+  const pageId = (await created.json()).id;
+  await page.goto(`/#page=${pageId}`);
+  const editor = page.getByLabel("Dokumentinhalt", { exact: true });
+  await editor.click();
+  await page.keyboard.type("(1|0|0) × (0|1|0)");
+  const term = editor.getByText("(1|0|0) × (0|1|0)");
+  const box = (await term.boundingBox())!;
+  await page.mouse.move(box.x + 1, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await page.getByRole("group", { name: "Rechnen" }).getByRole("menuitem", { name: /Vektoren zeichnen/ }).click();
+
+  const plot = editor.locator(".function-plot");
+  await expect(plot.locator("svg.plot-3d")).toBeVisible({ timeout: 30_000 });
+  await expect(plot.locator(".plot-vector")).toHaveCount(3);
+  await expect(plot.locator(".plot-axis-name")).toHaveText(["x", "y", "z"]);
+  // The cross product points up the z axis.
+  await expect(plot.locator(".plot-vector title")).toContainText(["Vektor c = (0 | 0 | 1)"]);
+  // Dragging turns the view; the camera is saved with the page.
+  const stage = (await plot.locator(".plot-stage").boundingBox())!;
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stage.x + stage.width / 2 + 100, stage.y + stage.height / 2 + 20, { steps: 8 });
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/pages/${pageId}`)).json()).html, { timeout: 20_000 })
+    .toMatch(/camera&quot;:\{&quot;yaw&quot;:-?\d/);
+  expect(errors).toEqual([]);
+});

@@ -4,14 +4,19 @@
 // the buttons and ⌘/Ctrl + scroll zoom. In the editor the functions are
 // edited below the graph and redrawn while typing. An entry can also be a
 // vector in the plane – "(3; 2)", "(1 | 2) + (3 | 1)" – drawn as an arrow
-// from the origin.
+// from the origin. With a vector in space – "(1 | 2 | 3)" – the graph turns
+// 3D: axes x, y, z as drawn in school, the floor grid, dashed guides to the
+// floor; dragging turns the view.
 import { compile } from "mathjs";
 import { functionExpression, vectorValue } from "./math-solve";
 import { LOCALE_TAG, tr } from "./locale-tag";
 
 export type PlotFunction = { expr: string; color: string };
 export type PlotView = { xMin: number; xMax: number; yMin: number; yMax: number };
-export type PlotConfig = { functions: PlotFunction[]; view?: PlotView | null };
+// How a 3D graph is looked at: turned around z (yaw) and tilted (pitch), in degrees.
+export type PlotCamera = { yaw: number; pitch: number; zoom: number };
+export type PlotConfig = { functions: PlotFunction[]; view?: PlotView | null; camera?: PlotCamera | null };
+const DEFAULT_CAMERA: PlotCamera = { yaw: -120, pitch: 25, zoom: 1 };
 
 export const PLOT_COLORS = ["#3b3fd8", "#e03131", "#2f9e44", "#f08c00", "#9c36b5", "#1098ad"];
 const W = 640,
@@ -36,7 +41,12 @@ export function parsePlot(value: string | null | undefined): PlotConfig {
       v && [v.xMin, v.xMax, v.yMin, v.yMax].every((n) => Number.isFinite(n)) && v.xMax > v.xMin && v.yMax > v.yMin
         ? { xMin: v.xMin, xMax: v.xMax, yMin: v.yMin, yMax: v.yMax }
         : null;
-    return { functions, view };
+    const c = data.camera;
+    const camera =
+      c && [c.yaw, c.pitch, c.zoom].every((n) => Number.isFinite(n)) && c.zoom > 0.05 && c.zoom < 50
+        ? { yaw: c.yaw, pitch: Math.max(-89, Math.min(89, c.pitch)), zoom: c.zoom }
+        : null;
+    return { functions, view, camera };
   } catch {
     return { functions: [] };
   }
@@ -63,12 +73,18 @@ function planeVector(expr: string): [number, number] | null {
   const v = vectorValue(expr, locale());
   return v && v.length === 2 ? [v[0], v[1]] : null;
 }
-export const isValidFunction = (expr: string) => !!compileFunction(expr) || !!planeVector(expr);
+// A vector in the plane or in space, as three coordinates (z = 0 in the plane).
+function spaceVector(expr: string): [number, number, number] | null {
+  const v = vectorValue(expr, locale());
+  return v && (v.length === 2 || v.length === 3) ? [v[0], v[1], v[2] ?? 0] : null;
+}
+const isSpace = (config: PlotConfig) => config.functions.some((f) => vectorValue(f.expr, locale())?.length === 3);
+export const isValidFunction = (expr: string) => !!compileFunction(expr) || !!spaceVector(expr);
 // Names in the legend: f, g, h … for functions, a⃗, b⃗, c⃗ … for vectors.
 function entryNames(config: PlotConfig) {
   let functions = 0,
     vectors = 0;
-  return config.functions.map((f) => (planeVector(f.expr) ? String.fromCharCode(97 + vectors++) : String.fromCharCode(102 + functions++)));
+  return config.functions.map((f) => (spaceVector(f.expr) ? String.fromCharCode(97 + vectors++) : String.fromCharCode(102 + functions++)));
 }
 
 // A view that shows the interesting part: x from −6 to 6 (zeros, vertex,
@@ -227,6 +243,97 @@ export function plotSvg(config: PlotConfig, view: PlotView, label: string): stri
   return `<svg class="plot-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escape(label)}">${parts.join("")}</svg>`;
 }
 
+// The SVG of a 3D graph: vectors from the origin in space, seen through `camera`.
+export function plotSvg3d(config: PlotConfig, camera: PlotCamera, label: string): string {
+  const names = entryNames(config);
+  const vectors = config.functions.map((f) => spaceVector(f.expr));
+  const reach = Math.max(1, ...vectors.flatMap((v) => (v ? v.map(Math.abs) : [])));
+  const extent = Math.ceil(reach * 1.15);
+  const unit = (Math.min(W, H) * 0.4 * camera.zoom) / extent;
+  const yaw = (camera.yaw * Math.PI) / 180,
+    pitch = (camera.pitch * Math.PI) / 180;
+  // Turned around z, then tilted towards the viewer; orthographic.
+  const project = ([x, y, z]: [number, number, number]) => {
+    const x1 = x * Math.cos(yaw) - y * Math.sin(yaw),
+      y1 = x * Math.sin(yaw) + y * Math.cos(yaw);
+    return { x: W / 2 + x1 * unit, y: H / 2 + 20 - (z * Math.cos(pitch) + y1 * Math.sin(pitch)) * unit, depth: y1 * Math.cos(pitch) - z * Math.sin(pitch) };
+  };
+  const line = (a: [number, number, number], b: [number, number, number], cls: string, color?: string) => {
+    const p = project(a),
+      q = project(b);
+    return `<line class="${cls}" x1="${p.x.toFixed(1)}" y1="${p.y.toFixed(1)}" x2="${q.x.toFixed(1)}" y2="${q.y.toFixed(1)}"${color ? ` stroke="${color}"` : ""}/>`;
+  };
+  const arrowHead = (from: { x: number; y: number }, to: { x: number; y: number }, size: number, color: string) => {
+    const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    const ux = (to.x - from.x) / length,
+      uy = (to.y - from.y) / length;
+    const h = Math.min(size, length * 0.4);
+    const bx = to.x - ux * h,
+      by = to.y - uy * h;
+    return { base: { x: bx, y: by }, points: `${to.x.toFixed(1)},${to.y.toFixed(1)} ${(bx - uy * h * 0.45).toFixed(1)},${(by + ux * h * 0.45).toFixed(1)} ${(bx + uy * h * 0.45).toFixed(1)},${(by - ux * h * 0.45).toFixed(1)}`, ux, uy, color };
+  };
+  const parts: string[] = [];
+  // Floor grid (x–y plane).
+  const step = step3d(extent);
+  for (let k = -extent; k <= extent + 1e-9; k += step) {
+    parts.push(line([k, -extent, 0], [k, extent, 0], "plot-grid"));
+    parts.push(line([-extent, k, 0], [extent, k, 0], "plot-grid"));
+  }
+  // Axes with arrows, names and a few numbers.
+  const axes: [string, [number, number, number]][] = [
+    ["x", [1, 0, 0]],
+    ["y", [0, 1, 0]],
+    ["z", [0, 0, 1]],
+  ];
+  for (const [name, d] of axes) {
+    const end: [number, number, number] = [d[0] * (extent + 0.6), d[1] * (extent + 0.6), d[2] * (extent + 0.6)];
+    parts.push(line([-d[0] * extent, -d[1] * extent, -d[2] * extent], end, "plot-axis"));
+    const head = arrowHead(project([0, 0, 0]), project(end), 9, "");
+    parts.push(`<polygon class="plot-axis-head" points="${head.points}"/>`);
+    const tip = project(end);
+    parts.push(`<text class="plot-axis-name" x="${(tip.x + head.ux * 12).toFixed(1)}" y="${(tip.y + head.uy * 12 + 4).toFixed(1)}" text-anchor="middle">${name}</text>`);
+    for (let k = step; k <= extent + 1e-9; k += step) {
+      const at = project([d[0] * k, d[1] * k, d[2] * k]);
+      parts.push(`<circle class="plot-axis-tick" cx="${at.x.toFixed(1)}" cy="${at.y.toFixed(1)}" r="1.6"/>`);
+      if (k === extent || k === step) parts.push(`<text class="plot-tick" x="${(at.x + 8).toFixed(1)}" y="${(at.y + 12).toFixed(1)}">${number(k)}</text>`);
+    }
+  }
+  // Vectors, the far ones first; dashed guides from the tip to the floor.
+  const order = vectors
+    .map((v, i) => ({ v, i }))
+    .filter((e): e is { v: [number, number, number]; i: number } => !!e.v)
+    .sort((a, b) => project(b.v).depth - project(a.v).depth);
+  for (const { v, i } of order) {
+    const color = config.functions[i].color;
+    const [x, y, z] = v;
+    if (Math.abs(z) > 1e-9) parts.push(line([x, y, 0], v, "plot-guide", color));
+    if (Math.abs(x) > 1e-9 && Math.abs(y) > 1e-9) parts.push(line([x, 0, 0], [x, y, 0], "plot-guide", color), line([0, y, 0], [x, y, 0], "plot-guide", color));
+    const o = project([0, 0, 0]),
+      tip = project(v);
+    if (Math.hypot(tip.x - o.x, tip.y - o.y) < 1) {
+      parts.push(`<circle cx="${o.x}" cy="${o.y}" r="3" fill="${color}"/>`);
+      continue;
+    }
+    const head = arrowHead(o, tip, 12, color);
+    const lx = tip.x + head.ux * 10 + head.uy * 8,
+      ly = tip.y + head.uy * 10 - head.ux * 8;
+    parts.push(
+      `<g class="plot-vector"><title>${escape(`${tr("Vektor", "Vector")} ${names[i]} = (${v.map(number).join(" | ")})`)}</title><line x1="${o.x.toFixed(1)}" y1="${o.y.toFixed(1)}" x2="${head.base.x.toFixed(1)}" y2="${head.base.y.toFixed(1)}" stroke="${color}"/><polygon points="${head.points}" fill="${color}"/><text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" fill="${color}" text-anchor="middle">${escape(names[i])}</text>${nameArrow(lx, ly - 8, color)}</g>`,
+    );
+  }
+  // Legend; functions of x are not drawn in space.
+  config.functions.forEach((f, i) => {
+    const vector = vectors[i];
+    const text = vector ? `${names[i]} = ${f.expr}` : `${names[i]}(x) = ${f.expr}`;
+    parts.push(
+      `<g class="plot-legend" transform="translate(${PAD + 10},${PAD + 16 + i * 20})"><rect x="0" y="-9" width="14" height="4" rx="2" fill="${f.color}"/><text x="20" y="-3"${vector ? "" : ' class="plot-invalid"'}>${escape(text)}${vector ? "" : `<title>${escape(tr("Funktionen werden nur im 2D-Graphen gezeichnet", "Functions are only drawn in a 2D graph"))}</title>`}</text>${vector ? nameArrow(24, -14, "currentColor") : ""}</g>`,
+    );
+  });
+  parts.push(`<text class="plot-hint" x="${W - PAD - 6}" y="${H - PAD - 6}" text-anchor="end">${escape(tr("Ziehen dreht die Ansicht", "Drag to turn the view"))}</text>`);
+  return `<svg class="plot-svg plot-3d" viewBox="0 0 ${W} ${H}" role="img" aria-label="${escape(label)}">${parts.join("")}</svg>`;
+}
+const step3d = (extent: number) => (extent <= 6 ? 1 : extent <= 12 ? 2 : step(extent, 5));
+
 type MountOptions = {
   editable: boolean;
   // Called with the new configuration while editing (functions or view).
@@ -235,7 +342,8 @@ type MountOptions = {
 // Draws the graph into `element` and makes it interactive. Returns update
 // (for changes from outside) and destroy.
 export function mountPlot(element: HTMLElement, initial: PlotConfig, options: MountOptions) {
-  let config: PlotConfig = { functions: initial.functions.slice(), view: initial.view || null };
+  let config: PlotConfig = { functions: initial.functions.slice(), view: initial.view || null, camera: initial.camera || null };
+  const camera = () => config.camera || DEFAULT_CAMERA;
   element.classList.add("function-plot");
   element.innerHTML = "";
   const stage = document.createElement("div");
@@ -250,10 +358,10 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
       config.functions.map((f) => planeVector(f.expr)).filter((v): v is [number, number] => !!v),
     );
   const label = () =>
-    (config.functions.every((f) => planeVector(f.expr)) ? tr("Vektoren: ", "Vectors: ") : tr("Funktionsgraph: ", "Function graph: ")) +
+    (config.functions.every((f) => spaceVector(f.expr)) ? tr("Vektoren: ", "Vectors: ") : tr("Funktionsgraph: ", "Function graph: ")) +
     config.functions.map((f) => f.expr).join(", ");
   const draw = () => {
-    stage.innerHTML = plotSvg(config, currentView(), label());
+    stage.innerHTML = isSpace(config) ? plotSvg3d(config, camera(), label()) : plotSvg(config, currentView(), label());
   };
   const changed = () => options.onChange?.(config);
 
@@ -271,6 +379,13 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
     return b;
   };
   const zoom = (factor: number, cx?: number, cy?: number) => {
+    if (isSpace(config)) {
+      const c = camera();
+      config = { ...config, camera: { ...c, zoom: Math.max(0.1, Math.min(20, c.zoom / factor)) } };
+      draw();
+      changed();
+      return;
+    }
     const v = currentView();
     const x0 = cx ?? (v.xMin + v.xMax) / 2,
       y0 = cy ?? (v.yMin + v.yMax) / 2;
@@ -287,7 +402,7 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
     button("+", tr("Vergrößern", "Zoom in"), () => zoom(0.7)),
     button("−", tr("Verkleinern", "Zoom out"), () => zoom(1 / 0.7)),
     button("⟲", tr("Ansicht zurücksetzen", "Reset view"), () => {
-      config = { ...config, view: null };
+      config = { ...config, view: null, camera: null };
       draw();
       changed();
     }),
@@ -295,7 +410,7 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
   stage.after(zoomBar);
 
   // Dragging moves the view; ⌘/Ctrl + scroll zooms at the pointer.
-  let drag: { x: number; y: number; view: PlotView } | null = null;
+  let drag: { x: number; y: number; view: PlotView; camera: PlotCamera } | null = null;
   const toUnits = (event: PointerEvent | WheelEvent) => {
     const rect = stage.getBoundingClientRect();
     const v = currentView();
@@ -308,12 +423,20 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
   };
   stage.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
-    drag = { x: event.clientX, y: event.clientY, view: currentView() };
+    drag = { x: event.clientX, y: event.clientY, view: currentView(), camera: camera() };
     stage.setPointerCapture(event.pointerId);
     stage.classList.add("dragging");
   });
   stage.addEventListener("pointermove", (event) => {
     if (!drag) return;
+    if (isSpace(config)) {
+      // Turning: sideways around z, up and down tilts.
+      const yaw = drag.camera.yaw - (event.clientX - drag.x) * 0.5,
+        pitch = Math.max(-10, Math.min(89, drag.camera.pitch + (event.clientY - drag.y) * 0.4));
+      config = { ...config, camera: { ...drag.camera, yaw: ((yaw % 360) + 540) % 360 - 180, pitch } };
+      draw();
+      return;
+    }
     const { perPixelX, perPixelY } = toUnits(event);
     const mx = (event.clientX - drag.x) * perPixelX,
       my = (event.clientY - drag.y) * perPixelY;
@@ -333,7 +456,7 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
     (event) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      const { x, y } = toUnits(event);
+      const { x, y } = isSpace(config) ? { x: undefined, y: undefined } : toUnits(event);
       zoom(event.deltaY > 0 ? 1.15 : 1 / 1.15, x, y);
     },
     { passive: false },
@@ -356,18 +479,18 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
         name.textContent = vector ? `${n} =` : `${n}(x) =`;
         name.classList.toggle("vector", vector);
       };
-      setName(!!planeVector(f.expr), named);
+      setName(!!spaceVector(f.expr), named);
       const input = document.createElement("input");
       input.value = f.expr;
       input.maxLength = 200;
       input.spellcheck = false;
-      input.placeholder = tr("x² − 2 oder (3; 2)", "x² − 2 or (3, 2)");
-      input.setAttribute("aria-label", planeVector(f.expr) ? tr(`Vektor ${named}`, `Vector ${named}`) : tr(`Funktion ${named}`, `Function ${named}`));
+      input.placeholder = tr("x² − 2, (3; 2) oder (1; 2; 3)", "x² − 2, (3, 2) or (1, 2, 3)");
+      input.setAttribute("aria-label", spaceVector(f.expr) ? tr(`Vektor ${named}`, `Vector ${named}`) : tr(`Funktion ${named}`, `Function ${named}`));
       input.classList.toggle("invalid", !isValidFunction(f.expr));
       input.addEventListener("input", () => {
         config = { ...config, functions: config.functions.map((g, j) => (j === i ? { ...g, expr: input.value } : g)) };
         input.classList.toggle("invalid", !!input.value.trim() && !isValidFunction(input.value));
-        setName(!!planeVector(input.value), entryNames(config)[i]);
+        setName(!!spaceVector(input.value), entryNames(config)[i]);
         draw();
         changed();
       });
@@ -397,7 +520,7 @@ export function mountPlot(element: HTMLElement, initial: PlotConfig, options: Mo
     update(next: PlotConfig) {
       // Changes from elsewhere (another person); an input being typed in keeps its text.
       const typing = element.contains(document.activeElement) && document.activeElement?.tagName === "INPUT";
-      config = { functions: next.functions.slice(), view: next.view || null };
+      config = { functions: next.functions.slice(), view: next.view || null, camera: next.camera || null };
       if (!typing) renderInputs();
       draw();
     },
