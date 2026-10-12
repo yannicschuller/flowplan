@@ -2,7 +2,8 @@
 // The menu for text: selecting text shows it above the selection, a right
 // click opens it at the pointer (Shift + right click keeps the browser's
 // own menu). Reactions for the paragraph, formatting, calculating a
-// selected expression, a comment, copying.
+// selected expression, a comment, copying. "Umwandeln in" changes the type
+// of the line (text, heading, list, quote, code) and keeps its text.
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
@@ -19,6 +20,15 @@ import {
   TextItalic,
   TextStrikethrough,
   TextUnderline,
+  TextT,
+  TextHOne,
+  TextHTwo,
+  TextHThree,
+  ListBullets,
+  ListNumbers,
+  CheckSquare,
+  Quotes,
+  CodeBlock,
 } from "@phosphor-icons/react";
 import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-reactions";
 import { pickTaskDue, taskAtSelection } from "@/lib/task-due-plugin";
@@ -250,6 +260,44 @@ export function TextMenu({
           <button type="button" aria-label="Link" title="Link" onClick={run(onLink)}>
             <LinkSimple size={16} />
           </button>
+        </div>
+      )}
+      {editable && (
+        <div className="text-menu-format text-menu-turn" role="group" aria-label={t("Umwandeln in", "Turn into")}>
+          {(
+            [
+              ["paragraph", t("Text", "Text"), <TextT key="t" size={16} />, () => true, (c) => c],
+              ["h1", t("Überschrift 1", "Heading 1"), <TextHOne key="1" size={16} />, () => editor.isActive("heading", { level: 1 }), (c) => c.setHeading({ level: 1 })],
+              ["h2", t("Überschrift 2", "Heading 2"), <TextHTwo key="2" size={16} />, () => editor.isActive("heading", { level: 2 }), (c) => c.setHeading({ level: 2 })],
+              ["h3", t("Überschrift 3", "Heading 3"), <TextHThree key="3" size={16} />, () => editor.isActive("heading", { level: 3 }), (c) => c.setHeading({ level: 3 })],
+              ["bullet", t("Aufzählung", "Bulleted list"), <ListBullets key="b" size={16} />, () => editor.isActive("bulletList"), (c) => c.toggleBulletList()],
+              ["ordered", t("Nummerierte Liste", "Numbered list"), <ListNumbers key="o" size={16} />, () => editor.isActive("orderedList"), (c) => c.toggleOrderedList()],
+              ["task", t("Aufgabe", "Task"), <CheckSquare key="k" size={16} />, () => editor.isActive("taskList"), (c) => c.toggleTaskList()],
+              ["quote", t("Zitat", "Quote"), <Quotes key="q" size={16} />, () => editor.isActive("blockquote"), (c) => c.toggleBlockquote()],
+              ["code", t("Codeblock", "Code block"), <CodeBlock key="c" size={16} />, () => editor.isActive("codeBlock"), (c) => c.setCodeBlock()],
+            ] as [string, string, React.ReactNode, () => boolean, (c: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>][]
+          ).map(([key, label, icon, isActive, apply]) => {
+            const plain = !["heading", "bulletList", "orderedList", "taskList", "blockquote", "codeBlock"].some((n) => editor.isActive(n));
+            const active = key === "paragraph" ? plain : isActive();
+            return (
+              <button
+                key={key}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                aria-label={t(`Umwandeln in ${label}`, `Turn into ${label}`)}
+                title={label}
+                className={active ? "active" : ""}
+                onClick={run(() => {
+                  if (active && key !== "paragraph") return;
+                  // Out of the current type first (list, quote, heading), then into the new one.
+                  apply(editor.chain().focus().clearNodes()).run();
+                })}
+              >
+                {icon}
+              </button>
+            );
+          })}
         </div>
       )}
       {(calc.length > 0 || graph || arrows) && (

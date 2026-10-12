@@ -12695,6 +12695,14 @@ h3 .block-reactions {
   border-radius: 7px;
   color: var(--secondary);
 }
+.text-menu-turn {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.text-menu-turn button.active {
+  background: var(--blue-light);
+  color: var(--blue);
+}
 .text-menu-format button:hover {
   background: var(--hover);
   color: var(--text);
