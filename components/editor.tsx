@@ -1,4 +1,5 @@
 "use client";
+import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useLocale, useT } from "./i18n";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
@@ -393,6 +394,8 @@ export default function DocumentEditor({
       ],
       editorProps: {
         transformPasted: freshLinkedIds,
+        // Formulas rendered with KaTeX on copied pages come back as LaTeX.
+        transformPastedHTML: mathFromPastedHtml,
         attributes: {
           class: "document-editor",
           "aria-label": t("Dokumentinhalt", "Document content"),
@@ -402,6 +405,22 @@ export default function DocumentEditor({
         handlePaste: (_view, event) => {
           const data = event.clipboardData;
           const files = [...(data?.files || [])];
+          // Answers copied from ChatGPT & co. as text: formulas, lists and
+          // tables formatted (rich HTML from a page goes the usual way).
+          const plain = data?.getData("text/plain") || "";
+          const rich = data?.getData("text/html") || "";
+          if (
+            editable &&
+            !files.length &&
+            plain &&
+            !/<(p|li|table|h[1-6]|div|br)[\s>]|katex|<math/i.test(rich) &&
+            _view.state.selection.$from.parent.type.name !== "codeBlock" &&
+            looksLikeChatText(plain)
+          ) {
+            event.preventDefault();
+            _view.pasteHTML(chatTextToHtml(plain));
+            return true;
+          }
           if (!editable || !files.length) return false;
           // Copied web content brings text along; then paste it as usual.
           if (data?.getData("text/plain").trim()) return false;
