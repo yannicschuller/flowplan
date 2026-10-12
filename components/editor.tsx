@@ -1,4 +1,5 @@
 "use client";
+import { DocumentOutline, OutlineToggle, useOutlineOpen } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useLocale, useT } from "./i18n";
@@ -211,9 +212,9 @@ export default function DocumentEditor({
     [toggle, setToggle] = useState(false),
     [toggleTitle, setToggleTitle] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
+  const [outline, setOutline] = useOutlineOpen();
   const [tick, setTick] = useState(0);
   const [references, setReferences] = useState(false),
-    [outline, setOutline] = useState(false),
     [embed, setEmbed] = useState(false),
     [embedUrl, setEmbedUrl] = useState("");
   const [boardPicker, setBoardPicker] = useState(false),
@@ -1205,7 +1206,7 @@ export default function DocumentEditor({
       headings.push({ text: node.textContent, pos, level: node.attrs.level });
   });
   return (
-    <div className={`editor-wrapper${embedded ? " embedded" : ""}`}>
+    <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
         {editable && !embedded && (
           <div
@@ -1519,24 +1520,10 @@ export default function DocumentEditor({
             </div>
           );
         })()}
-        {outline && (
-          <nav className="document-outline" aria-label={t("Inhaltsverzeichnis", "Table of contents")}>
-            <strong>{t("Inhalt", "Content")}</strong>
-            {headings.map((h) => (
-              <button
-                key={h.pos}
-                style={{ paddingLeft: (h.level - 1) * 12 }}
-                onClick={() => {
-                  const node = editor?.view.nodeDOM(h.pos);
-                  if (node instanceof HTMLElement)
-                    node.scrollIntoView({ block: "center" });
-                }}
-              >
-                {h.text || t("Überschrift", "Heading")}
-              </button>
-            ))}
-          </nav>
+        {!embedded && (outline || headings.length > 0) && (
+          <OutlineToggle open={outline} count={headings.length} onToggle={() => setOutline(!outline)} />
         )}
+        {!embedded && outline && <DocumentOutline editor={editor} headings={headings} onClose={() => setOutline(false)} />}
         {embedded ? (
           <EditorContent editor={editor} />
         ) : (

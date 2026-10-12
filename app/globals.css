@@ -5111,21 +5111,166 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   padding: 2px 5px;
   white-space: nowrap;
 }
+/* Table of contents: fixed beside the text on wide screens, a floating
+   card over it on narrow ones. */
 .document-outline {
-  border-left: 2px solid var(--border);
-  padding: 10px 15px;
-  margin-bottom: 25px;
+  position: fixed;
+  z-index: 30;
+  top: 110px;
+  right: 20px;
+  width: 232px;
+  max-height: calc(100dvh - 150px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
   font-size: 13px;
-  color: var(--secondary);
+  animation: outline-in 0.18s var(--ease-out);
 }
-.document-outline strong {
-  display: block;
+@keyframes outline-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+@media (min-width: 1440px) {
+  .document-outline {
+    box-shadow: none;
+    background: transparent;
+    border-color: transparent;
+    border-left-color: var(--border);
+    border-radius: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-outline {
+    animation: none;
+  }
+}
+.document-outline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 6px;
 }
-.document-outline button {
+.document-outline-head strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.document-outline-head .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.document-outline ol {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.document-outline li.level-2 {
+  padding-left: 12px;
+}
+.document-outline li.level-3 {
+  padding-left: 24px;
+}
+.document-outline li.level-4 {
+  padding-left: 36px;
+}
+.document-outline li button {
   display: block;
-  font-size: 12px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+  color: var(--secondary);
+  font-size: 12.5px;
+  line-height: 1.35;
   text-align: left;
+  overflow-wrap: anywhere;
+}
+.document-outline li.level-1 button {
+  color: var(--text);
+  font-weight: 500;
+}
+.document-outline li button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.document-outline li button[aria-current="location"] {
+  border-left-color: var(--blue);
+  border-radius: 0 6px 6px 0;
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+.outline-toggle {
+  position: sticky;
+  z-index: 5;
+  top: 12px;
+  float: right;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0 -44px 0 0;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.outline-toggle:hover,
+.outline-toggle.active {
+  background: var(--hover);
+  color: var(--text);
+}
+/* Between phone and wide screen the text makes room for the open list. */
+@media (min-width: 901px) and (max-width: 1439px) {
+  .editor-wrapper.with-outline {
+    padding-right: 236px;
+  }
+}
+@media (max-width: 900px) {
+  .outline-toggle {
+    position: fixed;
+    z-index: 31;
+    top: auto;
+    right: 16px;
+    bottom: 88px;
+    float: none;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--bg);
+    box-shadow: var(--shadow);
+  }
+  .outline-toggle span {
+    display: none;
+  }
+  .document-outline {
+    top: auto;
+    right: 12px;
+    bottom: 144px;
+    left: 12px;
+    width: auto;
+    max-height: 55dvh;
+  }
+}
+.editor-wrapper .ProseMirror :is(h1, h2, h3, h4) {
+  scroll-margin-top: 80px;
 }
 .editor-columns {
   display: grid;
