@@ -2,6 +2,20 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.3.1 – 2026-10-12
+
+- Print / PDF works in Safari ([31644cf](https://github.com/yannicschuller/flowplan/commit/31644cff397939254c774ed2386436cddce04609))
+- Formulas from ChatGPT's web page, and turning text formulas into formulas ([a53f312](https://github.com/yannicschuller/flowplan/commit/a53f3127940eb7dbfb4007c979da236cf3ee6fc2))
+- Vectors in space: 3D graphs that can be turned ([ad7fc4c](https://github.com/yannicschuller/flowplan/commit/ad7fc4c85250934362f19f1f92fd13ab738f50cc))
+- Table of contents beside every document ([5ad46b8](https://github.com/yannicschuller/flowplan/commit/5ad46b86f898545508ed62a23e4cd6bd65354d54))
+- Turn a line into another block type without losing its text ([662e0cd](https://github.com/yannicschuller/flowplan/commit/662e0cdf8d3d8aab2484430d2c8843eb49123165))
+- Paste answers from ChatGPT with formulas, lists and tables ([0c647b1](https://github.com/yannicschuller/flowplan/commit/0c647b128236472f500ee27049c0bb2ff656a0a4))
+- Default view per database ([f37e13e](https://github.com/yannicschuller/flowplan/commit/f37e13e86662f8f2632cffc6558acfe767e007d0))
+- Administration shows the running version, commit and build date ([a75e9c0](https://github.com/yannicschuller/flowplan/commit/a75e9c07efb0f84170c0fd5f9c28729706ceeea8))
+- Draw vectors: arrows in the graph block ([1e18f87](https://github.com/yannicschuller/flowplan/commit/1e18f877d87cfe9469511d48bf27e4b3d2e685b9))
+- View tabs: rename, duplicate, reorder and delete by right-click or dragging ([9af7b0d](https://github.com/yannicschuller/flowplan/commit/9af7b0dc8fb974b649c628f347b0b95a2079ec4f))
+- Copy/move dialog: segmented control no longer takes the global label layout ([44afa75](https://github.com/yannicschuller/flowplan/commit/44afa750a6888912661bc2e9be7fe752eae51800))
+
 ## v0.3.0 – 2026-10-10
 
 - Survey builder redesign with autosave ([7191201](https://github.com/yannicschuller/flowplan/commit/71912016ec2d4f750bfb05de78ab8ada617e751a))
