@@ -163,6 +163,14 @@ const EmojiPicker = dynamic(() => import("./emoji-picker"), {
   ssr: false,
   loading: () => <Loading what="emoji" />,
 });
+// Printing (and "Save as PDF") after the menu has closed: Safari ignores
+// window.print() while a menu still holds the focus and blocks the page.
+function printPage() {
+  setTimeout(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    window.print();
+  }, 120);
+}
 const DocumentEditor = dynamic(() => import("./editor"), {
   ssr: false,
   loading: () => <Loading what="document" />,
@@ -1217,7 +1225,7 @@ export default function WorkspaceApp({
           },
           { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
           { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
-          { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: () => window.print() },
+          { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: printPage },
           { label: t("Versionsverlauf", "Version history"), keywords: "history versionen wiederherstellen", icon: ClockCounterClockwise, run: () => setHistory(true) },
           { label: t("Teilen", "Share"), keywords: "share link freigeben", icon: ShareNetwork, run: () => setShare(true) },
         ]
@@ -1816,7 +1824,7 @@ export default function WorkspaceApp({
                     </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
-                      onSelect={() => window.print()}
+                      onSelect={printPage}
                     >
                       <FileText />
                       {t("Drucken / PDF", "Print / PDF")}
