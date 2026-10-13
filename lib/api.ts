@@ -1,4 +1,6 @@
 import { teamReply } from "./service-desk";
+import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
+import { fixedLanguage, setFixedLanguage } from "./user-locale";
 import { validateTicketPrefix } from "./ticket-refs";
 import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
@@ -248,6 +250,11 @@ export function bootstrap(user: Identity, wid?: string) {
         instanceSettings().allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,
     },
+    // What applies to me: limits with my usage, and my fixed language.
+    myLimits: user.isAdmin
+      ? null
+      : { ...effectiveUserLimits(user.id), usedBytes: userBytes(user.id), ownedWorkspaces: ownedWorkspaces(user.id) },
+    language: fixedLanguage(user.id),
     // Favourite records of readable databases in this workspace.
     favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(
       `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
@@ -512,11 +519,19 @@ export function command(
             403,
             "Neue Arbeitsbereiche legen auf dieser Instanz nur Admins an.",
           );
+        assertMayCreateWorkspace(user);
         result = { id: createWorkspaceInner(user.id, str.parse(b.name)) };
         break;
       case "admin.settings":
         requireAdmin(user);
         result = saveInstanceSettings(b.settings);
+        break;
+      case "profile.language":
+        result = { language: setFixedLanguage(user.id, b.language) };
+        break;
+      case "admin.userLimits":
+        requireAdmin(user);
+        result = setUserLimits(z.uuid().parse(b.userId), b.limits);
         break;
       case "workspace.update": {
         requireMember(user, wid(), "owner");
@@ -2377,7 +2392,14 @@ export function command(
       );
     return result;
   };
-  const result = withinTransaction ? execute() : transaction(execute, user);
+  // Files copied by a command count towards the person's storage.
+  const checked = () => {
+    const check = userStorageCheckpoint(user);
+    const value = execute();
+    check();
+    return value;
+  };
+  const result = withinTransaction ? checked() : transaction(checked, user);
   try {
     commandWebhooks(action, b, result);
   } catch (error) {

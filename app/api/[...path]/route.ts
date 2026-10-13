@@ -86,6 +86,7 @@ import {
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
+import { enforceUserStorage, maxUploadMbFor, usersUsage } from "@/lib/user-limits";
 import { exportTemplate, importTemplate } from "@/lib/template-exchange";
 import {
   enforceQuota,
@@ -639,6 +640,7 @@ async function handleGET(
       requireAdmin(user);
       return NextResponse.json({
         build: buildInfo(),
+        userUsage: usersUsage(),
         users: all(
           "SELECT id,name,email,disabled,created_at,last_login_at FROM users WHERE demo_until IS NULL ORDER BY created_at DESC",
         ),
@@ -820,9 +822,10 @@ async function handlePOST(
         .parse(await req.json());
       const p = requirePage(user, body.pageId, true);
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
-      const maxUpload = instanceSettings().maxUploadMb;
+      const maxUpload = maxUploadMbFor(user);
       const image = await downloadImage(body.url, Math.min(maxUpload, 15) * 1024 * 1024);
       enforceQuota(p.workspace_id, image.data.length);
+      enforceUserStorage(user, image.data.length);
       const fid = id(),
         dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       await mkdir(dir, { recursive: true });
@@ -933,10 +936,11 @@ async function handlePOST(
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
-      const maxUpload = instanceSettings().maxUploadMb;
+      const maxUpload = maxUploadMbFor(user);
       if (file.size > maxUpload * 1024 * 1024)
         throw new HttpError(413, `Maximal ${maxUpload} MB pro Datei.`);
       enforceQuota(p.workspace_id, file.size);
+      enforceUserStorage(user, file.size);
       if (
         data.get("purpose") === "cover" &&
         !imageMimes.includes(file.type as (typeof imageMimes)[number])

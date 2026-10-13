@@ -1,6 +1,8 @@
 "use client";
+import { SettingGroup, SettingRow, UsageMeter } from "./settings-ui";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
-import { useT } from "./i18n";
+import { clearLocale, setLocale, useT } from "./i18n";
 import { WorkspaceIconPicker } from "./workspace-icon";
 import { Select } from "./select";
 import { SpaceIcon } from "./space-appearance";
@@ -239,97 +241,130 @@ export default function Settings({
           )}
           {tab === "general" && (
             <>
-              <section className="settings-section">
-                <h2>{t("Arbeitsbereich", "Workspace")}</h2>
+              <SettingGroup title={t("Dein Profil", "Your profile")}>
+                <div className="setting-row wide profile-row">
+                  <div className="member-row">
+                    <Avatar name={boot.user.name} userId={boot.user.id} />
+                    <span>
+                      {boot.user.name}
+                      <small>{boot.user.email}</small>
+                    </span>
+                    <span className="tag tag-blue">{boot.localAccount ? "E-Mail" : "SSO"}</span>
+                  </div>
+                  {boot.localAccount ? (
+                    <AccountSecurity name={boot.user.name} onRenamed={onRefresh} />
+                  ) : (
+                    <p className="muted small">{t("Name und E-Mail werden von deinem Identitätsanbieter übernommen.", "Your name and e-mail come from your identity provider.")}</p>
+                  )}
+                </div>
+                <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise. „Automatisch“ folgt dem Browser.", "Applies on all devices, also to e-mails and push notifications. “Automatic” follows the browser.")}>
+                  <div className="segmented" role="radiogroup" aria-label={t("Sprache", "Language")}>
+                    {(
+                      [
+                        [null, t("Automatisch", "Automatic")],
+                        ["de", "Deutsch"],
+                        ["en", "English"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <label key={label} data-active={(boot.language ?? null) === value}>
+                        <input
+                          type="radio"
+                          name="profile-language"
+                          checked={(boot.language ?? null) === value}
+                          onChange={async () => {
+                            try {
+                              await mutate({ action: "profile.language", language: value });
+                              if (value) setLocale(value);
+                              else clearLocale();
+                            } catch (e) {
+                              onError((e as Error).message);
+                            }
+                          }}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </SettingRow>
+                <SettingRow label={t("Erscheinungsbild", "Appearance")} description={t("Nur auf diesem Gerät.", "On this device only.")}>
+                  <div className="segmented" role="radiogroup" aria-label={t("Erscheinungsbild", "Appearance")}>
+                    <label data-active={!dark}>
+                      <input type="radio" name="profile-theme" checked={!dark} onChange={() => setDark(false)} />
+                      <Sun size={15} aria-hidden /> {t("Hell", "Light")}
+                    </label>
+                    <label data-active={dark}>
+                      <input type="radio" name="profile-theme" checked={dark} onChange={() => setDark(true)} />
+                      <Moon size={15} aria-hidden /> {t("Dunkel", "Dark")}
+                    </label>
+                  </div>
+                </SettingRow>
+              </SettingGroup>
+              {boot.myLimits && (
+                <SettingGroup
+                  title={t("Deine Grenzen", "Your limits")}
+                  description={t("So viel steht dir auf dieser Instanz zur Verfügung. Mehr gibt es bei den Admins.", "This is what you have on this instance. Admins can give you more.")}
+                >
+                  <div className="setting-row wide">
+                    <div className="limits-overview">
+                      <UsageMeter
+                        label={t("Speicher (deine Dateien und Bilder)", "Storage (your files and images)")}
+                        used={boot.myLimits.usedBytes}
+                        limit={boot.myLimits.storageMb * 1024 * 1024}
+                        format={(n) => `${(n / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: n < 10 * 1024 * 1024 ? 1 : 0 })} MB`}
+                      />
+                      <UsageMeter label={t("Eigene Arbeitsbereiche", "Own workspaces")} used={boot.myLimits.ownedWorkspaces} limit={boot.myLimits.workspaces} format={(n) => String(n)} />
+                    </div>
+                  </div>
+                  <SettingRow label={t("Größte Datei beim Hochladen", "Largest upload")}>
+                    <strong className="setting-value">{boot.myLimits.uploadMb} MB</strong>
+                  </SettingRow>
+                </SettingGroup>
+              )}
+              <SettingGroup title={t("Arbeitsbereich", "Workspace")} description={owner ? undefined : t("Nur Eigentümer ändern Name und Symbol.", "Only owners change the name and icon.")}>
                 <form
+                  className="setting-row"
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (await act({ action: "workspace.update", name }))
                       onError(t("Arbeitsbereich gespeichert", "Workspace saved"));
                   }}
                 >
-                  <WorkspaceIconPicker
-                    name={boot.workspace.name}
-                    icon={boot.workspace.icon}
-                    disabled={!owner}
-                    save={(icon) => act({ action: "workspace.update", icon })}
-                  />
-                  <label>
-                    {t("Name", "Name")}
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                  <div className="workspace-identity">
+                    <WorkspaceIconPicker
+                      name={boot.workspace.name}
+                      icon={boot.workspace.icon}
                       disabled={!owner}
+                      save={(icon) => act({ action: "workspace.update", icon })}
                     />
-                  </label>
+                    <label>
+                      {t("Name", "Name")}
+                      <input value={name} onChange={(e) => setName(e.target.value)} disabled={!owner} />
+                    </label>
+                  </div>
                   {owner && (
-                    <button className="button primary compact">
-                      {t("Änderungen speichern", "Save changes")}
-                    </button>
+                    <div className="setting-control">
+                      <button className="button primary" disabled={name.trim() === boot.workspace.name || !name.trim()}>
+                        {t("Speichern", "Save")}
+                      </button>
+                    </div>
                   )}
                 </form>
-              </section>
-              <WorkspaceLifecycle
-                key={boot.workspace.id}
-                boot={boot}
-                onExit={onWorkspaceExit}
-              />
-              <section className="settings-section">
-                <h2>{t("Erscheinungsbild", "Appearance")}</h2>
-                <div className="theme-options">
-                  <button
-                    className={!dark ? "selected" : ""}
-                    onClick={() => setDark(false)}
-                  >
-                    <Sun size={25} />
-                    {t("Hell", "Light")}
-                  </button>
-                  <button
-                    className={dark ? "selected" : ""}
-                    onClick={() => setDark(true)}
-                  >
-                    <Moon size={25} />
-                    {t("Dunkel", "Dark")}
-                  </button>
-                </div>
-              </section>
-              <section className="settings-section">
-                <h2>{t("Dein Profil", "Your profile")}</h2>
-                <div className="member-row">
-                  <Avatar name={boot.user.name} userId={boot.user.id} />
-                  <span>
-                    {boot.user.name}
-                    <small>{boot.user.email}</small>
-                  </span>
-                  <span className="tag tag-blue">{boot.localAccount ? "E-Mail" : "SSO"}</span>
-                </div>
-                {boot.localAccount ? (
-                  <AccountSecurity name={boot.user.name} onRenamed={onRefresh} />
-                ) : (
-                  <p className="muted">
-                    {t("Name und E-Mail werden von deinem Identitätsanbieter übernommen.", "Your name and e-mail come from your identity provider.")}
-                  </p>
-                )}
-              </section>
-              <section className="settings-section">
-                <h2>{t("Tastenkürzel", "Keyboard shortcuts")}</h2>
-                <div className="shortcut">
-                  <span>{t("Seiten suchen", "Search pages")}</span>
-                  <kbd>⌘ / Ctrl + K</kbd>
-                </div>
-                <div className="shortcut">
-                  <span>{t("Neue Seite", "New page")}</span>
-                  <kbd>⌘ / Ctrl + N</kbd>
-                </div>
-                <div className="shortcut">
-                  <span>{t("Editor-Befehle", "Editor commands")}</span>
-                  <kbd>/</kbd>
-                </div>
-                <div className="shortcut">
-                  <span>{t("Fett / Kursiv", "Bold / italic")}</span>
-                  <kbd>⌘ / Ctrl + B / I</kbd>
-                </div>
-              </section>
+              </SettingGroup>
+              <WorkspaceLifecycle key={boot.workspace.id} boot={boot} onExit={onWorkspaceExit} />
+              <SettingGroup title={t("Tastenkürzel", "Keyboard shortcuts")}>
+                {(
+                  [
+                    [t("Seiten suchen", "Search pages"), "⌘ / Ctrl + K"],
+                    [t("Neue Seite", "New page"), "⌘ / Ctrl + N"],
+                    [t("Editor-Befehle", "Editor commands"), "/"],
+                    [t("Fett / Kursiv", "Bold / italic"), "⌘ / Ctrl + B / I"],
+                  ] as const
+                ).map(([label, keys]) => (
+                  <SettingRow key={label} label={label}>
+                    <kbd>{keys}</kbd>
+                  </SettingRow>
+                ))}
+              </SettingGroup>
             </>
           )}
           {tab === "members" && (

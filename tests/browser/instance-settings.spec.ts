@@ -55,8 +55,8 @@ test("admins set the instance name and an announcement for everyone", async ({
     const form = admin.getByRole("form", { name: "Instanzeinstellungen" });
     await form.getByLabel("Name der Instanz").fill(`Muster ${tag}`);
     await form.getByLabel("Hinweis für alle Personen").fill(`Wartung ${tag}`);
-    await form.getByLabel("Größte Datei beim Hochladen (MB)").fill("20");
-    await form.getByRole("button", { name: "Einstellungen speichern" }).click();
+    await form.getByLabel("Größte Datei beim Hochladen", { exact: true }).fill("20");
+    await form.getByRole("button", { name: "Speichern", exact: true }).click();
     await expect(form.getByRole("status")).toHaveText("Gespeichert.");
 
     await page.request.post("/api/auth/demo", { headers: { origin } });

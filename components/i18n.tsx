@@ -26,6 +26,11 @@ export function setLocale(locale: Locale) {
   document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax`;
   location.reload();
 }
+// Back to the browser's language.
+export function clearLocale() {
+  document.cookie = `${LOCALE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+  location.reload();
+}
 // "DE · EN": the other language is a button.
 export function LanguageSwitch({ className }: { className?: string }) {
   const locale = useLocale();

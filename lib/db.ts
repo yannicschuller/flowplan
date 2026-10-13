@@ -178,6 +178,12 @@ function migrate(d: DatabaseSync) {
     ).some((c) => c.name === "quota_mb")
   )
     d.exec("ALTER TABLE workspaces ADD COLUMN quota_mb INTEGER");
+  // Limits per account (JSON, see lib/user-limits.ts).
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "limits"))
+    d.exec("ALTER TABLE users ADD COLUMN limits TEXT");
+  // The language chosen in the profile (NULL = from the browser).
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "language"))
+    d.exec("ALTER TABLE users ADD COLUMN language TEXT");
   d.exec(`CREATE TABLE IF NOT EXISTS row_trash(
     id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
     workspace_id TEXT NOT NULL,title TEXT NOT NULL,payload TEXT NOT NULL,deleted_by TEXT,

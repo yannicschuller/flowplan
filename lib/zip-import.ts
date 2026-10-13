@@ -9,6 +9,7 @@ import { createPage } from "./seed";
 import { htmlState } from "./document-server";
 import { markdownToHtml } from "./markdown-import";
 import { enforceQuota } from "./instance-ops";
+import { enforceUserStorage } from "./user-limits";
 import type { Field, Identity, Space } from "./types";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
@@ -242,6 +243,7 @@ export async function importZip(
           ext = target.split(".").pop()!.toLowerCase();
         bytesAdded += data.length;
         enforceQuota(workspaceId, bytesAdded);
+        enforceUserStorage(user, bytesAdded);
         mkdirSync(dir, { recursive: true });
         writeFileSync(resolve(dir, fid), data);
         onTransactionRollback(() => unlinkSync(resolve(dir, fid)));

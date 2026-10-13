@@ -10,3 +10,15 @@ export function userLocale(userId: string): Locale {
 export function rememberLocale(userId: string, locale: Locale) {
   run("UPDATE users SET locale=? WHERE id=? AND locale IS NOT ?", locale, userId, locale);
 }
+
+// A language chosen in the profile: it wins over the browser on every device.
+export function fixedLanguage(userId: string): Locale | null {
+  const value = one<{ language: string | null }>("SELECT language FROM users WHERE id=?", userId)?.language;
+  return isLocale(value) ? value : null;
+}
+export function setFixedLanguage(userId: string, value: unknown): Locale | null {
+  const language = isLocale(value) ? value : null;
+  run("UPDATE users SET language=? WHERE id=?", language, userId);
+  if (language) rememberLocale(userId, language);
+  return language;
+}

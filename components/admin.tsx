@@ -1,4 +1,5 @@
 "use client";
+import { NumberField, SaveBar, SettingGroup, SettingRow, SwitchRow, UsageMeter } from "./settings-ui";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { BuildInfo } from "@/lib/build-info";
@@ -32,6 +33,13 @@ type AdminData = {
   }[];
   adminGroup: string;
   build?: BuildInfo;
+  userUsage?: {
+    id: string;
+    bytes: number;
+    workspaces: number;
+    limits: { storageMb?: number | null; workspaces?: number | null; uploadMb?: number | null };
+    effective: { storageMb: number; workspaces: number; uploadMb: number };
+  }[];
   oidcConfigured: boolean;
   metrics: {
     databaseBytes: number;
@@ -292,80 +300,16 @@ export default function Admin({
                         .includes(query.toLowerCase()),
                   )
                   .map((u) => (
-                    <div
-                      className={`member-row${u.disabled ? " is-disabled" : ""}`}
+                    <UserRow
                       key={u.id}
-                    >
-                      <Avatar name={u.name} userId={u.id} />
-                      <span>
-                        {u.name}
-                        <small>
-                          {u.email}
-                          {" · "}
-                          {u.last_login_at
-                            ? `zuletzt angemeldet ${new Date(u.last_login_at).toLocaleDateString(LOCALE_TAG)}`
-                            : t("noch nie angemeldet", "never signed in")}
-                        </small>
-                      </span>
-                      {!!u.disabled && (
-                        <span className="status-chip muted-chip">
-                          {t("Deaktiviert", "Disabled")}
-                        </span>
-                      )}
-                      {data.localAccounts?.[u.id] && (
-                        <span className="status-chip muted-chip" title={t("Meldet sich mit E-Mail und Passwort an", "Signs in with email and password")}>
-                          {data.localAccounts[u.id].admin ? t("Admin · E-Mail", "Admin · email") : "E-Mail"}
-                          {data.localAccounts[u.id].passkeys ? ` · ${data.localAccounts[u.id].passkeys} Passkey` : ""}
-                        </span>
-                      )}
-                      {data.localAccounts?.[u.id] && (
-                        <>
-                          <button
-                            className="button compact"
-                            onClick={() =>
-                              act({ action: "admin.localAdmin", userId: u.id, admin: !data.localAccounts![u.id].admin })
-                            }
-                          >
-                            {data.localAccounts[u.id].admin ? t("Admin entziehen", "Revoke admin") : t("Zum Admin machen", "Make admin")}
-                          </button>
-                          <button
-                            className="button compact"
-                            onClick={async () => {
-                              const result = (await act({ action: "admin.resetLink", userId: u.id })) as { url?: string } | undefined;
-                              if (result?.url) setResetLink({ userId: u.id, url: result.url });
-                            }}
-                          >
-                            {t("Link zum Zurücksetzen", "Reset link")}
-                          </button>
-                        </>
-                      )}
-                      <button
-                        className="button compact"
-                        onClick={() =>
-                          act({ action: "admin.revoke", userId: u.id })
-                        }
-                      >
-                        {t("Sitzungen beenden", "End sessions")}
-                      </button>
-                      <button
-                        className={`button compact ${u.disabled ? "" : "danger"}`}
-                        onClick={() =>
-                          act({
-                            action: "admin.user",
-                            userId: u.id,
-                            disabled: !u.disabled,
-                          })
-                        }
-                      >
-                        {u.disabled ? t("Aktivieren", "Enable") : t("Deaktivieren", "Disable")}
-                      </button>
-                      {resetLink?.userId === u.id && (
-                        <label className="reset-link">
-                          {t("Zwei Stunden gültig – an", "Valid for two hours – send to")}{" "}{u.name} weitergeben:
-                          <input readOnly value={resetLink.url} onFocus={(e) => e.currentTarget.select()} />
-                        </label>
-                      )}
-                    </div>
+                      user={u}
+                      usage={data.userUsage?.find((x) => x.id === u.id)}
+                      settings={data.settings}
+                      local={data.localAccounts?.[u.id]}
+                      resetLink={resetLink?.userId === u.id ? resetLink.url : null}
+                      act={act}
+                      onResetLink={(url) => setResetLink({ userId: u.id, url })}
+                    />
                   ))}
               </div>
             </section>
@@ -616,7 +560,149 @@ function SignupSwitch({ open, onChange }: { open: boolean; onChange: (open: bool
   );
 }
 
-// Instance-wide settings; empty numbers fall back to the environment.
+const mbText = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString(LOCALE_TAG, { maximumFractionDigits: bytes < 10 * 1024 * 1024 ? 1 : 0 })} MB`;
+
+// One account: who, when last seen, how much storage; "Verwalten" opens its
+// limits (empty = the instance default) and actions.
+function UserRow({
+  user: u,
+  usage,
+  settings,
+  local,
+  resetLink,
+  act,
+  onResetLink,
+}: {
+  user: User;
+  usage?: NonNullable<AdminData["userUsage"]>[number];
+  settings: InstanceSettings;
+  local?: { admin: boolean; passkeys: number };
+  resetLink: string | null;
+  act: (body: Record<string, unknown>) => Promise<unknown>;
+  onResetLink: (url: string) => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [limits, setLimits] = useState(usage?.limits || {});
+  const [busy, setBusy] = useState(false);
+  const clean = (l: object) => JSON.stringify(Object.entries(l).filter(([, v]) => v !== null && v !== undefined).sort());
+  const changed = clean(limits) !== clean(usage?.limits || {});
+  const storage = usage?.effective.storageMb ?? 0;
+  const defaults = {
+    storage: settings.defaultUserStorageMb ? `${settings.defaultUserStorageMb} MB` : t("unbegrenzt", "unlimited"),
+    workspaces: settings.defaultUserWorkspaces ? String(settings.defaultUserWorkspaces) : t("unbegrenzt", "unlimited"),
+    upload: `${settings.maxUploadMb} MB`,
+  };
+  const panel = `user-panel-${u.id}`;
+  return (
+    <div className={`user-row${u.disabled ? " is-disabled" : ""}${open ? " open" : ""}`}>
+      <div className="user-row-summary">
+        <Avatar name={u.name} userId={u.id} />
+        <span className="user-row-who">
+          <strong>{u.name}</strong>
+          <small>
+            {u.email} ·{" "}
+            {u.last_login_at
+              ? t(`zuletzt angemeldet ${new Date(u.last_login_at).toLocaleDateString(LOCALE_TAG)}`, `last signed in ${new Date(u.last_login_at).toLocaleDateString(LOCALE_TAG)}`)
+              : t("noch nie angemeldet", "never signed in")}
+          </small>
+        </span>
+        <span className="user-row-chips">
+          {!!u.disabled && <span className="status-chip muted-chip">{t("Deaktiviert", "Disabled")}</span>}
+          {local?.admin && <span className="status-chip">{t("Admin", "Admin")}</span>}
+          {local && (
+            <span className="status-chip muted-chip" title={t("Meldet sich mit E-Mail und Passwort an", "Signs in with email and password")}>
+              E-Mail{local.passkeys ? ` · ${local.passkeys} Passkey` : ""}
+            </span>
+          )}
+          {usage && (
+            <span className="user-row-storage" title={t("Belegter Speicher", "Storage used")}>
+              {mbText(usage.bytes)}
+              {storage ? ` / ${storage} MB` : ""}
+            </span>
+          )}
+        </span>
+        <button type="button" className="button compact" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>
+          {t("Verwalten", "Manage")}
+        </button>
+      </div>
+      {open && (
+        <div className="user-row-panel" id={panel}>
+          {usage && (
+            <div className="user-row-meters">
+              <UsageMeter label={t("Speicher", "Storage")} used={usage.bytes} limit={storage * 1024 * 1024} format={mbText} />
+              <UsageMeter label={t("Eigene Arbeitsbereiche", "Own workspaces")} used={usage.workspaces} limit={usage.effective.workspaces} format={(n) => String(n)} />
+            </div>
+          )}
+          <form
+            className="user-row-limits"
+            aria-label={t(`Grenzen für ${u.name}`, `Limits for ${u.name}`)}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              try {
+                await act({ action: "admin.userLimits", userId: u.id, limits });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label>
+              <span>{t("Speicher", "Storage")}</span>
+              <NumberField label={t(`Speicher für ${u.name}`, `Storage for ${u.name}`)} value={limits.storageMb} unit="MB" placeholder={t(`Standard: ${defaults.storage}`, `Default: ${defaults.storage}`)} onChange={(storageMb) => setLimits({ ...limits, storageMb })} />
+            </label>
+            <label>
+              <span>{t("Arbeitsbereiche", "Workspaces")}</span>
+              <NumberField label={t(`Eigene Arbeitsbereiche für ${u.name}`, `Own workspaces for ${u.name}`)} value={limits.workspaces} max={10000} placeholder={t(`Standard: ${defaults.workspaces}`, `Default: ${defaults.workspaces}`)} onChange={(workspaces) => setLimits({ ...limits, workspaces })} />
+            </label>
+            <label>
+              <span>{t("Größte Datei", "Largest file")}</span>
+              <NumberField label={t(`Größte Datei für ${u.name}`, `Largest file for ${u.name}`)} value={limits.uploadMb} min={1} max={1024} unit="MB" placeholder={t(`Standard: ${defaults.upload}`, `Default: ${defaults.upload}`)} onChange={(uploadMb) => setLimits({ ...limits, uploadMb })} />
+            </label>
+            <button className="button primary compact" disabled={!changed || busy}>
+              {busy ? t("Speichert …", "Saving …") : t("Grenzen speichern", "Save limits")}
+            </button>
+            <small className="muted">{t("Leer = Standard der Instanz, 0 = unbegrenzt. Für Admins gelten keine Grenzen.", "Empty = instance default, 0 = unlimited. Admins are not limited.")}</small>
+          </form>
+          <div className="user-row-actions">
+            {local && (
+              <>
+                <button type="button" className="button compact" onClick={() => act({ action: "admin.localAdmin", userId: u.id, admin: !local.admin })}>
+                  {local.admin ? t("Admin entziehen", "Revoke admin") : t("Zum Admin machen", "Make admin")}
+                </button>
+                <button
+                  type="button"
+                  className="button compact"
+                  onClick={async () => {
+                    const result = (await act({ action: "admin.resetLink", userId: u.id })) as { url?: string } | undefined;
+                    if (result?.url) onResetLink(result.url);
+                  }}
+                >
+                  {t("Link zum Zurücksetzen", "Reset link")}
+                </button>
+              </>
+            )}
+            <button type="button" className="button compact" onClick={() => act({ action: "admin.revoke", userId: u.id })}>
+              {t("Sitzungen beenden", "End sessions")}
+            </button>
+            <button type="button" className={`button compact ${u.disabled ? "" : "danger"}`} onClick={() => act({ action: "admin.user", userId: u.id, disabled: !u.disabled })}>
+              {u.disabled ? t("Aktivieren", "Enable") : t("Deaktivieren", "Disable")}
+            </button>
+          </div>
+          {resetLink && (
+            <label className="reset-link">
+              {t(`Zwei Stunden gültig – an ${u.name} weitergeben:`, `Valid for two hours – send to ${u.name}:`)}
+              <input readOnly value={resetLink} onFocus={(e) => e.currentTarget.select()} />
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Instance-wide settings in groups; empty numbers fall back to the
+// environment. Changes are kept as a draft until saved.
 function InstanceSettingsForm({
   initial,
   localLogin,
@@ -627,163 +713,114 @@ function InstanceSettingsForm({
   onSave: (settings: InstanceSettings) => Promise<void>;
 }) {
   const t = useT();
-  const [draft, setDraft] = useState(initial),
-    [saved, setSaved] = useState(false);
-  const optional = (value: string) =>
-    value.trim() === "" ? null : Math.max(0, Math.round(Number(value)));
+  const [saved, setSaved] = useState(initial),
+    [draft, setDraft] = useState(initial),
+    [busy, setBusy] = useState(false),
+    [done, setDone] = useState(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const set = (patch: Partial<InstanceSettings>) => {
+    setDone(false);
+    setDraft({ ...draft, ...patch });
+  };
+  const env = t("aus der Umgebung", "from the environment");
+  const unlimited = t("unbegrenzt", "unlimited");
   return (
     <form
-      className="settings-section instance-settings"
+      className="instance-settings"
       aria-label={t("Instanzeinstellungen", "Instance settings")}
       onSubmit={async (e) => {
         e.preventDefault();
-        setSaved(false);
-        await onSave(draft);
-        setSaved(true);
+        setBusy(true);
+        try {
+          await onSave(draft);
+          setSaved(draft);
+          setDone(true);
+        } finally {
+          setBusy(false);
+        }
       }}
     >
-      <h2>{t("Instanz", "Instance")}</h2>
-      <p>
-        {t("Leere Felder übernehmen die Werte aus der Umgebung (Konfigurationsdatei oder Umgebungsvariablen).", "Empty fields take the values from the environment (configuration file or environment variables).")}
-      </p>
-      <label>
-        {t("Name der Instanz", "Instance name")}
-        <input
-          maxLength={60}
-          placeholder={t("z. B. Flowplan der Muster GmbH", "e.g. Flowplan of Example Ltd")}
-          value={draft.name}
-          onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-        />
-      </label>
-      <label>
-        {t("Hinweis für alle Personen", "Notice for everyone")}
-        <textarea
-          maxLength={500}
-          rows={2}
-          placeholder="z. B. Wartung am Samstag ab 18 Uhr"
-          value={draft.announcement}
-          onChange={(e) => setDraft({ ...draft, announcement: e.target.value })}
-        />
-      </label>
-      <label>
-        {t("Standard-Speicherkontingent je Arbeitsbereich (MB, 0 = unbegrenzt)", "Default storage quota per workspace (MB, 0 = unlimited)")}
-        <input
-          type="number"
-          min={0}
-          placeholder={t("Wert aus der Umgebung", "Value from the environment")}
-          value={draft.defaultQuotaMb ?? ""}
-          onChange={(e) =>
-            setDraft({ ...draft, defaultQuotaMb: optional(e.target.value) })
-          }
-        />
-      </label>
-      <label>
-        {t("Versionen aufbewahren (Tage, 0 = unbegrenzt)", "Keep versions (days, 0 = forever)")}
-        <input
-          type="number"
-          min={0}
-          placeholder={t("Wert aus der Umgebung", "Value from the environment")}
-          value={draft.retentionDays ?? ""}
-          onChange={(e) =>
-            setDraft({ ...draft, retentionDays: optional(e.target.value) })
-          }
-        />
-      </label>
-      <label>
-        {t("Größte Datei beim Hochladen (MB)", "Largest upload (MB)")}
-        <input
-          type="number"
-          min={1}
-          max={1024}
-          required
-          value={draft.maxUploadMb}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              maxUploadMb: Math.min(
-                1024,
-                Math.max(1, Math.round(Number(e.target.value) || 1)),
-              ),
-            })
-          }
-        />
-      </label>
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
-          checked={draft.allowWorkspaceCreation}
-          onChange={(e) =>
-            setDraft({ ...draft, allowWorkspaceCreation: e.target.checked })
-          }
-        />
-        {t("Alle Personen dürfen Arbeitsbereiche anlegen", "Everyone may create workspaces")}
-      </label>
-      {localLogin && (
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
+      <SettingGroup title={t("Allgemein", "General")} description={t("Wie die Instanz heißt und was alle oben sehen.", "What the instance is called and what everyone sees at the top.")}>
+        <SettingRow id="instance-name" label={t("Name der Instanz", "Instance name")} description={t("Erscheint bei der Anmeldung und im Browser-Tab.", "Shown when signing in and in the browser tab.")}>
+          <input id="instance-name" maxLength={60} placeholder={t("z. B. Flowplan der Muster GmbH", "e.g. Flowplan of Example Ltd")} value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+        </SettingRow>
+        <SettingRow wide id="instance-notice" label={t("Hinweis für alle Personen", "Notice for everyone")} description={t("Ein Banner über jeder Seite, etwa für Wartungsarbeiten. Leer = kein Hinweis.", "A banner above every page, e.g. for maintenance. Empty = no notice.")}>
+          <textarea id="instance-notice" maxLength={500} rows={2} placeholder={t("z. B. Wartung am Samstag ab 18 Uhr", "e.g. Maintenance on Saturday from 6 pm")} value={draft.announcement} onChange={(e) => set({ announcement: e.target.value })} />
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup title={t("Zugang", "Access")} description={t("Wer ein Konto bekommt und was neue Personen dürfen.", "Who gets an account and what new people may do.")}>
+        {localLogin && (
+          <SwitchRow
+            label={t("Registrierung mit E-Mail und Passwort", "Sign-up with email and password")}
+            description={t("Ausgeschaltet legen nur eingeladene Adressen ein Konto an. Das erste Konto einer Instanz verwaltet sie.", "When off, only invited addresses can create an account. The first account of an instance administers it.")}
             checked={!!draft.allowSignup}
-            onChange={(e) => setDraft({ ...draft, allowSignup: e.target.checked })}
+            onChange={(allowSignup) => set({ allowSignup })}
           />
-          <span>
-            {t("Registrierung mit E-Mail und Passwort erlauben", "Allow sign-up with email and password")}
-            <small className="muted">
-              {t("Ohne diese Einstellung legen nur eingeladene Adressen ein Konto an. Das erste Konto einer Instanz verwaltet sie.", "Without this setting only invited addresses can create an account. The first account of an instance administers it.")}
-            </small>
-          </span>
-        </label>
-      )}
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
+        )}
+        <SwitchRow
+          label={t("Alle dürfen Arbeitsbereiche anlegen", "Everyone may create workspaces")}
+          description={t("Ausgeschaltet legen nur Admins neue Arbeitsbereiche an.", "When off, only admins create new workspaces.")}
+          checked={draft.allowWorkspaceCreation}
+          onChange={(allowWorkspaceCreation) => set({ allowWorkspaceCreation })}
+        />
+        <SwitchRow
+          label={t("Öffentliche Demo", "Public demo")}
+          description={t("Besucher bekommen unter /demo ohne Konto einen Arbeitsbereich mit Beispielen. Er verschwindet nach 45 Minuten ohne Aktivität (spätestens nach 3 Stunden). Demos können nichts veröffentlichen, teilen oder einladen.", "Visitors get a workspace with examples at /demo without an account. It disappears after 45 minutes without activity (3 hours at the latest). Demos cannot publish, share or invite.")}
           checked={!!draft.publicDemo}
-          onChange={(e) => setDraft({ ...draft, publicDemo: e.target.checked })}
+          onChange={(publicDemo) => set({ publicDemo })}
         />
-        <span>
-          {t("Öffentliche Demo anbieten", "Offer a public demo")}
-          <small className="muted">
-            {t("Besucher erhalten ohne Konto einen eigenen Arbeitsbereich mit Beispielen. Er wird nach 45 Minuten ohne Aktivität (spätestens nach 3 Stunden) oder mit „Demo beenden“ gelöscht. Demo-Konten können nichts veröffentlichen, teilen oder einladen. Die Demo startet unter /demo.", "Visitors get their own workspace with examples without an account. It is deleted after 45 minutes without activity (after 3 hours at the latest) or with “End demo”. Demo accounts cannot publish, share or invite. The demo starts at /demo.")}
-          </small>
-        </span>
-      </label>
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
-          checked={draft.backupSchedule !== false}
-          onChange={(e) => setDraft({ ...draft, backupSchedule: e.target.checked })}
-        />
-        <span>
-          {t("Tägliche Datenbanksicherung", "Daily database backup")}
-          <small className="muted">
-            {t("Eine Kopie der Datenbank pro Tag – mit S3 in den Bucket (Ordner", "One copy of the database per day – with S3 into the bucket (folder")}{" "}<code>backups/</code>{t("), sonst in den Datenordner.", "), otherwise into the data folder.")}
-          </small>
-        </span>
-      </label>
-      <label>
-        {t("Aufbewahrte Sicherungen", "Backups kept")}
-        <input
-          type="number"
-          min={1}
-          max={365}
-          value={draft.backupKeep ?? 7}
-          onChange={(e) => setDraft({ ...draft, backupKeep: Math.max(1, Number(e.target.value) || 1) })}
-        />
-      </label>
-      <label>
-        {t("Konten ohne Anmeldung sperren nach (Tagen)", "Block accounts without sign-in after (days)")}
-        <input
-          type="number"
-          min={30}
-          max={3650}
-          placeholder="nie"
-          value={draft.inactiveDays ?? ""}
-          onChange={(e) =>
-            setDraft({ ...draft, inactiveDays: e.target.value ? Number(e.target.value) : null })
+        <SettingRow label={t("Inaktive Konten sperren", "Block inactive accounts")} description={t("Nach so vielen Tagen ohne Anmeldung (mindestens 30). Leer = nie.", "After this many days without signing in (at least 30). Empty = never.")}>
+          <NumberField label={t("Inaktive Konten sperren nach Tagen", "Block inactive accounts after days")} value={draft.inactiveDays} min={30} max={3650} unit={t("Tage", "days")} placeholder={t("nie", "never")} onChange={(inactiveDays) => set({ inactiveDays })} />
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup
+        title={t("Speicher und Grenzen", "Storage and limits")}
+        description={t("Standardwerte für alle. Einzelne Arbeitsbereiche und Personen lassen sich in ihren Reitern abweichend einstellen. 0 = unbegrenzt; Admins sind nicht begrenzt.", "Defaults for everyone. Individual workspaces and people can differ in their tabs. 0 = unlimited; admins are not limited.")}
+      >
+        <SettingRow label={t("Speicher je Arbeitsbereich", "Storage per workspace")} description={t("Dateien und Bilder aller Mitglieder zusammen.", "Files and images of all members together.")}>
+          <NumberField label={t("Speicher je Arbeitsbereich", "Storage per workspace")} value={draft.defaultQuotaMb} unit="MB" placeholder={env} onChange={(defaultQuotaMb) => set({ defaultQuotaMb })} />
+        </SettingRow>
+        <SettingRow label={t("Speicher je Person", "Storage per person")} description={t("Alles, was eine Person hochlädt oder kopiert – über alle Arbeitsbereiche.", "Everything a person uploads or copies – across all workspaces.")}>
+          <NumberField label={t("Speicher je Person", "Storage per person")} value={draft.defaultUserStorageMb} unit="MB" placeholder={unlimited} onChange={(defaultUserStorageMb) => set({ defaultUserStorageMb })} />
+        </SettingRow>
+        <SettingRow label={t("Eigene Arbeitsbereiche je Person", "Own workspaces per person")} description={t("Wie viele Arbeitsbereiche eine Person besitzen darf.", "How many workspaces a person may own.")}>
+          <NumberField label={t("Eigene Arbeitsbereiche je Person", "Own workspaces per person")} value={draft.defaultUserWorkspaces} unit="" placeholder={unlimited} max={10000} onChange={(defaultUserWorkspaces) => set({ defaultUserWorkspaces })} />
+        </SettingRow>
+        <SettingRow label={t("Größte Datei beim Hochladen", "Largest upload")} description={t("Für jede einzelne Datei; je Person änderbar.", "For each single file; can differ per person.")}>
+          <NumberField label={t("Größte Datei beim Hochladen", "Largest upload")} value={draft.maxUploadMb} min={1} max={1024} unit="MB" required onChange={(maxUploadMb) => set({ maxUploadMb: maxUploadMb ?? 1 })} />
+        </SettingRow>
+      </SettingGroup>
+
+      <SettingGroup title={t("Versionen und Sicherung", "Versions and backup")}>
+        <SettingRow label={t("Versionen aufbewahren", "Keep versions")} description={t("Ältere Versionsstände von Seiten werden danach gelöscht. 0 = für immer.", "Older page versions are deleted afterwards. 0 = forever.")}>
+          <NumberField label={t("Versionen aufbewahren", "Keep versions")} value={draft.retentionDays} max={36500} unit={t("Tage", "days")} placeholder={env} onChange={(retentionDays) => set({ retentionDays })} />
+        </SettingRow>
+        <SwitchRow
+          label={t("Tägliche Datenbanksicherung", "Daily database backup")}
+          description={
+            <>
+              {t("Eine Kopie pro Tag – mit S3 in den Bucket (Ordner", "One copy per day – with S3 into the bucket (folder")} <code>backups/</code>
+              {t("), sonst in den Datenordner.", "), otherwise into the data folder.")}
+            </>
           }
+          checked={draft.backupSchedule !== false}
+          onChange={(backupSchedule) => set({ backupSchedule })}
         />
-      </label>
-      <button className="button primary">{t("Einstellungen speichern", "Save settings")}</button>
-      {saved && <p role="status">{t("Gespeichert.", "Saved.")}</p>}
+        <SettingRow label={t("Aufbewahrte Sicherungen", "Backups kept")} description={t("Die ältesten werden danach entfernt.", "The oldest are removed afterwards.")}>
+          <NumberField label={t("Aufbewahrte Sicherungen", "Backups kept")} value={draft.backupKeep ?? 7} min={1} max={365} unit={t("Stück", "copies")} onChange={(backupKeep) => set({ backupKeep: backupKeep ?? 7 })} />
+        </SettingRow>
+      </SettingGroup>
+      <SaveBar
+        dirty={dirty}
+        busy={busy}
+        onDiscard={() => setDraft(saved)}
+        message={t("Ungespeicherte Änderungen", "Unsaved changes")}
+        saveLabel={busy ? t("Speichert …", "Saving …") : t("Speichern", "Save")}
+        discardLabel={t("Verwerfen", "Discard")}
+      />
+      {done && !dirty && <p role="status" className="muted small">{t("Gespeichert.", "Saved.")}</p>}
     </form>
   );
 }

@@ -3,7 +3,8 @@
 // click opens it at the pointer (Shift + right click keeps the browser's
 // own menu). Reactions for the paragraph, formatting, calculating a
 // selected expression, a comment, copying. "Umwandeln in" changes the type
-// of the line (text, heading, list, quote, code) and keeps its text.
+// of the line (text, heading, list, quote, code) and keeps its text; it is
+// offered on right-click, so the menu over a selection stays small.
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
@@ -269,7 +270,7 @@ export function TextMenu({
           </button>
         </div>
       )}
-      {editable && (
+      {editable && place.mode === "context" && (
         <div className="text-menu-format text-menu-turn" role="group" aria-label={t("Umwandeln in", "Turn into")}>
           {(
             [

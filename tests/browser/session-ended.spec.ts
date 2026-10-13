@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 // When the session ends, the app goes to the sign-in page (keeping the page
 // address) instead of showing "Bitte melde dich an.".
-test("an ended session leads to the sign-in page", async ({ page, context }, info) => {
+test("an ended session leads to the sign-in page", async ({ page, context }) => {
   test.setTimeout(90_000);
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
@@ -16,9 +16,9 @@ test("an ended session leads to the sign-in page", async ({ page, context }, inf
   await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toBeVisible();
   await context.clearCookies();
   // Any request now fails with 401: e.g. adding a favourite.
-  if (info.project.name === "desktop") await page.getByRole("button", { name: /Favorit/ }).first().click();
-  // Any other request of the app (here: loading the page again) as well.
-  else void page.evaluate(() => fetch("/api/bootstrap").catch(() => {}));
+  // The next request of the app fails with 401 – a background request may
+  // already have started the switch to the sign-in page.
+  await page.evaluate(() => fetch("/api/bootstrap").catch(() => {})).catch(() => {});
   await expect(page.locator("input[type=password], a[href^='/api/auth/login']").first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("Bitte melde dich an.")).toHaveCount(0);
   expect(page.url()).toContain(`#page=${pageId}`);

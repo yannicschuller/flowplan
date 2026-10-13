@@ -20,6 +20,9 @@ export const instanceSettingsSchema = z.object({
   backupKeep: z.number().int().min(1).max(365).default(7),
   // Accounts without sign-in for this many days are disabled (null = never).
   inactiveDays: z.number().int().min(30).max(3650).nullable().default(null),
+  // Defaults for every account without its own limits (0 = unlimited).
+  defaultUserStorageMb: z.number().int().min(0).max(10_000_000).nullable().default(null),
+  defaultUserWorkspaces: z.number().int().min(0).max(10_000).nullable().default(null),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -34,6 +37,8 @@ const defaults: InstanceSettings = {
   backupSchedule: true,
   backupKeep: 7,
   inactiveDays: null,
+  defaultUserStorageMb: null,
+  defaultUserWorkspaces: null,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

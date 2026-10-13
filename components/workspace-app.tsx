@@ -1,7 +1,7 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { useLocale, useStatusLabel, useT } from "./i18n";
+import { setLocale, useLocale, useStatusLabel, useT } from "./i18n";
 import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
@@ -250,6 +250,10 @@ export default function WorkspaceApp({
   const t = useT();
   const statusLabel = useStatusLabel();
   const locale = useLocale();
+  // A language fixed in the profile applies on this device too.
+  useEffect(() => {
+    if (initial.language && initial.language !== locale) setLocale(initial.language);
+  }, [initial.language, locale]);
   const [clock, setClock] = useState<number | null>(null);
   useEffect(() => {
     // The server and initial browser render must not depend on different clocks.
