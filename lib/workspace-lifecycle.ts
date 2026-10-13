@@ -41,7 +41,7 @@ function revokePage(pageId: string) {
   run("DELETE FROM presence WHERE page_id=?", pageId);
 }
 // Only invoked inside the command transaction. File removal is queued until commit.
-function purgePages(workspaceId: string, pages: Page[]) {
+export function purgePages(workspaceId: string, pages: Page[]) {
   const ids = new Set(pages.map((page) => page.id));
   // Sever pairs before deleting their endpoints. Remaining relation fields stay visible,
   // but their references to deleted records are removed as referential cleanup.

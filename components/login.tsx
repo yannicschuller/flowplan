@@ -6,12 +6,13 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
+import { ArrowRight, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { LanguageSwitch, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
 
-type Mode = "signin" | "register" | "forgot";
+// "confirm": registered, waiting for the link from the e-mail.
+type Mode = "signin" | "register" | "forgot" | "confirm";
 type Props = Partial<LoginOptions> & {
   error?: string;
   instanceName?: string;
@@ -44,7 +45,8 @@ export default function Login({
   const [mode, setMode] = useState<Mode>(initialMode || (firstAccount ? "register" : "signin"));
   const [busy, setBusy] = useState(""),
     [message, setMessage] = useState(error || ""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [pendingEmail, setPendingEmail] = useState("");
   const [loginUrl, setLoginUrl] = useState("/api/auth/login");
   const [passkeys, setPasskeys] = useState(false);
   useEffect(() => {
@@ -81,7 +83,14 @@ export default function Login({
       });
     else if (mode === "register")
       void run("register", async () => {
-        await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password") });
+        const result = await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password") });
+        // The instance sends e-mail: the account waits for the link.
+        if (result?.pending) {
+          setBusy("");
+          setPendingEmail(String(result.email || field(form, "email")));
+          setMode("confirm");
+          return;
+        }
         done();
       });
     else
@@ -123,7 +132,9 @@ export default function Login({
       ? firstAccount
         ? [t("Willkommen bei", "Welcome to"), t("deinem Flowplan.", "your Flowplan.")]
         : [t("Konto", "Create your"), t("erstellen.", "account.")]
-      : mode === "forgot"
+      : mode === "confirm"
+        ? [t("Fast", "Almost"), t("geschafft.", "there.")]
+        : mode === "forgot"
         ? [t("Passwort", "Forgot your"), t("vergessen?", "password?")]
         : [t("Raum für deine", "Room for your"), t("nächste große Idee.", "next big idea.")];
   return (
@@ -149,6 +160,33 @@ export default function Login({
               "Create the first account. It administers the instance and can invite others.",
             )}
           </p>
+        ) : mode === "confirm" ? (
+          <div className="login-confirm">
+            <EnvelopeSimple size={30} aria-hidden />
+            <p>
+              {t("Wir haben einen Bestätigungslink an", "We sent a confirmation link to")} <strong>{pendingEmail}</strong>{" "}
+              {t(
+                "geschickt. Öffne ihn, um dein Konto zu bestätigen – danach bist du direkt angemeldet.",
+                ". Open it to confirm your account – you are signed in right away.",
+              )}
+            </p>
+            <small className="muted">{t("Nichts angekommen? Schau auch im Spam-Ordner nach.", "Nothing arrived? Also check the spam folder.")}</small>
+            <button
+              type="button"
+              className="button wide"
+              disabled={!!busy}
+              onClick={() =>
+                void run("resend", async () => {
+                  await post("verify-resend", { email: pendingEmail });
+                  setBusy("");
+                  setNotice(t("Der Link ist erneut unterwegs.", "The link is on its way again."));
+                })
+              }
+            >
+              {busy === "resend" ? <SpinnerGap className="spin" /> : <EnvelopeSimple size={18} />}
+              {t("Link erneut senden", "Send the link again")}
+            </button>
+          </div>
         ) : mode === "forgot" ? (
           <p>{t("Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.", "We send you a link to set a new password.")}</p>
         ) : (
@@ -168,7 +206,7 @@ export default function Login({
             {notice}
           </div>
         )}
-        {localLogin && (
+        {localLogin && mode !== "confirm" && (
           <form className="login-form" onSubmit={submit}>
             {mode === "register" && (
               <label>
@@ -257,7 +295,7 @@ export default function Login({
                   </button>
                 </>
               )
-            ) : !firstAccount || mode === "forgot" ? (
+            ) : !firstAccount || mode === "forgot" || mode === "confirm" ? (
               <>
                 {t("Schon ein Konto?", "Already have an account?")}{" "}
                 <button type="button" className="text-button" onClick={() => switchTo("signin")}>

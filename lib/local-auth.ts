@@ -63,7 +63,7 @@ const tr = (locale: Locale): Tr => (de, en) => (locale === "de" ? de : en);
 
 // ---- Accounts ----
 
-type Account = { user_id: string; email: string; password_hash: string; is_admin: number; email_verified: number };
+type Account = { user_id: string; email: string; password_hash: string; is_admin: number; email_verified: number; verify_required: number };
 const accountOf = (userId: string) => one<Account>("SELECT * FROM local_accounts WHERE user_id=?", userId);
 const accountByEmail = (email: string) =>
   one<Account & { disabled: number }>(
@@ -109,19 +109,23 @@ export async function register(input: unknown, locale: Locale) {
     throw new HttpError(409, t("Für diese E-Mail-Adresse gibt es schon ein Konto.", "There already is an account for this e-mail address."));
   const passwordHash = await hashPassword(password.data);
   const uid = id();
+  // With e-mail set up, the address is confirmed before the first sign-in;
+  // the account that sets the instance up starts right away.
+  const confirm = !first && !!mailConfig();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, name, email);
   run(
-    "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,created_at) VALUES(?,?,?,?,?,?)",
+    "INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)",
     uid,
     email,
     passwordHash,
     first ? 1 : 0,
-    0,
+    confirm ? 0 : 1,
+    confirm ? 1 : 0,
     Date.now(),
   );
   const user = one<User>("SELECT * FROM users WHERE id=?", uid)!;
-  sendVerification(user, locale);
-  return { user, groups: first ? [adminGroup()] : [] };
+  if (confirm) sendVerification(user, locale);
+  return { user, groups: first ? [adminGroup()] : [], pending: confirm };
 }
 
 // ---- Failed attempts ----
@@ -155,6 +159,17 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
     throw new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
   }
   if (account.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
+  if (awaitsConfirmation(account)) {
+    const user = one<User>("SELECT * FROM users WHERE id=?", account.user_id);
+    if (user && !recentlySent(account.user_id)) sendVerification(user, locale);
+    throw new HttpError(
+      403,
+      t(
+        "Bitte bestätige zuerst deine E-Mail-Adresse – der Link ist in deinem Postfach (auch im Spam-Ordner nachsehen).",
+        "Please confirm your e-mail address first – the link is in your inbox (also check the spam folder).",
+      ),
+    );
+  }
   run("DELETE FROM login_failures WHERE key=?", keys[1]);
   return { userId: account.user_id, groups: account.is_admin ? [adminGroup()] : [] };
 }
@@ -211,13 +226,36 @@ function sendVerification(user: User, locale: Locale) {
     url,
   });
 }
-export function verifyEmail(token: string) {
-  const userId = takeToken(token, "verify");
-  if (!userId) return false;
+// Still waiting for the confirmation link (only while e-mail is set up – an
+// instance without e-mail never locks anyone out).
+function awaitsConfirmation(account: Account) {
+  return !!account.verify_required && !account.email_verified && !!mailConfig();
+}
+// A confirmation link went out in the last five minutes.
+function recentlySent(userId: string) {
+  const expires = one<{ expires: number }>("SELECT expires FROM auth_tokens WHERE user_id=? AND kind='verify'", userId)?.expires;
+  return !!expires && expires - TOKEN_HOURS.verify * 3600_000 > Date.now() - 5 * 60_000;
+}
+export function confirmAddress(userId: string) {
   run("UPDATE local_accounts SET email_verified=1 WHERE user_id=?", userId);
   const user = one<User>("SELECT * FROM users WHERE id=?", userId);
   if (user) acceptInvites(user, true);
-  return true;
+}
+// The link from the e-mail: confirms the address; returns who it was.
+export function verifyEmail(token: string) {
+  const userId = takeToken(token, "verify");
+  if (!userId) return null;
+  confirmAddress(userId);
+  return userId;
+}
+// The link once more, for "Link erneut senden" (same answer for every address).
+export function resendVerification(input: unknown, locale: Locale) {
+  const parsed = z.object({ email: z.string().trim().max(200) }).safeParse(input);
+  const account = parsed.success ? accountByEmail(parsed.data.email) : undefined;
+  if (account && awaitsConfirmation(account) && !recentlySent(account.user_id)) {
+    const user = one<User>("SELECT * FROM users WHERE id=?", account.user_id);
+    if (user) sendVerification(user, locale);
+  }
 }
 // Always the same answer, so it does not tell which addresses have accounts.
 export function requestPasswordReset(input: unknown, locale: Locale) {
@@ -253,6 +291,8 @@ export async function resetPassword(input: unknown, locale: Locale) {
   const userId = takeToken(token, "reset");
   if (!userId) throw new HttpError(400, t("Der Link ist abgelaufen. Bitte fordere einen neuen an.", "The link has expired. Please ask for a new one."));
   run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(valid.data), userId);
+  // The link came by e-mail (or from an admin): the address counts as confirmed.
+  if (one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=0", userId)) confirmAddress(userId);
   // Whoever knew the old password is signed out everywhere.
   run("DELETE FROM sessions WHERE user_id=?", userId);
   return userId;

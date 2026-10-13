@@ -642,7 +642,7 @@ async function handleGET(
         build: buildInfo(),
         userUsage: usersUsage(),
         users: all(
-          "SELECT id,name,email,disabled,created_at,last_login_at FROM users WHERE demo_until IS NULL ORDER BY created_at DESC",
+          "SELECT id,name,email,disabled,created_at,last_login_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
         ),
         mail: mailStatus(),
         backup: scheduledBackupStatus(),

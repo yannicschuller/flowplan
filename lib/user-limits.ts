@@ -82,7 +82,7 @@ export function assertMayCreateWorkspace(user: Pick<Identity, "id" | "isAdmin">)
 export function usersUsage() {
   const bytes = new Map(all<{ id: string; n: number }>("SELECT created_by id, SUM(size) n FROM files WHERE created_by IS NOT NULL GROUP BY created_by").map((r) => [r.id, Number(r.n)]));
   const owned = new Map(all<{ id: string; n: number }>("SELECT user_id id, count(*) n FROM members WHERE role='owner' GROUP BY user_id").map((r) => [r.id, Number(r.n)]));
-  return all<{ id: string }>("SELECT id FROM users WHERE demo_until IS NULL").map(({ id }) => ({
+  return all<{ id: string }>("SELECT id FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%'").map(({ id }) => ({
     id,
     bytes: bytes.get(id) || 0,
     workspaces: owned.get(id) || 0,

@@ -62,17 +62,21 @@ test("open sign-ups, confirmation by e-mail accepts invitations", async () => {
   const wid = id();
   run("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)", wid, "Team", ana);
   run("INSERT INTO invites(id,workspace_id,email,role,created_by,guest) VALUES(?,?,?,?,?,0)", id(), wid, "cem@example.test", "editor", ana);
-  const { user, groups } = await auth.register({ name: "Cem", email: "cem@example.test", password: "ein-langes-passwort" }, "de");
+  const { user, groups, pending } = await auth.register({ name: "Cem", email: "cem@example.test", password: "ein-langes-passwort" }, "de");
   assert.deepEqual(groups, []);
+  // The instance sends e-mail: the account waits for the confirmation.
+  assert.equal(pending, true);
+  await assert.rejects(auth.passwordLogin({ email: "cem@example.test", password: "ein-langes-passwort" }, "10.0.3.9", "de"), /bestätige zuerst/);
   // Not a member before the address is confirmed.
   assert.equal(one("SELECT 1 FROM members WHERE user_id=?", user.id), undefined);
   await mail.flushMailQueue();
   const confirm = sent.find((m) => m.to === "cem@example.test")!;
   assert.match(confirm.subject, /bestätigen/);
   const token = new URL(linkIn(confirm.text)).searchParams.get("token")!;
-  assert.equal(auth.verifyEmail("falsch"), false);
-  assert.equal(auth.verifyEmail(token), true);
-  assert.equal(auth.verifyEmail(token), false, "used once");
+  assert.equal(auth.verifyEmail("falsch"), null);
+  assert.equal(auth.verifyEmail(token), user.id);
+  assert.equal(auth.verifyEmail(token), null, "used once");
+  assert.ok(await auth.passwordLogin({ email: "cem@example.test", password: "ein-langes-passwort" }, "10.0.3.9", "de"));
   assert.ok(one("SELECT 1 FROM members WHERE user_id=? AND workspace_id=?", user.id, wid));
   // With sign-ups open, anyone may register; a second account per address not.
   saveInstanceSettings({ ...instanceSettings(), allowSignup: true });

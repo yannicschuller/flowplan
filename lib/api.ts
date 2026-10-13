@@ -1,4 +1,6 @@
 import { teamReply } from "./service-desk";
+import { deleteAccount, deletionPlan } from "./account-deletion";
+import { confirmAddress } from "./local-auth";
 import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
 import { validateTicketPrefix } from "./ticket-refs";
@@ -528,6 +530,18 @@ export function command(
         break;
       case "profile.language":
         result = { language: setFixedLanguage(user.id, b.language) };
+        break;
+      case "admin.deletePlan":
+        requireAdmin(user);
+        result = deletionPlan(z.uuid().parse(b.userId));
+        break;
+      case "admin.deleteUser":
+        requireAdmin(user);
+        result = deleteAccount(user, z.uuid().parse(b.userId));
+        break;
+      case "admin.confirmEmail":
+        requireAdmin(user);
+        confirmAddress(z.uuid().parse(b.userId));
         break;
       case "admin.userLimits":
         requireAdmin(user);

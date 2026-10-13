@@ -9748,6 +9748,34 @@ textarea {
   color: var(--blue);
   white-space: nowrap;
 }
+.status-chip.warning-chip {
+  background: #fdf0dc;
+  color: #8a5300;
+}
+[data-theme="dark"] .status-chip.warning-chip {
+  background: #3a2c14;
+  color: #f2c27a;
+}
+.button.danger-solid {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: #fff;
+}
+.button.danger-solid:hover {
+  filter: brightness(0.95);
+}
+.delete-account p {
+  margin: 0 0 8px;
+  color: var(--secondary);
+}
+.delete-account ul {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
 .status-chip.muted-chip {
   background: var(--hover);
   color: var(--secondary);
@@ -13705,6 +13733,27 @@ h3 .block-reactions {
   font-size: 13px;
   font-weight: 600;
   color: var(--blue);
+}
+.login-confirm {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin: 4px 0 18px;
+  text-align: center;
+}
+.login-confirm > svg {
+  padding: 12px;
+  border-radius: 50%;
+  background: var(--blue-light);
+  color: var(--blue);
+  box-sizing: content-box;
+}
+.login-confirm p {
+  margin: 0;
+  line-height: 1.55;
+}
+.login-confirm strong {
+  overflow-wrap: anywhere;
 }
 .login-notice {
   margin-bottom: 14px;

@@ -37,6 +37,8 @@ import {
   requestPasswordReset,
   resetPassword,
   verifyEmail,
+  localGroups,
+  resendVerification,
 } from "@/lib/local-auth";
 import { requestLocale } from "@/lib/i18n-server";
 
@@ -118,9 +120,11 @@ async function handleGET(
     // Link from the confirmation e-mail.
     if (action === "verify") {
       const token = new URL(req.url).searchParams.get("token") || "";
-      const ok = verifyEmail(token);
+      const userId = verifyEmail(token);
+      // Confirmed: signed in right away.
+      if (userId) await signIn(userId, localGroups(userId));
       return NextResponse.redirect(
-        new URL(ok ? "/?verified=1" : `/?authError=${encodeURIComponent((await requestLocale()) === "de" ? "Der Bestätigungslink ist abgelaufen." : "The confirmation link has expired.")}`, appUrl()),
+        new URL(userId ? "/?verified=1" : `/?authError=${encodeURIComponent((await requestLocale()) === "de" ? "Der Bestätigungslink ist abgelaufen. Melde dich an, um einen neuen zu bekommen." : "The confirmation link has expired. Sign in to get a new one.")}`, appUrl()),
       );
     }
     if (action === "callback") {
@@ -233,8 +237,14 @@ async function handlePOST(
     const body = () => req.json().catch(() => ({}));
     // ---- E-mail and password ----
     if (action === "register") {
-      const { user, groups } = await register(await body(), locale);
+      const { user, groups, pending } = await register(await body(), locale);
+      // With e-mail confirmation the account waits for the link.
+      if (pending) return NextResponse.json({ ok: true, pending: true, email: user.email });
       await signIn(user.id, groups);
+      return NextResponse.json({ ok: true });
+    }
+    if (action === "verify-resend") {
+      resendVerification(await body(), locale);
       return NextResponse.json({ ok: true });
     }
     if (action === "password") {

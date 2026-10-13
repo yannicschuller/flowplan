@@ -464,6 +464,10 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS login_failures(key TEXT NOT NULL,at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS login_failures_key ON login_failures(key,at);
     CREATE TABLE IF NOT EXISTS auth_tokens(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,expires INTEGER NOT NULL);`);
+  // Accounts registered while the instance sends e-mail confirm their
+  // address before the first sign-in (older accounts are not affected).
+  if (!(d.prepare("PRAGMA table_info(local_accounts)").all() as { name: string }[]).some((c) => c.name === "verify_required"))
+    d.exec("ALTER TABLE local_accounts ADD COLUMN verify_required INTEGER NOT NULL DEFAULT 0");
   globalDb.flowplanSchema = 33;
 }
 function cleanDeletedFiles(d: DatabaseSync) {

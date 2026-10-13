@@ -15,7 +15,7 @@ import {
   SlidersHorizontal,
   ListChecks,
 } from "@phosphor-icons/react";
-import { api, Avatar } from "./ui";
+import { api, Avatar, Modal } from "./ui";
 import { Select } from "./select";
 import { AdminStorage } from "./admin-storage";
 import type { User } from "@/lib/types";
@@ -576,7 +576,7 @@ function UserRow({
   user: User;
   usage?: NonNullable<AdminData["userUsage"]>[number];
   settings: InstanceSettings;
-  local?: { admin: boolean; passkeys: number };
+  local?: { admin: boolean; verified: boolean; passkeys: number };
   resetLink: string | null;
   act: (body: Record<string, unknown>) => Promise<unknown>;
   onResetLink: (url: string) => void;
@@ -585,6 +585,9 @@ function UserRow({
   const [open, setOpen] = useState(false);
   const [limits, setLimits] = useState(usage?.limits || {});
   const [busy, setBusy] = useState(false);
+  // Deleting: what would happen, shown before it happens.
+  const [plan, setPlan] = useState<{ removed: { name: string }[]; handedOver: { name: string; to: string }[]; privateSpaces: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const clean = (l: object) => JSON.stringify(Object.entries(l).filter(([, v]) => v !== null && v !== undefined).sort());
   const changed = clean(limits) !== clean(usage?.limits || {});
   const storage = usage?.effective.storageMb ?? 0;
@@ -610,6 +613,11 @@ function UserRow({
         <span className="user-row-chips">
           {!!u.disabled && <span className="status-chip muted-chip">{t("Deaktiviert", "Disabled")}</span>}
           {local?.admin && <span className="status-chip">{t("Admin", "Admin")}</span>}
+          {local && !local.verified && (
+            <span className="status-chip warning-chip" title={t("Die Person hat den Link aus der Bestätigungs-E-Mail noch nicht geöffnet.", "The person has not opened the link from the confirmation e-mail yet.")}>
+              {t("E-Mail unbestätigt", "E-mail unconfirmed")}
+            </span>
+          )}
           {local && (
             <span className="status-chip muted-chip" title={t("Meldet sich mit E-Mail und Passwort an", "Signs in with email and password")}>
               E-Mail{local.passkeys ? ` · ${local.passkeys} Passkey` : ""}
@@ -685,10 +693,71 @@ function UserRow({
             <button type="button" className="button compact" onClick={() => act({ action: "admin.revoke", userId: u.id })}>
               {t("Sitzungen beenden", "End sessions")}
             </button>
+            {local && !local.verified && (
+              <button type="button" className="button compact" onClick={() => act({ action: "admin.confirmEmail", userId: u.id })}>
+                {t("E-Mail als bestätigt markieren", "Mark e-mail as confirmed")}
+              </button>
+            )}
             <button type="button" className={`button compact ${u.disabled ? "" : "danger"}`} onClick={() => act({ action: "admin.user", userId: u.id, disabled: !u.disabled })}>
               {u.disabled ? t("Aktivieren", "Enable") : t("Deaktivieren", "Disable")}
             </button>
+            {!!u.disabled && (
+              <button
+                type="button"
+                className="button compact danger"
+                onClick={async () => {
+                  const result = (await act({ action: "admin.deletePlan", userId: u.id })) as typeof plan;
+                  if (result) setPlan(result);
+                }}
+              >
+                {t("Konto löschen …", "Delete account …")}
+              </button>
+            )}
           </div>
+          {!u.disabled && (
+            <small className="muted">{t("Löschen ist möglich, sobald das Konto deaktiviert ist.", "Deleting is possible once the account is disabled.")}</small>
+          )}
+          <Modal open={!!plan} onClose={() => !deleting && setPlan(null)} title={t(`${u.name} löschen?`, `Delete ${u.name}?`)}>
+            {plan && (
+              <div className="delete-account">
+                <p>{t("Das lässt sich nicht rückgängig machen.", "This cannot be undone.")}</p>
+                <ul>
+                  <li>{t("Name, E-Mail-Adresse, Passwort, Passkeys, Sitzungen und persönliche Einstellungen werden gelöscht.", "Name, e-mail address, password, passkeys, sessions and personal settings are deleted.")}</li>
+                  {plan.removed.length > 0 && (
+                    <li>
+                      {t("Diese Arbeitsbereiche hatten nur diese Person als Mitglied und werden mit allen Inhalten gelöscht:", "These workspaces had only this person as a member and are deleted with all content:")}{" "}
+                      <strong>{plan.removed.map((w) => w.name).join(", ")}</strong>
+                    </li>
+                  )}
+                  {plan.handedOver.map((w) => (
+                    <li key={w.name}>{t(`„${w.name}“ bekommt ${w.to} als Eigentümer.`, `“${w.name}” gets ${w.to} as owner.`)}</li>
+                  ))}
+                  {plan.privateSpaces > 0 && <li>{t(`${plan.privateSpaces} private Bereiche werden gelöscht.`, `${plan.privateSpaces} private spaces are deleted.`)}</li>}
+                  <li>{t("Beiträge in gemeinsamen Arbeitsbereichen (Seiten, Einträge, Kommentare, Dateien) bleiben und erscheinen als „Gelöschtes Konto“.", "Contributions to shared workspaces (pages, records, comments, files) stay and appear as “Deleted account”.")}</li>
+                </ul>
+                <div className="modal-actions">
+                  <button type="button" className="button" disabled={deleting} onClick={() => setPlan(null)}>
+                    {t("Abbrechen", "Cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="button danger-solid"
+                    disabled={deleting}
+                    onClick={async () => {
+                      setDeleting(true);
+                      try {
+                        if (await act({ action: "admin.deleteUser", userId: u.id })) setPlan(null);
+                      } finally {
+                        setDeleting(false);
+                      }
+                    }}
+                  >
+                    {deleting ? t("Löscht …", "Deleting …") : t("Endgültig löschen", "Delete permanently")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </Modal>
           {resetLink && (
             <label className="reset-link">
               {t(`Zwei Stunden gültig – an ${u.name} weitergeben:`, `Valid for two hours – send to ${u.name}:`)}
