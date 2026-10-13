@@ -119,6 +119,7 @@ import {
   ApiError,
   isTransient,
   PageSkeleton,
+  endedSession,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
@@ -454,6 +455,20 @@ export default function WorkspaceApp({
   const [pendingCells, setPendingCells] = useState<
     { pageId: string; rowId: string; cells: Record<string, unknown> }[]
   >([]);
+  // Requests that do not go through api() (uploads, exports …) notice an
+  // ended session too.
+  useEffect(() => {
+    const original = window.fetch;
+    window.fetch = async (input, init) => {
+      const response = await original(input, init);
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      endedSession(url, response.status);
+      return response;
+    };
+    return () => {
+      window.fetch = original;
+    };
+  }, []);
   const mutate = useCallback(
     async (b: Record<string, unknown>) => {
       const rows = () =>

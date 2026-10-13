@@ -276,6 +276,19 @@ export const unavailableMessage =
 // A request that did not reach Flowplan or got no answer from it.
 export const isTransient = (e: unknown) =>
   e instanceof TypeError || (e instanceof ApiError && e.transient);
+// The session ended (signed out elsewhere, expired): in the app, reload once –
+// "/" then shows the sign-in page and returns to the same page afterwards.
+let signingIn = false;
+export function endedSession(url: string, status: number) {
+  if (status !== 401 || typeof window === "undefined" || location.pathname !== "/") return false;
+  const path = url.startsWith("http") ? new URL(url).pathname : url;
+  if (!path.startsWith("/api/") || path.startsWith("/api/auth/")) return false;
+  if (!signingIn) {
+    signingIn = true;
+    location.reload();
+  }
+  return true;
+}
 export async function api<T = Record<string, unknown>>(
   url: string,
   body?: unknown,
@@ -298,6 +311,8 @@ export async function api<T = Record<string, unknown>>(
     // An HTML page instead of JSON: a proxy or gateway answered.
     throw new ApiError(serverMessage(unavailableMessage), r.ok ? 502 : r.status, true);
   }
+  // No "please sign in" message: the sign-in page is on its way.
+  if (endedSession(url, r.status)) return new Promise<T>(() => {});
   if (!r.ok)
     throw new ApiError(
       serverMessage(data?.error || "Anfrage fehlgeschlagen"),
