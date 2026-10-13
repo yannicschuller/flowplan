@@ -1,6 +1,6 @@
 "use client";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { useT } from "./i18n";
+import { useLocale, useT } from "./i18n";
 import { Select } from "./select";
 import {
   useEffect,
@@ -91,6 +91,7 @@ export default function DatabaseCalendar({
   onView: (patch: Partial<View>) => Promise<unknown>;
 }) {
   const t = useT();
+  const locale = useLocale();
   const [local, setLocal] = useState<CalendarConfig>(),
     [anchor, setAnchor] = useState(() =>
       dateInZone(view.calendar?.timeZone || browserZone()),
@@ -678,7 +679,7 @@ export default function DatabaseCalendar({
                   { "--calendar-weekdays": weekends ? 7 : 5 } as CSSProperties
                 }
               >
-                {weekdayLabels(config).map((d) => (
+                {weekdayLabels(config, locale).map((d) => (
                   <div className="weekday" key={d}>
                     {d}
                   </div>

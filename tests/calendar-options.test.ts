@@ -39,6 +39,9 @@ test("weeks start on Monday or Sunday and weekends can be hidden", () => {
     "Do",
     "Fr",
   ]);
+  // In the reader's language.
+  assert.deepEqual(weekdayLabels({}, "en"), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+  assert.deepEqual(weekdayLabels({ weekStart: "sunday", showWeekends: false }, "en"), ["Mon", "Tue", "Wed", "Thu", "Fri"]);
   assert.equal(isWeekend("2026-09-26"), true);
   assert.equal(isWeekend("2026-09-25"), false);
   assert.throws(() =>

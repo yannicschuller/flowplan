@@ -20,16 +20,15 @@ export const calendarSchema = z.object({
 });
 export const isWeekend = (date: string) =>
   Temporal.PlainDate.from(date).dayOfWeek >= 6;
-// Weekday labels in display order.
+// Weekday labels in display order, in the reader's language.
 export function weekdayLabels(
   config: Pick<CalendarConfig, "weekStart" | "showWeekends">,
+  locale: "de" | "en" = "de",
 ) {
-  const labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-  const ordered =
-    config.weekStart === "sunday" ? ["So", ...labels.slice(0, 6)] : labels;
-  return config.showWeekends === false
-    ? ordered.filter((l) => l !== "Sa" && l !== "So")
-    : ordered;
+  // Monday … Sunday.
+  const labels = locale === "en" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  const days = config.weekStart === "sunday" ? [6, 0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
+  return days.filter((d) => config.showWeekends !== false || d < 5).map((d) => labels[d]);
 }
 export type CalendarConfig = z.infer<typeof calendarSchema>;
 export const calendarChangeSchema = z.discriminatedUnion("operation", [

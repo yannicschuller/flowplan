@@ -1,4 +1,4 @@
-import { serverT } from "@/lib/i18n-server";
+import { requestLocale, serverT } from "@/lib/i18n-server";
 import type { CSSProperties } from "react";
 import { Temporal } from "@/lib/date-values";
 import { weekdayLabels } from "@/lib/database-calendar";
@@ -187,7 +187,7 @@ export async function PublicCalendar({
       <PublicCalendarGrid
         days={days}
         month={month}
-        labels={weekdayLabels(config)}
+        labels={weekdayLabels(config, await requestLocale())}
         weekends={weekends}
         editable={editable}
         token={token}
