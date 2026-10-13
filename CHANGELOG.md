@@ -2,6 +2,16 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.3.2 – 2026-10-13
+
+- Self-hosted runner for own work; Dependabot and forks on GitHub's runners ([6593db7](https://github.com/yannicschuller/flowplan/commit/6593db7d378575cb457927a2b85b53420a015bae))
+- Optional links to the operator's legal notice and privacy policy ([bc269bd](https://github.com/yannicschuller/flowplan/commit/bc269bd32b8b6e04f6e9353ff93f17b32cf9feec))
+- Confirm the e-mail address before the first sign-in; admins delete disabled accounts ([7a249ca](https://github.com/yannicschuller/flowplan/commit/7a249cad22e7ce53a8aaf60db29475639529e411))
+- README: screenshots and animations, logo, German version ([d1c7610](https://github.com/yannicschuller/flowplan/commit/d1c7610c57afc8ee48ba9aa973d3c4a0cf91c80f))
+- Limits per person, a fixed language, and a redesigned administration and settings ([af74e45](https://github.com/yannicschuller/flowplan/commit/af74e455a72ac3dd7548c9d2e446d95db1e1ab43))
+- Calendar weekdays in the reader's language ([a75ac26](https://github.com/yannicschuller/flowplan/commit/a75ac26d582558cafe977a33064f3485f2a3e856))
+- An ended session goes straight to the sign-in page ([bf6178f](https://github.com/yannicschuller/flowplan/commit/bf6178fbb9c8d46fb754b344c7ac32e8f78ef4e5))
+
 ## v0.3.1 – 2026-10-12
 
 - Print / PDF works in Safari ([31644cf](https://github.com/yannicschuller/flowplan/commit/31644cff397939254c774ed2386436cddce04609))
