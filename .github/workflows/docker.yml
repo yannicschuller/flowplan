@@ -31,7 +31,10 @@ concurrency:
 
 jobs:
   image:
-    runs-on: ubuntu-latest
+    # Own runner (label self-hosted) for this repository's own work. Dependabot
+    # and pull requests from forks run on GitHub's runners instead: their code
+    # never reaches the self-hosted machine.
+    runs-on: ${{ (github.actor == 'dependabot[bot]' || github.triggering_actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.full_name != github.repository))) && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 90
     steps:
       # A release: the version from release.yml or from a pushed tag v1.2.3.
