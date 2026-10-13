@@ -1,4 +1,5 @@
 import { teamReply } from "./service-desk";
+import { legalLinks } from "./legal-links";
 import { deleteAccount, deletionPlan } from "./account-deletion";
 import { confirmAddress } from "./local-auth";
 import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
@@ -251,6 +252,7 @@ export function bootstrap(user: Identity, wid?: string) {
       allowWorkspaceCreation:
         instanceSettings().allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,
+      legal: legalLinks(),
     },
     // What applies to me: limits with my usage, and my fixed language.
     myLimits: user.isAdmin

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { legalLinks } from "@/lib/legal-links";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import Login from "@/components/login";
@@ -21,6 +22,7 @@ export default async function RegisterPage() {
   const options = loginOptions();
   return (
     <Login
+        legal={legalLinks()}
       {...options}
       mode={options.signupOpen ? "register" : "signin"}
       instanceName={instanceSettings().name}

@@ -1,4 +1,5 @@
 import { currentUser } from "@/lib/auth";
+import { legalLinks } from "@/lib/legal-links";
 import { bootstrap } from "@/lib/api";
 import { ensureWorkspace } from "@/lib/seed";
 import { withContentLocale } from "@/lib/content-locale";
@@ -19,6 +20,7 @@ export default async function Home({
   if (!user)
     return (
       <Login
+        legal={legalLinks()}
         {...loginOptions()}
         error={(await searchParams).authError}
         instanceName={instanceSettings().name}

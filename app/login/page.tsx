@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { legalLinks } from "@/lib/legal-links";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import Login from "@/components/login";
@@ -23,6 +24,7 @@ export default async function LoginPage({
   if (await currentUser()) redirect("/");
   return (
     <Login
+        legal={legalLinks()}
       {...loginOptions()}
       error={(await searchParams).authError}
       instanceName={instanceSettings().name}

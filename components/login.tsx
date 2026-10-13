@@ -8,8 +8,10 @@ import { loginReturnPath } from "@/lib/page-location";
 import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
-import { LanguageSwitch, useT } from "./i18n";
+import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
+import type { LegalLinks } from "@/lib/legal-links";
+import { LegalFooter } from "./legal-footer";
 
 // "confirm": registered, waiting for the link from the e-mail.
 type Mode = "signin" | "register" | "forgot" | "confirm";
@@ -17,6 +19,8 @@ type Props = Partial<LoginOptions> & {
   error?: string;
   instanceName?: string;
   mode?: Mode;
+  // Legal notice and privacy policy of the instance (when set).
+  legal?: LegalLinks;
 };
 
 async function post(path: string, body?: unknown) {
@@ -40,6 +44,7 @@ export default function Login({
   error,
   instanceName = "",
   mode: initialMode,
+  legal,
 }: Props) {
   const t = useT();
   const [mode, setMode] = useState<Mode>(initialMode || (firstAccount ? "register" : "signin"));
@@ -309,6 +314,7 @@ export default function Login({
       </section>
       <footer>
         FLOWPLAN <span>{t("Ein Zuhause für gute Zusammenarbeit.", "A home for good collaboration.")}</span>
+        {legal && <LegalFooter links={legal} de={useLocale() === "de"} />}
         <LanguageSwitch className="language-switch" />
       </footer>
     </main>

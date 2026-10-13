@@ -245,6 +245,8 @@ export type Bootstrap = {
     allowWorkspaceCreation: boolean;
     // Voice notes can be turned into text (WHISPER_URL is set).
     transcription?: boolean;
+    // Legal notice and privacy policy of the operator (IMPRINT_URL, PRIVACY_URL).
+    legal?: { imprint?: string; privacy?: string };
   };
   members: (User & { role: Role; guest?: number })[];
   notifications: {

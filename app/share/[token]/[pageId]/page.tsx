@@ -1,4 +1,5 @@
 import { PublishedPage } from "@/components/public-page";
+import { PublicLegalFooter } from "@/components/legal-footer-server";
 export const dynamic = "force-dynamic";
 export const metadata = {
   robots: { index: false, follow: false },
@@ -14,12 +15,15 @@ export default async function Page({
   const { token, pageId } = await params;
   const { row, view, month } = await searchParams;
   return (
-    <PublishedPage
+    <>
+      <PublishedPage
       token={token}
       pageId={pageId}
       rowId={row}
       viewId={view}
       month={month}
     />
+      <PublicLegalFooter />
+    </>
   );
 }

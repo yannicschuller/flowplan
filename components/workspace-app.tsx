@@ -81,6 +81,7 @@ import {
   UploadSimple,
   ShieldCheck,
   SignOut,
+  Scales,
   Sun,
   Moon,
   Users,
@@ -1623,6 +1624,23 @@ export default function WorkspaceApp({
                     <SignOut />
                     {t("Abmelden", "Sign out")}
                   </Dropdown.Item>
+                  {(boot.instance?.legal?.imprint || boot.instance?.legal?.privacy) && <Dropdown.Separator className="dropdown-separator" />}
+                  {boot.instance?.legal?.imprint && (
+                    <Dropdown.Item className="dropdown-item" asChild>
+                      <a href={boot.instance.legal.imprint} target="_blank" rel="noopener">
+                        <Scales />
+                        {t("Impressum", "Legal notice")}
+                      </a>
+                    </Dropdown.Item>
+                  )}
+                  {boot.instance?.legal?.privacy && (
+                    <Dropdown.Item className="dropdown-item" asChild>
+                      <a href={boot.instance.legal.privacy} target="_blank" rel="noopener">
+                        <ShieldCheck />
+                        {t("Datenschutz", "Privacy")}
+                      </a>
+                    </Dropdown.Item>
+                  )}
                 </Dropdown.Content>
               </Dropdown.Portal>
             </Dropdown.Root>

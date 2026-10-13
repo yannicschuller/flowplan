@@ -13734,6 +13734,25 @@ h3 .block-reactions {
   font-weight: 600;
   color: var(--blue);
 }
+/* Legal notice and privacy policy of the operator (IMPRINT_URL, PRIVACY_URL). */
+.legal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 18px 16px 28px;
+  font-size: 12.5px;
+}
+.legal-footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.legal-footer a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.login footer .legal-footer {
+  padding: 0;
+}
 .login-confirm {
   display: grid;
   justify-items: center;
