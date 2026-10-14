@@ -98,4 +98,10 @@ jobs:
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
         run: |
           if [ -z "$COOLIFY_WEBHOOK" ] || [ -z "$COOLIFY_TOKEN" ]; then echo "No Coolify secrets: nothing to deploy."; exit 0; fi
-          curl -fsS --retry 3 --max-time 60 -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
+          # Coolify's answer explains a refusal (e.g. a missing permission).
+          status=$(curl -sS --retry 3 --max-time 60 -o "$RUNNER_TEMP/coolify.json" -w '%{http_code}' -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK")
+          echo "Coolify answered $status: $(head -c 500 "$RUNNER_TEMP/coolify.json")"
+          if [ "$status" -ge 300 ]; then
+            echo "::error::Coolify did not deploy ($status). 401/403: the API token needs the “deploy” permission and the team of the resource; check Settings → Advanced → API access and its allowed IPs."
+            exit 1
+          fi
