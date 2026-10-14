@@ -45,6 +45,7 @@ const config: NextConfig = {
       "./node_modules/tesseract.js-core/*.wasm",
       "./node_modules/@tesseract.js-data/deu/**/*",
       "./node_modules/@tesseract.js-data/eng/**/*",
+      "./node_modules/@tesseract.js-data/fra/**/*",
       "./node_modules/bmp-js/**/*",
       "./node_modules/wasm-feature-detect/**/*",
       "./node_modules/zlibjs/**/*",

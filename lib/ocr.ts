@@ -2,19 +2,39 @@ import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { deflateSync } from "node:zlib";
 
-// Text recognition for scanned PDFs and images (German and English). The
-// language data ships with the app and is never downloaded at runtime.
-const LANGS = ["deu", "eng"] as const;
+// Text recognition for scanned PDFs and images. The language data ships
+// with the app and is never downloaded at runtime: German, English and
+// French. FLOWPLAN_OCR_LANGS chooses the languages that are loaded, e.g.
+// "fra,eng"; the first one is the main language. Every extra language costs
+// memory and time per page, so the default stays German and English.
+export const OCR_LANGUAGES = ["deu", "eng", "fra"] as const;
+type Language = (typeof OCR_LANGUAGES)[number];
+const DEFAULT_LANGUAGES: Language[] = ["deu", "eng"];
+const isLanguage = (value: string): value is Language =>
+  (OCR_LANGUAGES as readonly string[]).includes(value);
+// Unknown codes are ignored (they also name files); nothing valid left
+// means the default.
+export function ocrLanguages(setting = process.env.FLOWPLAN_OCR_LANGS): Language[] {
+  const chosen = [
+    ...new Set(
+      (setting || "")
+        .split(/[,+\s]+/)
+        .map((code) => code.trim().toLowerCase())
+        .filter(isLanguage),
+    ),
+  ];
+  return chosen.length ? chosen : DEFAULT_LANGUAGES;
+}
 type Worker = Awaited<ReturnType<typeof import("tesseract.js").createWorker>>;
 const runtime = globalThis as typeof globalThis & {
   flowplanOcr?: Promise<Worker>;
 };
-function languageDir() {
+function languageDir(languages: Language[]) {
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "ocr");
   mkdirSync(dir, { recursive: true });
   // Bundlers rewrite require.resolve, so the packages are found through the
   // app's node_modules (the same layout in development and standalone).
-  for (const lang of LANGS) {
+  for (const lang of languages) {
     const target = join(dir, `${lang}.traineddata.gz`);
     if (existsSync(target)) continue;
     copyFileSync(
@@ -34,8 +54,9 @@ function languageDir() {
 async function worker() {
   runtime.flowplanOcr ??= (async () => {
     const { createWorker } = await import("tesseract.js");
-    const dir = languageDir();
-    return createWorker([...LANGS], 1, {
+    const languages = ocrLanguages();
+    const dir = languageDir(languages);
+    return createWorker(languages, 1, {
       langPath: dir,
       cachePath: dir,
       gzip: true,
