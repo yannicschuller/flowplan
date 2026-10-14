@@ -68,7 +68,7 @@ Tabelle, Board, Kalender, Zeitleiste, Galerie, Liste, Feed, Diagramm, Formular u
 
 ## Gemeinsam, überall
 
-Live-Bearbeitung mit Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, Posteingang, E-Mail-Zusammenfassungen und Web Push. Seiten lassen sich veröffentlichen, mit Gästen zum Lesen, Kommentieren oder Bearbeiten teilen oder als Formular für anonyme Antworten nutzen. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux liegen jedem [Release](https://github.com/yannicschuller/flowplan/releases) bei.
+Live-Bearbeitung mit Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, Posteingang, E-Mail-Zusammenfassungen und Web Push. Seiten lassen sich veröffentlichen, mit Gästen zum Lesen, Kommentieren oder Bearbeiten teilen oder als Formular für anonyme Antworten nutzen. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux gibt es unter [flowplan.org/download](https://flowplan.org/download) ([flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop), mit automatischen Updates).
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="Das Board auf dem Handy" width="32%">
@@ -135,7 +135,7 @@ Im Entwicklungsmodus gibt es zusätzlich **Lokalen Arbeitsbereich öffnen**, ein
 | `npm run test:e2e` | Browsertests (Playwright, Desktop und Handy); einen Server mit eigenem `FLOWPLAN_DATA_DIR` starten und `TEST_BASE_URL` setzen |
 | `npm run check:standalone` | Startet den Standalone-Build wie im Container und prüft Health, Persistenz und Wiederherstellung |
 
-Technik: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror mit Yjs, Zod und Playwright. Die Dokumentation liegt in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), die Website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org); dieses Repository enthält nur die App.
+Technik: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror mit Yjs, Zod und Playwright. Die Dokumentation liegt in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), die Website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), die Desktop-Apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); dieses Repository enthält nur die App.
 
 ## Gehostete Version
 

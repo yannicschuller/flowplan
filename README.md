@@ -68,7 +68,7 @@ Table, board, calendar, timeline, gallery, list, feed, chart, form and sprint vi
 
 ## Together, everywhere
 
-Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Pages can be published, shared with guests for reading, commenting or editing, or turned into forms for anonymous answers. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux come with every [release](https://github.com/yannicschuller/flowplan/releases).
+Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Pages can be published, shared with guests for reading, commenting or editing, or turned into forms for anonymous answers. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux are at [flowplan.org/download](https://flowplan.org/download) ([flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop), with automatic updates).
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="The board on a phone" width="32%">
@@ -135,7 +135,7 @@ Development mode also offers **Open local workspace**, a shared local example ac
 | `npm run test:e2e` | Browser tests (Playwright, desktop and mobile); start a server with its own `FLOWPLAN_DATA_DIR` and set `TEST_BASE_URL` |
 | `npm run check:standalone` | Runs the standalone build like the container and checks health, persistence and restore |
 
-Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror with Yjs, Zod and Playwright. The documentation lives in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), the website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org); this repository contains only the app.
+Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror with Yjs, Zod and Playwright. The documentation lives in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), the website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), the desktop apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); this repository contains only the app.
 
 ## Hosted version
 
