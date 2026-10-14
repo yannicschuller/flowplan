@@ -2,6 +2,14 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.3.3 – 2026-10-14
+
+- Desktop app signs in with passkeys and SSO through the browser ([0eececd](https://github.com/yannicschuller/flowplan/commit/0eececd08a2ddcc5a34bd96aa900ad8655941610))
+- Desktop apps move to their own repository ([1749a1e](https://github.com/yannicschuller/flowplan/commit/1749a1eeb825a04dfa66137700326ffa56fec239))
+- Desktop apps for macOS, Windows and Linux with every release ([60a336d](https://github.com/yannicschuller/flowplan/commit/60a336d856e487fcab6baed307d847ab408d1a39))
+- Faster image builds; no images for Dependabot ([fd0cbf8](https://github.com/yannicschuller/flowplan/commit/fd0cbf84d9bd6fe4c5d561eaec82ce13b2cb5ce9))
+- Faster printing in Safari; table of contents toggle hidden while the list is open ([95e3710](https://github.com/yannicschuller/flowplan/commit/95e37107e70bbae8d7d487b9f1d37575781f9d8b))
+
 ## v0.3.2 – 2026-10-13
 
 - Self-hosted runner for own work; Dependabot and forks on GitHub's runners ([6593db7](https://github.com/yannicschuller/flowplan/commit/6593db7d378575cb457927a2b85b53420a015bae))
