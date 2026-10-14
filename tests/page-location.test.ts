@@ -110,7 +110,13 @@ test("login return targets preserve exact internal discussions without open redi
   const path = `/#page=${pageId}&row=${rowId}&thread=${threadId}`;
   assert.equal(loginReturnPath(path), path);
   assert.equal(loginReturnPath("/#inbox"), "/#inbox");
+  // The desktop app's sign-in through the browser.
+  const desktop = `/api/auth/desktop?challenge=${"a".repeat(43)}`;
+  assert.equal(loginReturnPath(desktop), desktop);
   for (const input of [
+    `${desktop}&via=sso`,
+    `/api/auth/desktop?challenge=${"a".repeat(42)}`,
+    `//evil.test/api/auth/desktop?challenge=${"a".repeat(43)}`,
     null,
     undefined,
     "",

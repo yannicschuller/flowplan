@@ -41,6 +41,14 @@ import {
   resendVerification,
 } from "@/lib/local-auth";
 import { requestLocale } from "@/lib/i18n-server";
+import {
+  createDesktopCode,
+  desktopPage,
+  desktopReturnPath,
+  escapeHtml,
+  isDesktopChallenge,
+  redeemDesktopCode,
+} from "@/lib/desktop-sign-in";
 
 // The pending passkey ceremony of this browser (5 minutes).
 const WEBAUTHN_COOKIE = "flowplan_webauthn";
@@ -116,6 +124,32 @@ async function handleGET(
           ...(register ? { prompt: "create" } : {}),
         }),
       );
+    }
+    // The desktop app signs in through the browser (lib/desktop-sign-in.ts).
+    if (action === "desktop") {
+      const params = new URL(req.url).searchParams,
+        challenge = params.get("challenge"),
+        de = (await requestLocale()) === "de";
+      if (!isDesktopChallenge(challenge))
+        return desktopPage(de, {
+          title: de ? "Link ungültig" : "Invalid link",
+          text: de ? "Starte die Anmeldung noch einmal in der Desktop-App." : "Start signing in again from the desktop app.",
+        });
+      const user = await currentUser();
+      if (!user || user.demo) {
+        // "Mit SSO anmelden" in the app goes straight to the provider.
+        if (params.get("via") === "sso" && (await config().then(() => true, () => false)))
+          return NextResponse.redirect(new URL(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturnPath(challenge))}`, appUrl()));
+        return NextResponse.redirect(new URL(`/?desktop=${challenge}`, appUrl()));
+      }
+      // Signed in: one click confirms – nothing is handed over unasked.
+      return desktopPage(de, {
+        title: de ? "Flowplan Desktop anmelden" : "Sign in to Flowplan Desktop",
+        text: de
+          ? `Du bist als ${user.name} (${user.email}) angemeldet. Die Desktop-App wird mit diesem Konto verbunden.`
+          : `You are signed in as ${user.name} (${user.email}). The desktop app will use this account.`,
+        body: `<form method="post" action="/api/auth/desktop"><input type="hidden" name="challenge" value="${escapeHtml(challenge)}"><button class="button">${de ? "In der Desktop-App anmelden" : "Sign in to the desktop app"}</button></form><small>${de ? "Nicht gestartet? Dann schließe dieses Fenster einfach." : "Didn't start this? Just close this window."}</small>`,
+      });
     }
     // Link from the confirmation e-mail.
     if (action === "verify") {
@@ -234,6 +268,35 @@ async function handlePOST(
       return NextResponse.json({ ok: true });
     }
     const locale = await requestLocale();
+    // Confirmed in the browser: a one-time code for the desktop app.
+    if (action === "desktop") {
+      const de = locale === "de",
+        user = await currentUser(),
+        challenge = (await req.formData().catch(() => null))?.get("challenge");
+      if (!user || user.demo || !isDesktopChallenge(challenge))
+        return desktopPage(de, {
+          title: de ? "Anmeldung abgelaufen" : "Sign-in expired",
+          text: de ? "Starte die Anmeldung noch einmal in der Desktop-App." : "Start signing in again from the desktop app.",
+        });
+      const code = createDesktopCode(user.id, user.groups, challenge);
+      const link = `flowplan://sign-in?${new URLSearchParams({ server: new URL(appUrl()).origin, challenge, code })}`;
+      return desktopPage(de, {
+        title: de ? "Zurück zur Desktop-App" : "Back to the desktop app",
+        text: de
+          ? "Flowplan Desktop übernimmt die Anmeldung. Falls dein Browser fragt, erlaube das Öffnen der App."
+          : "Flowplan Desktop takes over the sign-in. If your browser asks, allow it to open the app.",
+        body: `<a class="button" href="${escapeHtml(link)}">${de ? "Flowplan Desktop öffnen" : "Open Flowplan Desktop"}</a><small>${de ? "Danach kannst du dieses Fenster schließen. Der Link gilt eine Minute." : "You can close this window afterwards. The link is valid for one minute."}</small>`,
+        refresh: link,
+      });
+    }
+    if (action === "desktop-redeem") {
+      const { code, verifier } = (await req.json().catch(() => ({}))) as { code?: unknown; verifier?: unknown };
+      const handoff = redeemDesktopCode(code, verifier);
+      if (!handoff)
+        throw new HttpError(400, locale === "de" ? "Der Anmeldecode ist ungültig oder abgelaufen. Bitte erneut anmelden." : "The sign-in code is invalid or has expired. Please sign in again.");
+      await signIn(handoff.userId, handoff.groups);
+      return NextResponse.json({ ok: true });
+    }
     const body = () => req.json().catch(() => ({}));
     // ---- E-mail and password ----
     if (action === "register") {

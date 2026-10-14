@@ -6,7 +6,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
 import { useEffect, useState, type FormEvent } from "react";
-import { ArrowRight, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
+import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
@@ -54,9 +54,18 @@ export default function Login({
     [pendingEmail, setPendingEmail] = useState("");
   const [loginUrl, setLoginUrl] = useState("/api/auth/login");
   const [passkeys, setPasskeys] = useState(false);
+  // The desktop app signs in with passkeys and SSO in the system browser
+  // (lib/desktop-sign-in.ts): in the app these buttons hand over to it, in
+  // the browser ?desktop= carries the app's request through the sign-in.
+  const [desktopApp, setDesktopApp] = useState(false);
+  const [desktopRequest, setDesktopRequest] = useState("");
   useEffect(() => {
+    const request = new URLSearchParams(location.search).get("desktop") || "";
+    const desktopReturn = /^[A-Za-z0-9_-]{43}$/.test(request) ? `/api/auth/desktop?challenge=${request}` : "";
+    setDesktopRequest(desktopReturn);
+    setDesktopApp(/FlowplanDesktop\//.test(navigator.userAgent));
     const update = () =>
-      setLoginUrl(`/api/auth/login?returnTo=${encodeURIComponent(loginReturnPath(`/${location.hash}`))}`);
+      setLoginUrl(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturn || loginReturnPath(`/${location.hash}`))}`);
     update();
     setPasskeys(browserSupportsWebAuthn());
     window.addEventListener("hashchange", update);
@@ -64,6 +73,7 @@ export default function Login({
   }, []);
   // Signed in: back to where the visitor wanted to go.
   const done = () => {
+    if (desktopRequest) return void location.assign(desktopRequest);
     history.replaceState(null, "", loginReturnPath(`/${location.hash}`));
     location.reload();
   };
@@ -206,6 +216,11 @@ export default function Login({
             {message}
           </div>
         )}
+        {desktopRequest && !notice && (
+          <div role="status" className="login-notice">
+            {t("Melde dich an, um Flowplan Desktop mit deinem Konto zu verbinden.", "Sign in to connect Flowplan Desktop to your account.")}
+          </div>
+        )}
         {notice && (
           <div role="status" className="login-notice">
             {notice}
@@ -258,7 +273,14 @@ export default function Login({
             )}
           </form>
         )}
-        {localLogin && mode === "signin" && passkeys && (
+        {localLogin && mode === "signin" && desktopApp && (
+          <a className="button wide" href="/api/auth/desktop" title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}>
+            <Fingerprint size={19} />
+            {t("Mit Passkey anmelden", "Sign in with a passkey")}
+            <ArrowSquareOut size={16} />
+          </a>
+        )}
+        {localLogin && mode === "signin" && passkeys && !desktopApp && (
           <button className="button wide" onClick={passkey} disabled={!!busy}>
             {busy === "passkey" ? <SpinnerGap className="spin" /> : <Fingerprint size={19} />}
             {t("Mit Passkey anmelden", "Sign in with a passkey")}
@@ -267,10 +289,14 @@ export default function Login({
         {configured && mode === "signin" && (
           <>
             {localLogin && <div className="login-or">{t("oder", "or")}</div>}
-            <a className={`button wide${localLogin ? "" : " primary"}`} href={loginUrl}>
+            <a
+              className={`button wide${localLogin ? "" : " primary"}`}
+              href={desktopApp ? "/api/auth/desktop?via=sso" : loginUrl}
+              title={desktopApp ? t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser") : undefined}
+            >
               <ShieldCheck size={19} />
               {t("Mit SSO anmelden", "Sign in with SSO")}
-              <ArrowRight size={18} />
+              {desktopApp ? <ArrowSquareOut size={16} /> : <ArrowRight size={18} />}
             </a>
           </>
         )}

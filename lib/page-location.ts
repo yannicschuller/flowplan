@@ -49,6 +49,8 @@ export function notificationUrl(notification: {
 /** OIDC return paths are limited to the application root and validated hash targets. */
 export function loginReturnPath(value: unknown): string {
   if (value === "/#inbox") return value;
+  // Signing in the desktop app through the browser (lib/desktop-sign-in.ts).
+  if (typeof value === "string" && /^\/api\/auth\/desktop\?challenge=[A-Za-z0-9_-]{43}$/.test(value)) return value;
   // Content shared from another app waits for the sign-in.
   if (typeof value === "string" && /^\/share-target\?[^#\\]{0,4000}$/.test(value) && !value.includes("//"))
     return value;

@@ -45,6 +45,8 @@ export async function GET() {
   } catch {}
   return NextResponse.json(
     {
+      // Lets clients such as the desktop app recognise a Flowplan instance.
+      service: "flowplan",
       status: healthy ? "ok" : "error",
       checks,
       searchBacklog: backlog,
