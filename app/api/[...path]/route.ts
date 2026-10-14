@@ -86,6 +86,7 @@ import {
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
+import { updateStatus } from "@/lib/update-check";
 import { enforceUserStorage, maxUploadMbFor, usersUsage } from "@/lib/user-limits";
 import { exportTemplate, importTemplate } from "@/lib/template-exchange";
 import {
@@ -640,6 +641,7 @@ async function handleGET(
       requireAdmin(user);
       return NextResponse.json({
         build: buildInfo(),
+        update: await updateStatus(),
         userUsage: usersUsage(),
         users: all(
           "SELECT id,name,email,disabled,created_at,last_login_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",

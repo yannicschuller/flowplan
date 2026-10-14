@@ -2601,6 +2601,26 @@ tr:hover .row-open {
 .admin-build a:hover code {
   color: var(--blue);
 }
+/* A newer release is available (lib/update-check.ts). */
+.admin-page .admin-update {
+  flex-wrap: wrap;
+  margin-top: -15px;
+  color: var(--text);
+}
+.admin-update > svg {
+  flex: none;
+  color: var(--blue);
+}
+.admin-update-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-left: auto;
+}
+.admin-update-links a {
+  color: var(--blue);
+  font-weight: 500;
+}
 .audit-row {
   display: flex;
   align-items: center;

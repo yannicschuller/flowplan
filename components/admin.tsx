@@ -3,7 +3,8 @@ import { NumberField, SaveBar, SettingGroup, SettingRow, SwitchRow, UsageMeter }
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { BuildInfo } from "@/lib/build-info";
-import { useT } from "./i18n";
+import type { UpdateStatus } from "@/lib/update-check";
+import { useLocale, useT } from "./i18n";
 import { useEffect, useState } from "react";
 import {
   ShieldCheck,
@@ -14,6 +15,7 @@ import {
   Gauge,
   SlidersHorizontal,
   ListChecks,
+  ArrowCircleUp,
 } from "@phosphor-icons/react";
 import { api, Avatar, Modal } from "./ui";
 import { Select } from "./select";
@@ -33,6 +35,8 @@ type AdminData = {
   }[];
   adminGroup: string;
   build?: BuildInfo;
+  // A newer release than the running one (lib/update-check.ts).
+  update?: UpdateStatus | null;
   userUsage?: {
     id: string;
     bytes: number;
@@ -155,6 +159,7 @@ export default function Admin({
   onError: (s: string) => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const [data, setData] = useState<AdminData | null>(null),
     [tab, setTabState] = useState("users"),
     [query, setQuery] = useState(""),
@@ -234,6 +239,25 @@ export default function Admin({
           </span>
         )}
       </div>
+      {data.update && (
+        <div className="callout admin-update" role="status">
+          <ArrowCircleUp size={20} aria-hidden="true" />
+          <span>
+            <strong>{t(`Flowplan ${data.update.latest} ist verfügbar.`, `Flowplan ${data.update.latest} is available.`)}</strong>{" "}
+            {t(`Diese Instanz läuft mit ${data.update.current}.`, `This instance runs ${data.update.current}.`)}
+          </span>
+          <span className="admin-update-links">
+            {data.update.url && (
+              <a href={data.update.url} target="_blank" rel="noreferrer">
+                {t("Was ist neu", "What's new")}
+              </a>
+            )}
+            <a href={locale === "de" ? "https://docs.flowplan.org/de/installation#aktualisieren" : "https://docs.flowplan.org/en/installation#update"} target="_blank" rel="noreferrer">
+              {t("So aktualisierst du", "How to update")}
+            </a>
+          </span>
+        </div>
+      )}
       <div className="settings-layout">
         <nav className="settings-tabs" aria-label={t("Bereiche der Administration", "Administration sections")}>
           {adminTabs.map(([id, label, Icon]) => (
