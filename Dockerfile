@@ -1,7 +1,9 @@
+# syntax=docker/dockerfile:1
 FROM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# npm's download cache survives between builds (BuildKit cache mount).
+RUN --mount=type=cache,target=/root/.npm npm ci
 FROM deps AS build
 COPY . .
 # The CI checkout may be private (umask 077) and COPY keeps those modes; the
@@ -12,7 +14,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # our workflow passes GIT_COMMIT, Coolify passes SOURCE_COMMIT.
 ARG GIT_COMMIT=""
 ARG SOURCE_COMMIT=""
-RUN npm run build
+# The type check already runs in CI; image builds there skip it.
+ARG FLOWPLAN_SKIP_TYPECHECK=""
+# Next's build cache survives between builds as well.
+RUN --mount=type=cache,target=/app/.next/cache npm run build
 FROM litestream/litestream:0.5.17 AS litestream
 FROM node:26-bookworm-slim AS runtime
 LABEL org.opencontainers.image.title="Flowplan" \

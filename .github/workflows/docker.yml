@@ -31,6 +31,9 @@ concurrency:
 
 jobs:
   image:
+    # No image for Dependabot: its pull requests are tested by CI, and the
+    # image is built after merging, on the own runner.
+    if: github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]'
     # Own runner (label self-hosted) for this repository's own work. Dependabot
     # and pull requests from forks run on GitHub's runners instead: their code
     # never reaches the self-hosted machine.
@@ -69,11 +72,18 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # Pull requests only build (nothing is published): one architecture.
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
+            FLOWPLAN_SKIP_TYPECHECK=1
             GIT_COMMIT=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Cache in the registry: fast from the self-hosted runner, kept
+          # between runs. Pull requests (also Dependabot, without registry
+          # write access) use GitHub's cache.
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+            type=gha
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}:buildcache,mode=max', github.repository) || 'type=gha,mode=max' }}
