@@ -22,13 +22,22 @@ export function useT() {
   return (de: string, en?: string) =>
     en === undefined ? translateLabel(de, locale) : pick(de, en);
 }
+// Stores the language for this address. Copies of the cookie for parent
+// domains (flowplan.org shares one with the website and the docs) are
+// removed, so the server never reads an older one.
+export function writeLocaleCookie(locale: Locale | null) {
+  const parts = location.hostname.split(".");
+  for (let i = 0; i < parts.length - 1; i++)
+    document.cookie = `${LOCALE_COOKIE}=; path=/; max-age=0; samesite=lax; domain=${parts.slice(i).join(".")}`;
+  document.cookie = `${LOCALE_COOKIE}=${locale ?? ""}; path=/; max-age=${locale ? 31536000 : 0}; samesite=lax`;
+}
 export function setLocale(locale: Locale) {
-  document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax`;
+  writeLocaleCookie(locale);
   location.reload();
 }
 // Back to the browser's language.
 export function clearLocale() {
-  document.cookie = `${LOCALE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+  writeLocaleCookie(null);
   location.reload();
 }
 // "DE · EN · FR": the other languages are buttons.

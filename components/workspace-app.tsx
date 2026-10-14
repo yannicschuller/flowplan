@@ -1,7 +1,7 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { setLocale, useLocale, useStatusLabel, useT } from "./i18n";
+import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
 import { localeTag, translate, type Locale } from "@/lib/i18n";
 import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
@@ -332,10 +332,12 @@ export default function WorkspaceApp({
   const t = useT();
   const statusLabel = useStatusLabel();
   const locale = useLocale();
-  // A language fixed in the profile applies on this device too.
+  // A language fixed in the profile: the server already renders it; the
+  // cookie follows for the pages before signing in. No reload – a cookie the
+  // browser keeps elsewhere must not lead to a loop.
   useEffect(() => {
-    if (initial.language && initial.language !== locale) setLocale(initial.language);
-  }, [initial.language, locale]);
+    if (initial.language) writeLocaleCookie(initial.language);
+  }, [initial.language]);
   const [clock, setClock] = useState<number | null>(null);
   useEffect(() => {
     // The server and initial browser render must not depend on different clocks.
