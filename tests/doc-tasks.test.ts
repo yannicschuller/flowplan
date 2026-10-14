@@ -122,7 +122,7 @@ test("tasks in the own journal count without @mention and without a date", async
   next.setUTCDate(next.getUTCDate() + 1);
   const tomorrow = next.toISOString().slice(0, 10);
   const journalPage = one<import("../lib/types").Page>("SELECT * FROM pages WHERE id=?", journal)!;
-  const { dayId: nextDay } = rollJournal(anna, journalPage, tomorrow);
+  const { dayId: nextDay } = rollJournal(anna, journalPage, tomorrow, today);
   const moved = myTasks(anna, wid).filter((t) => t.journal);
   assert.deepEqual(moved.map((t) => t.text).sort(), ["Blumen gießen", "Zahnarzt anrufen"]);
   assert.ok(moved.every((t) => t.pageId === nextDay));

@@ -159,9 +159,9 @@ export function sprintCharts(user: Identity, pageId: string, sprintId: string) {
   const last = days.length - 1;
   const remaining = days.map((d) => {
     if (d > today()) return null;
-    const end = Date.parse(`${d}T23:59:59`);
+    const end = Date.parse(`${d}T23:59:59.999Z`);
     return rows.reduce((s, r) => {
-      const at = isDone(rule, r.cells) ? (doneAt.get(r.id) ?? Date.parse(`${sprint.start}T00:00:00`)) : Infinity;
+      const at = isDone(rule, r.cells) ? (doneAt.get(r.id) ?? Date.parse(`${sprint.start}T00:00:00Z`)) : Infinity;
       return s + (at <= end ? 0 : points(fields, settings.pointsField, r.cells));
     }, 0);
   });
