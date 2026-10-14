@@ -14018,6 +14018,23 @@ h3 .block-reactions {
     display: none;
   }
 }
+/* iPhone and iPad print the page itself: only the lean copy (printPage). */
+.print-copy {
+  display: none;
+}
+@media print {
+  html.printing-copy body > :not(.print-copy) {
+    display: none !important;
+  }
+  html.printing-copy .print-copy {
+    display: block;
+  }
+  html.printing-copy,
+  html.printing-copy body {
+    height: auto;
+    overflow: visible;
+  }
+}
 
 /* ---------- Marking up images (image-annotator.tsx) ---------- */
 .annotator {

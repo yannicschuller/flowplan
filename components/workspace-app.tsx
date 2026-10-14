@@ -165,16 +165,35 @@ const EmojiPicker = dynamic(() => import("./emoji-picker"), {
   ssr: false,
   loading: () => <Loading what="emoji" />,
 });
-// Printing (and "Save as PDF"): the page content alone, copied into a hidden
-// frame with the app's styles. Safari lays out the whole app before showing
-// its print dialog, which takes long; the copy is small. Started after the
-// menu has closed – Safari ignores print() while a menu holds the page.
+// Printing (and "Save as PDF"): the page content alone, as a lean copy –
+// Safari lays out the whole app before showing its print dialog, which takes
+// long. Started after the menu has closed – Safari ignores print() while a
+// menu holds the page.
 function printPage() {
   setTimeout(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     const source = document.querySelector<HTMLElement>(".page-content");
     if (!source) return window.print();
     document.querySelector("iframe.print-frame")?.remove();
+    document.querySelector(".print-copy")?.remove();
+    // iPhone and iPad print the page itself, not a frame, and only while the
+    // tap still counts: the copy goes into the page, printed right away.
+    if (isIOS()) {
+      const holder = document.createElement("div");
+      holder.className = "print-copy";
+      holder.setAttribute("aria-hidden", "true");
+      holder.append(leanCopy(source, document));
+      document.body.append(holder);
+      document.documentElement.classList.add("printing-copy");
+      const done = () => {
+        document.documentElement.classList.remove("printing-copy");
+        holder.remove();
+      };
+      window.addEventListener("afterprint", done, { once: true });
+      window.print();
+      return;
+    }
+    // Elsewhere in a hidden frame with the app's styles.
     const frame = document.createElement("iframe");
     frame.className = "print-frame";
     frame.setAttribute("aria-hidden", "true");
@@ -188,31 +207,7 @@ function printPage() {
       `<!doctype html><html lang="${document.documentElement.lang}" data-theme="light"><head><meta charset="utf-8"><base href="${location.origin}/"><title>${document.title.replace(/</g, "&lt;")}</title>${styles}</head><body class="print-view"></body></html>`,
     );
     doc.close();
-    const copy = source.cloneNode(true) as HTMLElement;
-    // Drawings on a canvas do not survive copying: as pictures instead.
-    const canvases = source.querySelectorAll("canvas");
-    copy.querySelectorAll("canvas").forEach((canvas, i) => {
-      try {
-        const img = doc.createElement("img");
-        img.src = canvases[i].toDataURL("image/png");
-        img.style.width = `${canvases[i].clientWidth}px`;
-        img.style.maxWidth = "100%";
-        canvas.replaceWith(img);
-      } catch {}
-    });
-    // Typed values (the title, fields) are not part of a copy: as text instead.
-    const fields = source.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea");
-    copy.querySelectorAll<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea").forEach((field, i) => {
-      const text = document.createElement("div");
-      text.className = field.className;
-      text.textContent = fields[i]?.value ?? "";
-      text.style.whiteSpace = "pre-wrap";
-      field.replaceWith(text);
-    });
-    copy.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]").forEach((box, i) => {
-      if ((source.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]")[i] || box).checked) box.setAttribute("checked", "");
-    });
-    doc.body.append(doc.importNode(copy, true));
+    doc.body.append(doc.importNode(leanCopy(source, doc), true));
     const ready = async () => {
       const images = [...doc.images].map((img) => (img.complete ? null : new Promise((done) => ((img.onload = img.onerror = done)))));
       await Promise.race([Promise.all([...images, doc.fonts?.ready]), new Promise((done) => setTimeout(done, 3000))]);
@@ -223,6 +218,40 @@ function printPage() {
     if (doc.readyState === "complete") void ready();
     else frame.addEventListener("load", () => void ready(), { once: true });
   }, 120);
+}
+// Also iPads that present themselves as a Mac.
+const isIOS = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+// A copy of the page content that prints like the original.
+function leanCopy(source: HTMLElement, doc: Document) {
+  const copy = source.cloneNode(true) as HTMLElement;
+  // Drawings on a canvas do not survive copying: as pictures instead.
+  const canvases = source.querySelectorAll("canvas");
+  copy.querySelectorAll("canvas").forEach((canvas, i) => {
+    try {
+      const img = doc.createElement("img");
+      img.src = canvases[i].toDataURL("image/png");
+      img.style.width = `${canvases[i].clientWidth}px`;
+      img.style.maxWidth = "100%";
+      canvas.replaceWith(img);
+    } catch {}
+  });
+  // Typed values (the title, fields) are not part of a copy: as text instead.
+  const fields = source.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea");
+  copy.querySelectorAll<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea").forEach((field, i) => {
+    const text = document.createElement("div");
+    text.className = field.className;
+    text.textContent = fields[i]?.value ?? "";
+    text.style.whiteSpace = "pre-wrap";
+    field.replaceWith(text);
+  });
+  copy.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]").forEach((box, i) => {
+    if ((source.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]")[i] || box).checked) box.setAttribute("checked", "");
+  });
+  // No second element with the same id, no editing in the copy.
+  copy.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  copy.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
+  return copy;
 }
 const DocumentEditor = dynamic(() => import("./editor"), {
   ssr: false,
