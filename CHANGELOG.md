@@ -2,6 +2,18 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.3.4 – 2026-10-14
+
+- No reload loop when the language cookie disagrees with the profile ([a9542bd](https://github.com/yannicschuller/flowplan/commit/a9542bd9110c237c2147640b44488b0949d2914c))
+- Coolify deploy webhook is called with POST ([d80c65e](https://github.com/yannicschuller/flowplan/commit/d80c65e351e0b1e4de5f30fa2a1190dbc6705841))
+- Coolify deploy step shows Coolify's answer when it refuses ([0b17875](https://github.com/yannicschuller/flowplan/commit/0b17875e7f247e28ed80bfa47e10990d08ab4427))
+- Administration announces a newer Flowplan release ([18ebeac](https://github.com/yannicschuller/flowplan/commit/18ebeacc31c7f309cc34063652e6440f58a1b87b))
+- Sprint burndown counts days in UTC, independent of server time zone ([d2b97fc](https://github.com/yannicschuller/flowplan/commit/d2b97fc6dcfaeb9c20778bfb448cf3acc99b8533))
+- French interface and language catalogues for further translations ([69060d9](https://github.com/yannicschuller/flowplan/commit/69060d94b61b309e766730cb06d0e1ce2d28b31f))
+- Every beta image rolls out on Coolify automatically ([ecc9f95](https://github.com/yannicschuller/flowplan/commit/ecc9f95efdd97a767820de9163f9aa4788e4dbfe))
+- Print / PDF opens quickly on iPhone and iPad ([ed5d57f](https://github.com/yannicschuller/flowplan/commit/ed5d57f6961e2b139d5bbc302c7668c89c62f007))
+- French text recognition for scanned PDFs and images ([7ed63c6](https://github.com/yannicschuller/flowplan/commit/7ed63c63525b96c5212e6ec64ae05369e3c18256))
+
 ## v0.3.3 – 2026-10-14
 
 - Desktop app signs in with passkeys and SSO through the browser ([0eececd](https://github.com/yannicschuller/flowplan/commit/0eececd08a2ddcc5a34bd96aa900ad8655941610))
