@@ -5633,6 +5633,13 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   background: var(--hover);
   color: var(--text);
 }
+/* While the list is open it has its own close button; the toggle would only
+   peek out behind it. On phones the toggle sits below the list and stays. */
+@media (min-width: 901px) {
+  .editor-wrapper.with-outline .outline-toggle {
+    visibility: hidden;
+  }
+}
 /* Between phone and wide screen the text makes room for the open list. */
 @media (min-width: 901px) and (max-width: 1439px) {
   .editor-wrapper.with-outline {

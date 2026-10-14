@@ -165,12 +165,63 @@ const EmojiPicker = dynamic(() => import("./emoji-picker"), {
   ssr: false,
   loading: () => <Loading what="emoji" />,
 });
-// Printing (and "Save as PDF") after the menu has closed: Safari ignores
-// window.print() while a menu still holds the focus and blocks the page.
+// Printing (and "Save as PDF"): the page content alone, copied into a hidden
+// frame with the app's styles. Safari lays out the whole app before showing
+// its print dialog, which takes long; the copy is small. Started after the
+// menu has closed – Safari ignores print() while a menu holds the page.
 function printPage() {
   setTimeout(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
-    window.print();
+    const source = document.querySelector<HTMLElement>(".page-content");
+    if (!source) return window.print();
+    document.querySelector("iframe.print-frame")?.remove();
+    const frame = document.createElement("iframe");
+    frame.className = "print-frame";
+    frame.setAttribute("aria-hidden", "true");
+    frame.tabIndex = -1;
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+    document.body.append(frame);
+    const doc = frame.contentDocument!;
+    const styles = [...document.head.querySelectorAll('link[rel="stylesheet"], style')].map((el) => el.outerHTML).join("");
+    doc.open();
+    doc.write(
+      `<!doctype html><html lang="${document.documentElement.lang}" data-theme="light"><head><meta charset="utf-8"><base href="${location.origin}/"><title>${document.title.replace(/</g, "&lt;")}</title>${styles}</head><body class="print-view"></body></html>`,
+    );
+    doc.close();
+    const copy = source.cloneNode(true) as HTMLElement;
+    // Drawings on a canvas do not survive copying: as pictures instead.
+    const canvases = source.querySelectorAll("canvas");
+    copy.querySelectorAll("canvas").forEach((canvas, i) => {
+      try {
+        const img = doc.createElement("img");
+        img.src = canvases[i].toDataURL("image/png");
+        img.style.width = `${canvases[i].clientWidth}px`;
+        img.style.maxWidth = "100%";
+        canvas.replaceWith(img);
+      } catch {}
+    });
+    // Typed values (the title, fields) are not part of a copy: as text instead.
+    const fields = source.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea");
+    copy.querySelectorAll<HTMLElement>("input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea").forEach((field, i) => {
+      const text = document.createElement("div");
+      text.className = field.className;
+      text.textContent = fields[i]?.value ?? "";
+      text.style.whiteSpace = "pre-wrap";
+      field.replaceWith(text);
+    });
+    copy.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]").forEach((box, i) => {
+      if ((source.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]")[i] || box).checked) box.setAttribute("checked", "");
+    });
+    doc.body.append(doc.importNode(copy, true));
+    const ready = async () => {
+      const images = [...doc.images].map((img) => (img.complete ? null : new Promise((done) => ((img.onload = img.onerror = done)))));
+      await Promise.race([Promise.all([...images, doc.fonts?.ready]), new Promise((done) => setTimeout(done, 3000))]);
+      frame.contentWindow!.focus();
+      frame.contentWindow!.print();
+    };
+    // Styles from <link> load in the frame first.
+    if (doc.readyState === "complete") void ready();
+    else frame.addEventListener("load", () => void ready(), { once: true });
   }, 120);
 }
 const DocumentEditor = dynamic(() => import("./editor"), {
