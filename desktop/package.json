@@ -2,17 +2,18 @@
   "name": "flowplan-desktop",
   "productName": "Flowplan",
   "version": "1.0.0",
-  "description": "Flowplan als Desktop-App für macOS und Windows",
+  "description": "Flowplan als Desktop-App für macOS, Windows und Linux",
   "main": "main.js",
   "private": true,
   "author": "Flowplan",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "start": "electron .",
     "check": "node --check main.js && node --check preload.js",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "dist:dir": "electron-builder --dir"
+    "dist:dir": "electron-builder --dir",
+    "dist:linux": "electron-builder --linux"
   },
   "devDependencies": {
     "electron": "^38.2.0",
@@ -51,7 +52,8 @@
           ]
         }
       ],
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "artifactName": "Flowplan-${version}-mac-${arch}.${ext}"
     },
     "dmg": {
       "title": "Flowplan"
@@ -72,13 +74,38 @@
             "arm64"
           ]
         }
-      ]
+      ],
+      "artifactName": "Flowplan-${version}-windows-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Flowplan"
+      "shortcutName": "Flowplan",
+      "artifactName": "Flowplan-${version}-windows-${arch}-setup.${ext}"
+    },
+    "linux": {
+      "category": "Office",
+      "executableName": "flowplan",
+      "synopsis": "Dokumente, Datenbanken, Whiteboards und ein Journal",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "Flowplan-${version}-linux-${arch}.${ext}"
     }
-  }
+  },
+  "homepage": "https://flowplan.org"
 }

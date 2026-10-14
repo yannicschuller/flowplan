@@ -68,7 +68,7 @@ Table, board, calendar, timeline, gallery, list, feed, chart, form and sprint vi
 
 ## Together, everywhere
 
-Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Pages can be published, shared with guests for reading, commenting or editing, or turned into forms for anonymous answers. Flowplan installs as an app, works offline, and a desktop app (Electron) can be built from `desktop/`.
+Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Pages can be published, shared with guests for reading, commenting or editing, or turned into forms for anonymous answers. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux come with every [release](https://github.com/yannicschuller/flowplan/releases).
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="The board on a phone" width="32%">

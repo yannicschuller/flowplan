@@ -68,7 +68,7 @@ Tabelle, Board, Kalender, Zeitleiste, Galerie, Liste, Feed, Diagramm, Formular u
 
 ## Gemeinsam, überall
 
-Live-Bearbeitung mit Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, Posteingang, E-Mail-Zusammenfassungen und Web Push. Seiten lassen sich veröffentlichen, mit Gästen zum Lesen, Kommentieren oder Bearbeiten teilen oder als Formular für anonyme Antworten nutzen. Flowplan lässt sich als App installieren, funktioniert offline, und eine Desktop-App (Electron) entsteht aus `desktop/`.
+Live-Bearbeitung mit Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, Posteingang, E-Mail-Zusammenfassungen und Web Push. Seiten lassen sich veröffentlichen, mit Gästen zum Lesen, Kommentieren oder Bearbeiten teilen oder als Formular für anonyme Antworten nutzen. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux liegen jedem [Release](https://github.com/yannicschuller/flowplan/releases) bei.
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="Das Board auf dem Handy" width="32%">

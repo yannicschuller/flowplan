@@ -1,4 +1,4 @@
-# Flowplan Desktop (macOS und Windows)
+# Flowplan Desktop (macOS, Windows und Linux)
 
 Eine schlanke Electron-Hülle um eine Flowplan-Instanz – wie die
 Desktop-Apps von Notion oder Slack. Alle Daten bleiben auf dem Server; die
@@ -26,13 +26,17 @@ lokale Tests auch `http://localhost:3000`). Ändern: Menü „Server wechseln �
 Vorgeben lässt sich die Adresse mit `--server=<URL>` oder `FLOWPLAN_SERVER`.
 
 Mehr dazu in der Dokumentation:
-[Betrieb und Fehlersuche → Desktop-App bauen](https://docs.flowplan.org/operations#desktop-app-bauen).
+[Betrieb und Fehlersuche → Desktop-Apps](https://docs.flowplan.org/operations#desktop-apps).
 
 ## Bauen
+
+Bei jedem Release baut GitHub Actions die Apps für macOS, Windows und Linux
+und hängt sie an das Release (`.github/workflows/release.yml`). Von Hand:
 
 ```bash
 npm run dist:mac   # DMG und ZIP für Apple Silicon und Intel (nur auf macOS)
 npm run dist:win   # Installer (NSIS) und ZIP für Windows x64/arm64
+npm run dist:linux # AppImage und tar.gz für Linux x64/arm64
 ```
 
 Die Ergebnisse liegen in `desktop/dist`. Ohne Zertifikate bleiben die Apps

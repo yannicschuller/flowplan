@@ -64,3 +64,66 @@ jobs:
     with:
       version: ${{ needs.release.outputs.version }}
     secrets: inherit
+
+  # The desktop apps (desktop/, Electron) for macOS, Windows and Linux, attached
+  # to the release. macOS and Windows apps need those systems, so these jobs
+  # run on GitHub's runners. Without certificates the apps are unsigned; with
+  # the secrets CSC_LINK/CSC_KEY_PASSWORD (macOS, plus APPLE_ID,
+  # APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID for notarization) and
+  # WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD (Windows) they are signed.
+  desktop:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac
+          - os: windows-latest
+            target: --win
+          - os: ubuntu-latest
+            target: --linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.release.outputs.version }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install
+        working-directory: desktop
+        run: npm ci
+      - name: Version of the release
+        working-directory: desktop
+        shell: bash
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - name: Build
+        working-directory: desktop
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Without a certificate: build unsigned instead of searching for one.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' && 'true' || 'false' }}
+        run: npx electron-builder ${{ matrix.target }} --publish never
+      - name: Attach to the release
+        working-directory: desktop
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.zip dist/*.exe dist/*.AppImage dist/*.tar.gz)
+          gh release upload "v$VERSION" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
