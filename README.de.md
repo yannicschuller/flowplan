@@ -103,6 +103,8 @@ ghcr.io/yannicschuller/flowplan:1.2.3      # eine feste Version (auch :1.2 und :
 ghcr.io/yannicschuller/flowplan:beta       # der aktuelle Entwicklungsstand, nicht für den Betrieb
 ```
 
+Jedes `:beta`-Image (jeder Push auf einen Branch) lässt sich automatisch auf Coolify ausrollen: die Repository-Secrets `COOLIFY_WEBHOOK` (Deploy-Webhook der Ressource) und `COOLIFY_TOKEN` (API-Token mit Deploy-Recht) setzen und in Coolify das `:beta`-Image verwenden. Siehe [Coolify und Reverse Proxy](https://docs.flowplan.org/coolify-and-proxy).
+
 Alle Daten liegen im Volume unter `/app/data`. Betreibe **genau einen** Container pro Datenverzeichnis (SQLite). Optionaler S3-Speicher spiegelt Uploads und sichert die Datenbank laufend.
 
 Mehr in der Dokumentation:

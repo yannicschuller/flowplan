@@ -5,7 +5,8 @@
 #   ghcr.io/yannicschuller/flowplan:sha-abc1234    every build
 # For linux/amd64 and linux/arm64. Pull requests only build (no push);
 # Dependabot branches get no beta image. Releases come from release.yml,
-# which calls this workflow with the version.
+# which calls this workflow with the version. Every :beta image is rolled out
+# on Coolify (COOLIFY_WEBHOOK, COOLIFY_TOKEN; see README).
 name: Docker image
 
 on:
@@ -87,3 +88,14 @@ jobs:
             type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
             type=gha
           cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}:buildcache,mode=max', github.repository) || 'type=gha,mode=max' }}
+      # Rolls out every new :beta image on Coolify (every push to a branch;
+      # releases only publish :latest). Without the secrets (forks, other
+      # instances) the step does nothing.
+      - name: Deploy on Coolify
+        if: github.event_name != 'pull_request' && steps.release.outputs.version == ''
+        env:
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "$COOLIFY_WEBHOOK" ] || [ -z "$COOLIFY_TOKEN" ]; then echo "No Coolify secrets: nothing to deploy."; exit 0; fi
+          curl -fsS --retry 3 --max-time 60 -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
