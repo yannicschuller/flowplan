@@ -1,4 +1,5 @@
-import { serverT } from "@/lib/i18n-server";
+import { requestLocale, serverT } from "@/lib/i18n-server";
+import { localeTag } from "@/lib/i18n";
 import { imageFileId } from "@/lib/page-appearance";
 import { ReadOnlyDocument } from "./read-only-document";
 import { WhiteboardStatic } from "./whiteboard/render";
@@ -133,9 +134,10 @@ export async function PublishedPage({
           root.id,
         )
       : undefined;
+  const tag = localeTag(await requestLocale());
   const date = (value: string | null | undefined) =>
     value
-      ? new Date(value.replace(" ", "T") + "Z").toLocaleDateString(t("de-DE", "en-GB"), {
+      ? new Date(value.replace(" ", "T") + "Z").toLocaleDateString(tag, {
           day: "numeric",
           month: "long",
           year: "numeric",

@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
 import { Copy, EnvelopeSimple } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -42,7 +43,7 @@ export default function TicketThread({
   }, [load]);
   if (!thread?.ticket) return null;
   const date = (at: number) =>
-    new Date(at).toLocaleString(t("de-DE", "en-GB"), { dateStyle: "medium", timeStyle: "short" });
+    new Date(at).toLocaleString(LOCALE_TAG, { dateStyle: "medium", timeStyle: "short" });
   return (
     <section className="settings-section ticket-thread" aria-label={t("Kundenanfrage", "Customer request")}>
       <h3>{t("Kundenanfrage", "Customer request")}</h3>

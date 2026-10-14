@@ -3,6 +3,7 @@
 // visit (components of the page header and above the content).
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useLocale, useT } from "./i18n";
+import { translate, type Locale } from "@/lib/i18n";
 import { useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { Bell, CheckCircle, Eye, X } from "@phosphor-icons/react";
@@ -23,8 +24,8 @@ export type SinceVisit = {
   changes: TextChange[] | null;
   rows: number;
 };
-export function ago(ms: number, now = Date.now(), locale: "de" | "en" = "de") {
-  const t = (de: string, en: string) => (locale === "de" ? de : en);
+export function ago(ms: number, now = Date.now(), locale: Locale = "de") {
+  const t = translate(locale);
   const minutes = Math.round((now - ms) / 60_000);
   if (minutes < 1) return t("gerade eben", "just now");
   if (minutes < 60) return t(`vor ${minutes} Min.`, `${minutes} min ago`);

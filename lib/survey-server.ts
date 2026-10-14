@@ -2,6 +2,7 @@
 // properties (new ones are created, renamed ones keep their answers; a
 // changed answer type gets a new property so earlier answers stay), and the
 // form settings follow the survey (order, required, hidden, hints).
+import { translate, type Locale } from "./i18n";
 import { z } from "zod";
 import { id, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -117,14 +118,15 @@ function unique(name: string, fields: Field[]) {
 
 // A starter survey for the "Survey" template: recommendation (NPS), what
 // people use, and an open question for low scores.
-export function starterSurvey(pageId: string, de: boolean) {
+export function starterSurvey(pageId: string, locale: Locale) {
+  const say = translate(locale);
   const version = one<{ version: number }>("SELECT version FROM databases WHERE page_id=?", pageId)!.version;
-  const nps = newQuestion("nps", de),
-    use = newQuestion("multiple", de),
-    why = newQuestion("long", de);
-  use.title = de ? "Was nutzt du am meisten?" : "What do you use most?";
-  use.options = de ? ["Dokumente", "Datenbanken", "Whiteboards", "Journal"] : ["Documents", "Databases", "Whiteboards", "Journal"];
-  why.title = de ? "Was sollten wir besser machen?" : "What should we improve?";
+  const nps = newQuestion("nps", locale),
+    use = newQuestion("multiple", locale),
+    why = newQuestion("long", locale);
+  use.title = say("Was nutzt du am meisten?", "What do you use most?");
+  use.options = [say("Dokumente", "Documents"), say("Datenbanken", "Databases"), say("Whiteboards", "Whiteboards"), say("Journal", "Journal")];
+  why.title = say("Was sollten wir besser machen?", "What should we improve?");
   nps.question.required = true;
   why.question.showIf = { field: nps.question.field, op: "lte", value: "6" };
   return saveSurvey(
@@ -133,7 +135,7 @@ export function starterSurvey(pageId: string, de: boolean) {
       version,
       survey: { enabled: true, items: [nps.question, use.question, why.question], welcome: { enabled: true, title: "", text: "", button: "" } },
       questions: Object.fromEntries([nps, use, why].map((q) => [q.question.id, { title: q.title, options: q.options }])),
-      form: { submitLabel: de ? "Absenden" : "Submit", successTitle: de ? "Danke für deine Antwort!" : "Thanks for your answer!" },
+      form: { submitLabel: say("Absenden", "Submit"), successTitle: say("Danke für deine Antwort!", "Thanks for your answer!") },
     },
   );
 }

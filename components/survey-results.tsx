@@ -1,5 +1,6 @@
 "use client";
 import { useT, useLocale } from "./i18n";
+import { localeTag } from "@/lib/i18n";
 import { surveyResults, type Bar, type QuestionResult } from "@/lib/survey-results";
 import type { Survey } from "@/lib/survey";
 import type { Field, Row } from "@/lib/types";
@@ -10,7 +11,7 @@ import type { Field, Row } from "@/lib/types";
 export function SurveyResults({ survey, fields, rows }: { survey: Survey; fields: Field[]; rows: Row[] }) {
   const t = useT();
   const locale = useLocale();
-  const tag = locale === "de" ? "de-DE" : "en-GB";
+  const tag = localeTag(locale);
   const data = surveyResults(survey, fields, rows);
   const pct = (share: number) => `${Math.round(share * 100)} %`;
   const num = (n: number | null) => (n === null ? "–" : n.toLocaleString(tag));

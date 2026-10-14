@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BookmarkSimple, X } from "@phosphor-icons/react";
 import { useT, useLocale } from "./i18n";
+import { localeTag } from "@/lib/i18n";
 import { Select } from "./select";
 import { api, PageIcon } from "./ui";
 import type { CrossFilter } from "@/lib/cross-records";
@@ -43,7 +44,7 @@ export function MyRecords({
     setFilter({ ...filter, ...patch });
   };
   const today = new Date().toISOString().slice(0, 10);
-  const date = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(locale === "de" ? "de-DE" : "en-GB", { day: "2-digit", month: "short" });
+  const date = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(localeTag(locale), { day: "2-digit", month: "short" });
   return (
     <div className="my-records">
       {result && (

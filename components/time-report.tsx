@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { DownloadSimple } from "@phosphor-icons/react";
 import Papa from "papaparse";
 import { useT, useLocale } from "./i18n";
+import { localeTag } from "@/lib/i18n";
 import { Select } from "./select";
 import { api, download } from "./ui";
 import { formatDuration, hours } from "@/lib/durations";
@@ -25,7 +26,7 @@ export function TimeReport({ pageId, title }: { pageId: string; title: string })
       .catch(() => setReport(null));
   }, [pageId, weeks]);
   const label = (week: string) =>
-    new Date(`${week}T12:00:00`).toLocaleDateString(locale === "de" ? "de-DE" : "en-GB", { day: "2-digit", month: "2-digit" });
+    new Date(`${week}T12:00:00`).toLocaleDateString(localeTag(locale), { day: "2-digit", month: "2-digit" });
   if (!report) return <p className="muted">{t("Wird geladen …", "Loading …")}</p>;
   const exportCsv = () =>
     download(
@@ -72,10 +73,10 @@ export function TimeReport({ pageId, title }: { pageId: string; title: string })
                   <tr key={p.name}>
                     <th scope="row">{p.name}</th>
                     {report.weeks.map((w) => (
-                      <td key={w}>{p.weeks[w] ? hours(p.weeks[w]).toLocaleString(locale === "de" ? "de-DE" : "en-GB") : "–"}</td>
+                      <td key={w}>{p.weeks[w] ? hours(p.weeks[w]).toLocaleString(localeTag(locale)) : "–"}</td>
                     ))}
                     <td>
-                      <strong>{hours(p.total).toLocaleString(locale === "de" ? "de-DE" : "en-GB")}</strong>
+                      <strong>{hours(p.total).toLocaleString(localeTag(locale))}</strong>
                     </td>
                   </tr>
                 ))}

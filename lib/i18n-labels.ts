@@ -2,7 +2,7 @@
 // chart options, formats …). The tables stay German because server code and
 // tests use them; the client translates them where they are shown.
 import { currencies } from "./field-format";
-import type { Locale } from "./i18n";
+import { translate, type Locale } from "./i18n";
 
 const labels: Record<string, string> = {
   // relative dates
@@ -139,15 +139,15 @@ const labels: Record<string, string> = {
 const currencyNames = new Map(
   Object.values(currencies).map(([name, code]) => [`${name} (${code})`, code]),
 );
-let displayNames: Intl.DisplayNames | undefined;
+const displayNames: Partial<Record<Locale, Intl.DisplayNames>> = {};
 
 export function translateLabel(text: string, locale: Locale) {
   if (locale === "de") return text;
-  if (labels[text]) return labels[text];
+  if (labels[text]) return translate(locale)(text, labels[text]);
   const code = currencyNames.get(text);
   if (code) {
-    displayNames ??= new Intl.DisplayNames(["en"], { type: "currency" });
-    return `${displayNames.of(code) || code} (${code})`;
+    const names = (displayNames[locale] ??= new Intl.DisplayNames([locale], { type: "currency" }));
+    return `${names.of(code) || code} (${code})`;
   }
   return text;
 }

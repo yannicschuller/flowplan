@@ -1,4 +1,5 @@
 "use client";
+import { translate, type Locale } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -62,7 +63,7 @@ export const typeInfo: Record<SurveyType, { icon: typeof TextT; de: string; en: 
 };
 
 // A survey made from an existing form: its questions as survey questions.
-export function surveyFromForm(fields: Field[], config: FormConfig, de: boolean): { survey: Survey; texts: Texts } {
+export function surveyFromForm(fields: Field[], config: FormConfig, de: Locale): { survey: Survey; texts: Texts } {
   if (config.survey?.items.length) {
     const texts: Texts = {};
     for (const item of config.survey.items)
@@ -126,7 +127,7 @@ export function SurveyBuilder({
   act: (b: Record<string, unknown>) => Promise<unknown>;
 }) {
   const t = useT();
-  const de = useLocale() === "de";
+  const de = useLocale();
   const config = form?.config;
   const initial = useMemo(() => surveyFromForm(fields, config || ({ fieldOrder: [], hiddenFields: [], requiredFields: [], descriptions: {}, questionStyles: {} } as unknown as FormConfig), de), [fields, config, de]);
   const [survey, setSurvey] = useState<Survey>({ ...initial.survey, enabled: true });
@@ -392,15 +393,15 @@ export function SurveyBuilder({
                   )}
                 </div>
                 {typeGroups.map((group) => (
-                  <section key={group.en} aria-label={de ? group.de : group.en}>
-                    <h4>{de ? group.de : group.en}</h4>
+                  <section key={group.en} aria-label={translate(de)(group.de, group.en)}>
+                    <h4>{translate(de)(group.de, group.en)}</h4>
                     <div className="survey-type-grid" role="group">
                       {group.types.map((type) => {
                         const Icon = typeInfo[type].icon;
                         return (
                           <button key={type} type="button" onClick={() => add(type)}>
                             <Icon aria-hidden />
-                            {de ? typeInfo[type].de : typeInfo[type].en}
+                            {translate(de)(typeInfo[type].de, typeInfo[type].en)}
                           </button>
                         );
                       })}
@@ -444,7 +445,7 @@ export function SurveyBuilder({
                     const Icon = typeInfo[item.type].icon;
                     return <Icon aria-hidden />;
                   })()}
-                  {t(`Frage ${items.filter(isQuestion).indexOf(item) + 1}`, `Question ${items.filter(isQuestion).indexOf(item) + 1}`)} · {de ? typeInfo[item.type].de : typeInfo[item.type].en}
+                  {t(`Frage ${items.filter(isQuestion).indexOf(item) + 1}`, `Question ${items.filter(isQuestion).indexOf(item) + 1}`)} · {translate(de)(typeInfo[item.type].de, typeInfo[item.type].en)}
                 </p>
                 <QuestionEditor
                   q={item}
@@ -643,7 +644,7 @@ function QuestionEditor({
   onText: (patch: Partial<{ title: string; options: string[] }>) => void;
 }) {
   const t = useT();
-  const de = useLocale() === "de";
+  const de = useLocale();
   const options = text.options || [];
   const num = (v: string) => (v === "" ? undefined : Number(v));
   return (
@@ -681,7 +682,7 @@ function QuestionEditor({
           >
             {(Object.keys(typeInfo) as SurveyType[]).map((type) => (
               <option key={type} value={type}>
-                {de ? typeInfo[type].de : typeInfo[type].en}
+                {translate(de)(typeInfo[type].de, typeInfo[type].en)}
               </option>
             ))}
           </Select>

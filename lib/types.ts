@@ -1,3 +1,4 @@
+import type { Locale } from "./i18n";
 export type Role = "owner" | "editor" | "viewer";
 export type PageKind = "document" | "database" | "whiteboard" | "journal";
 export type User = {
@@ -238,7 +239,7 @@ export type Bootstrap = {
   notificationPrefs?: import("./notification-kinds").NotificationPrefs;
   myLimits?: { storageMb: number; workspaces: number; uploadMb: number; usedBytes: number; ownedWorkspaces: number } | null;
   // The language chosen in the profile (null = from the browser).
-  language?: "de" | "en" | null;
+  language?: Locale | null;
   instance?: {
     name: string;
     announcement: string;

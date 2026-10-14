@@ -25,7 +25,7 @@ const act = (body: Record<string, unknown>): any => command(owner, body);
 const pageId = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Feedback" }).id as string;
 
 // A survey as the builder sends it.
-const q = (type: Parameters<typeof newQuestion>[0]) => newQuestion(type, true);
+const q = (type: Parameters<typeof newQuestion>[0]) => newQuestion(type, "de");
 const nps = q("nps"),
   choice = q("single"),
   reason = q("long"),

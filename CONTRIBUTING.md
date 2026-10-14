@@ -25,7 +25,11 @@ Node.js 22.13 or newer. Without OIDC settings the development server offers a lo
 - Add or update tests: core logic in `tests/*.test.ts`, user-facing behaviour in `tests/browser/*.spec.ts` (desktop and mobile).
 - Run `npm run typecheck`, `npm test` and, for UI changes, the relevant browser tests. Never point tests at a data directory you care about – browser tests need a server with its own `FLOWPLAN_DATA_DIR`.
 - Update the documentation ([flowplan-docs](https://github.com/yannicschuller/flowplan-docs)) when behaviour changes.
-- The user interface is German and English; add both texts for new UI strings.
+- New UI strings are written in German and English side by side (`t("Anmelden", "Sign in")`). Run `npm run i18n` afterwards: it adds them to the catalogues in `locales/`, where further languages (French so far) translate the English text; missing translations show in English.
+
+## Translations
+
+Every language beyond German and English is a JSON catalogue in `locales/`, keyed by the English text. To add one, run `npm run i18n -- --add it`, translate `locales/it.json` (by hand or with any tool that reads JSON key-value files, using `locales/en.json` as the source) and register the language in `lib/i18n.ts` and `lib/i18n-catalogs.ts`. Keep placeholders like `{0}` and HTML tags unchanged; `npm run i18n -- --check` reports progress and broken placeholders. Details: [Languages and translations](https://docs.flowplan.org/languages).
 
 By contributing you agree that your contributions are licensed under the [AGPL-3.0](LICENSE).
 

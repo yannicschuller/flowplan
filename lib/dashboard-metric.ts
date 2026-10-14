@@ -11,6 +11,7 @@ import { queryRows } from "./database";
 import { relatedData } from "./related-data";
 import { formatNumber } from "./field-format";
 import { contentLocale } from "./content-locale";
+import { localeTag } from "./i18n";
 import type { Field, Identity, Row, View } from "./types";
 
 export const metricSchema = z.object({
@@ -65,7 +66,7 @@ export function computeMetric(user: Identity, query: MetricQuery) {
       ? "–"
       : query.aggregate !== "count" && field?.type === "number"
         ? formatNumber(value, field.format, field.decimals)
-        : value.toLocaleString(contentLocale() === "de" ? "de-DE" : "en-GB", { maximumFractionDigits: 2 });
+        : value.toLocaleString(localeTag(contentLocale()), { maximumFractionDigits: 2 });
   return {
     value,
     formatted,

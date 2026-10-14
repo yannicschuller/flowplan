@@ -481,6 +481,7 @@ const groups: [string, [string, string, string, string, number, number][]][] = [
 ];
 
 // English names, descriptions and examples (the browser shows them for English readers).
+// i18n-table: 0 1 2 – English signature, description and example
 const english: Record<string, [string, string, string?]> = {
   abs: ["abs(number)", "Absolute value."],
   sign: ["sign(number)", "Returns -1, 0 or 1."],
@@ -541,6 +542,7 @@ const english: Record<string, [string, string, string?]> = {
   timestamp: ["timestamp(date)", "Milliseconds since the Unix epoch; a date without a time becomes UTC midnight."],
   fromTimestamp: ["fromTimestamp(milliseconds)", "Converts Unix milliseconds to a UTC point in time."],
 };
+// i18n-table: values – German name → English name
 const categories: Record<string, string> = {
   "Logik und Eigenschaften": "Logic and properties",
   "Zahlen": "Numbers",

@@ -6,7 +6,7 @@
 // only parses; the algebra is our own, so the output reads like a school
 // notebook ("a² + 2ab + b²", not "a ^ 2 + a * b + b * a + b ^ 2").
 import { evaluate, fraction, parse, type Fraction, type MathNode } from "mathjs";
-import type { Locale } from "./i18n";
+import { decimalComma, localeTag, translate, type Locale } from "./i18n";
 
 export type MathActionKind = "result" | "decimal" | "reduce" | "expand" | "factor" | "solve" | "vector";
 export type MathAction = {
@@ -55,9 +55,10 @@ export function normalize(text: string, locale: Locale, loose = false): { expr: 
     .replace(/√\s*\(/g, "sqrt(")
     .replace(/√\s*([0-9a-zA-Z.,]+)/g, "sqrt($1)")
     .replace(/(\d)\s*%/g, "$1/100");
-  // Numbers: German "2.400,5" or English "2,400.5".
-  if (locale === "de")
-    s = s.replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+/g, (n) => n.replace(/\./g, "").replace(",", "."));
+  // Numbers: German "2.400,5", French "2 400,5" or English "2,400.5".
+  if (decimalComma(locale))
+    s = (/\s/.test((1000).toLocaleString(localeTag(locale))) ? s.replace(/(\d)[ \u00a0\u202f](?=\d{3}\b)/g, "$1") : s)
+      .replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+/g, (n) => n.replace(/\./g, "").replace(",", "."));
   else s = s.replace(/\d{1,3}(?:,\d{3})+(?:\.\d+)?/g, (n) => n.replace(/,/g, ""));
   // Division written as ":" between operands; ln and lg as mathjs knows them.
   s = s.replace(/:/g, "/").replace(/\bln\s*\(/g, "log(").replace(/\blg\s*\(/g, "log10(");
@@ -164,7 +165,7 @@ const superscript = (n: number) => String(n).replace(/\d/g, (d) => SUPER[d]);
 
 function decimal(value: number, locale: Locale) {
   return value
-    .toLocaleString(locale === "de" ? "de-DE" : "en-GB", { maximumFractionDigits: 6, useGrouping: true })
+    .toLocaleString(localeTag(locale), { maximumFractionDigits: 6, useGrouping: true })
     .replace(/^-/, "−");
 }
 // Two ways of writing the same thing ("(a+b)^2" and "(a + b)²").
@@ -751,8 +752,8 @@ function solve(p: Poly, v: string, locale: Locale, den?: Poly): MathAction | nul
   if (c.length < 2 || c.slice(1).every((k) => k.equals(0))) return null;
   const solution = (values: string[], latex: string[]): MathAction => ({
     kind: "solve",
-    label: locale === "de" ? `Nach ${v} auflösen` : `Solve for ${v}`,
-    text: values.length ? `⇒ ${values.join(", ")}` : locale === "de" ? "⇒ keine reelle Lösung" : "⇒ no real solution",
+    label: translate(locale)(`Nach ${v} auflösen`, `Solve for ${v}`),
+    text: values.length ? `⇒ ${values.join(", ")}` : translate(locale)("⇒ keine reelle Lösung", "⇒ no real solution"),
     latex: values.length ? `\\Rightarrow ${latex.join(",\\ ")}` : "\\Rightarrow \\emptyset",
   });
   const { roots, rest } = rationalRoots(c);
@@ -772,7 +773,7 @@ function solve(p: Poly, v: string, locale: Locale, den?: Poly): MathAction | nul
       const around = center.equals(0) ? `±${root}` : `${fracText(center, locale)} ± ${root}`;
       const approx = [center.valueOf() - spread.valueOf() * Math.sqrt(Number(inside)), center.valueOf() + spread.valueOf() * Math.sqrt(Number(inside))];
       if (approx.some((x) => Math.abs(denAt(x)) < 1e-9)) return null;
-      texts.push(`${v} = ${around} (≈ ${approx.map((n) => decimal(n, locale)).join(locale === "de" ? "; " : ", ")})`);
+      texts.push(`${v} = ${around} (≈ ${approx.map((n) => decimal(n, locale)).join(decimalComma(locale) ? "; " : ", ")})`);
       latex.push(`${v} = ${center.equals(0) ? "" : fracLatex(center)} \\pm ${spread.equals(1) ? "" : fracLatex(spread)}\\sqrt{${inside}}`);
     }
   } else if (rest.length > 3 && rest.slice(1, -1).every((k) => k.equals(0))) {
@@ -824,9 +825,9 @@ function solve(p: Poly, v: string, locale: Locale, den?: Poly): MathAction | nul
   const action = solution(texts, latex);
   if (excluded.length) {
     // Only excluded values: there is no solution at all (not "no real one").
-    if (!texts.length) action.text = locale === "de" ? "⇒ keine Lösung" : "⇒ no solution";
+    if (!texts.length) action.text = translate(locale)("⇒ keine Lösung", "⇒ no solution");
     const list = excluded.map((r) => `${v} = ${fracText(r, locale)}`).join(", ");
-    action.text += locale === "de" ? ` (${list} entfällt: Nenner wäre 0)` : ` (${list} excluded: a denominator would be 0)`;
+    action.text += translate(locale)(` (${list} entfällt: Nenner wäre 0)`, ` (${list} excluded: a denominator would be 0)`);
   }
   return action;
 }
@@ -885,7 +886,7 @@ function vectorTokens(text: string, locale: Locale): { tokens: VToken[]; separat
     .replace(/²/g, "^2")
     .replace(/³/g, "^3");
   if (!s || s.length > MAX_INPUT) return null;
-  const commas = locale === "de" ? separatorCommas(s) : null;
+  const commas = decimalComma(locale) ? separatorCommas(s) : null;
   const tokens: VToken[] = [];
   let separator = "";
   for (let i = 0; i < s.length; ) {
@@ -1066,8 +1067,8 @@ export function vectorActions(text: string, locale: Locale): MathAction[] | null
     return null;
   }
   if (!parsed.sawVector) return null;
-  const de = locale === "de";
-  const sep = parsed.bar ? " | " : read.separator === "," && !de ? ", " : "; ";
+  const say = translate(locale);
+  const sep = parsed.bar ? " | " : read.separator === "," && !decimalComma(locale) ? ", " : "; ";
   const vectorText = (v: VNum[]) => `(${v.map((n) => vnumText(n, locale)).join(sep)})`;
   const vectorLatex = (v: VNum[]) => `\\begin{pmatrix}${v.map((n) => vnumLatex(n, locale)).join(" \\\\ ")}\\end{pmatrix}`;
   const { value } = parsed;
@@ -1079,7 +1080,7 @@ export function vectorActions(text: string, locale: Locale): MathAction[] | null
     const approx = size.root ? ` ≈ ${decimal(size.x, locale)}` : "";
     actions.push({
       kind: "vector",
-      label: de ? "Betrag" : "Magnitude",
+      label: say("Betrag", "Magnitude"),
       text: `⇒ |v| = ${vnumText(size, locale)}${approx}`,
       latex: `\\Rightarrow |\\vec{v}| = ${vnumLatex(size, locale)}`,
     });
@@ -1093,14 +1094,14 @@ export function vectorActions(text: string, locale: Locale): MathAction[] | null
       });
       actions.push({
         kind: "vector",
-        label: de ? "Einheitsvektor" : "Unit vector",
+        label: say("Einheitsvektor", "Unit vector"),
         text: `⇒ v⁰ = ${vectorText(unit)}`,
         latex: `\\Rightarrow \\vec{v}^{\\,0} = ${vectorLatex(unit)}`,
       });
     }
     return actions;
   }
-  const label = { dot: de ? "Skalarprodukt" : "Dot product", cross: de ? "Kreuzprodukt" : "Cross product", abs: de ? "Betrag" : "Magnitude" }[value.how.op as string] || (de ? "Ergebnis" : "Result");
+  const label = { dot: say("Skalarprodukt", "Dot product"), cross: say("Kreuzprodukt", "Cross product"), abs: say("Betrag", "Magnitude") }[value.how.op as string] || (say("Ergebnis", "Result"));
   const exact = vexact(value);
   const eq = exact ? "=" : "≈";
   const eqLatex = exact ? "=" : "\\approx";
@@ -1110,7 +1111,7 @@ export function vectorActions(text: string, locale: Locale): MathAction[] | null
     if (exact && (value.s.root || value.s.f!.d !== 1n))
       actions.push({
         kind: "decimal",
-        label: de ? "Als Dezimalzahl" : "As a decimal",
+        label: say("Als Dezimalzahl", "As a decimal"),
         text: `≈ ${decimal(value.s.x, locale)}`,
         latex: `\\approx ${decimal(value.s.x, locale).replace(",", "{,}").replace("−", "-")}`,
       });
@@ -1126,7 +1127,7 @@ export function vectorActions(text: string, locale: Locale): MathAction[] | null
       const shown = decimal(whole ? Math.round(degrees) : round, locale);
       actions.push({
         kind: "vector",
-        label: de ? "Winkel" : "Angle",
+        label: say("Winkel", "Angle"),
         text: `⇒ ∠ ${whole ? "=" : "≈"} ${shown}°`,
         latex: `\\Rightarrow \\angle ${whole ? "=" : "\\approx"} ${shown.replace(",", "{,}")}^\\circ`,
       });
@@ -1144,7 +1145,7 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
   if (vector) return vector;
   const input = normalize(text, locale);
   if (!input) return [];
-  const de = locale === "de";
+  const say = translate(locale);
   const unit = input.unit ? ` ${input.unit}` : "";
   try {
     // Equations: solve for each variable.
@@ -1168,8 +1169,8 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
         if (vars.length !== 1) return [];
         if (isConstant(both.num)) {
           // Nothing left to solve for: no solution, or every allowed value.
-          const none = !both.num.size ? null : de ? "⇒ keine Lösung" : "⇒ no solution";
-          return none ? [{ kind: "solve", label: de ? `Nach ${vars[0]} auflösen` : `Solve for ${vars[0]}`, text: none, latex: "\\Rightarrow \\emptyset" }] : [];
+          const none = !both.num.size ? null : say("⇒ keine Lösung", "⇒ no solution");
+          return none ? [{ kind: "solve", label: say(`Nach ${vars[0]} auflösen`, `Solve for ${vars[0]}`), text: none, latex: "\\Rightarrow \\emptyset" }] : [];
         }
         const s = solve(both.num, vars[0], locale, domain);
         return s ? [s] : [];
@@ -1187,7 +1188,7 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
           const a = p.get(`${v}^1`)!.coef;
           const restPoly: Poly = new Map();
           for (const t of p.values()) if (!t.mono[v]) addTo(restPoly, t.mono, t.coef.neg().div(a));
-          return { kind: "solve", label: de ? `Nach ${v} auflösen` : `Solve for ${v}`, text: `⇒ ${v} = ${polyText(restPoly, locale)}`, latex: `\\Rightarrow ${v} = ${polyLatex(restPoly)}` } as MathAction;
+          return { kind: "solve", label: say(`Nach ${v} auflösen`, `Solve for ${v}`), text: `⇒ ${v} = ${polyText(restPoly, locale)}`, latex: `\\Rightarrow ${v} = ${polyLatex(restPoly)}` } as MathAction;
         });
     }
     const node = parse(input.expr);
@@ -1199,7 +1200,7 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
         const written = rationalWriting(rational, locale);
         return sameWriting(written.text, input.expr)
           ? []
-          : [{ kind: "expand", label: de ? "Vereinfachen" : "Simplify", text: `= ${written.text}`, latex: `= ${written.latex}` }];
+          : [{ kind: "expand", label: say("Vereinfachen", "Simplify"), text: `= ${written.text}`, latex: `= ${written.latex}` }];
       }
       poly = rational.num;
     } catch (error) {
@@ -1214,12 +1215,12 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
         const resultText = fracText(value, locale);
         if (single) {
           if (resultText.replace(/\./g, "") !== input.expr.replace(/\s/g, "").replace("-", "−"))
-            actions.push({ kind: "reduce", label: de ? "Kürzen" : "Reduce", text: `= ${resultText}${unit}`, latex: `= ${fracLatex(value)}` });
-        } else actions.push({ kind: "result", label: de ? "Ergebnis" : "Result", text: `= ${resultText}${unit}`, latex: `= ${fracLatex(value)}` });
+            actions.push({ kind: "reduce", label: say("Kürzen", "Reduce"), text: `= ${resultText}${unit}`, latex: `= ${fracLatex(value)}` });
+        } else actions.push({ kind: "result", label: say("Ergebnis", "Result"), text: `= ${resultText}${unit}`, latex: `= ${fracLatex(value)}` });
         if (value.d !== 1n)
           actions.push({
             kind: "decimal",
-            label: de ? "Als Dezimalzahl" : "As a decimal",
+            label: say("Als Dezimalzahl", "As a decimal"),
             text: `≈ ${decimal(value.valueOf(), locale)}${unit}`,
             latex: `\\approx ${decimal(value.valueOf(), locale).replace(",", "{,}")}`,
           });
@@ -1231,19 +1232,19 @@ export function mathActions(text: string, locale: Locale): MathAction[] {
       if (!Number.isFinite(value)) return [];
       const exact = Number.isInteger(Math.round(value * 1e9) / 1e9) && Math.abs(value - Math.round(value)) < 1e-9;
       const shown = decimal(exact ? Math.round(value) : value, locale);
-      return [{ kind: exact ? "result" : "decimal", label: de ? "Ergebnis" : "Result", text: `${exact ? "=" : "≈"} ${shown}${unit}`, latex: `${exact ? "=" : "\\approx"} ${shown.replace(",", "{,}")}` }];
+      return [{ kind: exact ? "result" : "decimal", label: say("Ergebnis", "Result"), text: `${exact ? "=" : "≈"} ${shown}${unit}`, latex: `${exact ? "=" : "\\approx"} ${shown.replace(",", "{,}")}` }];
     }
     // Terms: expand and factor.
     const actions: MathAction[] = [];
     const expanded = polyText(poly, locale);
     if (!sameWriting(expanded, input.expr))
-      actions.push({ kind: "expand", label: de ? "Ausmultiplizieren" : "Expand", text: `= ${expanded}`, latex: `= ${polyLatex(poly)}` });
+      actions.push({ kind: "expand", label: say("Ausmultiplizieren", "Expand"), text: `= ${expanded}`, latex: `= ${polyLatex(poly)}` });
     const factored = factor(poly, locale);
     if (factored && !sameWriting(factored.text, expanded) && !sameWriting(factored.text, input.expr))
-      actions.push({ kind: "factor", label: de ? "Faktorisieren" : "Factor", text: `= ${factored.text}`, latex: `= ${factored.latex}` });
+      actions.push({ kind: "factor", label: say("Faktorisieren", "Factor"), text: `= ${factored.text}`, latex: `= ${factored.latex}` });
     const withRoots = factorWithRoots(poly, locale);
     if (withRoots)
-      actions.push({ kind: "factor", label: de ? "Faktorisieren mit Wurzeln" : "Factor with roots", text: `= ${withRoots.text}`, latex: `= ${withRoots.latex}` });
+      actions.push({ kind: "factor", label: say("Faktorisieren mit Wurzeln", "Factor with roots"), text: `= ${withRoots.text}`, latex: `= ${withRoots.latex}` });
     return actions;
   } catch {
     return [];

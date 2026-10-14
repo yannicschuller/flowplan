@@ -7,6 +7,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hash } from "./auth";
 import { one, run } from "./db";
+import type { Locale } from "./i18n";
 
 const LIFETIME_MS = 60_000;
 const challengePattern = /^[A-Za-z0-9_-]{43}$/;
@@ -55,11 +56,11 @@ const escape = (value: string) =>
 
 // A small page of its own: API answers carry no app shell.
 export function desktopPage(
-  de: boolean,
+  locale: Locale,
   { title, text, body = "", refresh }: { title: string; text: string; body?: string; refresh?: string },
 ) {
   return new Response(
-    `<!doctype html><html lang="${de ? "de" : "en"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${refresh ? `<meta http-equiv="refresh" content="0;url=${escape(refresh)}">` : ""}<title>${escape(title)}</title><style>
+    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${refresh ? `<meta http-equiv="refresh" content="0;url=${escape(refresh)}">` : ""}<title>${escape(title)}</title><style>
 :root{color-scheme:light dark;--bg:#f7f6f3;--card:#fff;--text:#1f1e1c;--muted:#6b6862;--line:#e4e1db;--accent:#2f6fec}
 @media (prefers-color-scheme:dark){:root{--bg:#191918;--card:#232321;--text:#ecebe8;--muted:#a3a09a;--line:#363532;--accent:#5b8ff5}}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}

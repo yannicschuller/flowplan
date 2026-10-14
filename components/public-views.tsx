@@ -1,4 +1,5 @@
 import { requestLocale, serverT } from "@/lib/i18n-server";
+import { localeTag } from "@/lib/i18n";
 import type { CSSProperties } from "react";
 import { Temporal } from "@/lib/date-values";
 import { weekdayLabels } from "@/lib/database-calendar";
@@ -130,7 +131,7 @@ async function MonthNav({
       <a href={link(shiftMonth(month, -1))} aria-label={t("Vorheriger Monat", "Previous month")}>
         ←
       </a>
-      <strong>{monthLabel(month, t("de-DE", "en-GB"))}</strong>
+      <strong>{monthLabel(month, localeTag(await requestLocale()))}</strong>
       <a href={link(shiftMonth(month, 1))} aria-label={t("Nächster Monat", "Next month")}>
         →
       </a>
@@ -293,12 +294,13 @@ export async function PublicChart({
     0,
     ...[...values.values()].flatMap((row) => [...row.values()].map((v) => Math.abs(v.value || 0))),
   );
+  const tag = localeTag(await requestLocale());
   const max = Math.max(0, ...points.map((p) => Math.abs(p.value || 0)));
   const colors = chartPalettes[config.palette || "default"];
   const format = (value: number | null) =>
     value === null
       ? "—"
-      : value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
+      : value.toLocaleString(tag, { maximumFractionDigits: 2 });
   const measure =
     config.aggregate === "count"
       ? chartAggregates.count

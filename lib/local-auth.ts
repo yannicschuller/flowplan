@@ -24,7 +24,7 @@ import { HttpError, acceptInvites, adminGroup, appUrl, hash } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
-import type { Locale } from "./i18n";
+import { translate, type Locale } from "./i18n";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, length: number, options: object) => Promise<Buffer>;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
@@ -59,7 +59,7 @@ const passwordSchema = (t: Tr) =>
     .min(MIN_PASSWORD, t(`Das Passwort braucht mindestens ${MIN_PASSWORD} Zeichen.`, `The password needs at least ${MIN_PASSWORD} characters.`))
     .max(200, t("Das Passwort ist zu lang.", "The password is too long."));
 type Tr = (de: string, en: string) => string;
-const tr = (locale: Locale): Tr => (de, en) => (locale === "de" ? de : en);
+const tr = (locale: Locale): Tr => translate(locale);
 
 // ---- Accounts ----
 

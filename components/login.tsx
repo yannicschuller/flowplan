@@ -340,7 +340,7 @@ export default function Login({
       </section>
       <footer>
         FLOWPLAN <span>{t("Ein Zuhause für gute Zusammenarbeit.", "A home for good collaboration.")}</span>
-        {legal && <LegalFooter links={legal} de={useLocale() === "de"} />}
+        {legal && <LegalFooter links={legal} locale={useLocale()} />}
         <LanguageSwitch className="language-switch" />
       </footer>
     </main>

@@ -198,6 +198,7 @@ export type DatabaseData = {
   role?: string;
   groups?: { id: string; name: string }[];
 };
+// i18n-table: 1 – [German, English] pairs
 const fieldNames: Record<FieldType, [string, string]> = {
   text: ["Text", "Text"],
   number: ["Zahl", "Number"],
@@ -234,6 +235,7 @@ type RowMove = {
   subgroup?: { from: string; to: string };
 };
 const rowDragType = "application/x-flowplan-row-order";
+// i18n-table: 1 – [German, English] pairs
 const viewTypeNames: Record<View["type"], [string, string]> = {
   table: ["Tabelle", "Table"],
   board: ["Board", "Board"],
@@ -246,6 +248,7 @@ const viewTypeNames: Record<View["type"], [string, string]> = {
   feed: ["Feed", "Feed"],
   sprint: ["Sprints", "Sprints"],
 };
+// i18n-table: 1 – [German, English] pairs
 const viewTypeHints: Record<View["type"], [string, string]> = {
   table: ["Zeilen und Spalten", "Rows and columns"],
   board: ["Karten in Spalten, z. B. nach Status", "Cards in columns, e.g. by status"],
@@ -1654,7 +1657,7 @@ export default function DatabaseView({
                 dateStyle: "medium",
                 timeStyle: "short",
               },
-            )}`, `Reminder on ${new Date(target.epochMilliseconds).toLocaleString("en-GB", { timeZone: reminder.timeZone, dateStyle: "medium", timeStyle: "short" })}`);
+            )}`, `Reminder on ${new Date(target.epochMilliseconds).toLocaleString(LOCALE_TAG, { timeZone: reminder.timeZone, dateStyle: "medium", timeStyle: "short" })}`);
     return (
       <label className="row-property reminder-property">
         <span>{t("Erinnerung", "Reminder")}</span>

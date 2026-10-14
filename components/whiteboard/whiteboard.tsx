@@ -184,6 +184,7 @@ type Gesture =
   | { kind: "create"; id: string; start: Point }
   | { kind: "connector"; id: string }
   | { kind: "pen"; id: string; points: Point[]; pressures: number[] | null };
+// i18n-table: 1 – [German, English] pairs
 const shapeNames: Record<ShapeKind, [string, string]> = {
   rectangle: ["Rechteck", "Rectangle"],
   rounded: ["Abgerundet", "Rounded"],

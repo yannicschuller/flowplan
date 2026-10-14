@@ -69,7 +69,7 @@ export function SurveyRunner({
   // Checks the current page only (the server checks everything).
   const check = () => {
     const part = { ...survey, items: shown[page] || [] };
-    const result = validateSurvey(part, fields, values, locale === "de");
+    const result = validateSurvey(part, fields, values, locale);
     // Files are held as File objects until sending.
     for (const item of part.items)
       if (isQuestion(item) && item.type === "file" && item.required && !(Array.isArray(values[item.field]) && (values[item.field] as unknown[]).length))

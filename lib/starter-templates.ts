@@ -25,7 +25,7 @@ export function applyStarterTemplate(pageId: string, userId: string, key: Starte
     JSON.stringify(template.views || []),
     pageId,
   );
-  if (template.survey) starterSurvey(pageId, contentLocale() === "de");
+  if (template.survey) starterSurvey(pageId, contentLocale());
   (template.rows || []).forEach((row, i) =>
     run(
       "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",

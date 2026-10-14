@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Flag, Play, CheckCircle, PencilSimple, Trash, Plus, ChartLine } from "@phosphor-icons/react";
 import { useT, useLocale } from "./i18n";
+import { localeTag } from "@/lib/i18n";
 import { Select } from "./select";
 import { Modal, api } from "./ui";
 import { cellText } from "@/lib/cell-text";
@@ -88,7 +89,7 @@ export function DatabaseSprints({
   const open = sprints.filter((s) => s.state !== "closed");
   const closedIds = new Set(sprints.filter((s) => s.state === "closed").map((s) => s.id));
   const backlog = rows.filter((r) => !sprintOf(r) || (closedIds.has(sprintOf(r)) && !isDone(rule, r.cells)));
-  const date = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(locale === "de" ? "de-DE" : "en-GB", { day: "2-digit", month: "short" });
+  const date = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(localeTag(locale), { day: "2-digit", month: "short" });
   const move = async (row: Row, target: string) => {
     if (target === sprintOf(row)) return;
     await run({ action: "row.update", rowId: row.id, version: row.version, cells: { [field.id]: target } });

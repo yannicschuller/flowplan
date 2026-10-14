@@ -4,5 +4,5 @@ import { requestLocale } from "@/lib/i18n-server";
 import { LegalFooter } from "./legal-footer";
 
 export async function PublicLegalFooter() {
-  return <LegalFooter links={legalLinks()} de={(await requestLocale()) === "de"} />;
+  return <LegalFooter links={legalLinks()} locale={await requestLocale()} />;
 }

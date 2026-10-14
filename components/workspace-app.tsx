@@ -2,6 +2,7 @@
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { setLocale, useLocale, useStatusLabel, useT } from "./i18n";
+import { localeTag, translate, type Locale } from "@/lib/i18n";
 import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
@@ -3861,8 +3862,8 @@ function greeting(clock: number | null, t: (de: string, en: string) => string) {
   const hour = new Date(clock).getHours();
   return hour < 11 ? t("Guten Morgen", "Good morning") : hour < 18 ? t("Hallo", "Hello") : t("Guten Abend", "Good evening");
 }
-function relativeTime(value: string, clock: number | null, locale: "de" | "en" = "de") {
-  const t = (de: string, en: string) => (locale === "de" ? de : en);
+function relativeTime(value: string, clock: number | null, locale: Locale = "de") {
+  const t = translate(locale);
   const date = new Date(
     /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
       ? value

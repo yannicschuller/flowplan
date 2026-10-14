@@ -1,6 +1,7 @@
 // English for the server's error messages (HttpError, validation). The
 // server answers in German; the browser shows the reader's language.
-import { LOCALE_TAG } from "./locale-tag";
+import { translate, type Locale } from "./i18n";
+import { PAGE_LOCALE } from "./locale-tag";
 
 const exact: Record<string, string> = {
   "Ungültige Eingabe.": "Invalid input.",
@@ -543,9 +544,13 @@ export function englishMessage(message: string) {
     if (pattern.test(message)) return message.replace(pattern, english);
   return message;
 }
+// A German message in another language (e-mails, push notifications).
+export function localizedMessage(message: string, locale: Locale) {
+  return locale === "de" ? message : translate(locale)(message, englishMessage(message));
+}
 // A message from the server in the language of the page.
 export function serverMessage(message: string): string;
 export function serverMessage(message: string | undefined): string | undefined;
 export function serverMessage(message: string | undefined) {
-  return LOCALE_TAG === "de-DE" || !message ? message : englishMessage(message);
+  return message && localizedMessage(message, PAGE_LOCALE);
 }

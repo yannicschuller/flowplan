@@ -20,7 +20,8 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
     "check:standalone": "node scripts/check-standalone.mjs",
-    "check:offline": "node scripts/check-offline.mjs"
+    "check:offline": "node scripts/check-offline.mjs",
+    "i18n": "node scripts/i18n.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -76,6 +77,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@babel/parser": "^7.29.9",
     "@playwright/test": "^1.63.0",
     "@types/katex": "^0.16.8",
     "@types/node": "^26.6.3",

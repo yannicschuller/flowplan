@@ -8,7 +8,7 @@ import { HttpError } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { contentLocale, ct } from "./content-locale";
 import { translate, type Locale } from "./i18n";
-import { englishMessage } from "./i18n-errors";
+import { localizedMessage } from "./i18n-errors";
 import { userLocale } from "./user-locale";
 
 export type MailConfig = {
@@ -208,7 +208,7 @@ export function queueNotificationDigests(now = Date.now()) {
       const first = items[0];
       const locale = userLocale(first.user_id);
       const t = translate(locale);
-      const body = (n: (typeof items)[number]) => (locale === "de" ? n.body : englishMessage(n.body));
+      const body = (n: (typeof items)[number]) => localizedMessage(n.body, locale);
       const link = (n: (typeof items)[number]) =>
         n.page_id
           ? `${url}/#page=${n.page_id}${n.row_id ? `&row=${n.row_id}` : ""}${n.thread_id ? `&thread=${n.thread_id}` : ""}`

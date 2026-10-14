@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { validDateValue } from "./date-values";
 import type { Field, FieldType } from "./types";
+import { translate, type Locale } from "./i18n";
 
 export const surveyTypes = [
   "short",
@@ -181,10 +182,10 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // Checks the answers of the questions that are shown; returns the cells to
 // store and messages per property. Files are checked by the form route.
-export function validateSurvey(survey: Survey, fields: Field[], values: Record<string, unknown>, de = true) {
+export function validateSurvey(survey: Survey, fields: Field[], values: Record<string, unknown>, locale: Locale = "de") {
   const cells: Record<string, unknown> = {},
     errors: Record<string, string> = {};
-  const say = (a: string, b: string) => (de ? a : b);
+  const say = translate(locale);
   for (const item of survey.items) {
     if (!isQuestion(item) || !visible(item, values)) continue;
     const q = item;
@@ -255,10 +256,10 @@ export function validateSurvey(survey: Survey, fields: Field[], values: Record<s
 
 // A new question of a type with sensible defaults (options in the reader's
 // language; the property is created when the survey is saved).
-export function newQuestion(type: SurveyType, de: boolean): { question: SurveyQuestion; title: string; options?: string[] } {
+export function newQuestion(type: SurveyType, locale: Locale): { question: SurveyQuestion; title: string; options?: string[] } {
   const id = Math.random().toString(36).slice(2, 10);
   const base = { kind: "question" as const, id, type, field: `new:${id}`, title: "", description: "", placeholder: "", required: false, other: false, randomize: false, minLabel: "", maxLabel: "", rows: [], columns: [] };
-  const t = (a: string, b: string) => (de ? a : b);
+  const t = translate(locale);
   switch (type) {
     case "single":
     case "dropdown":
@@ -287,7 +288,7 @@ export function newQuestion(type: SurveyType, de: boolean): { question: SurveyQu
             { field: `new:${id}-1`, label: t("Aussage 1", "Statement 1") },
             { field: `new:${id}-2`, label: t("Aussage 2", "Statement 2") },
           ],
-          columns: de ? ["Stimme gar nicht zu", "Eher nicht", "Neutral", "Eher ja", "Stimme voll zu"] : ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"],
+          columns: [t("Stimme gar nicht zu", "Strongly disagree"), t("Eher nicht", "Disagree"), t("Neutral", "Neutral"), t("Eher ja", "Agree"), t("Stimme voll zu", "Strongly agree")],
         },
         title: t("Bewerte die Aussagen", "Rate the statements"),
       };

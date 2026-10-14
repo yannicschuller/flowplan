@@ -1,4 +1,5 @@
 "use client";
+import { LANGUAGES, LOCALES } from "@/lib/i18n";
 import { SettingGroup, SettingRow, UsageMeter } from "./settings-ui";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -46,6 +47,7 @@ type SettingsData = {
     role: string;
   }[];
 };
+// i18n-table: 1 – [German, English] pairs
 const settingsTabs = [
   [
     "general",
@@ -259,13 +261,7 @@ export default function Settings({
                 </div>
                 <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise. „Automatisch“ folgt dem Browser.", "Applies on all devices, also to e-mails and push notifications. “Automatic” follows the browser.")}>
                   <div className="segmented" role="radiogroup" aria-label={t("Sprache", "Language")}>
-                    {(
-                      [
-                        [null, t("Automatisch", "Automatic")],
-                        ["de", "Deutsch"],
-                        ["en", "English"],
-                      ] as const
-                    ).map(([value, label]) => (
+                    {[[null, t("Automatisch", "Automatic")] as const, ...LOCALES.map((l) => [l, LANGUAGES[l].name] as const)].map(([value, label]) => (
                       <label key={label} data-active={(boot.language ?? null) === value}>
                         <input
                           type="radio"

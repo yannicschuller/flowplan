@@ -1,4 +1,5 @@
 "use client";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useState } from "react";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
@@ -15,7 +16,7 @@ export default function TicketClient({ token, initial }: { token: string; initia
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const date = (at: number) =>
-    new Date(at).toLocaleString(t("de-DE", "en-GB"), { dateStyle: "medium", timeStyle: "short" });
+    new Date(at).toLocaleString(LOCALE_TAG, { dateStyle: "medium", timeStyle: "short" });
   return (
     <main className="public-page ticket-page">
       <a href="/" className="public-brand">

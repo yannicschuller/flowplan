@@ -9,7 +9,7 @@
 // floor; dragging turns the view.
 import { compile } from "mathjs";
 import { functionExpression, vectorValue } from "./math-solve";
-import { LOCALE_TAG, tr } from "./locale-tag";
+import { LOCALE_TAG, PAGE_LOCALE, tr } from "./locale-tag";
 
 export type PlotFunction = { expr: string; color: string };
 export type PlotView = { xMin: number; xMax: number; yMin: number; yMax: number };
@@ -53,7 +53,7 @@ export function parsePlot(value: string | null | undefined): PlotConfig {
 }
 export const plotJson = (config: PlotConfig) => JSON.stringify(config);
 
-const locale = () => (LOCALE_TAG === "de-DE" ? "de" : "en") as "de" | "en";
+const locale = () => PAGE_LOCALE;
 type Compiled = ((x: number) => number) | null;
 function compileFunction(expr: string): Compiled {
   const written = functionExpression(expr, locale());

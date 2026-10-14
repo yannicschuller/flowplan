@@ -24,7 +24,7 @@ Open Source, selbst betrieben in einem Container – oder gehostet in Deutschlan
 
 </div>
 
-Flowplan ist ein Arbeitsbereich für Wissen und Projekte im Geist von Notion und AppFlowy: Seiten in einem Baum, ein Block-Editor, Datenbanken mit vielen Ansichten, Whiteboards und ein Journal – mit gemeinsamer Bearbeitung in Echtzeit, feinen Rechten und Single Sign-on. Es läuft als **ein Container mit SQLite**: kein Postgres, kein Redis, kein externer Suchdienst. **Keine KI, kein Tracking.** Oberfläche und Dokumentation gibt es auf Deutsch und Englisch.
+Flowplan ist ein Arbeitsbereich für Wissen und Projekte im Geist von Notion und AppFlowy: Seiten in einem Baum, ein Block-Editor, Datenbanken mit vielen Ansichten, Whiteboards und ein Journal – mit gemeinsamer Bearbeitung in Echtzeit, feinen Rechten und Single Sign-on. Es läuft als **ein Container mit SQLite**: kein Postgres, kein Redis, kein externer Suchdienst. **Keine KI, kein Tracking.** Die Oberfläche gibt es auf Deutsch, Englisch und Französisch – weitere Sprachen lassen sich als JSON-Kataloge hinzufügen ([Sprachen und Übersetzungen](https://docs.flowplan.org/languages)); die Dokumentation auf Deutsch und Englisch.
 
 ## Schreiben und denken
 

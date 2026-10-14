@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { localeTag, type Locale } from "./i18n";
 import {
   Temporal,
   validZone,
@@ -23,10 +24,17 @@ export const isWeekend = (date: string) =>
 // Weekday labels in display order, in the reader's language.
 export function weekdayLabels(
   config: Pick<CalendarConfig, "weekStart" | "showWeekends">,
-  locale: "de" | "en" = "de",
+  locale: Locale = "de",
 ) {
-  // Monday … Sunday.
-  const labels = locale === "en" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  // Monday … Sunday (5 January 2026 was a Monday).
+  const labels =
+    locale === "de"
+      ? ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+      : locale === "en"
+        ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        : Array.from({ length: 7 }, (_, d) =>
+            new Intl.DateTimeFormat(localeTag(locale), { weekday: "short", timeZone: "UTC" }).format(Date.UTC(2026, 0, 5 + d)),
+          );
   const days = config.weekStart === "sunday" ? [6, 0, 1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
   return days.filter((d) => config.showWeekends !== false || d < 5).map((d) => labels[d]);
 }

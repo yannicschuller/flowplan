@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Play, Stop, Trash, Timer } from "@phosphor-icons/react";
 import { useT, useLocale } from "./i18n";
+import { localeTag } from "@/lib/i18n";
 import { api } from "./ui";
 import { formatDuration, parseMinutes } from "@/lib/durations";
 import type { Field, Row } from "@/lib/types";
@@ -66,7 +67,7 @@ export function RecordTime({
   const clock = `${Math.floor(running / 3600)}:${String(Math.floor((running % 3600) / 60)).padStart(2, "0")}:${String(running % 60).padStart(2, "0")}`;
   const total = data.entries.filter((e) => e.end !== null).reduce((s, e) => s + e.seconds, 0) + running;
   const over = estimate !== null && total > estimate * 3600;
-  const day = (ms: number) => new Date(ms).toLocaleDateString(locale === "de" ? "de-DE" : "en-GB", { day: "2-digit", month: "short" });
+  const day = (ms: number) => new Date(ms).toLocaleDateString(localeTag(locale), { day: "2-digit", month: "short" });
   return (
     <section className="settings-section record-time" aria-label={field.name}>
       <h3>

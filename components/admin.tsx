@@ -100,6 +100,7 @@ const duration = (seconds: number, t: (de: string, en: string) => string) =>
     : seconds < 86400
       ? t(`${Math.round(seconds / 3600)} Std.`, `${Math.round(seconds / 3600)} h`)
       : t(`${Math.round(seconds / 86400)} Tage`, `${Math.round(seconds / 86400)} days`);
+// i18n-table: 1 – [German, English] pairs
 const adminTabs = [
   [
     "users",

@@ -3,7 +3,7 @@
 // Switching stores the choice in a cookie for a year and reloads, so server
 // and client render the same language.
 import { createContext, useCallback, useContext } from "react";
-import { LOCALE_COOKIE, translate, type Locale } from "@/lib/i18n";
+import { LANGUAGES, LOCALES, LOCALE_COOKIE, translate, type Locale } from "@/lib/i18n";
 import { translateLabel } from "@/lib/i18n-labels";
 
 const LocaleContext = createContext<Locale>("de");
@@ -31,19 +31,20 @@ export function clearLocale() {
   document.cookie = `${LOCALE_COOKIE}=; path=/; max-age=0; samesite=lax`;
   location.reload();
 }
-// "DE · EN": the other language is a button.
+// "DE · EN · FR": the other languages are buttons.
 export function LanguageSwitch({ className }: { className?: string }) {
   const locale = useLocale();
+  const t = useT();
   const choose = useCallback((l: Locale) => l !== locale && setLocale(l), [locale]);
   return (
-    <span className={className} role="group" aria-label={locale === "de" ? "Sprache" : "Language"}>
-      {(["de", "en"] as const).map((l) => (
+    <span className={className} role="group" aria-label={t("Sprache", "Language")}>
+      {LOCALES.map((l) => (
         <button
           key={l}
           type="button"
           lang={l}
           aria-pressed={l === locale}
-          title={l === "de" ? "Deutsch" : "English"}
+          title={LANGUAGES[l].name}
           onClick={() => choose(l)}
         >
           {l.toUpperCase()}
@@ -70,6 +71,6 @@ const statusWords: Record<string, string> = {
 };
 export function useStatusLabel() {
   const locale = useLocale();
-  return (status: string) => (locale === "en" ? statusWords[status] || status : status);
+  return (status: string) => translate(locale)(status, statusWords[status] || status);
 }
 

@@ -23,6 +23,7 @@ export function parseMetric(value: string | null | undefined): MetricConfig {
     return {};
   }
 }
+// i18n-table: 2 – [key, German, English]
 const aggregates: [NonNullable<MetricConfig["aggregate"]>, string, string][] = [
   ["count", "Anzahl Einträge", "Number of records"],
   ["sum", "Summe", "Sum"],

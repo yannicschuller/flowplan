@@ -1,9 +1,9 @@
 // The title a journal day gets automatically, in the language of the person
 // who opened the day first. Both languages count as "not renamed".
-import type { Locale } from "./i18n";
+import { localeTag, type Locale } from "./i18n";
 
 export function dayTitle(date: string, locale: Locale) {
-  return new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-GB", {
+  return new Intl.DateTimeFormat(localeTag(locale), {
     weekday: "long",
     day: "numeric",
     month: "long",

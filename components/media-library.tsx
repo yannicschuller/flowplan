@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import type { MediaItem, MediaKind } from "@/lib/media-library";
 
+// i18n-table: 2 – [kind, German, English]
 const kinds: [MediaKind, string, string][] = [
   ["all", "Alle", "All"],
   ["image", "Bilder", "Images"],

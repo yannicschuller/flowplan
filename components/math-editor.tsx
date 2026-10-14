@@ -68,6 +68,7 @@ export function mathNodeViews(onEdit: (target: MathTarget) => void) {
   );
 }
 // Building blocks for the formula; "|" marks where the cursor goes.
+// i18n-table: 1 – [German, English, LaTeX, shown]
 const SNIPPETS: [de: string, en: string, latex: string, shown: string][] = [
   ["Bruch", "Fraction", "\\frac{|}{}", "a⁄b"],
   ["Wurzel", "Square root", "\\sqrt{|}", "√"],
