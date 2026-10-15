@@ -9795,6 +9795,16 @@ textarea {
   margin: 0 0 8px;
   color: var(--secondary);
 }
+.delete-account-confirm,
+.delete-account-successor {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  font-size: 13.5px;
+}
+.delete-account-successor {
+  margin: 0;
+}
 .delete-account ul {
   display: grid;
   gap: 8px;

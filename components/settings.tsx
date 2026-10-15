@@ -16,6 +16,7 @@ import { IntegrationSettings } from "./integration-settings";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
 import { AccountSecurity } from "./account-security";
+import { DeleteOwnAccount } from "./delete-own-account";
 import {
   GearSix,
   Users,
@@ -294,6 +295,14 @@ export default function Settings({
                     </label>
                   </div>
                 </SettingRow>
+                {!boot.user.demo && (
+                  <SettingRow
+                    label={t("Konto löschen", "Delete account")}
+                    description={t("Löscht dein Konto und deine persönlichen Daten. Vorher siehst du, was mit deinen Arbeitsbereichen passiert.", "Deletes your account and your personal data. You see first what happens to your workspaces.")}
+                  >
+                    <DeleteOwnAccount />
+                  </SettingRow>
+                )}
               </SettingGroup>
               {boot.myLimits && (
                 <SettingGroup

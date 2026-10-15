@@ -1,6 +1,6 @@
 import { teamReply } from "./service-desk";
 import { legalLinks } from "./legal-links";
-import { deleteAccount, deletionPlan } from "./account-deletion";
+import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan } from "./account-deletion";
 import { confirmAddress } from "./local-auth";
 import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
@@ -532,6 +532,12 @@ export function command(
         break;
       case "profile.language":
         result = { language: setFixedLanguage(user.id, b.language) };
+        break;
+      case "account.deletePlan":
+        result = ownDeletionPlan(user);
+        break;
+      case "account.delete":
+        result = deleteOwnAccount(user, b);
         break;
       case "admin.deletePlan":
         requireAdmin(user);

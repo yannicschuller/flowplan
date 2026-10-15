@@ -1,5 +1,7 @@
-// Sign-in for the desktop app through the system browser: passkeys and
-// identity providers that ask for one only work there. The app keeps a
+// Sign-in for the desktop and mobile apps through the system browser:
+// passkeys and identity providers that ask for one only work there (the
+// mobile apps use ASWebAuthenticationSession or a Custom Tab, whose user
+// agent does not name the app – the pages say "Flowplan app"). The app keeps a
 // random verifier and opens /api/auth/desktop with its SHA-256 challenge;
 // the browser signs in as usual, confirms and hands a one-time code back to
 // the app (flowplan://sign-in). Only the app holding the verifier can redeem

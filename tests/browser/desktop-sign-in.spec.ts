@@ -23,11 +23,11 @@ test("the desktop app signs in through the browser", async ({ browser }, testInf
   await expect(page.getByRole("heading", { name: "Link ungültig" })).toBeVisible();
   await page.goto(`${origin}/api/auth/desktop?challenge=${challenge}`);
   await expect(page).toHaveURL(new RegExp(`desktop=${challenge}`));
-  await expect(page.getByText("Melde dich an, um Flowplan Desktop mit deinem Konto zu verbinden.")).toBeVisible();
+  await expect(page.getByText("Melde dich an, um die Flowplan-App mit deinem Konto zu verbinden.")).toBeVisible();
   await page.getByRole("button", { name: "Lokalen Arbeitsbereich öffnen" }).click();
-  await expect(page.getByRole("heading", { name: "Flowplan Desktop anmelden" })).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: "In der Desktop-App anmelden" }).click();
-  const link = await page.getByRole("link", { name: "Flowplan Desktop öffnen" }).getAttribute("href");
+  await expect(page.getByRole("heading", { name: "Bei der Flowplan-App anmelden" })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "In der App anmelden" }).click();
+  const link = await page.getByRole("link", { name: "Flowplan-App öffnen" }).getAttribute("href");
   const handoff = new URL(String(link));
   expect(handoff.protocol).toBe("flowplan:");
   expect(handoff.searchParams.get("server")).toBe(new URL(origin).origin);
@@ -42,8 +42,8 @@ test("the desktop app signs in through the browser", async ({ browser }, testInf
 
   // A fresh code with the right verifier signs the app in, once.
   await page.goto(`${origin}/api/auth/desktop?challenge=${challenge}`);
-  await page.getByRole("button", { name: "In der Desktop-App anmelden" }).click();
-  const second = new URL(String(await page.getByRole("link", { name: "Flowplan Desktop öffnen" }).getAttribute("href")));
+  await page.getByRole("button", { name: "In der App anmelden" }).click();
+  const second = new URL(String(await page.getByRole("link", { name: "Flowplan-App öffnen" }).getAttribute("href")));
   expect((await redeem({ code: second.searchParams.get("code"), verifier })).ok()).toBe(true);
   expect((await appPage.request.get(`${origin}/api/bootstrap`)).ok()).toBe(true);
   expect((await redeem({ code: second.searchParams.get("code"), verifier })).status()).toBe(400);
