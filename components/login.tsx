@@ -54,16 +54,16 @@ export default function Login({
     [pendingEmail, setPendingEmail] = useState("");
   const [loginUrl, setLoginUrl] = useState("/api/auth/login");
   const [passkeys, setPasskeys] = useState(false);
-  // The desktop app signs in with passkeys and SSO in the system browser
-  // (lib/desktop-sign-in.ts): in the app these buttons hand over to it, in
-  // the browser ?desktop= carries the app's request through the sign-in.
+  // The desktop and mobile apps sign in with passkeys and SSO in the system
+  // browser (lib/desktop-sign-in.ts): in the app these buttons hand over to
+  // it, in the browser ?desktop= carries the app's request through the sign-in.
   const [desktopApp, setDesktopApp] = useState(false);
   const [desktopRequest, setDesktopRequest] = useState("");
   useEffect(() => {
     const request = new URLSearchParams(location.search).get("desktop") || "";
     const desktopReturn = /^[A-Za-z0-9_-]{43}$/.test(request) ? `/api/auth/desktop?challenge=${request}` : "";
     setDesktopRequest(desktopReturn);
-    setDesktopApp(/FlowplanDesktop\//.test(navigator.userAgent));
+    setDesktopApp(/Flowplan(Desktop|Mobile)\//.test(navigator.userAgent));
     const update = () =>
       setLoginUrl(`/api/auth/login?returnTo=${encodeURIComponent(desktopReturn || loginReturnPath(`/${location.hash}`))}`);
     update();

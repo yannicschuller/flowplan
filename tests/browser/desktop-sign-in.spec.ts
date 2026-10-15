@@ -58,3 +58,20 @@ test("the desktop app signs in through the browser", async ({ browser }, testInf
   await app.close();
   await web.close();
 });
+
+// The iOS and Android apps (FlowplanMobile/) hand over the same way.
+test("the mobile app signs in with passkeys and SSO through the browser", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "One run covers it.");
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  const app = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.0.0",
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await app.newPage();
+  await page.goto(origin + "/");
+  await expect(page.getByRole("link", { name: "Mit Passkey anmelden" })).toHaveAttribute("href", "/api/auth/desktop");
+  await app.close();
+});
