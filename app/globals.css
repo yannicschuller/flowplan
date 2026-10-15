@@ -11721,7 +11721,8 @@ label.task-due {
   font-size: 11px;
   color: var(--muted);
 }
-.integration-secret {
+.integration-secret,
+.mcp-address {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -11731,8 +11732,25 @@ label.task-due {
   background: var(--blue-light);
   font-size: 13px;
 }
-.integration-secret code {
+.integration-secret code,
+.mcp-address code {
   font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.mcp-clients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.mcp-config {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--hover);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .integration-list {

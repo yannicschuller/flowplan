@@ -7,6 +7,8 @@ const exact: Record<string, string> = {
   "Ungültige Eingabe.": "Invalid input.",
   "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.": "Not available in the demo. Sign up to use it.",
   "Kein Journal.": "Not a journal.",
+  "Ansicht nicht gefunden.": "View not found.",
+  "Inhalt nur für Dokumente.": "Content is only possible for documents.",
   "Kein Journaltag.": "Not a journal day.",
   "Kein Dokument.": "Not a document.",
   "Kein Whiteboard.": "Not a whiteboard.",

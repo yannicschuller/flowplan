@@ -23,6 +23,102 @@ type Hook = {
   created_at: number;
   last: { status: number | null; error: string | null; delivered_at: number | null } | null;
 };
+type McpClient = "claude-code" | "claude-desktop" | "chatgpt" | "other";
+// How Claude, ChatGPT and other AI clients connect (lib/mcp.ts, app/api/mcp).
+function mcpConfig(client: McpClient, url: string, token: string) {
+  if (client === "claude-code")
+    return `claude mcp add --transport http flowplan ${url} \\\n  --header "Authorization: Bearer ${token}"`;
+  if (client === "claude-desktop")
+    return JSON.stringify(
+      {
+        mcpServers: {
+          flowplan: {
+            command: "npx",
+            args: ["-y", "mcp-remote", url, "--header", "Authorization:${FLOWPLAN_AUTH}"],
+            env: { FLOWPLAN_AUTH: `Bearer ${token}` },
+          },
+        },
+      },
+      null,
+      2,
+    );
+  if (client === "chatgpt") return `URL: ${url}\nAuthorization: Bearer ${token}`;
+  return JSON.stringify(
+    { mcpServers: { flowplan: { type: "http", url, headers: { Authorization: `Bearer ${token}` } } } },
+    null,
+    2,
+  );
+}
+function McpSettings({ origin, token }: { origin: string; token: string }) {
+  const t = useT();
+  const [client, setClient] = useState<McpClient>("claude-code");
+  const url = `${origin}/api/mcp`;
+  const config = mcpConfig(client, url, token || "fp_…");
+  const hints: Record<McpClient, string> = {
+    "claude-code": t("Im Terminal ausführen. Mit --scope user gilt die Verbindung in allen Projekten.", "Run in a terminal. With --scope user the connection works in all projects."),
+    "claude-desktop": t(
+      "In Claude Desktop unter Einstellungen → Entwickler → Konfiguration bearbeiten in claude_desktop_config.json eintragen und Claude neu starten (benötigt Node.js).",
+      "In Claude Desktop open Settings → Developer → Edit config, add this to claude_desktop_config.json and restart Claude (needs Node.js).",
+    ),
+    chatgpt: t(
+      "In ChatGPT (Entwicklermodus) unter Einstellungen → Apps & Konnektoren einen Konnektor mit dieser Adresse anlegen und, falls angeboten, Authentifizierung per Token wählen.",
+      "In ChatGPT (developer mode) create a connector under Settings → Apps & Connectors with this address and, where offered, choose token authentication.",
+    ),
+    other: t(
+      "Für Cursor, VS Code, Windsurf und andere Clients mit Streamable HTTP und eigenen Kopfzeilen.",
+      "For Cursor, VS Code, Windsurf and other clients with Streamable HTTP and custom headers.",
+    ),
+  };
+  return (
+    <section className="settings-section mcp-settings">
+      <h2>{t("KI-Assistenten (MCP)", "AI assistants (MCP)")}</h2>
+      <p className="muted">
+        {t(
+          "Verbinde Claude, ChatGPT oder andere MCP-Clients mit deinem Flowplan. Sie suchen, lesen und – mit einem Schreib-Token – legen Seiten und Datensätze an, immer nur mit deinen Rechten. Lege dafür oben ein eigenes Token an.",
+          "Connect Claude, ChatGPT or other MCP clients to your Flowplan. They search, read and – with a write token – create pages and records, always with your permissions only. Create a dedicated token above.",
+        )}
+      </p>
+      <div className="mcp-address">
+        <strong>{t("Adresse:", "Address:")}</strong>
+        <code aria-label={t("MCP-Adresse", "MCP address")}>{url}</code>
+        <button className="button compact" onClick={() => void navigator.clipboard.writeText(url).catch(() => {})}>
+          <Copy size={14} /> {t("Kopieren", "Copy")}
+        </button>
+      </div>
+      <div className="mcp-clients" role="tablist" aria-label={t("MCP-Client", "MCP client")}>
+        {(
+          [
+            ["claude-code", "Claude Code"],
+            ["claude-desktop", "Claude Desktop"],
+            ["chatgpt", "ChatGPT"],
+            ["other", t("Andere", "Other")],
+          ] as [McpClient, string][]
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={client === id}
+            className={`button compact${client === id ? " primary" : ""}`}
+            onClick={() => setClient(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="muted">{hints[client]}</p>
+      <pre className="mcp-config" aria-label={t("Beispielkonfiguration", "Example configuration")}>{config}</pre>
+      <button className="button compact" onClick={() => void navigator.clipboard.writeText(config).catch(() => {})}>
+        <Copy size={14} /> {t("Konfiguration kopieren", "Copy configuration")}
+      </button>
+      <p className="muted">
+        {t(
+          "Lese-Tokens bieten nur Lese-Werkzeuge. Widerrufe das Token oben, um die Verbindung sofort zu trennen. Das Token nie in eine Adresse schreiben.",
+          "Read tokens only offer read tools. Revoke the token above to cut the connection at once. Never put the token into an address.",
+        )}
+      </p>
+    </section>
+  );
+}
 const when = (ms: number | null) =>
   ms ? new Date(ms).toLocaleString(LOCALE_TAG, { dateStyle: "short", timeStyle: "short" }) : tr("nie", "never");
 
@@ -146,6 +242,7 @@ export function IntegrationSettings({
           {!tokens.length && <li className="muted">{t("Noch keine Tokens.", "No tokens yet.")}</li>}
         </ul>
       </section>
+      <McpSettings origin={origin} token={fresh?.value.startsWith("fp_") ? fresh.value : ""} />
       {owner && (
         <section className="settings-section">
           <h2>{t("Webhooks", "Webhooks")}</h2>

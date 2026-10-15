@@ -78,7 +78,7 @@ Live-Bearbeitung mit Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnu
 
 ## Für Admins
 
-E-Mail und Passwort, Passkeys (WebAuthn) und Single Sign-on mit OpenID Connect und Gruppen. Grenzen pro Arbeitsbereich und pro Person (Speicher, eigene Arbeitsbereiche, Uploadgröße), Aktivitätsprotokoll, Sitzungsverwaltung, Sicherung nach S3 mit Litestream, Prometheus-Metriken, API-Tokens und Webhooks – und laufende Version und Commit auf einen Blick. Volltextsuche samt Texterkennung in gescannten PDFs, Import aus Markdown, HTML, CSV und Notion, Export als Markdown und ZIP sowie ein Versionsverlauf mit Vergleich und Wiederherstellen einzelner Absätze.
+E-Mail und Passwort, Passkeys (WebAuthn) und Single Sign-on mit OpenID Connect und Gruppen. Grenzen pro Arbeitsbereich und pro Person (Speicher, eigene Arbeitsbereiche, Uploadgröße), Aktivitätsprotokoll, Sitzungsverwaltung, Sicherung nach S3 mit Litestream, Prometheus-Metriken, API-Tokens und Webhooks, ein [MCP-Server](https://docs.flowplan.org/mcp) für Claude, ChatGPT und andere KI-Assistenten (nur mit den eigenen Rechten der Person) – und laufende Version und Commit auf einen Blick. Volltextsuche samt Texterkennung in gescannten PDFs, Import aus Markdown, HTML, CSV und Notion, Export als Markdown und ZIP sowie ein Versionsverlauf mit Vergleich und Wiederherstellen einzelner Absätze.
 
 ## Schnellstart (Docker)
 
