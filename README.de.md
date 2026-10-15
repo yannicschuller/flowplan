@@ -100,10 +100,10 @@ Das Image liegt in der GitHub Container Registry für `linux/amd64` und `linux/a
 ```
 ghcr.io/yannicschuller/flowplan:latest     # die neueste Version
 ghcr.io/yannicschuller/flowplan:1.2.3      # eine feste Version (auch :1.2 und :1)
-ghcr.io/yannicschuller/flowplan:beta       # der aktuelle Entwicklungsstand, nicht für den Betrieb
+ghcr.io/yannicschuller/flowplan:beta       # der letzte manuelle Build, nicht für den Betrieb
 ```
 
-Jedes `:beta`-Image (jeder Push auf einen Branch) lässt sich automatisch auf Coolify ausrollen: die Repository-Secrets `COOLIFY_WEBHOOK` (Deploy-Webhook der Ressource) und `COOLIFY_TOKEN` (API-Token mit Deploy-Recht) setzen und in Coolify das `:beta`-Image verwenden. Siehe [Coolify und Reverse Proxy](https://docs.flowplan.org/coolify-and-proxy).
+Images entstehen nur beim Release oder von Hand: **Actions → Docker image → Run workflow** baut `:beta` aus dem gewählten Branch (mit Version baut es stattdessen dieses Release neu). Jedes `:beta`-Image lässt sich automatisch auf Coolify ausrollen: die Repository-Secrets `COOLIFY_WEBHOOK` (Deploy-Webhook der Ressource) und `COOLIFY_TOKEN` (API-Token mit Deploy-Recht) setzen und in Coolify das `:beta`-Image verwenden. Siehe [Coolify und Reverse Proxy](https://docs.flowplan.org/coolify-and-proxy).
 
 Alle Daten liegen im Volume unter `/app/data`. Betreibe **genau einen** Container pro Datenverzeichnis (SQLite). Optionaler S3-Speicher spiegelt Uploads und sichert die Datenbank laufend.
 

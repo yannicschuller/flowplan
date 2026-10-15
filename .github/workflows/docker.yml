@@ -1,20 +1,25 @@
 # Builds the Docker image and publishes it to the GitHub Container Registry:
 #   ghcr.io/yannicschuller/flowplan:latest         the latest release
 #   ghcr.io/yannicschuller/flowplan:1.2.3, :1.2, :1  a release (tag v1.2.3)
-#   ghcr.io/yannicschuller/flowplan:beta           the latest push to any branch
+#   ghcr.io/yannicschuller/flowplan:beta           the latest manual build
 #   ghcr.io/yannicschuller/flowplan:sha-abc1234    every build
-# For linux/amd64 and linux/arm64. Pull requests only build (no push);
-# Dependabot branches get no beta image. Releases come from release.yml,
-# which calls this workflow with the version. Every :beta image is rolled out
-# on Coolify (COOLIFY_WEBHOOK, COOLIFY_TOKEN; see README).
+# For linux/amd64 and linux/arm64. Images are only built for a release
+# (release.yml calls this workflow with the version, or a pushed tag v1.2.3)
+# or by hand: Actions → Docker image → Run workflow builds :beta from the
+# chosen branch, or rebuilds a release when a version is given. Pushes and
+# pull requests build no image; CI (ci.yml) tests them. Every :beta image is
+# rolled out on Coolify (COOLIFY_WEBHOOK, COOLIFY_TOKEN; see README).
 name: Docker image
 
 on:
   push:
-    branches: ["**", "!dependabot/**"]
     tags: ["v*.*.*"]
-  pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Rebuild this release (e.g. 1.2.3); empty builds :beta
+        type: string
+        required: false
   workflow_call:
     inputs:
       version:
@@ -32,13 +37,12 @@ concurrency:
 
 jobs:
   image:
-    # No image for Dependabot: its pull requests are tested by CI, and the
-    # image is built after merging, on the own runner.
-    if: github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]'
+    # No image for Dependabot: its pull requests are tested by CI.
+    if: github.actor != 'dependabot[bot]' && github.triggering_actor != 'dependabot[bot]'
     # Own runner (label self-hosted) for this repository's own work. Dependabot
-    # and pull requests from forks run on GitHub's runners instead: their code
-    # never reaches the self-hosted machine.
-    runs-on: ${{ (github.actor == 'dependabot[bot]' || github.triggering_actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.full_name != github.repository))) && 'ubuntu-latest' || 'self-hosted' }}
+    # runs on GitHub's runners instead: its code never reaches the
+    # self-hosted machine.
+    runs-on: ${{ (github.actor == 'dependabot[bot]' || github.triggering_actor == 'dependabot[bot]') && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 90
     steps:
       # A release: the version from release.yml or from a pushed tag v1.2.3.
@@ -53,7 +57,6 @@ jobs:
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
-        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -73,26 +76,22 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
-          # Pull requests only build (nothing is published): one architecture.
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          push: ${{ github.event_name != 'pull_request' }}
+          platforms: linux/amd64,linux/arm64
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             FLOWPLAN_SKIP_TYPECHECK=1
             GIT_COMMIT=${{ github.sha }}
           # Cache in the registry: fast from the self-hosted runner, kept
-          # between runs. Pull requests (also Dependabot, without registry
-          # write access) use GitHub's cache.
-          cache-from: |
-            type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-            type=gha
-          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}:buildcache,mode=max', github.repository) || 'type=gha,mode=max' }}
-      # Rolls out every new :beta image on Coolify (every push to a branch;
-      # releases only publish :latest). Without the secrets (forks, other
-      # instances) the step does nothing.
+          # between runs.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+      # Rolls out every new :beta image on Coolify (every manual build without
+      # a version; releases only publish :latest). Without the secrets (forks,
+      # other instances) the step does nothing.
       - name: Deploy on Coolify
-        if: github.event_name != 'pull_request' && steps.release.outputs.version == ''
+        if: steps.release.outputs.version == ''
         env:
           COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
