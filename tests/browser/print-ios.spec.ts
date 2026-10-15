@@ -57,3 +57,78 @@ test("print on iPhone prints a lean copy in the page right away", async ({ page 
   await expect(page.locator(".print-copy")).toHaveCount(0);
   await expect(page.locator(".app-shell")).toBeVisible();
 });
+
+// Apps on the home screen cannot print at all: the print view (with own
+// pictures as data) opens in the browser, which has no session there.
+test("print in the home screen app hands a print view to the browser", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const command = async (data: Record<string, unknown>) =>
+    (await page.request.post("/api/command", { headers: { origin }, data })).json();
+  const title = `Druck App ${Date.now()}`;
+  const { id: pageId } = await command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title, kind: "document" });
+  // A 2×1 picture, uploaded like any other.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADklEQVR4nGP4z8DwH4QBEfcD/ePF9e8AAAAASUVORK5CYII=", "base64");
+  const upload = await page.request.post("/api/upload", { headers: { origin }, multipart: { pageId, file: { name: "bild.png", mimeType: "image/png", buffer: png } } });
+  const { url: picture } = await upload.json();
+  const { htmlState } = await import("../../lib/document-server");
+  const { generation } = await (await page.request.get(`/api/pages/${pageId}`)).json();
+  await command({
+    action: "document.sync",
+    pageId,
+    generation,
+    update: Buffer.from(htmlState(`<p>Ein Absatz für den Browser.</p><img src="${picture}" alt="Bild">`)).toString("base64"),
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "standalone", { value: true });
+    const w = window as unknown as { printed: number };
+    w.printed = 0;
+    window.print = () => {
+      w.printed++;
+    };
+  });
+  await page.goto(`/#page=${pageId}`);
+  await expect(page.getByLabel("Dokumentinhalt", { exact: true })).toContainText("Ein Absatz für den Browser.");
+  await page.getByRole("button", { name: "Seitenaktionen" }).click();
+  await page.getByRole("menuitem", { name: "Drucken / PDF" }).click();
+  const dialog = page.locator("dialog.print-handoff");
+  const open = dialog.getByRole("link", { name: "Druckansicht öffnen" });
+  await expect(open).toBeVisible();
+  await page.screenshot({ path: "test-results/print/handoff.png" });
+  await expect(dialog.getByRole("link", { name: "In Safari öffnen" })).toHaveCount(origin.startsWith("https:") ? 1 : 0);
+  // The app does not try to print itself.
+  expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(0);
+  const href = (await open.getAttribute("href"))!;
+  expect(href).toMatch(/\/api\/print\/[\w-]{32}$/);
+  // The browser: no session.
+  const safari = await browser.newContext({ ...devices["iPhone 13"], locale: "de-DE" });
+  try {
+    const view = await safari.newPage();
+    await view.addInitScript(() => {
+      const w = window as unknown as { printed: number };
+      w.printed = 0;
+      window.print = () => {
+        w.printed++;
+      };
+    });
+    const response = await view.goto(href);
+    expect(response!.headers()["content-security-policy"]).toContain("script-src 'nonce-");
+    await expect(view.locator(".page-content")).toContainText("Ein Absatz für den Browser.");
+    await expect(view.locator("body")).toContainText(title);
+    const image = view.locator('.page-content img[alt="Bild"]');
+    expect(await image.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(2);
+    await view.screenshot({ path: "test-results/print/view.png" });
+    await view.getByRole("button", { name: "Drucken / PDF" }).click();
+    expect(await view.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1);
+    await view.emulateMedia({ media: "print" });
+    await expect(view.locator(".print-view-bar")).toBeHidden();
+    await view.screenshot({ path: "test-results/print/view-print.png" });
+  } finally {
+    await safari.close();
+  }
+  // Another address does not show anything.
+  expect((await page.request.get("/api/print/abcdefghijklmnopqrstuvwxyz012345")).status()).toBe(404);
+});

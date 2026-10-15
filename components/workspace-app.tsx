@@ -1,6 +1,6 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
-import { LOCALE_TAG } from "@/lib/locale-tag";
+import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
 import { localeTag, translate, type Locale } from "@/lib/i18n";
 import { BrandMark } from "./brand-mark";
@@ -177,6 +177,9 @@ function printPage() {
     if (!source) return window.print();
     document.querySelector("iframe.print-frame")?.remove();
     document.querySelector(".print-copy")?.remove();
+    // Apps on the iPhone and iPad home screen cannot print at all: the view
+    // opens in the browser instead.
+    if (isIOS() && isStandalone()) return void printInBrowser(source);
     // iPhone and iPad print the page itself, not a frame, and only while the
     // tap still counts: the copy goes into the page, printed right away.
     if (isIOS()) {
@@ -220,6 +223,98 @@ function printPage() {
     else frame.addEventListener("load", () => void ready(), { once: true });
   }, 120);
 }
+const isStandalone = () =>
+  (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia("(display-mode: standalone)").matches;
+const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// The print view as a document of its own (lib/print-snapshots.ts), stored
+// briefly under a secret address and opened in the browser, where printing
+// works. The browser there has no session: own pictures go along as data.
+async function printInBrowser(source: HTMLElement) {
+  document.querySelector("dialog.print-handoff")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.className = "print-handoff";
+  const heading = document.createElement("h2");
+  heading.textContent = tr("Drucken / PDF", "Print / PDF");
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  status.textContent = tr("Druckansicht wird vorbereitet …", "Preparing the print view …");
+  const actions = document.createElement("div");
+  actions.className = "print-handoff-actions";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = tr("Schließen", "Close");
+  close.addEventListener("click", () => dialog.close());
+  actions.append(close);
+  dialog.append(heading, status, actions);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  try {
+    const copy = leanCopy(source, document);
+    await inlineImages(copy);
+    const styles = [...document.head.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style')]
+      .map((el) => (el instanceof HTMLLinkElement ? `<link rel="stylesheet" href="${escapeHtml(el.href)}">` : `<style>${el.textContent}</style>`))
+      .join("");
+    const html =
+      `<!doctype html><html lang="${escapeHtml(document.documentElement.lang)}" data-theme="light"><head><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(document.title)}</title>${styles}</head>` +
+      `<body class="print-view"><div class="print-view-bar"><button type="button" class="print-view-print">${escapeHtml(tr("Drucken / PDF", "Print / PDF"))}</button>` +
+      `<span>${escapeHtml(tr("Oder Teilen → Drucken. Der Link gilt 15 Minuten.", "Or Share → Print. The link works for 15 minutes."))}</span></div>` +
+      `${copy.outerHTML}</body></html>`;
+    const res = await fetch("/api/print", { method: "POST", headers: { "Content-Type": "text/html; charset=utf-8" }, body: html });
+    const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+    if (!res.ok || !body.url) throw new Error(body.error ? serverMessage(body.error) : tr("Druckansicht konnte nicht erstellt werden.", "The print view could not be created."));
+    const url = new URL(body.url, location.href).href;
+    status.textContent = tr(
+      "Apps auf dem Home-Bildschirm können nicht selbst drucken. Öffne die Druckansicht im Browser und tippe dort auf „Drucken / PDF“ oder auf Teilen → Drucken.",
+      "Apps on the Home Screen cannot print themselves. Open the print view in the browser and tap “Print / PDF” there, or Share → Print.",
+    );
+    const open = document.createElement("a");
+    open.className = "print-handoff-open";
+    open.href = url;
+    open.target = "_blank";
+    open.rel = "noopener";
+    open.textContent = tr("Druckansicht öffnen", "Open print view");
+    open.addEventListener("click", () => setTimeout(() => dialog.close(), 500));
+    actions.prepend(open);
+    // Safari itself, if the first link stays in the app (iOS 17 and later).
+    if (url.startsWith("https://")) {
+      const safari = document.createElement("a");
+      safari.href = `x-safari-${url}`;
+      safari.textContent = tr("In Safari öffnen", "Open in Safari");
+      safari.addEventListener("click", () => setTimeout(() => dialog.close(), 500));
+      open.after(safari);
+    }
+    open.focus();
+  } catch (e) {
+    status.textContent = (e as Error).message || tr("Druckansicht konnte nicht erstellt werden.", "The print view could not be created.");
+  }
+}
+// Own pictures (behind the session) as data, up to 30 MB together.
+async function inlineImages(root: HTMLElement) {
+  let budget = 30 * 1024 * 1024;
+  await Promise.all(
+    [...root.querySelectorAll("img")].map(async (img) => {
+      const src = img.getAttribute("src");
+      if (!src || src.startsWith("data:")) return;
+      const url = new URL(src, location.href);
+      if (url.origin !== location.origin) return;
+      try {
+        const res = await fetch(url, { credentials: "same-origin" });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (blob.size > budget) return;
+        budget -= blob.size;
+        img.src = await new Promise<string>((done, fail) => {
+          const reader = new FileReader();
+          reader.onload = () => done(reader.result as string);
+          reader.onerror = fail;
+          reader.readAsDataURL(blob);
+        });
+      } catch {}
+    }),
+  );
+}
 // Also iPads that present themselves as a Mac.
 const isIOS = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -248,6 +343,12 @@ function leanCopy(source: HTMLElement, doc: Document) {
   });
   copy.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]").forEach((box, i) => {
     if ((source.querySelectorAll<HTMLInputElement>("input[type=checkbox], input[type=radio]")[i] || box).checked) box.setAttribute("checked", "");
+  });
+  // Pictures load right away (a lazy one in a hidden copy never would), at
+  // the address given.
+  copy.querySelectorAll("img").forEach((img) => {
+    img.removeAttribute("loading");
+    img.removeAttribute("srcset");
   });
   // No second element with the same id, no editing in the copy.
   copy.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));

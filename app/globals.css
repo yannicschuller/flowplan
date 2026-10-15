@@ -12523,6 +12523,7 @@ h3 .block-reactions {
   .outline-toggle,
   .block-reaction-add,
   .task-due-add,
+  [data-resize-handle],
   .synced-block-bar,
   .journal-toolbar,
   .journal-hint,
@@ -14035,6 +14036,77 @@ h3 .block-reactions {
 }
 @media print {
   .pdf-viewer {
+    display: none;
+  }
+}
+/* Home screen apps on iPhone and iPad hand printing to the browser
+   (printInBrowser in workspace-app.tsx, app/api/print). */
+.print-handoff {
+  width: min(420px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
+}
+.print-handoff::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+.print-handoff h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.print-handoff p {
+  margin: 0 0 18px;
+  color: var(--secondary);
+  line-height: 1.5;
+}
+.print-handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.print-handoff-actions a,
+.print-handoff-actions button {
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+}
+.print-handoff-actions .print-handoff-open {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+.print-view-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  max-width: 760px;
+  margin: 16px auto 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--blue-light);
+  color: var(--secondary);
+  font-size: 14px;
+}
+.print-view-print {
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 600;
+}
+@media print {
+  .print-view-bar {
     display: none;
   }
 }
