@@ -218,7 +218,7 @@ export default function Login({
         )}
         {desktopRequest && !notice && (
           <div role="status" className="login-notice">
-            {t("Melde dich an, um Flowplan Desktop mit deinem Konto zu verbinden.", "Sign in to connect Flowplan Desktop to your account.")}
+            {t("Melde dich an, um die Flowplan-App mit deinem Konto zu verbinden.", "Sign in to connect the Flowplan app to your account.")}
           </div>
         )}
         {notice && (

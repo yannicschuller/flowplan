@@ -85,6 +85,9 @@ const exact: Record<string, string> = {
   "Das eigene Konto lässt sich hier nicht löschen.": "Your own account cannot be deleted here.",
   "Bitte das Konto zuerst deaktivieren.": "Please disable the account first.",
   "Das letzte Admin-Konto lässt sich nicht löschen.": "The last admin account cannot be deleted.",
+  "Demo-Konten lassen sich nicht löschen – sie enden mit dem Abmelden von selbst.": "Demo accounts cannot be deleted – they end by themselves when you sign out.",
+  "Du bist das letzte Admin-Konto. Ernenne zuerst eine andere Person zum Admin.": "You are the last admin account. Make someone else an admin first.",
+  "Die Bestätigung stimmt nicht mit deinem Konto überein.": "The confirmation does not match your account.",
   "ZIP darf maximal 2 GB groß sein.": "A ZIP may be at most 2 GB.",
   "Archiv fehlt.": "Archive missing.",
   "Antwort zu groß.": "Answer too large.",
@@ -511,6 +514,8 @@ const patterns: [RegExp, string][] = [
   [/^Maximal (.+) Erinnerungen je Person\.$/, "At most $1 reminders per person."],
   [/^Ungültiges Zeichen „(.+)“\.$/, "Invalid character “$1”."],
   [/^Argumente prüfen: (.+)\.$/, "Check the arguments: $1."],
+  [/^„(.+)“ hat außer dir nur deaktivierte Mitglieder und niemanden, der den Arbeitsbereich übernimmt\. Bitte wende dich an die Admins\.$/, "“$1” has only deactivated members besides you and nobody to take over the workspace. Please contact the admins."],
+  [/^Für „(.+)“ bitte ein Mitglied als neuen Eigentümer wählen\.$/, "Please choose a member as the new owner of “$1”."],
   // notifications (stored in German, shown in the reader's language)
   [/^Neuer Gasteintrag in „(.+)“$/, "New guest record in “$1”"],
   [/^Neuer Gastkommentar auf „(.+)“$/, "New guest comment on “$1”"],

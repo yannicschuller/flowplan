@@ -21,6 +21,8 @@ import {
 } from "@/lib/auth";
 import { one, run } from "@/lib/db";
 import { ensureWorkspace } from "@/lib/seed";
+import { command } from "@/lib/api";
+import { confirmsWithPassword } from "@/lib/account-deletion";
 export const runtime = "nodejs";
 import { oidcConfig as config } from "@/lib/oidc";
 import {
@@ -126,7 +128,8 @@ async function handleGET(
         }),
       );
     }
-    // The desktop app signs in through the browser (lib/desktop-sign-in.ts).
+    // The desktop and mobile apps sign in through the browser (lib/desktop-sign-in.ts).
+    // The browser does not reveal which app asked, so the pages name neither.
     if (action === "desktop") {
       const params = new URL(req.url).searchParams,
         challenge = params.get("challenge"),
@@ -135,7 +138,7 @@ async function handleGET(
       if (!isDesktopChallenge(challenge))
         return desktopPage(locale, {
           title: say("Link ungültig", "Invalid link"),
-          text: say("Starte die Anmeldung noch einmal in der Desktop-App.", "Start signing in again from the desktop app."),
+          text: say("Starte die Anmeldung noch einmal in der Flowplan-App.", "Start signing in again from the Flowplan app."),
         });
       const user = await currentUser();
       if (!user || user.demo) {
@@ -146,12 +149,12 @@ async function handleGET(
       }
       // Signed in: one click confirms – nothing is handed over unasked.
       return desktopPage(locale, {
-        title: say("Flowplan Desktop anmelden", "Sign in to Flowplan Desktop"),
+        title: say("Bei der Flowplan-App anmelden", "Sign in to the Flowplan app"),
         text: say(
-          `Du bist als ${user.name} (${user.email}) angemeldet. Die Desktop-App wird mit diesem Konto verbunden.`,
-          `You are signed in as ${user.name} (${user.email}). The desktop app will use this account.`,
+          `Du bist als ${user.name} (${user.email}) angemeldet. Die Flowplan-App wird mit diesem Konto verbunden.`,
+          `You are signed in as ${user.name} (${user.email}). The Flowplan app will use this account.`,
         ),
-        body: `<form method="post" action="/api/auth/desktop"><input type="hidden" name="challenge" value="${escapeHtml(challenge)}"><button class="button">${say("In der Desktop-App anmelden", "Sign in to the desktop app")}</button></form><small>${say("Nicht gestartet? Dann schließe dieses Fenster einfach.", "Didn't start this? Just close this window.")}</small>`,
+        body: `<form method="post" action="/api/auth/desktop"><input type="hidden" name="challenge" value="${escapeHtml(challenge)}"><button class="button">${say("In der App anmelden", "Sign in to the app")}</button></form><small>${say("Nicht gestartet? Dann schließe dieses Fenster einfach.", "Didn't start this? Just close this window.")}</small>`,
       });
     }
     // Link from the confirmation e-mail.
@@ -271,7 +274,7 @@ async function handlePOST(
       return NextResponse.json({ ok: true });
     }
     const locale = await requestLocale();
-    // Confirmed in the browser: a one-time code for the desktop app.
+    // Confirmed in the browser: a one-time code for the app.
     if (action === "desktop") {
       const say = translate(locale),
         user = await currentUser(),
@@ -279,17 +282,17 @@ async function handlePOST(
       if (!user || user.demo || !isDesktopChallenge(challenge))
         return desktopPage(locale, {
           title: say("Anmeldung abgelaufen", "Sign-in expired"),
-          text: say("Starte die Anmeldung noch einmal in der Desktop-App.", "Start signing in again from the desktop app."),
+          text: say("Starte die Anmeldung noch einmal in der Flowplan-App.", "Start signing in again from the Flowplan app."),
         });
       const code = createDesktopCode(user.id, user.groups, challenge);
       const link = `flowplan://sign-in?${new URLSearchParams({ server: new URL(appUrl()).origin, challenge, code })}`;
       return desktopPage(locale, {
-        title: say("Zurück zur Desktop-App", "Back to the desktop app"),
+        title: say("Zurück zur App", "Back to the app"),
         text: say(
-          "Flowplan Desktop übernimmt die Anmeldung. Falls dein Browser fragt, erlaube das Öffnen der App.",
-          "Flowplan Desktop takes over the sign-in. If your browser asks, allow it to open the app.",
+          "Die Flowplan-App übernimmt die Anmeldung. Falls dein Browser fragt, erlaube das Öffnen der App.",
+          "The Flowplan app takes over the sign-in. If your browser asks, allow it to open the app.",
         ),
-        body: `<a class="button" href="${escapeHtml(link)}">${say("Flowplan Desktop öffnen", "Open Flowplan Desktop")}</a><small>${say("Danach kannst du dieses Fenster schließen. Der Link gilt eine Minute.", "You can close this window afterwards. The link is valid for one minute.")}</small>`,
+        body: `<a class="button" href="${escapeHtml(link)}">${say("Flowplan-App öffnen", "Open the Flowplan app")}</a><small>${say("Danach kannst du dieses Fenster schließen. Der Link gilt eine Minute.", "You can close this window afterwards. The link is valid for one minute.")}</small>`,
         refresh: link,
       });
     }
@@ -355,6 +358,23 @@ async function handlePOST(
         if (typeof id === "string") deletePasskey(user.id, id);
       }
       return NextResponse.json({ ok: true, passkeys: listPasskeys(user.id) });
+    }
+    // Deleting one's own account: accounts with a password confirm with it,
+    // SSO accounts by typing their e-mail address. The session ends with it.
+    if (action === "account-delete") {
+      const user = await currentUser();
+      if (!user) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
+      const input = (await body()) as { password?: unknown; confirm?: unknown; successors?: unknown };
+      const local = one<{ email: string }>("SELECT email FROM local_accounts WHERE user_id=?", user.id);
+      let confirm = input.confirm;
+      if (local && !user.demo && confirmsWithPassword(user.id)) {
+        const { userId } = await passwordLogin({ email: local.email, password: input.password }, clientAddress(req.headers), locale);
+        if (userId !== user.id) throw new HttpError(403, translate(locale)("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
+        confirm = one<{ email: string }>("SELECT email FROM users WHERE id=?", user.id)?.email;
+      }
+      const result = command(user, { action: "account.delete", confirm, successors: input.successors });
+      (await cookies()).delete(cookieName);
+      return NextResponse.json(result);
     }
     if (action === "logout") {
       const demoUser = await currentUser();

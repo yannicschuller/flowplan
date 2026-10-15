@@ -9,7 +9,7 @@ const { one, all, run } = await import("../lib/db");
 const { register, passwordLogin, verifyEmail, resendVerification } = await import("../lib/local-auth");
 const { saveInstanceSettings, instanceSettings } = await import("../lib/instance-settings");
 const { command } = await import("../lib/api");
-const { deletionPlan } = await import("../lib/account-deletion");
+const { deletionPlan, ownDeletionPlan } = await import("../lib/account-deletion");
 
 const mails = () => all<{ recipient: string; text: string }>("SELECT recipient,text FROM mail_queue ORDER BY rowid");
 const linkIn = (text: string) => /verify\?token=([A-Za-z0-9_-]+)/.exec(text)?.[1] || "";
@@ -73,4 +73,60 @@ test("deleting an account: only after deactivating; own workspaces go, shared on
   assert.ok(!rest || (rest.name === "Gelöschtes Konto" && rest.email === ""));
   // Not oneself, and never the last admin.
   assert.throws(() => command(identity(admin, true), { action: "admin.deleteUser", userId: admin }), /eigene Konto/);
+});
+
+test("people delete their own account: plan first, confirmation, a chosen successor", async () => {
+  const me = (await register({ name: "Selbst", email: "selbst@example.test", password: "a-long-password" }, "de")).user.id;
+  const editor = (await register({ name: "Redakteur", email: "red@example.test", password: "a-long-password" }, "de")).user.id;
+  const viewer = (await register({ name: "Leserin", email: "les@example.test", password: "a-long-password" }, "de")).user.id;
+  const solo = (command(identity(me), { action: "workspace.create", name: "Solo" }) as { id: string }).id;
+  const team = (command(identity(me), { action: "workspace.create", name: "Team" }) as { id: string }).id;
+  run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor'),(?,?,'viewer')", team, editor, team, viewer);
+  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES('self-session',?,'[]',?)", me, Date.now() + 60_000);
+  const plan = command(identity(me), { action: "account.deletePlan" }) as ReturnType<typeof ownDeletionPlan>;
+  assert.equal(plan.refusal, undefined);
+  assert.deepEqual(plan.removed.map((w) => w.name), ["Solo"]);
+  assert.equal(plan.handedOver.length, 1);
+  assert.equal(plan.handedOver[0].toId, editor);
+  assert.deepEqual(plan.handedOver[0].candidates.map((c) => c.id), [editor, viewer]);
+  assert.equal(plan.confirm.kind, "password");
+  // Wrong confirmation, a successor who is not a member, API tokens: refused.
+  assert.throws(() => command(identity(me), { action: "account.delete", confirm: "jemand@example.test" }), /Bestätigung stimmt nicht/);
+  assert.throws(
+    () => command(identity(me), { action: "account.delete", confirm: "selbst@example.test", successors: { [team]: me } }),
+    /neuen Eigentümer/,
+  );
+  assert.throws(() => command({ ...identity(me), apiScope: "write" } as never, { action: "account.delete", confirm: "selbst@example.test" }));
+  assert.ok(one("SELECT 1 FROM users WHERE id=? AND email='selbst@example.test'", me));
+  command(identity(me), { action: "account.delete", confirm: " Selbst@Example.test ", successors: { [team]: viewer } });
+  assert.equal(one("SELECT 1 FROM workspaces WHERE id=?", solo), undefined);
+  assert.equal(one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", team, viewer)?.role, "owner");
+  assert.equal(one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", team, editor)?.role, "editor");
+  assert.equal(one("SELECT 1 FROM sessions WHERE user_id=?", me), undefined);
+  assert.equal(one("SELECT 1 FROM local_accounts WHERE user_id=?", me), undefined);
+  assert.ok(one<{ action: string }>("SELECT action FROM audit WHERE actor_id=? AND action='account.delete'", me));
+});
+
+test("own deletion is refused for the last admin, demos and workspaces nobody can take over", async () => {
+  const admin = one<{ id: string }>("SELECT user_id id FROM local_accounts WHERE email='admin@example.test'")!.id;
+  const adminPlan = ownDeletionPlan(identity(admin, true));
+  assert.match(adminPlan.refusal || "", /letzte Admin-Konto/);
+  assert.throws(() => command(identity(admin, true), { action: "account.delete", confirm: "admin@example.test" }), /letzte Admin-Konto/);
+  assert.ok(one("SELECT 1 FROM users WHERE id=?", admin));
+
+  const demo = { ...identity(admin), demo: true } as never as Parameters<typeof command>[0];
+  assert.match(ownDeletionPlan(demo).refusal || "", /Demo-Konten/);
+  assert.throws(() => command(demo, { action: "account.delete", confirm: "x" }), /Demo/);
+
+  const stuck = (await register({ name: "Fest", email: "fest@example.test", password: "a-long-password" }, "de")).user.id;
+  const gone = (await register({ name: "Inaktiv", email: "inaktiv@example.test", password: "a-long-password" }, "de")).user.id;
+  const shared = (command(identity(stuck), { action: "workspace.create", name: "Mit Inaktiven" }) as { id: string }).id;
+  run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor')", shared, gone);
+  run("UPDATE users SET disabled=1 WHERE id=?", gone);
+  const plan = ownDeletionPlan(identity(stuck));
+  assert.deepEqual(plan.removed, []);
+  assert.deepEqual(plan.blocked.map((w) => w.name), ["Mit Inaktiven"]);
+  assert.match(plan.refusal || "", /„Mit Inaktiven“ hat außer dir nur deaktivierte Mitglieder/);
+  assert.throws(() => command(identity(stuck), { action: "account.delete", confirm: "fest@example.test" }), /deaktivierte Mitglieder/);
+  assert.ok(one("SELECT 1 FROM workspaces WHERE id=?", shared));
 });
