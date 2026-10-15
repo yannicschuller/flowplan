@@ -5424,7 +5424,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .login-card h1 {
     font-size: 27px;
   }
-  .login footer span {
+  .login footer > span {
     display: none;
   }
   .public-page {
@@ -13666,30 +13666,53 @@ h3 .block-reactions {
   color: var(--text);
 }
 /* DE · EN on the sign-in page (components/i18n.tsx). */
+/* Language menu on the sign-in page (LanguageSwitch in components/i18n.tsx). */
 .language-switch {
   display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin-left: 12px;
-  padding: 2px;
-  gap: 2px;
+  padding: 4px 8px;
+  min-height: 28px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  vertical-align: middle;
-}
-.language-switch button {
-  padding: 3px 7px;
-  border: 0;
-  border-radius: 5px;
   background: none;
   color: var(--muted);
   font: inherit;
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.04em;
+  vertical-align: middle;
   cursor: pointer;
 }
-.language-switch button[aria-pressed="true"] {
+.language-switch:hover,
+.language-switch[data-state="open"] {
   background: var(--hover);
   color: var(--text);
+}
+.language-switch > span {
+  font-size: 14px;
+  line-height: 1;
+}
+.language-menu {
+  min-width: 170px;
+}
+.language-menu .dropdown-item {
+  font-size: 13px;
+  min-height: 36px;
+  color: var(--text);
+}
+.language-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+.language-check {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--blue);
+}
+.language-select {
+  min-width: 220px;
 }
 /* Sign-in form (components/login.tsx). */
 .login-form {
@@ -13878,9 +13901,6 @@ h3 .block-reactions {
   flex-wrap: wrap;
 }
 /* The language switch stays in the footer on phones too. */
-.login footer span.language-switch {
-  display: inline-flex;
-}
 /* ---------- PDF preview and viewer (components/pdf-viewer.tsx) ---------- */
 .pdf-block {
   margin: 12px 0;

@@ -57,7 +57,7 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
     await me.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-my-limits.png`, fullPage: true });
 
     // Fixed language: English everywhere from now on.
-    await me.page.getByRole("radio", { name: "English" }).click();
+    await me.page.getByRole("combobox", { name: "Sprache" }).selectOption("en");
     await expect(me.page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 20_000 });
     expect((db.prepare("SELECT language FROM users WHERE id=?").get(person.uid) as { language: string }).language).toBe("en");
     // Another device with a German browser switches to English as well.
@@ -65,7 +65,7 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
     await other.page.goto(`${origin}/#settings`);
     await expect(other.page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 20_000 });
     await other.context.close();
-    await me.page.getByRole("radio", { name: "Automatic" }).click();
+    await me.page.getByRole("combobox", { name: "Language" }).selectOption("");
     await expect(me.page.getByRole("heading", { name: "Einstellungen" })).toBeVisible({ timeout: 20_000 });
     expect(errors).toEqual([]);
   } finally {

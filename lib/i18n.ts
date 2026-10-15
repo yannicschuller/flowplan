@@ -8,11 +8,12 @@
 import { translateCatalog } from "./i18n-catalogs";
 
 // To add a language: its catalogue in locales/, an entry here and one in
-// lib/i18n-catalogs.ts. `tag` formats dates and numbers.
+// lib/i18n-catalogs.ts. `tag` formats dates and numbers; `flag` stands for
+// the language in the language menus (the country of `tag`).
 export const LANGUAGES = {
-  de: { name: "Deutsch", tag: "de-DE" },
-  en: { name: "English", tag: "en-GB" },
-  fr: { name: "Français", tag: "fr-FR" },
+  de: { name: "Deutsch", tag: "de-DE", flag: "🇩🇪" },
+  en: { name: "English", tag: "en-GB", flag: "🇬🇧" },
+  fr: { name: "Français", tag: "fr-FR", flag: "🇫🇷" },
 } as const;
 export type Locale = keyof typeof LANGUAGES;
 export const LOCALES = Object.keys(LANGUAGES) as Locale[];

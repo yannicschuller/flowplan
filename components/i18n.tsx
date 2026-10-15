@@ -2,8 +2,10 @@
 // The language in the browser: provided by the root layout, switchable.
 // Switching stores the choice in a cookie for a year and reloads, so server
 // and client render the same language.
-import { createContext, useCallback, useContext } from "react";
-import { LANGUAGES, LOCALES, LOCALE_COOKIE, translate, type Locale } from "@/lib/i18n";
+import { createContext, useContext } from "react";
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
+import { CaretDown, Check } from "@phosphor-icons/react";
+import { LANGUAGES, LOCALES, LOCALE_COOKIE, isLocale, translate, type Locale } from "@/lib/i18n";
 import { translateLabel } from "@/lib/i18n-labels";
 
 const LocaleContext = createContext<Locale>("de");
@@ -40,26 +42,34 @@ export function clearLocale() {
   writeLocaleCookie(null);
   location.reload();
 }
-// "DE · EN · FR": the other languages are buttons.
+// "🇩🇪 DE ▾": a small menu of all languages (flag and own name), so the
+// switch keeps its size however many languages there are.
 export function LanguageSwitch({ className }: { className?: string }) {
   const locale = useLocale();
   const t = useT();
-  const choose = useCallback((l: Locale) => l !== locale && setLocale(l), [locale]);
   return (
-    <span className={className} role="group" aria-label={t("Sprache", "Language")}>
-      {LOCALES.map((l) => (
-        <button
-          key={l}
-          type="button"
-          lang={l}
-          aria-pressed={l === locale}
-          title={LANGUAGES[l].name}
-          onClick={() => choose(l)}
-        >
-          {l.toUpperCase()}
-        </button>
-      ))}
-    </span>
+    <Dropdown.Root modal={false}>
+      <Dropdown.Trigger className={className} aria-label={`${t("Sprache", "Language")}: ${LANGUAGES[locale].name}`}>
+        <span aria-hidden>{LANGUAGES[locale].flag}</span>
+        {locale.toUpperCase()}
+        <CaretDown size={11} aria-hidden />
+      </Dropdown.Trigger>
+      <Dropdown.Portal>
+        <Dropdown.Content className="dropdown language-menu" side="top" align="end" sideOffset={6} collisionPadding={8}>
+          <Dropdown.RadioGroup value={locale} onValueChange={(l) => isLocale(l) && l !== locale && setLocale(l)}>
+            {LOCALES.map((l) => (
+              <Dropdown.RadioItem key={l} value={l} lang={l} className="dropdown-item">
+                <span className="language-flag" aria-hidden>{LANGUAGES[l].flag}</span>
+                <span>{LANGUAGES[l].name}</span>
+                <Dropdown.ItemIndicator className="language-check">
+                  <Check size={14} aria-hidden />
+                </Dropdown.ItemIndicator>
+              </Dropdown.RadioItem>
+            ))}
+          </Dropdown.RadioGroup>
+        </Dropdown.Content>
+      </Dropdown.Portal>
+    </Dropdown.Root>
   );
 }
 

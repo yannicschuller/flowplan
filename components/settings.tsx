@@ -1,5 +1,5 @@
 "use client";
-import { LANGUAGES, LOCALES } from "@/lib/i18n";
+import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { SettingGroup, SettingRow, UsageMeter } from "./settings-ui";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -259,28 +259,28 @@ export default function Settings({
                     <p className="muted small">{t("Name und E-Mail werden von deinem Identitätsanbieter übernommen.", "Your name and e-mail come from your identity provider.")}</p>
                   )}
                 </div>
-                <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise. „Automatisch“ folgt dem Browser.", "Applies on all devices, also to e-mails and push notifications. “Automatic” follows the browser.")}>
-                  <div className="segmented" role="radiogroup" aria-label={t("Sprache", "Language")}>
-                    {[[null, t("Automatisch", "Automatic")] as const, ...LOCALES.map((l) => [l, LANGUAGES[l].name] as const)].map(([value, label]) => (
-                      <label key={label} data-active={(boot.language ?? null) === value}>
-                        <input
-                          type="radio"
-                          name="profile-language"
-                          checked={(boot.language ?? null) === value}
-                          onChange={async () => {
-                            try {
-                              await mutate({ action: "profile.language", language: value });
-                              if (value) setLocale(value);
-                              else clearLocale();
-                            } catch (e) {
-                              onError((e as Error).message);
-                            }
-                          }}
-                        />
-                        {label}
-                      </label>
+                <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>
+                  <Select
+                    className="language-select"
+                    name="profile-language"
+                    aria-label={t("Sprache", "Language")}
+                    value={boot.language ?? ""}
+                    onChange={async (e) => {
+                      const value = isLocale(e.target.value) ? e.target.value : null;
+                      try {
+                        await mutate({ action: "profile.language", language: value });
+                        if (value) setLocale(value);
+                        else clearLocale();
+                      } catch (err) {
+                        onError((err as Error).message);
+                      }
+                    }}
+                  >
+                    <option value="">{`🌐 ${t("Automatisch (folgt dem Browser)", "Automatic (follows the browser)")}`}</option>
+                    {LOCALES.map((l) => (
+                      <option key={l} value={l} lang={l}>{`${LANGUAGES[l].flag} ${LANGUAGES[l].name}`}</option>
                     ))}
-                  </div>
+                  </Select>
                 </SettingRow>
                 <SettingRow label={t("Erscheinungsbild", "Appearance")} description={t("Nur auf diesem Gerät.", "On this device only.")}>
                   <div className="segmented" role="radiogroup" aria-label={t("Erscheinungsbild", "Appearance")}>
