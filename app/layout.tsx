@@ -6,6 +6,8 @@ import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";
 import { LocaleProvider } from "@/components/i18n";
 import { PdfViewerHost } from "@/components/pdf-viewer";
+import { headers } from "next/headers";
+import { THEME_SCRIPT } from "@/lib/theme";
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await requestLocale();
   const say = translate(locale);
@@ -53,9 +55,13 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const locale = await requestLocale();
+  // The page's own scripts carry the nonce of the Content Security Policy (proxy.ts).
+  const nonce = (await headers()).get("x-nonce") || undefined;
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
+        {/* Light or dark before the first paint (lib/theme.ts). */}
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <link
           rel="preload"
           href="/fonts/instrument-sans-latin-standard-normal.woff2"

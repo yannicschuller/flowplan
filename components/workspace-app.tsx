@@ -1,4 +1,5 @@
 "use client";
+import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
@@ -478,6 +479,7 @@ export default function WorkspaceApp({
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false),
     [dark, setDark] = useState(false),
+    [theme, setTheme] = useState<ThemeChoice>("system"),
     [iconPicker, setIconPicker] = useState(false),
     [coverPicker, setCoverPicker] = useState(false),
     [newWorkspace, setNewWorkspace] = useState(false),
@@ -837,9 +839,13 @@ export default function WorkspaceApp({
     location.hash = s;
   }
   useEffect(() => {
-    const saved = localStorage.getItem("flowplan-theme") === "dark";
-    setDark(saved);
-    document.documentElement.dataset.theme = saved ? "dark" : "light";
+    const choice = themeChoice();
+    setTheme(choice);
+    setDark(applyTheme(choice));
+    const stopTheme = watchTheme((isDark, choice) => {
+      setDark(isDark);
+      setTheme(choice);
+    });
     const navigate = () => {
       const fragment = location.hash.slice(1);
       if (fragment.startsWith("page=")) {
@@ -887,6 +893,7 @@ export default function WorkspaceApp({
     window.addEventListener("online", network);
     window.addEventListener("offline", network);
     return () => {
+      stopTheme();
       window.removeEventListener("hashchange", navigate);
       window.removeEventListener("keydown", key);
       window.removeEventListener("online", network);
@@ -1393,10 +1400,13 @@ export default function WorkspaceApp({
         );
       });
   }
+  // The command switches to the other look and keeps it.
   function toggleTheme() {
-    setDark(!dark);
-    document.documentElement.dataset.theme = !dark ? "dark" : "light";
-    localStorage.setItem("flowplan-theme", !dark ? "dark" : "light");
+    chooseTheme(dark ? "light" : "dark");
+  }
+  function chooseTheme(choice: ThemeChoice) {
+    setTheme(choice);
+    setDark(setThemeChoice(choice));
   }
   // Commands for the quick search ("> …" or matching words).
   const openPageData = screen === "page" && data ? data : null;
@@ -2794,12 +2804,8 @@ export default function WorkspaceApp({
               boot={boot}
               mutate={mutate}
               onError={notify}
-              dark={dark}
-              setDark={(v) => {
-                setDark(v);
-                document.documentElement.dataset.theme = v ? "dark" : "light";
-                localStorage.setItem("flowplan-theme", v ? "dark" : "light");
-              }}
+              theme={theme}
+              setTheme={chooseTheme}
             />
           )}
           {screen === "admin" && boot.user.isAdmin && (

@@ -1,4 +1,5 @@
 "use client";
+import type { ThemeChoice } from "@/lib/theme";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { SettingGroup, SettingRow, UsageMeter } from "./settings-ui";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -25,6 +26,7 @@ import {
   Plus,
   Sun,
   Moon,
+  CircleHalf,
   Globe,
   Lock,
   UploadSimple,
@@ -97,8 +99,8 @@ export default function Settings({
   boot,
   mutate,
   onError,
-  dark,
-  setDark,
+  theme,
+  setTheme,
   onRefresh,
   onWorkspaceExit,
 }: {
@@ -107,8 +109,8 @@ export default function Settings({
   onError: (s: string) => void;
   onRefresh: () => Promise<unknown>;
   onWorkspaceExit: (id: string | null) => Promise<unknown> | void;
-  dark: boolean;
-  setDark: (b: boolean) => void;
+  theme: ThemeChoice;
+  setTheme: (choice: ThemeChoice) => void;
 }) {
   const t = useT();
   const [tab, setTab] = useState("general"),
@@ -283,14 +285,21 @@ export default function Settings({
                     ))}
                   </Select>
                 </SettingRow>
-                <SettingRow label={t("Erscheinungsbild", "Appearance")} description={t("Nur auf diesem Gerät.", "On this device only.")}>
+                <SettingRow
+                  label={t("Erscheinungsbild", "Appearance")}
+                  description={t("Automatisch folgt dem Hell- oder Dunkelmodus des Geräts. Nur auf diesem Gerät.", "Automatic follows the device's light or dark mode. On this device only.")}
+                >
                   <div className="segmented" role="radiogroup" aria-label={t("Erscheinungsbild", "Appearance")}>
-                    <label data-active={!dark}>
-                      <input type="radio" name="profile-theme" checked={!dark} onChange={() => setDark(false)} />
+                    <label data-active={theme === "system"}>
+                      <input type="radio" name="profile-theme" checked={theme === "system"} onChange={() => setTheme("system")} />
+                      <CircleHalf size={15} aria-hidden /> {t("Automatisch", "Automatic")}
+                    </label>
+                    <label data-active={theme === "light"}>
+                      <input type="radio" name="profile-theme" checked={theme === "light"} onChange={() => setTheme("light")} />
                       <Sun size={15} aria-hidden /> {t("Hell", "Light")}
                     </label>
-                    <label data-active={dark}>
-                      <input type="radio" name="profile-theme" checked={dark} onChange={() => setDark(true)} />
+                    <label data-active={theme === "dark"}>
+                      <input type="radio" name="profile-theme" checked={theme === "dark"} onChange={() => setTheme("dark")} />
                       <Moon size={15} aria-hidden /> {t("Dunkel", "Dark")}
                     </label>
                   </div>
