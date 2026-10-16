@@ -1,5 +1,6 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
+import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -319,13 +320,26 @@ export async function api<T = Record<string, unknown>>(
       r.status,
       [502, 503, 504].includes(r.status),
     );
+  // The mobile app updates its widgets and badge after a change.
+  if (body) nativeRefresh();
   return data;
 }
 export function download(name: string, content: string, type = "text/plain") {
-  const url = URL.createObjectURL(new Blob([content], { type }));
+  downloadBlob(name, new Blob([content], { type }));
+}
+// In the mobile app the file goes to the share sheet: its web view cannot
+// download.
+export function downloadBlob(name: string, blob: Blob) {
+  if (nativeApp()?.saveFile) {
+    void nativeSaveFile(name, blob);
+    return;
+  }
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
+  document.body.append(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }

@@ -31,6 +31,7 @@ const PERSONAL = [
   "journal_unlocks",
   "passkeys",
   "local_accounts",
+  "mobile_devices",
   "push_subscriptions",
   "notifications",
   "notification_prefs",

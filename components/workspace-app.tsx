@@ -860,6 +860,13 @@ export default function WorkspaceApp({
         setMobile(false);
         // The start page shows recently opened and edited pages: current.
         if (fragment === "home") void refresh().catch(() => {});
+      } else if (fragment === "search" || fragment === "new") {
+        // Quick actions of the mobile app (long press on its icon).
+        if (fragment === "search") setSearch(true);
+        else setCreate(true);
+        const back =
+          screenRef.current === "page" && currentId.current ? `page=${currentId.current}` : screenRef.current || "home";
+        window.history.replaceState(null, "", `${location.pathname}#${back}`);
       }
     };
     navigate();

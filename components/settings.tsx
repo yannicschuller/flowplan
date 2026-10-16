@@ -35,7 +35,7 @@ import {
   BellSimple,
   PlugsConnected,
 } from "@phosphor-icons/react";
-import { api, Avatar, download, Modal } from "./ui";
+import { api, Avatar, download, downloadBlob, Modal } from "./ui";
 import type { Bootstrap, Space } from "@/lib/types";
 type SettingsData = {
   invites: { id: string; email: string; role: string; guest?: number }[];
@@ -633,15 +633,7 @@ export default function Settings({
                         );
                         if (!response.ok)
                           throw new Error(serverMessage((await response.json()).error));
-                        const blob = await response.blob();
-                        const url = URL.createObjectURL(blob),
-                          link = document.createElement("a");
-                        link.href = url;
-                        link.download = `flowplan-${new Date().toISOString().slice(0, 10)}.zip`;
-                        document.body.appendChild(link);
-                        link.click();
-                        link.remove();
-                        setTimeout(() => URL.revokeObjectURL(url), 10000);
+                        downloadBlob(`flowplan-${new Date().toISOString().slice(0, 10)}.zip`, await response.blob());
                       } catch (e) {
                         onError((e as Error).message);
                       } finally {

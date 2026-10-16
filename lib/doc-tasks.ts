@@ -186,6 +186,10 @@ function taskRows(user: Identity, workspaceId: string | null, includeDone: boole
 export function myTasks(user: Identity, workspaceId: string, includeDone = false) {
   return taskRows(user, workspaceId, includeDone).slice(0, 500);
 }
+// Open tasks across all of the person's workspaces (widgets of the mobile app).
+export function openTasksEverywhere(user: Identity) {
+  return taskRows(user, null, false);
+}
 // The person's tasks in their other workspaces, per workspace.
 export function otherWorkspaceTasks(user: Identity, workspaceId: string, includeDone = false) {
   const names = new Map(

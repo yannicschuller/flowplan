@@ -9,6 +9,8 @@ import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import type { Identity, Page } from "./types";
 import { userLocale } from "./user-locale";
+import { localizedMessage } from "./i18n-errors";
+import { translate } from "./i18n";
 const runtime = globalThis as unknown as {
   flowplanPushTimer?: ReturnType<typeof setInterval>;
   flowplanPushRun?: Promise<void>;
@@ -162,7 +164,48 @@ type Sender = (
   payload: string,
   options: webpush.RequestOptions,
 ) => Promise<unknown>;
-export async function flushPushQueue(send: Sender = webpush.sendNotification) {
+// Push subscriptions of the apps (lib/mobile-devices.ts) carry the Expo push
+// token behind this prefix instead of a Web Push endpoint.
+export const EXPO_ENDPOINT = "expo:";
+// The general text of a push notification, in the person's language.
+function inboxNotice(userId: string) {
+  const say = translate(userLocale(userId));
+  return say("Du hast eine neue Benachrichtigung im Posteingang.", "You have a new notification in your inbox.");
+}
+// One message to the apps through Expo's push service (lib/mobile-devices.ts).
+export type ExpoMessage = {
+  to: string;
+  title: string;
+  body: string;
+  data: { url: string };
+  sound: "default";
+  badge: number;
+  channelId: string;
+  ttl: number;
+  priority: "high";
+};
+type ExpoSender = (message: ExpoMessage) => Promise<unknown>;
+export class PushGoneError extends Error {
+  statusCode = 410;
+}
+export async function sendExpoPush(message: ExpoMessage) {
+  const response = await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(message),
+    signal: AbortSignal.timeout(5000),
+  });
+  const result = (await response.json().catch(() => ({}))) as {
+    data?: { status?: string; details?: { error?: string } };
+  };
+  if (result.data?.details?.error === "DeviceNotRegistered") throw new PushGoneError("DeviceNotRegistered");
+  if (!response.ok || result.data?.status !== "ok")
+    throw Object.assign(new Error(result.data?.details?.error || "Expo push failed"), { statusCode: response.status || 502 });
+}
+export async function flushPushQueue(
+  send: Sender = webpush.sendNotification,
+  sendExpo: ExpoSender = sendExpoPush,
+) {
   const now = Date.now();
   run(
     "DELETE FROM push_subscriptions WHERE session_token IN (SELECT token FROM sessions WHERE expires<=?) OR user_id IN (SELECT id FROM users WHERE disabled=1)",
@@ -184,8 +227,9 @@ export async function flushPushQueue(send: Sender = webpush.sendNotification) {
     row_id: string | null;
     thread_id: string | null;
     read_at: string | null;
+    body: string | null;
   }>(
-    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
+    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at,n.body FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
     now,
   );
   if (!jobs.length) return;
@@ -228,6 +272,38 @@ export async function flushPushQueue(send: Sender = webpush.sendNotification) {
         return;
       }
       try {
+        if (job.endpoint.startsWith(EXPO_ENDPOINT)) {
+          // The apps: the badge shows the unread notifications. The text
+          // stays as general as Web Push unless the instance opts in
+          // (MOBILE_PUSH_CONTENT=on), because it passes Expo, Apple and Google.
+          const locale = userLocale(job.user_id),
+            unread = Number(
+              one<{ n: number }>(
+                "SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL",
+                job.user_id,
+              )?.n || 0,
+            );
+          await sendExpo({
+            to: job.endpoint.slice(EXPO_ENDPOINT.length),
+            title: "Flowplan",
+            body:
+              /^(1|on|true|yes)$/i.test(process.env.MOBILE_PUSH_CONTENT || "") && job.body
+                ? localizedMessage(job.body, locale).slice(0, 300)
+                : inboxNotice(job.user_id),
+            data: { url: notificationUrl(job) },
+            sound: "default",
+            badge: unread,
+            channelId: "inbox",
+            ttl: 86400,
+            priority: "high",
+          });
+          run(
+            "UPDATE push_deliveries SET delivered_at=?,last_error=NULL WHERE id=?",
+            Date.now(),
+            job.id,
+          );
+          return;
+        }
         validatePushSubscription({
           endpoint: job.endpoint,
           keys: { p256dh: job.p256dh, auth: job.auth },
@@ -239,10 +315,7 @@ export async function flushPushQueue(send: Sender = webpush.sendNotification) {
           },
           JSON.stringify({
             title: "Flowplan",
-            body:
-              userLocale(job.user_id) === "de"
-                ? "Du hast eine neue Benachrichtigung im Posteingang."
-                : "You have a new notification in your inbox.",
+            body: inboxNotice(job.user_id),
             url: notificationUrl(job),
             tag: `flowplan-${job.notification_id}`,
           }),

@@ -2,8 +2,11 @@
 import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import { api } from "./ui";
+import { nativeApp } from "@/lib/native-app";
 export default function PushSettings() {
   const t = useT();
+  // In the Flowplan app the app delivers push itself (flowplan-app).
+  const [app, setApp] = useState<ReturnType<typeof nativeApp>>(undefined);
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
   const [key, setKey] = useState(""),
@@ -20,6 +23,17 @@ export default function PushSettings() {
       window.matchMedia("(display-mode: standalone)").matches ||
       !!(navigator as Navigator & { standalone?: boolean }).standalone;
     setInstallRequired(ios && !standalone);
+    const inApp = nativeApp();
+    if (inApp) {
+      setApp(inApp);
+      let active = true;
+      api<{ subscribed: boolean }>("/api/push")
+        .then((config) => active && setSubscribed(config.subscribed))
+        .catch((error) => active && setMessage((error as Error).message));
+      return () => {
+        active = false;
+      };
+    }
     if (
       !window.isSecureContext ||
       !("serviceWorker" in navigator) ||
@@ -111,7 +125,44 @@ export default function PushSettings() {
       <p className="muted">
         {t("Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.", "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.")}
       </p>
-      {installRequired ? (
+      {app ? (
+        <>
+          <p>
+            {t("Status:", "Status:")}{" "}
+            <strong>
+              {subscribed
+                ? t("Die Flowplan-App erhält Benachrichtigungen", "The Flowplan app receives notifications")
+                : t("Die Flowplan-App erhält keine Benachrichtigungen", "The Flowplan app does not receive notifications")}
+            </strong>
+          </p>
+          <div className="modal-actions">
+            {app.openSettings && (
+              <button className="button primary" onClick={() => app.openSettings?.()}>
+                {t("App-Einstellungen öffnen", "Open app settings")}
+              </button>
+            )}
+            {subscribed && (
+              <button
+                className="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api("/api/push", { action: "test" });
+                    setMessage(t("Testbenachrichtigung wurde zum Versand eingereiht.", "The test notification has been queued."));
+                  } catch (e) {
+                    setMessage((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {t("Testbenachrichtigung senden", "Send test notification")}
+              </button>
+            )}
+          </div>
+        </>
+      ) : installRequired ? (
         <p role="status">
           {t("Öffne Flowplan zuerst über das Symbol auf deinem Home-Bildschirm.", "Open Flowplan from the icon on your Home Screen first.")}
         </p>

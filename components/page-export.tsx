@@ -3,7 +3,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
-import { Modal } from "./ui";
+import { downloadBlob, Modal } from "./ui";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { exportName } from "@/lib/export-name";
 export function PageExportDialog({
@@ -43,15 +43,7 @@ export function PageExportDialog({
         throw new Error(
           serverMessage((await response.json()).error) || t("Export fehlgeschlagen.", "Export failed."),
         );
-      const blob = await response.blob(),
-        url = URL.createObjectURL(blob),
-        link = document.createElement("a");
-      link.href = url;
-      link.download = `${exportName(page.title)}.${format === "zip" ? "zip" : "md"}`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      downloadBlob(`${exportName(page.title)}.${format === "zip" ? "zip" : "md"}`, await response.blob());
       onClose();
     } catch (error) {
       setError(

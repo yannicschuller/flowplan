@@ -330,6 +330,7 @@ const exact: Record<string, string> = {
   "Ungültiger Push-Schlüssel.": "Invalid push key.",
   "Push-Abonnement stimmt nicht überein.": "Push subscription does not match.",
   "Höchstens 20 Push-Geräte pro Konto.": "At most 20 push devices per account.",
+  "Höchstens 20 Apps pro Konto.": "At most 20 apps per account.",
   "Bitte vor dem nächsten Test eine Minute warten.": "Please wait a minute before the next test.",
   "Der Eintrag wurde inzwischen geändert. Bitte erneut versuchen.": "The record was changed in the meantime. Please try again.",
   "Der Eintrag wiederholt sich nicht.": "The record does not recur.",

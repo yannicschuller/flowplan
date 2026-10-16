@@ -12,7 +12,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 33) return;
+  if (globalDb.flowplanSchema === 34) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -468,7 +468,12 @@ function migrate(d: DatabaseSync) {
   // address before the first sign-in (older accounts are not affected).
   if (!(d.prepare("PRAGMA table_info(local_accounts)").all() as { name: string }[]).some((c) => c.name === "verify_required"))
     d.exec("ALTER TABLE local_accounts ADD COLUMN verify_required INTEGER NOT NULL DEFAULT 0");
-  globalDb.flowplanSchema = 33;
+  // The apps for iPhone, iPad and Android: one entry per installation and
+  // account, bound to the sign-in session (signing out removes it). Its token
+  // only reads the widget summary; push goes through push_subscriptions with
+  // an "expo:" endpoint (lib/mobile-devices.ts).
+  d.exec(`CREATE TABLE IF NOT EXISTS mobile_devices(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,session_token TEXT NOT NULL REFERENCES sessions(token) ON DELETE CASCADE,platform TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',app_version TEXT NOT NULL DEFAULT '',token_hash TEXT NOT NULL UNIQUE,push_subscription_id TEXT REFERENCES push_subscriptions(id) ON DELETE SET NULL,created_at INTEGER NOT NULL,last_seen_at INTEGER NOT NULL,UNIQUE(user_id,installation_id));`);
+  globalDb.flowplanSchema = 34;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
