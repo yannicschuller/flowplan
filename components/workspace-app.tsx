@@ -60,6 +60,7 @@ import {
   Clock,
   Trash,
   BookOpen,
+  PencilSimple,
   GearSix,
   SidebarSimple,
   DotsThree,
@@ -422,6 +423,8 @@ type Screen =
   | "media"
   | "settings"
   | "admin";
+// Pages opened for reading, per device.
+const READ_MODE_KEY = "flowplan-read-pages";
 export default function WorkspaceApp({
   initial,
   useTemplate,
@@ -430,6 +433,7 @@ export default function WorkspaceApp({
   // Public gallery: create a page from this template once signed in.
   useTemplate?: string;
 }) {
+  const toggleReadingRef = useRef(() => {});
   const t = useT();
   const statusLabel = useStatusLabel();
   const locale = useLocale();
@@ -473,6 +477,8 @@ export default function WorkspaceApp({
     [history, setHistory] = useState(false),
     [comments, setComments] = useState(false),
     [focusMode, setFocusMode] = useState(false),
+    // Documents opened for reading on this device (no editing, no handles).
+    [readPages, setReadPages] = useState<string[]>([]),
     [comment, setComment] = useState(""),
     [status, setStatus] = useState("Gespeichert"),
     [toast, setToast] = useState(""),
@@ -873,6 +879,11 @@ export default function WorkspaceApp({
         e.preventDefault();
         setCreate(true);
       }
+      // ⌘⌥E: between reading and editing the open document (⌘⇧E centres text).
+      if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.code === "KeyE") {
+        e.preventDefault();
+        toggleReadingRef.current();
+      }
     };
     const network = () => setOnline(navigator.onLine);
     network();
@@ -952,9 +963,30 @@ export default function WorkspaceApp({
     }, 10000);
     return () => clearInterval(timer);
   }, [refresh]);
+  // May edit the open page – and does, unless it is open for reading.
+  const mayEdit = !!data && ["editor", "owner"].includes(data.role) && !data.page.locked,
+    canRead = mayEdit && data?.page.kind === "document",
+    reading = canRead && readPages.includes(data!.page.id);
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(READ_MODE_KEY) || "[]");
+      if (Array.isArray(stored)) setReadPages(stored.filter((id) => typeof id === "string"));
+    } catch {}
+  }, []);
+  const toggleReading = () => {
+    if (!data || !canRead) return;
+    const id = data.page.id;
+    setReadPages((pages) => {
+      const next = pages.includes(id) ? pages.filter((p) => p !== id) : [...pages.slice(-199), id];
+      try {
+        localStorage.setItem(READ_MODE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+  toggleReadingRef.current = toggleReading;
   const activePages = boot.pages.filter((p) => !p.deleted_at),
-    editable =
-      !!data && ["editor", "owner"].includes(data.role) && !data.page.locked,
+    editable = mayEdit && !reading,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id));
   function addPage(
@@ -1414,6 +1446,13 @@ export default function WorkspaceApp({
     ...(openPageData
       ? [
           { label: t("Fokusmodus", "Focus mode"), keywords: "schreiben ablenkungsfrei zen wortziel", icon: TextAa, run: () => setFocusMode(true) },
+          ...(canRead
+            ? [
+                reading
+                  ? { label: t("Bearbeiten", "Edit"), keywords: "lesemodus bearbeiten schreiben edit read", icon: PencilSimple, run: toggleReading }
+                  : { label: t("Lesemodus", "Reading mode"), keywords: "lesemodus lesen nur lesen read view", icon: BookOpen, run: toggleReading },
+              ]
+            : []),
           {
             label: boot.favorites.includes(openPageData.page.id) ? t("Aus Favoriten entfernen", "Remove from favourites") : t("Zu Favoriten", "Add to favourites"),
             keywords: "favorit stern",
@@ -1913,6 +1952,17 @@ export default function WorkspaceApp({
                     <Avatar name={u.name} userId={u.id} small key={u.id} />
                   ))}
               </div>
+              {canRead && (
+                <button
+                  className={`icon-button read-mode-toggle${reading ? " active" : ""}`}
+                  title={reading ? t("Bearbeiten (⌘⌥E)", "Edit (⌘⌥E)") : t("Lesemodus (⌘⌥E)", "Reading mode (⌘⌥E)")}
+                  aria-label={reading ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")}
+                  aria-pressed={reading}
+                  onClick={toggleReading}
+                >
+                  {reading ? <PencilSimple size={20} /> : <BookOpen size={20} />}
+                </button>
+              )}
               <button
                 title={t("Kommentare", "Comments")}
                 className={`icon-button ${comments ? "active" : ""}`}
