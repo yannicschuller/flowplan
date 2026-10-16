@@ -340,6 +340,9 @@ export default function Whiteboard({
     svg = useRef<SVGSVGElement>(null),
     gesture = useRef<Gesture | null>(null),
     pointers = useRef(new Map<number, Point>()),
+    // The pointer that started the running gesture: with a pen, a palm
+    // resting on the screen neither draws, pans nor ends the stroke.
+    owner = useRef<{ id: number; type: string } | null>(null),
     pinch = useRef<{ distance: number; center: Point; view: View } | null>(
       null,
     ),
@@ -1128,6 +1131,21 @@ export default function Whiteboard({
       view: viewRef.current,
     };
   }
+  // Runs before every pointer-down on the board (items, handles, background).
+  function onDownCapture(e: ReactPointerEvent<SVGSVGElement>) {
+    const running = owner.current;
+    if (gesture.current && running && running.id !== e.pointerId && running.type === "pen" && e.pointerType === "touch") {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    if (!gesture.current) owner.current = { id: e.pointerId, type: e.pointerType };
+  }
+  // Moves and lifts of another pointer while a pen gesture runs.
+  const foreign = (e: ReactPointerEvent) => {
+    const running = owner.current;
+    return !!gesture.current && !!running && running.type === "pen" && running.id !== e.pointerId;
+  };
   function onBackgroundDown(e: ReactPointerEvent<SVGSVGElement>) {
     if (notePen(e)) setPenOnlyState(true);
     setHover(null);
@@ -1422,6 +1440,7 @@ export default function Whiteboard({
       };
   }
   function onMove(e: ReactPointerEvent<SVGSVGElement>) {
+    if (foreign(e)) return;
     const p = toWorld(e.clientX, e.clientY);
     lastPointer.current = p;
     if (editable && (tool === "pen" || tool === "eraser") && isHovering(e)) showHover(p);
@@ -1606,6 +1625,7 @@ export default function Whiteboard({
   }
   function onUp(e: ReactPointerEvent<SVGSVGElement>) {
     pointers.current.delete(e.pointerId);
+    if (foreign(e)) return;
     if (pointers.current.size < 2) pinch.current = null;
     const g = gesture.current;
     gesture.current = null;
@@ -2551,6 +2571,7 @@ export default function Whiteboard({
         ref={svg}
         className="wb-canvas"
         style={{ cursor: cursorStyle }}
+        onPointerDownCapture={onDownCapture}
         onPointerDown={onBackgroundDown}
         onPointerMove={onMove}
         onPointerUp={onUp}

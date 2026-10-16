@@ -88,3 +88,31 @@ test("the pen draws with pressure; then fingers move the board; the eraser and P
   await expect(wb.locator(".wb-pen")).toHaveCount(1);
   expect(errors).toEqual([]);
 });
+
+// A palm resting on the screen while the pen draws neither cuts the stroke,
+// adds to it nor moves the board.
+test("a resting palm does not disturb the pen", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers pen and touch.");
+  const { wb, at } = await board(page);
+  const cdp = await page.context().newCDPSession(page);
+  await wb.getByRole("button", { name: "Stift", exact: true }).click();
+  const base = { pointerType: "pen" as const, button: "left" as const, buttons: 1, force: 0.5 };
+  const from = at(-120, -40),
+    to = at(120, -40);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: from.x, y: from.y, clickCount: 1, ...base });
+  const palm = at(60, 140);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [palm] });
+  for (let i = 1; i <= 10; i++) {
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: from.x + ((to.x - from.x) * i) / 10, y: from.y, ...base });
+    if (i < 6) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: palm.x + i * 3, y: palm.y + i * 2 }] });
+    // The palm lifts halfway through the stroke.
+    if (i === 6) await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  }
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: to.x, y: to.y, clickCount: 1, ...base });
+  await expect(wb.locator(".wb-pen")).toHaveCount(1);
+  // One straight stroke along the pen's path: as wide as the pen moved, not
+  // pulled down to the palm.
+  const box = (await wb.locator(".wb-pen").boundingBox())!;
+  expect(box.width).toBeGreaterThan(180);
+  expect(box.height).toBeLessThan(60);
+});

@@ -165,6 +165,8 @@ export function ImageAnnotator({
   // Pen-only drawing (lib/stylus.ts): once a pen draws, fingers do not.
   const penOnly = useRef(penOnlySetting() === "on");
   const erasing = useRef(false);
+  // The pointer drawing or erasing: a palm next to the pen is ignored.
+  const active = useRef<number | null>(null);
   const previousTool = useRef<Tool>("pen");
 
   useEffect(() => {
@@ -241,13 +243,14 @@ export function ImageAnnotator({
     });
   }
   function onDown(event: React.PointerEvent) {
-    if (!ready) return;
+    if (!ready || (active.current !== null && active.current !== event.pointerId)) return;
     if (notePen(event)) penOnly.current = true;
     if (!drawsWith(event, penOnly.current) && tool !== "text") return;
     event.preventDefault();
     const p = point(event);
     if (tool === "eraser" || isEraser(event)) {
       (event.target as Element).setPointerCapture(event.pointerId);
+      active.current = event.pointerId;
       erasing.current = true;
       erase([p]);
       return;
@@ -259,9 +262,11 @@ export function ImageAnnotator({
       return;
     }
     (event.target as Element).setPointerCapture(event.pointerId);
+    active.current = event.pointerId;
     setDraft(tool === "pen" || tool === "marker" ? { type: tool, color, width, points: [p] } : { type: tool, color, width, from: p, to: p });
   }
   function onMove(event: React.PointerEvent) {
+    if (active.current !== null && active.current !== event.pointerId) return;
     const all = () => {
       const rect = canvas.current!.getBoundingClientRect();
       return samples(event).map((s): Point => [(s.clientX - rect.left) / scale, (s.clientY - rect.top) / scale]);
@@ -273,7 +278,9 @@ export function ImageAnnotator({
     if (draft.type === "pen" || draft.type === "marker") setDraft({ ...draft, points: [...draft.points, ...all()] });
     else if (draft.type === "arrow" || draft.type === "rect" || draft.type === "ellipse") setDraft({ ...draft, to: p });
   }
-  function onUp() {
+  function onUp(event: React.PointerEvent) {
+    if (active.current !== null && active.current !== event.pointerId) return;
+    active.current = null;
     erasing.current = false;
     if (!draft) return;
     const tiny =
