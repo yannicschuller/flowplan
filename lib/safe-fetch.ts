@@ -24,19 +24,45 @@ function ipv4Private(ip: string) {
     a >= 224
   );
 }
+// The eight 16-bit groups of an IPv6 address ("::" expanded, a trailing
+// dotted IPv4 part converted), or null.
+function ipv6Groups(ip: string): number[] | null {
+  let text = ip.toLowerCase().replace(/%.*$/, "");
+  const dotted = /(\d+\.\d+\.\d+\.\d+)$/.exec(text);
+  if (dotted) {
+    if (isIP(dotted[1]) !== 4) return null;
+    const [a, b, c, d] = dotted[1].split(".").map(Number);
+    text = text.slice(0, -dotted[1].length) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const part = (s: string) => (s ? s.split(":") : []);
+  const head = part(halves[0]),
+    tail = halves.length === 2 ? part(halves[1]) : [];
+  const fill = 8 - head.length - tail.length;
+  if (halves.length === 1 ? fill !== 0 : fill < 1) return null;
+  const groups = [...head, ...Array(halves.length === 2 ? fill : 0).fill("0"), ...tail].map((g) => parseInt(g, 16));
+  return groups.length === 8 && groups.every((g) => g >= 0 && g <= 0xffff) ? groups : null;
+}
+const embeddedV4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
 export function privateAddress(ip: string) {
   if (isIP(ip) === 4) return ipv4Private(ip);
-  const lower = ip.toLowerCase();
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-  if (mapped) return ipv4Private(mapped[1]);
+  const g = ipv6Groups(ip);
+  if (!g) return true;
+  const zeroUpTo = (n: number) => g.slice(0, n).every((x) => x === 0);
+  // ::, ::1, IPv4-compatible (::a.b.c.d) and IPv4-mapped (::ffff:a.b.c.d),
+  // in any spelling: judged by the IPv4 address inside.
+  if (zeroUpTo(6)) return g[6] === 0 && g[7] <= 1 ? true : ipv4Private(embeddedV4(g[6], g[7]));
+  if (zeroUpTo(5) && g[5] === 0xffff) return ipv4Private(embeddedV4(g[6], g[7]));
+  // 6to4 carries an IPv4 address too.
+  if (g[0] === 0x2002) return ipv4Private(embeddedV4(g[1], g[2]));
   return (
-    lower === "::" ||
-    lower === "::1" ||
-    /^f[cd]/.test(lower) ||
-    /^fe[89ab]/.test(lower) ||
-    lower.startsWith("ff") ||
-    lower.startsWith("64:ff9b:") ||
-    lower.startsWith("2001:db8")
+    (g[0] & 0xfe00) === 0xfc00 || // unique local
+    (g[0] & 0xffc0) === 0xfe80 || // link local
+    (g[0] & 0xff00) === 0xff00 || // multicast
+    (g[0] === 0x64 && g[1] === 0xff9b) || // NAT64
+    (g[0] === 0x2001 && g[1] === 0xdb8) || // documentation
+    (g[0] === 0x2001 && g[1] === 0) // Teredo
   );
 }
 type Fetched = { url: string; status: number; type: string; body: string; data: Buffer };

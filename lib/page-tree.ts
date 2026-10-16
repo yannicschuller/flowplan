@@ -9,6 +9,8 @@ import { copyFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { all, one, run, id, onTransactionRollback } from "./db";
 import { requirePage } from "./permissions";
+import { requireUnlocked } from "./journal-extras";
+import { hiddenFileIds } from "./row-files";
 import { createPage } from "./seed";
 import { htmlState, cleanHtml } from "./document-server";
 import { relationPairs, insertRelationPair } from "./relation-sync";
@@ -38,7 +40,9 @@ export function duplicatePages(
   spaceId: string,
   root?: Page,
 ) {
-  tree.forEach((p) => requirePage(user, p.id));
+  // Every page must be readable, journals behind a PIN unlocked.
+  tree.forEach((p) => requireUnlocked(user, requirePage(user, p.id)));
+  const hiddenFiles = new Set(tree.flatMap((p) => [...hiddenFileIds(user, p)]));
   const quota = quotaCheckpoint(workspaceId);
   const pageIds = new Map<string, string>(),
     rowIds = new Map<string, string>(),
@@ -82,7 +86,7 @@ export function duplicatePages(
       "SELECT id FROM files WHERE page_id=?",
       p.id,
     ))
-      fileIds.set(f.id, id());
+      if (!hiddenFiles.has(f.id)) fileIds.set(f.id, id());
   }
   const rewrite = (value: string) =>
     value
@@ -155,6 +159,7 @@ export function duplicatePages(
         mime: string;
         size: number;
       }>("SELECT * FROM files WHERE page_id=?", p.id)) {
+        if (hiddenFiles.has(f.id)) continue;
         const fid = fileIds.get(f.id)!,
           dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
         mkdirSync(dir, { recursive: true });

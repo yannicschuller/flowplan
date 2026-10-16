@@ -8,7 +8,7 @@ import { instantiateTemplateFiles } from "./template-files";
 import { z } from "zod";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
-import { requireMember, requirePage } from "./permissions";
+import { isGuest, requireMember, requirePage } from "./permissions";
 import { cleanHtml, htmlState } from "./document-server";
 import { field, view } from "./database-schema";
 import { databaseSnapshot } from "./database-operations";
@@ -87,6 +87,10 @@ export function requireTemplate(
   }
   requireMember(user, template.workspace_id);
   if (template.visibility === "private" && template.created_by !== user.id)
+    throw new HttpError(403, "Private Vorlage.");
+  // Templates of the workspace carry its content; guests see only what is
+  // shared with them.
+  if (template.visibility === "workspace" && template.created_by !== user.id && isGuest(user, template.workspace_id))
     throw new HttpError(403, "Private Vorlage.");
   if (template.workspace_id !== workspaceId)
     throw new HttpError(400, "Vorlage muss im Arbeitsbereich liegen.");
@@ -347,9 +351,10 @@ export function databaseTemplateExtras(pageId: string) {
 
 export function listPageTemplates(user: Identity, workspaceId: string) {
   const role = requireMember(user, workspaceId);
+  const guest = isGuest(user, workspaceId);
   return all<PageTemplate>(
     `SELECT id,workspace_id,name,kind,visibility,category,created_by,version,deleted_at FROM templates
-     WHERE (workspace_id=? AND (visibility IN ('workspace','instance','public') OR created_by=?))
+     WHERE (workspace_id=? AND (visibility IN (${guest ? "'instance','public'" : "'workspace','instance','public'"}) OR created_by=?))
         OR (workspace_id<>? AND visibility IN ('instance','public') AND deleted_at IS NULL)
      ORDER BY name`,
     workspaceId,

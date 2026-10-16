@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { all, one, run, id } from "./db";
 import { requirePage } from "./permissions";
+import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { HttpError } from "./auth";
 import type { Identity, Page } from "./types";
 
@@ -27,6 +28,8 @@ export function manageShareLink(
 ) {
   const pageId = z.string().uuid().parse(input.pageId);
   const root = requirePage(user, pageId, true);
+  // A journal behind a PIN is shared only by someone who has entered it.
+  requireUnlocked(user, root);
   if (input.action === "share.revoke") {
     run(
       "DELETE FROM share_links WHERE token=? AND root_id=?",
@@ -54,7 +57,11 @@ export function manageShareLink(
         pageId,
       )
     : [root];
-  for (const page of pages) requirePage(user, page.id, true);
+  const locked = lockedPageIds(user, root.workspace_id);
+  for (const page of pages) {
+    requirePage(user, page.id, true);
+    if (locked.has(page.id)) throw new HttpError(423, "Dieses Journal ist gesperrt.");
+  }
   const token = id();
   run(
     "INSERT INTO share_links(token,root_id,name,role,include_children,created_by) VALUES(?,?,?,?,?,?)",

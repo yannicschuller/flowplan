@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { CSV_FORMULA } from "@/lib/cell-text";
 import { DownloadSimple } from "@phosphor-icons/react";
 import Papa from "papaparse";
 import { useT, useLocale } from "./i18n";
@@ -34,7 +35,7 @@ export function TimeReport({ pageId, title }: { pageId: string; title: string })
       Papa.unparse({
         fields: [t("Person", "Person"), ...report.weeks, t("Summe (h)", "Total (h)")],
         data: report.people.map((p) => [p.name, ...report.weeks.map((w) => hours(p.weeks[w] || 0)), hours(p.total)]),
-      }),
+      }, { escapeFormulae: CSV_FORMULA }),
       "text/csv",
     );
   return (

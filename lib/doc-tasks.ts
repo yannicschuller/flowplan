@@ -3,6 +3,7 @@
 // every save, so "Meine Aufgaben" lists them across the workspace; ticking
 // one off there changes the document itself (live for open editors).
 import * as Y from "yjs";
+import { hiddenRowIds } from "./row-access";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { yDocToProsemirrorJSON } from "y-prosemirror";
 import { z } from "zod";
@@ -160,14 +161,17 @@ function taskRows(user: Identity, workspaceId: string | null, includeDone: boole
     user.id,
     user.id,
   );
-  const allowed = new Map<string, boolean>();
+  const allowed = new Map<string, boolean>(),
+    hidden = new Map<string, Set<string>>();
   return rows
     .filter((row) => {
       if (!allowed.has(row.page_id)) {
         const page = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id);
         allowed.set(row.page_id, !!page && !!pageRole(user, page) && !journalLocked(user, page));
+        // Tasks in records hidden from the person (private records) stay hidden.
+        hidden.set(row.page_id, page?.kind === "database" && allowed.get(row.page_id) ? hiddenRowIds(user, page) : new Set());
       }
-      return allowed.get(row.page_id);
+      return allowed.get(row.page_id) && !(row.row_id && hidden.get(row.page_id)!.has(row.row_id));
     })
     .map((row) => ({
       pageId: row.page_id,

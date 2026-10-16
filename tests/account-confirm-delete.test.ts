@@ -6,7 +6,7 @@ import { join } from "node:path";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-accounts-"));
 process.env.APP_URL = "https://flowplan.test";
 const { one, all, run } = await import("../lib/db");
-const { register, passwordLogin, verifyEmail, resendVerification } = await import("../lib/local-auth");
+const { register, passwordLogin, verifyEmail, resendVerification, AccountExists } = await import("../lib/local-auth");
 const { saveInstanceSettings, instanceSettings } = await import("../lib/instance-settings");
 const { command } = await import("../lib/api");
 const { deletionPlan, ownDeletionPlan } = await import("../lib/account-deletion");
@@ -38,6 +38,14 @@ test("with e-mail set up, a new account confirms its address before signing in",
   assert.equal(verifyEmail("wrong-token"), null);
   assert.equal(verifyEmail(linkIn(sent[0].text)), result.user.id);
   assert.ok(await passwordLogin({ email: "lena@example.test", password: "a-long-password" }, "1.1.1.2", "de"));
+  // Signing up again with the address does not reveal the account: the
+  // sign-up page answers as usual (AccountExists.noted), Lena gets a note.
+  await assert.rejects(
+    register({ name: "Fake", email: "lena@example.test", password: "another-long-password" }, "de"),
+    (e: unknown) => e instanceof AccountExists && e.noted && e.email === "lena@example.test",
+  );
+  assert.equal(mails().filter((m) => m.recipient === "lena@example.test").length, 2);
+  assert.match(mails().filter((m) => m.recipient === "lena@example.test")[1].text, /Es gibt schon eines/);
   // Without e-mail nobody stays locked out.
   const other = await register({ name: "Tom", email: "tom@example.test", password: "a-long-password" }, "de");
   assert.equal(other.pending, true);

@@ -473,8 +473,21 @@ export function lockJournalNow(user: Identity, journal: Page) {
   run("DELETE FROM journal_unlocks WHERE user_id=? AND page_id=?", user.id, journal.id);
 }
 // Whether the page is behind a journal PIN the person has not entered.
+// The journal a page lies in: the journal itself, a day or any page below.
+function enclosingJournal(page: Page) {
+  if (page.kind === "journal") return page;
+  return (
+    one<Page>(
+      `WITH RECURSIVE up(id,parent_id,kind,depth) AS (
+         SELECT id,parent_id,kind,0 FROM pages WHERE id=?
+         UNION ALL SELECT p.id,p.parent_id,p.kind,up.depth+1 FROM pages p JOIN up ON p.id=up.parent_id WHERE up.depth<64)
+       SELECT p.* FROM up JOIN pages p ON p.id=up.id WHERE up.kind='journal' ORDER BY up.depth LIMIT 1`,
+      page.id,
+    ) || null
+  );
+}
 export function journalLocked(user: Identity, page: Page) {
-  const journal = journalOf(page);
+  const journal = enclosingJournal(page);
   if (!journal) return false;
   const row = settingsRow(journal.id);
   if (!row?.lock_hash) return false;
@@ -500,10 +513,18 @@ export function lockedPageIds(user: Identity, workspaceId: string) {
     Date.now(),
   ).map((r) => r.id);
   if (!locked.length) return new Set<string>();
+  // The journals, their days and every page below them.
   const ids = new Set(locked);
-  for (const journalId of locked)
-    for (const day of all<{ id: string }>("SELECT id FROM pages WHERE parent_id=?", journalId))
-      ids.add(day.id);
+  let level = locked;
+  for (let depth = 0; level.length && depth < 64; depth++) {
+    level = all<{ id: string }>(
+      `SELECT id FROM pages WHERE parent_id IN (${level.map(() => "?").join(",")})`,
+      ...level,
+    )
+      .map((r) => r.id)
+      .filter((id) => !ids.has(id));
+    for (const id of level) ids.add(id);
+  }
   return ids;
 }
 

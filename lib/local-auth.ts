@@ -105,9 +105,13 @@ export async function register(input: unknown, locale: Locale) {
   const first = firstAccount();
   if (!first && !instanceSettings().allowSignup && !invited(email))
     throw new HttpError(403, t("Neue Konten legen hier nur Admins an – oder du wirst eingeladen.", "Only administrators create new accounts here – or you get invited."));
-  if (accountByEmail(email) || one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email))
-    throw new HttpError(409, t("Für diese E-Mail-Adresse gibt es schon ein Konto.", "There already is an account for this e-mail address."));
   const passwordHash = await hashPassword(password.data);
+  if (accountByEmail(email) || one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email)) {
+    // With e-mail set up, the answer does not tell whether the address has an
+    // account: its owner gets a note instead of a confirmation link.
+    if (mailConfig()) noteExistingAccount(email, locale);
+    throw new AccountExists(t("Für diese E-Mail-Adresse gibt es schon ein Konto.", "There already is an account for this e-mail address."), email, !!mailConfig());
+  }
   const uid = id();
   // With e-mail set up, the address is confirmed before the first sign-in;
   // the account that sets the instance up starts right away.
@@ -126,6 +130,34 @@ export async function register(input: unknown, locale: Locale) {
   const user = one<User>("SELECT * FROM users WHERE id=?", uid)!;
   if (confirm) sendVerification(user, locale);
   return { user, groups: first ? [adminGroup()] : [], pending: confirm };
+}
+// The address already has an account. With e-mail set up, the sign-up page
+// answers as for a new account (its owner got a note), so it does not reveal
+// which addresses have accounts.
+export class AccountExists extends HttpError {
+  constructor(message: string, public email: string, public noted: boolean) {
+    super(409, message);
+  }
+}
+// At most one note per address and quarter of an hour.
+const noted = new Map<string, number>();
+function noteExistingAccount(email: string, locale: Locale) {
+  const now = Date.now();
+  for (const [key, at] of noted) if (at < now - WINDOW) noted.delete(key);
+  if (noted.has(email)) return;
+  noted.set(email, now);
+  const t = tr(locale);
+  queueLinkMail({
+    to: email,
+    subject: t("Du hast schon ein Konto", "You already have an account"),
+    title: t("Du hast schon ein Konto", "You already have an account"),
+    lines: [
+      t("Jemand wollte mit dieser E-Mail-Adresse ein neues Flowplan-Konto anlegen. Es gibt schon eines – melde dich einfach an.", "Someone tried to create a new Flowplan account with this e-mail address. There already is one – just sign in."),
+      t("Passwort vergessen? Auf der Anmeldeseite kannst du es zurücksetzen. Warst du das nicht, kannst du diese E-Mail ignorieren.", "Forgot your password? You can reset it on the sign-in page. If this wasn't you, you can ignore this e-mail."),
+    ],
+    label: t("Anmelden", "Sign in"),
+    url: `${appUrl().replace(/\/$/, "")}/login`,
+  });
 }
 
 // ---- Failed attempts ----

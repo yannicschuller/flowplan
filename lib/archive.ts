@@ -1,6 +1,8 @@
 import { whiteboardData, writeWhiteboard } from "./whiteboard";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
-import { visibleRows } from "./row-access";
+import { hiddenRowIds, visibleRows } from "./row-access";
+import { hiddenFileIds } from "./row-files";
+import { lockedPageIds } from "./journal-extras";
 import { parseRecurrence } from "./recurrence";
 import { quotaCheckpoint } from "./instance-ops";
 import { instanceSettings } from "./instance-settings";
@@ -51,7 +53,7 @@ import {
 import { resolve } from "node:path";
 import { z } from "zod";
 import { all, one, run, id, transaction, audit } from "./db";
-import { requireMember, pageRole, spaceRole } from "./permissions";
+import { requireMember, pageRole, spaceRole, isGuest } from "./permissions";
 import { HttpError } from "./auth";
 import { field, view } from "./database-schema";
 import { cleanHtml, htmlState } from "./document-server";
@@ -256,10 +258,16 @@ function digest(bytes: Buffer) {
 }
 function snapshotFor(user: Identity, wid: string) {
   requireMember(user, wid);
+  // Readable pages; journals behind a PIN stay out until unlocked.
+  const locked = lockedPageIds(user, wid);
   const pages = all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? ORDER BY position",
     wid,
-  ).filter((p) => pageRole(user, p));
+  ).filter((p) => !locked.has(p.id) && pageRole(user, p));
+  // Records hidden from this person (private records), and files only they use.
+  const hiddenRows = new Map(pages.map((p) => [p.id, p.kind === "database" ? hiddenRowIds(user, p) : new Set<string>()]));
+  const hiddenFiles = new Set(pages.flatMap((p) => [...hiddenFileIds(user, p)]));
+  const shown = (pageId: string, rowId: string | null | undefined) => !rowId || !hiddenRows.get(pageId)?.has(rowId);
   const pageIds = new Set(pages.map((p) => p.id));
   const spaceIds = new Set(pages.map((p) => p.space_id));
   const binaries = new Map<string, ArchiveEntry>();
@@ -284,8 +292,9 @@ function snapshotFor(user: Identity, wid: string) {
       payload: string;
       deleted_at: string | null;
     }>(
-      "SELECT id,name,kind,payload,deleted_at FROM templates WHERE workspace_id=? AND (visibility='workspace' OR created_by=?)",
+      "SELECT id,name,kind,payload,deleted_at FROM templates WHERE workspace_id=? AND ((visibility='workspace' AND ?=0) OR created_by=?)",
       wid,
+      isGuest(user, wid) ? 1 : 0,
       user.id,
     ).map((t) => ({
       ...t,
@@ -418,21 +427,26 @@ function snapshotFor(user: Identity, wid: string) {
                 ? { whiteboard: whiteboardData(p).state }
                 : {}),
             }),
-        snapshots: all(
-          "SELECT html,title,created_at,appearance FROM snapshots WHERE page_id=? ORDER BY created_at",
-          p.id,
+        // Versions of a database hold all its records: only for those who
+        // see every record anyway.
+        snapshots: (p.kind === "database" && pageRole(user, p) !== "owner"
+          ? []
+          : all<{ html: string; title: string | null; created_at: string; appearance: string | null }>(
+              "SELECT html,title,created_at,appearance FROM snapshots WHERE page_id=? ORDER BY created_at",
+              p.id,
+            )
         ).map((s) => ({
           ...s,
           title: s.title || "",
           appearance: s.appearance ? JSON.parse(String(s.appearance)) : null,
         })),
-        inlineThreads: exportInlineComments(p.id),
-        comments: all(
+        inlineThreads: exportInlineComments(p.id).filter((t) => shown(p.id, t.row_id)),
+        comments: all<{ row_id: string | null }>(
           `SELECT c.row_id,COALESCE(u.name,'Unbekannt') author,c.body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id WHERE c.page_id=?
            UNION ALL SELECT row_id,name || ' (Gast)' author,body,resolved,created_at FROM shared_comments WHERE page_id=? ORDER BY created_at`,
           p.id,
           p.id,
-        ),
+        ).filter((c) => shown(p.id, c.row_id)),
       };
     }),
     files: pages.flatMap((p) =>
@@ -445,7 +459,7 @@ function snapshotFor(user: Identity, wid: string) {
       }>(
         "SELECT id,page_id,name,mime,size FROM files WHERE page_id=?",
         p.id,
-      ).map((f) => {
+      ).filter((f) => !hiddenFiles.has(f.id)).map((f) => {
         const path = resolve(
           process.env.FLOWPLAN_DATA_DIR || "./data",
           "uploads",

@@ -28,13 +28,25 @@ test("previews never reach internal addresses", async () => {
     "fd00::1",
     "fe80::1",
     "::ffff:127.0.0.1",
+    // The URL parser writes mapped addresses in hex.
+    new URL("https://[::ffff:127.0.0.1]/").hostname.slice(1, -1),
+    "::ffff:7f00:1",
+    "::ffff:a9fe:a9fe",
+    "0:0:0:0:0:ffff:a00:5",
+    "::7f00:1",
+    "2002:7f00:1::1",
+    "::",
+    "fc00::1",
+    "ff02::1",
+    "not-an-address",
   ])
     assert.equal(privateAddress(ip), true, ip);
-  for (const ip of ["93.184.216.34", "2606:2800:220:1::1"])
+  for (const ip of ["93.184.216.34", "2606:2800:220:1::1", "::ffff:5db8:d822", "2a00:1450:4001:80b::200e"])
     assert.equal(privateAddress(ip), false, ip);
   await assert.rejects(safeFetch("http://example.com"), /HTTPS/);
   await assert.rejects(safeFetch("https://127.0.0.1/"), /Interne/);
   await assert.rejects(safeFetch("https://[::1]/"), /Interne/);
+  await assert.rejects(safeFetch("https://[::ffff:169.254.169.254]/"), /Interne/);
   await assert.rejects(safeFetch("https://user:pw@example.com/"), /HTTPS/);
   await assert.rejects(
     safeFetch("https://localhost/"),

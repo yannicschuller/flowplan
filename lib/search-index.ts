@@ -1,4 +1,5 @@
 import { lockedPageIds } from "./journal-extras";
+import { hiddenFileIds } from "./row-files";
 import { all, one, run, transaction } from "./db";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
@@ -245,7 +246,8 @@ export function searchWorkspace(
           ? undefined
           : key || undefined;
   const results: SearchResult[] = [];
-  const hidden = new Map<string, Set<string>>();
+  const hidden = new Map<string, Set<string>>(),
+    hiddenFiles = new Map<string, Set<string>>();
   const push = (hit: Page, key: string, title: string, snippet: string) => {
     let page = hit;
     // Text of a synced block leads to the page it was created on.
@@ -259,10 +261,15 @@ export function searchWorkspace(
     }
     const rowId = recordOf(key),
       type = hitKind(page, key);
-    // Records hidden by their own permissions do not appear.
+    // Records hidden by their own permissions do not appear, nor files
+    // used only by them.
     if (rowId && page.kind === "database") {
       if (!hidden.has(page.id)) hidden.set(page.id, hiddenRowIds(user, page));
       if (hidden.get(page.id)!.has(rowId)) return;
+    }
+    if (key.startsWith("f:") && page.kind === "database") {
+      if (!hiddenFiles.has(page.id)) hiddenFiles.set(page.id, hiddenFileIds(user, page));
+      if (hiddenFiles.get(page.id)!.has(key.slice(2))) return;
     }
     results.push({
       id: page.id,

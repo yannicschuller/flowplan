@@ -1,5 +1,7 @@
 import { all } from "./db";
 import { pageRole, requireMember } from "./permissions";
+import { lockedPageIds } from "./journal-extras";
+import { hiddenFileIds } from "./row-files";
 import type { Identity, Page } from "./types";
 
 export type MediaKind = "all" | "image" | "video" | "audio" | "pdf" | "other";
@@ -62,11 +64,15 @@ export function mediaLibrary(
     workspaceId,
     ...(query ? [query] : []),
   );
-  const readable = new Map<string, boolean>();
+  const readable = new Map<string, boolean>(),
+    hiddenFiles = new Map<string, Set<string>>(),
+    locked = lockedPageIds(user, workspaceId);
   const items: MediaItem[] = [];
   for (const row of rows) {
-    if (!readable.has(row.id)) readable.set(row.id, !!pageRole(user, row));
+    if (!readable.has(row.id)) readable.set(row.id, !locked.has(row.id) && !!pageRole(user, row));
     if (!readable.get(row.id)) continue;
+    if (!hiddenFiles.has(row.id)) hiddenFiles.set(row.id, hiddenFileIds(user, row));
+    if (hiddenFiles.get(row.id)!.has(row.file_id)) continue;
     items.push({
       id: row.file_id,
       name: row.file_name || "Datei",

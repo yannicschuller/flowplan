@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
+import { rowRole } from "./row-access";
 import { requireRow } from "./row-documents";
 import { cellText } from "./database";
 import {
@@ -245,6 +246,12 @@ export function processDateReminders(now = Date.now()) {
     // Missing access keeps the reminder; it may fire after access returns.
     if (!page || !pageRole({ id: reminder.user_id } as Identity, page))
       continue;
+    // Likewise while the record is hidden from the person (made private).
+    const target = one<{ id: string; access: string; created_by: string }>(
+      "SELECT id,access,created_by FROM rows WHERE id=?",
+      reminder.row_id,
+    );
+    if (!target || !rowRole({ id: reminder.user_id } as Identity, page, target)) continue;
     const cells = JSON.parse(reminder.cells) as Record<string, unknown>;
     const titleField = fields.get(reminder.page_id)![0];
     const title =

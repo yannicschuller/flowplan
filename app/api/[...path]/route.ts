@@ -66,6 +66,7 @@ import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { importTracker } from "@/lib/tracker-import";
 import { recordBacklinks } from "@/lib/relation-backlinks";
+import { hiddenFileIds } from "@/lib/row-files";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
@@ -82,7 +83,9 @@ import {
   databaseEvents,
   journalReview,
   requireUnlocked,
+  lockedPageIds,
 } from "@/lib/journal-extras";
+import { visibleRows } from "@/lib/row-access";
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
@@ -688,16 +691,22 @@ async function handleGET(
         mime: string;
       }>("SELECT * FROM files WHERE id=?", path[1]);
       if (!file) throw new HttpError(404, "Datei fehlt.");
-      requireUnlocked(user, requirePage(user, file.page_id));
+      const owner = requirePage(user, file.page_id);
+      requireUnlocked(user, owner);
+      // A file used only by a record hidden from this person stays hidden.
+      if (hiddenFileIds(user, owner).has(file.id)) throw new HttpError(404, "Datei fehlt.");
       return await fileResponse(req, file);
     }
     if (path[0] === "export") {
       const wid = url.searchParams.get("workspace") || "";
       requireMember(user, wid);
+      // Readable pages outside the trash, no journal behind a PIN, and only
+      // the records this person may see.
+      const locked = lockedPageIds(user, wid);
       const pages = all<Page>(
-        "SELECT * FROM pages WHERE workspace_id=?",
+        "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL",
         wid,
-      ).filter((p) => pageRole(user, p));
+      ).filter((p) => !locked.has(p.id) && pageRole(user, p));
       return NextResponse.json(
         {
           format: "flowplan-1",
@@ -707,7 +716,7 @@ async function handleGET(
             ...p,
             data:
               p.kind === "database"
-                ? { database: database(p.id), rows: rows(p.id) }
+                ? { database: database(p.id), rows: visibleRows(user, p, rows(p.id)) }
                 : one("SELECT html FROM documents WHERE page_id=?", p.id),
           })),
         },

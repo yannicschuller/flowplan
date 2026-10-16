@@ -1,5 +1,6 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
+import { CSV_FORMULA } from "@/lib/cell-text";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -2419,7 +2420,7 @@ export default function DatabaseView({
                   data: shown.map((r) =>
                     fields.map((f) => cellText(r.cells[f.id])),
                   ),
-                }),
+                }, { escapeFormulae: CSV_FORMULA }),
                 "text/csv",
               )
             }

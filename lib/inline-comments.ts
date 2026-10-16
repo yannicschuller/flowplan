@@ -12,6 +12,7 @@ import * as Y from "yjs";
 import { initProseMirrorDoc } from "@tiptap/y-tiptap";
 import { all, one, run, id } from "./db";
 import { requirePage, pageRole } from "./permissions";
+import { requireUnlocked } from "./journal-extras";
 import { HttpError } from "./auth";
 import { requireRow, ensureRowDocument } from "./row-documents";
 import { documentSchema } from "./document-schema";
@@ -41,6 +42,7 @@ type StoredMessage = Omit<InlineMessage, "reactions" | "name"> & {
 };
 function scope(user: Identity, pageId: string, rowId?: string) {
   const page = requirePage(user, pageId);
+  requireUnlocked(user, page);
   if (rowId) requireRow(user, pageId, rowId);
   else if (page.kind !== "document")
     throw new HttpError(400, "Bitte einen Datensatz auswählen.");

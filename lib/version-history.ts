@@ -3,6 +3,7 @@ import { all, one, run, transaction } from "./db";
 import { instanceSettings } from "./instance-settings";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
+import { requireUnlocked } from "./journal-extras";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import { expireRowTrash } from "./row-trash";
 import { compareParagraphs, type TextChange } from "./text-diff";
@@ -96,6 +97,7 @@ export function snapshotChanges(
   | { kind: "document"; changes: TextChange[] | null }
   | { kind: "database"; changes: DatabaseChanges } {
   const page = requirePage(user, pageId);
+  requireUnlocked(user, page);
   const load = (sid: string) => {
     const found = one<{ html: string | null }>(
       "SELECT html FROM snapshots WHERE id=? AND page_id=?",

@@ -26,6 +26,7 @@ import { changeDocTask, dueTaskCount, indexPageTasks, syncDocTasks } from "./doc
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { textBacklinks } from "./text-backlinks";
+import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
 import { transcriptionEnabled } from "./transcribe";
 import {
@@ -354,7 +355,7 @@ export function pageData(user: Identity, pid: string) {
     return {
       page: p,
       images: pageImages(pid),
-      files: pageFiles(pid),
+      files: pageFiles(pid, hiddenFileIds(user, p)),
       publication: publicationSettings(pid),
       shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
       role,
@@ -2210,7 +2211,8 @@ export function command(
             ? JSON.stringify({
                 appearance: pageAppearance(p),
                 database: database(p.id),
-                rows: rows(p.id),
+                // Only the records this person sees go into the template.
+                rows: visibleRows(user, p, rows(p.id)),
                 ...databaseTemplateExtras(p.id),
               })
             : JSON.stringify({

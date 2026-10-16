@@ -151,7 +151,8 @@ export function receiveGitWebhook(token: string, headers: Headers, body: string)
     const closing = new Set([...item.text.matchAll(CLOSING)].map((m) => m[1].toUpperCase()));
     for (const key of keys) {
       const ticket = resolveTicket(null, db.workspace_id, key);
-      if (!ticket) continue;
+      // The connection belongs to this database: only its own tickets.
+      if (!ticket || ticket.pageId !== db.page_id) continue;
       run(
         "INSERT INTO git_links(id,page_id,row_id,kind,ref,title,url,author,state,at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(row_id,url) DO UPDATE SET title=excluded.title,state=excluded.state,at=excluded.at",
         id(),

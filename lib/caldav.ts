@@ -293,6 +293,12 @@ export async function handleCalDav(request: Request): Promise<Response> {
     if (!ctx.canWrite) return new Response("Nur lesen", { status: 403 });
     if (request.method === "DELETE") {
       if (!row) return new Response(null, { status: 404 });
+      // Read-only records stay, as in the app.
+      try {
+        assertRowAccess(ctx.user, ctx.page, row as Parameters<typeof assertRowAccess>[2], true);
+      } catch {
+        return new Response("Nur lesen", { status: 403 });
+      }
       transaction(() => {
         trashRow(ctx.user, ctx.page, row.id);
         maintainRowOrders(ctx.page.id);

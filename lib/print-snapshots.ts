@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import sanitize from "sanitize-html";
 
 // Print views for iPhone and iPad apps on the home screen, which cannot print
 // themselves: the browser sends the finished view (page copy, styles, images
@@ -19,7 +20,36 @@ function prune(now = Date.now()) {
   }
 }
 
+// The view comes from the browser, so it is cleaned like any foreign HTML:
+// layout, styles and pictures stay; scripts, frames, forms, <base> and
+// <meta http-equiv> (redirects) and event handlers go.
+const BLOCKED = new Set(["script", "iframe", "frame", "frameset", "object", "embed", "applet", "base", "form", "noscript", "template", "portal"]);
+export function cleanPrintView(html: string) {
+  const clean = sanitize(html, {
+    allowedTags: false,
+    allowedAttributes: false,
+    allowVulnerableTags: true,
+    allowedSchemes: ["http", "https", "data", "blob", "mailto", "tel"],
+    parser: { lowerCaseAttributeNames: false },
+    exclusiveFilter: (frame) =>
+      BLOCKED.has(frame.tag.toLowerCase()) ||
+      (frame.tag.toLowerCase() === "meta" && Object.keys(frame.attribs).some((name) => name.toLowerCase() === "http-equiv")),
+    transformTags: {
+      "*": (tagName, attribs) => ({
+        tagName,
+        attribs: Object.fromEntries(
+          Object.entries(attribs).filter(
+            ([name, value]) => !/^(on|srcdoc$|formaction$)/i.test(name) && !/^\s*(javascript|vbscript):/i.test(value),
+          ),
+        ),
+      }),
+    },
+  });
+  return `<!doctype html>${clean}`;
+}
+
 export function storePrintSnapshot(userId: string, html: string) {
+  html = cleanPrintView(html);
   prune();
   // One view per person at a time: a new one replaces the previous one.
   for (const [token, s] of snapshots) if (s.userId === userId) snapshots.delete(token);

@@ -5,6 +5,7 @@ import { resolve, posix } from "node:path";
 import { all, one, transaction, audit } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { requirePage, pageRole } from "./permissions";
+import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { database, rows } from "./api";
 import { relatedData } from "./related-data";
 import { computedCells } from "./database";
@@ -29,12 +30,14 @@ const MAX_BYTES = 250 * 1024 * 1024,
 function collect(user: Identity, options: MarkdownExportOptions) {
   const root = requirePage(user, options.pageId),
     zip = options.format === "zip";
+  requireUnlocked(user, root);
+  const locked = lockedPageIds(user, root.workspace_id);
   if (!zip && options.includeSubpages)
     throw new HttpError(400, "Unterseiten sind nur im ZIP-Export verfügbar.");
   const visible = all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL ORDER BY position,id",
     root.workspace_id,
-  ).filter((page) => pageRole(user, page));
+  ).filter((page) => !locked.has(page.id) && pageRole(user, page));
   const selected: Page[] = [root],
     seen = new Set([root.id]);
   if (options.includeSubpages)

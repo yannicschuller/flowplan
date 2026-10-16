@@ -36,6 +36,7 @@ import {
   passkeyRegistrationOptions,
   passwordLogin,
   register,
+  AccountExists,
   requestPasswordReset,
   resetPassword,
   verifyEmail,
@@ -307,7 +308,14 @@ async function handlePOST(
     const body = () => req.json().catch(() => ({}));
     // ---- E-mail and password ----
     if (action === "register") {
-      const { user, groups, pending } = await register(await body(), locale);
+      let registered: Awaited<ReturnType<typeof register>>;
+      try {
+        registered = await register(await body(), locale);
+      } catch (e) {
+        if (e instanceof AccountExists && e.noted) return NextResponse.json({ ok: true, pending: true, email: e.email });
+        throw e;
+      }
+      const { user, groups, pending } = registered;
       // With e-mail confirmation the account waits for the link.
       if (pending) return NextResponse.json({ ok: true, pending: true, email: user.email });
       await signIn(user.id, groups);
@@ -345,6 +353,8 @@ async function handlePOST(
     if (["profile", "password-change", "passkey-register-options", "passkey-register", "passkey-delete", "passkeys"].includes(action)) {
       const user = await currentUser();
       if (!user || user.demo) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
+      // API tokens act for scripts: they never change how the person signs in.
+      if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
       if (action === "profile") updateLocalProfile(user.id, await body(), locale);
       else if (action === "password-change") await changePassword(user.id, await body(), locale);
       else if (action === "passkey-register-options") {
