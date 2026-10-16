@@ -42,6 +42,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Edge to edge on phones: the page keeps clear of the system bars itself
+  // (safe areas in globals.css), the iOS app shows it full screen.
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#fcfbf8" },
     { media: "(prefers-color-scheme: dark)", color: "#16151b" },
