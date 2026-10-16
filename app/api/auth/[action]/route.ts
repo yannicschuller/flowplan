@@ -19,10 +19,10 @@ import {
   currentUser,
   HttpError,
 } from "@/lib/auth";
-import { one, run } from "@/lib/db";
+import { one, run, transaction } from "@/lib/db";
 import { ensureWorkspace } from "@/lib/seed";
 import { command } from "@/lib/api";
-import { confirmsWithPassword } from "@/lib/account-deletion";
+import { confirmsWithPassword, deleteOwnAccount } from "@/lib/account-deletion";
 export const runtime = "nodejs";
 import { oidcConfig as config } from "@/lib/oidc";
 import {
@@ -382,7 +382,7 @@ async function handlePOST(
         if (userId !== user.id) throw new HttpError(403, translate(locale)("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
         confirm = one<{ email: string }>("SELECT email FROM users WHERE id=?", user.id)?.email;
       }
-      const result = command(user, { action: "account.delete", confirm, successors: input.successors });
+      const result = transaction(() => deleteOwnAccount(user, { confirm, successors: input.successors }, !!local && !user.demo && confirmsWithPassword(user.id)));
       (await cookies()).delete(cookieName);
       return NextResponse.json(result);
     }

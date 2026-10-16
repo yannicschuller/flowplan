@@ -114,7 +114,8 @@ test("print in the home screen app hands a print view to the browser", async ({ 
       };
     });
     const response = await view.goto(href);
-    expect(response!.headers()["content-security-policy"]).toContain("script-src 'nonce-");
+    // Only the print button's script runs, allowed by its hash.
+    expect(response!.headers()["content-security-policy"]).toContain("script-src 'sha256-");
     await expect(view.locator(".page-content")).toContainText("Ein Absatz für den Browser.");
     await expect(view.locator("body")).toContainText(title);
     const image = view.locator('.page-content img[alt="Bild"]');

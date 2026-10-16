@@ -142,8 +142,12 @@ export const confirmsWithPassword = (userId: string) =>
 // The person deletes their own account (command "account.delete"). The
 // confirmation is the account's e-mail address (or name without one); the
 // sign-in route checks the password first and passes the address on.
-export function deleteOwnAccount(user: Identity, input: unknown) {
+// passwordChecked: set only by the sign-in route after checking the
+// password; accounts with a password cannot be deleted through a command.
+export function deleteOwnAccount(user: Identity, input: unknown, passwordChecked = false) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+  if (!passwordChecked && !user.demo && confirmsWithPassword(user.id))
+    throw new HttpError(403, "Bitte bestätige mit deinem Passwort.");
   const { confirm, successors = {} } = z
     .object({ confirm: z.string().max(300), successors: z.record(z.string(), z.string()).optional() })
     .parse(input);

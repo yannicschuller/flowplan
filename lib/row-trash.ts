@@ -17,7 +17,7 @@ type Payload = {
   comments: Record<string, unknown>[];
   grants?: RowGrant[];
 };
-const trashedRole = (user: Identity, page: Page, payload: Payload) =>
+export const trashedRole = (user: Identity, page: Page, payload: Payload) =>
   roleWithGrants(
     user,
     page,

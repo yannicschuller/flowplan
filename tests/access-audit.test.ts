@@ -215,3 +215,24 @@ test("guest cannot list or read workspace templates", async () => {
   // Regular members still see it.
   assert.ok(listPageTemplates(editor, wid).some((t: { id: string }) => t.id === tid));
 });
+
+// A private record in the trash keeps its attachments hidden.
+test("attachments of a trashed private record stay hidden", () => {
+  const trashedFile = id();
+  writeFileSync(join(dir, "uploads", trashedFile), "trashed");
+  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", trashedFile, dbId, "old-contract.pdf", "application/pdf", 7, owner.id);
+  const row = (command(owner, { action: "row.create", pageId: dbId, cells: { title: "OLD", att: [`/api/files/${trashedFile}`] } }) as { id: string }).id;
+  command(owner, { action: "row.access", pageId: dbId, rowId: row, access: "private", grants: [] });
+  command(owner, { action: "row.delete", pageId: dbId, rowId: row });
+  assert.equal(one("SELECT 1 FROM rows WHERE id=?", row), undefined);
+  assert.ok(hiddenFileIds(viewer, requirePage(viewer, dbId)).has(trashedFile));
+  assert.ok(!hiddenFileIds(owner, requirePage(owner, dbId)).has(trashedFile));
+});
+
+// Password accounts are deleted only after the password check.
+test("an account with a password is not deleted by the bare command", () => {
+  const me = account("pw-delete");
+  run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,0,1,0,?)", me.id, me.email, "x", Date.now());
+  assert.throws(() => command(me, { action: "account.delete", confirm: me.email }), /Passwort/);
+  assert.ok(one("SELECT 1 FROM users WHERE id=?", me.id));
+});

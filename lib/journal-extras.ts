@@ -472,30 +472,23 @@ export function unlockJournal(user: Identity, journal: Page, pin: string) {
 export function lockJournalNow(user: Identity, journal: Page) {
   run("DELETE FROM journal_unlocks WHERE user_id=? AND page_id=?", user.id, journal.id);
 }
-// Whether the page is behind a journal PIN the person has not entered.
-// The journal a page lies in: the journal itself, a day or any page below.
-function enclosingJournal(page: Page) {
-  if (page.kind === "journal") return page;
-  return (
-    one<Page>(
-      `WITH RECURSIVE up(id,parent_id,kind,depth) AS (
-         SELECT id,parent_id,kind,0 FROM pages WHERE id=?
-         UNION ALL SELECT p.id,p.parent_id,p.kind,up.depth+1 FROM pages p JOIN up ON p.id=up.parent_id WHERE up.depth<64)
-       SELECT p.* FROM up JOIN pages p ON p.id=up.id WHERE up.kind='journal' ORDER BY up.depth LIMIT 1`,
-      page.id,
-    ) || null
+// The journals a page lies in: the journal itself, its days and any page
+// below – nested journals included.
+function enclosingJournals(page: Page) {
+  return all<{ id: string }>(
+    `WITH RECURSIVE up(id,parent_id,kind,depth) AS (
+       SELECT id,parent_id,kind,0 FROM pages WHERE id=?
+       UNION ALL SELECT p.id,p.parent_id,p.kind,up.depth+1 FROM pages p JOIN up ON p.id=up.parent_id WHERE up.depth<64)
+     SELECT id FROM up WHERE kind='journal'`,
+    page.id,
   );
 }
+// Whether the page is behind a journal PIN the person has not entered.
 export function journalLocked(user: Identity, page: Page) {
-  const journal = enclosingJournal(page);
-  if (!journal) return false;
-  const row = settingsRow(journal.id);
-  if (!row?.lock_hash) return false;
-  return !one(
-    "SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?",
-    user.id,
-    journal.id,
-    Date.now(),
+  return enclosingJournals(page).some(
+    (journal) =>
+      !!settingsRow(journal.id)?.lock_hash &&
+      !one("SELECT 1 FROM journal_unlocks WHERE user_id=? AND page_id=? AND until>?", user.id, journal.id, Date.now()),
   );
 }
 export function requireUnlocked(user: Identity, page: Page) {

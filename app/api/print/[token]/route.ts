@@ -3,8 +3,8 @@ import { printSnapshot } from "@/lib/print-snapshots";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // A stored print view (lib/print-snapshots.ts), opened in Safari. Its only
-// script is the print button, allowed by its hash; the view runs sandboxed
-// (no access to Flowplan's origin), everything else in it stays inert.
+// script is the print button, allowed by its hash (no nonce that markup
+// could take over); the view itself was cleaned when it was stored.
 const PRINT_SCRIPT = `document.querySelector(".print-view-print").addEventListener("click",()=>window.print())`;
 const PRINT_HASH = createHash("sha256").update(PRINT_SCRIPT).digest("base64");
 export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
@@ -34,7 +34,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
         "base-uri 'none'",
         "form-action 'none'",
         "frame-ancestors 'none'",
-        "sandbox allow-scripts allow-modals allow-popups",
       ].join("; "),
     },
   });

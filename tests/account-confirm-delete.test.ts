@@ -9,7 +9,7 @@ const { one, all, run } = await import("../lib/db");
 const { register, passwordLogin, verifyEmail, resendVerification, AccountExists } = await import("../lib/local-auth");
 const { saveInstanceSettings, instanceSettings } = await import("../lib/instance-settings");
 const { command } = await import("../lib/api");
-const { deletionPlan, ownDeletionPlan } = await import("../lib/account-deletion");
+const { deletionPlan, ownDeletionPlan, deleteOwnAccount } = await import("../lib/account-deletion");
 
 const mails = () => all<{ recipient: string; text: string }>("SELECT recipient,text FROM mail_queue ORDER BY rowid");
 const linkIn = (text: string) => /verify\?token=([A-Za-z0-9_-]+)/.exec(text)?.[1] || "";
@@ -98,15 +98,18 @@ test("people delete their own account: plan first, confirmation, a chosen succes
   assert.equal(plan.handedOver[0].toId, editor);
   assert.deepEqual(plan.handedOver[0].candidates.map((c) => c.id), [editor, viewer]);
   assert.equal(plan.confirm.kind, "password");
+  // An account with a password is deleted only after the password check
+  // (/api/auth/account-delete); the bare command is refused.
+  assert.throws(() => command(identity(me), { action: "account.delete", confirm: "selbst@example.test", successors: { [team]: viewer } }), /Passwort/);
   // Wrong confirmation, a successor who is not a member, API tokens: refused.
-  assert.throws(() => command(identity(me), { action: "account.delete", confirm: "jemand@example.test" }), /Bestätigung stimmt nicht/);
+  assert.throws(() => deleteOwnAccount(identity(me), { confirm: "jemand@example.test" }, true), /Bestätigung stimmt nicht/);
   assert.throws(
-    () => command(identity(me), { action: "account.delete", confirm: "selbst@example.test", successors: { [team]: me } }),
+    () => deleteOwnAccount(identity(me), { confirm: "selbst@example.test", successors: { [team]: me } }, true),
     /neuen Eigentümer/,
   );
-  assert.throws(() => command({ ...identity(me), apiScope: "write" } as never, { action: "account.delete", confirm: "selbst@example.test" }));
+  assert.throws(() => deleteOwnAccount({ ...identity(me), apiScope: "write" } as never, { confirm: "selbst@example.test" }, true));
   assert.ok(one("SELECT 1 FROM users WHERE id=? AND email='selbst@example.test'", me));
-  command(identity(me), { action: "account.delete", confirm: " Selbst@Example.test ", successors: { [team]: viewer } });
+  deleteOwnAccount(identity(me), { confirm: " Selbst@Example.test ", successors: { [team]: viewer } }, true);
   assert.equal(one("SELECT 1 FROM workspaces WHERE id=?", solo), undefined);
   assert.equal(one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", team, viewer)?.role, "owner");
   assert.equal(one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", team, editor)?.role, "editor");
@@ -119,7 +122,7 @@ test("own deletion is refused for the last admin, demos and workspaces nobody ca
   const admin = one<{ id: string }>("SELECT user_id id FROM local_accounts WHERE email='admin@example.test'")!.id;
   const adminPlan = ownDeletionPlan(identity(admin, true));
   assert.match(adminPlan.refusal || "", /letzte Admin-Konto/);
-  assert.throws(() => command(identity(admin, true), { action: "account.delete", confirm: "admin@example.test" }), /letzte Admin-Konto/);
+  assert.throws(() => deleteOwnAccount(identity(admin, true), { confirm: "admin@example.test" }, true), /letzte Admin-Konto/);
   assert.ok(one("SELECT 1 FROM users WHERE id=?", admin));
 
   const demo = { ...identity(admin), demo: true } as never as Parameters<typeof command>[0];
@@ -135,6 +138,6 @@ test("own deletion is refused for the last admin, demos and workspaces nobody ca
   assert.deepEqual(plan.removed, []);
   assert.deepEqual(plan.blocked.map((w) => w.name), ["Mit Inaktiven"]);
   assert.match(plan.refusal || "", /„Mit Inaktiven“ hat außer dir nur deaktivierte Mitglieder/);
-  assert.throws(() => command(identity(stuck), { action: "account.delete", confirm: "fest@example.test" }), /deaktivierte Mitglieder/);
+  assert.throws(() => deleteOwnAccount(identity(stuck), { confirm: "fest@example.test" }, true), /deaktivierte Mitglieder/);
   assert.ok(one("SELECT 1 FROM workspaces WHERE id=?", shared));
 });
