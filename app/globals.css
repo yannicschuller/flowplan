@@ -16702,3 +16702,64 @@ h3 .block-reactions {
 .reference-list button small {
   font-size: 12px;
 }
+
+/* Safe areas: status bar, notch and home indicator on phones and tablets –
+   in the iOS app, the home screen web app and landscape Safari. The page
+   draws edge to edge (viewport-fit=cover, app/layout.tsx) and keeps its
+   controls out of them; in an ordinary browser window they are zero. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+.sidebar {
+  padding-left: var(--safe-left);
+}
+.sidebar-top {
+  height: calc(56px + var(--safe-top));
+  padding-top: var(--safe-top);
+}
+.sidebar-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+.main {
+  padding-right: var(--safe-right);
+}
+.topbar {
+  height: calc(57px + var(--safe-top));
+  min-height: calc(57px + var(--safe-top));
+  padding-top: var(--safe-top);
+}
+.main-scroll {
+  scroll-padding-bottom: var(--safe-bottom);
+}
+.main-scroll::after {
+  content: "";
+  display: block;
+  height: var(--safe-bottom);
+}
+.toast {
+  bottom: calc(24px + var(--safe-bottom));
+}
+.focus-bar {
+  bottom: calc(18px + var(--safe-bottom));
+}
+@media (max-width: 767px) {
+  .main {
+    padding-left: var(--safe-left);
+  }
+  .topbar {
+    height: calc(55px + var(--safe-top));
+    min-height: calc(55px + var(--safe-top));
+  }
+  .comments-panel {
+    top: calc(55px + var(--safe-top));
+    padding-bottom: var(--safe-bottom);
+  }
+}
+@media (max-width: 900px) {
+  .outline-toggle {
+    bottom: calc(88px + var(--safe-bottom));
+  }
+}
