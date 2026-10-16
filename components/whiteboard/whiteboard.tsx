@@ -3646,9 +3646,19 @@ export default function Whiteboard({
       </Modal>
       {!items.length && (
         <div className="wb-empty" aria-hidden="true">
-          {editable
-            ? t("Doppelklick für einen Notizzettel – oder links ein Werkzeug wählen.", "Double-click for a sticky note – or choose a tool on the left.")
-            : t("Dieses Whiteboard ist noch leer.", "This whiteboard is still empty.")}
+          {editable ? (
+            <>
+              <span className="wb-empty-wide">
+                {t("Doppelklick für einen Notizzettel – oder links ein Werkzeug wählen.", "Double-click for a sticky note – or choose a tool on the left.")}
+              </span>
+              {/* Phones: the tools sit at the bottom. */}
+              <span className="wb-empty-narrow">
+                {t("Unten ein Werkzeug wählen, etwa den Notizzettel.", "Choose a tool below, such as the sticky note.")}
+              </span>
+            </>
+          ) : (
+            t("Dieses Whiteboard ist noch leer.", "This whiteboard is still empty.")
+          )}
         </div>
       )}
       <Modal

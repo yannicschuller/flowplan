@@ -11,6 +11,11 @@ test("the appearance follows the device unless light or dark is chosen", async (
   // Before signing in: already dark, before any script of the app ran.
   await page.goto("/login");
   expect(await theme()).toBe("dark");
+  // It follows the device while open, too.
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect.poll(theme).toBe("light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(theme).toBe("dark");
 
   await page.request.post("/api/auth/demo", { headers: { origin } });
   await page.goto("/#settings");

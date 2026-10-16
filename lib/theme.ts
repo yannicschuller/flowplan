@@ -54,5 +54,7 @@ export function watchTheme(onChange: (dark: boolean, choice: ThemeChoice) => voi
   };
 }
 
-// Before the first paint (app/layout.tsx); the same rule as isDark().
-export const THEME_SCRIPT = `(function(){try{var c=localStorage.getItem(${JSON.stringify(THEME_KEY)});var d=c==="dark"||(c!=="light"&&window.matchMedia&&matchMedia(${JSON.stringify(SYSTEM_DARK)}).matches);document.documentElement.dataset.theme=d?"dark":"light"}catch(e){}})()`;
+// Before the first paint (app/layout.tsx); the same rule as isDark(). It
+// also follows later changes of the device and of other tabs, so pages
+// without the app (sign-in, shared pages, forms) change along.
+export const THEME_SCRIPT = `(function(){function a(){try{var c=localStorage.getItem(${JSON.stringify(THEME_KEY)});var d=c==="dark"||(c!=="light"&&window.matchMedia&&matchMedia(${JSON.stringify(SYSTEM_DARK)}).matches);document.documentElement.dataset.theme=d?"dark":"light"}catch(e){}}a();try{matchMedia(${JSON.stringify(SYSTEM_DARK)}).addEventListener("change",a);addEventListener("storage",a)}catch(e){}})()`;
