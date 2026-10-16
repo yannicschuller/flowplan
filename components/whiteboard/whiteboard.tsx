@@ -14,6 +14,7 @@ import * as Y from "yjs";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import {
+  Eraser,
   ArrowCounterClockwise,
   ArrowClockwise,
   ArrowUpRight,
@@ -104,10 +105,12 @@ import {
   recognizeStroke,
   snapBox,
   stackItems,
+  strokeHit,
   type AlignMode,
   type ClusterMode,
   type Guide,
 } from "@/lib/whiteboard-tools";
+import { drawsWith, isEraser, isHovering, notePen, onPencilAction, penOnlySetting, samples, setPenOnly } from "@/lib/stylus";
 
 const EmojiPicker = dynamic(() => import("../emoji-picker"), {
   ssr: false,
@@ -157,6 +160,7 @@ type Tool =
   | "shape"
   | "connector"
   | "pen"
+  | "eraser"
   | "frame"
   | "table"
   | "comment"
@@ -183,7 +187,8 @@ type Gesture =
   | { kind: "rotate"; id: string; center: Point }
   | { kind: "create"; id: string; start: Point }
   | { kind: "connector"; id: string }
-  | { kind: "pen"; id: string; points: Point[]; pressures: number[] | null };
+  | { kind: "pen"; id: string; points: Point[]; pressures: number[] | null }
+  | { kind: "erase" };
 // i18n-table: 1 – [German, English] pairs
 const shapeNames: Record<ShapeKind, [string, string]> = {
   rectangle: ["Rechteck", "Rectangle"],
@@ -315,6 +320,10 @@ export default function Whiteboard({
     [snapGrid, setSnapGrid] = useState(() => stored("flowplan-board-snap", false)),
     [recognize, setRecognize] = useState(() => stored("flowplan-board-recognize", false)),
     [penColor, setPenColor] = useState(strokeColors[0]),
+    // Pen-only drawing (lib/stylus.ts): fingers move and zoom, the pen draws.
+    [penOnly, setPenOnlyState] = useState(() => penOnlySetting() === "on"),
+    // Where a hovering pen is (Apple Pencil hover): a preview of the stroke.
+    [hover, setHover] = useState<Point | null>(null),
     [stamp, setStamp] = useState(stampChoices[0]),
     [following, setFollowing] = useState(true),
     [arrangeOpen, setArrangeOpen] = useState(false),
@@ -348,6 +357,23 @@ export default function Whiteboard({
   useEffect(() => {
     editRef.current = editing;
   }, [editing]);
+  // Apple Pencil double-tap and squeeze (from the iPad app, lib/stylus.ts):
+  // what the iPad's settings ask for – eraser, previous tool or the colours.
+  const previousTool = useRef<Tool>("select");
+  const currentTool = useRef<Tool>("select");
+  useEffect(() => {
+    if (tool !== currentTool.current) previousTool.current = currentTool.current;
+    currentTool.current = tool;
+  }, [tool]);
+  useEffect(() => {
+    if (!editable) return;
+    return onPencilAction(({ preferred }) => {
+      const now = currentTool.current;
+      if (preferred === "switchEraser") setTool(now === "eraser" ? (previousTool.current === "eraser" ? "pen" : previousTool.current) : "eraser");
+      else if (preferred === "switchPrevious") setTool(previousTool.current === now ? "select" : previousTool.current);
+      else if (preferred !== "ignore") setTool("pen");
+    });
+  }, [editable]);
   // Board changes (own and remote) re-render once per frame.
   useEffect(() => {
     let frame = 0;
@@ -1103,6 +1129,8 @@ export default function Whiteboard({
     };
   }
   function onBackgroundDown(e: ReactPointerEvent<SVGSVGElement>) {
+    if (notePen(e)) setPenOnlyState(true);
+    setHover(null);
     if (e.pointerType === "touch") {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.current.size === 2) {
@@ -1121,6 +1149,14 @@ export default function Whiteboard({
     if (editing) setEditing(null);
     const p = toWorld(e.clientX, e.clientY);
     if (e.button === 1 || tool === "hand" || space) return beginPan(e);
+    // A hand on the screen while drawing with a pen moves the board.
+    if (!drawsWith(e, penOnly) && (tool === "pen" || tool === "eraser")) return beginPan(e);
+    // The eraser tool, or the eraser end of a pen in any tool.
+    if (editable && (tool === "eraser" || isEraser(e))) {
+      gesture.current = { kind: "erase" };
+      eraseAt([p]);
+      return;
+    }
     if (!editable || tool === "select") {
       if (!editable || e.pointerType === "touch") return beginPan(e);
       gesture.current = {
@@ -1134,6 +1170,27 @@ export default function Whiteboard({
     }
     if (tool === "laser") return;
     create(tool, p, e);
+  }
+  // The hovering pen's preview, at most once per frame.
+  const hoverFrame = useRef<{ frame: number; point: Point | null }>({ frame: 0, point: null });
+  function showHover(point: Point | null) {
+    hoverFrame.current.point = point;
+    if (hoverFrame.current.frame) return;
+    hoverFrame.current.frame = requestAnimationFrame(() => {
+      hoverFrame.current.frame = 0;
+      setHover(hoverFrame.current.point);
+    });
+  }
+  // Removes the pen strokes under the given points (whole strokes).
+  function eraseAt(points: Point[]) {
+    const tolerance = 8 / viewRef.current.zoom;
+    const hit = items.filter(
+      (i) => i.type === "pen" && !i.locked && points.some((p) => strokeHit(i, p, tolerance)) && itemsMap.has(i.id),
+    );
+    if (!hit.length) return;
+    change(() => {
+      for (const i of hit) itemsMap.delete(i.id);
+    });
   }
   function create(kind: Tool, p: Point, e: ReactPointerEvent) {
     let id = "";
@@ -1367,6 +1424,8 @@ export default function Whiteboard({
   function onMove(e: ReactPointerEvent<SVGSVGElement>) {
     const p = toWorld(e.clientX, e.clientY);
     lastPointer.current = p;
+    if (editable && (tool === "pen" || tool === "eraser") && isHovering(e)) showHover(p);
+    else if (hover) showHover(null);
     const laser = tool === "laser";
     queueCursor({
       x: Math.round(p.x),
@@ -1400,6 +1459,10 @@ export default function Whiteboard({
     }
     const g = gesture.current;
     if (!g) return;
+    if (g.kind === "erase") {
+      eraseAt(samples(e).map((s) => toWorld(s.clientX, s.clientY)));
+      return;
+    }
     if (g.kind === "pan") {
       setView({
         ...g.view,
@@ -1515,8 +1578,11 @@ export default function Whiteboard({
         }),
       );
     } else if (g.kind === "pen") {
-      g.points.push(p);
-      if (g.pressures) g.pressures.push(Math.round((e.pressure || 0.5) * 100) / 100);
+      // Every point the pen measured since the last event: smooth fast strokes.
+      for (const s of samples(e)) {
+        g.points.push(toWorld(s.clientX, s.clientY));
+        if (g.pressures) g.pressures.push(Math.round((s.pressure || 0.5) * 100) / 100);
+      }
       const xs = g.points.map((q) => q.x),
         ys = g.points.map((q) => q.y);
       const x = Math.min(...xs),
@@ -1872,6 +1938,7 @@ export default function Whiteboard({
       r: "shape",
       l: "connector",
       p: "pen",
+      x: "eraser",
       f: "frame",
       g: "table",
       c: "comment",
@@ -2441,6 +2508,7 @@ export default function Whiteboard({
             "L",
           ],
           ["pen", t("Stift", "Pen"), <PencilSimple key="p" size={18} />, "P"],
+          ["eraser", t("Radierer", "Eraser"), <Eraser key="x" size={18} />, "X"],
           ["frame", t("Rahmen", "Frame"), <FrameCorners key="f" size={18} />, "F"],
           ["table", t("Tabelle", "Table"), <Table key="g" size={18} />, "G"],
           ["comment", t("Kommentar", "Comment"), <ChatCircle key="c" size={18} />, "C"],
@@ -2487,7 +2555,10 @@ export default function Whiteboard({
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        onPointerLeave={() => queueCursor(null)}
+        onPointerLeave={() => {
+          queueCursor(null);
+          setHover(null);
+        }}
         onDoubleClick={onDoubleClick}
       >
         <WhiteboardDefs />
@@ -2594,6 +2665,17 @@ export default function Whiteboard({
                 </g>
               );
             })()}
+          {hover && (tool === "pen" || tool === "eraser") && (
+            <circle
+              data-ui
+              className={`wb-pen-hover${tool === "eraser" ? " eraser" : ""}`}
+              cx={hover.x}
+              cy={hover.y}
+              r={tool === "eraser" ? 8 / view.zoom : 2.5}
+              fill={tool === "eraser" ? "none" : penColor}
+              strokeWidth={1 / view.zoom}
+            />
+          )}
           {marquee && (
             <rect
               data-ui
@@ -3370,6 +3452,22 @@ export default function Whiteboard({
             />
             {t("Formen erkennen", "Recognise shapes")}
           </label>
+          <label className="wb-check">
+            <input
+              type="checkbox"
+              checked={penOnly}
+              onChange={(e) => {
+                setPenOnlyState(e.target.checked);
+                setPenOnly(e.target.checked);
+              }}
+            />
+            {t("Nur mit dem Stift zeichnen", "Draw with the pen only")}
+          </label>
+        </div>
+      )}
+      {editable && tool === "eraser" && (
+        <div className="wb-shape-menu" onPointerDown={(e) => e.stopPropagation()}>
+          <span className="wb-menu-hint">{t("Über Striche fahren, um sie zu löschen", "Move over strokes to erase them")}</span>
         </div>
       )}
       {tool === "laser" && (

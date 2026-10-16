@@ -10,6 +10,7 @@ import {
   mindmapRoot,
   recognizeStroke,
   pressureOutline,
+  strokeHit,
 } from "../lib/whiteboard-tools";
 import type { WhiteboardItem } from "../lib/whiteboard-model";
 
@@ -100,4 +101,15 @@ test("pen pressure widens the stroke outline", () => {
   const width = (path: string) => Math.max(...path.match(/-?\d+(\.\d+)?/g)!.map(Number).filter((_, i) => i % 2 === 1).map(Math.abs));
   assert.ok(width(thick) > width(thin) * 2);
   assert.match(thin, /^M .* Z$/);
+});
+
+test("the eraser hits a pen stroke near its line, not inside its box", () => {
+  // A diagonal from (100,100) to (200,200), stored relative to its box.
+  const stroke = { x: 100, y: 100, w: 100, h: 100, points: [0, 0, 0.5, 0.5, 1, 1], strokeWidth: 4 };
+  assert.ok(strokeHit(stroke, { x: 150, y: 150 }, 2), "on the line");
+  assert.ok(strokeHit(stroke, { x: 154, y: 150 }, 3), "within reach (tolerance + half the width)");
+  assert.ok(!strokeHit(stroke, { x: 190, y: 110 }, 3), "inside the box but far from the line");
+  assert.ok(!strokeHit(stroke, { x: 260, y: 260 }, 3), "outside the box");
+  // A single dot.
+  assert.ok(strokeHit({ x: 10, y: 10, w: 1, h: 1, points: [0, 0] }, { x: 12, y: 10 }, 1));
 });

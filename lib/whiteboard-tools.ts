@@ -321,3 +321,29 @@ export function pressureOutline(points: { x: number; y: number; p: number }[], w
   const outline = [...left, ...right.reverse()];
   return `M ${outline.map((p) => `${f(p.x)} ${f(p.y)}`).join(" L ")} Z`;
 }
+
+// ---- Eraser ----
+
+// Does a pen stroke pass within `tolerance` (board units) of the point? The
+// stroke's points are stored relative to its box (0–1).
+export function strokeHit(item: Pick<WhiteboardItem, "x" | "y" | "w" | "h" | "points" | "strokeWidth">, p: Point, tolerance: number) {
+  const pts = item.points || [];
+  const reach = tolerance + (item.strokeWidth ?? 3) / 2;
+  if (p.x < item.x - reach || p.x > item.x + item.w + reach || p.y < item.y - reach || p.y > item.y + item.h + reach) return false;
+  const at = (i: number) => ({ x: item.x + pts[i * 2] * item.w, y: item.y + pts[i * 2 + 1] * item.h });
+  const count = Math.floor(pts.length / 2);
+  if (count === 1) {
+    const a = at(0);
+    return Math.hypot(p.x - a.x, p.y - a.y) <= reach;
+  }
+  for (let i = 0; i + 1 < count; i++) {
+    const a = at(i),
+      b = at(i + 1);
+    const dx = b.x - a.x,
+      dy = b.y - a.y;
+    const length = dx * dx + dy * dy;
+    const t = length ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length)) : 0;
+    if (Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)) <= reach) return true;
+  }
+  return false;
+}

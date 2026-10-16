@@ -68,7 +68,22 @@ test("mark up an image with the pen and remove the markings again", async ({ pag
     .poll(async () => (await (await page.request.get(`/api/pages/${pageId}`)).json()).html, { timeout: 15_000 })
     .toContain(`data-original="${original}"`);
 
-  // Opened again, the markings are there and can be removed.
+  // Opened again, the eraser removes the arrow it crosses, the line stays.
+  await image.dblclick();
+  await expect(dialog.getByRole("button", { name: "Rückgängig" })).toBeEnabled();
+  await dialog.getByRole("radio", { name: "Radierer" }).click();
+  const again = (await canvas.boundingBox())!;
+  await page.mouse.move(again.x + 110, again.y + 150);
+  await page.mouse.down();
+  await page.mouse.move(again.x + 110, again.y + 215, { steps: 8 });
+  await page.mouse.up();
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(async () => JSON.parse((await image.getAttribute("data-annotations")) || "[]").map((s: { type: string }) => s.type))
+    .toEqual(["pen"]);
+
+  // The remaining markings can be removed.
   await image.dblclick();
   await expect(dialog.getByRole("button", { name: "Rückgängig" })).toBeEnabled();
   await dialog.getByRole("button", { name: "Alle Markierungen entfernen" }).click();

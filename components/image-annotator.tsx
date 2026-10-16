@@ -10,6 +10,7 @@ import {
   ArrowArcRight,
   ArrowUpRight,
   Circle,
+  Eraser,
   HighlighterCircle,
   PencilSimple,
   Square,
@@ -17,9 +18,10 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { drawsWith, isEraser, notePen, onPencilAction, penOnlySetting, samples } from "@/lib/stylus";
 import { Modal } from "./ui";
 
-type Tool = "pen" | "marker" | "arrow" | "rect" | "ellipse" | "text";
+type Tool = "pen" | "marker" | "arrow" | "rect" | "ellipse" | "text" | "eraser";
 type Point = [number, number];
 export type Shape =
   | { type: "pen" | "marker"; color: string; width: number; points: Point[] }
@@ -97,6 +99,37 @@ function drawShapes(ctx: CanvasRenderingContext2D, shapes: Shape[], unit: number
   }
 }
 
+// Is a marking within `tolerance` image pixels of the point (eraser)?
+export function shapeHit(shape: Shape, [x, y]: Point, tolerance: number) {
+  const near = (a: Point, b: Point) => {
+    const dx = b[0] - a[0],
+      dy = b[1] - a[1];
+    const length = dx * dx + dy * dy;
+    const t = length ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / length)) : 0;
+    return Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy)) <= tolerance;
+  };
+  if (shape.type === "pen" || shape.type === "marker")
+    return shape.points.length === 1 ? near(shape.points[0], shape.points[0]) : shape.points.some((p, i) => i > 0 && near(shape.points[i - 1], p));
+  if (shape.type === "arrow") return near(shape.from, shape.to);
+  if (shape.type === "text") {
+    const [tx, ty] = shape.at;
+    return x >= tx - tolerance && y >= ty - tolerance && y <= ty + 40 + tolerance && x <= tx + shape.text.length * 12 + tolerance;
+  }
+  const { from, to } = shape as Extract<Shape, { from: Point }>;
+  const [x1, y1] = from,
+    [x2, y2] = to;
+  const [left, right, top, bottom] = [Math.min(x1, x2), Math.max(x1, x2), Math.min(y1, y2), Math.max(y1, y2)];
+  if (shape.type === "rect")
+    return (
+      near([left, top], [right, top]) || near([right, top], [right, bottom]) || near([right, bottom], [left, bottom]) || near([left, bottom], [left, top])
+    );
+  // Ellipse: distance to the outline, normalised by the radii.
+  const rx = Math.max(1, (right - left) / 2),
+    ry = Math.max(1, (bottom - top) / 2);
+  const d = Math.hypot((x - (left + rx)) / rx, (y - (top + ry)) / ry);
+  return Math.abs(d - 1) * Math.min(rx, ry) <= tolerance;
+}
+
 export type AnnotationResult = { blob: Blob; shapes: string; original: string };
 
 export function ImageAnnotator({
@@ -129,6 +162,10 @@ export function ImageAnnotator({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [scale, setScale] = useState(1);
+  // Pen-only drawing (lib/stylus.ts): once a pen draws, fingers do not.
+  const penOnly = useRef(penOnlySetting() === "on");
+  const erasing = useRef(false);
+  const previousTool = useRef<Tool>("pen");
 
   useEffect(() => {
     const img = new window.Image();
@@ -179,10 +216,42 @@ export function ImageAnnotator({
     if (typing?.text.trim()) add({ type: "text", color, width, at: typing.at, text: typing.text.trim().slice(0, 200) });
     setTyping(null);
   }
+  function choose(next: Tool) {
+    commitText();
+    setTool((now) => {
+      if (now !== next) previousTool.current = now;
+      return next;
+    });
+  }
+  // Apple Pencil double-tap and squeeze (iPad app): eraser, previous tool or pen.
+  useEffect(
+    () =>
+      onPencilAction(({ preferred }) => {
+        if (preferred === "switchEraser") choose(tool === "eraser" ? (previousTool.current === "eraser" ? "pen" : previousTool.current) : "eraser");
+        else if (preferred === "switchPrevious") choose(previousTool.current);
+        else if (preferred !== "ignore") choose("pen");
+      }),
+  );
+  function erase(points: Point[]) {
+    const tolerance = 8 / scale;
+    setShapes((list) => {
+      const kept = list.filter((shape) => !points.some((p) => shapeHit(shape, p, tolerance + shape.width)));
+      if (kept.length !== list.length) setUndone((u) => [...u, ...list.filter((shape) => !kept.includes(shape))]);
+      return kept.length === list.length ? list : kept;
+    });
+  }
   function onDown(event: React.PointerEvent) {
     if (!ready) return;
+    if (notePen(event)) penOnly.current = true;
+    if (!drawsWith(event, penOnly.current) && tool !== "text") return;
     event.preventDefault();
     const p = point(event);
+    if (tool === "eraser" || isEraser(event)) {
+      (event.target as Element).setPointerCapture(event.pointerId);
+      erasing.current = true;
+      erase([p]);
+      return;
+    }
     if (tool === "text") {
       commitText();
       const rect = canvas.current!.getBoundingClientRect();
@@ -193,12 +262,19 @@ export function ImageAnnotator({
     setDraft(tool === "pen" || tool === "marker" ? { type: tool, color, width, points: [p] } : { type: tool, color, width, from: p, to: p });
   }
   function onMove(event: React.PointerEvent) {
+    const all = () => {
+      const rect = canvas.current!.getBoundingClientRect();
+      return samples(event).map((s): Point => [(s.clientX - rect.left) / scale, (s.clientY - rect.top) / scale]);
+    };
+    if (erasing.current) return erase(all());
     if (!draft) return;
     const p = point(event);
-    if (draft.type === "pen" || draft.type === "marker") setDraft({ ...draft, points: [...draft.points, p] });
+    // Every point the pen measured since the last event: smooth fast strokes.
+    if (draft.type === "pen" || draft.type === "marker") setDraft({ ...draft, points: [...draft.points, ...all()] });
     else if (draft.type === "arrow" || draft.type === "rect" || draft.type === "ellipse") setDraft({ ...draft, to: p });
   }
   function onUp() {
+    erasing.current = false;
     if (!draft) return;
     const tiny =
       (draft.type === "arrow" || draft.type === "rect" || draft.type === "ellipse") &&
@@ -264,6 +340,7 @@ export function ImageAnnotator({
     ["rect", t("Rechteck", "Rectangle"), <Square key="r" size={18} />],
     ["ellipse", t("Kreis", "Circle"), <Circle key="e" size={18} />],
     ["text", t("Text", "Text"), <TextT key="t" size={18} />],
+    ["eraser", t("Radierer", "Eraser"), <Eraser key="x" size={18} />],
   ];
   return (
     <Modal open wide title={t("Bild markieren", "Mark up image")} onClose={onClose}>
@@ -279,10 +356,7 @@ export function ImageAnnotator({
                 aria-label={label}
                 title={label}
                 className={tool === id ? "active" : ""}
-                onClick={() => {
-                  commitText();
-                  setTool(id);
-                }}
+                onClick={() => choose(id)}
               >
                 {icon}
               </button>

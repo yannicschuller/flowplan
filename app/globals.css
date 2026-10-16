@@ -8956,6 +8956,15 @@ textarea {
   stroke: var(--blue);
   pointer-events: none;
 }
+.wb-pen-hover {
+  pointer-events: none;
+  stroke: var(--surface, #fff);
+  opacity: 0.85;
+}
+.wb-pen-hover.eraser {
+  stroke: var(--muted, #6f6b77);
+  stroke-dasharray: 2 2;
+}
 .wb-marquee {
   fill: color-mix(in srgb, var(--blue) 10%, transparent);
   stroke: var(--blue);
