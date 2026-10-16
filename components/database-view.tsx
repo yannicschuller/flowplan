@@ -643,6 +643,24 @@ export default function DatabaseView({
         >
           <Star size={17} weight={starred ? "fill" : "regular"} />
         </button>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={t("Link kopieren", "Copy link")}
+          title={t("Link kopieren", "Copy link")}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(
+                `${location.origin}${location.pathname}${pageLocationHash({ pageId: page.id, rowId: row.id })}`,
+              );
+              onError(t("Link kopiert", "Link copied"));
+            } catch {
+              onError(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
+            }
+          }}
+        >
+          <LinkIcon size={17} />
+        </button>
         {canManageAccess(row) && (
           <button
             type="button"
@@ -5563,7 +5581,7 @@ function RelationBacklinks({
       <h3>{t("Verknüpft von", "Linked from")}</h3>
       <ul>
         {links.map((link) => (
-          <li key={`${link.rowId}-${link.field}`}>
+          <li key={`${link.pageId}-${link.rowId || ""}-${link.field}`}>
             <a
               href={pageLocationHash({
                 pageId: link.pageId,
@@ -5573,7 +5591,9 @@ function RelationBacklinks({
               {link.title}
             </a>
             <small className="muted">
-              {link.pageTitle} · {link.field}
+              {[link.pageTitle, link.field || t("im Text verlinkt", "linked in the text")]
+                .filter(Boolean)
+                .join(" · ")}
             </small>
           </li>
         ))}

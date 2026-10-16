@@ -88,6 +88,7 @@ import {
   TextSuperscript,
   EyeSlash,
   Link as LinkIcon,
+  Rows,
   ListBullets,
   ListNumbers,
   CheckSquare,
@@ -119,6 +120,7 @@ import {
   ChartLine,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
+import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
 import type { Page, User } from "@/lib/types";
 import {
@@ -215,6 +217,7 @@ export default function DocumentEditor({
   const [outline, setOutline] = useOutlineOpen();
   const [tick, setTick] = useState(0);
   const [references, setReferences] = useState(false),
+    [referenceQuery, setReferenceQuery] = useState(""),
     [embed, setEmbed] = useState(false),
     [embedUrl, setEmbedUrl] = useState("");
   const [boardPicker, setBoardPicker] = useState(false),
@@ -1009,8 +1012,8 @@ export default function DocumentEditor({
       run: () => setMath({ type: "mathInline", expression: "\\frac{}{}" }),
     },
     {
-      name: t("Seite oder Person erwähnen", "Mention a page or person"),
-      keywords: ["mention", "link", "@", "seite", "person"],
+      name: t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person"),
+      keywords: ["mention", "link", "@", "seite", "person", "eintrag", "record"],
       description: t("Mit @ Wissen verknüpfen", "Connect knowledge with @"),
       icon: LinkIcon,
       run: () => setReferences(true),
@@ -1205,6 +1208,12 @@ export default function DocumentEditor({
     if (node.type.name === "heading")
       headings.push({ text: node.textContent, pos, level: node.attrs.level });
   });
+  // The mention dialog: what matches the typed text.
+  const referenceTerm = referenceQuery.trim().toLowerCase();
+  const referencePages = pages.filter(
+    (p) => p.id !== pageId && (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)),
+  );
+  const referenceMembers = members.filter((u) => !referenceTerm || u.name.toLowerCase().includes(referenceTerm));
   return (
     <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
@@ -1881,14 +1890,23 @@ export default function DocumentEditor({
           editor?.commands.focus();
         }}
         open={references}
-        onClose={() => setReferences(false)}
-        title={t("Seite oder Person erwähnen", "Mention a page or person")}
+        onClose={() => {
+          setReferences(false);
+          setReferenceQuery("");
+        }}
+        title={t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person")}
       >
         <div className="reference-list">
-          <h3>{t("Seiten", "Pages")}</h3>
-          {pages
-            .filter((p) => p.id !== pageId)
-            .map((p) => (
+          <input
+            className="input"
+            autoFocus
+            value={referenceQuery}
+            onChange={(e) => setReferenceQuery(e.target.value)}
+            placeholder={t("Suchen …", "Search …")}
+            aria-label={t("Seiten, Einträge und Personen suchen", "Search pages, records and people")}
+          />
+          {referencePages.length > 0 && <h3>{t("Seiten", "Pages")}</h3>}
+          {referencePages.map((p) => (
               <button
                 key={p.id}
                 onClick={() => {
@@ -1910,8 +1928,31 @@ export default function DocumentEditor({
                 {p.title}
               </button>
             ))}
-          <h3>{t("Personen", "People")}</h3>
-          {members.map((u) => (
+          <RecordReferences
+            workspaceId={pages.find((p) => p.id === pageId)?.workspace_id}
+            query={referenceQuery}
+            exclude={rowId}
+            onPick={(record) => {
+              editor
+                ?.chain()
+                .focus()
+                .insertContent({
+                  type: "text",
+                  text: record.title,
+                  marks: [
+                    {
+                      type: "link",
+                      attrs: { href: `/${pageLocationHash({ pageId: record.id, rowId: record.rowId })}` },
+                    },
+                  ],
+                })
+                .run();
+              setReferences(false);
+              setReferenceQuery("");
+            }}
+          />
+          {referenceMembers.length > 0 && <h3>{t("Personen", "People")}</h3>}
+          {referenceMembers.map((u) => (
             <button
               key={u.id}
               onClick={() => {
@@ -2059,4 +2100,66 @@ function bytesTo64(bytes: Uint8Array) {
 }
 function from64(value: string) {
   return Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+}
+
+type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string };
+// Records for the mention dialog: the workspace search (kind "row") finds
+// them and leaves out what the person may not read.
+function RecordReferences({
+  workspaceId,
+  query,
+  exclude,
+  onPick,
+}: {
+  workspaceId?: string;
+  query: string;
+  exclude?: string;
+  onPick: (record: RecordHit) => void;
+}) {
+  const t = useT();
+  const [hits, setHits] = useState<RecordHit[]>([]);
+  const term = query.trim();
+  useEffect(() => {
+    if (!workspaceId || !term) {
+      setHits([]);
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      api<(RecordHit & { rowId?: string })[]>(
+        `/api/search?workspace=${workspaceId}&kind=row&q=${encodeURIComponent(term)}`,
+      )
+        .then((found) => {
+          if (!active) return;
+          const seen = new Set<string>();
+          setHits(
+            found.filter((hit): hit is RecordHit => {
+              if (!hit.rowId || hit.rowId === exclude || seen.has(hit.rowId)) return false;
+              seen.add(hit.rowId);
+              return true;
+            }).slice(0, 20),
+          );
+        })
+        .catch(() => active && setHits([]));
+    }, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [workspaceId, term, exclude]);
+  return (
+    <>
+      <h3>{t("Einträge", "Records")}</h3>
+      {!term && <p className="muted reference-hint">{t("Tippe, um Einträge aus Datenbanken zu finden.", "Type to find records in databases.")}</p>}
+      {hits.map((hit) => (
+        <button key={hit.rowId} onClick={() => onPick(hit)}>
+          <Rows />
+          <span>
+            {hit.title || t("Ohne Titel", "Untitled")}
+            {hit.pageTitle && <small className="muted"> · {hit.pageTitle}</small>}
+          </span>
+        </button>
+      ))}
+    </>
+  );
 }

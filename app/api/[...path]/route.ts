@@ -65,7 +65,7 @@ import { searchWorkspace } from "@/lib/search-index";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { importTracker } from "@/lib/tracker-import";
-import { relationBacklinks } from "@/lib/relation-backlinks";
+import { recordBacklinks } from "@/lib/relation-backlinks";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
@@ -346,7 +346,7 @@ async function handleGET(
       path[4] === "backlinks"
     )
       return NextResponse.json(
-        relationBacklinks(
+        recordBacklinks(
           user,
           z.uuid().parse(path[1]),
           z.uuid().parse(path[3]),

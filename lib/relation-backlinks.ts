@@ -2,13 +2,16 @@ import { rowRole, rowRoleResolver } from "./row-access";
 import { all, one } from "./db";
 import { pageRole, requirePage } from "./permissions";
 import { cellText } from "./cell-text";
+import { textBacklinks } from "./text-backlinks";
 import type { Field, Identity, Page } from "./types";
 
 export type Backlink = {
   pageId: string;
   pageTitle: string;
-  rowId: string;
+  // Missing for a page whose text links to the record.
+  rowId?: string;
   title: string;
+  // The relation property; empty for a link in a text.
   field: string;
 };
 // Records in readable databases whose relation properties point at this record.
@@ -72,4 +75,27 @@ export function relationBacklinks(
     }
   }
   return links;
+}
+
+// Everything that leads to a record: relations first, then links in the
+// texts of pages and records.
+export function recordBacklinks(user: Identity, pageId: string, rowId: string): Backlink[] {
+  const relations = relationBacklinks(user, pageId, rowId);
+  const page = requirePage(user, pageId);
+  const target = one<{ id: string; access: string; created_by: string }>(
+    "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
+    rowId,
+    page.id,
+  );
+  if (!target || !rowRole(user, page, target)) return [];
+  return [
+    ...relations,
+    ...textBacklinks(user, page, rowId).map((link) => ({
+      pageId: link.id,
+      pageTitle: link.pageTitle || "",
+      ...(link.rowId ? { rowId: link.rowId } : {}),
+      title: link.title || "Ohne Titel",
+      field: "",
+    })),
+  ];
 }

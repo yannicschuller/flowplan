@@ -392,7 +392,7 @@ type PageData = DatabaseData & {
   html: string;
   state: string | null;
   generation: string;
-  backlinks: { id: string; title: string; icon: string }[];
+  backlinks: { id: string; title: string; icon: string; rowId?: string; pageTitle?: string }[];
   snapshots: {
     id: string;
     title: string;
@@ -2505,9 +2505,17 @@ export default function WorkspaceApp({
                       <>
                         <h3>{t("Verlinkt von", "Linked from")}</h3>
                         {data.backlinks.map((p) => (
-                          <button key={p.id} onClick={() => openPage(p.id)}>
+                          <button
+                            key={`${p.id}-${p.rowId || ""}`}
+                            onClick={() =>
+                              p.rowId
+                                ? (location.hash = pageLocationHash({ pageId: p.id, rowId: p.rowId }))
+                                : openPage(p.id)
+                            }
+                          >
                             <PageIcon name={p.icon} />
                             {p.title}
+                            {p.pageTitle && <small className="muted">{p.pageTitle}</small>}
                           </button>
                         ))}
                       </>

@@ -25,6 +25,7 @@ import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { changeDocTask, dueTaskCount, indexPageTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
+import { textBacklinks } from "./text-backlinks";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
 import { transcriptionEnabled } from "./transcribe";
 import {
@@ -313,13 +314,8 @@ export function pageData(user: Identity, pid: string) {
       state: null,
       generation: "1",
     };
-  const backlinks = all<Page & { html: string }>(
-    "SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.id!=?",
-    p.workspace_id,
-    p.id,
-  )
-    .filter((x) => pageRole(user, x) && x.html.includes("#page=" + p.id))
-    .map((x) => ({ id: x.id, title: x.title, icon: x.icon }));
+  // Pages and records whose text links here.
+  const backlinks = textBacklinks(user, p);
   const hidden = p.kind === "database" ? hiddenRowIds(user, p) : new Set();
   const comments = all<{ id: string; row_id: string | null }>(
     `SELECT c.*,u.name FROM comments c JOIN users u ON u.id=c.author_id WHERE page_id=?

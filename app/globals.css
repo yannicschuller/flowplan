@@ -16692,3 +16692,13 @@ h3 .block-reactions {
   outline-offset: -2px;
   background: var(--blue-light);
 }
+.reference-list > .input {
+  width: 100%;
+}
+.reference-list .reference-hint {
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+.reference-list button small {
+  font-size: 12px;
+}
