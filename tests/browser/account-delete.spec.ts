@@ -78,6 +78,10 @@ test("an SSO account deletes itself after choosing a successor", async ({ browse
   const team = randomUUID();
   db.prepare("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)").run(team, `Team ${stamp}`, me);
   db.prepare("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'owner'),(?,?,'editor'),(?,?,'viewer')").run(team, me, team, editor, team, viewer);
+  // A workspace with only this person in it goes with the account.
+  const solo = randomUUID();
+  db.prepare("INSERT INTO workspaces(id,name,created_by) VALUES(?,?,?)").run(solo, `Solo ${stamp}`, me);
+  db.prepare("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'owner')").run(solo, me);
   const context = await browser.newContext({ locale: "de-DE" });
   await context.addCookies([{ name: "flowplan_session", value: token, url: origin, httpOnly: true, sameSite: "Lax" }]);
   const errors: string[] = [];
@@ -145,7 +149,7 @@ test("an account with a password confirms with it; the last admin is refused", a
     let dialog = await open();
     await expect(dialog.getByRole("alert")).toContainText("letzte Admin-Konto");
     await expect(dialog.getByRole("button", { name: "Konto endgültig löschen" })).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Schließen" }).click();
+    await dialog.locator(".button", { hasText: "Schließen" }).click();
     db.prepare("UPDATE local_accounts SET is_admin=0 WHERE user_id=?").run(uid);
     for (const o of others) db.prepare("UPDATE local_accounts SET is_admin=1 WHERE user_id=?").run(o.user_id);
 
@@ -159,10 +163,11 @@ test("an account with a password confirms with it; the last admin is refused", a
     await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible({ timeout: 20_000 });
     expect(db.prepare("SELECT count(*) n FROM local_accounts WHERE user_id=?").get(uid)).toEqual({ n: 0 });
     // The old password no longer signs in.
+    await page.waitForLoadState("networkidle");
     await page.getByLabel("E-Mail-Adresse").fill(email);
     await page.locator("input[name=password]").fill("ein-langes-passwort");
     await page.getByRole("button", { name: "Anmelden", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("Passwort stimmt nicht");
+    await expect(page.locator(".error[role=alert]")).toContainText("Passwort stimmt nicht");
     expect(errors).toEqual([]);
   } finally {
     await context.close();

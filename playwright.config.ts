@@ -10,8 +10,11 @@ export default defineConfig({
   use: {
     baseURL: process.env.TEST_BASE_URL || "http://127.0.0.1:3000",
     headless: true,
-    // The tests read German texts; English is tested explicitly.
+    // The tests read German texts; English is tested explicitly. API
+    // requests (request fixture, page.request) do not take the locale, so
+    // they state the language themselves.
     locale: "de-DE",
+    extraHTTPHeaders: { "Accept-Language": "de-DE,de;q=0.9" },
     screenshot: "only-on-failure",
   },
   projects: [

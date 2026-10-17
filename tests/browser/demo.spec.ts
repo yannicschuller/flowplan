@@ -15,14 +15,14 @@ test("the demo button opens a throwaway workspace that is deleted on leaving", a
         "INSERT INTO instance_settings(key,value) VALUES('publicDemo',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       )
       .run(JSON.stringify(on));
-  const context = await browser.newContext();
+  const context = await browser.newContext({ locale: "de-DE" });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   try {
     setDemo(false);
     await page.goto("/");
-    await expect(page.getByRole("link", { name: "Anmelden" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Demo/ })).toHaveCount(0);
 
     setDemo(true);
