@@ -36,11 +36,17 @@ function offlineKind(request, url) {
     return "data";
   return null;
 }
+// The sign-in page (session expired) must not replace the stored app.
+const SIGNED_OUT = "data-signed-out=\"\"";
+async function signedOut(request, response) {
+  if (request.mode !== "navigate") return false;
+  return (await response.clone().text()).includes(SIGNED_OUT);
+}
 // Network first; the stored copy is used only when the network fails.
 async function networkFirst(request, cacheName, key) {
   try {
     const response = await fetch(request);
-    if (response.ok && response.type === "basic") {
+    if (response.ok && response.type === "basic" && !(await signedOut(request, response))) {
       const cache = await caches.open(cacheName);
       await cache.put(key, response.clone());
     }

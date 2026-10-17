@@ -50,6 +50,20 @@ test("offline use is opt-in per device and its copies are removable", async ({
   expect(stored).toContain("/");
   expect(stored).toContain("/api/bootstrap");
   expect(stored).toContain(`/api/pages/${doc.id}`);
+  // An expired session shows the sign-in page online; the stored app stays
+  // (issue #23), so the copies still open offline.
+  const shell = () =>
+    page.evaluate(async () => (await (await (await caches.open("flowplan-data-v1")).match("/"))?.text()) || "");
+  expect(await shell()).not.toContain('data-signed-out=""');
+  await page.context().clearCookies();
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Anmelden", exact: true })).toBeVisible();
+  expect(await shell()).not.toContain('data-signed-out=""');
+  expect(await shell()).not.toBe("");
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  await page.goto("/#settings");
+  await page.reload();
+  await page.getByRole("button", { name: "Daten", exact: true }).click();
   await page.getByRole("button", { name: "Offline-Kopien entfernen" }).click();
   await expect(
     page.getByText("Offline-Kopien auf diesem Gerät wurden entfernt."),

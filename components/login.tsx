@@ -153,7 +153,9 @@ export default function Login({
         ? [t("Passwort", "Forgot your"), t("vergessen?", "password?")]
         : [t("Raum für deine", "Room for your"), t("nächste große Idee.", "next big idea.")];
   return (
-    <main className="login">
+    // data-signed-out: the offline service worker (public/sw.js) does not
+    // store this page as the app, so an expired session keeps the offline copy.
+    <main className="login" data-signed-out="">
       <div className="login-brand">
         <BrandMark size={32} />
         flowplan
