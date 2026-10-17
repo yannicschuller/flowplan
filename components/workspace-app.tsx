@@ -1,5 +1,6 @@
 "use client";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
+import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
@@ -424,8 +425,6 @@ type Screen =
   | "media"
   | "settings"
   | "admin";
-// Pages opened for reading, per device.
-const READ_MODE_KEY = "flowplan-read-pages";
 export default function WorkspaceApp({
   initial,
   useTemplate,
@@ -981,22 +980,10 @@ export default function WorkspaceApp({
   const mayEdit = !!data && ["editor", "owner"].includes(data.role) && !data.page.locked,
     canRead = mayEdit && data?.page.kind === "document",
     reading = canRead && readPages.includes(data!.page.id);
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(READ_MODE_KEY) || "[]");
-      if (Array.isArray(stored)) setReadPages(stored.filter((id) => typeof id === "string"));
-    } catch {}
-  }, []);
+  useEffect(() => setReadPages(readModeIds()), []);
   const toggleReading = () => {
     if (!data || !canRead) return;
-    const id = data.page.id;
-    setReadPages((pages) => {
-      const next = pages.includes(id) ? pages.filter((p) => p !== id) : [...pages.slice(-199), id];
-      try {
-        localStorage.setItem(READ_MODE_KEY, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+    setReadPages(toggleReadMode(data.page.id));
   };
   toggleReadingRef.current = toggleReading;
   const activePages = boot.pages.filter((p) => !p.deleted_at),

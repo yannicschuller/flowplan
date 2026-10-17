@@ -106,6 +106,10 @@ import {
   Paperclip,
   Plus,
   Info,
+  ChatCenteredText,
+  WarningOctagon,
+  Warning,
+  Lightbulb,
   CaretRight,
   Function as FunctionIcon,
   TextAlignLeft,
@@ -120,6 +124,7 @@ import {
   ChartLine,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
+import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
 import type { Page, User } from "@/lib/types";
@@ -140,6 +145,7 @@ import {
   Spoiler,
   Indent,
   MEDIA_WIDTHS,
+  CALLOUT_TYPES,
   AnnotatedImage,
 } from "@/lib/document-schema";
 import { compressImage } from "@/lib/image-compress";
@@ -825,6 +831,8 @@ export default function DocumentEditor({
       onError((e as Error).message);
     }
   }
+  const calloutLabel = calloutLabels(t),
+    calloutDescription = calloutDescriptions(t);
   const commands: SlashItem[] = [
     {
       name: t("Text", "Text"),
@@ -882,26 +890,48 @@ export default function DocumentEditor({
       icon: Quotes,
       run: () => editor?.chain().focus().toggleBlockquote().run(),
     },
-    {
-      name: t("Hinweis", "Callout"),
-      keywords: ["callout", "info", "note"],
-      description: t("Wichtige Informationen", "Important information"),
-      icon: Info,
-      run: () =>
+    // Callouts in the five kinds of GitHub alerts; inside a callout the
+    // command changes its kind.
+    ...CALLOUT_TYPES.map((type) => ({
+      name: calloutLabel[type],
+      keywords: {
+        note: ["callout", "info", "note", "hinweis"],
+        tip: ["callout", "tip", "tipp", "hint"],
+        important: ["callout", "important", "wichtig"],
+        warning: ["callout", "warning", "warnung"],
+        caution: ["callout", "caution", "danger", "achtung", "gefahr"],
+      }[type],
+      description: calloutDescription[type],
+      icon: { note: Info, tip: Lightbulb, important: ChatCenteredText, warning: Warning, caution: WarningOctagon }[type],
+      run: () => {
+        if (editor?.isActive("callout")) return void editor.chain().focus().updateAttributes("callout", { type }).run();
         editor
           ?.chain()
           .focus()
           .insertContent({
             type: "callout",
+            attrs: { type },
             content: [
               {
                 type: "paragraph",
-                content: [{ type: "text", text: t("Gut zu wissen …", "Good to know …") }],
+                content: [
+                  {
+                    type: "text",
+                    text: {
+                      note: t("Gut zu wissen …", "Good to know …"),
+                      tip: t("Ein Tipp …", "A tip …"),
+                      important: t("Wichtig ist …", "What matters …"),
+                      warning: t("Achtung bei …", "Watch out for …"),
+                      caution: t("Vorsicht: …", "Careful: …"),
+                    }[type],
+                  },
+                ],
               },
             ],
           })
-          .run(),
-    },
+          .run();
+      },
+    })),
     {
       name: t("Aufklappbarer Block", "Toggle"),
       keywords: ["toggle", "details", "aufklappen"],

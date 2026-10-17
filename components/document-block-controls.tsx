@@ -29,7 +29,8 @@ import {
   mapBlockSelection,
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
-import { MEDIA_WIDTHS } from "@/lib/document-schema";
+import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType } from "@/lib/document-schema";
+import { calloutLabels } from "@/lib/callout-types";
 import { Modal } from "./ui";
 type Positioned = DocumentBlock & {
   left: number;
@@ -663,6 +664,39 @@ export function DocumentBlockControls({
             </label>
           ))}
         </div>
+        {(() => {
+          // A callout's kind (note, tip, important, warning, caution).
+          const only =
+            selected.current.length === 1
+              ? all.find((b) => b.pos === selected.current[0])
+              : undefined;
+          if (!editor || only?.node.type.name !== "callout") return null;
+          const labels = calloutLabels(t);
+          return (
+            <label className="block-media-width">
+              {t("Hinweistyp", "Callout type")}
+              <Select
+                aria-label={t("Hinweistyp", "Callout type")}
+                disabled={!editor.isEditable}
+                value={calloutType(only.node.attrs.type)}
+                onChange={(event) => {
+                  const tr = editor.state.tr.setNodeMarkup(only.pos, undefined, {
+                    ...only.node.attrs,
+                    type: calloutType(event.target.value),
+                  });
+                  editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [only.pos]));
+                  setTick((t) => t + 1);
+                }}
+              >
+                {CALLOUT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {labels[type]}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          );
+        })()}
         {(() => {
           // Videos and embeds take a width in percent of the column.
           const only =

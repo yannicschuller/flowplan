@@ -42,18 +42,28 @@ export const AnnotatedImage = Image.extend({
   },
 });
 
+// The five kinds of GitHub alerts (also Forgejo, Obsidian). Older callouts
+// (data-callout="true") are notes.
+export const CALLOUT_TYPES = ["note", "tip", "important", "warning", "caution"] as const;
+export type CalloutType = (typeof CALLOUT_TYPES)[number];
+export const calloutType = (value: unknown): CalloutType =>
+  CALLOUT_TYPES.includes(value as CalloutType) ? (value as CalloutType) : "note";
 export const Callout = Node.create({
   name: "callout",
   group: "block",
   content: "block+",
   defining: true,
+  addAttributes: () => ({
+    type: {
+      default: "note",
+      parseHTML: (element) => calloutType(element.getAttribute("data-callout")),
+      renderHTML: (attributes) => ({ "data-callout": calloutType(attributes.type) }),
+    },
+  }),
   parseHTML: () => [{ tag: "aside[data-callout]" }],
   renderHTML: ({ HTMLAttributes }) => [
     "aside",
-    mergeAttributes(HTMLAttributes, {
-      "data-callout": "true",
-      class: "editor-callout",
-    }),
+    mergeAttributes(HTMLAttributes, { class: "editor-callout" }),
     0,
   ],
 });

@@ -1,5 +1,6 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
+import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { CSV_FORMULA } from "@/lib/cell-text";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
@@ -133,6 +134,8 @@ import {
   Smiley,
   Image as ImageIcon,
   PencilSimple,
+  ArrowsOutLineHorizontal,
+  BookOpen,
   CopySimple,
   ArrowLeft,
   ArrowRight,
@@ -450,6 +453,25 @@ export default function DatabaseView({
     } catch {}
   }, []);
   const recordMode = recordModeChoice || recordLayout.open;
+  // Records opened for reading on this device (same list as pages, by record
+  // id) and records as full pages across the whole width (issue #25).
+  const [readRows, setReadRows] = useState<string[]>([]),
+    [recordWide, setRecordWide] = useState(false);
+  useEffect(() => {
+    setReadRows(readModeIds());
+    try {
+      setRecordWide(localStorage.getItem("flowplan-record-wide") === "1");
+    } catch {}
+  }, []);
+  const toggleRecordReading = (rowId: string) => setReadRows(toggleReadMode(rowId));
+  const toggleRecordWide = () =>
+    setRecordWide((wide) => {
+      try {
+        if (wide) localStorage.removeItem("flowplan-record-wide");
+        else localStorage.setItem("flowplan-record-wide", "1");
+      } catch {}
+      return !wide;
+    });
   // A personal choice equal to the database default is no choice.
   const chooseRecordMode = (mode: RecordOpenMode) => {
     const choice = mode === recordLayout.open ? "" : mode;
@@ -586,6 +608,25 @@ export default function DatabaseView({
   );
   const selected = data.rows.find((r) => r.id === rowId);
   const selectedEditable = editable && selected?.role !== "viewer";
+  // Open for reading: the text without editing, handles or block menus.
+  const readingRecord = !!selected && selectedEditable && readRows.includes(selected.id);
+  const toggleReadingRef = useRef<() => void>(() => {});
+  toggleReadingRef.current = () => {
+    if (selected && selectedEditable) toggleRecordReading(selected.id);
+  };
+  useEffect(() => {
+    if (!selected) return;
+    // ⌘⌥E as for pages; caught before the page's own shortcut.
+    const key = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.code === "KeyE") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        toggleReadingRef.current();
+      }
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [selected]);
   // Subtasks: the parent property and, in tables, the tree.
   const subtaskParent = parentField(fields);
   const treeParent = view.type === "table" && view.tree ? subtaskParent : undefined;
@@ -631,7 +672,31 @@ export default function DatabaseView({
             );
           })}
         </div>
+        {recordMode === "full" && (
+          <button
+            type="button"
+            className={`icon-button${recordWide ? " active" : ""}`}
+            aria-pressed={recordWide}
+            aria-label={t("Volle Breite", "Full width")}
+            title={t("Volle Breite", "Full width")}
+            onClick={toggleRecordWide}
+          >
+            <ArrowsOutLineHorizontal size={17} />
+          </button>
+        )}
         <span className="modal-heading-divider" aria-hidden="true" />
+        {editable && row.role !== "viewer" && (
+          <button
+            type="button"
+            className={`icon-button read-mode-toggle${readRows.includes(row.id) ? " active" : ""}`}
+            aria-pressed={readRows.includes(row.id)}
+            aria-label={readRows.includes(row.id) ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")}
+            title={readRows.includes(row.id) ? t("Bearbeiten (⌘⌥E)", "Edit (⌘⌥E)") : t("Lesemodus (⌘⌥E)", "Reading mode (⌘⌥E)")}
+            onClick={() => toggleRecordReading(row.id)}
+          >
+            {readRows.includes(row.id) ? <PencilSimple size={17} /> : <BookOpen size={17} />}
+          </button>
+        )}
         <button
           type="button"
           className={`icon-button record-star${starred ? " active" : ""}`}
@@ -4955,7 +5020,7 @@ export default function DatabaseView({
         actions={selected && recordActions(selected)}
         className={
           recordMode === "full"
-            ? "modal-full"
+            ? `modal-full${recordWide ? " modal-full-wide" : ""}`
             : recordMode === "side"
               ? "modal-side"
               : recordLayout.properties === "side"
@@ -5169,7 +5234,7 @@ export default function DatabaseView({
                   userId={userId}
                   pages={pages}
                   members={members}
-                  editable={selectedEditable}
+                  editable={selectedEditable && !readingRecord}
                   onError={onError}
                   onChanged={onRefresh}
                 />

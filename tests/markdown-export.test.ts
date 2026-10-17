@@ -372,3 +372,22 @@ test("missing referenced files abort the ZIP without silently dropping attachmen
     /https:\/\/flowplan.example.test\/api\/files/,
   );
 });
+
+// Callouts travel as GitHub alerts (issue #24): the kind survives export
+// and import; Obsidian's further kinds map to the nearest one.
+test("callout kinds round-trip as GitHub alerts", async () => {
+  const { markdownToHtml } = await import("../lib/markdown-import");
+  const context = { url: (url: string) => url, linked: () => null };
+  for (const type of ["note", "tip", "important", "warning", "caution"]) {
+    const markdown = htmlToMarkdown(`<aside data-callout="${type}"><p>Text ${type}</p></aside>`, context);
+    assert.match(markdown, new RegExp(`^> \\[!${type.toUpperCase()}\\]`));
+    assert.match(markdownToHtml(markdown), new RegExp(`<aside data-callout="${type}"[^>]*><p>Text ${type}</p>`));
+  }
+  // Older callouts are notes.
+  assert.match(htmlToMarkdown('<aside data-callout="true"><p>Old</p></aside>', context), /^> \[!NOTE\]/);
+  assert.match(markdownToHtml("> [!danger] Before you start\n> Turn off the water."), /<aside data-callout="caution"[^>]*><p><strong>Before you start<\/strong><\/p><p>Turn off the water.<\/p>/);
+  assert.match(markdownToHtml("> [!hint]-\n> Folded"), /data-callout="tip"/);
+  assert.match(markdownToHtml("> [!whatever]\n> x"), /data-callout="note"/);
+  // A plain quote stays a quote.
+  assert.match(markdownToHtml("> Just a quote"), /^<blockquote>/);
+});

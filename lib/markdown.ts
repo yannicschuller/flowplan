@@ -1,6 +1,6 @@
 import { generateJSON } from "@tiptap/html/server";
 import type { Node } from "@tiptap/pm/model";
-import { documentExtensions, documentSchema } from "./document-schema";
+import { calloutType, documentExtensions, documentSchema } from "./document-schema";
 import { cleanHtml } from "./document-server";
 export type MarkdownContext = {
   url: (url: string) => string | null;
@@ -161,7 +161,8 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
       }
       case "blockquote":
       case "callout":
-        return (node.type.name === "callout" ? "[!NOTE]\n\n" : "")
+        // Callouts as GitHub alerts: > [!WARNING] …
+        return (node.type.name === "callout" ? `[!${calloutType(node.attrs.type).toUpperCase()}]\n\n` : "")
           .concat(children(node, inTable))
           .split("\n")
           .map((line) => "> " + line)

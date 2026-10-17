@@ -1182,14 +1182,128 @@ kbd,
 .document-editor .tableWrapper {
   overflow: auto;
 }
-.editor-callout {
-  padding: 16px 19px;
+/* Callouts in the five kinds of GitHub alerts: a coloured left border, a
+   light background and a title line with icon, in the reader's language. */
+.editor-callout,
+aside[data-callout] {
+  position: relative;
+  padding: 12px 18px 14px;
+  border-left: 3px solid var(--callout, var(--blue));
   border-radius: 6px;
-  background: var(--blue-light);
+  background: color-mix(in srgb, var(--callout, var(--blue)) 8%, var(--bg));
   margin: 18px 0;
 }
-.editor-callout p:last-child {
+.editor-callout::before,
+aside[data-callout]::before {
+  content: var(--callout-label, "Note");
+  display: block;
+  margin-bottom: 6px;
+  padding-left: 24px;
+  color: var(--callout, var(--blue));
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  user-select: none;
+}
+.editor-callout::after,
+aside[data-callout]::after {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: 18px;
+  width: 16px;
+  height: 16px;
+  background: var(--callout, var(--blue));
+  mask: var(--callout-icon) center / contain no-repeat;
+  pointer-events: none;
+}
+.editor-callout p:last-child,
+aside[data-callout] p:last-child {
   margin-bottom: 0;
+}
+[data-callout="note"] {
+  --callout: #0969da;
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.25'/%3E%3Cpath d='M8 7.25v4'/%3E%3Ccircle cx='8' cy='4.9' r='.4' fill='black'/%3E%3C/svg%3E");
+  --callout-label: "Note";
+}
+:lang(de) [data-callout="note"] {
+  --callout-label: "Hinweis";
+}
+:lang(fr) [data-callout="note"] {
+  --callout-label: "Remarque";
+}
+[data-theme="dark"] [data-callout="note"] {
+  --callout: #4493f8;
+}
+[data-callout="tip"] {
+  --callout: #1a7f37;
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 13.25h4M6.5 15h3M8 1.25a4.5 4.5 0 0 0-2.6 8.2c.4.3.6.7.6 1.2v.6h4v-.6c0-.5.2-.9.6-1.2A4.5 4.5 0 0 0 8 1.25z'/%3E%3C/svg%3E");
+  --callout-label: "Tip";
+}
+:lang(de) [data-callout="tip"] {
+  --callout-label: "Tipp";
+}
+:lang(fr) [data-callout="tip"] {
+  --callout-label: "Astuce";
+}
+[data-theme="dark"] [data-callout="tip"] {
+  --callout: #3fb950;
+}
+[data-callout="important"] {
+  --callout: #8250df;
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 2.75h12v8.5H8.5L5 14v-2.75H2z'/%3E%3Cpath d='M8 4.75v3.25'/%3E%3Ccircle cx='8' cy='9.6' r='.4' fill='black'/%3E%3C/svg%3E");
+  --callout-label: "Important";
+}
+:lang(de) [data-callout="important"] {
+  --callout-label: "Wichtig";
+}
+:lang(fr) [data-callout="important"] {
+  --callout-label: "Important";
+}
+[data-theme="dark"] [data-callout="important"] {
+  --callout: #ab7df8;
+}
+[data-callout="warning"] {
+  --callout: #9a6700;
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 1.75 15 14H1z'/%3E%3Cpath d='M8 6v3.75'/%3E%3Ccircle cx='8' cy='11.9' r='.4' fill='black'/%3E%3C/svg%3E");
+  --callout-label: "Warning";
+}
+:lang(de) [data-callout="warning"] {
+  --callout-label: "Warnung";
+}
+:lang(fr) [data-callout="warning"] {
+  --callout-label: "Avertissement";
+}
+[data-theme="dark"] [data-callout="warning"] {
+  --callout: #d29922;
+}
+[data-callout="caution"] {
+  --callout: #cf222e;
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.4 1.25h5.2l3.65 3.65v5.2l-3.65 3.65H5.4L1.75 10.1V4.9z'/%3E%3Cpath d='M8 4.75v3.75'/%3E%3Ccircle cx='8' cy='10.9' r='.4' fill='black'/%3E%3C/svg%3E");
+  --callout-label: "Caution";
+}
+:lang(de) [data-callout="caution"] {
+  --callout-label: "Achtung";
+}
+:lang(fr) [data-callout="caution"] {
+  --callout-label: "Attention";
+}
+[data-theme="dark"] [data-callout="caution"] {
+  --callout: #f85149;
+}
+[data-callout="true"] {
+  --callout: #0969da;
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.25'/%3E%3Cpath d='M8 7.25v4'/%3E%3Ccircle cx='8' cy='4.9' r='.4' fill='black'/%3E%3C/svg%3E");
+  --callout-label: "Note";
+}
+:lang(de) [data-callout="true"] {
+  --callout-label: "Hinweis";
+}
+:lang(fr) [data-callout="true"] {
+  --callout-label: "Remarque";
+}
+[data-theme="dark"] [data-callout="true"] {
+  --callout: #4493f8;
 }
 .document-editor details {
   margin: 18px 0;
@@ -3000,6 +3114,14 @@ tr:hover .row-open {
 }
 .version-compare :is(select, .fp-select) {
   width: auto;
+}
+/* A record as a full page across the whole width (issue #25). */
+.modal.modal-full.modal-full-wide {
+  width: 100vw;
+}
+/* Properties keep a readable width; the text uses the whole page. */
+.modal.modal-full-wide .row-columns:not(.properties-side) .row-properties {
+  max-width: 860px;
 }
 .modal.modal-full {
   width: min(1100px, 100vw);
@@ -13513,6 +13635,22 @@ h3 .block-reactions {
 .modal-heading:has(.modal-heading-actions) > .icon-button {
   order: 1;
   margin-left: 2px;
+}
+/* Phones: the actions get a row of their own below title and close button,
+   so the buttons never overlap. */
+@media (max-width: 600px) {
+  .modal-heading:has(.modal-heading-actions) {
+    flex-wrap: wrap;
+  }
+  .modal-heading:has(.modal-heading-actions) > .icon-button {
+    margin-left: auto;
+  }
+  .modal-heading-actions {
+    order: 2;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
 }
 .modal-heading-divider {
   width: 1px;
