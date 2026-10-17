@@ -121,7 +121,8 @@ try {
   });
 
   browser = await chromium.launch();
-  const context = await browser.newContext();
+  // The check reads German texts; without a locale the app speaks English.
+  const context = await browser.newContext({ locale: "de-DE" });
   await context.addCookies([
     { name: "flowplan_session", value: token, url: origin, httpOnly: true },
   ]);
