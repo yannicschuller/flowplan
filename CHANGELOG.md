@@ -2,6 +2,33 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.4.0 – 2026-10-18
+
+- Commits are co-authored by the maintainer and Claude ([0fbc896](https://github.com/yannicschuller/flowplan/commit/0fbc896742ab49f2108a155728553e4652ebcb91))
+- Records in the graph and unlinked mentions; link texts follow renames ([a7b0da6](https://github.com/yannicschuller/flowplan/commit/a7b0da67ee1e219abfa3d15dbffb5621745d15b5))
+- Offline check reads the German interface ([487813b](https://github.com/yannicschuller/flowplan/commit/487813bef3e2c85bf4a72f63233eddb7b44514d6))
+- Callout kinds like GitHub alerts; records read like pages ([9ede2b1](https://github.com/yannicschuller/flowplan/commit/9ede2b14c3a26992eda365385abbd9482adc3df3))
+- Offline copy opens after the sign-in expired ([d22aa86](https://github.com/yannicschuller/flowplan/commit/d22aa867ca2ccc112cedaa75de9dd654947cd61e))
+- Browser tests: German API requests, account deletion and demo fixes ([c7e2ae0](https://github.com/yannicschuller/flowplan/commit/c7e2ae0d52b763c329f14ac34b710511269439ee))
+- Layout fixes from a pass over dialogs on phones and desktops ([0d38c75](https://github.com/yannicschuller/flowplan/commit/0d38c7568f29664e7c9eb3eab7cf0137362291f7))
+- A resting palm no longer disturbs the pen ([ec70e32](https://github.com/yannicschuller/flowplan/commit/ec70e320d90191821d07630d09342c1552fad340))
+- Account deletion needs the password; trashed private records keep files hidden ([51b05ab](https://github.com/yannicschuller/flowplan/commit/51b05ab912085ca65e66255cdb5a092bea3021d7))
+- Dependencies: minimum versions follow the installed ones ([2eeb1c2](https://github.com/yannicschuller/flowplan/commit/2eeb1c251713161ad2f6ab8a5ae3d2b42ad3ec16))
+- Security: private records, journal PIN, API tokens, SSRF and print views ([c903d92](https://github.com/yannicschuller/flowplan/commit/c903d923acf0b2e433635e377b1acefe1cd39dfa))
+- Dependencies: Next.js 16.4, sharp 0.35.5 and patch updates ([f12f7c1](https://github.com/yannicschuller/flowplan/commit/f12f7c14bb57d0bf7741a4e96f9b745641af543b))
+- Records are linked like pages: @ finds them, Copy link, backlinks from texts ([b944f58](https://github.com/yannicschuller/flowplan/commit/b944f58fb8da43437e4a916e694746e206eb0756))
+- Light and dark follow the device ([37d63c6](https://github.com/yannicschuller/flowplan/commit/37d63c692b2e386b745d7b56d1f6ed724d7c318a))
+- Documents switch between reading and editing ([1429635](https://github.com/yannicschuller/flowplan/commit/14296352394a43a40d83ceaad38afd5b019931f6))
+- Pages draw edge to edge and keep clear of the system bars ([a28a1f8](https://github.com/yannicschuller/flowplan/commit/a28a1f8668ecaedf62e8f558de9075dc5c6a767c))
+- Drawing with Apple Pencil and other pens: eraser, pen-only drawing, double-tap ([1eecde6](https://github.com/yannicschuller/flowplan/commit/1eecde62fa96f9af4ed4554854ed6ad0ce35c684))
+- Mobile apps get push notifications, widgets and the running timer ([42917e5](https://github.com/yannicschuller/flowplan/commit/42917e58492f76a16337681a3eb057183760bd86))
+- People delete their own account in the settings ([795af1a](https://github.com/yannicschuller/flowplan/commit/795af1a91ee5fcea0bc6423f7d7f096d7a2f57a9))
+- Mobile apps sign in with passkeys and SSO through the browser ([e354dc1](https://github.com/yannicschuller/flowplan/commit/e354dc1a9b9c5b4bfbc9c947890b60fb8dc11c14))
+- MCP server for Claude, ChatGPT and other AI assistants ([ce20029](https://github.com/yannicschuller/flowplan/commit/ce200299b5892b8b96b5f508ba116f36ee35820c))
+- Language menus with flags instead of side-by-side buttons ([f20dd76](https://github.com/yannicschuller/flowplan/commit/f20dd767dd1bc6d2fe5ab917ee38ef2426948c44))
+- Docker images are built only for releases or by hand ([e62b127](https://github.com/yannicschuller/flowplan/commit/e62b1279bfffeb509e5e64e6a603dddd01d8a718))
+- Print / PDF from the iPhone and iPad home screen app ([1c4e9c4](https://github.com/yannicschuller/flowplan/commit/1c4e9c46ed0c60a60cfae2d493961665b3efb6d3))
+
 ## v0.3.4 – 2026-10-14
 
 - No reload loop when the language cookie disagrees with the profile ([a9542bd](https://github.com/yannicschuller/flowplan/commit/a9542bd9110c237c2147640b44488b0949d2914c))
