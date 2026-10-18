@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Identity } from "../lib/types";
+import type { Identity, Page } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-graph-"));
 const { run, id, one } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
@@ -49,4 +49,55 @@ test("unlinked mentions are found and turned into a link", () => {
   assert.match(html(child), new RegExp(`<a[^>]*href="/#page=${roadmap}"[^>]*>roadmap 2027</a>`));
   assert.deepEqual(unlinkedMentions(anna, one("SELECT * FROM pages WHERE id=?", roadmap)!), []);
   assert.throws(() => command(anna, { action: "mention.link", pageId: child, targetId: roadmap }), /nicht mehr im Text/);
+});
+
+const database = (command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title: "Kunden", kind: "database" }) as { id: string }).id;
+const record = (command(anna, { action: "row.create", pageId: database, cells: { title: "Bäckerei Krause" } }) as { id: string }).id;
+const other = (command(anna, { action: "row.create", pageId: database, cells: { title: "Weingut Sommer" } }) as { id: string }).id;
+const writeRecord = (rowId: string, text: string) =>
+  run(
+    "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?) ON CONFLICT(row_id) DO UPDATE SET state=excluded.state,html=excluded.html",
+    rowId,
+    htmlState(text),
+    text,
+    id(),
+  );
+const recordHtml = (rowId: string) => String(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId)!.html);
+const page = (pageId: string) => one<Page>("SELECT * FROM pages WHERE id=?", pageId)!;
+const version = (rowId: string) => one<{ version: number }>("SELECT version FROM rows WHERE id=?", rowId)!.version;
+
+test("records that link or are linked are part of the graph", () => {
+  write(roadmap, `<p>Pilot mit <a href="/#page=${database}&amp;row=${record}">Bäckerei Krause</a></p>`);
+  writeRecord(other, `<p>Siehe <a href="/#page=${notes}">Teamnotizen</a></p>`);
+  const graph = pageGraph(anna, wid);
+  const node = graph.nodes.find((n) => n.id === record);
+  assert.equal(node?.kind, "record");
+  assert.equal("pageId" in node! && node.pageId, database);
+  assert.ok(graph.edges.some((e) => e.from === roadmap && e.to === record));
+  assert.ok(graph.edges.some((e) => e.from === other && e.to === notes));
+  // A link to a record does not count as a link to its database.
+  assert.ok(!graph.edges.some((e) => e.from === roadmap && e.to === database));
+});
+
+test("records have unlinked mentions and appear as mentions", () => {
+  write(child, "<p>Termin bei Weingut Sommer am Freitag.</p>");
+  writeRecord(record, "<p>Die Teamnotizen erwähnen uns.</p>");
+  const ofRecord = unlinkedMentions(anna, page(database), other);
+  assert.deepEqual(ofRecord.map((m) => m.id), [child]);
+  command(anna, { action: "mention.link", pageId: child, targetId: database, targetRowId: other });
+  assert.match(html(child), new RegExp(`href="/#page=${database}&amp;row=${other}"[^>]*>Weingut Sommer</a>`));
+  const ofPage = unlinkedMentions(anna, page(notes));
+  assert.deepEqual(ofPage.map((m) => [m.id, m.rowId, m.title]), [[database, record, "Bäckerei Krause"]]);
+  command(anna, { action: "mention.link", pageId: database, rowId: record, targetId: notes });
+  assert.match(recordHtml(record), new RegExp(`href="/#page=${notes}"[^>]*>Teamnotizen</a>`));
+});
+
+test("link texts follow a rename, own wordings stay", () => {
+  write(child, `<p><a href="/#page=${roadmap}">Roadmap 2027</a> und <a href="/#page=${roadmap}">der Plan</a></p>`);
+  command(anna, { action: "page.update", pageId: roadmap, patch: { title: "Roadmap 2028" } });
+  assert.match(html(child), new RegExp(`>Roadmap 2028</a> und <a[^>]*>der Plan</a>`));
+  command(anna, { action: "row.update", pageId: database, rowId: record, version: version(record), cells: { title: "Bäckerei Krause & Söhne" } });
+  assert.match(html(roadmap), />Bäckerei Krause &amp; Söhne<\/a>/);
+  // Links to the database itself keep their text.
+  assert.match(html(child), />der Plan<\/a>/);
 });

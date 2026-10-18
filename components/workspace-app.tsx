@@ -2533,7 +2533,9 @@ export default function WorkspaceApp({
                         key={data.page.id}
                         pageId={data.page.id}
                         editable={editable}
-                        onOpen={(id) => void openPage(id)}
+                        onOpen={(id, rowId) =>
+                          rowId ? (location.hash = pageLocationHash({ pageId: id, rowId })) : void openPage(id)
+                        }
                         onLinked={() => void refresh()}
                         onError={notify}
                       />
@@ -2712,7 +2714,7 @@ export default function WorkspaceApp({
             <PageGraph
               workspaceId={boot.workspace.id}
               currentId={pageId}
-              onOpen={(id) => void openPage(id)}
+              onOpen={(id, rowId) => (rowId ? (location.hash = pageLocationHash({ pageId: id, rowId })) : void openPage(id))}
               onError={notify}
             />
           )}

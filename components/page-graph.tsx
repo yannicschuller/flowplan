@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Graph, MagnifyingGlass } from "@phosphor-icons/react";
 import { api } from "./ui";
 
-type Node = { id: string; title: string; icon: string; kind: string; links: number };
+// Records carry the database they belong to (pageId).
+type Node = { id: string; title: string; icon: string; kind: string; links: number; pageId?: string; pageTitle?: string };
 type Edge = { from: string; to: string; kind: "link" | "parent" };
 type Point = { x: number; y: number; vx: number; vy: number };
 
@@ -90,7 +91,7 @@ export function PageGraph({
 }: {
   workspaceId: string;
   currentId?: string | null;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, rowId?: string) => void;
   onError: (message: string) => void;
 }) {
   const t = useT();
@@ -145,6 +146,7 @@ export function PageGraph({
   // Dots and labels keep their size on screen when zoomed out.
   const screen = 1 / Math.min(1, view.k);
   const radius = (n: Node) => (5 + Math.min(12, Math.sqrt(n.links) * 2.4)) * screen;
+  const open = (node: Node) => (node.pageId ? onOpen(node.pageId, node.id) : onOpen(node.id));
   const zoom = (factor: number, cx: number, cy: number) =>
     setView((v) => {
       const k = Math.min(4, Math.max(0.15, v.k * factor));
@@ -156,7 +158,7 @@ export function PageGraph({
       <div className="utility-title">
         <Graph size={30} />
         <h1>{t("Graph", "Graph")}</h1>
-        <p>{t("Wie deine Seiten miteinander verlinkt sind. Größere Punkte haben mehr Verbindungen.", "How your pages link to each other. Bigger dots have more connections.")}</p>
+        <p>{t("Wie deine Seiten und Datensätze miteinander verlinkt sind. Größere Punkte haben mehr Verbindungen.", "How your pages and records link to each other. Bigger dots have more connections.")}</p>
       </div>
       <div className="graph-toolbar">
         <label className="graph-search">
@@ -237,13 +239,13 @@ export function PageGraph({
                   transform={`translate(${p.x} ${p.y})`}
                   role="link"
                   tabIndex={0}
-                  aria-label={node.title}
+                  aria-label={node.pageTitle ? `${node.title} · ${node.pageTitle}` : node.title}
                   onPointerEnter={() => setHover(node.id)}
                   onPointerLeave={() => setHover(null)}
                   onFocus={() => setHover(node.id)}
                   onBlur={() => setHover(null)}
-                  onClick={() => onOpen(node.id)}
-                  onKeyDown={(e) => e.key === "Enter" && onOpen(node.id)}
+                  onClick={() => open(node)}
+                  onKeyDown={(e) => e.key === "Enter" && open(node)}
                 >
                   <circle r={radius(node)} />
                   {showLabel && (

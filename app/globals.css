@@ -12500,6 +12500,7 @@ h3 .block-reactions {
 .graph-node.kind-database circle { fill: #e0782c; }
 .graph-node.kind-whiteboard circle { fill: #2f9e62; }
 .graph-node.kind-journal circle { fill: #a45ad8; }
+.graph-node.kind-record circle { fill: #3b82c4; }
 .graph-node.current circle {
   stroke: var(--text);
   stroke-width: 2.5;

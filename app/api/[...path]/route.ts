@@ -246,6 +246,13 @@ async function handleGET(
       requireUnlocked(user, page);
       return NextResponse.json({ mentions: unlinkedMentions(user, page) }, { headers: { "Cache-Control": "no-store" } });
     }
+    if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "unlinked") {
+      const page = requirePage(user, z.uuid().parse(path[1]));
+      requireUnlocked(user, page);
+      const rowId = z.uuid().parse(path[3]);
+      requireRow(user, page.id, rowId);
+      return NextResponse.json({ mentions: unlinkedMentions(user, page, rowId) }, { headers: { "Cache-Control": "no-store" } });
+    }
     // Synced blocks that can be inserted into another page.
     if (path.length === 1 && path[0] === "synced") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));

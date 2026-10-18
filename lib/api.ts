@@ -25,6 +25,7 @@ import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { changeDocTask, dueTaskCount, indexPageTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
+import { followRename } from "./link-titles";
 import { textBacklinks } from "./text-backlinks";
 import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
@@ -926,6 +927,8 @@ export function command(
             );
         }
         if (data.icon !== undefined) validateIcon(p.id, data.icon);
+        if (data.title !== undefined && data.title !== p.title)
+          afterCommit.push(...followRename(user, p.workspace_id, { pageId: p.id }, p.title, data.title));
         for (const [key, val] of Object.entries(data))
           run(
             `UPDATE pages SET ${key}=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
@@ -1094,7 +1097,13 @@ export function command(
         break;
       }
       case "mention.link": {
-        afterCommit.push(linkMention(user, pid(), uuid.parse(b.targetId)));
+        afterCommit.push(
+          linkMention(
+            user,
+            { pageId: pid(), rowId: b.rowId ? uuid.parse(b.rowId) : undefined },
+            { pageId: uuid.parse(b.targetId), rowId: b.targetRowId ? uuid.parse(b.targetRowId) : undefined },
+          ),
+        );
         recordPageEdit(user, pid());
         break;
       }
@@ -1727,6 +1736,10 @@ export function command(
           rid,
         );
         rowChanged(user, p, rid, before, cells, fieldsNow);
+        const titleField = fieldsNow[0]?.id || "title";
+        const [oldTitle, newTitle] = [cellText(before[titleField]), cellText(cells[titleField])];
+        if (oldTitle !== newTitle)
+          afterCommit.push(...followRename(user, p.workspace_id, { pageId: p.id, rowId: rid }, oldTitle, newTitle));
         break;
       }
       case "row.delete": {

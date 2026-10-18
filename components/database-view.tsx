@@ -78,6 +78,7 @@ import {
   hasRelativeFilters,
 } from "@/lib/database-filters";
 import RowDocument from "./row-document";
+import { UnlinkedMentions } from "./unlinked-mentions";
 import { RollupValue } from "./rollup-value";
 import {
   allowedAggregates,
@@ -5224,6 +5225,17 @@ export default function DatabaseView({
                   key={`backlinks-${selected.id}-${selected.version}`}
                   pageId={page.id}
                   rowId={selected.id}
+                />
+                <UnlinkedMentions
+                  key={`unlinked-${selected.id}`}
+                  pageId={page.id}
+                  rowId={selected.id}
+                  editable={selectedEditable}
+                  onOpen={(id, rowId) => {
+                    location.hash = pageLocationHash({ pageId: id, rowId });
+                  }}
+                  onLinked={onRefresh}
+                  onError={onError}
                 />
               </div>
               <div className="row-main">
