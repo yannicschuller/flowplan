@@ -26,6 +26,7 @@ import { changeDocTask, dueTaskCount, indexPageTasks, syncDocTasks } from "./doc
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { followRename } from "./link-titles";
+import { captureRecord, setCaptureTarget } from "./capture";
 import { textBacklinks } from "./text-backlinks";
 import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
@@ -162,6 +163,7 @@ import {
 import {
   createPage,
   createWorkspace,
+  databaseKinds,
 } from "./seed";
 import type {
   Identity,
@@ -870,6 +872,7 @@ export function command(
           str.parse(b.title),
           kind,
           parent,
+          z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
         );
         if (savedTemplate)
           applyPageTemplate(
@@ -2308,6 +2311,12 @@ export function command(
         // Clipped article text (from /api/clip) follows the link.
         const article = typeof b.article === "string" ? cleanHtml(b.article.slice(0, 250_000)) : "";
         const body = article ? `${html}<hr>${article}` : html;
+        if (b.as === "record") {
+          const target = requirePage(user, uuid.parse(b.databaseId));
+          if (target.workspace_id !== wid()) throw new HttpError(400, "Nur innerhalb eines Arbeitsbereichs.");
+          result = captureRecord(user, { pageId: target.id, title: shared.title, text: shared.text, url: shared.url, article: article || undefined });
+          break;
+        }
         if (b.as === "bookmark") {
           if (!safeLink) throw new HttpError(400, "Ein Lesezeichen braucht einen Link.");
           const db = bookmarksDatabase(wid(), sid, user.id);
@@ -2324,6 +2333,12 @@ export function command(
         result = { id: created };
         break;
       }
+      case "capture.record":
+        result = captureRecord(user, b);
+        break;
+      case "capture.target":
+        result = setCaptureTarget(user, wid(), b.pageId ? uuid.parse(b.pageId) : null);
+        break;
       case "bookmarks.import": {
         requireMember(user, wid(), "editor");
         const sid = uuid.parse(b.spaceId);
@@ -2492,6 +2507,10 @@ const editActions = new Set([
 // Webhooks for records and pages changed through commands.
 function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown) {
   const created = (result as { id?: unknown } | null)?.id;
+  // Shared or captured as a record (or bookmark): a new record, not a page.
+  const capturedRow = (result as { rowId?: unknown } | null)?.rowId;
+  if ((action === "page.fromShare" || action === "capture.record") && typeof capturedRow === "string")
+    return commandWebhooks("row.create", b, { id: capturedRow });
   if ((action === "page.create" || action === "page.fromShare") && typeof created === "string") {
     const page = one<{ workspace_id: string; title: string; kind: string; parent_id: string | null }>(
       "SELECT workspace_id,title,kind,parent_id FROM pages WHERE id=?",

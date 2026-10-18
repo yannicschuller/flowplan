@@ -720,6 +720,8 @@ export default function Settings({
                 </label>
               </section>
               <ClipperSettings
+                workspaceId={boot.workspace.id}
+                onError={onError}
                 spaces={boot.spaces.filter((space) => !space.deleted_at)}
                 canWrite={boot.workspace.role !== "viewer" && !boot.workspace.guest}
                 onImport={async (spaceId, html) => {

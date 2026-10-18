@@ -818,7 +818,7 @@ kbd,
 }
 .quick-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 16px;
 }
 .quick-actions > button {
@@ -861,6 +861,10 @@ kbd,
 .quick-icon.orange {
   background: #fcf1e7;
   color: #cea56c;
+}
+.quick-icon.green {
+  background: #e8f5ee;
+  color: #4f9e77;
 }
 .workspace-pages {
   margin-top: 34px;
@@ -12579,13 +12583,34 @@ h3 .block-reactions {
 /* Web clipper. */
 .share-target-mode {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
-.share-target-article {
+.share-target-mode > .chip {
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+}
+.share-target-mode > .chip.active {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.share-target label.share-target-article,
+.share-target label.checkbox-label {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
   font-weight: 400;
+}
+.share-target-article input,
+.share-target .checkbox-label input {
+  width: 16px;
+  margin: 0;
 }
 .share-target-article small {
   color: var(--muted);
@@ -16924,4 +16949,92 @@ h3 .block-reactions {
   .outline-toggle {
     bottom: calc(88px + var(--safe-bottom));
   }
+}
+
+/* Kind of a new database (tasks, documents, empty, saved templates). */
+.database-kinds {
+  display: grid;
+  gap: 8px;
+  margin: -8px 0 20px;
+  padding: 0;
+  border: 0;
+}
+.database-kinds legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+.database-kinds label {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 400;
+}
+.database-kinds label[data-active="true"] {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+.database-kinds label > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--secondary);
+}
+.database-kinds label[data-active="true"] > svg {
+  color: var(--blue);
+}
+.database-kinds input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.database-kinds label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.database-kinds span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.database-kinds strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.database-kinds small {
+  font-size: 11px;
+  color: var(--secondary);
+}
+.database-kinds-heading {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+
+/* Markdown import into a database: the properties the import would add. */
+.markdown-import p {
+  margin: 0 0 12px;
+}
+.markdown-import-missing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.markdown-import-missing li {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
 }

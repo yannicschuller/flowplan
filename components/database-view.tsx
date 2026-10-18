@@ -79,6 +79,7 @@ import {
 } from "@/lib/database-filters";
 import RowDocument from "./row-document";
 import { UnlinkedMentions } from "./unlinked-mentions";
+import { MarkdownRecordsImport } from "./markdown-records-import";
 import { RollupValue } from "./rollup-value";
 import {
   allowedAggregates,
@@ -457,7 +458,8 @@ export default function DatabaseView({
   // Records opened for reading on this device (same list as pages, by record
   // id) and records as full pages across the whole width (issue #25).
   const [readRows, setReadRows] = useState<string[]>([]),
-    [recordWide, setRecordWide] = useState(false);
+    [recordWide, setRecordWide] = useState(false),
+    [markdownFiles, setMarkdownFiles] = useState<File[] | null>(null);
   useEffect(() => {
     setReadRows(readModeIds());
     try {
@@ -2496,7 +2498,8 @@ export default function DatabaseView({
           {editable && (
             <>
               <button
-                title="CSV importieren"
+                title={t("CSV oder Markdown importieren", "Import CSV or Markdown")}
+                aria-label={t("CSV oder Markdown importieren", "Import CSV or Markdown")}
                 onClick={() => importRef.current?.click()}
               >
                 <UploadSimple size={17} />
@@ -3409,12 +3412,20 @@ export default function DatabaseView({
       )}
       <input
         type="file"
-        accept=".csv"
+        accept=".csv,.md,.markdown,.zip"
+        multiple
         hidden
         ref={importRef}
         onChange={async (e) => {
-          const f = e.target.files?.[0];
+          const picked = [...(e.target.files || [])];
+          const f = picked[0];
           if (!f) return;
+          // Markdown files (or a ZIP of them) become records with their frontmatter.
+          if (!/\.csv$/i.test(f.name)) {
+            setMarkdownFiles(picked);
+            e.target.value = "";
+            return;
+          }
           const result = Papa.parse<Record<string, string>>(await f.text(), {
             header: true,
             skipEmptyLines: true,
@@ -3448,6 +3459,19 @@ export default function DatabaseView({
           e.target.value = "";
         }}
       />
+      {markdownFiles && (
+        <MarkdownRecordsImport
+          pageId={page.id}
+          files={markdownFiles}
+          onClose={() => setMarkdownFiles(null)}
+          onError={onError}
+          onDone={async (created) => {
+            setMarkdownFiles(null);
+            await onRefresh();
+            onError(created === 1 ? t("1 Eintrag importiert.", "1 record imported.") : t(`${created} Einträge importiert.`, `${created} records imported.`));
+          }}
+        />
+      )}
       {filterOpen && (
         <Modal
           open

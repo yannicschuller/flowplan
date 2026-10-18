@@ -55,6 +55,33 @@ export const defaultViews = (): View[] => [
   { id: "list", name: ct("Liste", "List"), type: "list", filters: [], sorts: [] },
   { id: "form", name: ct("Formular", "Form"), type: "form", filters: [], sorts: [] },
 ];
+// What a new database starts as: a task list, a collection of documents
+// (records open as a full page) or only a title.
+export const databaseKinds = ["tasks", "documents", "empty"] as const;
+export type DatabaseKind = (typeof databaseKinds)[number];
+export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: View[]; recordLayout?: object } {
+  if (kind === "documents")
+    return {
+      fields: [
+        { id: "title", name: ct("Titel", "Title"), type: "text" },
+        { id: "tags", name: "Tags", type: "multiselect", options: [] },
+        { id: "created", name: ct("Erstellt", "Created"), type: "created_at" },
+        { id: "edited", name: ct("Bearbeitet", "Edited"), type: "updated_at" },
+      ],
+      views: [
+        { id: "list", name: ct("Alle Dokumente", "All documents"), type: "list", filters: [], sorts: [{ field: "edited", direction: "desc" }] },
+        { id: "gallery", name: ct("Galerie", "Gallery"), type: "gallery", filters: [], sorts: [] },
+        { id: "table", name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] },
+      ],
+      recordLayout: { open: "full", properties: "top", hideEmpty: true, hidden: [] },
+    };
+  if (kind === "empty")
+    return {
+      fields: [{ id: "title", name: "Name", type: "text" }],
+      views: [{ id: "table", name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] }],
+    };
+  return { fields: defaultFields(), views: defaultViews() };
+}
 export function createPage(
   workspace: string,
   space: string,
@@ -62,6 +89,7 @@ export function createPage(
   title: string,
   kind = "document",
   parent: string | null = null,
+  databaseKind: DatabaseKind = "tasks",
 ) {
   const pid = id();
   run(
@@ -76,13 +104,17 @@ export function createPage(
     Date.now(),
     kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : "file",
   );
-  if (kind === "database")
+  if (kind === "database") {
+    const setup = databaseSetup(databaseKind);
     run(
       "INSERT INTO databases(page_id,fields,views) VALUES(?,?,?)",
       pid,
-      JSON.stringify(defaultFields()),
-      JSON.stringify(defaultViews()),
+      JSON.stringify(setup.fields),
+      JSON.stringify(setup.views),
     );
+    if (setup.recordLayout)
+      run("UPDATE databases SET record_layout=? WHERE page_id=?", JSON.stringify(setup.recordLayout), pid);
+  }
   else run("INSERT INTO documents(page_id) VALUES(?)", pid);
   return pid;
 }

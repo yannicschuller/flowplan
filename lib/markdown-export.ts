@@ -19,12 +19,18 @@ import {
   type MarkdownContext,
 } from "./markdown";
 import { exportName } from "./export-name";
+import { ct } from "./content-locale";
+import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
 import type { Identity, Page, Row, Field } from "./types";
 export type MarkdownExportOptions = {
   pageId: string;
   format: "markdown" | "zip";
   includeSubpages: boolean;
 };
+const unavailable = () => ct("Nicht verfügbar", "Not available"),
+  recordWord = () => ct("Eintrag", "Record");
+// Values the database computes; exported, but not read back on import.
+export const computedTypes = ["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "progress", "time"];
 const MAX_BYTES = 250 * 1024 * 1024,
   MAX_TEXT = 30 * 1024 * 1024;
 function collect(user: Identity, options: MarkdownExportOptions) {
@@ -117,7 +123,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         );
       rowPaths.set(
         row.id,
-        `records/${pageId}/${exportName(cellText(row.cells[data.schema.fields[0].id]) || "Eintrag")}-${row.id}.md`,
+        `records/${pageId}/${exportName(cellText(row.cells[data.schema.fields[0].id]) || recordWord())}-${row.id}.md`,
       );
     }
   const relative = (from: string, to: string) =>
@@ -225,8 +231,8 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         targetFields = data.relatedSchemas[target];
       if (!available)
         return {
-          plain: "Nicht verfügbar",
-          md: "Nicht verfügbar",
+          plain: unavailable(),
+          md: unavailable(),
           numeric: false,
         };
       const parts = values
@@ -234,7 +240,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         .filter((row): row is Row => !!row);
       const names = parts.map(
         (row) =>
-          cellText(row.cells[targetFields?.[0]?.id || "title"]) || "Eintrag",
+          cellText(row.cells[targetFields?.[0]?.id || "title"]) || recordWord(),
       );
       return {
         plain: names.join(", "),
@@ -253,7 +259,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     }
     if (["person", "created_by", "updated_by"].includes(field.type)) {
       const text = values
-        .map((id) => members.get(String(id)) || "Nicht verfügbar")
+        .map((id) => members.get(String(id)) || unavailable())
         .join(", ");
       return { plain: text, md: markdownText(text), numeric: false };
     }
@@ -261,7 +267,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       const entries = fileUrls(value).map((raw) => {
         const url = ctx.url(raw),
           id = /\/api\/files\/([a-f0-9-]{36})/i.exec(raw)?.[1],
-          name = id ? fileInfo(id)?.name || "Datei nicht verfügbar" : "Datei";
+          name = id ? fileInfo(id)?.name || ct("Datei nicht verfügbar", "File not available") : ct("Datei", "File");
         return {
           plain: id ? name : raw,
           md: url ? markdownLink(name, url) : markdownText(id ? name : raw),
@@ -276,10 +282,10 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     const plain =
       field.type === "checkbox"
         ? value
-          ? "Ja"
-          : "Nein"
+          ? ct("Ja", "Yes")
+          : ct("Nein", "No")
         : value === "#ACCESS"
-          ? "Nicht verfügbar"
+          ? unavailable()
           : cellText(value);
     const url =
       field.type === "url" && plain
@@ -294,6 +300,48 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     };
   }
   const tableCell = (text: string) => text.replace(/\r?\n/g, "<br>");
+  // Record properties as YAML frontmatter, readable by Obsidian and other
+  // tools. Computed values (formulas, rollups, timestamps …) go below
+  // "flowplan:" so an import does not take them for properties.
+  function frontmatter(
+    row: Row,
+    computed: Record<string, unknown>,
+    fields: Field[],
+    data: NonNullable<ReturnType<typeof dbs.get>>,
+    from: string,
+  ): Frontmatter {
+    const result: Frontmatter = { title: cellText(computed[fields[0].id]) || recordWord() };
+    const flowplan: Frontmatter = { id: row.id };
+    for (const field of fields.slice(1)) {
+      const value = computed[field.id];
+      const list = (Array.isArray(value) ? value : value === null || value === undefined || value === "" ? [] : [value]) as unknown[];
+      let out: FrontmatterValue;
+      if (value === "#ACCESS") continue;
+      if (field.type === "checkbox") out = !!value;
+      else if (field.type === "number") out = typeof value === "number" && Number.isFinite(value) ? value : null;
+      else if (field.type === "multiselect") out = list.map(String);
+      else if (field.type === "checklist")
+        out = (list as { text?: string; done?: boolean }[]).map((item) => `[${item?.done ? "x" : " "}] ${item?.text || ""}`);
+      else if (field.type === "relation") {
+        const available = data.related[field.relationPage || ""],
+          titleField = data.relatedSchemas[field.relationPage || ""]?.[0]?.id || "title";
+        if (!available) continue;
+        out = list
+          .map((rid) => available.find((r) => r.id === String(rid)))
+          .filter((r): r is Row => !!r)
+          .map((r) => cellText(r.cells[titleField]) || recordWord());
+      } else if (field.type === "person") {
+        const names = list.map((uid) => members.get(String(uid)) || unavailable());
+        out = names.length === 1 ? names[0] : names;
+      } else if (field.type === "files") out = fileUrls(value).map((raw) => context(from).url(raw) || "").filter(Boolean);
+      else out = cellText(value) || null;
+      if (out === null || (Array.isArray(out) && !out.length)) continue;
+      if (computedTypes.includes(field.type)) flowplan[field.name] = out;
+      else result[field.name in result ? `${field.name} (${field.id})` : field.name] = out;
+    }
+    result.flowplan = flowplan;
+    return result;
+  }
   for (const page of selected) {
     const path = paths.get(page.id)!,
       ctx = context(path);
@@ -336,7 +384,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           ? relative(path, rowPaths.get(row.id)!)
           : `#record-${row.id}`;
         cells[0] = tableCell(
-          markdownLink(values[index][0]?.plain || "Eintrag", rowUrl),
+          markdownLink(values[index][0]?.plain || recordWord(), rowUrl),
         );
         markdown += "| " + cells.join(" | ") + " |\n";
       });
@@ -371,20 +419,21 @@ function collect(user: Identity, options: MarkdownExportOptions) {
             data.related,
             data.relatedSchemas,
           );
-        const title = cellText(computed[fields[0].id]) || "Eintrag";
-        let document =
-          (zip ? "# " : `<a id="record-${row.id}"></a>\n\n## `) +
-          markdownText(title) +
-          "\n\n";
-        document +=
-          "| Eigenschaft | Wert |\n| --- | --- |\n" +
-          fields
-            .map(
-              (field) =>
-                `| ${tableCell(markdownText(field.name))} | ${tableCell(property(computed[field.id], field, data, recordPath).md)} |`,
-            )
-            .join("\n") +
-          "\n\n";
+        const title = cellText(computed[fields[0].id]) || recordWord();
+        let document = zip
+          ? toFrontmatter(frontmatter(row, computed, fields, data, recordPath)) + "\n# " + markdownText(title) + "\n\n"
+          : `<a id="record-${row.id}"></a>\n\n## ` + markdownText(title) + "\n\n";
+        // In one Markdown file the records follow each other, with a table.
+        if (!zip)
+          document +=
+            `| ${ct("Eigenschaft", "Property")} | ${ct("Wert", "Value")} |\n| --- | --- |\n` +
+            fields
+              .map(
+                (field) =>
+                  `| ${tableCell(markdownText(field.name))} | ${tableCell(property(computed[field.id], field, data, recordPath).md)} |`,
+              )
+              .join("\n") +
+            "\n\n";
         const content =
           one<{ html: string }>(
             "SELECT html FROM row_documents WHERE row_id=?",
@@ -402,7 +451,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     const children = visible.filter((child) => child.parent_id === page.id);
     if (children.length)
       markdown +=
-        "\n\n## Unterseiten\n\n" +
+        `\n\n## ${ct("Unterseiten", "Sub-pages")}\n\n` +
         children
           .map(
             (child) =>
@@ -428,7 +477,10 @@ export async function exportMarkdown(
   entries.set(
     "README.txt",
     Buffer.from(
-      "Flowplan Markdown-Export\n\nÖffne index.md. Unterseiten liegen unter pages/, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. Kommentare, Versionsverläufe, Berechtigungen und Ansichtsdefinitionen sind nicht enthalten.\n",
+      ct(
+        "Flowplan Markdown-Export\n\nÖffne index.md. Unterseiten liegen unter pages/, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nJeder Datensatz unter records/ beginnt mit seinen Eigenschaften als YAML-Frontmatter (wie in Obsidian); berechnete Werte wie Formeln und Zeitstempel stehen unter \"flowplan:\". Eine Datenbank liest solche Dateien über „Markdown importieren“ wieder ein.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. Kommentare, Versionsverläufe, Berechtigungen und Ansichtsdefinitionen sind nicht enthalten.\n",
+        "Flowplan Markdown export\n\nOpen index.md. Sub-pages are in pages/, record documents in records/, tables also as CSV in tables/ and local attachments in assets/. Links within this export are relative. Other page links still need a Flowplan sign-in. External media are exported as links and not downloaded.\n\nEvery record in records/ starts with its properties as YAML frontmatter (as in Obsidian); computed values such as formulas and timestamps are below \"flowplan:\". A database reads such files back with \"Import Markdown\".\n\nThe database output contains all records and properties, regardless of view filters. Markdown shows columns one after another and normalises merged table cells. Formulas use math code fences, diagrams mermaid code fences. Text values in CSV that start like spreadsheet formulas get a leading apostrophe.\n\nThis is a portable content format, not a Flowplan restore archive. Comments, version histories, permissions and view definitions are not included.\n",
+      ),
     ),
   );
   const bytes = await writeZip(entries);

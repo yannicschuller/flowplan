@@ -64,6 +64,8 @@ import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
+import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
+import { captureTargets } from "@/lib/capture";
 import { importTracker } from "@/lib/tracker-import";
 import { recordBacklinks } from "@/lib/relation-backlinks";
 import { hiddenFileIds } from "@/lib/row-files";
@@ -252,6 +254,11 @@ async function handleGET(
       const rowId = z.uuid().parse(path[3]);
       requireRow(user, page.id, rowId);
       return NextResponse.json({ mentions: unlinkedMentions(user, page, rowId) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // Databases to capture into, and the person's default.
+    if (path.length === 1 && path[0] === "capture") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json(captureTargets(user, wid), { headers: { "Cache-Control": "no-store" } });
     }
     // Synced blocks that can be inserted into another page.
     if (path.length === 1 && path[0] === "synced") {
@@ -750,7 +757,7 @@ async function handlePOST(
     const { path } = await params;
     // ZIP imports may be as large as content archives. File uploads must
     // state their size, so the limit holds before anything is read.
-    const maxBody = path[0] === "import" || path[1] === "import" ? ARCHIVE_LIMIT + 1_000_000 : 12_000_000;
+    const maxBody = path[0] === "import" || path[1] === "import" || path[2] === "import-markdown" ? ARCHIVE_LIMIT + 1_000_000 : 12_000_000;
     if (req.headers.get("content-type")?.startsWith("multipart/form-data"))
       requireBodySize(req, maxBody, "Anfrage zu groß.");
     else if (Number(req.headers.get("content-length") || 0) > maxBody)
@@ -930,6 +937,24 @@ async function handlePOST(
       const kind = /\.json$/i.test(file.name) || text.trimStart().startsWith("{") ? "trello" : "jira";
       return NextResponse.json(
         importTracker(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), kind, text, file.name),
+      );
+    }
+    // Markdown files (one, several or a ZIP) as records of a database.
+    if (path.length === 3 && path[0] === "pages" && path[2] === "import-markdown") {
+      const data = await req.formData();
+      const files = data.getAll("file").filter((f): f is File => f instanceof File);
+      if (!files.length) throw new HttpError(400, "Datei fehlt.");
+      if (files.reduce((sum, f) => sum + f.size, 0) > ARCHIVE_LIMIT)
+        throw new HttpError(413, "Die Dateien dürfen zusammen maximal 100 MB groß sein.");
+      const entries = new Map<string, Buffer>();
+      for (const file of files)
+        for (const [name, bytes] of await markdownEntries(file.name, Buffer.from(await file.arrayBuffer())))
+          entries.set(entries.has(name) ? `${entries.size}-${name}` : name, bytes);
+      return NextResponse.json(
+        importMarkdownRecords(user, z.uuid().parse(path[1]), entries, {
+          dryRun: data.get("dryRun") === "1",
+          createMissing: data.get("createMissing") === "1",
+        }),
       );
     }
     if (path[0] === "import" && path[1] === "zip") {

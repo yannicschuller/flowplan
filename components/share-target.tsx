@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { BrandMark } from "./brand-mark";
 import { Select } from "./select";
 import { api } from "./ui";
+import { CaptureTargetPicker, rememberCaptureTarget, useCaptureTargets } from "./capture-target";
 
 type Boot = {
   workspace: { id: string; name: string };
@@ -21,7 +22,10 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
     [name, setName] = useState(title),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [as, setAs] = useState<"page" | "bookmark">("page"),
+    [as, setAs] = useState<"page" | "bookmark" | "record">("page"),
+    [modeChosen, setModeChosen] = useState(false),
+    [database, setDatabase] = useState(""),
+    [makeDefault, setMakeDefault] = useState(false),
     [withArticle, setWithArticle] = useState(false),
     [article, setArticle] = useState<{ html: string; words: number; title: string } | null>(null),
     [clipping, setClipping] = useState(false);
@@ -52,6 +56,19 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
       })
       .catch((e) => setError((e as Error).message));
   }, [workspace]);
+  const [targets] = useCaptureTargets(workspace);
+  // A default capture database makes "As a record" the first choice.
+  useEffect(() => {
+    if (!targets) return;
+    setDatabase(targets.default || targets.databases[0]?.id || "");
+    setMakeDefault(false);
+    if (!modeChosen) setAs(targets.default ? "record" : "page");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targets]);
+  const choose = (mode: "page" | "bookmark" | "record") => {
+    setAs(mode);
+    setModeChosen(true);
+  };
   const writable = boot?.workspaces.filter((w) => !w.guest && w.role !== "viewer") || [];
   const nothing = !title && !text && !url;
   return (
@@ -77,8 +94,10 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
                 text,
                 url: link,
                 as,
+                ...(as === "record" ? { databaseId: database } : {}),
                 ...(withArticle && article ? { article: article.html } : {}),
               });
+              if (as === "record" && makeDefault) await rememberCaptureTarget(workspace, database, targets).catch(() => undefined);
               const target = r as { id: string; rowId?: string };
               // Opened from the bookmarklet: close the small window again.
               if (window.opener && window.name === "flowplan") {
@@ -96,16 +115,21 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
             {t("Titel", "Title")}
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Wird aus dem Inhalt gebildet", "Taken from the content")} maxLength={200} />
           </label>
-          {link && (
-            <div className="share-target-mode" role="radiogroup" aria-label={t("Speichern als", "Save as")}>
-              <button type="button" role="radio" aria-checked={as === "page"} className={`chip${as === "page" ? " active" : ""}`} onClick={() => setAs("page")}>
-                {t("Als Seite", "As a page")}
+          <div className="share-target-mode" role="radiogroup" aria-label={t("Speichern als", "Save as")}>
+            <button type="button" role="radio" aria-checked={as === "page"} className={`chip${as === "page" ? " active" : ""}`} onClick={() => choose("page")}>
+              {t("Als Seite", "As a page")}
+            </button>
+            {(targets?.databases.length || 0) > 0 && (
+              <button type="button" role="radio" aria-checked={as === "record"} className={`chip${as === "record" ? " active" : ""}`} onClick={() => choose("record")}>
+                {t("Als Eintrag", "As a record")}
               </button>
-              <button type="button" role="radio" aria-checked={as === "bookmark"} className={`chip${as === "bookmark" ? " active" : ""}`} onClick={() => setAs("bookmark")}>
+            )}
+            {link && (
+              <button type="button" role="radio" aria-checked={as === "bookmark"} className={`chip${as === "bookmark" ? " active" : ""}`} onClick={() => choose("bookmark")}>
                 {t("Als Lesezeichen", "As a bookmark")}
               </button>
-            </div>
-          )}
+            )}
+          </div>
           {link && (
             <label className="share-target-article">
               <input type="checkbox" checked={withArticle} disabled={clipping} onChange={(e) => void loadArticle(e.target.checked)} />
@@ -130,6 +154,9 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
               </Select>
             </label>
           )}
+          {as === "record" ? (
+            <CaptureTargetPicker targets={targets} value={database} onChange={setDatabase} makeDefault={makeDefault} onMakeDefault={setMakeDefault} />
+          ) : (
           <label>
             {t("Bereich", "Space")}
             <Select value={space} onChange={(e) => setSpace(e.target.value)} disabled={!boot}>
@@ -142,9 +169,16 @@ export function ShareTarget({ title, text, url }: { title: string; text: string;
                 ))}
             </Select>
           </label>
+          )}
           <div className="share-target-actions">
-            <button className="button primary" disabled={busy || !space}>
-              {busy ? t("Wird gespeichert …", "Saving …") : as === "bookmark" ? t("Als Lesezeichen speichern", "Save as bookmark") : t("Als Seite speichern", "Save as page")}
+            <button className="button primary" disabled={busy || !space || (as === "record" && !database)}>
+              {busy
+                ? t("Wird gespeichert …", "Saving …")
+                : as === "bookmark"
+                  ? t("Als Lesezeichen speichern", "Save as bookmark")
+                  : as === "record"
+                    ? t("Als Eintrag speichern", "Save as record")
+                    : t("Als Seite speichern", "Save as page")}
             </button>
             <a className="button" href="/">
               {t("Abbrechen", "Cancel")}

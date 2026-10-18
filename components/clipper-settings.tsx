@@ -5,6 +5,7 @@ import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { BookmarkSimple, UploadSimple } from "@phosphor-icons/react";
 import { Select } from "./select";
+import { CaptureDefaultSetting } from "./capture-target";
 
 export function bookmarklet(origin: string) {
   // Opens the "save to Flowplan" window with title, address and the
@@ -14,10 +15,14 @@ export function bookmarklet(origin: string) {
 }
 
 export function ClipperSettings({
+  workspaceId,
   spaces,
   canWrite,
   onImport,
+  onError,
 }: {
+  workspaceId: string;
+  onError: (message: string) => void;
   spaces: { id: string; name: string }[];
   canWrite: boolean;
   onImport: (spaceId: string, html: string) => Promise<unknown>;
@@ -37,7 +42,7 @@ export function ClipperSettings({
     <section className="settings-section clipper-settings">
       <h2>{t("Web-Clipper und Lesezeichen", "Web clipper and bookmarks")}</h2>
       <p>
-        {t("Zieh diesen Knopf in die Lesezeichenleiste deines Browsers. Ein Klick darauf speichert die geöffnete Webseite in Flowplan – als Seite (auf Wunsch mit dem Artikeltext) oder als Lesezeichen. Markierter Text wird mitgenommen. Auf dem Handy geht das über „Teilen“ → Flowplan.", "Drag this button to your browser's bookmarks bar. A click on it saves the open web page to Flowplan – as a page (with the article text if you like) or as a bookmark. Selected text comes along. On the phone use “Share” → Flowplan.")}
+        {t("Zieh diesen Knopf in die Lesezeichenleiste deines Browsers. Ein Klick darauf speichert die geöffnete Webseite in Flowplan – als Seite (auf Wunsch mit dem Artikeltext), als Eintrag in einer Datenbank oder als Lesezeichen. Markierter Text wird mitgenommen. Auf dem Handy geht das über „Teilen“ → Flowplan.", "Drag this button to your browser's bookmarks bar. A click on it saves the open web page to Flowplan – as a page (with the article text if you like), as a record in a database or as a bookmark. Selected text comes along. On the phone use “Share” → Flowplan.")}
       </p>
       {origin && (
         <a
@@ -50,6 +55,7 @@ export function ClipperSettings({
           <BookmarkSimple /> {t("In Flowplan speichern", "Save to Flowplan")}
         </a>
       )}
+      {canWrite && <CaptureDefaultSetting workspaceId={workspaceId} onError={onError} />}
       <h3>{t("Browser-Lesezeichen importieren", "Import browser bookmarks")}</h3>
       <p>
         {t("Exportiere deine Lesezeichen als HTML-Datei (Chrome, Edge, Firefox, Safari: „Lesezeichen exportieren“). Sie landen in der Datenbank „Lesezeichen“ des gewählten Bereichs, mit Ordnern und Datum; doppelte Links werden übersprungen.", "Export your bookmarks as an HTML file (Chrome, Edge, Firefox, Safari: “Export bookmarks”). They land in the “Lesezeichen” database of the chosen space, with folders and dates; duplicate links are skipped.")}

@@ -31,6 +31,16 @@ export type QueuedChange =
       pageId: string;
       rowId: string;
       at: number;
+    }
+  // Quick capture: title and text go into a new record once online.
+  | {
+      id: string;
+      kind: "capture";
+      pageId: string;
+      rowId: string;
+      title: string;
+      text: string;
+      at: number;
     };
 export type Conflict = {
   change: Extract<QueuedChange, { kind: "update" }>;
@@ -43,6 +53,7 @@ export const queueableActions = new Set([
   "row.update",
   "row.create",
   "row.delete",
+  "capture.record",
 ]);
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -76,6 +87,7 @@ export function applyQueue(
       ];
     } else if (change.kind === "delete")
       result = result.filter((r) => r.id !== change.rowId);
+    else if (change.kind === "capture") continue;
     else
       result = result.map((r) =>
         r.id === change.rowId

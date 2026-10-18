@@ -112,7 +112,17 @@ export function useOfflineQueue({
           cells: (b.cells as Record<string, unknown>) || {},
           at,
         };
-      } else if (b.action === "row.delete")
+      } else if (b.action === "capture.record")
+        change = {
+          id,
+          kind: "capture",
+          pageId,
+          rowId: typeof b.rowId === "string" ? b.rowId : crypto.randomUUID(),
+          title: String(b.title || ""),
+          text: String(b.text || ""),
+          at,
+        };
+      else if (b.action === "row.delete")
         change = { id, kind: "delete", pageId, rowId: String(b.rowId), at };
       else {
         const row = rows.find((r) => r.id === b.rowId);
@@ -152,6 +162,14 @@ export function useOfflineQueue({
               rowId: change.rowId,
               cells: change.cells,
               templateId: null,
+            });
+          else if (change.kind === "capture")
+            await post({
+              action: "capture.record",
+              pageId: change.pageId,
+              rowId: change.rowId,
+              title: change.title,
+              text: change.text,
             });
           else if (change.kind === "delete") {
             try {

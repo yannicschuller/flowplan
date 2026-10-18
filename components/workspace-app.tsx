@@ -77,6 +77,7 @@ import {
   ArrowRight,
   FileText,
   Table,
+  Tray,
   PresentationChart,
   Notebook,
   Lock,
@@ -135,6 +136,14 @@ import { JournalView, localDay, type JournalDay } from "./journal-view";
 import { MyTasks } from "./my-tasks";
 import { FocusBar } from "./focus-bar";
 import { PageGraph } from "./page-graph";
+import { QuickCapture } from "./quick-capture";
+import {
+  DatabaseKindPicker,
+  databaseChoicePayload,
+  rememberDatabaseKind,
+  rememberedDatabaseKind,
+  type DatabaseChoice,
+} from "./database-kind-picker";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import {
   FollowButton,
@@ -465,6 +474,8 @@ export default function WorkspaceApp({
     [create, setCreate] = useState(false),
     [newTitle, setNewTitle] = useState(""),
     [newKind, setNewKind] = useState<PageKind>("document"),
+    [databaseChoice, setDatabaseChoice] = useState<DatabaseChoice>("tasks"),
+    [capture, setCapture] = useState(false),
     [parent, setParent] = useState<string | null>(null),
     [spaceId, setSpaceId] = useState(initial.spaces[0]?.id || ""),
     [templates, setTemplates] = useState(false),
@@ -871,9 +882,10 @@ export default function WorkspaceApp({
         setMobile(false);
         // The start page shows recently opened and edited pages: current.
         if (fragment === "home") void refresh().catch(() => {});
-      } else if (fragment === "search" || fragment === "new") {
-        // Quick actions of the mobile app (long press on its icon).
+      } else if (fragment === "search" || fragment === "new" || fragment === "capture") {
+        // Quick actions of the mobile app and the home screen icon (long press).
         if (fragment === "search") setSearch(true);
+        else if (fragment === "capture") setCapture(true);
         else setCreate(true);
         const back =
           screenRef.current === "page" && currentId.current ? `page=${currentId.current}` : screenRef.current || "home";
@@ -887,7 +899,11 @@ export default function WorkspaceApp({
         e.preventDefault();
         setSearch((s) => !s);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+      // ⌘⌥N: quick capture into the capture database; ⌘N: a new page.
+      if ((e.metaKey || e.ctrlKey) && e.altKey && e.code === "KeyN") {
+        e.preventDefault();
+        setCapture(true);
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();
         setCreate(true);
       }
@@ -1000,6 +1016,7 @@ export default function WorkspaceApp({
       return;
     }
     setNewKind(kind);
+    setDatabaseChoice(rememberedDatabaseKind());
     setStarterTemplate(null);
     setParent(parentId);
     setSpaceId(
@@ -1431,6 +1448,7 @@ export default function WorkspaceApp({
   const openPageData = screen === "page" && data ? data : null;
   const commandActions: CommandAction[] = [
     { label: t("Neue Seite", "New page"), keywords: t("dokument anlegen erstellen notiz", "dokument anlegen erstellen notiz document new create note page"), icon: FileText, run: () => addPage() },
+    { label: t("Erfassen", "Capture"), keywords: t("eingang inbox notiz schnell erfassen", "eingang inbox notiz schnell erfassen inbox note quick capture"), icon: Tray, run: () => setCapture(true) },
     { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
     { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
     { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal") },
@@ -2256,6 +2274,19 @@ export default function WorkspaceApp({
                     <span>
                       <strong>{t("Eine Idee festhalten", "Capture an idea")}</strong>
                       <small>{t("Eine leere Seite voller Möglichkeiten", "A blank page full of possibilities")}</small>
+                    </span>
+                    <Plus size={20} />
+                  </button>
+                  <button
+                    disabled={clock === null || !canCreate}
+                    onClick={() => setCapture(true)}
+                  >
+                    <span className="quick-icon green">
+                      <Tray size={25} />
+                    </span>
+                    <span>
+                      <strong>{t("Schnell erfassen", "Quick capture")}</strong>
+                      <small>{t("Jetzt notieren, später sortieren", "Note it now, sort it later")}</small>
                     </span>
                     <Plus size={20} />
                   </button>
@@ -3173,8 +3204,10 @@ export default function WorkspaceApp({
               title: newTitle || t("Ohne Titel", "Untitled"),
               kind: newKind,
               starterTemplate,
+              ...(newKind === "database" && !starterTemplate ? databaseChoicePayload(databaseChoice) : {}),
             });
             if (result?.id) {
+              if (newKind === "database" && !starterTemplate) rememberDatabaseKind(databaseChoice);
               setCreate(false);
               void openPage(String(result.id));
             }
@@ -3206,6 +3239,7 @@ export default function WorkspaceApp({
               type="button"
               className={newKind === "database" ? "chosen" : ""}
               onClick={() => {
+                if (newKind !== "database") setDatabaseChoice(rememberedDatabaseKind());
                 setNewKind("database");
                 setStarterTemplate(null);
               }}
@@ -3239,6 +3273,16 @@ export default function WorkspaceApp({
               <small>{t("Jeden Tag eine Seite, offene Aufgaben wandern mit", "A page every day, open tasks move along")}</small>
             </button>
           </div>
+          {newKind === "database" && !starterTemplate && (
+            <DatabaseKindPicker
+              workspaceId={boot.workspace.id}
+              value={databaseChoice}
+              onChange={(choice, template) => {
+                setDatabaseChoice(choice);
+                if (template && !newTitle) setNewTitle(template.name);
+              }}
+            />
+          )}
           <label>
             {t("Bereich", "Space")}
             <Select
@@ -3267,6 +3311,23 @@ export default function WorkspaceApp({
           </div>
         </form>
       </Modal>
+      {capture && (
+        <QuickCapture
+          workspaceId={boot.workspace.id}
+          onClose={() => setCapture(false)}
+          mutate={mutate}
+          notify={notify}
+          onSaved={(pid, rowId, offline) => {
+            setCapture(false);
+            if (offline) notify(t("Gespeichert auf diesem Gerät – wird erfasst, sobald die Verbindung zurück ist.", "Saved on this device – captured once the connection is back."));
+            else {
+              notify(t("Erfasst.", "Captured."));
+              if (pageId === pid) void refresh().catch(() => {});
+            }
+            void rowId;
+          }}
+        />
+      )}
       <OfflineConflicts
         conflicts={offlineQueue.conflicts}
         fields={(pid) =>
