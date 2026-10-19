@@ -21,10 +21,15 @@ function prune(now = Date.now()) {
 }
 
 // The view comes from the browser, so it is cleaned like any foreign HTML:
-// layout, styles and pictures stay; scripts, frames, forms, <base> and
-// <meta http-equiv> (redirects) and event handlers go.
-const BLOCKED = new Set(["script", "iframe", "frame", "frameset", "object", "embed", "applet", "base", "form", "noscript", "template", "portal"]);
-export function cleanPrintView(html: string) {
+// layout, styles and pictures stay; scripts, frames, forms and their fields,
+// buttons, <base> and <meta http-equiv> (redirects) and event handlers go. A
+// print view has nothing to fill in; its bar with the print button is added
+// when it is shown (app/api/print/[token]), naming who made it.
+const BLOCKED = new Set([
+  "script", "iframe", "frame", "frameset", "object", "embed", "applet", "base", "form", "noscript", "template", "portal",
+  "input", "textarea", "select", "option", "optgroup", "datalist", "button", "dialog", "output", "keygen",
+]);
+export function cleanPrintView(html: string, marker = "") {
   const clean = sanitize(html, {
     allowedTags: false,
     allowedAttributes: false,
@@ -35,21 +40,42 @@ export function cleanPrintView(html: string) {
       BLOCKED.has(frame.tag.toLowerCase()) ||
       (frame.tag.toLowerCase() === "meta" && Object.keys(frame.attribs).some((name) => name.toLowerCase() === "http-equiv")),
     transformTags: {
-      "*": (tagName, attribs) => ({
-        tagName,
-        attribs: Object.fromEntries(
+      "*": (tagName, attribs) => {
+        const kept = Object.fromEntries(
           Object.entries(attribs).filter(
-            ([name, value]) => !/^(on|srcdoc$|formaction$)/i.test(name) && !/^\s*(javascript|vbscript):/i.test(value),
+            ([name, value]) =>
+              !/^(on|srcdoc$|formaction$|data-print-bar$)/i.test(name) && !/^\s*(javascript|vbscript):/i.test(value),
           ),
-        ),
-      }),
+        );
+        // The real <body> gets a secret mark where the bar goes (see withBar):
+        // text that merely looks like a body tag, e.g. in a style, has none.
+        if (marker && tagName.toLowerCase() === "body") kept["data-print-bar"] = marker;
+        return { tagName, attribs: kept };
+      },
     },
   });
   return `<!doctype html>${clean}`;
 }
 
-export function storePrintSnapshot(userId: string, html: string) {
-  html = cleanPrintView(html);
+const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// The bar on top with the print button comes from here, not from the view
+// sent: it says whose copy this is, so the address does not pass for a page
+// of Flowplan itself.
+function withBar(html: string, marker: string, author: string) {
+  const en = /^<!doctype html><html[^>]*\slang="en/i.test(html);
+  const t = (de: string, english: string) => (en ? english : de);
+  const bar =
+    `<div class="print-view-bar" style="position:relative!important;z-index:2147483647!important;visibility:visible!important;opacity:1!important">` +
+    `<button type="button" class="print-view-print">${t("Drucken / PDF", "Print / PDF")}</button>` +
+    `<span>${escape(t(`Druckansicht von ${author}. Oder Teilen → Drucken. Der Link gilt 15 Minuten.`, `Print view by ${author}. Or Share → Print. The link works for 15 minutes.`))}</span></div>`;
+  const mark = ` data-print-bar="${marker}">`;
+  const at = html.indexOf(mark);
+  return at >= 0 ? `${html.slice(0, at)}>${bar}${html.slice(at + mark.length)}` : html.replace(/^<!doctype html>/, `$&${bar}`);
+}
+
+export function storePrintSnapshot(userId: string, author: string, html: string) {
+  const marker = randomBytes(12).toString("hex");
+  html = withBar(cleanPrintView(html, marker), marker, author);
   prune();
   // One view per person at a time: a new one replaces the previous one.
   for (const [token, s] of snapshots) if (s.userId === userId) snapshots.delete(token);

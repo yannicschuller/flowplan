@@ -122,6 +122,17 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     run("INSERT OR IGNORE INTO row_favorites(user_id,row_id,page_id) SELECT user_id,?,? FROM favorites WHERE page_id=?", rid, database.id, page.id);
     run("DELETE FROM favorites WHERE page_id=?", page.id);
     // Sub-pages move up; synced blocks of the text go with it into the database.
+    // Sharing set on the page kept applying to them: it stays theirs, so that
+    // moving up neither opens them to more people nor closes them.
+    for (const child of all<{ id: string }>("SELECT id FROM pages WHERE parent_id=? AND synced=0", page.id))
+      run(
+        `INSERT INTO grants(resource_id,user_id,group_id,role)
+         SELECT ?,g.user_id,g.group_id,g.role FROM grants g WHERE g.resource_id=?
+         AND NOT EXISTS (SELECT 1 FROM grants c WHERE c.resource_id=? AND c.user_id IS g.user_id AND c.group_id IS g.group_id)`,
+        child.id,
+        page.id,
+        child.id,
+      );
     run("UPDATE pages SET parent_id=? WHERE parent_id=? AND synced=0", page.parent_id, page.id);
     run("UPDATE pages SET parent_id=? WHERE parent_id=? AND synced=1", database.id, page.id);
     // Sharing of the page ends; the record follows the database.

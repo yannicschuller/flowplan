@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     }
     const html = Buffer.concat(chunks).toString("utf8");
     if (!html.startsWith("<!doctype html>")) throw new HttpError(400, "Ungültige Eingabe.");
-    const token = storePrintSnapshot(user.id, html);
+    const token = storePrintSnapshot(user.id, user.name, html);
     return NextResponse.json({ url: `/api/print/${token}` }, { headers });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);

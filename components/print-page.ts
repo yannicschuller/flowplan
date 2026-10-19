@@ -93,9 +93,7 @@ async function printInBrowser(source: HTMLElement) {
     const html =
       `<!doctype html><html lang="${escapeHtml(document.documentElement.lang)}" data-theme="light"><head><meta charset="utf-8">` +
       `<meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(document.title)}</title>${styles}</head>` +
-      `<body class="print-view"><div class="print-view-bar"><button type="button" class="print-view-print">${escapeHtml(tr("Drucken / PDF", "Print / PDF"))}</button>` +
-      `<span>${escapeHtml(tr("Oder Teilen → Drucken. Der Link gilt 15 Minuten.", "Or Share → Print. The link works for 15 minutes."))}</span></div>` +
-      `${copy.outerHTML}</body></html>`;
+      `<body class="print-view">${copy.outerHTML}</body></html>`;
     const res = await fetch("/api/print", { method: "POST", headers: { "Content-Type": "text/html; charset=utf-8" }, body: html });
     const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
     if (!res.ok || !body.url) throw new Error(body.error ? serverMessage(body.error) : tr("Druckansicht konnte nicht erstellt werden.", "The print view could not be created."));

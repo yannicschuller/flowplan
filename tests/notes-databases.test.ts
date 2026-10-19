@@ -252,6 +252,8 @@ test("a page moves into a database with its content, links and comments", async 
   assert.match(String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", other)!.html), new RegExp(`href="/#page=${notes}&amp;row=${rid}"`));
   // Sub-pages move up; sharing of the page ends; the page is in the trash.
   assert.equal(one<{ parent_id: string }>("SELECT parent_id FROM pages WHERE id=?", child)!.parent_id, parent);
+  // What was shared on the page still holds for them: neither wider nor narrower.
+  assert.equal(one<{ role: string }>("SELECT role FROM grants WHERE resource_id=? AND user_id=?", child, ben.id)?.role, "editor");
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM grants WHERE resource_id=?", guide)!.n, 0);
   assert.ok(one<{ deleted_at: string | null }>("SELECT deleted_at FROM pages WHERE id=?", guide)!.deleted_at);
 });
