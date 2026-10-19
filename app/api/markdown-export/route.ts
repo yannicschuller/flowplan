@@ -6,13 +6,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const options = z
   .object({
-    pageId: z.string().uuid(),
+    pageId: z.string().uuid().optional(),
+    // A whole space as one ZIP, everything the person may read (#33).
+    spaceId: z.string().uuid().optional(),
     format: z.enum(["markdown", "zip"]),
     includeSubpages: z.boolean().default(false),
     rowId: z.string().uuid().optional(),
     history: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .refine((o) => !!o.pageId !== !!o.spaceId);
 // Labels, README and frontmatter keys follow the reader's language. Exporting
 // only reads, so personal API tokens with read access may use it (e.g. a
 // cron job that commits the export to Git); see the API documentation.

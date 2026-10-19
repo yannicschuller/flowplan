@@ -13,8 +13,7 @@ import { all, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { lockedPageIds } from "./journal-extras";
-import { exportMarkdown } from "./markdown-export";
-import { exportName } from "./export-name";
+import { exportFolder, exportMarkdown } from "./markdown-export";
 import { instanceSettings } from "./instance-settings";
 import { bucketFetch, storageConfig } from "./storage";
 import { withContentLocale } from "./content-locale";
@@ -129,7 +128,7 @@ export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]>
   for (const pageId of config.pageIds) {
     const title = one<{ title: string }>("SELECT title FROM pages WHERE id=?", pageId)?.title || pageId;
     // Stable per page (the id), readable (the title), sortable (the date).
-    const base = `${exportName(title).slice(0, 60)}-${pageId.slice(0, 8)}`;
+    const base = exportFolder({ id: pageId, title });
     let name = `${base}-${stamp}.zip`;
     try {
       if (!user) throw new Error("Das Konto, das den Export eingerichtet hat, gibt es nicht mehr oder es ist deaktiviert.");

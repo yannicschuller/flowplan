@@ -24,6 +24,8 @@ import {
 import { SpaceAppearance, SpaceIcon } from "./space-appearance";
 import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
+import { SpaceExportDialog } from "./space-export";
+import { Onboarding } from "./onboarding";
 import {
   imageAccept,
   imageFileId,
@@ -103,6 +105,7 @@ import {
   Printer,
   ClockCounterClockwise,
   Graph,
+  Sparkle,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -295,6 +298,8 @@ export default function WorkspaceApp({
     [templates, setTemplates] = useState(false),
     [share, setShare] = useState(false),
     [pageExport, setPageExport] = useState(false),
+    [spaceExport, setSpaceExport] = useState<string | null>(null),
+    [onboarding, setOnboarding] = useState(!!boot.onboarding),
     [spaceManager, setSpaceManager] = useState<{
       space: Space;
       purge?: boolean;
@@ -489,6 +494,12 @@ export default function WorkspaceApp({
     return () => {
       window.fetch = original;
     };
+  }, []);
+  // Settings → General opens the introduction again.
+  useEffect(() => {
+    const open = () => setOnboarding(true);
+    window.addEventListener("flowplan:onboarding", open);
+    return () => window.removeEventListener("flowplan:onboarding", open);
   }, []);
   const mutate = useCallback(
     async (b: Record<string, unknown>) => {
@@ -1266,6 +1277,7 @@ export default function WorkspaceApp({
     { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
     { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
     { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal") },
+    { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Sparkle, run: () => setOnboarding(true) },
     { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
     { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
     { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
@@ -1562,6 +1574,14 @@ export default function WorkspaceApp({
                     <DotsThree size={16} />
                   </button>
                 )}
+                <button
+                  className="icon-button"
+                  title={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
+                  aria-label={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
+                  onClick={() => setSpaceExport(space.id)}
+                >
+                  <DownloadSimple size={14} />
+                </button>
                 {canCreate && (
                   <button
                     className={`icon-button ${selecting ? "active" : ""}`}
@@ -2714,6 +2734,19 @@ export default function WorkspaceApp({
           )}
         </div>
       </main>
+      {onboarding && (
+        <Onboarding
+          boot={boot}
+          theme={theme}
+          chooseTheme={chooseTheme}
+          mutate={(b) => mutate({ workspaceId: boot.workspace.id, ...b })}
+          onOpenPage={(pageId) => void openPage(pageId)}
+          onClose={() => setOnboarding(false)}
+        />
+      )}
+      {spaceExport && (
+        <SpaceExportDialog spaces={boot.spaces} initial={spaceExport} onClose={() => setSpaceExport(null)} />
+      )}
       {spaceManager && (
         <SpaceManager
           space={spaceManager.space}

@@ -450,6 +450,12 @@ function migrate(d: DatabaseSync) {
   // Language of the last visit, for e-mails and push notifications.
   if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "locale"))
     d.exec("ALTER TABLE users ADD COLUMN locale TEXT");
+  // The short introduction after creating an account. Accounts that existed
+  // before it was added count as introduced.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "onboarded_at")) {
+    d.exec("ALTER TABLE users ADD COLUMN onboarded_at INTEGER");
+    d.prepare("UPDATE users SET onboarded_at=?").run(Date.now());
+  }
   // Journals: template, trackers, calendar link and PIN; values per day.
   d.exec(`CREATE TABLE IF NOT EXISTS journal_settings(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,template TEXT NOT NULL DEFAULT '',trackers TEXT NOT NULL DEFAULT '[]',lock_hash TEXT,ics_url TEXT);
     CREATE TABLE IF NOT EXISTS journal_entries(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,data TEXT NOT NULL DEFAULT '{}',place TEXT NOT NULL DEFAULT '',lat REAL,lon REAL,updated_at INTEGER);

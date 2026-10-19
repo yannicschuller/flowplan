@@ -58,3 +58,20 @@ export function setNotificationPref(user: Identity, input: unknown) {
   );
   return notificationPrefs(user);
 }
+
+// E-mail summaries on or off for every kind at once (the introduction).
+export function setEmailForAll(user: Identity, input: unknown) {
+  const email = z.boolean().parse(input);
+  const prefs = notificationPrefs(user);
+  for (const kind of kindIds)
+    run(
+      `INSERT INTO notification_prefs(user_id,kind,inbox,push,email) VALUES(?,?,?,?,?)
+       ON CONFLICT(user_id,kind) DO UPDATE SET email=excluded.email`,
+      user.id,
+      kind,
+      prefs[kind].inbox ? 1 : 0,
+      prefs[kind].push ? 1 : 0,
+      email && prefs[kind].inbox ? 1 : 0,
+    );
+  return notificationPrefs(user);
+}

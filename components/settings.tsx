@@ -13,6 +13,7 @@ import { OfflineSettings } from "./offline-settings";
 import { NotificationSettings } from "./notification-settings";
 import { WorkspaceLifecycle } from "./workspace-lifecycle";
 import { SpaceManager } from "./space-manager";
+import { SpaceExportDialog } from "./space-export";
 import { IntegrationSettings } from "./integration-settings";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
@@ -123,6 +124,7 @@ export default function Settings({
     [settings, setSettings] = useState<SettingsData | null>(null),
     [groupId, setGroupId] = useState<string | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [spaceExport, setSpaceExport] = useState(false);
   const [trackerBusy, setTrackerBusy] = useState(false);
   const [zipBusy, setZipBusy] = useState(false),
     [zipResult, setZipResult] = useState(""),
@@ -367,6 +369,13 @@ export default function Settings({
                 </form>
               </SettingGroup>
               <WorkspaceLifecycle key={boot.workspace.id} boot={boot} onExit={onWorkspaceExit} />
+              <SettingGroup title={t("Einführung", "Introduction")}>
+                <SettingRow label={t("Einführung ansehen", "Show introduction")} description={t("Die kurze Tour durch Flowplan und die ersten Einstellungen, wie nach dem Anlegen des Kontos.", "The short tour of Flowplan and the first settings, as after creating your account.")}>
+                  <button type="button" className="button" onClick={() => window.dispatchEvent(new Event("flowplan:onboarding"))}>
+                    {t("Einführung starten", "Start introduction")}
+                  </button>
+                </SettingRow>
+              </SettingGroup>
               <SettingGroup title={t("Tastenkürzel", "Keyboard shortcuts")}>
                 {(
                   [
@@ -678,6 +687,20 @@ export default function Settings({
                     {t("JSON ohne Dateien exportieren", "Export JSON without files")}
                   </button>
                 </div>
+              </section>
+              <section className="settings-section">
+                <h2>{t("Bereich als Markdown exportieren", "Export space as Markdown")}</h2>
+                <p>
+                  {t(
+                    "Eine lesbare Kopie eines Bereichs: alle Seiten und Datenbanken, die du lesen darfst, als Markdown in einem ZIP – zum Archivieren, offline Lesen oder für ein eigenes Git-Repository.",
+                    "A readable copy of a space: all pages and databases you may read, as Markdown in one ZIP – to archive, read offline or put into your own Git repository.",
+                  )}
+                </p>
+                <button className="button" disabled={!boot.spaces.length} onClick={() => setSpaceExport(true)}>
+                  <DownloadSimple />
+                  {t("Bereich exportieren …", "Export space …")}
+                </button>
+                {spaceExport && <SpaceExportDialog spaces={boot.spaces} onClose={() => setSpaceExport(false)} />}
               </section>
               <section className="settings-section">
                 <h2>{t("Markdown oder Text importieren", "Import Markdown or text")}</h2>

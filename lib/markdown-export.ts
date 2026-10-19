@@ -4,7 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import { resolve, posix } from "node:path";
 import { all, one, transaction, audit } from "./db";
 import { HttpError, appUrl } from "./auth";
-import { requirePage, pageRole } from "./permissions";
+import { requirePage, pageRole, spaceRole } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { database, rows } from "./api";
 import { relatedData } from "./related-data";
@@ -22,9 +22,13 @@ import { exportName } from "./export-name";
 import { ct } from "./content-locale";
 import { commentText } from "./comment-content";
 import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
-import type { Identity, Page, Row, Field } from "./types";
+import type { Identity, Page, Row, Field, Space } from "./types";
 export type MarkdownExportOptions = {
-  pageId: string;
+  // One page (with its sub-pages) or a whole space: every top-level page
+  // in a folder of its own, named like the scheduled export
+  // (<title>-<id8>/), so both unpack into the same layout.
+  pageId?: string;
+  spaceId?: string;
   format: "markdown" | "zip";
   includeSubpages: boolean;
   // One record of the database instead of the whole database.
@@ -39,22 +43,41 @@ const unavailable = () => ct("Nicht verfügbar", "Not available"),
 export const computedTypes = ["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "progress", "time"];
 const MAX_BYTES = 250 * 1024 * 1024,
   MAX_TEXT = 30 * 1024 * 1024;
+// The folder of a top-level page in a space export and in the scheduled
+// export (lib/scheduled-markdown-export.ts).
+export const exportFolder = (page: { id: string; title: string }) => `${exportName(page.title).slice(0, 60)}-${page.id.slice(0, 8)}`;
+
 function collect(user: Identity, options: MarkdownExportOptions) {
-  const root = requirePage(user, options.pageId),
-    zip = options.format === "zip";
-  requireUnlocked(user, root);
-  const locked = lockedPageIds(user, root.workspace_id);
+  const zip = options.format === "zip";
+  let space: Space | null = null,
+    root: Page | null = null;
+  if (options.spaceId) {
+    if (options.pageId || options.rowId) throw new HttpError(400, "Entweder eine Seite oder einen Bereich exportieren.");
+    if (!zip) throw new HttpError(400, "Ein Bereich lässt sich nur als ZIP exportieren.");
+    space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", options.spaceId) || null;
+    if (!space) throw new HttpError(404, "Bereich nicht gefunden.");
+    if (!spaceRole(user, space)) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
+  } else {
+    if (!options.pageId) throw new HttpError(400, "Seite fehlt.");
+    root = requirePage(user, options.pageId);
+    requireUnlocked(user, root);
+  }
+  const workspaceId = space ? space.workspace_id : root!.workspace_id;
+  const locked = lockedPageIds(user, workspaceId);
   if (!zip && options.includeSubpages)
     throw new HttpError(400, "Unterseiten sind nur im ZIP-Export verfügbar.");
-  if (options.rowId && (root.kind !== "database" || options.includeSubpages))
+  if (options.rowId && (root?.kind !== "database" || options.includeSubpages))
     throw new HttpError(400, "Nur ein Eintrag einer Datenbank.");
   const visible = all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL ORDER BY position,id",
-    root.workspace_id,
+    workspaceId,
   ).filter((page) => !locked.has(page.id) && pageRole(user, page));
-  const selected: Page[] = [root],
-    seen = new Set([root.id]);
-  if (options.includeSubpages)
+  // Top-level pages: the one page, or all the person may read in the space.
+  const roots = space ? visible.filter((page) => page.space_id === space.id && !page.parent_id) : [root!];
+  const selected: Page[] = [...roots],
+    seen = new Set(roots.map((page) => page.id)),
+    rootOf = new Map(roots.map((page) => [page.id, page]));
+  if (options.includeSubpages || space)
     for (let index = 0; index < selected.length; index++) {
       for (const page of visible.filter(
         (page) => page.parent_id === selected[index].id,
@@ -62,6 +85,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         if (!seen.has(page.id)) {
           seen.add(page.id);
           selected.push(page);
+          rootOf.set(page.id, rootOf.get(selected[index].id)!);
         }
       if (selected.length > 500)
         throw new HttpError(
@@ -69,12 +93,17 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           "Bitte höchstens 500 Seiten je Markdown-Export auswählen.",
         );
     }
+  // In a space export everything of a top-level page goes below its folder.
+  const folders = new Map(roots.map((page) => [page.id, space ? `${exportFolder(page)}/` : ""]));
+  const prefix = (pageId: string) => folders.get(rootOf.get(pageId)!.id)!;
+  const prefixOfPath = (path: string) => (space ? path.slice(0, path.indexOf("/") + 1) : "");
   const paths = new Map(
     selected.map((page) => [
       page.id,
-      page.id === root.id
-        ? "index.md"
-        : `pages/${exportName(page.title)}-${page.id}.md`,
+      prefix(page.id) +
+        (rootOf.get(page.id)!.id === page.id
+          ? "index.md"
+          : `pages/${exportName(page.title)}-${page.id}.md`),
     ]),
   );
   const entries = new Map<string, Buffer>();
@@ -105,7 +134,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   const members = new Map(
     all<{ id: string; name: string }>(
       "SELECT u.id,u.name FROM users u JOIN members m ON m.user_id=u.id WHERE m.workspace_id=?",
-      root.workspace_id,
+      workspaceId,
     ).map((member) => [member.id, member.name]),
   );
   const dbs = new Map(
@@ -120,7 +149,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         },
       ]),
   );
-  if (options.rowId && !dbs.get(root.id)?.rows.length) throw new HttpError(404, "Datensatz fehlt.");
+  if (options.rowId && !dbs.get(root!.id)?.rows.length) throw new HttpError(404, "Datensatz fehlt.");
   let rowCount = 0;
   const rowPaths = new Map<string, string>();
   for (const [pageId, data] of dbs)
@@ -132,7 +161,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         );
       rowPaths.set(
         row.id,
-        options.rowId ? "index.md" : `records/${pageId}/${exportName(cellText(row.cells[data.schema.fields[0].id]) || recordWord())}-${row.id}.md`,
+        options.rowId ? "index.md" : `${prefix(pageId)}records/${pageId}/${exportName(cellText(row.cells[data.schema.fields[0].id]) || recordWord())}-${row.id}.md`,
       );
     }
   const relative = (from: string, to: string) =>
@@ -171,7 +200,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
             if (!file) return null;
             if (!zip)
               return `${appUrl().replace(/\/$/, "")}/api/files/${file.id}`;
-            const path = `assets/${file.id}-${exportName(file.name)}`;
+            const path = `${prefixOfPath(from)}assets/${file.id}-${exportName(file.name)}`;
             if (!entries.has(path)) {
               const source = resolve(
                 process.env.FLOWPLAN_DATA_DIR || "./data",
@@ -459,7 +488,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         '"';
       if (zip && !options.rowId)
         add(
-          `tables/${page.id}.csv`,
+          `${prefix(page.id)}tables/${page.id}.csv`,
           Buffer.from(
             "\uFEFF" +
               [
@@ -543,32 +572,63 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         "\n";
     add(path, Buffer.from(markdown.trimEnd() + "\n"), true);
   }
-  const record = options.rowId ? dbs.get(root.id)!.rows[0] : null;
-  const name = record ? cellText(record.cells[dbs.get(root.id)!.schema.fields[0].id]) || recordWord() : root.title;
-  return { entries, root, name };
+  // The space's own index: its top-level pages.
+  if (space)
+    add(
+      "index.md",
+      Buffer.from(
+        `# ${markdownText(space.name)}\n\n` +
+          (roots.length
+            ? roots.map((page) => "- " + markdownLink(page.title || ct("Ohne Titel", "Untitled"), paths.get(page.id)!)).join("\n") + "\n"
+            : ct("Dieser Bereich enthält keine Seiten, die du lesen darfst.", "This space has no pages you may read.") + "\n"),
+      ),
+      true,
+    );
+  const record = options.rowId ? dbs.get(root!.id)!.rows[0] : null;
+  const name = record ? cellText(record.cells[dbs.get(root!.id)!.schema.fields[0].id]) || recordWord() : space ? space.name : root!.title;
+  return { entries, root, space, name };
 }
 export async function exportMarkdown(
   user: Identity,
   options: MarkdownExportOptions,
 ) {
-  const { entries, root, name } = transaction(() => collect(user, options));
+  const { entries, root, space, name } = transaction(() => collect(user, options));
   if (options.format === "markdown")
     return {
       bytes: entries.get("index.md")!,
       name: `${exportName(name)}.md`,
       mime: "text/markdown; charset=utf-8",
     };
+  const spaceNote = space
+    ? ct(
+        "Jede Seite der obersten Ebene dieses Bereichs liegt mit allem, was darunter hängt, in einem eigenen Ordner (<Titel>-<Kennung>/); index.md listet sie auf. Innerhalb jedes Ordners gilt:\n\n",
+        "Every top-level page of this space is in a folder of its own (<title>-<id>/) with everything below it; index.md lists them. Inside each folder:\n\n",
+      )
+    : "";
+  const historyNote = options.history
+    ? ct(
+        "Kommentare stehen in <Datei>.comments.md, frühere Versionen unter <Datei>.versions/. Berechtigungen und Ansichtsdefinitionen sind nicht enthalten.\n",
+        "Comments are in <file>.comments.md, earlier versions in <file>.versions/. Permissions and view definitions are not included.\n",
+      )
+    : ct(
+        "Kommentare, Versionsverläufe, Berechtigungen und Ansichtsdefinitionen sind nicht enthalten.\n",
+        "Comments, version histories, permissions and view definitions are not included.\n",
+      );
   entries.set(
     "README.txt",
     Buffer.from(
-      ct(
-        "Flowplan Markdown-Export\n\nÖffne index.md. Unterseiten liegen unter pages/, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nJeder Datensatz unter records/ beginnt mit seinen Eigenschaften als YAML-Frontmatter (wie in Obsidian); berechnete Werte wie Formeln und Zeitstempel stehen unter \"flowplan:\". Eine Datenbank liest solche Dateien über „Markdown importieren“ wieder ein.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. Kommentare, Versionsverläufe, Berechtigungen und Ansichtsdefinitionen sind nicht enthalten.\n",
-        "Flowplan Markdown export\n\nOpen index.md. Sub-pages are in pages/, record documents in records/, tables also as CSV in tables/ and local attachments in assets/. Links within this export are relative. Other page links still need a Flowplan sign-in. External media are exported as links and not downloaded.\n\nEvery record in records/ starts with its properties as YAML frontmatter (as in Obsidian); computed values such as formulas and timestamps are below \"flowplan:\". A database reads such files back with \"Import Markdown\".\n\nThe database output contains all records and properties, regardless of view filters. Markdown shows columns one after another and normalises merged table cells. Formulas use math code fences, diagrams mermaid code fences. Text values in CSV that start like spreadsheet formulas get a leading apostrophe.\n\nThis is a portable content format, not a Flowplan restore archive. Comments, version histories, permissions and view definitions are not included.\n",
-      ),
+      ct("Flowplan Markdown-Export\n\n", "Flowplan Markdown export\n\n") +
+        spaceNote +
+        ct(
+          "Öffne index.md. Unterseiten liegen unter pages/, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nJeder Datensatz unter records/ beginnt mit seinen Eigenschaften als YAML-Frontmatter (wie in Obsidian); berechnete Werte wie Formeln und Zeitstempel stehen unter \"flowplan:\". Eine Datenbank liest solche Dateien über „Markdown importieren“ wieder ein.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. ",
+          "Open index.md. Sub-pages are in pages/, record documents in records/, tables also as CSV in tables/ and local attachments in assets/. Links within this export are relative. Other page links still need a Flowplan sign-in. External media are exported as links and not downloaded.\n\nEvery record in records/ starts with its properties as YAML frontmatter (as in Obsidian); computed values such as formulas and timestamps are below \"flowplan:\". A database reads such files back with \"Import Markdown\".\n\nThe database output contains all records and properties, regardless of view filters. Markdown shows columns one after another and normalises merged table cells. Formulas use math code fences, diagrams mermaid code fences. Text values in CSV that start like spreadsheet formulas get a leading apostrophe.\n\nThis is a portable content format, not a Flowplan restore archive. ",
+        ) +
+        historyNote,
     ),
   );
   const bytes = await writeZip(entries);
-  audit(user.id, "page.markdown.export", root.id);
+  if (space) audit(user.id, "space.markdown.export", space.id);
+  else audit(user.id, "page.markdown.export", root!.id);
   return {
     bytes,
     name: `${exportName(name)}.zip`,

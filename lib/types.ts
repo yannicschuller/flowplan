@@ -240,12 +240,15 @@ export type Bootstrap = {
   myLimits?: { storageMb: number; workspaces: number; uploadMb: number; usedBytes: number; ownedWorkspaces: number } | null;
   // The language chosen in the profile (null = from the browser).
   language?: Locale | null;
+  // New account: show the introduction (components/onboarding.tsx).
+  onboarding?: boolean;
   instance?: {
     name: string;
     announcement: string;
     allowWorkspaceCreation: boolean;
     // Voice notes can be turned into text (WHISPER_URL is set).
     transcription?: boolean;
+    mail?: boolean;
     // Legal notice and privacy policy of the operator (IMPRINT_URL, PRIVACY_URL).
     legal?: { imprint?: string; privacy?: string };
   };

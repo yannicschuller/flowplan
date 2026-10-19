@@ -11,6 +11,8 @@ test("the encryption status is shown in the administration", async ({ page }, in
   if (process.env.TEST_ADMIN_EMAIL)
     await page.request.post("/api/auth/password", { headers: { origin }, data: { email: process.env.TEST_ADMIN_EMAIL, password: process.env.TEST_ADMIN_PASSWORD } });
   else await page.request.post("/api/auth/demo", { headers: { origin } });
+  // A new account would see the introduction first.
+  await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const admin = await (await page.request.get("/api/admin")).json();
   await page.goto("/#admin");
   await page.getByRole("tab", { name: "Instanz" }).or(page.getByRole("button", { name: "Instanz" })).first().click();

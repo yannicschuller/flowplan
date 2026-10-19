@@ -67,6 +67,7 @@ test("admins configure the instance; stored values override the environment", ()
     announcement: "Wartung am Samstag",
     allowWorkspaceCreation: false,
     transcription: false,
+    mail: false,
     // No IMPRINT_URL or PRIVACY_URL set.
     legal: {},
   });

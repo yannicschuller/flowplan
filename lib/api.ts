@@ -105,7 +105,7 @@ import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
-import { notificationPrefs, setNotificationPref } from "./notification-prefs";
+import { notificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { templateCategoryIds } from "./template-categories";
 import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
 import {
@@ -258,6 +258,7 @@ export function bootstrap(user: Identity, wid?: string) {
       allowWorkspaceCreation:
         instanceSettings().allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,
+      mail: !!mailConfig(),
       legal: legalLinks(),
     },
     // What applies to me: limits with my usage, and my fixed language.
@@ -265,6 +266,8 @@ export function bootstrap(user: Identity, wid?: string) {
       ? null
       : { ...effectiveUserLimits(user.id), usedBytes: userBytes(user.id), ownedWorkspaces: ownedWorkspaces(user.id) },
     language: fixedLanguage(user.id),
+    // New accounts see the introduction once (components/onboarding.tsx).
+    onboarding: !user.demo && !one<{ onboarded_at: number | null }>("SELECT onboarded_at FROM users WHERE id=?", user.id)?.onboarded_at,
     // Favourite records of readable databases in this workspace.
     favoriteRows: all<Page & { row_id: string; cells: string; fields: string }>(
       `SELECT p.*,r.id row_id,r.cells,d.fields FROM row_favorites f
@@ -530,6 +533,13 @@ export function command(
       case "admin.settings":
         requireAdmin(user);
         result = saveInstanceSettings(b.settings);
+        break;
+      case "profile.onboarded":
+        run("UPDATE users SET onboarded_at=? WHERE id=?", Date.now(), user.id);
+        result = { ok: true };
+        break;
+      case "notification.email":
+        result = setEmailForAll(user, b.email);
         break;
       case "profile.language":
         result = { language: setFixedLanguage(user.id, b.language) };
@@ -2598,7 +2608,7 @@ import { ensureRowDocument } from "./row-documents";
 import { createCalendarFeed, revokeCalendarFeed } from "./calendar-feed";
 import { createApiToken, revokeApiToken } from "./api-tokens";
 import { deleteWebhook, emitWebhook } from "./webhooks";
-import { dispatchMail, queueInviteMail } from "./mail";
+import { dispatchMail, mailConfig, queueInviteMail } from "./mail";
 import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
