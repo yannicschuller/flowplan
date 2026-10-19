@@ -357,10 +357,15 @@ export default function Login({
         )}
         <small>{t("Dein Wissen. Dein Workflow. Dein Flowplan.", "Your knowledge. Your workflow. Your Flowplan.")}</small>
       </section>
-      <footer>
-        FLOWPLAN <span>{t("Ein Zuhause für gute Zusammenarbeit.", "A home for good collaboration.")}</span>
-        {legal && <LegalFooter links={legal} locale={useLocale()} />}
-        <LanguageSwitch className="language-switch" />
+      {/* One quiet line: the tagline on the left, legal links and language on the right. */}
+      <footer className="login-footer">
+        <span>
+          Flowplan · {t("Ein Zuhause für gute Zusammenarbeit.", "A home for good collaboration.")}
+        </span>
+        <div className="login-footer-links">
+          {legal && <LegalFooter links={legal} locale={useLocale()} />}
+          <LanguageSwitch className="language-switch" />
+        </div>
       </footer>
     </main>
   );

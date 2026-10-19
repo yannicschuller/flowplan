@@ -17263,3 +17263,49 @@ h3 .block-reactions {
     display: none;
   }
 }
+
+/* Sign-in footer: one line, one size, one colour. */
+.login footer.login-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  margin: 16px 0 0;
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.login-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.login-footer .legal-footer {
+  gap: 18px;
+  padding: 0;
+  font-size: 12px;
+}
+.login-footer .legal-footer a {
+  letter-spacing: 0;
+}
+.login-footer .language-switch {
+  margin: 0;
+  min-height: 26px;
+  padding: 3px 8px;
+  border-color: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.login-footer .language-switch:hover,
+.login-footer .language-switch[data-state="open"] {
+  border-color: var(--border);
+}
+@media (max-width: 700px) {
+  .login footer.login-footer {
+    flex-direction: column;
+    gap: 6px;
+    text-align: center;
+  }
+}
