@@ -4,16 +4,16 @@
 
 # Flowplan
 
-**Dokumente, Datenbanken, Whiteboards und ein Journal für Teams.**<br>
-Open Source, selbst betrieben in einem Container – oder gehostet in Deutschland.
+**Dokumente, Datenbanken, Whiteboards und ein tägliches Journal für Teams.**<br>
+Open Source, selbst gehostet in einem Container – oder gehostet in Deutschland. KI optional, auch komplett lokal.
 
 [English](README.md) · **Deutsch**
 
-[Website](https://flowplan.org) · [Dokumentation](https://docs.flowplan.org) · [Selbst betreiben](https://docs.flowplan.org/installation) · [Gehostete Version](https://app.flowplan.org) · [Änderungen](CHANGELOG.md)
+[Website](https://flowplan.org) · [Dokumentation](https://docs.flowplan.org/de) · [Selbst hosten](https://docs.flowplan.org/de/installation) · [Gehostete Version](https://app.flowplan.org) · [Änderungen](CHANGELOG.md)
 
 [![CI](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml/badge.svg)](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml)
 [![Docker-Image](https://github.com/yannicschuller/flowplan/actions/workflows/docker.yml/badge.svg)](https://github.com/yannicschuller/flowplan/pkgs/container/flowplan)
-[![Lizenz: AGPL-3.0](https://img.shields.io/badge/Lizenz-AGPL--3.0-3b3fd8.svg)](LICENSE)
+[![Lizenz: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-3b3fd8.svg)](LICENSE)
 
 <br>
 
@@ -24,51 +24,113 @@ Open Source, selbst betrieben in einem Container – oder gehostet in Deutschlan
 
 </div>
 
-Flowplan ist ein Arbeitsbereich für Wissen und Projekte im Geist von Notion und AppFlowy: Seiten in einem Baum, ein Block-Editor, Datenbanken mit vielen Ansichten, Whiteboards und ein Journal – mit gemeinsamer Bearbeitung in Echtzeit, feinen Rechten und Single Sign-on. Es läuft als **ein Container mit SQLite**: kein Postgres, kein Redis, kein externer Suchdienst. **Kein Tracking. KI ist optional:** standardmäßig aus, vom Admin pro Funktion und pro Person einschaltbar – komplett lokal mit Ollama oder mit eigenem Schlüssel für OpenAI, Anthropic, Gemini oder jeden OpenAI-kompatiblen Dienst. Die Oberfläche gibt es auf Deutsch, Englisch und Französisch – weitere Sprachen lassen sich als JSON-Kataloge hinzufügen ([Sprachen und Übersetzungen](https://docs.flowplan.org/languages)); die Dokumentation auf Deutsch und Englisch.
+## Auf einen Blick
+
+- **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit zehn Ansichten, Whiteboards, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen.
+- **Komplett Open Source** unter der AGPL-3.0 – keine geschlossene Enterprise-Version, keine Funktionen hinter einem Lizenzschlüssel.
+- **Ein Container mit SQLite** – kein Postgres, kein Redis, kein externer Suchdienst. Oder gehostet in Deutschland auf [app.flowplan.org](https://app.flowplan.org).
+- **Optionale KI** – standardmäßig aus; Admins schalten sie pro Funktion und Person ein, komplett lokal mit [Ollama](https://ollama.com) oder mit Schlüssel für OpenAI, Anthropic, Gemini oder jeden OpenAI-kompatiblen Dienst. Du bestimmst, welche Seiten sie lesen darf.
+- **Datenschutz von Grund auf** – kein Tracking, Rechte bis auf den einzelnen Eintrag, Zwei-Faktor-Anmeldung, Verschlüsselung von Dateien und Sicherungen mit eigenem Schlüssel.
+- **Deine Daten bleiben mitnehmbar** – Markdown mit Frontmatter, CSV und ZIP, geplante Exporte nach S3 oder Git, Import aus Notion, AppFlowy, Obsidian, Jira und Trello.
+
+Die Oberfläche gibt es auf Deutsch, Englisch und Französisch – weitere Sprachen lassen sich als JSON-Kataloge ergänzen ([Sprachen und Übersetzungen](https://docs.flowplan.org/de/languages)); die Dokumentation ist auf Deutsch und Englisch.
+
+**Inhalt:** [Schreiben](#schreiben-und-denken) · [Datenbanken](#ordnen-mit-datenbanken) · [KI](#ki-optional) · [Whiteboards und Journal](#whiteboards-und-ein-journal) · [Gemeinsam](#gemeinsam-überall) · [Admins und Integrationen](#für-admins-und-integrationen) · [Schnellstart](#schnellstart-docker) · [Entwicklung](#entwicklung)
 
 ## Schreiben und denken
 
-Ein Block-Editor, der nicht im Weg steht: Überschriften, Listen, Aufgaben mit Fälligkeit und Person, Tabellen, Code, Hinweisboxen, Aufklapper, Spalten, Einbettungen, synchronisierte Blöcke und Sprachnotizen. `/` öffnet das Blockmenü, Markdown-Kürzel funktionieren auch, und das Inhaltsverzeichnis neben dem Text hält lange Seiten übersichtlich.
+Ein Block-Editor, der nicht im Weg steht. `/` öffnet das Blockmenü, Markdown-Kürzel funktionieren auch; lange Seiten behalten ihr Inhaltsverzeichnis neben dem Text.
 
-**Rechnen direkt in den Notizen** – Rechnung und `=` tippen, mit <kbd>Tab</kbd> übernehmen. Einen Term markieren, um ihn auszumultiplizieren, zu faktorisieren oder zu lösen, Funktionsgraphen zeichnen und mit Vektoren in der Ebene und im Raum rechnen – in 3D gezeichnet und mit der Maus gedreht. Antworten aus ChatGPT behalten beim Einfügen Formeln, Listen und Tabellen.
+<p align="center"><img src=".github/assets/readme/calculate.webp" alt="Eine Rechnung tippen, das Ergebnis mit Tab übernehmen, einen Term faktorisieren und zwei Vektoren mit ihrer Summe in einem 3D-Graphen zeichnen, der mit der Maus gedreht wird" width="100%"></p>
 
-<p align="center"><img src=".github/assets/readme/calculate.webp" alt="Eine Rechnung tippen, das Ergebnis mit Tab übernehmen, einen Term faktorisieren und zwei Vektoren samt Summe in einem drehbaren 3D-Graphen zeichnen" width="100%"></p>
+**Rechnen direkt in den Notizen** – Rechnung und `=` tippen, mit <kbd>Tab</kbd> übernehmen; Terme ausmultiplizieren, faktorisieren oder lösen, Funktionsgraphen und Vektoren in 2D und 3D zeichnen.
+
+<details>
+<summary><b>Alles im Editor</b></summary>
+
+- Überschriften, Listen, Aufgaben mit Person und Fälligkeit, Tabellen, Code mit Hervorhebung, Mermaid-Diagramme, KaTeX-Formeln
+- Hinweise wie GitHub-Alerts, Aufklapper, bis zu drei Spalten, Einbettungen und Linkkarten, synchronisierte Blöcke
+- **Fußnoten**, **Zitate mit Literaturverzeichnis** (DOI, BibTeX, Zotero), im Markdown-Export im Pandoc-Format
+- **Seite als Markdown bearbeiten** und in einem Schritt übernehmen
+- **Autoren anzeigen** – wer was geschrieben hat, farbig
+- Text von rechts nach links für Arabisch, Hebräisch und Persisch
+- Sprachnotizen mit Transkription, Fotos markieren, Fokusmodus mit Wortziel
+- Versionsverlauf mit Vergleich und Wiederherstellen einzelner Absätze, Druck- und PDF-Layout
+- Antworten aus ChatGPT behalten beim Einfügen Formeln, Listen und Tabellen
+
+</details>
 
 ## Ordnen mit Datenbanken
 
-Tabelle, Board, Kalender, Zeitleiste, Galerie, Liste, Feed, Diagramm, Formular und Sprints für dieselben Einträge – mit Relationen, Rollups, Formeln, wiederkehrenden Terminen, Erinnerungen, Datensatzvorlagen und Rechten pro Eintrag. Einträge wandern per Ziehen zwischen Gruppen und sogar zwischen Datenbanken.
+Tabelle, Board, Kalender, Timeline, Galerie, Liste, Feed, Diagramm, Formular und Sprints auf dieselben Einträge – mit Relationen, Rollups und Formeln.
 
-<p align="center"><img src=".github/assets/readme/board-drag.webp" alt="Eine Karte im Board von „Idea“ nach „In progress“ ziehen" width="100%"></p>
+<p align="center"><img src=".github/assets/readme/board-drag.webp" alt="Eine Karte im Board von Idee nach In Arbeit ziehen; die anderen Karten gleiten an ihren Platz" width="100%"></p>
 
 <table>
   <tr>
-    <td width="50%"><img src=".github/assets/readme/timeline.webp" alt="Zeitleiste der Projekte-Datenbank mit Balken je Eintrag"></td>
+    <td width="50%"><img src=".github/assets/readme/timeline.webp" alt="Timeline mit Abhängigkeitspfeilen: ein Balken wird verschoben, die wartenden Einträge rücken mit"></td>
     <td width="50%"><img src=".github/assets/readme/calendar.webp" alt="Kalenderansicht der Projekte-Datenbank"></td>
   </tr>
   <tr>
-    <td><b>Zeitleiste</b> – planen mit Balken, Abhängigkeiten und Wochenenden.</td>
-    <td><b>Kalender</b> – in Apple, Google oder Outlook abonnieren oder per CalDAV in beide Richtungen abgleichen.</td>
+    <td><b>Timeline</b> – Gantt mit Abhängigkeiten, kritischem Pfad und Nachfolgern, die mitrücken.</td>
+    <td><b>Kalender</b> – in Apple, Google oder Outlook abonnieren oder per CalDAV in beide Richtungen.</td>
   </tr>
 </table>
 
-**Projekte und Tickets** (optional, pro Datenbank): Ticketnummern wie `WEB-123`, im Text verlinkt, Unteraufgaben und Epics mit Fortschritt, Sprints mit Backlog, Burndown und Velocity, Automationen, Status-Workflows, WIP-Limits, Zeiterfassung, eine Git-Anbindung für GitHub, GitLab und Gitea, Dashboards und ein Import aus Jira und Trello. **Umfragen** mit 19 Fragetypen, Bedingungen und Auswertung – jede Antwort ist ein Eintrag.
+<details>
+<summary><b>Alles in Datenbanken</b></summary>
 
-## Whiteboards und Journal
+- 23 Eigenschaftstypen, darunter Formel, Relation, Rollup und **KI-Eigenschaft**
+- Filtergruppen, Sortierung, Gruppen in drei Ebenen, Swimlanes, Berechnungen je Spalte
+- Wiederholungen und Erinnerungen, Eintragsvorlagen, Eintragsseiten mit eigenem Layout, Rechte pro Eintrag
+- **Projekte und Tickets** (optional, pro Datenbank): Ticketnummern wie `WEB-123` im Text verlinkt, Unteraufgaben und Epics, Sprints mit Backlog, Burndown und Velocity, Automationen, Status-Workflows, WIP-Limits, Zeiterfassung, Git-Anbindung für GitHub, GitLab und Gitea, Dashboards
+- **Umfragen** mit 19 Fragetypen, Bedingungen und Auswertung – jede Antwort ist ein Eintrag
+- Import aus CSV, Jira und Trello; Markdown mit YAML-Frontmatter in beide Richtungen (passt zu Obsidian)
+
+</details>
+
+## KI, optional
+
+KI ist in Flowplan **aus, bis ein Admin sie einschaltet** – und dann nur für die Funktionen und Personen, die er wählt. Sie läuft **komplett lokal mit Ollama**, sodass kein Text den Server verlässt, oder mit einem Schlüssel für OpenAI, Anthropic, Gemini oder jeden OpenAI-kompatiblen Dienst. Admins können stattdessen auch jede Person ihren eigenen Schlüssel mitbringen lassen.
+
+<p align="center"><img src=".github/assets/readme/ai-write.webp" alt="Einen Absatz markieren und im KI-Menü Kürzen wählen; die Antwort entsteht in einer Vorschau und ersetzt den Text, kurz hervorgehoben" width="100%"></p>
 
 <table>
   <tr>
-    <td width="50%"><img src=".github/assets/readme/whiteboard.webp" alt="Ein Whiteboard mit Haftnotizen, Ablaufdiagramm, Mindmap und verknüpfter Projektkarte"></td>
-    <td width="50%"><img src=".github/assets/readme/journal.webp" alt="Das Journal mit dem heutigen Eintrag, Serie, Erinnerungen und Stimmungsstatistik"></td>
+    <td width="50%"><img src=".github/assets/readme/ai-ask.webp" alt="KI fragen: eine Frage zum Arbeitsbereich mit nummerierten Quellenverweisen beantwortet"></td>
+    <td width="50%"><img src=".github/assets/readme/ai-settings.webp" alt="Administration → KI: Anbieter Ollama, wer KI nutzen darf, und ein Schalter pro Funktion"></td>
   </tr>
   <tr>
-    <td><b>Whiteboards</b> – Haftnotizen, Formen, Verbinder, Rahmen, Mindmaps, Abstimmungen, Timer und Präsentationsmodus.</td>
+    <td><b>Fragen an den Arbeitsbereich</b> – Antworten mit Links zu ihren Quellen, nie mehr, als du lesen darfst.</td>
+    <td><b>Unter deiner Kontrolle</b> – Anbieter, Personen und jede Funktion einzeln einschaltbar.</td>
+  </tr>
+</table>
+
+- **Schreibassistent** – verbessern, umformulieren, kürzen, erweitern, übersetzen, Ton ändern oder frei schreiben lassen (<kbd>⌘</kbd> <kbd>J</kbd>, `/ki`).
+- **Zusammenfassungen** von Seiten, Datenbankansichten, Einträgen und Sprachnotizen – mit Kernpunkten und offenen Aufgaben.
+- **Fragen an den Arbeitsbereich** – Volltext und auf Wunsch Suche nach Bedeutung mit Embeddings.
+- **KI in Datenbanken** – KI-Eigenschaften, die sich selbst füllen, Felder ausfüllen, Datenbanken aus einer Beschreibung anlegen.
+- **Du bestimmst, was sie liest** – Arbeitsbereiche, Bereiche oder Seiten für dich ausschließen; Verwaltende sperren Seiten für alle. Journale mit PIN und private Einträge liest sie nie.
+- **Schlüssel bleiben geheim** – verschlüsselt gespeichert, nie wieder angezeigt, an die Adresse des Anbieters gebunden.
+
+Mehr unter [KI in der Dokumentation](https://docs.flowplan.org/de/ai).
+
+## Whiteboards und ein Journal
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/readme/whiteboard.webp" alt="Ein Whiteboard mit Notizzetteln, einem Ablaufdiagramm, einer Mindmap und einer verknüpften Projektkarte"></td>
+    <td width="50%"><img src=".github/assets/readme/journal.webp" alt="Das Journal mit dem heutigen Eintrag, einer Schreibserie, Erinnerungen und Stimmungsstatistik"></td>
+  </tr>
+  <tr>
+    <td><b>Whiteboards</b> – Notizzettel, Formen, Verbinder, Rahmen, Mindmaps, Abstimmungen, Timer, Präsentationsmodus, Import aus Excalidraw und draw.io.</td>
     <td><b>Journal</b> – eine Seite pro Tag mit Vorlagen, Trackern, Rückblick, Erinnerungen und optionaler PIN-Sperre.</td>
   </tr>
 </table>
 
 ## Gemeinsam, überall
 
-Live-Bearbeitung mit Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, Posteingang, E-Mail-Zusammenfassungen und Web Push. Seiten lassen sich veröffentlichen, mit Gästen zum Lesen, Kommentieren oder Bearbeiten teilen oder als Formular für anonyme Antworten nutzen. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux gibt es unter [flowplan.org/download](https://flowplan.org/download) ([flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop), mit automatischen Updates).
+Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, ein Posteingang, E-Mail-Zusammenfassungen und Web-Push. Teile eine Seite mit einer einzelnen Person, mit Gästen über Links (auf Wunsch mit **Passwort und Ablaufdatum**), veröffentliche sie im Web oder mach ein Formular daraus. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux gibt es unter [flowplan.org/download](https://flowplan.org/download).
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="Das Board auf dem Handy" width="32%">
@@ -76,13 +138,43 @@ Live-Bearbeitung mit Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnu
   <img src=".github/assets/readme/mobile-journal.webp" alt="Das Journal auf dem Handy" width="32%">
 </p>
 
-## Für Admins
+## Für Admins und Integrationen
 
-E-Mail und Passwort, Passkeys (WebAuthn) und Single Sign-on mit OpenID Connect und Gruppen. Grenzen pro Arbeitsbereich und pro Person (Speicher, eigene Arbeitsbereiche, Uploadgröße), Aktivitätsprotokoll, Sitzungsverwaltung, Sicherung nach S3 mit Litestream, Prometheus-Metriken, API-Tokens und Webhooks, ein [MCP-Server](https://docs.flowplan.org/mcp) für Claude, ChatGPT und andere KI-Assistenten (nur mit den eigenen Rechten der Person) – und laufende Version und Commit auf einen Blick. Volltextsuche samt Texterkennung in gescannten PDFs, Import aus Markdown, HTML, CSV und Notion, Export als Markdown und ZIP sowie ein Versionsverlauf mit Vergleich und Wiederherstellen einzelner Absätze.
+<details open>
+<summary><b>Anmeldung und Sicherheit</b></summary>
+
+- E-Mail und Passwort, Passkeys (WebAuthn), **Zwei-Faktor-Anmeldung mit Authenticator-App** (für alle oder nur Admins erzwingbar)
+- Single Sign-on mit OpenID Connect; **SSO-Gruppen steuern Rollen und Gruppen** in Arbeitsbereichen
+- Rechte pro Bereich, Seite und Eintrag; Gäste; Aktivitätsprotokoll; Sitzungsverwaltung
+- Verschlüsselung von Dateien, Sicherungen und Exporten mit eigenem Schlüssel; Geheimnisse wie KI-Schlüssel verschlüsselt gespeichert
+
+</details>
+
+<details>
+<summary><b>Betrieb</b></summary>
+
+- Grenzen pro Arbeitsbereich und pro Person (Speicher, eigene Arbeitsbereiche, Uploadgröße)
+- Laufende Sicherung nach S3 mit Litestream, geplante Sicherungen und Markdown-Exporte nach S3 oder Git
+- Volltextsuche inklusive Texterkennung für gescannte PDFs und Office-Dateien
+- Prometheus-Metriken, Health-Endpunkt, laufende Version und Commit auf einen Blick
+- Docker-Image für `amd64` und `arm64`, ein **Helm-Chart** für Kubernetes
+
+</details>
+
+<details>
+<summary><b>Integrationen</b></summary>
+
+- REST-API mit Lese- oder Schreib-Tokens, signierte Webhooks
+- **n8n-Community-Knoten** (`n8n-nodes-flowplan`)
+- [MCP-Server](https://docs.flowplan.org/de/mcp) für Claude, ChatGPT und andere Assistenten – nur mit den Rechten der jeweiligen Person
+- Kalender-Abos und CalDAV in beide Richtungen, Git-Anbindung, Web-Clipper
+- Import aus Notion, AppFlowy, Obsidian, Markdown, HTML, CSV, Jira und Trello ([Umzugsanleitung](https://docs.flowplan.org/de/migrate))
+
+</details>
 
 ## Schnellstart (Docker)
 
-Du brauchst Docker und eine Domain mit HTTPS davor (Caddy, Traefik, nginx, Coolify …). Single Sign-on über einen OpenID-Connect-Anbieter (Keycloak, Authentik, Zitadel, Microsoft Entra ID, Google …) ist optional.
+Du brauchst Docker und eine Domain mit HTTPS davor (Caddy, Traefik, nginx, Coolify …).
 
 ```sh
 curl -O https://raw.githubusercontent.com/yannicschuller/flowplan/main/compose.yaml
@@ -91,32 +183,30 @@ curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env
 docker compose up -d
 ```
 
-Auf Kubernetes nimmst du das Helm-Chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (ein Pod mit Volume, wie SQLite es braucht).
+Öffne deine Domain: Eine neue Instanz bietet **Konto erstellen** an – das erste Konto verwaltet die Instanz.
 
-Öffne deine Domain: Eine neue Instanz bietet **Konto erstellen** an – das erste Konto verwaltet die Instanz. Weitere Personen registrieren sich, wenn du es erlaubst oder sie einlädst. Passkeys richtest du in den Profileinstellungen ein.
+- **Lokale KI (optional):** `docker compose --profile ai up -d` startet Ollama neben Flowplan; `OLLAMA_URL=http://ollama:11434` setzen und unter **Administration → KI** ein Modell wählen ([KI](https://docs.flowplan.org/de/ai)).
+- **Kubernetes:** das Helm-Chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (ein Pod mit Volume, wie SQLite es braucht).
+- **Single Sign-on:** beim OIDC-Anbieter einen vertraulichen Web-Client mit der Weiterleitungsadresse `https://<deine-domain>/api/auth/callback` anlegen ([Anmeldung](https://docs.flowplan.org/de/sign-in)).
 
-Für Single Sign-on legst du beim OIDC-Anbieter einen vertraulichen Web-Client mit der Weiterleitungsadresse `https://<deine-domain>/api/auth/callback` an; Mitglieder der Gruppe aus `OIDC_ADMIN_GROUP` verwalten die Instanz.
+Alle Daten liegen im Volume unter `/app/data`. Pro Datenverzeichnis läuft **genau ein** Container (SQLite).
+
+<details>
+<summary><b>Images und automatisches Ausrollen</b></summary>
 
 Das Image liegt in der GitHub Container Registry für `linux/amd64` und `linux/arm64`:
 
 ```
-ghcr.io/yannicschuller/flowplan:latest     # die neueste Version
-ghcr.io/yannicschuller/flowplan:1.2.3      # eine feste Version (auch :1.2 und :1)
-ghcr.io/yannicschuller/flowplan:beta       # der letzte manuelle Build, nicht für den Betrieb
+ghcr.io/yannicschuller/flowplan:latest     # das neueste Release
+ghcr.io/yannicschuller/flowplan:1.2.3      # ein festes Release (auch :1.2 und :1)
+ghcr.io/yannicschuller/flowplan:beta       # der neueste manuelle Build, nicht für den Betrieb
 ```
 
-Images entstehen nur beim Release oder von Hand: **Actions → Docker image → Run workflow** baut `:beta` aus dem gewählten Branch (mit Version baut es stattdessen dieses Release neu). Jedes `:beta`-Image lässt sich automatisch auf Coolify ausrollen: die Repository-Secrets `COOLIFY_WEBHOOK` (Deploy-Webhook der Ressource) und `COOLIFY_TOKEN` (API-Token mit Deploy-Recht) setzen und in Coolify das `:beta`-Image verwenden. Siehe [Coolify und Reverse Proxy](https://docs.flowplan.org/coolify-and-proxy).
+Images entstehen nur bei einem Release oder von Hand: **Actions → Docker image → Run workflow** baut `:beta` aus dem gewählten Branch (mit einer Version baut es stattdessen dieses Release neu). Jedes `:beta`-Image lässt sich automatisch auf Coolify ausrollen: die Repository-Secrets `COOLIFY_WEBHOOK` (Deploy-Webhook der Ressource) und `COOLIFY_TOKEN` (API-Token mit Deploy-Recht) setzen und die Coolify-Ressource das `:beta`-Image nutzen lassen. Siehe [Coolify und Reverse Proxys](https://docs.flowplan.org/de/coolify-and-proxy).
 
-Alle Daten liegen im Volume unter `/app/data`. Betreibe **genau einen** Container pro Datenverzeichnis (SQLite). Optionaler S3-Speicher spiegelt Uploads und sichert die Datenbank laufend.
+</details>
 
-Mehr in der Dokumentation:
-
-- [Installation mit Docker](https://docs.flowplan.org/installation)
-- [Anmeldung: Passwort, Passkeys und OIDC](https://docs.flowplan.org/sign-in)
-- [Konfiguration (alle Umgebungsvariablen)](https://docs.flowplan.org/configuration)
-- [Speicher, S3 und Sicherungen](https://docs.flowplan.org/storage-and-backups)
-- [Coolify und Reverse Proxys](https://docs.flowplan.org/coolify-and-proxy)
-- [Betrieb und Fehlersuche](https://docs.flowplan.org/operations)
+Mehr in der Dokumentation: [Installation](https://docs.flowplan.org/de/installation) · [Konfiguration](https://docs.flowplan.org/de/configuration) · [Speicher, S3 und Sicherung](https://docs.flowplan.org/de/storage-and-backups) · [Betrieb](https://docs.flowplan.org/de/operations)
 
 ## Entwicklung
 
@@ -128,27 +218,21 @@ cp .env.example .env.local
 npm run dev        # http://127.0.0.1:3000
 ```
 
-Im Entwicklungsmodus gibt es zusätzlich **Lokalen Arbeitsbereich öffnen**, ein gemeinsames lokales Beispielkonto. Im Produktivbetrieb fehlt dieser Zugang.
+Im Entwicklungsmodus gibt es zusätzlich **Lokalen Arbeitsbereich öffnen**, ein gemeinsames lokales Beispielkonto. Im Produktionsmodus gibt es diesen Zugang nicht.
 
-| Befehl | Was er tut |
+| Befehl | Wirkung |
 | --- | --- |
 | `npm run dev` | Entwicklungsserver |
 | `npm run build` / `npm start` | Produktions-Build und -Server |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Kerntests (Node-Testrunner, temporäre Datenverzeichnisse) |
+| `npm test` | Kerntests (Node-Testrunner, temporäre Datenverzeichnisse, die danach entfernt werden) |
 | `npm run test:e2e` | Browsertests (Playwright, Desktop und Handy); einen Server mit eigenem `FLOWPLAN_DATA_DIR` starten und `TEST_BASE_URL` setzen |
 | `npm run check:standalone` | Startet den Standalone-Build wie im Container und prüft Health, Persistenz und Wiederherstellung |
 
-Technik: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror mit Yjs, Zod und Playwright. Die Dokumentation liegt in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), die Website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), die Desktop-Apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); dieses Repository enthält nur die App.
+Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror mit Yjs, Zod und Playwright. Die Dokumentation liegt in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), die Website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), die Desktop-Apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); dieses Repository enthält die App, das Helm-Chart (`deploy/helm`) und den n8n-Knoten (`integrations/n8n`).
 
-## Gehostete Version
-
-[app.flowplan.org](https://app.flowplan.org) betreibt Flowplan in einem Rechenzentrum in Deutschland. Jede Instanz, gehostet oder selbst betrieben, beginnt mit ihrer Anmeldeseite.
-
-## Mitmachen und Sicherheit
+## Mitmachen, Sicherheit und Lizenz
 
 Beiträge sind willkommen – siehe [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitslücken bitte vertraulich melden, wie in [SECURITY.md](SECURITY.md) beschrieben.
 
-## Lizenz
-
-Flowplan ist freie Software unter der [GNU Affero General Public License v3.0](LICENSE). Wer eine veränderte Version als Netzwerkdienst betreibt, muss deren Quellcode den Nutzerinnen und Nutzern zugänglich machen.
+Flowplan ist freie Software unter der [GNU Affero General Public License v3.0](LICENSE). Wer eine veränderte Fassung als Netzdienst betreibt, muss den Quellcode den Nutzenden zugänglich machen. Der n8n-Knoten in `integrations/n8n` steht unter der MIT-Lizenz, wie n8n es für Community-Knoten verlangt.
