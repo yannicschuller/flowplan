@@ -1,0 +1,25 @@
+apiVersion: v2
+name: flowplan
+description: Documents, databases, whiteboards and a daily journal for teams – self-hosted. Runs as a single instance with SQLite.
+type: application
+# Version of the chart itself; raise it with every change to the chart.
+version: 0.1.0
+# The Flowplan release the chart deploys by default (image tag).
+appVersion: "0.4.2"
+kubeVersion: ">=1.23.0-0"
+home: https://flowplan.org
+icon: https://raw.githubusercontent.com/yannicschuller/flowplan/main/public/icon.svg
+sources:
+  - https://github.com/yannicschuller/flowplan
+keywords:
+  - notes
+  - wiki
+  - knowledge-base
+  - project-management
+  - notion-alternative
+  - self-hosted
+maintainers:
+  - name: Yannic Schuller
+    url: https://github.com/yannicschuller
+annotations:
+  artifacthub.io/license: AGPL-3.0-only

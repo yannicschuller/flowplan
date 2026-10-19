@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flowplan.fullname" . }}
+  labels:
+    {{- include "flowplan.labels" . | nindent 4 }}
+data:
+  APP_URL: {{ include "flowplan.appUrl" . | quote }}
+  FLOWPLAN_DATA_DIR: /app/data
+  FLOWPLAN_LOCAL_LOGIN: {{ .Values.localLogin | toString | quote }}
+  {{- with .Values.oidc }}
+  {{- if .issuer }}
+  OIDC_ISSUER: {{ .issuer | quote }}
+  OIDC_CLIENT_ID: {{ .clientId | quote }}
+  OIDC_SCOPES: {{ .scopes | quote }}
+  OIDC_GROUPS_CLAIM: {{ .groupsClaim | quote }}
+  OIDC_ADMIN_GROUP: {{ .adminGroup | quote }}
+  {{- if .allowedGroup }}
+  OIDC_ALLOWED_GROUP: {{ .allowedGroup | quote }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- with .Values.smtp }}
+  {{- if .host }}
+  SMTP_HOST: {{ .host | quote }}
+  SMTP_PORT: {{ .port | toString | quote }}
+  {{- if .user }}
+  SMTP_USER: {{ .user | quote }}
+  {{- end }}
+  {{- if .from }}
+  SMTP_FROM: {{ .from | quote }}
+  {{- end }}
+  {{- end }}
+  {{- end }}
+  {{- with .Values.s3 }}
+  {{- if .bucket }}
+  S3_BUCKET: {{ .bucket | quote }}
+  {{- if .endpoint }}
+  S3_ENDPOINT: {{ .endpoint | quote }}
+  {{- end }}
+  S3_REGION: {{ .region | quote }}
+  S3_PREFIX: {{ .prefix | quote }}
+  {{- end }}
+  {{- end }}
+  {{- range $key, $value := .Values.env }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}

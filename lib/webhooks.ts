@@ -1,4 +1,5 @@
-// Webhooks: workspace owners register an address that receives a POST for
+// Webhooks: workspace owners (in the settings, or with a write API token,
+// e.g. the n8n community node) register an address that receives a POST for
 // selected events (new or changed records, form answers, new pages). Each
 // delivery is signed (X-Flowplan-Signature: sha256=HMAC of the body with the
 // webhook's secret), queued and retried. Internal addresses are refused
@@ -62,6 +63,9 @@ export async function createWebhook(user: Identity, input: unknown) {
       pageId: z.uuid().nullable().optional(),
     })
     .parse(input);
+  // Write tokens of an owner may register webhooks (e.g. the n8n trigger
+  // node registers and removes its own); read tokens may not.
+  if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
   requireOwner(user, b.workspaceId);
   const url = await checkTarget(b.url);
   if (Number(one<{ n: number }>("SELECT COUNT(*) n FROM webhooks WHERE workspace_id=?", b.workspaceId)?.n) >= 20)

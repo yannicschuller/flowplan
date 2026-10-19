@@ -36,6 +36,7 @@ const PERSONAL = [
   "passkeys",
   "local_accounts",
   "mobile_devices",
+  "sso_sources",
   "push_subscriptions",
   "notifications",
   "notification_prefs",

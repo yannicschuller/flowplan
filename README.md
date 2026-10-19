@@ -91,6 +91,8 @@ curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env
 docker compose up -d
 ```
 
+On Kubernetes, use the Helm chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (one pod with a volume, as SQLite needs).
+
 Open your domain: a new instance offers **Create account** – the first account administers the instance. Others sign up when you allow it, or when you invite them. Passkeys are added in the profile settings.
 
 For single sign-on, register a confidential web client at your OIDC provider with the redirect URI `https://<your-domain>/api/auth/callback`; members of the group in `OIDC_ADMIN_GROUP` administer the instance.

@@ -192,3 +192,24 @@ test("scheduled backups keep the newest copies; inactive accounts are disabled",
   assert.equal(one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", ben.id)!.disabled, 1);
   assert.equal(all("SELECT 1 FROM sessions WHERE user_id=?", ben.id).length, 0);
 });
+
+test("owners register and remove webhooks with a write API token (n8n trigger); read tokens cannot", async () => {
+  const { listWebhooks } = await import("../lib/webhooks");
+  const write = command(ana, { action: "token.create", name: "n8n trigger", scope: "write" }) as { token: string };
+  const read = command(ana, { action: "token.create", name: "n8n read", scope: "read" }) as { token: string };
+  const writer = identityFromApiToken(`Bearer ${write.token}`)!;
+  const reader = identityFromApiToken(`Bearer ${read.token}`)!;
+  await assert.rejects(createWebhook(reader, { workspaceId: wid, url: "https://example.com/hook", events: ["row.created"] }), /nur lesen/);
+  process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE = "true";
+  try {
+    const hook = await createWebhook(writer, { workspaceId: wid, url: "http://n8n.internal:5678/webhook/abc", events: ["row.created", "page.created"], pageId: db });
+    assert.match(hook.secret, /^[A-Za-z0-9_-]{20,}$/);
+    const listed = listWebhooks(writer, wid).find((h) => h.id === hook.id);
+    assert.deepEqual(listed?.events, ["row.created", "page.created"]);
+    assert.equal(listed?.page_id, db);
+    command(writer, { action: "webhook.delete", workspaceId: wid, id: hook.id });
+    assert.equal(listWebhooks(ana, wid).some((h) => h.id === hook.id), false);
+  } finally {
+    delete process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE;
+  }
+});

@@ -267,6 +267,7 @@ export function removeFromWorkspace(userId: string, wid: string, spacesTo?: stri
   run("DELETE FROM invites WHERE workspace_id=? AND lower(email)=lower(?)", wid, email);
   run("DELETE FROM invite_grants WHERE workspace_id=? AND lower(email)=lower(?)", wid, email);
   run("DELETE FROM workspace_guests WHERE workspace_id=? AND user_id=?", wid, userId);
+  run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=?", wid, userId);
   run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, userId);
 }
 

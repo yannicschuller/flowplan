@@ -20,6 +20,7 @@ import { ClipperSettings } from "./clipper-settings";
 import { AccountSecurity } from "./account-security";
 import { DeleteOwnAccount } from "./delete-own-account";
 import { MySessions } from "./my-sessions";
+import { SsoMappings, type SsoMappingRow } from "./sso-mappings";
 import {
   GearSix,
   Users,
@@ -55,6 +56,10 @@ type SettingsData = {
     group_id: string;
     role: string;
   }[];
+  // SSO groups mapped to membership and groups (lib/sso-mappings.ts).
+  sso?: boolean;
+  ssoMappings?: SsoMappingRow[];
+  ssoSources?: { user_id: string; target: string; sso_group: string }[];
 };
 // i18n-table: 1 – [German, English] pairs
 const settingsTabs = [
@@ -148,6 +153,12 @@ export default function Settings({
   useEffect(() => {
     void load().catch((e) => onError(e.message));
   }, [boot.workspace.id]);
+  // The SSO groups a membership (target '') or group membership came from.
+  const ssoVia = (userId: string, target: string) =>
+    (settings?.ssoSources || [])
+      .filter((s) => s.user_id === userId && s.target === target)
+      .map((s) => s.sso_group)
+      .join(", ");
   async function act(b: Record<string, unknown>) {
     try {
       await mutate({ workspaceId: boot.workspace.id, ...b });
@@ -422,6 +433,14 @@ export default function Settings({
                       {!!m.guest && (
                         <span className="tag tag-yellow">{t("Gast", "Guest")}</span>
                       )}
+                      {(() => {
+                        const via = ssoVia(m.id, "");
+                        return via ? (
+                          <span className="tag" title={t("Diese Mitgliedschaft wird über die SSO-Gruppen verwaltet. Eine Rollenänderung hier übernimmt sie von Hand.", "This membership is managed through SSO groups. Changing the role here takes it over by hand.")}>
+                            {t(`über SSO-Gruppe „${via}“`, `via SSO group “${via}”`)}
+                          </span>
+                        ) : null;
+                      })()}
                       <small>{m.email}</small>
                     </span>
                     {owner && m.role !== "owner" && (
@@ -646,6 +665,24 @@ export default function Settings({
                     </div>
                   ))}
                 </section>
+                {(settings?.sso || !!settings?.ssoMappings?.length) && (
+                  <section className="settings-section">
+                    <h2>{t("SSO-Gruppen", "SSO groups")}</h2>
+                    <p className="muted">
+                      {t(
+                        "Ordne Gruppen aus deinem Identitätsanbieter einer Rolle in diesem Arbeitsbereich und/oder einer Gruppe zu. Bei jeder SSO-Anmeldung kommen passende Personen hinzu; wer die SSO-Gruppe nicht mehr hat, verliert, was die Zuordnung gegeben hat. Von Hand hinzugefügte Mitglieder bleiben unberührt, der letzte Eigentümer bleibt immer.",
+                        "Map groups from your identity provider to a role in this workspace and/or to a group. At every SSO sign-in matching people are added; whoever no longer has the SSO group loses what the mapping gave. Members added by hand stay untouched, the last owner always stays.",
+                      )}
+                    </p>
+                    <SsoMappings
+                      mappings={settings?.ssoMappings || []}
+                      groups={settings?.groups || []}
+                      workspaceId={boot.workspace.id}
+                      onAdd={(_, m) => act({ action: "sso.mapping.add", ...m })}
+                      onDelete={(_, mappingId) => act({ action: "sso.mapping.delete", id: mappingId })}
+                    />
+                  </section>
+                )}
                 <section className="settings-section">
                   <h2>{t("Bereiche & Zugriffsrechte", "Spaces & access")}</h2>
                   {(boot.managedSpaces || boot.spaces).map((s) => (
@@ -1065,7 +1102,10 @@ export default function Settings({
               }
             />
             <Avatar name={m.name} userId={m.id} />
-            <span>{m.name}</span>
+            <span>
+              {m.name}
+              {!!groupId && !!ssoVia(m.id, groupId) && <small>{t(`über SSO-Gruppe „${ssoVia(m.id, groupId)}“`, `via SSO group “${ssoVia(m.id, groupId)}”`)}</small>}
+            </span>
           </label>
         ))}
       </Modal>
