@@ -12,3 +12,5 @@ dbs:
         secret-access-key: ${S3_SECRET_ACCESS_KEY}
         force-path-style: true
         sync-interval: 1s
+        # Empty unless LITESTREAM_SSE_C_KEY is set (server-side encryption).
+        sse-customer-key: ${LITESTREAM_SSE_C_KEY}

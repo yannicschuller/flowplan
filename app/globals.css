@@ -17309,3 +17309,14 @@ h3 .block-reactions {
     text-align: center;
   }
 }
+
+/* Admin → Encryption: what still leaves the server unencrypted. */
+.callout.warning {
+  display: block;
+  background: color-mix(in srgb, #9a6700 12%, var(--bg, #fff));
+  color: var(--text);
+  border-left: 3px solid #9a6700;
+}
+.encryption-settings code + code {
+  margin-left: 4px;
+}

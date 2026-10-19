@@ -78,7 +78,7 @@ Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, rea
 
 ## For admins
 
-E-mail and password, passkeys (WebAuthn) and single sign-on with OpenID Connect and groups. Limits per workspace and per person (storage, own workspaces, upload size), an audit log, session management, backups to S3 with Litestream, Prometheus metrics, API tokens and webhooks, an [MCP server](https://docs.flowplan.org/mcp) for Claude, ChatGPT and other AI assistants (acting with the person's own permissions only) – and the running version and commit at a glance. Full-text search including OCR for scanned PDFs, Markdown/HTML/CSV/Notion import, Markdown and ZIP export, and a version history with comparisons and single-paragraph restore.
+E-mail and password, passkeys (WebAuthn) and single sign-on with OpenID Connect and groups. Limits per workspace and per person (storage, own workspaces, upload size), an audit log, session management, backups to S3 with Litestream, encryption of files, backups and exports with your own key, Prometheus metrics, API tokens and webhooks, an [MCP server](https://docs.flowplan.org/mcp) for Claude, ChatGPT and other AI assistants (acting with the person's own permissions only) – and the running version and commit at a glance. Full-text search including OCR for scanned PDFs, Markdown/HTML/CSV/Notion import, Markdown and ZIP export, and a version history with comparisons and single-paragraph restore.
 
 ## Quick start (Docker)
 

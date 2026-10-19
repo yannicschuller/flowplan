@@ -18,6 +18,8 @@ export const instanceSettingsSchema = z.object({
   // Daily database copy (S3 bucket or backups/ in the data folder).
   backupSchedule: z.boolean().default(true),
   backupKeep: z.number().int().min(1).max(365).default(7),
+  // Hourly instead of daily: for encrypted copies in place of Litestream.
+  backupInterval: z.enum(["daily", "hourly"]).default("daily"),
   // Accounts without sign-in for this many days are disabled (null = never).
   inactiveDays: z.number().int().min(30).max(3650).nullable().default(null),
   // Defaults for every account without its own limits (0 = unlimited).
@@ -36,6 +38,7 @@ const defaults: InstanceSettings = {
   publicDemo: false,
   backupSchedule: true,
   backupKeep: 7,
+  backupInterval: "daily",
   inactiveDays: null,
   defaultUserStorageMb: null,
   defaultUserWorkspaces: null,

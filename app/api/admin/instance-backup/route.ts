@@ -12,6 +12,7 @@ import {
   instanceBackupStream,
   stageInstanceRestore,
 } from "@/lib/instance-backup";
+import { encryptionEnabled, fileIsEncrypted, sealStream, unsealFile } from "@/lib/encryption";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const failure = (e: unknown) => {
@@ -21,18 +22,26 @@ const failure = (e: unknown) => {
     { status: e instanceof HttpError ? e.status : 500 },
   );
 };
-// Download of the whole instance (admins only), streamed.
+// Download of the whole instance (admins only), streamed. With
+// FLOWPLAN_ENCRYPTION_KEY encrypted on the way (flowplan-instanz-….zip.enc).
 export async function GET() {
   try {
     const user = await requireUser();
     requireAdmin(user);
-    audit(user.id, "instance.backup", "");
+    const encrypted = encryptionEnabled();
+    audit(user.id, "instance.backup", "", encrypted ? "encrypted" : "");
+    const zip = instanceBackupStream();
+    let body: Readable = zip;
+    if (encrypted) {
+      body = zip.pipe(sealStream());
+      zip.once("error", (e) => body.destroy(e));
+    }
     return new Response(
-      Readable.toWeb(instanceBackupStream()) as ReadableStream,
+      Readable.toWeb(body) as ReadableStream,
       {
         headers: {
-          "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="flowplan-instanz-${new Date().toISOString().slice(0, 10)}.zip"`,
+          "Content-Type": encrypted ? "application/octet-stream" : "application/zip",
+          "Content-Disposition": `attachment; filename="flowplan-instanz-${new Date().toISOString().slice(0, 10)}.zip${encrypted ? ".enc" : ""}"`,
           "Cache-Control": "private, no-store",
         },
       },
@@ -42,9 +51,12 @@ export async function GET() {
   }
 }
 // Upload of a backup; it is checked now and applied on the next restart.
+// An encrypted one (.zip.enc) is decrypted first, with the current or an
+// earlier key.
 export async function POST(req: Request) {
   const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "tmp");
   const file = resolve(dir, `instance-upload-${randomUUID()}.zip`);
+  const plain = `${file}.plain`;
   try {
     checkOrigin(req);
     const user = await requireUser();
@@ -64,13 +76,23 @@ export async function POST(req: Request) {
       Readable.fromWeb(req.body.pipeThrough(limit) as never),
       createWriteStream(file, { flags: "wx" }),
     );
-    const summary = await stageInstanceRestore(file);
+    let zip = file;
+    if (fileIsEncrypted(file)) {
+      try {
+        await unsealFile(file, plain);
+      } catch (e) {
+        throw new HttpError(400, (e as Error).message);
+      }
+      zip = plain;
+    }
+    const summary = await stageInstanceRestore(zip);
     audit(user.id, "instance.restore.staged", "", JSON.stringify(summary));
     return Response.json(summary);
   } catch (e) {
     return failure(e);
   } finally {
     rmSync(file, { force: true });
+    rmSync(plain, { force: true });
   }
 }
 export async function DELETE(req: Request) {

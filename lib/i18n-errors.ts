@@ -32,6 +32,10 @@ const exact: Record<string, string> = {
   "Diese Sitzung gibt es nicht mehr.": "This session no longer exists.",
   "Das Konto, das den Export eingerichtet hat, gibt es nicht mehr oder es ist deaktiviert.": "The account that set up the export no longer exists or is disabled.",
   "EXPORT_GIT_TOKEN fehlt.": "EXPORT_GIT_TOKEN is missing.",
+  "Kein Schlüssel eingerichtet (FLOWPLAN_ENCRYPTION_KEY).": "No key set up (FLOWPLAN_ENCRYPTION_KEY).",
+  "Kein Schlüssel eingerichtet.": "No key set up.",
+  "Keine verschlüsselte Flowplan-Datei.": "Not a file encrypted by Flowplan.",
+  "Entschlüsseln fehlgeschlagen: falscher Schlüssel oder beschädigte Datei.": "Decryption failed: wrong key or damaged file.",
   "EXPORT_GIT_URL muss eine https-Adresse ohne Zugangsdaten sein.": "EXPORT_GIT_URL must be an https address without credentials.",
   "Mit einem API-Token nicht möglich.": "Not possible with an API token.",
   "Nur ein Eintrag einer Datenbank.": "Only one record of a database.",
@@ -507,6 +511,9 @@ const exact: Record<string, string> = {
   "Push-Testbenachrichtigung": "Push test notification",
 };
 const patterns: [RegExp, string][] = [
+  [/^Verschlüsselt mit dem Schlüssel (\S+), der hier nicht eingerichtet ist\.$/, "Encrypted with key $1, which is not set up here."],
+  [/^(\S+) muss 32 Bytes lang sein \(base64, z\. B\. aus „openssl rand -base64 32“\)\.$/, "$1 must be 32 bytes long (base64, e.g. from “openssl rand -base64 32”)."],
+  [/^FLOWPLAN_ENCRYPTION_KEY_FILE kann nicht gelesen werden: (.+)$/, "FLOWPLAN_ENCRYPTION_KEY_FILE cannot be read: $1"],
   [/^Höchstens (.+) Tokens pro Person\.$/, "At most $1 tokens per person."],
   [/^Datei „(.+)“ fehlt auf dem Server\. Sicherung abgebrochen\.$/, "File “$1” is missing on the server. Backup cancelled."],
   [/^Höchstens (.+) Spalten nebeneinander\.$/, "At most $1 columns side by side."],

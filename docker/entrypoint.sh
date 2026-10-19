@@ -32,7 +32,16 @@ if [ -n "${S3_BUCKET:-}" ] && [ "${FLOWPLAN_LITESTREAM:-on}" != "off" ]; then
   S3_ENDPOINT="${S3_ENDPOINT:-https://s3.$S3_REGION.amazonaws.com}"
   S3_PREFIX="${S3_PREFIX-flowplan}"
   FLOWPLAN_DB="$DB"
-  export S3_REGION S3_ENDPOINT S3_PREFIX FLOWPLAN_DB
+  # Optional: the provider encrypts the replica (SSE-C, needs https and a
+  # provider that supports it). Litestream 0.5 cannot encrypt by itself.
+  LITESTREAM_SSE_C_KEY="${LITESTREAM_SSE_C_KEY:-}"
+  FLOWPLAN_LITESTREAM_ACTIVE=1
+  FLOWPLAN_LITESTREAM_SSE_C=0
+  if [ -n "$LITESTREAM_SSE_C_KEY" ]; then FLOWPLAN_LITESTREAM_SSE_C=1; fi
+  export S3_REGION S3_ENDPOINT S3_PREFIX FLOWPLAN_DB LITESTREAM_SSE_C_KEY FLOWPLAN_LITESTREAM_ACTIVE FLOWPLAN_LITESTREAM_SSE_C
+  if { [ -n "${FLOWPLAN_ENCRYPTION_KEY:-}" ] || [ -n "${FLOWPLAN_ENCRYPTION_KEY_FILE:-}" ]; } && [ "$FLOWPLAN_LITESTREAM_SSE_C" = 0 ]; then
+    echo "Hinweis: Litestream legt die Datenbank unverschlüsselt in den Bucket. FLOWPLAN_LITESTREAM=off und stündliche verschlüsselte Sicherungen vermeiden das (siehe Doku)."
+  fi
   litestream restore -config /etc/litestream.yml -if-db-not-exists -if-replica-exists "$DB"
   exec litestream replicate -config /etc/litestream.yml -exec "node server.js"
 fi

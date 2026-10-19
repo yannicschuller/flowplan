@@ -4,10 +4,15 @@
 // every new and deleted file in the same transaction; a background worker
 // then uploads or deletes the object. A container started without the local
 // files (new host, lost volume) fetches them back from the bucket.
+// With FLOWPLAN_ENCRYPTION_KEY the objects are encrypted before they leave
+// (lib/encryption.ts); the local copy stays plain. storage_sealed records
+// with which key each object went up, so the Admin page can count what is
+// still plain and "Encrypt existing objects" uploads just those again.
 import { AwsClient } from "aws4fetch";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { currentKeyId, seal, unseal } from "./encryption";
 
 export type StorageConfig = {
   endpoint: string;
@@ -85,12 +90,14 @@ const state = globalThis as unknown as {
 // Called once when the database opens.
 export function setupStorage(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS storage_queue(key TEXT PRIMARY KEY,op TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS storage_state(name TEXT PRIMARY KEY,value TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS storage_state(name TEXT PRIMARY KEY,value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS storage_sealed(key TEXT PRIMARY KEY,key_id TEXT NOT NULL);`);
   const config = storageConfig();
   if (!config) {
     d.exec(`DROP TRIGGER IF EXISTS storage_file_insert;
       DROP TRIGGER IF EXISTS storage_file_delete;
-      DELETE FROM storage_queue;`);
+      DELETE FROM storage_queue;
+      DELETE FROM storage_sealed;`);
     return;
   }
   // A trigger cannot wait for the commit; the kick runs after the current
@@ -116,6 +123,7 @@ export function setupStorage(d: DatabaseSync) {
   // First use of this bucket, or local files replaced by an instance
   // restore: every file is uploaded again.
   if (previous !== target(config) || existsSync(marker)) {
+    d.exec("DELETE FROM storage_sealed");
     d.exec(
       "INSERT INTO storage_queue(key,op) SELECT id,'put' FROM files WHERE true ON CONFLICT(key) DO UPDATE SET op='put',attempts=0,next_at=0",
     );
@@ -179,17 +187,24 @@ async function drain() {
                 return finish();
               throw new Error("Lokale Datei fehlt noch.");
             }
+            const keyId = currentKeyId();
             const response = await aws(config).fetch(objectUrl(config, job.key), {
               method: "PUT",
-              body: readFileSync(path),
+              body: new Uint8Array(seal(readFileSync(path))),
             });
             if (!response.ok) throw new Error(`PUT ${response.status}`);
+            s.db
+              .prepare(
+                "INSERT INTO storage_sealed(key,key_id) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET key_id=excluded.key_id",
+              )
+              .run(job.key, keyId);
           } else {
             const response = await aws(config).fetch(objectUrl(config, job.key), {
               method: "DELETE",
             });
             if (!response.ok && response.status !== 404)
               throw new Error(`DELETE ${response.status}`);
+            s.db.prepare("DELETE FROM storage_sealed WHERE key=?").run(job.key);
           }
           finish();
         } catch (error) {
@@ -223,13 +238,16 @@ export async function ensureLocal(key: string) {
   try {
     const response = await aws(config).fetch(objectUrl(config, key));
     if (!response.ok) return false;
-    const data = Buffer.from(await response.arrayBuffer());
+    // Plain objects (from before encryption) come back as they are.
+    const data = unseal(Buffer.from(await response.arrayBuffer()));
     mkdirSync(uploadsDir(), { recursive: true });
     const partial = `${path}.${process.pid}.part`;
     writeFileSync(partial, data);
     renameSync(partial, path);
     return true;
-  } catch {
+  } catch (error) {
+    if (/Schlüssel|Entschlüsseln/.test(String((error as Error)?.message)))
+      console.error(`Dateispeicher: ${key} – ${(error as Error).message}`);
     return false;
   }
 }
@@ -263,4 +281,41 @@ export function storageStatus() {
     pending: Number(row.pending),
     failing: Number(row.attempts) > 0,
   };
+}
+
+// Files whose object in the bucket is not (yet) encrypted with the current
+// key: from before encryption was turned on, or with an earlier key.
+export function storageEncryption() {
+  const s = state.flowplanStorage;
+  if (!s || !storageConfig()) return null;
+  let keyId = "";
+  try {
+    keyId = currentKeyId();
+  } catch {}
+  const count = (sql: string, ...args: string[]) =>
+    Number((s.db.prepare(sql).get(...args) as { n: number }).n);
+  return {
+    files: count("SELECT count(*) n FROM files"),
+    behind: keyId
+      ? count(
+          "SELECT count(*) n FROM files f LEFT JOIN storage_sealed x ON x.key=f.id WHERE x.key_id IS NULL OR x.key_id<>?",
+          keyId,
+        )
+      : 0,
+  };
+}
+// Uploads those again; the queue encrypts them on the way.
+export function encryptExistingObjects() {
+  const s = state.flowplanStorage;
+  const keyId = currentKeyId();
+  if (!s || !keyId) return 0;
+  const result = s.db
+    .prepare(
+      `INSERT INTO storage_queue(key,op) SELECT f.id,'put' FROM files f LEFT JOIN storage_sealed x ON x.key=f.id
+       WHERE (x.key_id IS NULL OR x.key_id<>?) AND f.id NOT IN (SELECT key FROM storage_queue)
+       ON CONFLICT(key) DO NOTHING`,
+    )
+    .run(keyId);
+  setImmediate(kickStorage);
+  return Number(result.changes);
 }

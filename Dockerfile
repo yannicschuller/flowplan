@@ -40,6 +40,8 @@ RUN mkdir /app/data && chown node:node /app/data
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
+# Emergency decryption of encrypted backups and objects (docs: storage).
+COPY --chmod=644 scripts/decrypt.mjs /app/decrypt.mjs
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

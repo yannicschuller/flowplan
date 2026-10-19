@@ -39,6 +39,7 @@ import { listApiTokens } from "@/lib/api-tokens";
 import { createWebhook, listWebhooks, webhookEvents } from "@/lib/webhooks";
 import { mailStatus, sendTestMail } from "@/lib/mail";
 import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
+import { encryptExisting, encryptionOverview } from "@/lib/encryption-status";
 import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -686,6 +687,7 @@ async function handleGET(
         mail: mailStatus(),
         backup: scheduledBackupStatus(),
         markdownExport: markdownExportStatus(),
+        encryption: encryptionOverview(),
         workspaces: all(
           "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages FROM workspaces w",
         ),
@@ -798,6 +800,11 @@ async function handlePOST(
     if (path.length === 2 && path[0] === "admin" && path[1] === "markdown-export") {
       requireAdmin(user);
       return NextResponse.json(setMarkdownExport(user, (await req.json().catch(() => ({}))).pageIds));
+    }
+    // Uploads the objects in the bucket that are not yet encrypted again.
+    if (path.length === 2 && path[0] === "admin" && path[1] === "encrypt-existing") {
+      requireAdmin(user);
+      return NextResponse.json(encryptExisting(user));
     }
     if (path.length === 2 && path[0] === "admin" && path[1] === "backup-run") {
       requireAdmin(user);

@@ -1,5 +1,6 @@
 "use client";
 import { MarkdownExportSettings, type MarkdownExportStatus } from "./markdown-export-settings";
+import { EncryptionSettings, type EncryptionStatus } from "./encryption-settings";
 import { NumberField, SaveBar, SettingGroup, SettingRow, SwitchRow, UsageMeter } from "./settings-ui";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -84,8 +85,11 @@ type AdminData = {
     lastError: string | null;
   };
   markdownExport: MarkdownExportStatus;
+  encryption: EncryptionStatus;
   backup: {
     enabled: boolean;
+    hourly: boolean;
+    encrypted: boolean;
     keep: number;
     target: "s3" | "local";
     last: { at: number; target: string; name: string; bytes: number; error: string | null } | null;
@@ -436,6 +440,7 @@ export default function Admin({
                 onChange={load}
                 onError={onError}
               />
+              <EncryptionSettings status={data.encryption} onChange={load} onError={onError} />
               <MarkdownExportSettings status={data.markdownExport} onChange={load} onError={onError} />
               <InstanceBackup
                 pending={data.restorePending}
@@ -905,6 +910,16 @@ function InstanceSettingsForm({
           checked={draft.backupSchedule !== false}
           onChange={(backupSchedule) => set({ backupSchedule })}
         />
+        <SwitchRow
+          label={t("Stündlich statt täglich", "Hourly instead of daily")}
+          description={t(
+            "Für verschlüsselte Sicherungen anstelle von Litestream (FLOWPLAN_LITESTREAM=off). Dann mehr Sicherungen aufbewahren, z. B. 72 für drei Tage.",
+            "For encrypted backups in place of Litestream (FLOWPLAN_LITESTREAM=off). Keep more backups then, e.g. 72 for three days.",
+          )}
+          checked={draft.backupInterval === "hourly"}
+          disabled={draft.backupSchedule === false}
+          onChange={(hourly) => set({ backupInterval: hourly ? "hourly" : "daily" })}
+        />
         <SettingRow label={t("Aufbewahrte Sicherungen", "Backups kept")} description={t("Die ältesten werden danach entfernt.", "The oldest are removed afterwards.")}>
           <NumberField label={t("Aufbewahrte Sicherungen", "Backups kept")} value={draft.backupKeep ?? 7} min={1} max={365} unit={t("Stück", "copies")} onChange={(backupKeep) => set({ backupKeep: backupKeep ?? 7 })} />
         </SettingRow>
@@ -994,7 +1009,8 @@ function MailAndBackup({
       <section className="settings-section">
         <h2>{t("Geplante Sicherung", "Scheduled backup")}</h2>
         <p>
-          {backup.enabled ? t("Täglich", "Daily") : t("Ausgeschaltet", "Off")} ·{" "}
+          {backup.enabled ? (backup.hourly ? t("Stündlich", "Hourly") : t("Täglich", "Daily")) : t("Ausgeschaltet", "Off")} ·{" "}
+          {backup.encrypted ? t("verschlüsselt", "encrypted") : t("unverschlüsselt", "unencrypted")} ·{" "}
           {backup.target === "s3" ? t("in den S3-Bucket", "into the S3 bucket") : t("in den Datenordner", "into the data folder")} {t("· die neuesten", "· the latest")}{" "}
           {backup.keep} bleiben erhalten.
         </p>
@@ -1083,7 +1099,7 @@ function InstanceBackup({
           {busy ? t("Sicherung wird geprüft …", "Checking backup …") : t("Sicherung auswählen", "Choose backup")}
           <input
             type="file"
-            accept=".zip"
+            accept=".zip,.enc"
             hidden
             aria-label={t("Instanzsicherung hochladen", "Upload instance backup")}
             disabled={busy}

@@ -4,7 +4,8 @@
 // it up may read it. With S3 into <prefix>/exports/ in the bucket, without
 // into exports/ in the data folder; as many copies are kept as backups.
 // Paths inside the ZIP carry ids, so unpacked into a Git working copy the
-// diff between two runs stays clean.
+// diff between two runs stays clean. With FLOWPLAN_ENCRYPTION_KEY the ZIPs
+// are encrypted (….zip.enc); the copy pushed to Git is not.
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -18,6 +19,7 @@ import { instanceSettings } from "./instance-settings";
 import { bucketFetch, storageConfig } from "./storage";
 import { withContentLocale } from "./content-locale";
 import { gitConfig, syncGit, type GitRun } from "./git-export";
+import { encryptionEnabled, seal } from "./encryption";
 import type { Identity, Page, User } from "./types";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
@@ -110,6 +112,11 @@ async function listBucket(prefix: string) {
   return [...(await response.text()).matchAll(/<Key>([^<]+)<\/Key>/g)].map((m) => m[1]);
 }
 
+export function lastMarkdownExport() {
+  return state<ExportRun[]>("markdownExportRuns")?.[0]?.at ?? null;
+}
+const zipName = (name: string) => name.endsWith(".zip") || name.endsWith(".zip.enc");
+
 export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]> {
   const config = state<Config>("markdownExport");
   if (!config?.pageIds.length) return [];
@@ -123,27 +130,34 @@ export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]>
     const title = one<{ title: string }>("SELECT title FROM pages WHERE id=?", pageId)?.title || pageId;
     // Stable per page (the id), readable (the title), sortable (the date).
     const base = `${exportName(title).slice(0, 60)}-${pageId.slice(0, 8)}`;
-    const name = `${base}-${stamp}.zip`;
+    let name = `${base}-${stamp}.zip`;
     try {
       if (!user) throw new Error("Das Konto, das den Export eingerichtet hat, gibt es nicht mehr oder es ist deaktiviert.");
+      const encrypted = encryptionEnabled();
+      if (encrypted) name += ".enc";
       const { bytes } = await withContentLocale("de", () => exportMarkdown(user, { pageId, format: "zip", includeSubpages: true, history: true }));
+      const stored = seal(bytes as Buffer);
       if (storage) {
-        const response = await bucketFetch(`exports/${name}`, { method: "PUT", body: new Uint8Array(bytes), headers: { "Content-Type": "application/zip" } });
+        const response = await bucketFetch(`exports/${name}`, {
+          method: "PUT",
+          body: new Uint8Array(stored),
+          headers: { "Content-Type": encrypted ? "application/octet-stream" : "application/zip" },
+        });
         if (!response.ok) throw new Error(`Hochladen: HTTP ${response.status}`);
         const prefix = storage.prefix ? `${storage.prefix}/` : "";
-        const keys = (await listBucket(`${prefix}exports/${base}-`)).filter((k) => k.endsWith(".zip")).sort();
+        const keys = (await listBucket(`${prefix}exports/${base}-`)).filter(zipName).sort();
         for (const key of keys.slice(0, Math.max(0, keys.length - keep))) await bucketFetch(key.slice(prefix.length), { method: "DELETE" });
       } else {
         const folder = resolve(dataDir(), "exports");
         mkdirSync(folder, { recursive: true });
-        writeFileSync(resolve(folder, name), bytes);
+        writeFileSync(resolve(folder, name), stored);
         const files = readdirSync(folder)
-          .filter((f) => f.startsWith(`${base}-`) && f.endsWith(".zip"))
+          .filter((f) => f.startsWith(`${base}-`) && zipName(f))
           .sort();
         for (const file of files.slice(0, Math.max(0, files.length - keep))) rmSync(resolve(folder, file));
       }
-      runs.push({ pageId, name, at: now, bytes: bytes.length, error: null });
-      done.push({ pageId, folder: base, bytes });
+      runs.push({ pageId, name, at: now, bytes: stored.length, error: null });
+      done.push({ pageId, folder: base, bytes: bytes as Buffer });
     } catch (error) {
       runs.push({ pageId, name, at: now, bytes: 0, error: String((error as Error).message || error).slice(0, 300) });
     }
