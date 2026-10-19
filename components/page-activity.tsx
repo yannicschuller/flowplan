@@ -81,7 +81,7 @@ export function ReadersButton({ readers }: { readers: Reader[] }) {
         <small>{others.length}</small>
       </Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content className="menu readers-menu" align="end" sideOffset={6}>
+        <Dropdown.Content className="dropdown readers-menu" align="end" sideOffset={6}>
           <Dropdown.Label className="menu-label">{t("Gesehen von", "Seen by")}</Dropdown.Label>
           {others.slice(0, 20).map((reader) => (
             <div className="reader" key={reader.id}>
