@@ -67,6 +67,7 @@ import {
 import { cellText } from "./cell-text";
 import { scheduleRow, cascadeTimeline, linkTimeline } from "./row-schedule";
 import { recordDocumentAuthors } from "./document-authors";
+import { importBibliography, removeFromBibliography } from "./citations-server";
 import { rewriteFormulaReferences } from "./formula";
 import { validateCalculations } from "./database-summary";
 import { spaceColorSchema, spaceIconSchema } from "./space-appearance";
@@ -1607,6 +1608,13 @@ export function command(
         break;
       case "timeline.link":
         result = linkTimeline(user, pid(), b);
+        break;
+      // The workspace's bibliography (citations).
+      case "citation.import":
+        result = importBibliography(user, b);
+        break;
+      case "citation.remove":
+        result = removeFromBibliography(user, b);
         break;
       case "row.move":
         result = moveRow(user, pid(), b);

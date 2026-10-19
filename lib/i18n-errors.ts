@@ -467,6 +467,17 @@ const exact: Record<string, string> = {
   "Für die Bereichsübergabe ist ein aktiver verbleibender Eigentümer erforderlich.": "Handing over the space needs an active remaining owner.",
   "Zum Duplizieren ist Zugriff auf den Bereichsinhalt erforderlich.": "Duplicating needs access to the space's content.",
   "Die ZIP-Datei enthält keine Markdown-, CSV-, Excalidraw- oder draw.io-Dateien.": "The ZIP file contains no Markdown, CSV, Excalidraw or draw.io files.",
+  // citations
+  "Zu viele Einträge auf einmal (höchstens 5000).": "Too many entries at once (at most 5000).",
+  "Die Literaturliste ist voll (höchstens 5000 Einträge).": "The bibliography is full (at most 5000 entries).",
+  "Keine Literaturangaben gefunden (BibTeX oder CSL-JSON).": "No references found (BibTeX or CSL-JSON).",
+  "Die Literaturdatei ist ungültig.": "The bibliography file is invalid.",
+  "Das CSL-JSON ist ungültig.": "The CSL-JSON is invalid.",
+  "Die Datei ist zu groß.": "The file is too large.",
+  "Keine gültige DOI (z. B. 10.1000/xyz123).": "Not a valid DOI (e.g. 10.1000/xyz123).",
+  "Diese DOI ist nicht bekannt.": "This DOI is not known.",
+  "Die DOI konnte gerade nicht aufgelöst werden.": "The DOI could not be resolved right now.",
+  "Die DOI-Daten sind unvollständig.": "The DOI data is incomplete.",
   // whiteboard import
   "Die Datei ist zu groß (höchstens 20 MB).": "The file is too large (at most 20 MB).",
   "Unbekanntes Format. Unterstützt werden Excalidraw (.excalidraw) und draw.io (.drawio, .xml, .svg).": "Unknown format. Excalidraw (.excalidraw) and draw.io (.drawio, .xml, .svg) are supported.",

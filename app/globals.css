@@ -14980,6 +14980,98 @@ h3 .block-reactions {
   font-size: 12.5px;
 }
 
+/* ---------- Citations (lib/citation-nodes.ts) ---------- */
+.citation {
+  color: var(--blue);
+  white-space: nowrap;
+  cursor: default;
+}
+.ProseMirror-selectednode.citation {
+  outline: 2px solid var(--blue-light);
+  border-radius: 3px;
+}
+.bibliography {
+  margin: 1.2em 0;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--border);
+}
+.bibliography-title {
+  margin: 0 0 0.5em;
+  font-weight: 600;
+  font-size: 1.15em;
+}
+.bibliography-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bibliography-list li {
+  margin: 0 0 0.45em;
+  padding-left: 2em;
+  text-indent: -2em;
+  overflow-wrap: anywhere;
+}
+.bibliography-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.citation-dialog {
+  display: grid;
+  gap: 10px;
+}
+.citation-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.citation-search input {
+  flex: 1;
+}
+.citation-locator {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.citation-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.citation-results li {
+  border-bottom: 1px solid var(--border);
+}
+.citation-results li:last-child {
+  border-bottom: none;
+}
+.citation-results li.muted {
+  padding: 10px 12px;
+}
+.citation-results button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+}
+.citation-results button:hover,
+.citation-results button:focus-visible {
+  background: var(--hover);
+}
+.citation-results button span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.citation-import textarea {
+  width: 100%;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
 /* ---------- Who wrote what (lib/authorship-plugin.ts) ---------- */
 .author-mark {
   border-radius: 2px;
