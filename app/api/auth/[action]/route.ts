@@ -47,6 +47,17 @@ import {
   resendVerification,
   isLocalAccount,
 } from "@/lib/local-auth";
+import {
+  PENDING_MAX_AGE,
+  afterPassword,
+  completeSignIn,
+  confirmTotpSetup,
+  disableTotp,
+  regenerateRecoveryCodes,
+  startTotpSetup,
+  twoFactorStatus,
+} from "@/lib/two-factor";
+import { totpEnabled } from "@/lib/two-factor-policy";
 import { requestLocale } from "@/lib/i18n-server";
 import { translate } from "@/lib/i18n";
 import {
@@ -74,6 +85,18 @@ async function takeChallengeCookie() {
   const token = jar.get(WEBAUTHN_COOKIE)?.value;
   jar.delete(WEBAUTHN_COOKIE);
   return token;
+}
+// A sign-in waiting for its second step (lib/two-factor.ts): a signed
+// token, not a session, for five minutes and only for /api/auth.
+const PENDING_COOKIE = "flowplan_2fa";
+async function rememberPending(token: string) {
+  (await cookies()).set(PENDING_COOKIE, token, {
+    httpOnly: true,
+    secure: appUrl().startsWith("https:"),
+    sameSite: "strict",
+    path: "/api/auth",
+    maxAge: PENDING_MAX_AGE,
+  });
 }
 async function signIn(userId: string, groups: string[], remember = false) {
   const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
@@ -175,7 +198,8 @@ async function handleGET(
       // Confirmed: signed in right away in the browser that signed up;
       // elsewhere the person signs in themselves.
       const jar = await cookies();
-      const here = !!userId && jar.get("flowplan_verify")?.value === userId;
+      // An account with an authenticator app always signs in with its code.
+      const here = !!userId && jar.get("flowplan_verify")?.value === userId && !totpEnabled(userId);
       if (userId && here) {
         jar.delete("flowplan_verify");
         await signIn(userId, localGroups(userId));
@@ -300,7 +324,7 @@ async function handlePOST(
       const say = translate(locale),
         user = await currentUser(),
         challenge = (await req.formData().catch(() => null))?.get("challenge");
-      if (!user || user.demo || !isDesktopChallenge(challenge))
+      if (!user || user.demo || user.twoFactorSetup || !isDesktopChallenge(challenge))
         return desktopPage(locale, {
           title: say("Anmeldung abgelaufen", "Sign-in expired"),
           text: say("Starte die Anmeldung noch einmal in der Flowplan-App.", "Start signing in again from the Flowplan app."),
@@ -355,7 +379,20 @@ async function handlePOST(
     if (action === "password") {
       const input = await body();
       const { userId, groups } = await passwordLogin(input, clientAddress(req.headers), locale);
+      // With an authenticator app, a code follows (action "totp-login").
+      const next = afterPassword(userId, wantsRemember(input), locale);
+      if ("pending" in next) {
+        await rememberPending(next.pending);
+        return NextResponse.json({ ok: true, twoFactor: true });
+      }
       await signIn(userId, groups, wantsRemember(input));
+      return NextResponse.json({ ok: true });
+    }
+    if (action === "totp-login") {
+      const jar = await cookies();
+      const result = completeSignIn(jar.get(PENDING_COOKIE)?.value, await body(), clientAddress(req.headers), locale);
+      jar.delete(PENDING_COOKIE);
+      await signIn(result.userId, result.groups, result.remember);
       return NextResponse.json({ ok: true });
     }
     if (action === "reset-request") {
@@ -377,6 +414,21 @@ async function handlePOST(
       const { userId, groups } = await passkeyLogin(await takeChallengeCookie(), input, clientAddress(req.headers), locale);
       await signIn(userId, groups, wantsRemember(input));
       return NextResponse.json({ ok: true });
+    }
+    // ---- The signed-in person's authenticator app (also while the
+    // instance waits for it to be set up) ----
+    if (["two-factor", "totp-setup", "totp-confirm", "totp-disable", "totp-recovery"].includes(action)) {
+      const user = await currentUser();
+      if (!user || user.demo) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
+      if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
+      const address = clientAddress(req.headers);
+      if (action === "totp-setup") return NextResponse.json(startTotpSetup(user, locale), { headers: { "Cache-Control": "no-store" } });
+      if (action === "totp-confirm")
+        return NextResponse.json({ ...confirmTotpSetup(user.id, await body(), locale), status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
+      if (action === "totp-recovery")
+        return NextResponse.json({ ...(await regenerateRecoveryCodes(user.id, await body(), address, locale)), status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
+      if (action === "totp-disable") return NextResponse.json({ status: await disableTotp(user.id, await body(), address, locale) });
+      return NextResponse.json({ status: twoFactorStatus(user.id) });
     }
     // ---- The signed-in person's password and passkeys ----
     if (["profile", "password-change", "passkey-register-options", "passkey-register", "passkey-delete", "passkeys"].includes(action)) {

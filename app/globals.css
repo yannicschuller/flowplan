@@ -17603,3 +17603,134 @@ h3 .block-reactions {
   font-size: 12px;
   font-weight: 400;
 }
+
+/* ---------- Share links: password and end date (components/link-protection.tsx) ---------- */
+.link-protection-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 6px;
+}
+.link-protection {
+  margin: 8px 0 10px;
+  font-size: 13px;
+}
+.link-protection summary {
+  cursor: pointer;
+  color: var(--secondary);
+}
+.link-protection-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+.link-protection-body label {
+  display: grid;
+  gap: 4px;
+  color: var(--secondary);
+}
+.link-protection-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.link-protection-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+/* The page in front of a protected or expired link (components/public-page.tsx). */
+.share-gate-card {
+  max-width: 420px;
+  margin: 10vh auto 0;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.share-gate-card h1 {
+  margin: 0 0 10px;
+  font-size: 22px;
+}
+.share-password-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.share-password-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.share-password-form .button {
+  justify-self: start;
+}
+
+/* ---------- Two-factor sign-in (components/two-factor.tsx) ---------- */
+.two-factor,
+.totp-setup,
+.totp-enabled {
+  display: grid;
+  gap: 10px;
+}
+.two-factor p {
+  margin: 0;
+}
+.two-factor label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.totp-enabled p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.totp-qr {
+  width: 200px;
+  height: 200px;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.totp-secret,
+.recovery-code-list code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.recovery-codes {
+  display: grid;
+  gap: 10px;
+}
+.recovery-code-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+  margin: 0;
+  padding: 12px 12px 12px 34px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.two-factor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.two-factor-required {
+  text-align: left;
+}
+.two-factor-required .two-factor {
+  margin: 8px 0 14px;
+}
+.two-factor-required .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}

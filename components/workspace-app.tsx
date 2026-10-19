@@ -135,6 +135,7 @@ import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
 import Admin from "./admin";
 import { ShareLinks } from "./share-links";
+import { LinkProtection, ProtectionChips } from "./link-protection";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import { MyTasks } from "./my-tasks";
@@ -214,6 +215,8 @@ type PageData = DatabaseData & {
     count: number;
     allowCopy?: boolean;
     publishedAt?: string | null;
+    password?: boolean;
+    expiresAt?: number | null;
   };
   page: Page;
   role: Role;
@@ -3295,6 +3298,18 @@ export default function WorkspaceApp({
                     />
                     {t("Besucher dürfen eine Kopie in ihren Arbeitsbereich übernehmen", "Visitors may copy it into their workspace")}
                   </label>
+                  <ProtectionChips password={!!data.publication?.password} expiresAt={data.publication?.expiresAt ?? null} />
+                  {editable && (
+                    <LinkProtection
+                      label={t("öffentlichen Link", "public link")}
+                      password={!!data.publication?.password}
+                      expiresAt={data.publication?.expiresAt ?? null}
+                      onSave={(patch) => act({ action: "publication.protect", pageId, ...patch })}
+                    />
+                  )}
+                  {data.publication?.password && (
+                    <p className="muted">{t("Mit Passwort kann die Veröffentlichung nicht kopiert werden.", "With a password the publication cannot be copied.")}</p>
+                  )}
                   <p className="muted">
                     {t("Veröffentlichte Seiten:", "Published pages:")}{" "}{data.publication?.count || 1}{t(". Dokumente, Datensatzinhalte und darin verlinkte Uploads sind öffentlich. Kommentare und Mitgliederangaben bleiben privat.", ". Documents, record contents and uploads linked in them are public. Comments and member details stay private.")}
                   </p>

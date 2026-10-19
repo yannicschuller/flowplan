@@ -14,7 +14,8 @@ import type { LegalLinks } from "@/lib/legal-links";
 import { LegalFooter } from "./legal-footer";
 
 // "confirm": registered, waiting for the link from the e-mail.
-type Mode = "signin" | "register" | "forgot" | "confirm";
+// "totp": the password was right, a code from the authenticator app follows.
+type Mode = "signin" | "register" | "forgot" | "confirm" | "totp";
 type Props = Partial<LoginOptions> & {
   error?: string;
   // "confirmed": the address was confirmed from another browser.
@@ -57,7 +58,9 @@ export default function Login({
     [notice, setNotice] = useState(
       initialNotice === "confirmed" ? t("Deine E-Mail-Adresse ist bestätigt – melde dich jetzt an.", "Your e-mail address is confirmed – sign in now.") : "",
     ),
-    [pendingEmail, setPendingEmail] = useState("");
+    [pendingEmail, setPendingEmail] = useState(""),
+    // Second step: a recovery code instead of the code from the app.
+    [recovery, setRecovery] = useState(false);
   const [loginUrl, setLoginUrl] = useState("/api/auth/login");
   const [passkeys, setPasskeys] = useState(false);
   // "Stay signed in on this device": for password, passkey and SSO alike.
@@ -109,7 +112,18 @@ export default function Login({
     const form = new FormData(event.currentTarget);
     if (mode === "signin")
       void run("password", async () => {
-        await post("password", { email: field(form, "email"), password: field(form, "password"), remember: stay });
+        const result = await post("password", { email: field(form, "email"), password: field(form, "password"), remember: stay });
+        if (result?.twoFactor) {
+          setBusy("");
+          setRecovery(false);
+          setMode("totp");
+          return;
+        }
+        done();
+      });
+    else if (mode === "totp")
+      void run("totp", async () => {
+        await post("totp-login", { code: field(form, "code") });
         done();
       });
     else if (mode === "register")
@@ -164,7 +178,7 @@ export default function Login({
       ? firstAccount
         ? [t("Willkommen bei", "Welcome to"), t("deinem Flowplan.", "your Flowplan.")]
         : [t("Konto", "Create your"), t("erstellen.", "account.")]
-      : mode === "confirm"
+      : mode === "confirm" || mode === "totp"
         ? [t("Fast", "Almost"), t("geschafft.", "there.")]
         : mode === "forgot"
         ? [t("Passwort", "Forgot your"), t("vergessen?", "password?")]
@@ -223,6 +237,12 @@ export default function Login({
           </div>
         ) : mode === "forgot" ? (
           <p>{t("Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.", "We send you a link to set a new password.")}</p>
+        ) : mode === "totp" ? (
+          <p>
+            {recovery
+              ? t("Gib einen deiner Wiederherstellungscodes ein. Jeder funktioniert einmal.", "Enter one of your recovery codes. Each works once.")
+              : t("Gib den sechsstelligen Code aus deiner Authenticator-App ein.", "Enter the six-digit code from your authenticator app.")}
+          </p>
         ) : (
           <p>
             {t("Deine Notizen, Projekte und dein Team.", "Your notes, projects and team.")}
@@ -245,7 +265,37 @@ export default function Login({
             {notice}
           </div>
         )}
-        {localLogin && mode !== "confirm" && (
+        {localLogin && mode === "totp" && (
+          <form className="login-form" onSubmit={submit}>
+            <label>
+              {recovery ? t("Wiederherstellungscode", "Recovery code") : t("Code aus der App", "Code from the app")}
+              <input
+                key={recovery ? "recovery" : "code"}
+                name="code"
+                required
+                autoFocus
+                autoComplete={recovery ? "off" : "one-time-code"}
+                inputMode={recovery ? "text" : "numeric"}
+                pattern={recovery ? undefined : "[0-9 ]{6,7}"}
+                maxLength={recovery ? 20 : 7}
+                placeholder={recovery ? "xxxxx-xxxxx" : "123456"}
+              />
+            </label>
+            <button className="button primary wide" disabled={!!busy}>
+              {busy === "totp" ? <SpinnerGap className="spin" /> : null}
+              {t("Bestätigen", "Confirm")}
+            </button>
+            <div className="login-options">
+              <button type="button" className="text-button" onClick={() => setRecovery(!recovery)}>
+                {recovery ? t("Code aus der App verwenden", "Use a code from the app") : t("Wiederherstellungscode verwenden", "Use a recovery code")}
+              </button>
+              <button type="button" className="text-button" onClick={() => switchTo("signin")}>
+                {t("Zurück", "Back")}
+              </button>
+            </div>
+          </form>
+        )}
+        {localLogin && mode !== "confirm" && mode !== "totp" && (
           <form className="login-form" onSubmit={submit}>
             {mode === "register" && (
               <label>
@@ -351,7 +401,7 @@ export default function Login({
                   </button>
                 </>
               )
-            ) : !firstAccount || mode === "forgot" || mode === "confirm" ? (
+            ) : mode !== "totp" && (!firstAccount || mode === "forgot" || mode === "confirm") ? (
               <>
                 {t("Schon ein Konto?", "Already have an account?")}{" "}
                 <button type="button" className="text-button" onClick={() => switchTo("signin")}>

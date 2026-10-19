@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 34) return;
+  if (globalDb.flowplanSchema === 35) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -522,7 +522,19 @@ function migrate(d: DatabaseSync) {
   // only reads the widget summary; push goes through push_subscriptions with
   // an "expo:" endpoint (lib/mobile-devices.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS mobile_devices(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,session_token TEXT NOT NULL REFERENCES sessions(token) ON DELETE CASCADE,platform TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',app_version TEXT NOT NULL DEFAULT '',token_hash TEXT NOT NULL UNIQUE,push_subscription_id TEXT REFERENCES push_subscriptions(id) ON DELETE SET NULL,created_at INTEGER NOT NULL,last_seen_at INTEGER NOT NULL,UNIQUE(user_id,installation_id));`);
-  globalDb.flowplanSchema = 34;
+  // Links with their own permissions and publications: optional password
+  // (scrypt hash) and end (ms since epoch).
+  for (const table of ["share_links", "publications"]) {
+    const columns = d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!columns.some((c) => c.name === "password_hash")) d.exec(`ALTER TABLE ${table} ADD COLUMN password_hash TEXT`);
+    if (!columns.some((c) => c.name === "expires_at")) d.exec(`ALTER TABLE ${table} ADD COLUMN expires_at INTEGER`);
+  }
+  // Two-factor sign-in with an authenticator app (lib/two-factor.ts): the
+  // secret sealed with lib/secret-box.ts, the last accepted time step (no
+  // code twice) and one-time recovery codes, stored as hashes.
+  d.exec(`CREATE TABLE IF NOT EXISTS user_totp(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,secret TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,last_step INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,enabled_at INTEGER);
+    CREATE TABLE IF NOT EXISTS recovery_codes(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,code_hash TEXT NOT NULL,used_at INTEGER,PRIMARY KEY(user_id,code_hash));`);
+  globalDb.flowplanSchema = 35;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

@@ -3,6 +3,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import type { ShareLink } from "@/lib/share-links";
+import { LinkProtection, ProtectionChips, fromLocalInput } from "./link-protection";
 export function ShareLinks({
   pageId,
   links,
@@ -16,6 +17,8 @@ export function ShareLinks({
   const [name, setName] = useState(""),
     [role, setRole] = useState("viewer"),
     [children, setChildren] = useState(false),
+    [password, setPassword] = useState(""),
+    [expiry, setExpiry] = useState(""),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   const labels = {
@@ -34,8 +37,14 @@ export function ShareLinks({
         name,
         role,
         includeChildren: children,
+        ...(password ? { password } : {}),
+        ...(expiry ? { expiresAt: fromLocalInput(expiry) } : {}),
       });
-      if (result) setName("");
+      if (result) {
+        setName("");
+        setPassword("");
+        setExpiry("");
+      }
     } finally {
       setBusy(false);
     }
@@ -53,6 +62,7 @@ export function ShareLinks({
             {labels[link.role]} · {link.count}{" "}
             {link.count === 1 ? t("Seite", "page") : t("Seiten", "pages")}
           </span>
+          <ProtectionChips password={link.password} expiresAt={link.expires_at} />
           <div className="copy-link">
             <input
               aria-label={t(`Link ${link.name}`, `Link ${link.name}`)}
@@ -75,6 +85,13 @@ export function ShareLinks({
               {t("Kopieren", "Copy")}
             </button>
           </div>
+          <LinkProtection
+            label={link.name}
+            password={link.password}
+            expiresAt={link.expires_at}
+            disabled={busy}
+            onSave={(patch) => act({ action: "share.protect", pageId, token: link.token, ...patch })}
+          />
           <button
             className="button danger"
             disabled={busy}
@@ -127,10 +144,32 @@ export function ShareLinks({
           />
           {t("Aktuell vorhandene Unterseiten einschließen", "Include current sub-pages")}
         </label>
+        <label>
+          {t("Passwort (optional)", "Password (optional)")}
+          <input
+            type="password"
+            autoComplete="new-password"
+            aria-label={t("Passwort für den neuen Link", "Password for the new link")}
+            minLength={6}
+            maxLength={200}
+            placeholder={t("Ohne Passwort", "No password")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        <label>
+          {t("Läuft ab am (optional)", "Expires on (optional)")}
+          <input
+            type="datetime-local"
+            aria-label={t("Ablaufdatum für den neuen Link", "Expiry date for the new link")}
+            value={expiry}
+            onChange={(e) => setExpiry(e.target.value)}
+          />
+        </label>
         <p className="muted">
           {t("Neue Unterseiten werden nicht automatisch freigegeben. Jeder Link lässt sich einzeln widerrufen.", "New sub-pages are not shared automatically. Every link can be revoked on its own.")}
         </p>
-        <button className="button primary" disabled={busy || !name.trim()}>
+        <button className="button primary" disabled={busy || !name.trim() || (password.length > 0 && password.length < 6)}>
           {t("Freigabelink erstellen", "Create share link")}
         </button>
       </form>

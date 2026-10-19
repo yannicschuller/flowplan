@@ -1,6 +1,6 @@
 import { serverT } from "@/lib/i18n-server";
 import { PublicLegalFooter } from "@/components/legal-footer-server";
-import { currentUser, HttpError } from "@/lib/auth";
+import { activeUser, HttpError } from "@/lib/auth";
 import { getForm } from "@/lib/forms";
 import FormClient from "@/components/form-client";
 import { surveyClosed } from "@/lib/survey";
@@ -14,7 +14,7 @@ export default async function FormPage({
   const t = await serverT();
   const { token } = await params;
   try {
-    const form = getForm(token, await currentUser());
+    const form = getForm(token, await activeUser());
     const survey = form.config.survey?.enabled ? form.config.survey : null;
     const state = survey ? surveyClosed(survey, one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token)?.n || 0) : null;
     return (

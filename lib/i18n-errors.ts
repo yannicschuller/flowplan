@@ -4,6 +4,19 @@ import { translate, type Locale } from "./i18n";
 import { PAGE_LOCALE } from "./locale-tag";
 
 const exact: Record<string, string> = {
+  // Share links with password and end date, two-factor sign-in.
+  "Bitte richte zuerst die Zwei-Faktor-Anmeldung ein.": "Please set up two-factor sign-in first.",
+  "Dieser Link ist abgelaufen.": "This link has expired.",
+  "Dieser Link ist mit einem Passwort geschützt.": "This link is protected with a password.",
+  "Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.": "Too many attempts. Please try again in 15 minutes.",
+  "Ungültige Anfrage.": "Invalid request.",
+  "Link nicht gefunden.": "Link not found.",
+  "Das Passwort stimmt nicht.": "The password is wrong.",
+  "Das Ablaufdatum muss in der Zukunft liegen.": "The expiry date must be in the future.",
+  "Das Ablaufdatum liegt zu weit in der Zukunft.": "The expiry date is too far in the future.",
+  "Diese Seite ist nicht veröffentlicht.": "This page is not published.",
+  "Der Schlüssel für die Zwei-Faktor-Anmeldung fehlt auf dem Server. Ein Wiederherstellungscode funktioniert weiter; sonst kann die Administration sie zurücksetzen.":
+    "The key for two-factor sign-in is missing on the server. A recovery code still works; otherwise the administrators can reset it.",
   "Ungültige Eingabe.": "Invalid input.",
   "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.": "Not available in the demo. Sign up to use it.",
   "Kein Journal.": "Not a journal.",
@@ -520,6 +533,7 @@ const exact: Record<string, string> = {
   "Push-Testbenachrichtigung": "Push test notification",
 };
 const patterns: [RegExp, string][] = [
+  [/^Das Passwort braucht mindestens (\d+) Zeichen\.$/, "The password needs at least $1 characters."],
   [/^Verschlüsselt mit dem Schlüssel (\S+), der hier nicht eingerichtet ist\.$/, "Encrypted with key $1, which is not set up here."],
   [/^(\S+) muss 32 Bytes lang sein \(base64, z\. B\. aus „openssl rand -base64 32“\)\.$/, "$1 must be 32 bytes long (base64, e.g. from “openssl rand -base64 32”)."],
   [/^FLOWPLAN_ENCRYPTION_KEY_FILE kann nicht gelesen werden: (.+)$/, "FLOWPLAN_ENCRYPTION_KEY_FILE cannot be read: $1"],

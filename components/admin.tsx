@@ -74,7 +74,7 @@ type AdminData = {
   }[];
   settings: InstanceSettings;
   localLogin?: boolean;
-  localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number }>;
+  localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean }>;
   mail: {
     configured: boolean;
     host: string | null;
@@ -609,7 +609,7 @@ function UserRow({
   user: User;
   usage?: NonNullable<AdminData["userUsage"]>[number];
   settings: InstanceSettings;
-  local?: { admin: boolean; verified: boolean; passkeys: number };
+  local?: { admin: boolean; verified: boolean; passkeys: number; totp?: boolean };
   resetLink: string | null;
   act: (body: Record<string, unknown>) => Promise<unknown>;
   onResetLink: (url: string) => void;
@@ -654,6 +654,14 @@ function UserRow({
           {local && (
             <span className="status-chip muted-chip" title={t("Meldet sich mit E-Mail und Passwort an", "Signs in with email and password")}>
               E-Mail{local.passkeys ? ` · ${local.passkeys} Passkey` : ""}
+            </span>
+          )}
+          {local && (
+            <span
+              className={`status-chip ${local.totp || local.passkeys ? "" : "muted-chip"}`}
+              title={t("Zwei-Faktor-Anmeldung: Authenticator-App oder Passkey", "Two-factor sign-in: authenticator app or passkey")}
+            >
+              {local.totp ? t("2FA an", "2FA on") : local.passkeys ? t("2FA per Passkey", "2FA via passkey") : t("2FA aus", "2FA off")}
             </span>
           )}
           {usage && (
@@ -721,6 +729,19 @@ function UserRow({
                 >
                   {t("Link zum Zurücksetzen", "Reset link")}
                 </button>
+                {local.totp && (
+                  <button
+                    type="button"
+                    className="button compact"
+                    title={t("Etwa bei verlorenem Telefon. Die Person wird per E-Mail informiert.", "E.g. for a lost phone. The person is told by e-mail.")}
+                    onClick={() => {
+                      if (confirm(t(`Authenticator-App für ${u.name} ausschalten? Danach meldet sich ${u.name} nur mit Passwort (oder Passkey) an und kann sie neu einrichten.`, `Turn off the authenticator app for ${u.name}? ${u.name} then signs in with the password (or a passkey) and can set it up again.`)))
+                        void act({ action: "admin.twoFactorReset", userId: u.id });
+                    }}
+                  >
+                    {t("Zwei-Faktor zurücksetzen", "Reset two-factor")}
+                  </button>
+                )}
               </>
             )}
             <button type="button" className="button compact" onClick={() => act({ action: "admin.revoke", userId: u.id })}>
@@ -859,6 +880,22 @@ function InstanceSettingsForm({
             checked={!!draft.allowSignup}
             onChange={(allowSignup) => set({ allowSignup })}
           />
+        )}
+        {localLogin && (
+          <SettingRow
+            id="instance-two-factor"
+            label={t("Zwei-Faktor-Anmeldung verlangen", "Require two-factor sign-in")}
+            description={t(
+              "Für Konten mit E-Mail und Passwort: Authenticator-App oder Passkey. Wer noch keinen zweiten Faktor hat, richtet ihn direkt nach der Anmeldung ein. SSO-Konten regelt der Anbieter.",
+              "For accounts with email and password: authenticator app or passkey. Whoever has no second factor yet sets one up right after signing in. SSO accounts are handled by the provider.",
+            )}
+          >
+            <Select id="instance-two-factor" value={draft.twoFactor || "off"} onChange={(e) => set({ twoFactor: e.target.value as InstanceSettings["twoFactor"] })}>
+              <option value="off">{t("Nicht verlangen", "Not required")}</option>
+              <option value="admins">{t("Nur für Admins", "Only for admins")}</option>
+              <option value="all">{t("Für alle lokalen Konten", "For all local accounts")}</option>
+            </Select>
+          </SettingRow>
         )}
         <SwitchRow
           label={t("Alle dürfen Arbeitsbereiche anlegen", "Everyone may create workspaces")}
