@@ -886,7 +886,7 @@ export default function Settings({
               <section className="settings-section">
                 <h2>{t("Notion-, AppFlowy- oder Markdown-Export importieren", "Import a Notion, AppFlowy or Markdown export")}</h2>
                 <p>
-                  {t("ZIP mit Markdown- und CSV-Dateien: Markdown wird zu Seiten, CSV zu Datenbanken, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Maximal 100 MB, 500 Seiten und 5.000 Einträge je Tabelle.", "A ZIP with Markdown and CSV files: Markdown becomes pages, CSV databases, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. At most 100 MB, 500 pages and 5,000 records per table.")}
+                  {t("ZIP mit Markdown- und CSV-Dateien: Markdown wird zu Seiten, CSV zu Datenbanken, Excalidraw- und draw.io-Zeichnungen zu Whiteboards, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Maximal 100 MB, 500 Seiten und 5.000 Einträge je Tabelle.", "A ZIP with Markdown and CSV files: Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. At most 100 MB, 500 pages and 5,000 records per table.")}
                 </p>
                 <label>
                   {t("Zielbereich", "Target space")}
