@@ -196,6 +196,11 @@ test("one record is exported with frontmatter, and a re-import updates it", asyn
   assert.match(text, /\n# Heating – maintenance\n/);
   assert.doesNotMatch(text, /\| Eigenschaft/);
   await assert.rejects(() => exportMarkdown(anna, { pageId: notes, format: "markdown", includeSubpages: false, rowId: id() }), /fehlt/);
+  // For a prompt, values from other databases stay out (they may be closed to the AI).
+  assert.match(text, /Area: House|Area:\n  - House/);
+  const forAi = (await exportMarkdown(anna, { pageId: notes, format: "markdown", includeSubpages: false, rowId: row.id, forAi: true })).bytes.toString("utf8");
+  assert.doesNotMatch(forAi, /House/);
+  assert.match(forAi, /PARA: Resource/);
   // Edited outside and imported again: the same record changes.
   const edited = Buffer.from(text.replace("PARA: Resource", "PARA: Project").replace("**autumn**", "**spring**"));
   const entries = new Map([["Heating.md", edited]]);

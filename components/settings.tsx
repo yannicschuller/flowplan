@@ -673,7 +673,12 @@ export default function Settings({
                       {t(
                         "Ordne Gruppen aus deinem Identitätsanbieter einer Rolle in diesem Arbeitsbereich und/oder einer Gruppe zu. Bei jeder SSO-Anmeldung kommen passende Personen hinzu; wer die SSO-Gruppe nicht mehr hat, verliert, was die Zuordnung gegeben hat. Von Hand hinzugefügte Mitglieder bleiben unberührt, der letzte Eigentümer bleibt immer.",
                         "Map groups from your identity provider to a role in this workspace and/or to a group. At every SSO sign-in matching people are added; whoever no longer has the SSO group loses what the mapping gave. Members added by hand stay untouched, the last owner always stays.",
-                      )}
+                      )}{" "}
+                      {!boot.user.isAdmin &&
+                        t(
+                          "Zuordnungen legt die Administration der Instanz an.",
+                          "Mappings are set up by the instance's administrators.",
+                        )}
                     </p>
                     <SsoMappings
                       mappings={settings?.ssoMappings || []}
@@ -681,6 +686,7 @@ export default function Settings({
                       workspaceId={boot.workspace.id}
                       onAdd={(_, m) => act({ action: "sso.mapping.add", ...m })}
                       onDelete={(_, mappingId) => act({ action: "sso.mapping.delete", id: mappingId })}
+                      readOnly={!boot.user.isAdmin}
                     />
                   </section>
                 )}

@@ -22,13 +22,25 @@ function account(name: string, local = false) {
 const role = (wid: string, uid: string) => one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", wid, uid)?.role ?? null;
 const inGroup = (gid: string, uid: string) => !!one("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", gid, uid);
 
-const owner = account("owner");
+// The owner here also administers the instance: only admins map SSO groups.
+const owner = { ...account("owner"), isAdmin: true } as Identity;
 const wid = createWorkspace(owner.id, "Firma");
 const marketing = (command(owner, { action: "group.create", workspaceId: wid, name: "Marketing" }) as { id: string }).id;
 command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "staff", role: "viewer" });
 command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "editors", role: "editor" });
 command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "mkt", groupId: marketing });
 command(owner, { action: "sso.mapping.add", workspaceId: wid, ssoGroup: "leads", role: "owner", groupId: marketing });
+
+test("only owners who administer the instance map SSO groups, never in the demo", () => {
+  // Anyone may create a workspace: a mapping there would pull in people of
+  // the whole instance and show their addresses.
+  const mallory = account("mallory");
+  const own = createWorkspace(mallory.id, "Eigener");
+  assert.throws(() => command(mallory, { action: "sso.mapping.add", workspaceId: own, ssoGroup: "staff", role: "viewer" }), /Administrator/);
+  assert.equal(one("SELECT 1 FROM sso_mappings WHERE workspace_id=?", own), undefined);
+  const demo = { ...mallory, demo: true, isAdmin: true } as unknown as Identity;
+  assert.throws(() => command(demo, { action: "sso.mapping.add", workspaceId: own, ssoGroup: "staff", role: "viewer" }), /Demo/);
+});
 
 test("only owners map SSO groups; a mapping needs a role or a group", () => {
   const ed = account("ed");

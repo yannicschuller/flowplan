@@ -39,6 +39,9 @@ export type MarkdownExportOptions = {
   // ZIP only: comments (<file>.comments.md) and earlier versions
   // (<file>.versions/<date>.md) of every page and record.
   history?: boolean;
+  // For a prompt (lib/ai/content.ts): no values from other databases –
+  // relations, rollups and formulas may show data the AI may not read.
+  forAi?: boolean;
 };
 const unavailable = () => ct("Nicht verfügbar", "Not available"),
   recordWord = () => ct("Eintrag", "Record");
@@ -462,6 +465,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       const list = (Array.isArray(value) ? value : value === null || value === undefined || value === "" ? [] : [value]) as unknown[];
       let out: FrontmatterValue;
       if (value === "#ACCESS") continue;
+      if (options.forAi && ["relation", "rollup", "formula"].includes(field.type)) continue;
       if (field.type === "checkbox") out = !!value;
       else if (field.type === "number") out = typeof value === "number" && Number.isFinite(value) ? value : null;
       else if (field.type === "multiselect") out = list.map(String);

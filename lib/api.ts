@@ -2276,12 +2276,16 @@ export function command(
         break;
       }
       // SSO groups → membership and groups of this workspace (lib/sso-mappings.ts).
+      // Only instance admins map SSO groups: a mapping brings people of the
+      // whole instance into a workspace (and shows their addresses there).
       case "sso.mapping.add":
         requireMember(user, wid(), "owner");
+        requireAdmin(user);
         result = addSsoMapping(wid(), b);
         break;
       case "sso.mapping.delete":
         requireMember(user, wid(), "owner");
+        requireAdmin(user);
         deleteSsoMapping(wid(), b.id);
         break;
       // The same for any workspace, from the administration.

@@ -78,10 +78,21 @@ export function startTotpSetup(user: Pick<User, "id">, locale: Locale) {
     sealSecret(secret, aad(user.id)),
     Date.now(),
   );
-  const issuer = instanceSettings().name || "Flowplan";
-  const uri = otpauthUri(secret, local.email, issuer);
-  const modules = qrModules(uri);
-  return { secret, uri, qr: { size: modules.length, path: qrPath(modules) } };
+  return { secret, ...setupQr(secret, local.email, instanceSettings().name || "Flowplan") };
+}
+
+// The link for the app as a QR code. A long instance name is shortened until
+// the link fits; if even then it doesn't (a very long address), the app is
+// set up with the key shown as text.
+function setupQr(secret: string, email: string, issuer: string) {
+  for (const name of [issuer, issuer.slice(0, 24).trim(), "Flowplan"]) {
+    const uri = otpauthUri(secret, email, name);
+    try {
+      const modules = qrModules(uri);
+      return { uri, qr: { size: modules.length, path: qrPath(modules) } as { size: number; path: string } | null };
+    } catch {}
+  }
+  return { uri: otpauthUri(secret, email, "Flowplan"), qr: null };
 }
 
 // The first code from the app turns it on and hands out the recovery codes.

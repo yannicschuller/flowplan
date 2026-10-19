@@ -9,7 +9,7 @@ process.env.FLOWPLAN_DATA_DIR = dataDir;
 process.env.APP_URL = "https://flowplan.example.test";
 delete process.env.FLOWPLAN_ENCRYPTION_KEY;
 delete process.env.FLOWPLAN_SECRETS_KEY;
-const { one, run, all } = await import("../lib/db");
+const { one, run, all, id } = await import("../lib/db");
 const auth = await import("../lib/local-auth");
 const { hash, identityFromToken, adminGroup } = await import("../lib/auth");
 const totp = await import("../lib/totp");
@@ -91,7 +91,7 @@ test("setting up: QR code, confirmation with a code, recovery codes shown once a
   assert.equal(policy.totpEnabled(ana.id), false);
   const setup = tf.startTotpSetup({ id: ana.id }, "de");
   assert.match(setup.uri, /^otpauth:\/\/totp\/Flowplan:ana%40example\.test\?secret=/);
-  assert.ok(setup.qr.size >= 21 && setup.qr.path.startsWith("M"));
+  assert.ok(setup.qr && setup.qr.size >= 21 && setup.qr.path.startsWith("M"));
   const stored = one<{ secret: string; enabled: number }>("SELECT secret,enabled FROM user_totp WHERE user_id=?", ana.id)!;
   assert.equal(stored.enabled, 0);
   assert.ok(!stored.secret.includes(setup.secret), "the secret is encrypted at rest");
@@ -237,5 +237,25 @@ test("administrators reset the app of an account (lost phone), noted and told by
     assert.equal(policy.totpEnabled(hanna.id), true);
   } finally {
     delete process.env.SMTP_HOST;
+  }
+});
+
+test("a long instance name and address still give a QR code, a very long one the key as text", async () => {
+  run("INSERT INTO instance_settings(key,value) VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "Wiki der Stadtwerke Musterstadt GmbH – Abteilung Netze");
+  try {
+    // Local accounts straight in the database (sign-up is closed by now).
+    const local = (email: string) => {
+      const uid = id();
+      run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, `local:${uid}`, "Lang", email);
+      run("INSERT INTO local_accounts(user_id,email,password_hash,email_verified,created_at) VALUES(?,?,?,1,?)", uid, email, "x", Date.now());
+      return uid;
+    };
+    const setup = tf.startTotpSetup({ id: local("vorname.nachname.mit.langem.namen@abteilung-netze.example.test") }, "de");
+    assert.ok(setup.qr && setup.qr.size >= 21, "shortened issuer fits");
+    const plain = tf.startTotpSetup({ id: local(`${"x".repeat(180)}@example.test`) }, "de");
+    assert.equal(plain.qr, null);
+    assert.match(plain.secret, /^[A-Z2-7]+$/);
+  } finally {
+    run("DELETE FROM instance_settings WHERE key='name'");
   }
 });

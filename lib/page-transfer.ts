@@ -75,5 +75,11 @@ export function transferPages(
     toWorkspace,
     ...ids,
   );
+  // Stored vectors of the pages and their records (semantic search) follow.
+  run(
+    `UPDATE ai_embeddings SET workspace_id=? WHERE page_id IN (${placeholders})`,
+    toWorkspace,
+    ...ids,
+  );
   audit(user.id, "page.transfer", ids[0], toWorkspace);
 }

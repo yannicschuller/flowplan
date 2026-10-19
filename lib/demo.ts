@@ -38,6 +38,8 @@ const BLOCKED = new Set([
   "calendar.feed",
   "token.create",
   "webhook.delete",
+  "sso.mapping.add",
+  "sso.mapping.delete",
   // Would e-mail people outside the demo.
   "ticket.reply",
 ]);

@@ -20,6 +20,7 @@ export async function aiPageMarkdown(user: Identity, page: Page, rowId?: string 
     ...(rowId ? { rowId } : {}),
     format: "markdown",
     includeSubpages: false,
+    forAi: true,
   });
   const markdown = Buffer.from(bytes as Uint8Array).toString("utf8").trim();
   // A page's title heading goes separately (prompts name it).

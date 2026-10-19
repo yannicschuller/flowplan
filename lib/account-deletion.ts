@@ -36,6 +36,9 @@ const PERSONAL = [
   "row_favorites",
   "journal_unlocks",
   "passkeys",
+  // Two-factor: the sealed app secret and the recovery codes.
+  "user_totp",
+  "recovery_codes",
   "local_accounts",
   "mobile_devices",
   "sso_sources",
