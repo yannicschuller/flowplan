@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 34) return;
+  if (globalDb.flowplanSchema === 35) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -522,7 +522,14 @@ function migrate(d: DatabaseSync) {
   // only reads the widget summary; push goes through push_subscriptions with
   // an "expo:" endpoint (lib/mobile-devices.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS mobile_devices(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,installation_id TEXT NOT NULL,session_token TEXT NOT NULL REFERENCES sessions(token) ON DELETE CASCADE,platform TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',app_version TEXT NOT NULL DEFAULT '',token_hash TEXT NOT NULL UNIQUE,push_subscription_id TEXT REFERENCES push_subscriptions(id) ON DELETE SET NULL,created_at INTEGER NOT NULL,last_seen_at INTEGER NOT NULL,UNIQUE(user_id,installation_id));`);
-  globalDb.flowplanSchema = 34;
+  // SSO groups mapped to workspace membership and workspace groups, and what
+  // a mapping granted (target '' = membership, else the group's id), so that
+  // memberships added by hand are never removed (lib/sso-mappings.ts).
+  d.exec(`CREATE TABLE IF NOT EXISTS sso_mappings(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,sso_group TEXT NOT NULL,role TEXT CHECK(role IS NULL OR role IN ('owner','editor','viewer')),group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS sso_mappings_workspace ON sso_mappings(workspace_id);
+    CREATE TABLE IF NOT EXISTS sso_sources(workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,target TEXT NOT NULL,sso_group TEXT NOT NULL,PRIMARY KEY(workspace_id,user_id,target,sso_group));
+    CREATE INDEX IF NOT EXISTS sso_sources_user ON sso_sources(user_id);`);
+  globalDb.flowplanSchema = 35;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

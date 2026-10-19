@@ -37,6 +37,7 @@ import { documentKey, publishPresence, watchDocument } from "@/lib/document-live
 import { calendarFeed, hasCalendarFeed } from "@/lib/calendar-feed";
 import { listApiTokens } from "@/lib/api-tokens";
 import { createWebhook, listWebhooks, webhookEvents } from "@/lib/webhooks";
+import { listSsoMappings, ssoSources } from "@/lib/sso-mappings";
 import { mailStatus, sendTestMail } from "@/lib/mail";
 import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
 import { encryptExisting, encryptionOverview } from "@/lib/encryption-status";
@@ -425,6 +426,10 @@ async function handleGET(
           wid,
           wid,
         ),
+        // SSO groups mapped to membership and groups, and what they granted.
+        sso: !!process.env.OIDC_ISSUER,
+        ssoMappings: listSsoMappings(wid),
+        ssoSources: ssoSources(wid),
       });
     }
     if (path[0] === "search") {
@@ -716,6 +721,9 @@ async function handleGET(
         ),
         adminGroup: adminGroup(),
         oidcConfigured: !!process.env.OIDC_ISSUER,
+        // SSO group mappings of every workspace, with the groups to pick from.
+        ssoMappings: listSsoMappings(),
+        workspaceGroups: all("SELECT id,workspace_id,name FROM groups ORDER BY name"),
         metrics: instanceMetrics(),
         usage: workspaceUsage(),
         settings: instanceSettings(),

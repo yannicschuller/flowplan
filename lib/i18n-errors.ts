@@ -456,6 +456,8 @@ const exact: Record<string, string> = {
   "Die Adresse ist nicht erreichbar.": "The address is not reachable.",
   "Interne Adressen sind für Webhooks gesperrt (FLOWPLAN_WEBHOOK_ALLOW_PRIVATE).": "Internal addresses are blocked for webhooks (FLOWPLAN_WEBHOOK_ALLOW_PRIVATE).",
   "Höchstens 20 Webhooks pro Arbeitsbereich.": "At most 20 webhooks per workspace.",
+  "Höchstens 100 SSO-Zuordnungen pro Arbeitsbereich.": "At most 100 SSO mappings per workspace.",
+  "Diese SSO-Zuordnung gibt es schon.": "This SSO mapping already exists.",
   "Eine neue Version des Whiteboards ist verfügbar. Es wird neu geladen.": "A new version of the whiteboard is available. It is reloading.",
   "Nur Bereichs- oder Arbeitsbereichseigentümer dürfen diesen Bereich verwalten.": "Only space or workspace owners may manage this space.",
   "Der Name stimmt nicht mehr überein. Bitte neu laden und den aktuellen Namen bestätigen.": "The name no longer matches. Please reload and confirm the current name.",

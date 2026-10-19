@@ -2158,15 +2158,36 @@ export function command(
         if (role === "remove") {
           // Grants, groups and spaces go too: re-inviting starts afresh.
           removeFromWorkspace(target, wid(), user.id);
-        } else
+        } else {
           run(
             "UPDATE members SET role=? WHERE workspace_id=? AND user_id=?",
             role,
             wid(),
             target,
           );
+          // Changed by hand: no longer managed through SSO groups.
+          takeOverMembership(wid(), target);
+        }
         break;
       }
+      // SSO groups → membership and groups of this workspace (lib/sso-mappings.ts).
+      case "sso.mapping.add":
+        requireMember(user, wid(), "owner");
+        result = addSsoMapping(wid(), b);
+        break;
+      case "sso.mapping.delete":
+        requireMember(user, wid(), "owner");
+        deleteSsoMapping(wid(), b.id);
+        break;
+      // The same for any workspace, from the administration.
+      case "admin.ssoMapping.add":
+        requireAdmin(user);
+        result = addSsoMapping(wid(), b);
+        break;
+      case "admin.ssoMapping.delete":
+        requireAdmin(user);
+        deleteSsoMapping(wid(), b.id);
+        break;
       case "member.guest": {
         requireMember(user, wid(), "owner");
         const target = uuid.parse(b.userId),
@@ -2291,6 +2312,7 @@ export function command(
             gid,
             uid,
           );
+        takeOverMembership(g.workspace_id, uid, gid);
         break;
       }
       case "template.save": {
@@ -2670,6 +2692,7 @@ import { ensureRowDocument } from "./row-documents";
 import { createCalendarFeed, revokeCalendarFeed } from "./calendar-feed";
 import { createApiToken, revokeApiToken } from "./api-tokens";
 import { deleteWebhook, emitWebhook } from "./webhooks";
+import { addSsoMapping, deleteSsoMapping, takeOverMembership } from "./sso-mappings";
 import { dispatchMail, mailConfig, queueInviteMail } from "./mail";
 import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";

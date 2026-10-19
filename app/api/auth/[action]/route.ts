@@ -24,6 +24,7 @@ import {
 } from "@/lib/auth";
 import { one, run, transaction } from "@/lib/db";
 import { ensureWorkspace } from "@/lib/seed";
+import { syncSsoMemberships } from "@/lib/sso-mappings";
 import { command } from "@/lib/api";
 import { confirmsWithPassword, deleteOwnAccount } from "@/lib/account-deletion";
 export const runtime = "nodejs";
@@ -79,6 +80,8 @@ async function signIn(userId: string, groups: string[], remember = false) {
   const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
   acceptPendingInvites(userId);
+  // SSO accounts (e.g. through the desktop app): workspaces from SSO groups.
+  if (!isLocalAccount(userId)) syncSsoMemberships(userId, groups);
   ensureWorkspace(userId);
   // Groups from an SSO provider (e.g. the desktop app of an SSO account) are
   // checked again after SESSION_GROUPS_HOURS.
@@ -237,6 +240,9 @@ async function handleGET(
       // invitations and shared pages for it reach this account.
       run("UPDATE users SET email_verified=? WHERE id=?", profile.email_verified === true ? 1 : 0, user.id);
       acceptInvites(user, profile.email_verified === true);
+      // Workspaces and groups mapped to the person's SSO groups, before a
+      // personal workspace would be created for someone without one.
+      syncSsoMemberships(user.id, groups);
       ensureWorkspace(user.id);
       await issueSession(user.id, groups, undefined, { remember: !!f.remember, sso: true });
       return NextResponse.redirect(new URL(returnTo, appUrl()));
