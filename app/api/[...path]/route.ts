@@ -40,6 +40,7 @@ import { createWebhook, listWebhooks, webhookEvents } from "@/lib/webhooks";
 import { mailStatus, sendTestMail } from "@/lib/mail";
 import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
 import { encryptExisting, encryptionOverview } from "@/lib/encryption-status";
+import { pageShares } from "@/lib/page-share";
 import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -266,6 +267,9 @@ async function handleGET(
         { sessions: mySessions(user, (await cookies()).get(cookieName)?.value), rememberAvailable: !!rememberPolicy() },
         { headers: { "Cache-Control": "no-store" } },
       );
+    // Who has access to exactly this page (the share dialog).
+    if (path.length === 3 && path[0] === "pages" && path[2] === "shares")
+      return NextResponse.json(pageShares(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
     // What moving a page into a database would change (confirmation).
     if (path.length === 3 && path[0] === "pages" && path[2] === "to-record") {
       const plan = pageToRecordPlan(user, z.uuid().parse(path[1]));

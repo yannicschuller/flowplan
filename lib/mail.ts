@@ -141,6 +141,8 @@ export function queueInviteMail(input: {
   inviter: string;
   workspace: string;
   guest: boolean;
+  // A single shared page (lib/page-share.ts).
+  page?: string;
 }) {
   const url = appUrl();
   // The invited person's language if they have an account, else the inviter's.
@@ -148,17 +150,39 @@ export function queueInviteMail(input: {
   const locale = known ? userLocale(known.id) : contentLocale();
   const t = translate(locale);
   const role = input.guest ? t("als Gast ", "as a guest ") : "";
-  const subject = t(
-    `${input.inviter} hat dich ${role}zu „${input.workspace}“ eingeladen`,
-    `${input.inviter} invited you ${role}to “${input.workspace}”`,
-  );
-  const text = t(
-    `${input.inviter} hat dich ${role}zum Arbeitsbereich „${input.workspace}“ in ${instanceName()} eingeladen.\n\nMelde dich mit dieser E-Mail-Adresse an, dann ist der Arbeitsbereich sofort da:\n${url}\n`,
-    `${input.inviter} invited you ${role}to the workspace “${input.workspace}” in ${instanceName()}.\n\nSign in with this e-mail address and the workspace is there right away:\n${url}\n`,
-  );
+  const subject = input.page
+    ? t(`${input.inviter} hat „${input.page}“ mit dir geteilt`, `${input.inviter} shared “${input.page}” with you`)
+    : t(
+        `${input.inviter} hat dich ${role}zu „${input.workspace}“ eingeladen`,
+        `${input.inviter} invited you ${role}to “${input.workspace}”`,
+      );
+  // A shared page: only that page (and what is below it) becomes visible.
+  const what = input.page
+    ? t(`die Seite „${input.page}“ im Arbeitsbereich „${input.workspace}“`, `the page “${input.page}” in the workspace “${input.workspace}”`)
+    : null;
+  const text = what
+    ? t(
+        `${input.inviter} hat ${what} in ${instanceName()} mit dir geteilt.\n\nMelde dich mit dieser E-Mail-Adresse an (oder lege ein Konto an), dann ist die Seite sofort da:\n${url}\n`,
+        `${input.inviter} shared ${what} in ${instanceName()} with you.\n\nSign in with this e-mail address (or create an account) and the page is there right away:\n${url}\n`,
+      )
+    : t(
+        `${input.inviter} hat dich ${role}zum Arbeitsbereich „${input.workspace}“ in ${instanceName()} eingeladen.\n\nMelde dich mit dieser E-Mail-Adresse an, dann ist der Arbeitsbereich sofort da:\n${url}\n`,
+        `${input.inviter} invited you ${role}to the workspace “${input.workspace}” in ${instanceName()}.\n\nSign in with this e-mail address and the workspace is there right away:\n${url}\n`,
+      );
   const html = layout(
-    t(`Einladung zu „${input.workspace}“`, `Invitation to “${input.workspace}”`),
-    [
+    input.page ? t(`„${input.page}“ wurde mit dir geteilt`, `“${input.page}” was shared with you`) : t(`Einladung zu „${input.workspace}“`, `Invitation to “${input.workspace}”`),
+    input.page
+      ? [
+          t(
+            `${escape(input.inviter)} hat die Seite <strong>${escape(input.page)}</strong> im Arbeitsbereich ${escape(input.workspace)} mit dir geteilt.`,
+            `${escape(input.inviter)} shared the page <strong>${escape(input.page)}</strong> in the workspace ${escape(input.workspace)} with you.`,
+          ),
+          t(
+            "Melde dich mit dieser E-Mail-Adresse an (oder lege ein Konto an), dann ist die Seite sofort da.",
+            "Sign in with this e-mail address (or create an account) and the page is there right away.",
+          ),
+        ]
+      : [
       t(
         `${escape(input.inviter)} hat dich ${role}zum Arbeitsbereich <strong>${escape(input.workspace)}</strong> eingeladen.`,
         `${escape(input.inviter)} invited you ${role}to the workspace <strong>${escape(input.workspace)}</strong>.`,
@@ -167,7 +191,7 @@ export function queueInviteMail(input: {
         "Melde dich mit dieser E-Mail-Adresse an, dann ist der Arbeitsbereich sofort da.",
         "Sign in with this e-mail address and the workspace is there right away.",
       ),
-    ],
+        ],
     { label: t("Flowplan öffnen", "Open Flowplan"), url },
     locale,
   );

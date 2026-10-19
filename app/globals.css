@@ -17519,3 +17519,22 @@ h3 .block-reactions {
     min-height: 0;
   }
 }
+
+/* Share dialog: add a person to this page by e-mail. */
+.page-people-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+.page-people .member-row .tag {
+  margin-left: 6px;
+}
+@media (max-width: 520px) {
+  .page-people-add {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .page-people-add input {
+    grid-column: 1 / -1;
+  }
+}

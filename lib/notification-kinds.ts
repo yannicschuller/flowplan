@@ -1,6 +1,7 @@
 // Kinds of notifications people can switch per channel (client-safe).
 export const notificationKinds = {
   mention: "Erwähnungen",
+  share: "Mit dir geteilte Seiten",
   comment: "Kommentare und Antworten",
   reminder: "Datums-Erinnerungen",
   guest: "Gastkommentare und Gasteinträge",

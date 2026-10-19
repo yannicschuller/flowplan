@@ -26,6 +26,7 @@ import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
+import { PagePeople } from "./page-people";
 import {
   imageAccept,
   imageFileId,
@@ -3207,41 +3208,13 @@ export default function WorkspaceApp({
       <Modal open={share} onClose={() => setShare(false)} title={t("Seite teilen", "Share page")}>
         {data && (
           <>
-            <div className="share-members">
-              <h3>{t("Zugriff im Arbeitsbereich", "Access in the workspace")}</h3>
-              <p className="muted">
-                {t("Die Rechte des Bereichs und übergeordneter Seiten gelten auch hier.", "The permissions of the space and parent pages apply here too.")}
-              </p>
-              {boot.members.map((m) => (
-                <div className="member-row" key={m.id}>
-                  <Avatar name={m.name} userId={m.id} />
-                  <span>
-                    {m.name}
-                    <small>{m.email}</small>
-                  </span>
-                  {boot.workspace.role === "owner" ? (
-                    <Select
-                      aria-label={t(`Seitenrechte für ${m.name}`, `Page permissions for ${m.name}`)}
-                      defaultValue="remove"
-                      onChange={(e) =>
-                        act({
-                          action: "grant.set",
-                          resourceId: pageId,
-                          userId: m.id,
-                          role: e.target.value,
-                        })
-                      }
-                    >
-                      <option value="remove">{t("Geerbt", "Inherited")}</option>
-                      <option value="editor">{t("Bearbeiten", "Edit")}</option>
-                      <option value="viewer">{t("Ansehen", "View")}</option>
-                    </Select>
-                  ) : (
-                    <small>{m.role}</small>
-                  )}
-                </div>
-              ))}
-            </div>
+            <PagePeople
+              pageId={data.page.id}
+              workspaceId={boot.workspace.id}
+              members={boot.members.filter((m) => m.id !== boot.user.id)}
+              onChanged={() => void refresh().catch(() => {})}
+              onError={notify}
+            />
             {data.role !== "viewer" && (
               <ShareLinks
                 pageId={data.page.id}

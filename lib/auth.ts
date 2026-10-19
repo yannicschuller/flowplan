@@ -162,6 +162,15 @@ export function upsertUser(subject: string, name: string, email: string) {
     run("UPDATE users SET name=?,email=? WHERE id=?", name, email, user.id);
   return user;
 }
+// Invitations waiting for a local account whose address is confirmed: taken
+// over at sign-in and when the app loads, so an account that already exists
+// gets a later invitation too. SSO accounts take them over at sign-in, when
+// the provider confirms the address.
+export function acceptPendingInvites(userId: string) {
+  const user = one<User>("SELECT * FROM users WHERE id=?", userId);
+  if (!user || !one("SELECT 1 FROM invites WHERE lower(email)=lower(?)", user.email)) return;
+  if (one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=1", userId)) acceptInvites(user, true);
+}
 export function acceptInvites(user: User, emailVerified: boolean) {
   if (!emailVerified) return;
   for (const inv of all<{
@@ -176,6 +185,25 @@ export function acceptInvites(user: User, emailVerified: boolean) {
       user.id,
       inv.role,
     ).changes;
+    // The person finds the workspace (or the shared page) in the inbox.
+    if (added) {
+      const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", inv.workspace_id);
+      const by = one<{ name: string }>("SELECT u.name FROM invites i JOIN users u ON u.id=i.created_by WHERE i.id=?", inv.id);
+      const page = one<{ id: string; title: string }>(
+        "SELECT p.id,p.title FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE lower(g.email)=lower(?) AND g.workspace_id=? AND p.deleted_at IS NULL",
+        user.email,
+        inv.workspace_id,
+      );
+      run(
+        "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'share')",
+        id(),
+        user.id,
+        inv.guest && page
+          ? `${by?.name || "Jemand"} hat „${page.title}“ mit dir geteilt`
+          : `${by?.name || "Jemand"} hat dich zum Arbeitsbereich „${ws?.name || ""}“ hinzugefügt`,
+        page?.id ?? null,
+      );
+    }
     // An existing membership is never downgraded to guest by an invite.
     if (added && inv.guest)
       run(
@@ -183,6 +211,17 @@ export function acceptInvites(user: User, emailVerified: boolean) {
         inv.workspace_id,
         user.id,
       );
+    // Pages shared before the account existed (lib/page-share.ts).
+    for (const g of all<{ resource_id: string; role: string }>(
+      "SELECT resource_id,role FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?",
+      user.email,
+      inv.workspace_id,
+    )) {
+      if (!one("SELECT 1 FROM pages WHERE id=? AND workspace_id=? AND deleted_at IS NULL", g.resource_id, inv.workspace_id)) continue;
+      run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", g.resource_id, user.id);
+      run("INSERT INTO grants VALUES(?,?,?,?)", g.resource_id, user.id, "", g.role);
+    }
+    run("DELETE FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?", user.email, inv.workspace_id);
     run("DELETE FROM invites WHERE id=?", inv.id);
   }
 }

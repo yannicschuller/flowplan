@@ -15,6 +15,7 @@ import {
   upsertUser,
   extractGroups,
   acceptInvites,
+  acceptPendingInvites,
   adminGroup,
   currentUser,
   HttpError,
@@ -75,6 +76,7 @@ async function takeChallengeCookie() {
 async function signIn(userId: string, groups: string[], remember = false) {
   const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
+  acceptPendingInvites(userId);
   ensureWorkspace(userId);
   // Groups from an SSO provider (e.g. the desktop app of an SSO account) are
   // checked again after SESSION_GROUPS_HOURS.

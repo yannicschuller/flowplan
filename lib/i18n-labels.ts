@@ -102,6 +102,7 @@ const labels: Record<string, string> = {
   "Datums-Erinnerungen": "Date reminders",
   "Automationen in Datenbanken": "Database automations",
   "Gastkommentare und Gasteinträge": "Guest comments and guest records",
+  "Mit dir geteilte Seiten": "Pages shared with you",
   "Änderungen an Seiten, denen du folgst": "Changes to pages you follow",
   // charts
   Standard: "Default",

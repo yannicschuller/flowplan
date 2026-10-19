@@ -106,6 +106,7 @@ import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
 import { notificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
+import { sharePage, updatePageShare } from "./page-share";
 import { templateCategoryIds } from "./template-categories";
 import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
 import {
@@ -145,7 +146,7 @@ import {
 import { z } from "zod";
 import * as Y from "yjs";
 import { all, one, run, id, transaction, audit } from "./db";
-import { HttpError } from "./auth";
+import { HttpError, acceptPendingInvites } from "./auth";
 import {
   cleanHtml,
   htmlState,
@@ -207,6 +208,7 @@ export function publicRows(pid: string): Row[] {
   return rows(pid).filter((r) => r.access !== "private");
 }
 export function bootstrap(user: Identity, wid?: string) {
+  if (!user.demo && !user.apiScope) acceptPendingInvites(user.id);
   const workspaces = all<{
     id: string;
     name: string;
@@ -2153,6 +2155,21 @@ export function command(
           );
         break;
       }
+      // One page with a person, without the whole workspace (lib/page-share.ts).
+      case "page.share": {
+        const shared = sharePage(user, b);
+        if (shared.status === "invited") {
+          const { mail, ...rest } = shared;
+          afterCommit.push(() => {
+            if (queueInviteMail(mail)) void dispatchMail();
+          });
+          result = rest;
+        } else result = shared;
+        break;
+      }
+      case "page.shareUpdate":
+        result = updatePageShare(user, b);
+        break;
       case "grant.set": {
         const resource = uuid.parse(b.resourceId);
         const p = one<Page>("SELECT * FROM pages WHERE id=?", resource),
