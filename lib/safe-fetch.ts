@@ -74,7 +74,7 @@ type Options = {
 };
 // DNS lookup that refuses internal addresses and hands the request the very
 // address it checked (no second lookup that could point elsewhere).
-function pinnedLookup(allowPrivate: boolean) {
+export function pinnedLookup(allowPrivate: boolean) {
   return (host: string, options: object, callback: (...args: never[]) => void) =>
     dnsLookup(host, { all: true }, (error, addresses) => {
       const done = callback as unknown as (e: Error | null, a: string | { address: string; family: number }[], f?: number) => void;

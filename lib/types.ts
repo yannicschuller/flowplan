@@ -253,6 +253,8 @@ export type Bootstrap = {
     legal?: { imprint?: string; privacy?: string };
   };
   members: (User & { role: Role; guest?: number })[];
+  // AI features, provider and pages closed to the AI (lib/ai/features.ts).
+  ai?: import("./ai/features").AiStatus;
   notifications: {
     row_id: string | null;
     thread_id: string | null;

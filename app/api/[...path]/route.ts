@@ -1,4 +1,5 @@
 import { withRequestLocale } from "@/lib/content-locale";
+import { aiAllowedUsers, instanceAiSettings } from "@/lib/ai/settings";
 import { teamThread } from "@/lib/service-desk";
 import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
 import { recordTime, timeReport } from "@/lib/time-tracking";
@@ -722,6 +723,8 @@ async function handleGET(
         localAccounts: localAccountInfo(),
         localLogin: localLoginEnabled(),
         restorePending: pendingRestore(),
+        // Who may use AI when the administration chose "selected people".
+        aiPolicy: { access: instanceAiSettings().access, enabled: instanceAiSettings().enabled, allowed: aiAllowedUsers() },
       });
     }
     if (path.length === 2 && path[0] === "avatars") {

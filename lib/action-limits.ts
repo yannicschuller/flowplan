@@ -23,3 +23,15 @@ const HOUR = 3_600_000;
 // Per person who invites or shares, and per address that receives mail.
 export const limitInviter = (userId: string) => requireAllowed(`inviter:${userId}`, 40, HOUR);
 export const mailAllowed = (email: string) => allow(`mail:${email.toLowerCase()}`, 5, HOUR);
+// AI requests per person (lib/ai/run.ts): a burst limit and an hourly one,
+// FLOWPLAN_AI_REQUESTS_PER_HOUR to change the latter.
+const aiPerHour = () => Math.max(1, Number(process.env.FLOWPLAN_AI_REQUESTS_PER_HOUR) || 300);
+export function limitAi(userId: string) {
+  if (!allow(`ai:${userId}`, 30, 60_000) || !allow(`ai-hour:${userId}`, aiPerHour(), HOUR))
+    throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+}
+// Connection tests, model lists and downloads in the settings.
+export function limitAiSetup(userId: string) {
+  if (!allow(`ai-setup:${userId}`, 20, 10 * 60_000))
+    throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
+}

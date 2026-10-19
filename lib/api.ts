@@ -1,4 +1,7 @@
 import { teamReply } from "./service-desk";
+import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
+import { setAiBlock, setAiRule } from "./ai/access";
+import { aiStatus } from "./ai/resolve";
 import { legalLinks } from "./legal-links";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan } from "./account-deletion";
 import { confirmAddress } from "./local-auth";
@@ -305,6 +308,9 @@ export function bootstrap(user: Identity, wid?: string) {
       "SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100",
       user.id,
     ),
+    // Which AI features work here, with which provider, and which pages the
+    // AI may not read (lib/ai). Never keys or addresses beyond the host.
+    ai: aiStatus(user, workspace.id, pages),
   };
 }
 export function pageData(user: Identity, pid: string) {
@@ -501,7 +507,7 @@ export function command(
   // Read tokens only read; tokens never administer the instance.
   if (user.apiScope === "read")
     throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-  if (user.apiScope && (action.startsWith("admin.") || action.startsWith("token.")))
+  if (user.apiScope && (action.startsWith("admin.") || action.startsWith("token.") || action.startsWith("ai.")))
     throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
   if (user.demo && !demoAllows(action, b))
     throw new HttpError(
@@ -537,6 +543,25 @@ export function command(
       case "admin.settings":
         requireAdmin(user);
         result = saveInstanceSettings(b.settings);
+        break;
+      // AI (lib/ai): administration, own settings, what the AI may read.
+      case "admin.ai":
+        result = saveInstanceAi(user, b);
+        break;
+      case "admin.aiUser":
+        result = setUserAiPolicy(user, b);
+        break;
+      case "ai.settings":
+        result = saveUserAiPrefs(user, b);
+        break;
+      case "ai.provider":
+        result = saveUserAiProvider(user, b);
+        break;
+      case "ai.rule":
+        result = setAiRule(user, b);
+        break;
+      case "ai.block":
+        result = setAiBlock(user, b);
         break;
       case "profile.onboarded":
         run("UPDATE users SET onboarded_at=? WHERE id=?", Date.now(), user.id);
