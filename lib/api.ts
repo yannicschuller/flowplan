@@ -917,7 +917,7 @@ export function command(
           str.parse(b.title),
           kind,
           parent,
-          z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
+          b.aiDatabase !== undefined ? "empty" : z.enum(databaseKinds).default("tasks").parse(b.databaseKind ?? undefined),
         );
         if (savedTemplate)
           applyPageTemplate(
@@ -926,6 +926,13 @@ export function command(
             savedTemplate,
             false,
           );
+        // A database proposed by the AI and reviewed by the person: checked
+        // again here like any input (lib/ai/database-fields.ts).
+        if (b.aiDatabase !== undefined) {
+          if (kind !== "database" || savedTemplate || b.starterTemplate)
+            throw new HttpError(400, "Ein KI-Vorschlag gilt nur für eine neue, leere Datenbank.");
+          applyDatabaseProposal(created, user.id, b.aiDatabase, { all: ct("Alle Einträge", "All records"), board: "Board" });
+        }
         if (b.starterTemplate && savedTemplate)
           throw new HttpError(400, "Nur eine Vorlage auswählen.");
         if (b.starterTemplate) {
@@ -1527,6 +1534,8 @@ export function command(
             "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden.",
           );
         const fields = z.array(field).min(1).max(80).parse(b.fields);
+        // AI properties: references, output types, who automatic updates run as.
+        const aiChanges = prepareAiFields(user, write(), fields, d.fields);
         if (
           d.fields.some((old) =>
             fields.some((next) => next.id === old.id && next.name !== old.name),
@@ -1619,6 +1628,7 @@ export function command(
           JSON.stringify(views),
           pid(),
         );
+        forgetAiFields(pid(), aiChanges.removed);
         configureRelation(user, pid(), d.version, b.relation);
         break;
       }
@@ -2737,3 +2747,5 @@ import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
+import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
+import { ct } from "./content-locale";

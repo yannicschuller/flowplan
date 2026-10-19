@@ -25,5 +25,8 @@ export async function register() {
     startBackupWorker();
     const { startInactiveWorker } = await import("./lib/inactive-accounts");
     startInactiveWorker();
+    // AI properties (automatic updates, queued values) and the semantic index.
+    const { startAiWorker } = await import("./lib/ai/database");
+    startAiWorker();
   }
 }

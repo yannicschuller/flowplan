@@ -16,6 +16,10 @@ import { aiStreamResponse, AI_LIMITS } from "@/lib/ai/run";
 import { listModels, pullModel, testConnection } from "@/lib/ai/providers";
 import { adminAiView, assertSettingsCaller, instanceAiSettings, userAiSettings, userKeyInfo } from "@/lib/ai/settings";
 import { redactSecrets } from "@/lib/ai/redact";
+import { askInput, prepareAsk, NOTHING_FOUND } from "@/lib/ai/ask";
+import { semanticStats } from "@/lib/ai/semantic";
+import { aiDatabaseStatus, proposeDatabase, queueAiCells, runAiCell } from "@/lib/ai/database";
+import { ct } from "@/lib/content-locale";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,8 +99,12 @@ async function handleGET(req: Request, { params }: { params: Promise<{ path: str
       );
     if (path.length === 1 && path[0] === "admin") {
       requireAdmin(user);
-      return NextResponse.json(adminAiView(), noStore);
+      return NextResponse.json({ ...adminAiView(), semantic: semanticStats() }, noStore);
     }
+    // AI in a database: values waiting to be computed, and when and with
+    // which model each value was computed.
+    if (path.length === 2 && path[0] === "database" && path[1] === "status")
+      return NextResponse.json(aiDatabaseStatus(user, z.uuid().parse(url.searchParams.get("page"))), noStore);
     throw new HttpError(404, "Nicht gefunden.");
   } catch (e) {
     return error(e);
@@ -130,6 +138,41 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
         { system: b.system, messages: b.messages, maxTokens: b.maxTokens, temperature: b.temperature },
         { workspaceId: b.workspaceId, pageId: b.pageId, rowId: b.rowId, signal: req.signal },
       );
+    }
+    // "Ask the workspace": sources in a header (base64 JSON), the answer as
+    // a text stream like /api/ai/run.
+    if (path.length === 1 && path[0] === "ask") {
+      const b = askInput.parse(await body(req, 200_000));
+      requireMember(user, b.workspaceId);
+      const prepared = await prepareAsk(user, b, req.signal);
+      const sources = Buffer.from(JSON.stringify(prepared.sources)).toString("base64");
+      if (prepared.nothing)
+        return new Response(ct(NOTHING_FOUND[0], NOTHING_FOUND[1]), {
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Flowplan-Sources": sources, "X-Content-Type-Options": "nosniff" },
+        });
+      const response = await aiStreamResponse(
+        user,
+        "ask",
+        { system: prepared.system, messages: prepared.messages, maxTokens: 1500, temperature: 0.2 },
+        { workspaceId: b.workspaceId, signal: req.signal },
+      );
+      response.headers.set("X-Flowplan-Sources", sources);
+      if (prepared.semantic) response.headers.set("X-Flowplan-Semantic", "1");
+      return response;
+    }
+    // AI in databases.
+    if (path.length === 2 && path[0] === "database") {
+      if (path[1] === "propose") {
+        const b = z.object({ workspaceId: z.uuid(), description: z.string().trim().min(3).max(2000) }).parse(await body(req, 20_000));
+        return NextResponse.json({ proposal: await proposeDatabase(user, b.workspaceId, b.description, req.signal) }, noStore);
+      }
+      if (path[1] === "cell") {
+        const b = z
+          .object({ pageId: z.uuid(), fieldId: z.string().min(1).max(500), rowId: z.uuid(), mode: z.enum(["compute", "fill"]) })
+          .parse(await body(req, 10_000));
+        return NextResponse.json(await runAiCell(user, b.pageId, b.fieldId, b.rowId, b.mode, req.signal), noStore);
+      }
+      if (path[1] === "queue") return NextResponse.json(queueAiCells(user, await body(req, 100_000)), noStore);
     }
     // The person's own provider (as saved): test it, list its models.
     if (path.length === 1 && (path[0] === "test" || path[0] === "models")) {

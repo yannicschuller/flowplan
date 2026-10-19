@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 37) return;
+  if (globalDb.flowplanSchema === 38) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -530,6 +530,36 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS ai_access_rules(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,target_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('workspace','space','page')),workspace_id TEXT NOT NULL,mode TEXT NOT NULL CHECK(mode IN ('include','exclude')),PRIMARY KEY(user_id,target_id));
     CREATE TABLE IF NOT EXISTS ai_blocks(target_id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN ('space','page')),workspace_id TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS ai_blocks_workspace ON ai_blocks(workspace_id);`);
+  // Semantic search (lib/ai/semantic.ts): one vector per text chunk of a
+  // page or record, made with the instance's embedding model. Only the hash
+  // of the chunk is kept, never its text; changed pages and records are
+  // marked like for the full-text index and embedded in the background.
+  d.exec(`CREATE TABLE IF NOT EXISTS ai_embeddings(page_id TEXT NOT NULL,row_id TEXT NOT NULL DEFAULT '',chunk INTEGER NOT NULL,workspace_id TEXT NOT NULL,hash TEXT NOT NULL,model TEXT NOT NULL,vector BLOB NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(page_id,row_id,chunk));
+    CREATE INDEX IF NOT EXISTS ai_embeddings_workspace ON ai_embeddings(workspace_id);
+    CREATE TABLE IF NOT EXISTS ai_embed_dirty(page_id TEXT NOT NULL,row_id TEXT NOT NULL DEFAULT '',PRIMARY KEY(page_id,row_id));
+    CREATE TABLE IF NOT EXISTS ai_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS ai_embed_page_update AFTER UPDATE OF title,deleted_at,parent_id,space_id ON pages BEGIN INSERT OR IGNORE INTO ai_embed_dirty VALUES(NEW.id,''); END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_page_delete AFTER DELETE ON pages BEGIN INSERT OR IGNORE INTO ai_embed_dirty VALUES(OLD.id,''); END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_document_insert AFTER INSERT ON documents BEGIN INSERT OR IGNORE INTO ai_embed_dirty VALUES(NEW.page_id,''); END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_document_update AFTER UPDATE OF html ON documents BEGIN INSERT OR IGNORE INTO ai_embed_dirty VALUES(NEW.page_id,''); END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_row_insert AFTER INSERT ON rows BEGIN INSERT OR IGNORE INTO ai_embed_dirty VALUES(NEW.page_id,NEW.id); END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_row_update AFTER UPDATE OF cells,content,page_id ON rows BEGIN INSERT OR IGNORE INTO ai_embed_dirty VALUES(OLD.page_id,OLD.id); INSERT OR IGNORE INTO ai_embed_dirty VALUES(NEW.page_id,NEW.id); END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_row_delete AFTER DELETE ON rows BEGIN INSERT OR IGNORE INTO ai_embed_dirty VALUES(OLD.page_id,OLD.id); END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_row_document AFTER UPDATE OF html ON row_documents BEGIN INSERT OR IGNORE INTO ai_embed_dirty SELECT r.page_id,r.id FROM rows r WHERE r.id=NEW.row_id; END;
+    CREATE TRIGGER IF NOT EXISTS ai_embed_row_document_insert AFTER INSERT ON row_documents BEGIN INSERT OR IGNORE INTO ai_embed_dirty SELECT r.page_id,r.id FROM rows r WHERE r.id=NEW.row_id; END;`);
+  // AI properties of databases (lib/ai/database.ts): when and with which
+  // model a value was computed, the queue of cells to compute (by the person
+  // who asked, or who switched on automatic updates) and records whose
+  // inputs changed (only in databases with automatic AI properties).
+  d.exec(`CREATE TABLE IF NOT EXISTS ai_cell_meta(row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,field_id TEXT NOT NULL,page_id TEXT NOT NULL,model TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT '',computed_at INTEGER NOT NULL,computed_by TEXT,input_hash TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'ok',PRIMARY KEY(row_id,field_id));
+    CREATE INDEX IF NOT EXISTS ai_cell_meta_page ON ai_cell_meta(page_id);
+    CREATE TABLE IF NOT EXISTS ai_cell_jobs(row_id TEXT NOT NULL REFERENCES rows(id) ON DELETE CASCADE,field_id TEXT NOT NULL,page_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,mode TEXT NOT NULL CHECK(mode IN ('compute','fill','auto')),queued_at INTEGER NOT NULL,next_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(row_id,field_id));
+    CREATE INDEX IF NOT EXISTS ai_cell_jobs_next ON ai_cell_jobs(next_at);
+    CREATE INDEX IF NOT EXISTS ai_cell_jobs_page ON ai_cell_jobs(page_id);
+    CREATE TABLE IF NOT EXISTS ai_auto_dirty(row_id TEXT PRIMARY KEY,page_id TEXT NOT NULL,changed_at INTEGER NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS ai_auto_row_insert AFTER INSERT ON rows WHEN EXISTS(SELECT 1 FROM databases WHERE page_id=NEW.page_id AND instr(fields,'"auto":true')>0) BEGIN INSERT INTO ai_auto_dirty VALUES(NEW.id,NEW.page_id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)) ON CONFLICT(row_id) DO UPDATE SET changed_at=excluded.changed_at,page_id=excluded.page_id; END;
+    CREATE TRIGGER IF NOT EXISTS ai_auto_row_update AFTER UPDATE OF cells,content ON rows WHEN EXISTS(SELECT 1 FROM databases WHERE page_id=NEW.page_id AND instr(fields,'"auto":true')>0) BEGIN INSERT INTO ai_auto_dirty VALUES(NEW.id,NEW.page_id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)) ON CONFLICT(row_id) DO UPDATE SET changed_at=excluded.changed_at,page_id=excluded.page_id; END;
+    CREATE TRIGGER IF NOT EXISTS ai_auto_row_document AFTER UPDATE OF html ON row_documents WHEN EXISTS(SELECT 1 FROM rows r JOIN databases d ON d.page_id=r.page_id WHERE r.id=NEW.row_id AND instr(d.fields,'"auto":true')>0) BEGIN INSERT INTO ai_auto_dirty SELECT r.id,r.page_id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) FROM rows r WHERE r.id=NEW.row_id ON CONFLICT(row_id) DO UPDATE SET changed_at=excluded.changed_at; END;`);
   // SSO groups mapped to workspace membership and workspace groups, and what
   // a mapping granted (target '' = membership, else the group's id), so that
   // memberships added by hand are never removed (lib/sso-mappings.ts).
@@ -549,7 +579,7 @@ function migrate(d: DatabaseSync) {
   // code twice) and one-time recovery codes, stored as hashes.
   d.exec(`CREATE TABLE IF NOT EXISTS user_totp(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,secret TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,last_step INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,enabled_at INTEGER);
     CREATE TABLE IF NOT EXISTS recovery_codes(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,code_hash TEXT NOT NULL,used_at INTEGER,PRIMARY KEY(user_id,code_hash));`);
-  globalDb.flowplanSchema = 37;
+  globalDb.flowplanSchema = 38;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

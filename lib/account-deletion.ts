@@ -25,6 +25,8 @@ const PERSONAL = [
   "ai_user_settings",
   "ai_user_policy",
   "ai_access_rules",
+  // AI properties waiting to be computed on this person's behalf.
+  "ai_cell_jobs",
   "api_tokens",
   "auth_tokens",
   "auth_challenges",
