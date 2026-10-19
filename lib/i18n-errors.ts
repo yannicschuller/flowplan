@@ -570,10 +570,27 @@ const exact: Record<string, string> = {
   "Du hast diese KI-Funktion in deinen Einstellungen ausgeschaltet.": "You switched this AI feature off in your settings.",
   "Es ist kein KI-Anbieter eingerichtet.": "No AI provider is set up.",
   "Der gespeicherte API-Schlüssel lässt sich nicht entschlüsseln. Bitte neu eingeben.": "The stored API key cannot be decrypted. Please enter it again.",
+  // AI: ask the workspace, AI in databases
+  "KI-Eigenschaften geben Text, eine Auswahl, eine Mehrfachauswahl oder eine Zahl aus.": "AI properties output text, a select, a multi-select or a number.",
+  "Eine KI-Auswahl braucht Optionen.": "An AI select needs options.",
+  "Ein KI-Prompt kann nicht auf die eigene Eigenschaft verweisen.": "An AI prompt cannot refer to its own property.",
+  "KI-Eigenschaften dürfen nicht im Kreis aufeinander verweisen.": "AI properties must not refer to each other in a circle.",
+  "Gäste können keine automatischen KI-Werte einschalten.": "Guests cannot switch on automatic AI values.",
+  "Gäste können keine KI-Werte schreiben.": "Guests cannot write AI values.",
+  "Das ist keine KI-Eigenschaft.": "This is not an AI property.",
+  "Automatische KI-Werte sind ausgeschaltet.": "Automatic AI values are switched off.",
+  "Diese Eigenschaft lässt sich nicht mit KI ausfüllen.": "This property cannot be filled in with AI.",
+  "Höchstens 1000 Einträge auf einmal.": "At most 1000 records at once.",
+  "Zu viele KI-Werte in der Warteschlange. Bitte warten, bis sie berechnet sind.": "Too many AI values in the queue. Please wait until they are computed.",
+  "Die KI hat keine verwertbare Antwort geliefert. Bitte erneut versuchen.": "The AI did not give a usable answer. Please try again.",
+  "Ein KI-Vorschlag gilt nur für eine neue, leere Datenbank.": "An AI proposal only applies to a new, empty database.",
+  "Dazu habe ich nichts gefunden.": "I found nothing about that.",
   // notifications
   "Push-Testbenachrichtigung": "Push test notification",
 };
 const patterns: [RegExp, string][] = [
+  [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
+  [/^Diese Eigenschaft kann im KI-Prompt nicht verwendet werden: (.+)$/, "This property cannot be used in the AI prompt: $1"],
   [/^Der KI-Anbieter meldet einen Fehler \(HTTP (\d+)\)\.$/, "The AI provider reports an error (HTTP $1)."],
   [/^Der KI-Anbieter meldet: ([\s\S]+)$/, "The AI provider reports: $1"],
   [/^Das Passwort braucht mindestens (\d+) Zeichen\.$/, "The password needs at least $1 characters."],

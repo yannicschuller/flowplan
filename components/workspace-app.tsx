@@ -28,6 +28,9 @@ import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
 import { PagePeople } from "./page-people";
 import { AiBlockToggle } from "./ai-settings";
+import { AskPanel } from "./ai-ask";
+import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
+import { aiUsable } from "@/lib/ai/client";
 import {
   imageAccept,
   imageFileId,
@@ -294,11 +297,16 @@ export default function WorkspaceApp({
     [data, setData] = useState<PageData | null>(null),
     [mobile, setMobile] = useState(false),
     [search, setSearch] = useState(false),
+    // "KI fragen": open with an optional first question.
+    [ask, setAsk] = useState<{ question: string } | null>(null),
     [query, setQuery] = useState(""),
     [create, setCreate] = useState(false),
     [newTitle, setNewTitle] = useState(""),
     [newKind, setNewKind] = useState<PageKind>("document"),
     [databaseChoice, setDatabaseChoice] = useState<DatabaseChoice>("tasks"),
+    // "Mit KI erstellen": the reviewed proposal (null: not yet proposed).
+    [aiCreate, setAiCreate] = useState(false),
+    [aiProposal, setAiProposal] = useState<DatabaseProposal | null>(null),
     [capture, setCapture] = useState(false),
     [toRecord, setToRecord] = useState(false),
     [parent, setParent] = useState<string | null>(null),
@@ -1343,6 +1351,15 @@ export default function WorkspaceApp({
         ]
       : []),
   ];
+  const canAsk = aiUsable(boot.ai, "ask");
+  if (canAsk)
+    commandActions.unshift({
+      label: t("KI fragen …", "Ask AI …"),
+      keywords: t("ki fragen frage antwort assistent chat", "ki fragen frage antwort assistent chat ai ask question answer assistant"),
+      icon: Sparkle,
+      // The text typed so far becomes the question.
+      run: () => setAsk({ question: query.replace(/^>\s*/, "").replace(/^(ki fragen|ask ai)\s*…?\s*/i, "").trim() }),
+    });
   const commandQuery = normalizeCommand(query.replace(/^>\s*/, ""));
   const shownActions =
     query.startsWith(">") || commandQuery.length >= 2
@@ -1449,6 +1466,12 @@ export default function WorkspaceApp({
               <MagnifyingGlass size={19} />
               {t("Suchen", "Search")}<span className="keycap">⌘ K</span>
             </button>
+            {canAsk && (
+              <button onClick={() => setAsk({ question: "" })}>
+                <Sparkle size={19} />
+                {t("KI fragen", "Ask AI")}
+              </button>
+            )}
             <button
               className={screen === "home" ? "selected" : ""}
               onClick={() => go("home")}
@@ -2351,6 +2374,7 @@ export default function WorkspaceApp({
                         members={boot.members}
                         pages={activePages}
                         editable={editable}
+                        ai={boot.ai}
                         favoriteRows={boot.favoriteRows}
                         mutate={mutate}
                         onError={notify}
@@ -2930,6 +2954,18 @@ export default function WorkspaceApp({
               </option>
             ))}
           </Select>
+          {canAsk && query.trim() && !query.startsWith(">") && (
+            <button
+              className="button compact"
+              onClick={() => {
+                setAsk({ question: query.trim() });
+                setSearch(false);
+                setQuery("");
+              }}
+            >
+              <Sparkle size={15} /> {t("KI fragen", "Ask AI")}
+            </button>
+          )}
           {query.trim() && searchName === null && (
             <button
               className="button compact"
@@ -3069,6 +3105,21 @@ export default function WorkspaceApp({
         </div>
         )}
       </Modal>
+      {canAsk && (
+        <AskPanel
+          open={!!ask}
+          onClose={() => setAsk(null)}
+          workspaceId={boot.workspace.id}
+          ai={boot.ai}
+          spaces={boot.spaces}
+          currentPage={screen === "page" && data ? { id: data.page.id, title: data.page.title || t("Ohne Titel", "Untitled") } : null}
+          initialQuestion={ask?.question}
+          onOpenSource={(pid, rowId) => {
+            setAsk(null);
+            void openPage(pid, rowId ? { pageId: pid, rowId } : undefined);
+          }}
+        />
+      )}
       <Modal open={create} onClose={() => setCreate(false)} title={t("Neue Seite", "New page")}>
         <form
           onSubmit={async (e) => {
@@ -3081,11 +3132,17 @@ export default function WorkspaceApp({
               title: newTitle || t("Ohne Titel", "Untitled"),
               kind: newKind,
               starterTemplate,
-              ...(newKind === "database" && !starterTemplate ? databaseChoicePayload(databaseChoice) : {}),
+              ...(newKind === "database" && !starterTemplate
+                ? aiCreate && aiProposal
+                  ? { aiDatabase: proposalPayload(aiProposal) }
+                  : databaseChoicePayload(databaseChoice)
+                : {}),
             });
             if (result?.id) {
-              if (newKind === "database" && !starterTemplate) rememberDatabaseKind(databaseChoice);
+              if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
               setCreate(false);
+              setAiCreate(false);
+              setAiProposal(null);
               void openPage(String(result.id));
             }
           }}
@@ -3150,7 +3207,29 @@ export default function WorkspaceApp({
               <small>{t("Jeden Tag eine Seite, offene Aufgaben wandern mit", "A page every day, open tasks move along")}</small>
             </button>
           </div>
-          {newKind === "database" && !starterTemplate && (
+          {newKind === "database" && !starterTemplate && aiUsable(boot.ai, "database") && (
+            <div className="ai-create-switch" role="radiogroup" aria-label={t("Wie anlegen?", "How to create?")}>
+              <button type="button" role="radio" aria-checked={!aiCreate} className={`chip${!aiCreate ? " active" : ""}`} onClick={() => setAiCreate(false)}>
+                {t("Vorlage wählen", "Choose a template")}
+              </button>
+              <button type="button" role="radio" aria-checked={aiCreate} className={`chip${aiCreate ? " active" : ""}`} onClick={() => setAiCreate(true)}>
+                <Sparkle size={13} /> {t("Mit KI erstellen", "Create with AI")}
+              </button>
+            </div>
+          )}
+          {newKind === "database" && !starterTemplate && aiCreate && aiUsable(boot.ai, "database") && (
+            <AiDatabaseCreator
+              workspaceId={boot.workspace.id}
+              ai={boot.ai}
+              proposal={aiProposal}
+              onProposal={setAiProposal}
+              onTitle={(title) => {
+                if (!newTitle) setNewTitle(title);
+              }}
+              onError={notify}
+            />
+          )}
+          {newKind === "database" && !starterTemplate && !(aiCreate && aiUsable(boot.ai, "database")) && (
             <DatabaseKindPicker
               workspaceId={boot.workspace.id}
               value={databaseChoice}
@@ -3184,7 +3263,12 @@ export default function WorkspaceApp({
             >
               {t("Abbrechen", "Cancel")}
             </button>
-            <button className="button primary">{t("Seite erstellen", "Create page")}</button>
+            <button
+              className="button primary"
+              disabled={newKind === "database" && !starterTemplate && aiCreate && aiUsable(boot.ai, "database") && (!aiProposal || aiProposal.fields.some((f) => !f.name.trim()))}
+            >
+              {t("Seite erstellen", "Create page")}
+            </button>
           </div>
         </form>
       </Modal>
