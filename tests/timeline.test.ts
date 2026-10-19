@@ -743,3 +743,149 @@ test("dependency types link start or end of predecessor and successor", async ()
     ],
   );
 });
+
+test("successors, circles and the critical path follow the dependency field", async () => {
+  const { successorsOf, successorShifts, createsCycle, criticalPath } = await import("../lib/database-timeline");
+  const fields: Field[] = [
+    { id: "start", name: "Beginn", type: "date" },
+    { id: "end", name: "Ende", type: "date" },
+    { id: "after", name: "Nach", type: "relation", relationPage: "self" },
+  ];
+  const r = (id: string, start: string, end: string, after: string[] = []) => ({ id, cells: { start, end, after } });
+  // a → b → c, a → d, e unrelated; f without a period waits for b.
+  const rowsIn = [
+    r("a", "2026-01-01", "2026-01-05"),
+    r("b", "2026-01-06", "2026-01-08", ["a"]),
+    r("c", "2026-01-09", "2026-01-12", ["b", "b", "missing", "c"]),
+    r("d", "2026-01-07", "2026-01-08", ["a"]),
+    r("e", "2026-01-01", "2026-01-20"),
+    { id: "f", cells: { after: ["b"] } },
+  ];
+  assert.deepEqual(successorsOf(rowsIn, fields[2], "a"), { ids: ["b", "d", "c", "f"], cyclic: false });
+  assert.deepEqual(successorsOf(rowsIn, fields[2], "c"), { ids: [], cyclic: false });
+  assert.deepEqual(successorsOf(rowsIn, undefined, "a"), { ids: [], cyclic: false });
+  // Moving a by three days moves everything waiting for it (with a period).
+  assert.deepEqual(Object.fromEntries(successorShifts(rowsIn, fields[2], fields[0], fields[1], "a", 3)!), { b: 3, d: 3, c: 3 });
+  assert.equal(successorShifts(rowsIn, fields[2], fields[0], fields[1], "a", 0)!.size, 0);
+  // New links must not close a circle.
+  assert.equal(createsCycle(rowsIn, fields[2], "c", "a"), true);
+  assert.equal(createsCycle(rowsIn, fields[2], "b", "b"), true);
+  assert.equal(createsCycle(rowsIn, fields[2], "d", "c"), false);
+  const circle = [r("x", "2026-01-01", "2026-01-02", ["z"]), r("y", "2026-01-03", "2026-01-04", ["x"]), r("z", "2026-01-05", "2026-01-06", ["y"])];
+  assert.equal(successorsOf(circle, fields[2], "x").cyclic, true);
+  assert.equal(successorShifts(circle, fields[2], fields[0], fields[1], "x", 2), null);
+  assert.equal(criticalPath(circle, fields[2], fields[0], fields[1]).size, 0);
+  // a → b → c ends last among linked records without any gap: critical;
+  // d has slack. e is not part of any dependency.
+  const chain = rowsIn.filter((row) => row.id !== "e");
+  assert.deepEqual([...criticalPath(chain, fields[2], fields[0], fields[1])].sort(), ["a", "b", "c"]);
+  // A gap before c gives b slack only when c is not the end of the plan.
+  const gap = chain.map((row) => (row.id === "c" ? r("c", "2026-01-10", "2026-01-12", ["b"]) : row));
+  assert.deepEqual([...criticalPath(gap, fields[2], fields[0], fields[1])].sort(), ["c"]);
+  // Long chains do not exhaust the stack.
+  const long = Array.from({ length: 6000 }, (_, i) => r(`n${i}`, "2026-01-01", "2026-01-01", i ? [`n${i - 1}`] : []));
+  assert.equal(successorsOf(long, fields[2], "n0").ids.length, 5999);
+  assert.ok(criticalPath(long, fields[2], fields[0], fields[1]) instanceof Set);
+});
+
+test("dragging a bar onto another links them; successors can move along", async () => {
+  const owner = user();
+  const wid = createWorkspace(owner.id, "Gantt");
+  const act = (input: Record<string, unknown>) => command(owner, input) as { id: string };
+  const pid = act({
+    action: "page.create",
+    workspaceId: wid,
+    spaceId: bootstrap(owner, wid).spaces[0].id,
+    title: "Plan",
+    kind: "database",
+  }).id;
+  const fields: Field[] = [
+    { id: "title", name: "Name", type: "text" },
+    { id: "start", name: "Beginn", type: "date" },
+    { id: "end", name: "Ende", type: "date" },
+    { id: "after", name: "Wartet auf", type: "relation", relationPage: pid },
+  ];
+  const timeline = (extra: Record<string, unknown> = {}) =>
+    command(owner, {
+      action: "database.update",
+      pageId: pid,
+      version: database(pid).version,
+      fields,
+      views: [
+        {
+          id: "t",
+          name: "Timeline",
+          type: "timeline",
+          filters: [],
+          sorts: [],
+          dateField: "start",
+          endDateField: "end",
+          timeline: { scale: "month", showWeekends: true, dependencyField: "after", ...extra },
+        },
+      ],
+    });
+  timeline();
+  const row = (title: string, start: string, end: string) =>
+    act({ action: "row.create", pageId: pid, cells: { title, start, end } }).id;
+  const a = row("A", "2026-03-01", "2026-03-04"),
+    b = row("B", "2026-03-05", "2026-03-06"),
+    c = row("C", "2026-03-07", "2026-03-09"),
+    other = row("Andere", "2026-03-01", "2026-03-02");
+  const link = (from: string, to: string, version = database(pid).version) =>
+    command(owner, { action: "timeline.link", pageId: pid, viewId: "t", version, from, to }) as { added: boolean };
+  assert.equal(link(a, b).added, true);
+  assert.equal(link(a, b).added, false);
+  assert.equal(link(b, c).added, true);
+  assert.deepEqual(rows(pid).find((x) => x.id === c)!.cells.after, [b]);
+  // A link back would close a circle.
+  assert.throws(() => link(c, a), /Kreis/);
+  assert.throws(() => link(a, a), /Kreis/);
+  assert.throws(() => link(a, b, 0), /geändert/);
+  // A reader may not add links.
+  const reader = user();
+  run("INSERT INTO members VALUES(?,?,?)", wid, reader.id, "viewer");
+  assert.throws(() => command(reader, { action: "timeline.link", pageId: pid, viewId: "t", version: database(pid).version, from: a, to: other }));
+
+  const schedule = (rid: string, days: number) =>
+    command(owner, {
+      action: "row.schedule",
+      pageId: pid,
+      viewId: "t",
+      version: database(pid).version,
+      rowId: rid,
+      rowVersion: rows(pid).find((x) => x.id === rid)!.version,
+      change: { operation: "move", days },
+    }) as { moved: number };
+  const period = (rid: string) => {
+    const cells = rows(pid).find((x) => x.id === rid)!.cells;
+    return [cells.start, cells.end];
+  };
+  // Without the setting only the dragged record moves.
+  assert.equal(schedule(a, 2).moved, 0);
+  assert.deepEqual(period(b), ["2026-03-05", "2026-03-06"]);
+  // With "Nachfolger mitverschieben" the whole chain follows, both ways.
+  timeline({ moveSuccessors: true });
+  assert.equal(schedule(a, 3).moved, 2);
+  assert.deepEqual([period(a), period(b), period(c), period(other)], [
+    ["2026-03-06", "2026-03-09"],
+    ["2026-03-08", "2026-03-09"],
+    ["2026-03-10", "2026-03-12"],
+    ["2026-03-01", "2026-03-02"],
+  ]);
+  assert.equal(schedule(b, -1).moved, 1);
+  assert.deepEqual([period(b), period(c)], [["2026-03-07", "2026-03-08"], ["2026-03-09", "2026-03-11"]]);
+  // Extending the end pushes successors; moving the start alone does not.
+  command(owner, {
+    action: "row.schedule",
+    pageId: pid,
+    viewId: "t",
+    version: database(pid).version,
+    rowId: b,
+    rowVersion: rows(pid).find((x) => x.id === b)!.version,
+    change: { operation: "resize-start", days: -1 },
+  });
+  assert.deepEqual(period(c), ["2026-03-09", "2026-03-11"]);
+  // Circular data (written elsewhere) is refused instead of moved forever.
+  run("UPDATE rows SET cells=json_set(cells,'$.after',json_array(?)) WHERE id=?", c, a);
+  assert.throws(() => schedule(a, 1), /Zyklische/);
+});

@@ -7,6 +7,7 @@ import { assertRowAccess } from "./row-access";
 import { cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
 import type { Identity, Row, Field } from "./types";
 import { documentChanged } from "./document-live";
+import { recordDocumentAuthors } from "./document-authors";
 type StoredDocument = { state: Uint8Array; html: string; generation: string };
 export type RowTemplate = {
   id: string;
@@ -91,7 +92,9 @@ export function syncRowDocument(
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, previous.state);
+    const before = Y.encodeStateVector(doc);
     Y.applyUpdate(doc, Buffer.from(encoded, "base64"));
+    recordDocumentAuthors(pageId, rowId, previous.generation, user.id, before, Y.encodeStateVector(doc));
     const html = stateHtml(doc),
       state = Y.encodeStateAsUpdate(doc);
     if (

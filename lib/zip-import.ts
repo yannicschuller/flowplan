@@ -10,11 +10,15 @@ import { htmlState } from "./document-server";
 import { markdownToHtml } from "./markdown-import";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
+import { boardState, storeBoardImages } from "./whiteboard-import-server";
+import { writeWhiteboard } from "./whiteboard";
+import { BoardImportError, parseBoardFile, type ImportedBoard } from "./whiteboard-import";
 import type { Field, Identity, Space } from "./types";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
-// page holds its subpages; files referenced from Markdown become attachments.
+// page holds its subpages; files referenced from Markdown become attachments;
+// Excalidraw and draw.io drawings become whiteboards.
 export const MAX_IMPORT_PAGES = 500;
 export const MAX_IMPORT_ROWS = 5000;
 const NOTION_ID = /\s+([0-9a-f]{32})$/i;
@@ -35,21 +39,21 @@ const mimeTypes: Record<string, string> = {
 type Node = {
   key: string; // path without extension, e.g. "Wiki abc/Seite def"
   path: string;
-  kind: "document" | "database";
+  kind: "document" | "database" | "whiteboard";
   title: string;
   depth: number;
 };
 export function exportTitle(name: string) {
   return (
     name
-      .replace(/\.(md|csv)$/i, "")
+      .replace(/\.(md|csv|excalidraw|drawio)$/i, "")
       .replace(/_all$/i, "")
       .replace(NOTION_ID, "")
       .trim() || "Ohne Titel"
   );
 }
 function nodeKey(path: string) {
-  return path.replace(/\.(md|csv)$/i, "").replace(/_all$/i, "");
+  return path.replace(/\.(md|csv|excalidraw|drawio)$/i, "").replace(/_all$/i, "");
 }
 
 // Notion puts a large export into several inner ZIP files.
@@ -166,7 +170,9 @@ export async function importZip(
       ? "document"
       : /\.csv$/i.test(path)
         ? "database"
-        : null;
+        : /\.(excalidraw|drawio)$/i.test(path)
+          ? "whiteboard"
+          : null;
     if (!kind) continue;
     const key = nodeKey(path);
     const existing = nodes.get(key);
@@ -192,12 +198,28 @@ export async function importZip(
   if (!nodes.size)
     throw new HttpError(
       400,
-      "Die ZIP-Datei enthält keine Markdown- oder CSV-Dateien.",
+      "Die ZIP-Datei enthält keine Markdown-, CSV-, Excalidraw- oder draw.io-Dateien.",
     );
   if (nodes.size > MAX_IMPORT_PAGES)
     throw new HttpError(413, `Maximal ${MAX_IMPORT_PAGES} Seiten je Import.`);
   const text = (path: string) =>
     entries.get(path)!.toString("utf8").replace(/^﻿/, "");
+  // Drawings are read before anything is written; one that cannot be read
+  // becomes a board with a note saying why.
+  const boards = new Map<string, ImportedBoard>();
+  for (const node of nodes.values())
+    if (node.kind === "whiteboard")
+      try {
+        boards.set(node.key, await parseBoardFile(node.path, text(node.path)));
+      } catch (error) {
+        if (!(error instanceof BoardImportError)) throw error;
+        boards.set(node.key, {
+          format: /\.drawio$/i.test(node.path) ? "drawio" : "excalidraw",
+          images: [],
+          replaced: 1,
+          items: [{ id: "n", type: "sticky", x: 0, y: 0, w: 320, h: 160, text: `${posix.basename(node.path)}: ${error.message}`, fill: "#ffc9c9", fontSize: 14 }],
+        });
+      }
   return transaction(() => {
     const pageIds = new Map<string, string>();
     const ordered = [...nodes.values()].sort(
@@ -263,9 +285,19 @@ export async function importZip(
         uploaded.set(target, url);
         return url;
       };
-    let rowCount = 0;
+    let rowCount = 0,
+      boardImages = 0;
+    const imageBytes = { bytes: 0 };
     for (const node of ordered) {
       const pid = pageIds.get(node.key)!;
+      if (node.kind === "whiteboard") {
+        imageBytes.bytes = bytesAdded;
+        const urls = storeBoardImages(user, pid, workspaceId, boards.get(node.key)!, imageBytes);
+        bytesAdded = imageBytes.bytes;
+        boardImages += urls.size;
+        writeWhiteboard(pid, boardState(boards.get(node.key)!, urls));
+        continue;
+      }
       if (node.kind === "document") {
         // The first heading repeats the page title.
         const body = text(node.path).replace(/^#\s+[^\n]*\n?/, "");
@@ -347,7 +379,7 @@ export async function importZip(
         .map((n) => pageIds.get(n.key)!),
       pages: ordered.length,
       rows: rowCount,
-      files: uploaded.size,
+      files: uploaded.size + boardImages,
     };
   }, user);
 }

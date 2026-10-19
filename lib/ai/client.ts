@@ -42,14 +42,16 @@ export type StreamAiOptions = {
 // Streams the answer; resolves with the whole text. Rejects with
 // AiRequestError (localized message), or an AbortError when aborted.
 export async function streamAi({ signal, onText, ...body }: StreamAiOptions): Promise<string> {
-  return streamText("/api/ai/run", body, { signal, onText });
+  return streamAiFrom("/api/ai/run", body, { signal, onText });
 }
 
-// A plain-text answer stream from one of the AI routes (see lib/ai/run.ts).
-async function streamText(
+// The same for the other AI endpoints that answer with a text stream
+// (/api/ai/write, /api/ai/summarize). `onResponse` sees the response
+// before the text (headers such as X-Flowplan-AI-Included).
+export async function streamAiFrom(
   url: string,
-  body: unknown,
-  { signal, onText, onResponse }: { signal?: AbortSignal; onText?: (piece: string, text: string) => void; onResponse?: (response: Response) => void },
+  body: Record<string, unknown>,
+  { signal, onText, onResponse }: { signal?: AbortSignal; onText?: (piece: string, text: string) => void; onResponse?: (response: Response) => void } = {},
 ): Promise<string> {
   const response = await fetch(url, {
     method: "POST",
@@ -123,7 +125,7 @@ function decodeSources(header: string | null): AskSource[] {
 }
 export async function askAi({ signal, onText, onSources, ...body }: AskOptions): Promise<{ text: string; sources: AskSource[] }> {
   let sources: AskSource[] = [];
-  const text = await streamText("/api/ai/ask", body, {
+  const text = await streamAiFrom("/api/ai/ask", body, {
     signal,
     onText,
     onResponse: (response) => {

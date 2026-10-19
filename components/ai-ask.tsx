@@ -233,7 +233,7 @@ function AnswerText({ text, sources, onOpen, streaming }: { text: string; source
               </button>
             );
           })}
-          {streaming && i === paragraphs.length - 1 && <span className="ai-caret" aria-hidden />}
+          {streaming && i === paragraphs.length - 1 && <span className="ai-ask-caret" aria-hidden />}
         </p>
       ))}
     </div>

@@ -7,6 +7,10 @@ import { revealSpoiler } from "./link-preview";
 import { mountDiagram } from "@/lib/mermaid-render";
 import { renderMath } from "@/lib/math-render";
 import { renderCode, languageLabel } from "@/lib/code-highlight";
+import { citedWorks, parseItemAttribute, referenceText } from "@/lib/citations";
+import { tr } from "@/lib/locale-tag";
+import { emptyBibliography, renderReferences } from "./citation-views";
+import { finishDocumentHtml } from "@/lib/document-html";
 // Callers provide server-sanitized HTML. Generated math is never stored as document content.
 export function ReadOnlyDocument({
   html,
@@ -20,6 +24,8 @@ export function ReadOnlyDocument({
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
+    // Right-to-left blocks and footnotes (numbers, list at the end).
+    finishDocumentHtml(root);
     const diagrams = Array.from(
       root.querySelectorAll<HTMLElement>("[data-mermaid]"),
     ).map((element) => mountDiagram(element, element.dataset.mermaid || ""));
@@ -28,6 +34,21 @@ export function ReadOnlyDocument({
         element.dataset.math || "",
         element.tagName === "SPAN",
       );
+    }
+    // Citations: the full reference as tooltip; bibliographies list them.
+    const cited = Array.from(root.querySelectorAll<HTMLElement>("[data-citation]")).map((element) => {
+      const item = parseItemAttribute(element.dataset.citationItem);
+      if (item) element.title = referenceText(item, tr);
+      return { key: element.dataset.citation || "", item: element.dataset.citationItem || "" };
+    });
+    for (const element of root.querySelectorAll<HTMLElement>("[data-bibliography]")) {
+      let list = element.querySelector<HTMLElement>("ul.bibliography-list");
+      if (!list) {
+        list = document.createElement("ul");
+        list.className = "bibliography-list";
+        element.append(list);
+      }
+      renderReferences(list, citedWorks(cited), emptyBibliography());
     }
     // Function graphs: drawn here, movable but not saved.
     const plots = Array.from(root.querySelectorAll<HTMLElement>("[data-function-plot]"));

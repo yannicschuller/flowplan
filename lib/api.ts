@@ -2,6 +2,8 @@ import { teamReply } from "./service-desk";
 import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
 import { setAiBlock, setAiRule } from "./ai/access";
 import { aiStatus } from "./ai/resolve";
+import { markdownSource } from "./markdown";
+import { markdownToHtml } from "./markdown-import";
 import { legalLinks } from "./legal-links";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan } from "./account-deletion";
 import { confirmAddress } from "./local-auth";
@@ -68,7 +70,9 @@ import {
   visibleRows,
 } from "./row-access";
 import { cellText } from "./cell-text";
-import { scheduleRow, cascadeTimeline } from "./row-schedule";
+import { scheduleRow, cascadeTimeline, linkTimeline } from "./row-schedule";
+import { recordDocumentAuthors } from "./document-authors";
+import { importBibliography, removeFromBibliography } from "./citations-server";
 import { rewriteFormulaReferences } from "./formula";
 import { validateCalculations } from "./database-summary";
 import { spaceColorSchema, spaceIconSchema } from "./space-appearance";
@@ -1317,7 +1321,10 @@ export function command(
         }
         try {
           if (existing?.state) Y.applyUpdate(d, existing.state);
+          const before = Y.encodeStateVector(d);
           Y.applyUpdate(d, Buffer.from(update, "base64"));
+          // Who wrote what: the editor sessions in this update are this person's.
+          recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, Y.encodeStateVector(d));
           const merged = Y.encodeStateAsUpdate(d),
             canonical = stateHtml(d);
           // Tasks: people given a task are told once (not also as mention).
@@ -1351,6 +1358,53 @@ export function command(
         } finally {
           d.destroy();
         }
+        break;
+      }
+      // Source view (components/markdown-source.tsx): the page as Markdown,
+      // with the blocks Markdown cannot hold kept aside. Reading suffices.
+      case "document.markdown": {
+        const p = requirePage(user, pid());
+        requireUnlocked(user, p);
+        if (p.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+        result = markdownSource(z.string().max(8_000_000).parse(b.html));
+        break;
+      }
+      // …and back: the HTML the editor puts in place of its content (one
+      // change, undoable there), and the kept blocks the text no longer
+      // names. With check, only that; otherwise the page's current state is
+      // kept as a version first.
+      case "document.markdown.apply": {
+        const p = write();
+        if (p.kind !== "document") throw new HttpError(400, "Kein Dokument.");
+        const markdown = z.string().max(4_000_000).parse(b.markdown);
+        const blocks = z.array(z.string().max(4_000_000)).max(5000).parse(b.blocks ?? []);
+        const used = new Set<number>();
+        const html = markdownToHtml(markdown, (href) => href, {
+          source: true,
+          // Each kept block once; a copied marker stays empty.
+          blocks: (index) => {
+            if (used.has(index) || blocks[index] === undefined) return null;
+            used.add(index);
+            return blocks[index];
+          },
+        });
+        if (b.check !== true) {
+          const current = one<{ state: Uint8Array | null; html: string }>(
+            "SELECT state,html FROM documents WHERE page_id=?",
+            p.id,
+          );
+          if (current)
+            run(
+              "INSERT INTO snapshots(id,page_id,state,html,title,created_by) VALUES(?,?,?,?,?,?)",
+              id(),
+              p.id,
+              current.state || htmlState(current.html),
+              current.html,
+              p.title,
+              user.id,
+            );
+        }
+        result = { html, missing: blocks.map((_, index) => index).filter((index) => !used.has(index)) };
         break;
       }
       case "page.snapshot": {
@@ -1637,6 +1691,16 @@ export function command(
         break;
       case "timeline.cascade":
         result = cascadeTimeline(user, pid(), b);
+        break;
+      case "timeline.link":
+        result = linkTimeline(user, pid(), b);
+        break;
+      // The workspace's bibliography (citations).
+      case "citation.import":
+        result = importBibliography(user, b);
+        break;
+      case "citation.remove":
+        result = removeFromBibliography(user, b);
         break;
       case "row.move":
         result = moveRow(user, pid(), b);
@@ -2574,6 +2638,7 @@ export function command(
     if (
       ![
         "document.sync",
+        "document.markdown",
         "row.document.sync",
         "whiteboard.sync",
         "notification.read",
@@ -2635,6 +2700,7 @@ const editActions = new Set([
   "survey.save",
   "row.schedule",
   "timeline.cascade",
+  "timeline.link",
   "row.move",
   "rows.bulk",
   "rows.transfer",

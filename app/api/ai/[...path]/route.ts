@@ -20,6 +20,8 @@ import { askInput, prepareAsk, NOTHING_FOUND } from "@/lib/ai/ask";
 import { semanticStats } from "@/lib/ai/semantic";
 import { aiDatabaseStatus, proposeDatabase, queueAiCells, runAiCell } from "@/lib/ai/database";
 import { ct } from "@/lib/content-locale";
+import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
+import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -174,6 +176,14 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       }
       if (path[1] === "queue") return NextResponse.json(queueAiCells(user, await body(req, 100_000)), noStore);
     }
+    // The writing assistant: an action on the selection or a free prompt;
+    // the prompt is built on the server (lib/ai/write.ts).
+    if (path.length === 1 && path[0] === "write")
+      return await aiWriteResponse(user, await body(req, (WRITE_LIMITS.maxText + WRITE_LIMITS.maxInstruction) * 4 + 10_000), req.signal);
+    // A summary of a page, record, database view or transcript; the content
+    // is loaded on the server (lib/ai/summarize.ts).
+    if (path.length === 1 && path[0] === "summarize")
+      return await aiSummaryResponse(user, await body(req, SUMMARY_LIMITS.maxText * 4 + 20_000 * 40), req.signal);
     // The person's own provider (as saved): test it, list its models.
     if (path.length === 1 && (path[0] === "test" || path[0] === "models")) {
       limitAiSetup(user.id);

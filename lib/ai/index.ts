@@ -55,6 +55,15 @@
 //     Session + origin check (CSRF); API tokens and demo are refused.
 //     Pass pageId/rowId whenever the prompt contains that page's content.
 //   GET  /api/ai/access?page=…&row=…  → { readable, reason }
+//   POST /api/ai/write      { pageId, rowId?, action, text?, instruction?,
+//                             tone?, language?, context?, locale }
+//     The writing assistant (lib/ai/write.ts): prompts from lib/ai/prompts.ts,
+//     the page context loaded on the server. Same stream as /run.
+//   POST /api/ai/summarize  { pageId, rowId?, rowIds?, text?, locale }
+//     Summaries of a page, record, database view (rowIds: the view's
+//     records in order) or transcript (lib/ai/summarize.ts, map-reduce for
+//     long content). Same stream as /run; X-Flowplan-AI-Included/-Total
+//     (records), -Parts and -Truncated headers.
 //
 // CLIENT (lib/ai/client.ts)
 //   aiUsable(boot.ai, feature), aiPageReadable(boot.ai, pageId),

@@ -72,6 +72,11 @@ import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
+import { importWhiteboardFile } from "@/lib/whiteboard-import-server";
+import { documentAuthors } from "@/lib/document-authors";
+import { bibliography, bibliographyForDoi, resolveDoi } from "@/lib/citations-server";
+import { transaction } from "@/lib/db";
+import { BOARD_IMPORT_LIMITS } from "@/lib/whiteboard-import";
 import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
@@ -467,6 +472,20 @@ async function handleGET(
       return NextResponse.json(await resolveEmbed(raw), {
         headers: { "Cache-Control": "no-store" },
       });
+    }
+    // The workspace's bibliography for citations.
+    if (path.length === 1 && path[0] === "citations")
+      return NextResponse.json(
+        { items: bibliography(user, z.uuid().parse(url.searchParams.get("workspace"))) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // Who wrote what: the people behind the editor sessions of a document.
+    if (path.length === 1 && path[0] === "document-authors") {
+      const row = url.searchParams.get("row");
+      return NextResponse.json(
+        documentAuthors(user, z.uuid().parse(url.searchParams.get("page")), row ? z.uuid().parse(row) : null),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     // Dashboards: one number from a database, and the databases to choose from.
     if (path[0] === "dashboard-metric") {
@@ -1035,6 +1054,33 @@ async function handlePOST(
           z.uuid().parse(data.get("spaceId")),
           Buffer.from(await file.arrayBuffer()),
         ),
+      );
+    }
+    // A DOI as a citation: metadata via DOI content negotiation (cached),
+    // then into the workspace's bibliography.
+    if (path.length === 2 && path[0] === "citations" && path[1] === "doi") {
+      // The server would fetch for anonymous demo guests.
+      if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z.object({ workspaceId: z.uuid(), doi: z.string().min(4).max(400) }).parse(await req.json());
+      requireMember(user, body.workspaceId, "editor");
+      const data = await resolveDoi(body.doi);
+      return NextResponse.json({ item: transaction(() => bibliographyForDoi(user, body.workspaceId, data), user) });
+    }
+    // Excalidraw and draw.io files: onto a board (pageId) or as a new one.
+    if (path.length === 2 && path[0] === "whiteboards" && path[1] === "import") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > BOARD_IMPORT_LIMITS.bytes)
+        throw new HttpError(413, "Die Datei ist zu groß (höchstens 20 MB).");
+      const fields = Object.fromEntries(
+        ["pageId", "workspaceId", "spaceId", "parentId"]
+          .map((key) => [key, data.get(key)])
+          .filter(([, value]) => typeof value === "string" && value),
+      );
+      return NextResponse.json(
+        await importWhiteboardFile(user, file.name, Buffer.from(await file.arrayBuffer()), fields),
       );
     }
     // Signs out one of the person's devices, or all others.

@@ -78,6 +78,8 @@ import {
   hasRelativeFilters,
 } from "@/lib/database-filters";
 import RowDocument from "./row-document";
+import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { AiSummaryDialog, type AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { MarkdownRecordsImport } from "./markdown-records-import";
 import { DatabaseExportMenu, RecordExportMenu } from "./record-export";
@@ -115,6 +117,7 @@ import {
   Funnel,
   SortAscending,
   DotsThree,
+  Sparkle,
   ArrowSquareOut,
   Trash,
   CalendarBlank,
@@ -144,7 +147,6 @@ import {
   CopySimple,
   ArrowLeft,
   ArrowRight,
-  Sparkle,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
 import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
@@ -316,6 +318,10 @@ export default function DatabaseView({
   onError: (s: string) => void;
 }) {
   const t = useT();
+  // "Mit KI zusammenfassen" for the view's records or one record.
+  const aiSummarize = useAiAvailability("summarize", page.id);
+  const aiBlockedHint = useAiBlockedHint();
+  const [aiSummary, setAiSummary] = useState<AiSummaryTarget | null>(null);
   // The server sends this database's rows once (as rows); relations to
   // itself and rollups read them from here.
   const related = useMemo(
@@ -406,6 +412,9 @@ export default function DatabaseView({
     [bulkValue, setBulkValue] = useState<unknown>(undefined),
     [bulkBusy, setBulkBusy] = useState(false);
   // AI in this database: may the person use it here, the queue, fresh cells.
+  // From the props or, e.g. for linked databases, from the workspace's AI context.
+  const contextAi = useAi().status;
+  ai = ai ?? contextAi ?? undefined;
   const canAi = aiUsable(ai, "database") && aiPageReadable(ai, page.id);
   const hasAiFields = data.database.fields.some((f) => f.ai);
   const [aiFill, setAiFill] = useState(false),
@@ -752,6 +761,21 @@ export default function DatabaseView({
         >
           <LinkIcon size={17} />
         </button>
+        {aiSummarize !== "hidden" && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-disabled={aiSummarize === "blocked" || undefined}
+            aria-label={t("Mit KI zusammenfassen", "Summarise with AI")}
+            title={aiSummarize === "blocked" ? aiBlockedHint : t("Mit KI zusammenfassen", "Summarise with AI")}
+            onClick={() => {
+              if (aiSummarize !== "ok") return;
+              setAiSummary({ pageId: page.id, rowId: row.id, title: cellText(row.cells[fields[0]?.id || "title"]) || t("Eintrag", "Record"), kind: "record" });
+            }}
+          >
+            <Sparkle size={17} />
+          </button>
+        )}
         <RecordExportMenu
           pageId={page.id}
           rowId={row.id}
@@ -2508,6 +2532,23 @@ export default function DatabaseView({
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
+          {aiSummarize !== "hidden" && (
+            <button
+              aria-disabled={aiSummarize === "blocked" || undefined}
+              aria-label={t("Mit KI zusammenfassen", "Summarise with AI")}
+              title={
+                aiSummarize === "blocked"
+                  ? aiBlockedHint
+                  : t(`Mit KI zusammenfassen – die ${shown.length} Einträge dieser Ansicht (mit Filtern)`, `Summarise with AI – the ${shown.length} records of this view (with filters)`)
+              }
+              onClick={() => {
+                if (aiSummarize !== "ok") return;
+                setAiSummary({ pageId: page.id, rowIds: shown.map((r) => r.id), title: `${page.title} · ${view.name}`, kind: "database" });
+              }}
+            >
+              <Sparkle size={17} />
+            </button>
+          )}
           <DatabaseExportMenu
             pageId={page.id}
             title={page.title}
@@ -3410,6 +3451,15 @@ export default function DatabaseView({
           onOpen={setRowId}
           onView={updateView}
           onSchedule={(input) => mutate({ pageId: page.id, ...input })}
+          onSchema={
+            allowFieldChanges
+              ? (nextFields, patch) =>
+                  updateSchema(
+                    nextFields,
+                    views.map((v) => (v.id === view.id ? { ...v, ...patch } : v)),
+                  )
+              : undefined
+          }
         />
       )}
       {view.type === "chart" && (
@@ -5120,6 +5170,7 @@ export default function DatabaseView({
           </div>
         ))}
       </Modal>
+      <AiSummaryDialog target={aiSummary} onClose={() => setAiSummary(null)} />
       <Modal
         open={!!selected}
         onClose={() => setRowId(null)}

@@ -2259,6 +2259,57 @@ tr:hover .row-open {
   stroke: #cf4850;
   stroke-dasharray: 4 3;
 }
+.timeline-dependencies > path.critical {
+  stroke: #d9480f;
+  stroke-width: 2.5;
+}
+.timeline-dependencies > path.linking {
+  stroke: var(--blue);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+.timeline-range.critical {
+  background: color-mix(in srgb, #d9480f 16%, var(--bg));
+  border-color: #d9480f;
+}
+.timeline-range.link-target:hover {
+  outline: 2px dashed var(--blue);
+}
+.timeline-link-handle {
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  translate: 0 -50%;
+  border-radius: 50%;
+  border: 2px solid var(--blue);
+  background: var(--bg);
+  cursor: crosshair;
+  touch-action: none;
+  opacity: 0;
+  z-index: 2;
+  transition: opacity 0.12s;
+}
+.timeline-range:hover .timeline-link-handle,
+.timeline-link-handle:focus-visible,
+.timeline-link-handle:active {
+  opacity: 1;
+}
+@media (hover: none) {
+  .timeline-link-handle {
+    opacity: 1;
+  }
+}
+.timeline-drag-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  color: #cf4850;
+  font-size: 13px;
+}
 .timeline-conflict {
   display: inline-flex;
   flex-shrink: 0;
@@ -9207,6 +9258,20 @@ textarea {
 .wb-zoom-value {
   min-width: 52px;
 }
+.wb-zoom .wb-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wb-zoom .wb-import:hover,
+.wb-zoom .wb-import:focus-within {
+  background: var(--hover, var(--blue-light));
+}
 .wb-status {
   padding: 0 8px;
   color: var(--muted);
@@ -14915,6 +14980,177 @@ h3 .block-reactions {
   font-size: 12.5px;
 }
 
+/* ---------- Citations (lib/citation-nodes.ts) ---------- */
+.citation {
+  color: var(--blue);
+  white-space: nowrap;
+  cursor: default;
+}
+.ProseMirror-selectednode.citation {
+  outline: 2px solid var(--blue-light);
+  border-radius: 3px;
+}
+.bibliography {
+  margin: 1.2em 0;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--border);
+}
+.bibliography-title {
+  margin: 0 0 0.5em;
+  font-weight: 600;
+  font-size: 1.15em;
+}
+.bibliography-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bibliography-list li {
+  margin: 0 0 0.45em;
+  padding-left: 2em;
+  text-indent: -2em;
+  overflow-wrap: anywhere;
+}
+.bibliography-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.citation-dialog {
+  display: grid;
+  gap: 10px;
+}
+.citation-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.citation-search input {
+  flex: 1;
+}
+.citation-locator {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.citation-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.citation-results li {
+  border-bottom: 1px solid var(--border);
+}
+.citation-results li:last-child {
+  border-bottom: none;
+}
+.citation-results li.muted {
+  padding: 10px 12px;
+}
+.citation-results button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+}
+.citation-results button:hover,
+.citation-results button:focus-visible {
+  background: var(--hover);
+}
+.citation-results button span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.citation-import textarea {
+  width: 100%;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+/* ---------- Who wrote what (lib/authorship-plugin.ts) ---------- */
+.author-mark {
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.author-mark.earlier {
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--muted) 30%, transparent) 2px,
+    transparent 2px
+  );
+}
+.author-legend {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  width: 250px;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.author-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.author-legend-head button {
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.author-legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.author-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.author-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-swatch {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+.author-swatch.earlier {
+  border: 1px dashed var(--muted);
+}
+.author-legend-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+}
+@media print {
+  .author-legend {
+    display: none;
+  }
+  .author-mark {
+    background: none !important;
+  }
+}
+
 /* ---------- Ticket numbers in text (lib/ticket-ref-plugin.ts) ---------- */
 .ticket-ref {
   padding: 0 3px;
@@ -17663,6 +17899,7 @@ h3 .block-reactions {
 .ai-secrets-note {
   margin: 0 0 22px;
   font-size: 12.5px;
+}
 /* ---------- Share links: password and end date (components/link-protection.tsx) ---------- */
 .link-protection-chips {
   display: flex;
@@ -17792,6 +18029,578 @@ h3 .block-reactions {
   align-items: center;
   gap: 6px;
   margin-top: 12px;
+}
+/* Footnotes (lib/footnotes.ts): the number comes from the order of the
+   markers, the notes are listed at the end of the document. */
+.document-editor sup.footnote-ref {
+  font-size: 0.72em;
+  line-height: 0;
+  vertical-align: super;
+  color: var(--blue);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 1px;
+  border-radius: 3px;
+}
+.document-editor sup.footnote-ref::before {
+  content: "[" attr(data-footnote-number) "]";
+}
+.document-editor sup.footnote-ref:not([data-footnote-number])::before,
+.document-editor sup.footnote-ref:has(a)::before {
+  content: none;
+}
+.document-editor sup.footnote-ref.ProseMirror-selectednode,
+.document-editor sup.footnote-ref:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.document-editor .footnotes {
+  margin-top: 32px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.88em;
+  color: var(--secondary);
+  user-select: text;
+}
+.document-editor .footnotes-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.86em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.document-editor .footnotes ol {
+  margin: 0;
+}
+.document-editor .footnotes li {
+  margin: 3px 0;
+  border-radius: 4px;
+}
+.document-editor .footnotes .footnote-text {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  padding: 0;
+  background: none;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+.document-editor .footnotes .footnote-text[role="button"] {
+  cursor: text;
+}
+.document-editor[contenteditable="true"] .footnotes .footnote-text[role="button"]:hover {
+  text-decoration: underline dotted;
+}
+.document-editor .footnote-back {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+}
+.document-editor .footnote-flash {
+  animation: footnote-flash 1.4s ease-out;
+}
+@keyframes footnote-flash {
+  from {
+    background: var(--blue-light);
+  }
+  to {
+    background: transparent;
+  }
+}
+@media print {
+  .document-editor .footnote-back {
+    display: none;
+  }
+}
+.print-view .footnote-back {
+  display: none;
+}
+
+/* "Als Markdown bearbeiten" (components/markdown-source.tsx). */
+.markdown-source {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.markdown-source-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.markdown-source-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.markdown-source-note {
+  margin: 0;
+  font-size: 13px;
+}
+.markdown-source-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, #d9a400 45%, var(--border));
+  background: color-mix(in srgb, #d9a400 10%, var(--bg));
+  font-size: 13px;
+}
+.markdown-source-editor {
+  display: flex;
+  min-height: 60vh;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.markdown-source-lines {
+  flex: none;
+  overflow: hidden;
+  padding: 12px 8px 12px 10px;
+  text-align: end;
+  color: var(--muted);
+  user-select: none;
+  border-inline-end: 1px solid var(--border);
+}
+.markdown-source-lines span {
+  display: block;
+}
+.markdown-source-text {
+  flex: 1;
+  min-width: 0;
+  min-height: 60vh;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  resize: vertical;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+.markdown-source-text:focus {
+  outline: none;
+}
+.markdown-source-editor:focus-within {
+  border-color: var(--blue);
+}
+
+/* Right-to-left blocks (lib/text-direction.ts): bullets, numbers, checkboxes,
+   quote bars and callout icons on the side the text starts on. The editor
+   and read-only pages put dir="rtl" on such blocks (also when found from
+   the text); a block inside one that goes the other way gets dir="ltr".
+   Attribute selectors, not :dir() – the CSS build rewrites :dir() into
+   language selectors for older browsers. */
+.document-editor :is(ul, ol)[dir="rtl"],
+.document-editor [dir="rtl"] :is(ul, ol):not([dir="ltr"]) {
+  padding-left: 0;
+  padding-right: 25px;
+}
+.document-editor ul[data-type="taskList"][dir="rtl"],
+.document-editor [dir="rtl"] ul[data-type="taskList"]:not([dir="ltr"]) {
+  padding: 0;
+}
+/* A right-to-left item in a left-to-right list keeps its bullet inside. */
+.document-editor :is(ul, ol):not([dir="rtl"]) > li[dir="rtl"]:not([data-type="taskItem"]) {
+  list-style-position: inside;
+}
+.document-editor blockquote[dir="rtl"],
+.document-editor [dir="rtl"] blockquote:not([dir="ltr"]) {
+  border-left: 0;
+  border-right: 3px solid #b9ccec;
+  padding: 4px 18px 4px 0;
+}
+:is(.editor-callout, aside[data-callout]):is([dir="rtl"], [dir="rtl"] :not([dir="ltr"])) {
+  border-left: 0;
+  border-right: 3px solid var(--callout, var(--blue));
+}
+:is(.editor-callout, aside[data-callout]):is([dir="rtl"], [dir="rtl"] :not([dir="ltr"]))::before {
+  padding-left: 0;
+  padding-right: 24px;
+}
+:is(.editor-callout, aside[data-callout]):is([dir="rtl"], [dir="rtl"] :not([dir="ltr"]))::after {
+  left: auto;
+  right: 18px;
+}
+.block-editor-surface.with-block-handles.with-rtl-blocks {
+  padding-right: 26px;
+}
+/* AI writing assistant and summaries (components/ai-writer.tsx,
+   components/ai-summary.tsx). */
+.text-menu-actions .text-menu-ai {
+  color: var(--blue);
+  font-weight: 550;
+}
+.text-menu-actions .text-menu-ai[aria-disabled="true"],
+.slash-menu-list > button[aria-disabled="true"],
+.database-toolbar button[aria-disabled="true"],
+.icon-button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dropdown-item[data-disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dropdown-hint {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ai-writer {
+  position: fixed;
+  z-index: 410;
+  width: min(500px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 18px 40px -12px #1d1a1440;
+  animation: ai-panel-in 0.18s var(--ease-out, ease) both;
+}
+@keyframes ai-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.ai-writer-ask {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.ai-writer-ask > svg {
+  flex-shrink: 0;
+  margin-top: 7px;
+  color: var(--blue);
+}
+.ai-writer-ask textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 0;
+  background: transparent;
+  padding: 5px 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text);
+  outline: none;
+}
+.ai-writer-ask .icon-button:disabled {
+  opacity: 0.4;
+}
+.ai-writer-context {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  padding: 0 4px;
+  font-size: 13px;
+}
+.ai-writer-context small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-writer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+}
+.ai-writer-actions button[role="menuitem"] {
+  display: grid;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: 8px;
+  text-align: left;
+  transition: background-color 0.15s var(--ease-out, ease);
+}
+.ai-writer-actions button[role="menuitem"]:hover,
+.ai-writer-actions button[role="menuitem"]:focus-visible {
+  background: var(--hover);
+}
+.ai-writer-actions strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.ai-writer-actions small {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ai-writer-sub {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.ai-writer-translate .fp-select,
+.ai-writer-translate select {
+  margin: 0 9px 4px;
+  font-size: 12px;
+}
+.ai-writer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 9px 4px;
+}
+.ai-writer-job {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ai-writer-job svg {
+  color: var(--blue);
+}
+.ai-writer-job span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-preview {
+  min-height: 40px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.ai-preview > div > :first-child {
+  margin-top: 0;
+}
+.ai-preview > div > :last-child {
+  margin-bottom: 0;
+}
+.ai-preview h1,
+.ai-preview h2,
+.ai-preview h3,
+.ai-preview h4 {
+  margin: 0.8em 0 0.3em;
+  font-size: 15px;
+}
+.ai-preview p {
+  margin: 0.4em 0;
+}
+.ai-preview ul,
+.ai-preview ol {
+  margin: 0.3em 0;
+  padding-left: 1.4em;
+}
+.ai-preview ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.ai-preview li[data-type="taskItem"] p::before {
+  content: "☐ ";
+  color: var(--muted);
+}
+.ai-preview li[data-type="taskItem"][data-checked="true"] p::before {
+  content: "☑ ";
+}
+.ai-preview table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 13px;
+}
+.ai-preview th,
+.ai-preview td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.ai-preview pre {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-x: auto;
+}
+.ai-preview code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+.ai-preview aside[data-callout],
+.ai-preview blockquote {
+  margin: 0.5em 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--blue);
+  background: var(--bg);
+  border-radius: 4px;
+}
+/* While the answer streams: a pulsing caret after the last text, so it is
+   clear more is coming. */
+.ai-preview.streaming > div > :is(p, h1, h2, h3, h4, blockquote):last-child::after,
+.ai-preview.streaming > div > :is(ul, ol):last-child > li:last-child > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.15em;
+  border-radius: 2px;
+  background: var(--blue);
+  animation: ai-caret 0.9s ease-in-out infinite;
+}
+/* Before the first words: a soft shimmer over "Die KI schreibt …". */
+.ai-preview.streaming .muted {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ai-shimmer 1.6s linear infinite;
+}
+@keyframes ai-caret {
+  50% {
+    opacity: 0.2;
+  }
+}
+@keyframes ai-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.ai-writer-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ai-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.ai-footer span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-footer.external svg {
+  color: var(--signal);
+}
+/* The text the assistant works on, and what it has just inserted (a soft
+   accent background fading out; decorations only, lib/ai/insert.ts). */
+.ProseMirror .ai-target {
+  background: var(--blue-light);
+  border-radius: 2px;
+}
+.ProseMirror .ai-target-line {
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+.ProseMirror .ai-inserted {
+  border-radius: 4px;
+  animation: ai-inserted 1.2s ease-out both;
+}
+@keyframes ai-inserted {
+  from {
+    background-color: var(--blue-light);
+  }
+  20% {
+    background-color: var(--blue-light);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.ai-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ai-summary-panel {
+  width: 340px;
+}
+.ai-summary-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-summary-panel h3 svg {
+  color: var(--blue);
+}
+.ai-summary-panel .ai-preview {
+  max-height: none;
+}
+.ai-summary-note {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.ai-summary-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.ai-summary-status {
+  margin: 0;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .ai-summary-panel {
+    width: auto;
+  }
+  .ai-writer-actions {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-writer,
+  .ai-preview.streaming > div > :is(p, h1, h2, h3, h4, blockquote):last-child::after,
+  .ai-preview.streaming > div > :is(ul, ol):last-child > li:last-child > :last-child::after,
+  .ai-preview.streaming .muted,
+  .ProseMirror .ai-inserted {
+    animation: none !important;
+  }
+  .ai-preview.streaming .muted {
+    background: none;
+    color: var(--muted);
+  }
+  .ProseMirror .ai-inserted {
+    background: none;
+  }
+  .ai-writer-actions button[role="menuitem"] {
+    transition: none;
+  }
 }
 
 /* ---- AI: ask the workspace, AI in databases ---- */
@@ -17942,9 +18751,9 @@ h3 .block-reactions {
   background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: ai-shimmer 1.6s linear infinite;
+  animation: ai-ask-shimmer 1.6s linear infinite;
 }
-.ai-caret {
+.ai-ask-caret {
   display: inline-block;
   width: 7px;
   height: 1.05em;
@@ -17952,7 +18761,7 @@ h3 .block-reactions {
   vertical-align: -2px;
   border-radius: 1px;
   background: var(--blue);
-  animation: ai-caret 1s steps(2, start) infinite;
+  animation: ai-ask-caret 1s steps(2, start) infinite;
 }
 .ai-ask-composer {
   display: flex;
@@ -18030,12 +18839,12 @@ td.ai-filled {
   width: 100%;
   resize: vertical;
 }
-.ai-shimmer {
+.ai-proposal-loading {
   height: 64px;
   border-radius: var(--radius);
   background: linear-gradient(90deg, var(--surface) 0%, var(--hover) 50%, var(--surface) 100%);
   background-size: 300% 100%;
-  animation: ai-shimmer 1.6s linear infinite;
+  animation: ai-ask-shimmer 1.6s linear infinite;
 }
 .ai-proposal {
   padding: 10px 12px;
@@ -18081,7 +18890,7 @@ td.ai-filled {
     transform: none;
   }
 }
-@keyframes ai-shimmer {
+@keyframes ai-ask-shimmer {
   from {
     background-position: 100% 0;
   }
@@ -18089,7 +18898,7 @@ td.ai-filled {
     background-position: 0 0;
   }
 }
-@keyframes ai-caret {
+@keyframes ai-ask-caret {
   to {
     opacity: 0;
   }
@@ -18105,8 +18914,8 @@ td.ai-filled {
 @media (prefers-reduced-motion: reduce) {
   .ai-ask-sources li,
   .ai-ask-thinking,
-  .ai-caret,
-  .ai-shimmer,
+  .ai-ask-caret,
+  .ai-proposal-loading,
   td.ai-filled {
     animation: none;
   }

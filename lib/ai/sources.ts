@@ -5,6 +5,7 @@ import { all, one } from "../db";
 import { ticketId } from "../ticket-ids";
 import type { Field } from "../types";
 import { chunkHtml, chunkPlain, chunkParagraphs } from "./chunks";
+import { htmlText } from "./content";
 
 export type SourceText = {
   pageId: string;
@@ -139,8 +140,7 @@ export function sourceText(pageId: string, rowId?: string | null, names = nameLo
 export function recordContent(rowId: string, max = 6000): string {
   const row = one<{ content: string | null; html: string | null }>("SELECT r.content,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=?", rowId);
   const content = row?.html ?? row?.content ?? "";
-  const text = (content.startsWith("<") ? chunkHtml(content, 4000) : chunkPlain(content, 4000)).join("\n\n");
-  return text.slice(0, max);
+  return (content.startsWith("<") ? htmlText(content) : content.trim()).slice(0, max);
 }
 
 // All pages below (and including) a page.

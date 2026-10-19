@@ -18,6 +18,11 @@ import {
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
+import { AiWriter, blocksFromHtml, type AiWriterRequest } from "./ai-writer";
+import { useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { aiTargetPlugin } from "@/lib/ai/target";
+import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml } from "@/lib/ai/insert";
+import { registerAiInserter } from "@/lib/ai/editor-bridge";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
@@ -70,7 +75,7 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import Typography from "@tiptap/extension-typography";
 import Collaboration from "@tiptap/extension-collaboration";
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Extension, Node, mergeAttributes } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
 import { rankCommands } from "@/lib/slash-commands";
@@ -91,6 +96,7 @@ import {
   Rows,
   ListBullets,
   ListNumbers,
+  Books,
   CheckSquare,
   Quotes,
   Code,
@@ -122,6 +128,9 @@ import {
   CalendarBlank,
   PencilSimpleLine,
   ChartLine,
+  UsersThree,
+  Note,
+  Sparkle,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
@@ -149,6 +158,14 @@ import {
   AnnotatedImage,
 } from "@/lib/document-schema";
 import { compressImage } from "@/lib/image-compress";
+import { boardFileName } from "@/lib/whiteboard-import";
+import { Authorship, authorshipKey, type AuthorShares } from "@/lib/authorship-plugin";
+import { authorColor } from "@/lib/authorship";
+import { BibliographyView, CitationView } from "./citation-views";
+import { CitationDialog } from "./citation-dialog";
+import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/footnotes";
+import { BlockDirectionExtension } from "@/lib/text-direction";
+import { MarkdownSourceView } from "./markdown-source";
 export default function DocumentEditor({
   pageId,
   rowId,
@@ -164,7 +181,15 @@ export default function DocumentEditor({
   onHtml,
   embedded = false,
   transcription = false,
+  source = false,
+  sourceNotice,
+  onSourceClose,
 }: {
+  // "Als Markdown bearbeiten": the page as Markdown instead of the editor.
+  source?: boolean;
+  // Why the source can only be read (locked page …), if so.
+  sourceNotice?: string;
+  onSourceClose?: () => void;
   // The server turns voice notes into text (Whisper).
   transcription?: boolean;
   // Shown inside another document (synced block): no toolbar, outline,
@@ -218,6 +243,8 @@ export default function DocumentEditor({
     // The image being marked up (position and its attributes).
     [annotate, setAnnotate] = useState<{ pos: number; src: string; original: string | null; annotations: string | null } | null>(null),
     [toggle, setToggle] = useState(false),
+    // The note being written: an existing one (pos) or a new one at `at`.
+    [footnote, setFootnote] = useState<{ pos: number | null; note: string; at: number; original: string } | null>(null),
     [toggleTitle, setToggleTitle] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
   const [outline, setOutline] = useOutlineOpen();
@@ -229,6 +256,25 @@ export default function DocumentEditor({
   const [boardPicker, setBoardPicker] = useState(false),
     [boardSearch, setBoardSearch] = useState("");
   const [voice, setVoice] = useState(false);
+  const [citeOpen, setCiteOpen] = useState(false);
+  // "Autoren anzeigen": who wrote what, as colours (lib/authorship.ts).
+  const [authorsOn, setAuthorsOn] = useState(false),
+    [authorPeople, setAuthorPeople] = useState<Record<string, string>>({}),
+    [authorShares, setAuthorShares] = useState<AuthorShares["shares"]>([]);
+  const authorFetch = useRef({ at: 0, unknown: "" });
+  const authorSharesRef = useRef((_result: AuthorShares) => {});
+  // The writing assistant (components/ai-writer.tsx): its panel and what it
+  // works on. Hidden without the feature, disabled on pages the AI may not
+  // read.
+  const [aiRequest, setAiRequest] = useState<AiWriterRequest | null>(null);
+  const aiWrite = useAiAvailability("write", pageId);
+  const aiSummarize = useAiAvailability("summarize", pageId);
+  const aiBlockedHint = useAiBlockedHint();
+  const aiWriteRef = useRef(aiWrite);
+  aiWriteRef.current = aiWrite;
+  // ⌘J, the text menu and /ki: the selection, else the current line, else
+  // (an empty line) a free prompt.
+  const openAi = useRef((_prompt?: boolean) => {});
   // "Vorschlagen": changes become suggestions others can accept or reject.
   const [suggesting, setSuggesting] = useState(false);
   const suggestingRef = useRef(false);
@@ -290,6 +336,7 @@ export default function DocumentEditor({
       .run();
     setSyncedPicker(null);
   }
+  const openFootnote = useRef((_target: FootnoteEdit) => {});
   const slashState = useRef(slash);
   slashState.current = slash;
   const slashActiveRef = useRef(slashActive);
@@ -398,9 +445,17 @@ export default function DocumentEditor({
         linkedDatabaseNode(() => linkedContext.current),
         syncedBlockNode(() => syncedContext.current),
         whiteboardEmbedNode(),
+        Footnote.configure({ edit: (target) => openFootnote.current(target) }),
+        BlockDirectionExtension.configure({ auto: true }),
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }, liveId),
         inlineCommentExtension(generation),
+        CitationView,
+        BibliographyView,
+        Authorship.configure({ onShares: (result) => authorSharesRef.current(result) }),
+        // Marks the text the writing assistant works on (lib/ai/target.ts) and
+        // briefly what it inserted (lib/ai/insert.ts).
+        Extension.create({ name: "aiTarget", addProseMirrorPlugins: () => [aiTargetPlugin, aiInsertedPlugin] }),
       ],
       editorProps: {
         transformPasted: freshLinkedIds,
@@ -459,6 +514,19 @@ export default function DocumentEditor({
           return true;
         },
         handleKeyDown: (_view, event) => {
+          // ⌘J / Ctrl+J: the writing assistant for the selection or line.
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            !event.altKey &&
+            !event.shiftKey &&
+            event.key.toLowerCase() === "j" &&
+            editable &&
+            aiWriteRef.current !== "hidden"
+          ) {
+            event.preventDefault();
+            openAi.current();
+            return true;
+          }
           if (_view.state.selection.$from.parent.type.name === "codeBlock")
             return false;
           // Tab and Escape belong to a visible calculation hint ("3/4 =" also
@@ -527,6 +595,64 @@ export default function DocumentEditor({
     },
     [doc],
   );
+  // Who wrote what: the people behind the sessions, from the server (only
+  // for people who may read the page); this session counts as oneself.
+  const loadAuthors = useCallback(async () => {
+    if (!editor || editor.isDestroyed) return;
+    authorFetch.current.at = Date.now();
+    const params = new URLSearchParams({ page: pageId });
+    if (rowId) params.set("row", rowId);
+    const response = await fetch(`/api/document-authors?${params}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(serverMessage(data.error) || t("Autoren konnten nicht geladen werden.", "Authors could not be loaded."));
+    const names: Record<string, string> = Object.fromEntries(
+      (data.people as { id: string; name: string }[]).map((p) => [p.id, p.name]),
+    );
+    names[userId] ||= memberNames.current.get(userId) || t("Du", "You");
+    setAuthorPeople(names);
+    if (editor.isDestroyed) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(authorshipKey, {
+        info: {
+          clients: data.clients,
+          self: { client: doc.clientID, userId },
+          names,
+          earlier: t("Früher geschrieben (vor der Aufzeichnung)", "Written earlier (before tracking)"),
+        },
+      }),
+    );
+  }, [editor, pageId, rowId, userId, doc]);
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (!authorsOn) {
+      if (authorshipKey.getState(editor.state)?.info)
+        editor.view.dispatch(editor.state.tr.setMeta(authorshipKey, { info: null }));
+      setAuthorShares([]);
+      return;
+    }
+    loadAuthors().catch((e) => {
+      setAuthorsOn(false);
+      onError((e as Error).message);
+    });
+  }, [authorsOn, editor, loadAuthors]);
+  authorSharesRef.current = ({ shares, unknown }) => {
+    setAuthorShares(shares);
+    // Sessions of others that arrived meanwhile: ask again (at most every 5 s).
+    const key = [...unknown].sort().join(",");
+    if (unknown.length && key !== authorFetch.current.unknown && Date.now() - authorFetch.current.at > 5000) {
+      authorFetch.current.unknown = key;
+      void loadAuthors().catch(() => {});
+    }
+  };
+  // The page menu's "Autoren anzeigen".
+  useEffect(() => {
+    if (embedded || rowId) return;
+    const toggle = (event: Event) => {
+      if ((event as CustomEvent).detail === pageId) setAuthorsOn((on) => !on);
+    };
+    window.addEventListener("flowplan:authors", toggle);
+    return () => window.removeEventListener("flowplan:authors", toggle);
+  }, [pageId, rowId, embedded]);
   // Changes of others, from the push channel or a save/poll answer.
   const applyRemote = useCallback(
     (state: string) => {
@@ -774,7 +900,62 @@ export default function DocumentEditor({
     editor?.setEditable(editable);
   }, [editable, editor]);
   uploadFile.current = (file: File) => upload(file);
+  async function importDrawing(file: File) {
+    const host = pages.find((p) => p.id === pageId);
+    if (!host) return;
+    try {
+      onStatus(t("Zeichnung wird importiert …", "Importing drawing …"));
+      const form = new FormData();
+      form.set("workspaceId", host.workspace_id);
+      form.set("spaceId", host.space_id);
+      if (!rowId) form.set("parentId", host.id);
+      form.set("file", file);
+      const r = await fetch("/api/whiteboards/import", { method: "POST", body: form });
+      const data = await r.json();
+      if (!r.ok) throw new Error(serverMessage(data.error) || t("Import fehlgeschlagen.", "Import failed."));
+      insertBoard(data.pageId);
+    } catch (error) {
+      onError((error as Error).message);
+    }
+  }
+  openAi.current = (prompt = false) => {
+    if (!editor || editor.isDestroyed || !editable || embedded) return;
+    if (aiWriteRef.current === "blocked") return onError(aiBlockedHint);
+    if (aiWriteRef.current !== "ok") return;
+    const { from, to, empty, $from } = editor.state.selection;
+    if (!prompt && !empty && editor.state.doc.textBetween(from, to, " ").trim())
+      return setAiRequest({ kind: "selection", from, to });
+    // The current line when it has text.
+    if (!prompt && $from.parent.isTextblock && $from.parent.textContent.trim())
+      return setAiRequest({ kind: "selection", from: $from.start(), to: $from.end() });
+    setAiRequest({ kind: "prompt", from, to: from });
+  };
+  // Summaries from the side panel or a record's dialog land here.
+  useEffect(() => {
+    if (!editor || !editable || embedded) return;
+    return registerAiInserter(pageId, rowId, (markdown, place) => {
+      if (editor.isDestroyed) return false;
+      const { from, to } = editor.state.selection;
+      const tr = aiInsertTransaction(
+        editor.state,
+        blocksFromHtml(editor.schema, aiMarkdownToHtml(markdown)),
+        place === "top" ? { from: 0, to: 0 } : { from, to },
+        place === "top" ? "top" : "below",
+      );
+      if (!tr) return false;
+      editor.view.dispatch(tr);
+      editor.commands.focus();
+      return true;
+    });
+  }, [editor, editable, embedded, pageId, rowId]);
   async function upload(original: File) {
+    // Excalidraw and draw.io drawings become a new whiteboard shown here.
+    if (
+      boardFileName(original.name) ||
+      (/\.(xml|svg)$/i.test(original.name) &&
+        /mxfile|mxGraphModel/.test(await original.slice(0, 1_000_000).text()))
+    )
+      return importDrawing(original);
     // Photos shrink before upload; the alt text keeps the original name.
     const file = await compressImage(original);
     const form = new FormData();
@@ -834,6 +1015,18 @@ export default function DocumentEditor({
   const calloutLabel = calloutLabels(t),
     calloutDescription = calloutDescriptions(t);
   const commands: SlashItem[] = [
+    ...(aiWrite !== "hidden" && !embedded
+      ? [
+          {
+            name: t("KI-Assistent", "AI assistant"),
+            keywords: ["ki", "ai", "assistent", "assistant", "schreiben", "write", "gpt"],
+            description: aiWrite === "blocked" ? aiBlockedHint : t("Text von der KI schreiben lassen (⌘J)", "Let the AI write text (⌘J)"),
+            icon: Sparkle,
+            disabled: aiWrite === "blocked",
+            run: () => openAi.current(true),
+          },
+        ]
+      : []),
     {
       name: t("Text", "Text"),
       keywords: ["text", "p", "absatz", "paragraph"],
@@ -882,6 +1075,26 @@ export default function DocumentEditor({
       description: t("Eine geordnete Liste", "An ordered list"),
       icon: ListNumbers,
       run: () => editor?.chain().focus().toggleOrderedList().run(),
+    },
+    // Before the quote block, so "/zitat" finds the citation first.
+    {
+      name: t("Literaturzitat", "Citation"),
+      keywords: ["zitat", "cite", "citation", "doi", "bibtex", "zotero", "literatur", "quelle", "source", "reference"],
+      description: t("Quelle zitieren: DOI, BibTeX oder Zotero", "Cite a source: DOI, BibTeX or Zotero"),
+      icon: Books,
+      run: () => setCiteOpen(true),
+    },
+    {
+      name: t("Literaturverzeichnis", "Bibliography"),
+      keywords: ["bibliography", "literatur", "references", "quellen", "bibliographie", "literaturliste"],
+      description: t("Alle zitierten Werke als Liste", "All cited works as a list"),
+      icon: Books,
+      run: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({ type: "bibliography", attrs: { title: t("Literaturverzeichnis", "References") } })
+          .run(),
     },
     {
       name: t("Zitat", "Quote"),
@@ -1042,6 +1255,13 @@ export default function DocumentEditor({
       run: () => setMath({ type: "mathInline", expression: "\\frac{}{}" }),
     },
     {
+      name: t("Fußnote", "Footnote"),
+      keywords: ["fussnote", "footnote", "fn", "anmerkung", "quelle", "note"],
+      description: t("Nummerierte Anmerkung am Seitenende", "Numbered note at the end of the page"),
+      icon: Note,
+      run: () => editor?.chain().focus().openFootnote().run(),
+    },
+    {
       name: t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person"),
       keywords: ["mention", "link", "@", "seite", "person", "eintrag", "record"],
       description: t("Mit @ Wissen verknüpfen", "Connect knowledge with @"),
@@ -1156,7 +1376,7 @@ export default function DocumentEditor({
     const list = slashItems.current,
       item = list[Math.min(index, list.length - 1)],
       menu = slashState.current;
-    if (!item || !menu) return;
+    if (!item || !menu || item.disabled) return;
     setSlash(null);
     if (menu.mode === "inline" && editor) {
       const to = editor.state.selection.from;
@@ -1185,6 +1405,37 @@ export default function DocumentEditor({
         Math.min(slash.from, editor.state.doc.content.size),
       );
     } catch {}
+  openFootnote.current = (target) => {
+    if (!editor) return;
+    setFootnote({ ...target, at: editor.state.selection.to, original: target.note });
+  };
+  // Saves the note being written: changes it, or adds the marker.
+  function saveFootnote(remove = false) {
+    if (!editor || !footnote) return;
+    const note = footnoteText(footnote.note);
+    if (footnote.pos === null) {
+      if (note && !remove)
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(Math.min(footnote.at, editor.state.doc.content.size), { type: "footnote", attrs: { note } })
+          .run();
+      setFootnote(null);
+      return;
+    }
+    const current = editor.state.doc.nodeAt(footnote.pos);
+    if (current?.type.name !== "footnote" || String(current.attrs.note || "") !== footnote.original) {
+      onError(t("Die Fußnote wurde inzwischen geändert. Bitte erneut öffnen.", "The footnote was changed in the meantime. Please open it again."));
+      setFootnote(null);
+      return;
+    }
+    const tr = editor.state.tr;
+    if (remove || !note) tr.delete(footnote.pos, footnote.pos + current.nodeSize);
+    else tr.setNodeMarkup(footnote.pos, undefined, { ...current.attrs, note });
+    editor.view.dispatch(tr);
+    editor.commands.focus();
+    setFootnote(null);
+  }
   function openInlineMath() {
     if (!editor) return;
     const { from, to } = editor.state.selection;
@@ -1247,7 +1498,7 @@ export default function DocumentEditor({
   return (
     <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
-        {editable && !embedded && (
+        {editable && !embedded && !source && (
           <div
             className="editor-toolbar"
             role="toolbar"
@@ -1430,6 +1681,15 @@ export default function DocumentEditor({
               {suggesting && <span>{t("Vorschlagen", "Suggest")}</span>}
             </button>
             <button
+              title={authorsOn ? t("Autoren ausblenden", "Hide authors") : t("Autoren anzeigen: Text nach Person einfärben", "Show authors: colour the text by person")}
+              aria-label={t("Autoren anzeigen", "Show authors")}
+              aria-pressed={authorsOn}
+              className={authorsOn ? "active" : ""}
+              onClick={() => setAuthorsOn(!authorsOn)}
+            >
+              <UsersThree />
+            </button>
+            <button
               title="Link"
               onClick={() => {
                 setLinkUrl(editor?.getAttributes("link").href || "");
@@ -1559,17 +1819,71 @@ export default function DocumentEditor({
             </div>
           );
         })()}
-        {!embedded && (outline || headings.length > 0) && (
+        {authorsOn && !embedded && (
+          <aside className="author-legend" aria-label={t("Autoren", "Authors")}>
+            <div className="author-legend-head">
+              <strong>{t("Autoren", "Authors")}</strong>
+              <button
+                type="button"
+                aria-label={t("Autoren ausblenden", "Hide authors")}
+                onClick={() => setAuthorsOn(false)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {authorShares.length ? (
+              <ul>
+                {(() => {
+                  const total = authorShares.reduce((sum, [, n]) => sum + n, 0) || 1;
+                  return authorShares.map(([uid, chars]) => (
+                    <li key={uid ?? "earlier"}>
+                      <span
+                        className={`author-swatch${uid ? "" : " earlier"}`}
+                        style={uid ? { background: authorColor(uid, 0.6) } : undefined}
+                        aria-hidden
+                      />
+                      <span className="author-name">
+                        {uid ? authorPeople[uid] || t("Unbekannt", "Unknown") : t("früher", "earlier")}
+                      </span>
+                      <small>{Math.max(chars / total < 0.005 ? 0 : 1, Math.round((chars / total) * 100))} %</small>
+                    </li>
+                  ));
+                })()}
+              </ul>
+            ) : (
+              <p className="muted">{t("Noch kein Text.", "No text yet.")}</p>
+            )}
+            <p className="muted author-legend-note">
+              {t(
+                "Wer was geschrieben hat, wird erst seit Einführung dieser Anzeige aufgezeichnet. Älterer Text erscheint als „früher“.",
+                "Who wrote what is only recorded since this view was introduced. Older text appears as “earlier”.",
+              )}
+            </p>
+          </aside>
+        )}
+        {!embedded && !source && (outline || headings.length > 0) && (
           <OutlineToggle open={outline} count={headings.length} onToggle={() => setOutline(!outline)} />
         )}
         {!embedded && outline && <DocumentOutline editor={editor} headings={headings} onClose={() => setOutline(false)} />}
-        {embedded ? (
-          <EditorContent editor={editor} />
-        ) : (
-          <DocumentBlockControls editor={editor}>
-            <EditorContent editor={editor} />
-          </DocumentBlockControls>
+        {source && !embedded && editor && (
+          <MarkdownSourceView
+            editor={editor}
+            pageId={pageId}
+            editable={editable}
+            notice={sourceNotice}
+            onClose={() => onSourceClose?.()}
+            onError={onError}
+          />
         )}
+        <div className="editor-content-holder" hidden={source && !embedded}>
+          {embedded ? (
+            <EditorContent editor={editor} />
+          ) : (
+            <DocumentBlockControls editor={editor}>
+              <EditorContent editor={editor} />
+            </DocumentBlockControls>
+          )}
+        </div>
         {editor?.isActive("table") && editable && (
           <div className="table-tools">
             <button onClick={() => editor.chain().focus().addRowAfter().run()}>
@@ -1647,17 +1961,32 @@ export default function DocumentEditor({
           editor={editor}
           userId={userId}
           editable={editable}
+          ai={aiWrite}
+          aiHint={aiBlockedHint}
+          onAi={() => openAi.current()}
           onLink={() => {
             setLinkUrl(editor?.getAttributes("link").href || "");
             setLink(true);
           }}
         />
       )}
+      {aiRequest && editor && !editor.isDestroyed && (
+        <AiWriter
+          key={`${aiRequest.kind}-${aiRequest.from}-${aiRequest.to}`}
+          editor={editor}
+          pageId={pageId}
+          rowId={rowId}
+          request={aiRequest}
+          onClose={() => setAiRequest(null)}
+        />
+      )}
       <VoiceRecorder
         open={voice}
         transcription={transcription}
+        summarize={embedded ? "hidden" : aiSummarize}
+        summarizeHint={aiBlockedHint}
         onClose={() => setVoice(false)}
-        onInsert={async (file, toText) => {
+        onInsert={async (file, toText, summarize) => {
           setVoice(false);
           await upload(file);
           if (!toText) return;
@@ -1673,13 +2002,18 @@ export default function DocumentEditor({
               .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÄÖÜ])/)
               .map((p) => p.trim())
               .filter(Boolean);
-            if (paragraphs.length)
+            if (paragraphs.length) {
               editor
                 ?.chain()
                 .focus()
                 .insertContent(paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })))
                 .run();
-            else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
+              // The summary goes below the transcript, through the preview.
+              if (summarize && editor && !editor.isDestroyed) {
+                const at = editor.state.selection.from;
+                setAiRequest({ kind: "transcript", from: at, to: at, text: paragraphs.join("\n\n") });
+              }
+            } else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
           } catch (error) {
             onError((error as Error).message);
           } finally {
@@ -1711,6 +2045,24 @@ export default function DocumentEditor({
           )}
         </div>
       </Modal>
+      {citeOpen && (
+        <CitationDialog
+          open
+          workspaceId={pages.find((p) => p.id === pageId)?.workspace_id || ""}
+          onClose={() => setCiteOpen(false)}
+          onError={onError}
+          onInsert={(item, locator) =>
+            editor
+              ?.chain()
+              .focus()
+              .insertContent({
+                type: "citation",
+                attrs: { key: item.id, item: JSON.stringify(item), locator },
+              })
+              .run()
+          }
+        />
+      )}
       <Modal
         open={boardPicker}
         title={t("Whiteboard einbetten", "Embed whiteboard")}
@@ -2082,6 +2434,50 @@ export default function DocumentEditor({
             />
           </label>
           <button className="button primary">{t("Einbetten", "Embed")}</button>
+        </form>
+      </Modal>
+      <Modal
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor?.commands.focus();
+        }}
+        open={!!footnote}
+        onClose={() => setFootnote(null)}
+        title={footnote?.pos === null ? t("Fußnote einfügen", "Insert footnote") : t("Fußnote bearbeiten", "Edit footnote")}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveFootnote();
+          }}
+        >
+          <label>
+            {t("Text der Fußnote", "Footnote text")}
+            <textarea
+              autoFocus
+              rows={4}
+              maxLength={MAX_FOOTNOTE}
+              value={footnote?.note || ""}
+              onChange={(e) => footnote && setFootnote({ ...footnote, note: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  saveFootnote();
+                }
+              }}
+            />
+          </label>
+          <p className="muted">
+            {t("Erscheint nummeriert unter „Fußnoten“ am Ende der Seite. Webadressen werden zu Links.", "Appears numbered under “Footnotes” at the end of the page. Web addresses become links.")}
+          </p>
+          <div className="modal-actions">
+            {footnote?.pos !== null && (
+              <button type="button" className="button" onClick={() => saveFootnote(true)}>
+                {t("Fußnote entfernen", "Remove footnote")}
+              </button>
+            )}
+            <button className="button primary">{footnote?.pos === null ? t("Einfügen", "Insert") : t("Speichern", "Save")}</button>
+          </div>
         </form>
       </Modal>
       <Modal

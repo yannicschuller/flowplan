@@ -417,7 +417,7 @@ export function AiDatabaseCreator({
         </button>
         <small className="muted">{aiProviderLabel(ai?.provider ?? null, t)}</small>
       </div>
-      {busy && <div className="ai-shimmer" aria-hidden />}
+      {busy && <div className="ai-proposal-loading" aria-hidden />}
       {proposal && !busy && (
         <div className="ai-proposal" aria-label={t("Vorschlag prüfen", "Review proposal")}>
           <p className="muted">{t("Prüfe den Vorschlag. Erst „Seite erstellen“ legt die Datenbank an.", "Review the proposal. Only “Create page” creates the database.")}</p>

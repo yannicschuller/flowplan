@@ -22,6 +22,9 @@ import { MermaidBlock } from "./mermaid-node";
 import { FunctionPlot } from "./function-plot-node";
 import { MetricBlock } from "./metric-node";
 import { FlowCodeBlock } from "./code-block";
+import { Bibliography, Citation } from "./citation-nodes";
+import { Footnote } from "./footnotes";
+import { BlockDirectionExtension } from "./text-direction";
 // Images that were marked up keep their original and the markings
 // (components/image-annotator.tsx), so they can be edited again.
 export const AnnotatedImage = Image.extend({
@@ -522,6 +525,8 @@ export const documentExtensions = [
   MathInline,
   LinkedDatabase,
   WhiteboardEmbed,
+  Footnote,
+  BlockDirectionExtension,
 ];
 export const documentSchema = () => getSchema(documentExtensions);
 export const Mention = Node.create({
@@ -738,4 +743,4 @@ export const LinkCard = Node.create({
     ];
   },
 });
-documentExtensions.push(Mention, Columns, Column, Media, LinkCard);
+documentExtensions.push(Mention, Columns, Column, Media, LinkCard, Citation, Bibliography);

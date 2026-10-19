@@ -8,6 +8,9 @@ export type SlashItem = {
   description: string;
   keywords: string[];
   icon: ComponentType<{ size?: number }>;
+  // Shown greyed out with its description as the reason (e.g. the AI may
+  // not read this page); choosing it does nothing.
+  disabled?: boolean;
   run: () => void;
 };
 
@@ -99,6 +102,7 @@ export function SlashMenu({
               type="button"
               data-index={index}
               data-active={index === active}
+              aria-disabled={item.disabled || undefined}
               aria-current={index === active ? "true" : undefined}
               onMouseMove={() => index !== active && onHover(index)}
               onClick={() => onPick(index)}
