@@ -162,6 +162,7 @@ const exact: Record<string, string> = {
   "Nur Eigentümer des Arbeitsbereichs oder des Bereichs dürfen Seiten mit weiteren Personen teilen.": "Only owners of the workspace or the space may share pages with more people.",
   "Du hast bereits Zugriff.": "You already have access.",
   "Person fehlt.": "Person missing.",
+  "Einladung nicht gefunden.": "Invitation not found.",
   "Gruppe fehlt.": "Group missing.",
   "Gruppe fehlt": "Group missing",
   "Mitglied fehlt": "Member missing",

@@ -9,6 +9,7 @@ import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { memberRole, requirePage } from "./permissions";
 import { canManageSpace } from "./workspace-lifecycle";
+import { queueShareMail } from "./mail";
 import type { Identity, Page, Role, Space } from "./types";
 
 const rank: Record<string, number> = { viewer: 1, editor: 2, owner: 3 };
@@ -68,25 +69,30 @@ export function sharePage(user: Identity, raw: unknown) {
       run("UPDATE members SET role=? WHERE workspace_id=? AND user_id=?", b.role, page.workspace_id, target.id);
     run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", page.id, target.id);
     run("INSERT INTO grants VALUES(?,?,?,?)", page.id, target.id, "", b.role);
+    const workspace = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", page.workspace_id);
+    // The e-mail goes out right away; the summary then leaves this one out.
+    const mailed = queueShareMail({ userId: target.id, inviter: user.name, pageId: page.id, page: page.title, workspace: workspace?.name || "Flowplan" });
     run(
-      "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'share')",
+      "INSERT INTO notifications(id,user_id,body,page_id,kind,emailed_at) VALUES(?,?,?,?,'share',?)",
       id(),
       target.id,
       `${user.name} hat „${page.title}“ mit dir geteilt`,
       page.id,
+      mailed ? new Date().toISOString().replace("T", " ").slice(0, 19) : null,
     );
-    return { status: "added" as const, name: target.name, ...pageShares(user, page.id) };
+    return { status: "added" as const, name: target.name, mailed, ...pageShares(user, page.id) };
   }
   // No account yet: an invitation as a guest, the grant waits for sign-in.
   const invite = one<{ guest: number; role: Role }>("SELECT guest,role FROM invites WHERE workspace_id=? AND email=?", page.workspace_id, email);
   if (!invite)
     run(
-      "INSERT INTO invites(id,workspace_id,email,role,created_by,guest) VALUES(?,?,?,?,?,1)",
+      "INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at) VALUES(?,?,?,?,?,1,?)",
       id(),
       page.workspace_id,
       email,
       b.role,
       user.id,
+      Date.now(),
     );
   else if (invite.guest && rank[invite.role] < rank[b.role])
     run("UPDATE invites SET role=? WHERE workspace_id=? AND email=?", b.role, page.workspace_id, email);

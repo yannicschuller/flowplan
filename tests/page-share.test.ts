@@ -113,3 +113,38 @@ test("an existing account takes over a later invitation when the app loads", () 
   bootstrap(gina, createWorkspace(gina.id, "Gina"));
   assert.ok(one("SELECT 1 FROM invites WHERE email=?", gina.email));
 });
+
+test("an existing account gets an e-mail right away, unless they turned it off", () => {
+  process.env.SMTP_HOST = "smtp.example.test";
+  process.env.SMTP_FROM = "flowplan@example.test";
+  try {
+    const hanna = person("Hanna");
+    const doc = String(as(ada)({ action: "page.create", spaceId: team, title: "Garten", kind: "document" }).id);
+    const result = as(ada)({ action: "page.share", pageId: doc, email: hanna.email, role: "viewer" });
+    assert.equal(result.mailed, true);
+    const mail = one<{ subject: string; text: string }>("SELECT subject,text FROM mail_queue WHERE recipient=?", hanna.email)!;
+    assert.match(mail.subject, /Ada hat „Garten“ mit dir geteilt/);
+    assert.match(mail.text, new RegExp(`#page=${doc}`));
+    // The summary leaves this notification out.
+    assert.ok(one<{ emailed_at: string | null }>("SELECT emailed_at FROM notifications WHERE user_id=? AND kind='share'", hanna.id)!.emailed_at);
+    // Turned off: inbox only.
+    const ida = person("Ida");
+    run("INSERT INTO notification_prefs(user_id,kind,inbox,push,email) VALUES(?,'share',1,1,0)", ida.id);
+    assert.equal(as(ada)({ action: "page.share", pageId: doc, email: ida.email, role: "viewer" }).mailed, false);
+    assert.equal(one("SELECT 1 FROM mail_queue WHERE recipient=?", ida.email), undefined);
+  } finally {
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_FROM;
+  }
+});
+
+test("open invitations can be withdrawn with their pages, or sent again", () => {
+  as(ada)({ action: "page.share", pageId: secret, email: "jan@example.test", role: "viewer" });
+  const invite = one<{ id: string; created_at: number }>("SELECT id,created_at FROM invites WHERE email='jan@example.test'")!;
+  assert.ok(invite.created_at > 0);
+  as(ada)({ action: "invite.resend", inviteId: invite.id });
+  assert.throws(() => as(cleo)({ action: "invite.cancel", inviteId: invite.id }), /Keine Berechtigung/);
+  as(ada)({ action: "invite.cancel", inviteId: invite.id });
+  assert.equal(one("SELECT 1 FROM invites WHERE email='jan@example.test'"), undefined);
+  assert.equal(one("SELECT 1 FROM invite_grants WHERE email='jan@example.test'"), undefined);
+});

@@ -402,7 +402,13 @@ async function handleGET(
       const wid = url.searchParams.get("workspace") || "";
       requireMember(user, wid, "owner");
       return NextResponse.json({
-        invites: all("SELECT * FROM invites WHERE workspace_id=?", wid),
+        // With who invited, when, and the pages waiting for them.
+        invites: all<{ id: string; email: string; role: string; guest: number; created_at: number | null; inviter: string | null; pages: string | null }>(
+          `SELECT i.id,i.email,i.role,i.guest,i.created_at,u.name inviter,
+             (SELECT json_group_array(p.title) FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=i.workspace_id AND lower(g.email)=lower(i.email) AND p.deleted_at IS NULL) pages
+           FROM invites i LEFT JOIN users u ON u.id=i.created_by WHERE i.workspace_id=? ORDER BY i.created_at DESC`,
+          wid,
+        ).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] })),
         groups: all("SELECT * FROM groups WHERE workspace_id=?", wid),
         groupMembers: all(
           "SELECT gm.* FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE g.workspace_id=?",

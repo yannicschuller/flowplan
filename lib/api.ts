@@ -2067,13 +2067,14 @@ export function command(
         const email = z.email().parse(b.email).toLowerCase(),
           role = z.enum(["editor", "viewer"]).parse(b.role);
         run(
-          "INSERT INTO invites(id,workspace_id,email,role,created_by,guest) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,email) DO UPDATE SET role=excluded.role,guest=excluded.guest",
+          "INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(workspace_id,email) DO UPDATE SET role=excluded.role,guest=excluded.guest,created_at=excluded.created_at",
           id(),
           wid(),
           email,
           role,
           user.id,
           b.guest === true ? 1 : 0,
+          Date.now(),
         );
         // With SMTP configured the person hears about it by e-mail.
         {
@@ -2082,6 +2083,31 @@ export function command(
           afterCommit.push(() => {
             if (queueInviteMail(invite)) void dispatchMail();
           });
+        }
+        break;
+      }
+      // Open invitations: withdraw (with the pages waiting for them) or send again.
+      case "invite.cancel":
+      case "invite.resend": {
+        requireMember(user, wid(), "owner");
+        const invite = one<{ email: string; guest: number }>("SELECT email,guest FROM invites WHERE id=? AND workspace_id=?", uuid.parse(b.inviteId), wid());
+        if (!invite) throw new HttpError(404, "Einladung nicht gefunden.");
+        if (action === "invite.cancel") {
+          run("DELETE FROM invite_grants WHERE workspace_id=? AND lower(email)=lower(?)", wid(), invite.email);
+          run("DELETE FROM invites WHERE id=?", uuid.parse(b.inviteId));
+        } else {
+          const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
+          const page = one<{ title: string }>(
+            "SELECT p.title FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=? AND lower(g.email)=lower(?) AND p.deleted_at IS NULL",
+            wid(),
+            invite.email,
+          );
+          const mail = { email: invite.email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: !!invite.guest, page: invite.guest ? page?.title : undefined };
+          run("UPDATE invites SET created_at=? WHERE id=?", Date.now(), uuid.parse(b.inviteId));
+          afterCommit.push(() => {
+            if (queueInviteMail(mail)) void dispatchMail();
+          });
+          result = { mail: !!mailConfig() };
         }
         break;
       }
@@ -2164,7 +2190,10 @@ export function command(
             if (queueInviteMail(mail)) void dispatchMail();
           });
           result = rest;
-        } else result = shared;
+        } else {
+          if (shared.mailed) afterCommit.push(() => void dispatchMail());
+          result = shared;
+        }
         break;
       }
       case "page.shareUpdate":

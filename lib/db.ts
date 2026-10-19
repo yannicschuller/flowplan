@@ -226,6 +226,9 @@ function migrate(d: DatabaseSync) {
     )
   )
     d.exec("ALTER TABLE invites ADD COLUMN guest INTEGER NOT NULL DEFAULT 0");
+  // When an invitation went out (shown in Settings → Members).
+  if (!(d.prepare("PRAGMA table_info(invites)").all() as { name: string }[]).some((c) => c.name === "created_at"))
+    d.exec("ALTER TABLE invites ADD COLUMN created_at INTEGER");
   // Pages shared with an e-mail address that has no account yet; applied
   // when the invitation is accepted (lib/page-share.ts, lib/auth.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS invite_grants(workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,email TEXT NOT NULL,resource_id TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('viewer','editor')),PRIMARY KEY(email,resource_id))`);

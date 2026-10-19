@@ -38,11 +38,13 @@ import {
   Database,
   BellSimple,
   PlugsConnected,
+  EnvelopeSimple,
+  X,
 } from "@phosphor-icons/react";
 import { api, Avatar, download, downloadBlob, Modal } from "./ui";
 import type { Bootstrap, Space } from "@/lib/types";
 type SettingsData = {
-  invites: { id: string; email: string; role: string; guest?: number }[];
+  invites: { id: string; email: string; role: string; guest?: number; created_at?: number | null; inviter?: string | null; pages?: string[] }[];
   groups: { id: string; name: string }[];
   groupMembers: { group_id: string; user_id: string }[];
   grants: {
@@ -452,7 +454,15 @@ export default function Settings({
                 <section className="settings-section">
                   <h2>{t("Mitglied einladen", "Invite member")}</h2>
                   <p className="muted">
-                    {t("Die Freigabe wird bei der nächsten SSO-Anmeldung mit bestätigter E-Mail automatisch zugeordnet.", "The invitation is assigned automatically once the person signs in with this confirmed e-mail address.")}
+                    {boot.instance?.mail
+                      ? t(
+                          "Die Person bekommt eine Einladung per E-Mail. Mit einem bestehenden Konto sieht sie den Arbeitsbereich beim nächsten Öffnen von Flowplan, sonst nach der Registrierung mit dieser Adresse – auch wenn die Registrierung sonst geschlossen ist.",
+                          "The person gets an invitation by e-mail. With an existing account they see the workspace the next time they open Flowplan, otherwise after signing up with this address – even if sign-ups are otherwise closed.",
+                        )
+                      : t(
+                          "Auf dieser Instanz werden keine E-Mails verschickt – sag der Person selbst Bescheid. Mit einem bestehenden Konto sieht sie den Arbeitsbereich beim nächsten Öffnen von Flowplan, sonst nach der Registrierung mit dieser Adresse.",
+                          "This instance sends no e-mail – let the person know yourself. With an existing account they see the workspace the next time they open Flowplan, otherwise after signing up with this address.",
+                        )}
                   </p>
                   <form
                     className="invite-form"
@@ -495,17 +505,59 @@ export default function Settings({
                     </label>
                     <button className="button primary">
                       <Plus />
-                      {t("Freigeben", "Invite")}
+                      {t("Einladen", "Invite")}
                     </button>
                   </form>
-                  {settings?.invites.map((i) => (
-                    <div className="utility-row" key={i.id}>
-                      <span>{i.email}</span>
-                      <span className="tag tag-yellow">
-                        {i.guest ? t("Gast · ausstehend", "Guest · pending") : t("Ausstehend", "Pending")}
-                      </span>
+                  {!!settings?.invites.length && (
+                    <div className="pending-invites">
+                      <h3>{t("Ausstehende Einladungen", "Pending invitations")}</h3>
+                      {settings.invites.map((i) => (
+                        <div className="member-row pending-invite" key={i.id}>
+                          <span className="pending-invite-icon" aria-hidden>
+                            <EnvelopeSimple size={18} />
+                          </span>
+                          <span>
+                            {i.email}
+                            <small>
+                              {[
+                                i.role === "editor" ? t("Bearbeiten", "Edit") : t("Ansehen", "View"),
+                                i.guest
+                                  ? i.pages?.length
+                                    ? t(`Gast für ${i.pages.join(", ")}`, `Guest for ${i.pages.join(", ")}`)
+                                    : t("Gast", "Guest")
+                                  : null,
+                                i.created_at ? t(`eingeladen am ${new Date(i.created_at).toLocaleDateString(LOCALE_TAG)}`, `invited on ${new Date(i.created_at).toLocaleDateString(LOCALE_TAG)}`) : null,
+                                i.inviter ? t(`von ${i.inviter}`, `by ${i.inviter}`) : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </small>
+                          </span>
+                          <span className="tag tag-yellow">{t("Ausstehend", "Pending")}</span>
+                          {boot.instance?.mail && (
+                            <button
+                              type="button"
+                              className="button compact"
+                              onClick={async () => {
+                                if (await act({ action: "invite.resend", inviteId: i.id })) onError(t(`Einladung an ${i.email} erneut gesendet.`, `Invitation sent to ${i.email} again.`));
+                              }}
+                            >
+                              {t("Erneut senden", "Send again")}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title={t("Einladung zurückziehen", "Withdraw invitation")}
+                            aria-label={t(`Einladung an ${i.email} zurückziehen`, `Withdraw the invitation to ${i.email}`)}
+                            onClick={() => void act({ action: "invite.cancel", inviteId: i.id })}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </section>
               )}
             </>

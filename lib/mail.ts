@@ -198,6 +198,34 @@ export function queueInviteMail(input: {
   return queueMail(input.email, subject, text, html);
 }
 
+// A page shared with an existing account (lib/page-share.ts): right away,
+// not with the next summary, unless the person turned e-mails for shared
+// pages off. Returns whether a mail was queued.
+export function queueShareMail(input: { userId: string; inviter: string; pageId: string; page: string; workspace: string }) {
+  const user = one<{ email: string; disabled: number; demo_until: number | null }>("SELECT email,disabled,demo_until FROM users WHERE id=?", input.userId);
+  if (!user || user.disabled || user.demo_until) return false;
+  if (one("SELECT 1 FROM notification_prefs WHERE user_id=? AND kind='share' AND email=0", input.userId)) return false;
+  const t = translate(userLocale(input.userId));
+  const url = `${appUrl()}/#page=${input.pageId}`;
+  const subject = t(`${input.inviter} hat „${input.page}“ mit dir geteilt`, `${input.inviter} shared “${input.page}” with you`);
+  const text = t(
+    `${input.inviter} hat die Seite „${input.page}“ im Arbeitsbereich „${input.workspace}“ in ${instanceName()} mit dir geteilt.\n\nÖffnen:\n${url}\n`,
+    `${input.inviter} shared the page “${input.page}” in the workspace “${input.workspace}” in ${instanceName()} with you.\n\nOpen it:\n${url}\n`,
+  );
+  const html = layout(
+    subject,
+    [
+      t(
+        `${escape(input.inviter)} hat die Seite <strong>${escape(input.page)}</strong> im Arbeitsbereich ${escape(input.workspace)} mit dir geteilt.`,
+        `${escape(input.inviter)} shared the page <strong>${escape(input.page)}</strong> in the workspace ${escape(input.workspace)} with you.`,
+      ),
+    ],
+    { label: t("Seite öffnen", "Open page"), url },
+    userLocale(input.userId),
+  );
+  return queueMail(user.email, subject, text, html);
+}
+
 // Unread notifications older than a few minutes (not seen in the app
 // meanwhile) are bundled into one e-mail per person.
 const DIGEST_DELAY_MS = 10 * 60_000;

@@ -2635,7 +2635,8 @@ tr:hover .row-open {
   white-space: nowrap;
 }
 .invite-form > input {
-  flex: 1;
+  flex: 1 1 220px;
+  min-width: 200px;
 }
 .invite-form :is(select, .fp-select) {
   max-width: 140px;
@@ -17539,4 +17540,41 @@ h3 .block-reactions {
   .page-people-add input {
     grid-column: 1 / -1;
   }
+}
+
+/* Settings → Members: open invitations. */
+.pending-invites h3 {
+  margin: 22px 0 2px;
+  font-size: 14px;
+}
+.pending-invite small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.pending-invite .tag {
+  flex: none;
+}
+.pending-invite-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--hover);
+  color: var(--secondary);
+}
+@media (max-width: 560px) {
+  .pending-invite {
+    flex-wrap: wrap;
+  }
+  .pending-invite > span:nth-child(2) {
+    flex-basis: calc(100% - 50px);
+  }
+}
+
+[data-theme="dark"] .tag-yellow {
+  background: rgba(240, 200, 100, 0.14);
+  color: #e8c98a;
 }
