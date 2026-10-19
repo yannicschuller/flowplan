@@ -112,5 +112,13 @@ export function openSecret(sealed: string, aad: string): string {
   }
 }
 
+// A key for signatures of one purpose (signed sign-in steps, unlock cookies);
+// changing the key ends all of them.
+export function signingKey(purpose: string): Buffer {
+  const key = keys(true)[0];
+  if (!key) throw new Error("Kein Schlüssel für gespeicherte Geheimnisse.");
+  return Buffer.from(hkdfSync("sha256", key.secret, Buffer.alloc(0), `flowplan-sign:${purpose}`, 32));
+}
+
 // "…abcd": the only part of a key that is ever shown again.
 export const keyHint = (key: string) => (key.length >= 12 ? key.slice(-4) : "");

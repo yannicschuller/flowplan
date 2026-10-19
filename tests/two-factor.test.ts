@@ -70,14 +70,16 @@ test("secrets are sealed with a key file of their own and bound to their place",
   assert.equal(statSync(join(dataDir, "secrets.key")).mode & 0o777, 0o600);
   // With FLOWPLAN_SECRETS_KEY set, older values stay readable through the key file.
   process.env.FLOWPLAN_SECRETS_KEY = Buffer.alloc(32, 7).toString("base64");
+  let newer = "";
   try {
     assert.equal(box.openSecret(sealed, "totp:a"), "JBSWY3DPEHPK3PXP");
-    const newer = box.sealSecret("x", "y");
-    assert.notEqual(newer.split(".")[1], sealed.split(".")[1]);
+    newer = box.sealSecret("x", "y");
     assert.equal(box.openSecret(newer, "y"), "x");
   } finally {
     delete process.env.FLOWPLAN_SECRETS_KEY;
   }
+  // The newer value was sealed with FLOWPLAN_SECRETS_KEY, not the key file.
+  assert.throws(() => box.openSecret(newer, "y"));
   const signature = box.signValue("test", "data");
   assert.equal(box.validSignature("test", "data", signature), true);
   assert.equal(box.validSignature("test", "datA", signature), false);
