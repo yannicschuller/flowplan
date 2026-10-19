@@ -14980,6 +14980,85 @@ h3 .block-reactions {
   font-size: 12.5px;
 }
 
+/* ---------- Who wrote what (lib/authorship-plugin.ts) ---------- */
+.author-mark {
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.author-mark.earlier {
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--muted) 30%, transparent) 2px,
+    transparent 2px
+  );
+}
+.author-legend {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  width: 250px;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.author-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.author-legend-head button {
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.author-legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.author-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.author-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-swatch {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+.author-swatch.earlier {
+  border: 1px dashed var(--muted);
+}
+.author-legend-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+}
+@media print {
+  .author-legend {
+    display: none;
+  }
+  .author-mark {
+    background: none !important;
+  }
+}
+
 /* ---------- Ticket numbers in text (lib/ticket-ref-plugin.ts) ---------- */
 .ticket-ref {
   padding: 0 3px;

@@ -70,6 +70,7 @@ import { searchWorkspace } from "@/lib/search-index";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { importWhiteboardFile } from "@/lib/whiteboard-import-server";
+import { documentAuthors } from "@/lib/document-authors";
 import { BOARD_IMPORT_LIMITS } from "@/lib/whiteboard-import";
 import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
@@ -462,6 +463,14 @@ async function handleGET(
       return NextResponse.json(await resolveEmbed(raw), {
         headers: { "Cache-Control": "no-store" },
       });
+    }
+    // Who wrote what: the people behind the editor sessions of a document.
+    if (path.length === 1 && path[0] === "document-authors") {
+      const row = url.searchParams.get("row");
+      return NextResponse.json(
+        documentAuthors(user, z.uuid().parse(url.searchParams.get("page")), row ? z.uuid().parse(row) : null),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     // Dashboards: one number from a database, and the databases to choose from.
     if (path[0] === "dashboard-metric") {

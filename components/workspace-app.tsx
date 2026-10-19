@@ -63,6 +63,7 @@ import {
   Bell,
   Star,
   Clock,
+  UsersThree,
   Trash,
   BookOpen,
   PencilSimple,
@@ -1989,6 +1990,18 @@ export default function WorkspaceApp({
                       <Clock />
                       {t("Versionsverlauf", "Version history")}
                     </Dropdown.Item>
+                    {data.page.kind === "document" && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        // The open editor shows or hides who wrote what.
+                        onSelect={() =>
+                          window.dispatchEvent(new CustomEvent("flowplan:authors", { detail: data.page.id }))
+                        }
+                      >
+                        <UsersThree />
+                        {t("Autoren anzeigen", "Show authors")}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() =>

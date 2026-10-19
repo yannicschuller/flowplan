@@ -66,6 +66,7 @@ import {
 } from "./row-access";
 import { cellText } from "./cell-text";
 import { scheduleRow, cascadeTimeline, linkTimeline } from "./row-schedule";
+import { recordDocumentAuthors } from "./document-authors";
 import { rewriteFormulaReferences } from "./formula";
 import { validateCalculations } from "./database-summary";
 import { spaceColorSchema, spaceIconSchema } from "./space-appearance";
@@ -1283,7 +1284,10 @@ export function command(
         }
         try {
           if (existing?.state) Y.applyUpdate(d, existing.state);
+          const before = Y.encodeStateVector(d);
           Y.applyUpdate(d, Buffer.from(update, "base64"));
+          // Who wrote what: the editor sessions in this update are this person's.
+          recordDocumentAuthors(p.id, null, existing!.generation, user.id, before, Y.encodeStateVector(d));
           const merged = Y.encodeStateAsUpdate(d),
             canonical = stateHtml(d);
           // Tasks: people given a task are told once (not also as mention).
