@@ -1,0 +1,61 @@
+{
+  "name": "n8n-nodes-flowplan",
+  "version": "0.1.0",
+  "description": "n8n nodes for Flowplan: workspaces, pages, database records and search, plus a trigger on Flowplan webhooks.",
+  "license": "MIT",
+  "homepage": "https://docs.flowplan.org/api-and-webhooks",
+  "keywords": [
+    "n8n-community-node-package",
+    "flowplan",
+    "notes",
+    "wiki",
+    "database"
+  ],
+  "author": {
+    "name": "Yannic Schuller",
+    "email": "76843349+yannicschuller@users.noreply.github.com",
+    "url": "https://github.com/yannicschuller"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yannicschuller/flowplan.git",
+    "directory": "integrations/n8n"
+  },
+  "bugs": {
+    "url": "https://github.com/yannicschuller/flowplan/issues"
+  },
+  "scripts": {
+    "build": "n8n-node build",
+    "build:watch": "tsc --watch",
+    "dev": "n8n-node dev",
+    "lint": "n8n-node lint",
+    "lint:fix": "n8n-node lint --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm run lint && npm run build && npm test"
+  },
+  "files": [
+    "dist",
+    "!dist/tsconfig.tsbuildinfo"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "strict": true,
+    "credentials": [
+      "dist/credentials/FlowplanApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Flowplan/Flowplan.node.js",
+      "dist/nodes/FlowplanTrigger/FlowplanTrigger.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@n8n/node-cli": "0.52.6",
+    "eslint": "9.32.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.2"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

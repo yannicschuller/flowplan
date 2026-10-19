@@ -813,10 +813,9 @@ async function handlePOST(
     // Every POST here changes something; read tokens only read (the
     // Markdown export has a route of its own).
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-    if (path.length === 1 && path[0] === "webhooks") {
-      if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
+    // Owners register webhooks, also with a write API token (n8n trigger).
+    if (path.length === 1 && path[0] === "webhooks")
       return NextResponse.json(await createWebhook(user, await req.json()));
-    }
     if (path.length === 2 && path[0] === "admin" && path[1] === "mail-test") {
       requireAdmin(user);
       const to = z.email().parse((await req.json()).to);
