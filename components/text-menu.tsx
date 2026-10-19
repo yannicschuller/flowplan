@@ -31,7 +31,9 @@ import {
   Quotes,
   CodeBlock,
   MathOperations,
+  Sparkle,
 } from "@phosphor-icons/react";
+import type { AiAvailability } from "./ai-context";
 import { hasLatexText } from "@/lib/chat-paste";
 import { latexToFormulas } from "@/lib/latex-convert";
 import { reactionBlockAt, setReactions, parseReactions } from "@/lib/block-reactions";
@@ -46,11 +48,19 @@ export function TextMenu({
   userId,
   editable,
   onLink,
+  ai = "hidden",
+  aiHint = "",
+  onAi,
 }: {
   editor: Editor | null;
   userId: string;
   editable: boolean;
   onLink: () => void;
+  // The writing assistant: hidden without the feature, disabled (with the
+  // hint) on pages the AI may not read.
+  ai?: AiAvailability;
+  aiHint?: string;
+  onAi?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -382,6 +392,22 @@ export function TextMenu({
         </div>
       )}
       <div className="text-menu-actions" role="group">
+        {editable && ai !== "hidden" && onAi && (
+          <button
+            type="button"
+            role="menuitem"
+            className="text-menu-ai"
+            aria-disabled={ai === "blocked" || undefined}
+            title={ai === "blocked" ? aiHint : t("KI-Schreibassistent (⌘J)", "AI writing assistant (⌘J)")}
+            onClick={() => {
+              if (ai === "blocked") return;
+              close();
+              onAi();
+            }}
+          >
+            <Sparkle size={15} weight="fill" /> {t("KI", "AI")}
+          </button>
+        )}
         {task && (
           <button
             type="button"

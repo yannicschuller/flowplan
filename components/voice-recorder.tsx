@@ -6,6 +6,7 @@ import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { Microphone, Stop, Trash } from "@phosphor-icons/react";
 import { Modal } from "./ui";
+import type { AiAvailability } from "./ai-context";
 
 const MAX_SECONDS = 10 * 60;
 function pickType() {
@@ -21,11 +22,16 @@ export function VoiceRecorder({
   transcription,
   onClose,
   onInsert,
+  summarize = "hidden",
+  summarizeHint = "",
 }: {
   open: boolean;
   transcription: boolean;
   onClose: () => void;
-  onInsert: (file: File, transcribe: boolean) => void;
+  onInsert: (file: File, transcribe: boolean, summarize: boolean) => void;
+  // A summary of the transcript by the AI ("summarize"), below it.
+  summarize?: AiAvailability;
+  summarizeHint?: string;
 }) {
   const t = useT();
   const [state, setState] = useState<"idle" | "recording" | "done">("idle");
@@ -34,6 +40,7 @@ export function VoiceRecorder({
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
   const [toText, setToText] = useState(transcription);
+  const [summary, setSummary] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -113,14 +120,27 @@ export function VoiceRecorder({
                 <input type="checkbox" checked={toText} onChange={(e) => setToText(e.target.checked)} />
                 {t("Gesprochenes als Text einfügen", "Insert the spoken words as text")}
               </label>
-            ) : (
+            ) : null}
+            {transcription && summarize !== "hidden" && (
+              <label className="voice-option" title={summarize === "blocked" ? summarizeHint : undefined}>
+                <input
+                  type="checkbox"
+                  checked={summary && toText && summarize === "ok"}
+                  disabled={!toText || summarize === "blocked"}
+                  onChange={(e) => setSummary(e.target.checked)}
+                />
+                {t("Danach mit KI zusammenfassen", "Then summarise with AI")}
+                {summarize === "blocked" && <small className="muted"> · {summarizeHint}</small>}
+              </label>
+            )}
+            {!transcription && (
               <small className="muted">{t("Transkription ist auf diesem Server nicht eingerichtet; die Aufnahme wird als Audio eingefügt.", "Transcription is not set up on this server; the recording is inserted as audio.")}</small>
             )}
             <div className="modal-actions">
               <button type="button" className="button" onClick={() => { setFile(null); setState("idle"); }}>
                 <Trash size={16} /> {t("Verwerfen", "Discard")}
               </button>
-              <button type="button" className="button primary" onClick={() => onInsert(file, transcription && toText)}>
+              <button type="button" className="button primary" onClick={() => onInsert(file, transcription && toText, transcription && toText && summary && summarize === "ok")}>
                 {t("Einfügen", "Insert")}
               </button>
             </div>

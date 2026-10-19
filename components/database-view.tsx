@@ -78,6 +78,8 @@ import {
   hasRelativeFilters,
 } from "@/lib/database-filters";
 import RowDocument from "./row-document";
+import { useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { AiSummaryDialog, type AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { MarkdownRecordsImport } from "./markdown-records-import";
 import { DatabaseExportMenu, RecordExportMenu } from "./record-export";
@@ -113,6 +115,7 @@ import {
   Funnel,
   SortAscending,
   DotsThree,
+  Sparkle,
   ArrowSquareOut,
   Trash,
   CalendarBlank,
@@ -310,6 +313,10 @@ export default function DatabaseView({
   onError: (s: string) => void;
 }) {
   const t = useT();
+  // "Mit KI zusammenfassen" for the view's records or one record.
+  const aiSummarize = useAiAvailability("summarize", page.id);
+  const aiBlockedHint = useAiBlockedHint();
+  const [aiSummary, setAiSummary] = useState<AiSummaryTarget | null>(null);
   // The server sends this database's rows once (as rows); relations to
   // itself and rollups read them from here.
   const related = useMemo(
@@ -731,6 +738,21 @@ export default function DatabaseView({
         >
           <LinkIcon size={17} />
         </button>
+        {aiSummarize !== "hidden" && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-disabled={aiSummarize === "blocked" || undefined}
+            aria-label={t("Mit KI zusammenfassen", "Summarise with AI")}
+            title={aiSummarize === "blocked" ? aiBlockedHint : t("Mit KI zusammenfassen", "Summarise with AI")}
+            onClick={() => {
+              if (aiSummarize !== "ok") return;
+              setAiSummary({ pageId: page.id, rowId: row.id, title: cellText(row.cells[fields[0]?.id || "title"]) || t("Eintrag", "Record"), kind: "record" });
+            }}
+          >
+            <Sparkle size={17} />
+          </button>
+        )}
         <RecordExportMenu
           pageId={page.id}
           rowId={row.id}
@@ -2486,6 +2508,23 @@ export default function DatabaseView({
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
+          {aiSummarize !== "hidden" && (
+            <button
+              aria-disabled={aiSummarize === "blocked" || undefined}
+              aria-label={t("Mit KI zusammenfassen", "Summarise with AI")}
+              title={
+                aiSummarize === "blocked"
+                  ? aiBlockedHint
+                  : t(`Mit KI zusammenfassen – die ${shown.length} Einträge dieser Ansicht (mit Filtern)`, `Summarise with AI – the ${shown.length} records of this view (with filters)`)
+              }
+              onClick={() => {
+                if (aiSummarize !== "ok") return;
+                setAiSummary({ pageId: page.id, rowIds: shown.map((r) => r.id), title: `${page.title} · ${view.name}`, kind: "database" });
+              }}
+            >
+              <Sparkle size={17} />
+            </button>
+          )}
           <DatabaseExportMenu
             pageId={page.id}
             title={page.title}
@@ -5051,6 +5090,7 @@ export default function DatabaseView({
           </div>
         ))}
       </Modal>
+      <AiSummaryDialog target={aiSummary} onClose={() => setAiSummary(null)} />
       <Modal
         open={!!selected}
         onClose={() => setRowId(null)}

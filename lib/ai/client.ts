@@ -42,7 +42,18 @@ export type StreamAiOptions = {
 // Streams the answer; resolves with the whole text. Rejects with
 // AiRequestError (localized message), or an AbortError when aborted.
 export async function streamAi({ signal, onText, ...body }: StreamAiOptions): Promise<string> {
-  const response = await fetch("/api/ai/run", {
+  return streamAiFrom("/api/ai/run", body, { signal, onText });
+}
+
+// The same for the other AI endpoints that answer with a text stream
+// (/api/ai/write, /api/ai/summarize). `onResponse` sees the response
+// before the text (headers such as X-Flowplan-AI-Included).
+export async function streamAiFrom(
+  url: string,
+  body: Record<string, unknown>,
+  { signal, onText, onResponse }: { signal?: AbortSignal; onText?: (piece: string, text: string) => void; onResponse?: (response: Response) => void } = {},
+): Promise<string> {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -52,6 +63,7 @@ export async function streamAi({ signal, onText, ...body }: StreamAiOptions): Pr
     const data = await response.json().catch(() => ({}));
     throw new AiRequestError(serverMessage(data?.error || "Die KI-Anfrage ist fehlgeschlagen."), response.status);
   }
+  onResponse?.(response);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let text = "",
