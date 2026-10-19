@@ -119,6 +119,9 @@ test("objects in the bucket: plain ones stay readable, new ones are encrypted, e
   const fresh = addFile("nachher");
   await until(() => objects.has(object(fresh)), "encrypted upload");
   assert.ok(isEncrypted(objects.get(object(fresh))!));
+  // The upload is recorded once the bucket has answered, a moment after the
+  // object arrived there.
+  await until(() => storageEncryption()?.behind === 1, "upload recorded");
   assert.deepEqual(storageEncryption(), { files: 2, behind: 1 });
   // A new host without local files reads both kinds.
   rmSync(join(uploads, old));
