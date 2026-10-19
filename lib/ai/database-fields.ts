@@ -43,8 +43,8 @@ export const AI_REFERENCE_TYPES: FieldType[] = [
   "id",
   "relation",
 ];
-// {Inhalt} / {Content}: the record's page content (unless a property has that name).
-export const CONTENT_REFERENCES = ["Inhalt", "Content"];
+// {Inhalt} / {Content} / {Contenu}: the record's page content (unless a property has that name).
+export const CONTENT_REFERENCES = ["Inhalt", "Content", "Contenu"];
 export const AI_PROMPT_MAX = 2000;
 export const AI_TEXT_MAX = 4000;
 
