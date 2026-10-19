@@ -18028,4 +18028,214 @@ h3 .block-reactions {
   align-items: center;
   gap: 6px;
   margin-top: 12px;
+/* Footnotes (lib/footnotes.ts): the number comes from the order of the
+   markers, the notes are listed at the end of the document. */
+.document-editor sup.footnote-ref {
+  font-size: 0.72em;
+  line-height: 0;
+  vertical-align: super;
+  color: var(--blue);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 1px;
+  border-radius: 3px;
+}
+.document-editor sup.footnote-ref::before {
+  content: "[" attr(data-footnote-number) "]";
+}
+.document-editor sup.footnote-ref:not([data-footnote-number])::before,
+.document-editor sup.footnote-ref:has(a)::before {
+  content: none;
+}
+.document-editor sup.footnote-ref.ProseMirror-selectednode,
+.document-editor sup.footnote-ref:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.document-editor .footnotes {
+  margin-top: 32px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.88em;
+  color: var(--secondary);
+  user-select: text;
+}
+.document-editor .footnotes-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.86em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.document-editor .footnotes ol {
+  margin: 0;
+}
+.document-editor .footnotes li {
+  margin: 3px 0;
+  border-radius: 4px;
+}
+.document-editor .footnotes .footnote-text {
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  padding: 0;
+  background: none;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+.document-editor .footnotes .footnote-text[role="button"] {
+  cursor: text;
+}
+.document-editor[contenteditable="true"] .footnotes .footnote-text[role="button"]:hover {
+  text-decoration: underline dotted;
+}
+.document-editor .footnote-back {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+}
+.document-editor .footnote-flash {
+  animation: footnote-flash 1.4s ease-out;
+}
+@keyframes footnote-flash {
+  from {
+    background: var(--blue-light);
+  }
+  to {
+    background: transparent;
+  }
+}
+@media print {
+  .document-editor .footnote-back {
+    display: none;
+  }
+}
+.print-view .footnote-back {
+  display: none;
+}
+
+/* "Als Markdown bearbeiten" (components/markdown-source.tsx). */
+.markdown-source {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.markdown-source-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.markdown-source-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.markdown-source-note {
+  margin: 0;
+  font-size: 13px;
+}
+.markdown-source-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, #d9a400 45%, var(--border));
+  background: color-mix(in srgb, #d9a400 10%, var(--bg));
+  font-size: 13px;
+}
+.markdown-source-editor {
+  display: flex;
+  min-height: 60vh;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.markdown-source-lines {
+  flex: none;
+  overflow: hidden;
+  padding: 12px 8px 12px 10px;
+  text-align: end;
+  color: var(--muted);
+  user-select: none;
+  border-inline-end: 1px solid var(--border);
+}
+.markdown-source-lines span {
+  display: block;
+}
+.markdown-source-text {
+  flex: 1;
+  min-width: 0;
+  min-height: 60vh;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  resize: vertical;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+.markdown-source-text:focus {
+  outline: none;
+}
+.markdown-source-editor:focus-within {
+  border-color: var(--blue);
+}
+
+/* Right-to-left blocks (lib/text-direction.ts): bullets, numbers, checkboxes,
+   quote bars and callout icons on the side the text starts on. The editor
+   and read-only pages put dir="rtl" on such blocks (also when found from
+   the text); a block inside one that goes the other way gets dir="ltr".
+   Attribute selectors, not :dir() – the CSS build rewrites :dir() into
+   language selectors for older browsers. */
+.document-editor :is(ul, ol)[dir="rtl"],
+.document-editor [dir="rtl"] :is(ul, ol):not([dir="ltr"]) {
+  padding-left: 0;
+  padding-right: 25px;
+}
+.document-editor ul[data-type="taskList"][dir="rtl"],
+.document-editor [dir="rtl"] ul[data-type="taskList"]:not([dir="ltr"]) {
+  padding: 0;
+}
+/* A right-to-left item in a left-to-right list keeps its bullet inside. */
+.document-editor :is(ul, ol):not([dir="rtl"]) > li[dir="rtl"]:not([data-type="taskItem"]) {
+  list-style-position: inside;
+}
+.document-editor blockquote[dir="rtl"],
+.document-editor [dir="rtl"] blockquote:not([dir="ltr"]) {
+  border-left: 0;
+  border-right: 3px solid #b9ccec;
+  padding: 4px 18px 4px 0;
+}
+:is(.editor-callout, aside[data-callout]):is([dir="rtl"], [dir="rtl"] :not([dir="ltr"])) {
+  border-left: 0;
+  border-right: 3px solid var(--callout, var(--blue));
+}
+:is(.editor-callout, aside[data-callout]):is([dir="rtl"], [dir="rtl"] :not([dir="ltr"]))::before {
+  padding-left: 0;
+  padding-right: 24px;
+}
+:is(.editor-callout, aside[data-callout]):is([dir="rtl"], [dir="rtl"] :not([dir="ltr"]))::after {
+  left: auto;
+  right: 18px;
+}
+.block-editor-surface.with-block-handles.with-rtl-blocks {
+  padding-right: 26px;
 }

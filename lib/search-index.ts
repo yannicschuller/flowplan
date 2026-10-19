@@ -5,6 +5,7 @@ import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
 import type { Field, Identity, Page } from "./types";
+import { footnoteTexts } from "./footnotes";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -35,6 +36,10 @@ export function htmlText(html: string) {
     .replace(/\s+/g, " ")
     .trim();
 }
+// The text of a document with its footnotes (kept in the markers).
+export function documentText(html: string) {
+  return [htmlText(html), ...footnoteTexts(html)].join(" ");
+}
 // Text people see in a cell: nested strings of checklists or files, but no
 // identifiers of people or related records.
 function cellWords(value: unknown): string {
@@ -60,7 +65,7 @@ function indexPage(pageId: string) {
     pageId,
     "",
     page.title,
-    htmlText(page.html || "").slice(0, 400000),
+    documentText(page.html || "").slice(0, 400000),
   );
 }
 function indexRow(pageId: string, rowId: string, fields: Field[]) {
@@ -84,7 +89,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
     pageId,
     rowId,
     title || "Ohne Titel",
-    [...values, content.startsWith("<") ? htmlText(content) : content]
+    [...values, content.startsWith("<") ? documentText(content) : content]
       .join(" · ")
       .slice(0, 400000),
   );

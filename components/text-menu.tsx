@@ -31,6 +31,7 @@ import {
   Quotes,
   CodeBlock,
   MathOperations,
+  Note,
 } from "@phosphor-icons/react";
 import { hasLatexText } from "@/lib/chat-paste";
 import { latexToFormulas } from "@/lib/latex-convert";
@@ -402,6 +403,16 @@ export function TextMenu({
         >
           <ChatCircle size={15} /> {t("Kommentieren", "Comment")}
         </button>
+        {editable && editor.can().openFootnote() && (
+          <button
+            type="button"
+            role="menuitem"
+            title={t("Fußnote einfügen (⌘⌥F)", "Insert footnote (⌘⌥F)")}
+            onClick={run(() => editor.commands.openFootnote())}
+          >
+            <Note size={15} /> {t("Fußnote", "Footnote")}
+          </button>
+        )}
         {!empty && (
           <button
             type="button"

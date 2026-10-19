@@ -4,6 +4,7 @@ import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import sanitize from "sanitize-html";
 import { documentExtensions, documentSchema } from "./document-schema";
+const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 export function cleanHtml(html: string, transform?: sanitize.Transformer) {
   return sanitize(html, {
     allowedTags: [
@@ -66,14 +67,19 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-citation-locator",
         "data-bibliography",
         "data-bibliography-title",
+        "data-footnote",
       ],
+      // Text direction of blocks (lib/text-direction.ts), only its values.
+      ...Object.fromEntries(
+        ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "aside", "ul", "li", "table", "tr"].map((tag) => [tag, [dir]]),
+      ),
       a: ["href", "name", "target", "rel"],
       img: ["src", "alt", "width", "height", "data-original", "data-annotations"],
       input: ["type", "checked", "disabled"],
-      ol: ["start"],
-      td: ["colspan", "rowspan", "colwidth"],
-      th: ["colspan", "rowspan", "colwidth"],
-      details: ["open"],
+      ol: ["start", dir],
+      td: ["colspan", "rowspan", "colwidth", dir],
+      th: ["colspan", "rowspan", "colwidth", dir],
+      details: ["open", dir],
       video: ["src", "controls", "preload"],
       audio: ["src", "controls", "preload"],
       iframe: ["src", "title", "allowfullscreen", "sandbox", "loading"],

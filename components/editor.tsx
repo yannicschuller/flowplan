@@ -124,6 +124,7 @@ import {
   PencilSimpleLine,
   ChartLine,
   UsersThree,
+  Note,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
@@ -156,6 +157,9 @@ import { Authorship, authorshipKey, type AuthorShares } from "@/lib/authorship-p
 import { authorColor } from "@/lib/authorship";
 import { BibliographyView, CitationView } from "./citation-views";
 import { CitationDialog } from "./citation-dialog";
+import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/footnotes";
+import { BlockDirectionExtension } from "@/lib/text-direction";
+import { MarkdownSourceView } from "./markdown-source";
 export default function DocumentEditor({
   pageId,
   rowId,
@@ -171,7 +175,15 @@ export default function DocumentEditor({
   onHtml,
   embedded = false,
   transcription = false,
+  source = false,
+  sourceNotice,
+  onSourceClose,
 }: {
+  // "Als Markdown bearbeiten": the page as Markdown instead of the editor.
+  source?: boolean;
+  // Why the source can only be read (locked page …), if so.
+  sourceNotice?: string;
+  onSourceClose?: () => void;
   // The server turns voice notes into text (Whisper).
   transcription?: boolean;
   // Shown inside another document (synced block): no toolbar, outline,
@@ -225,6 +237,8 @@ export default function DocumentEditor({
     // The image being marked up (position and its attributes).
     [annotate, setAnnotate] = useState<{ pos: number; src: string; original: string | null; annotations: string | null } | null>(null),
     [toggle, setToggle] = useState(false),
+    // The note being written: an existing one (pos) or a new one at `at`.
+    [footnote, setFootnote] = useState<{ pos: number | null; note: string; at: number; original: string } | null>(null),
     [toggleTitle, setToggleTitle] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
   const [outline, setOutline] = useOutlineOpen();
@@ -304,6 +318,7 @@ export default function DocumentEditor({
       .run();
     setSyncedPicker(null);
   }
+  const openFootnote = useRef((_target: FootnoteEdit) => {});
   const slashState = useRef(slash);
   slashState.current = slash;
   const slashActiveRef = useRef(slashActive);
@@ -412,6 +427,8 @@ export default function DocumentEditor({
         linkedDatabaseNode(() => linkedContext.current),
         syncedBlockNode(() => syncedContext.current),
         whiteboardEmbedNode(),
+        Footnote.configure({ edit: (target) => openFootnote.current(target) }),
+        BlockDirectionExtension.configure({ auto: true }),
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }, liveId),
         inlineCommentExtension(generation),
@@ -1162,6 +1179,13 @@ export default function DocumentEditor({
       run: () => setMath({ type: "mathInline", expression: "\\frac{}{}" }),
     },
     {
+      name: t("Fußnote", "Footnote"),
+      keywords: ["fussnote", "footnote", "fn", "anmerkung", "quelle", "note"],
+      description: t("Nummerierte Anmerkung am Seitenende", "Numbered note at the end of the page"),
+      icon: Note,
+      run: () => editor?.chain().focus().openFootnote().run(),
+    },
+    {
       name: t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person"),
       keywords: ["mention", "link", "@", "seite", "person", "eintrag", "record"],
       description: t("Mit @ Wissen verknüpfen", "Connect knowledge with @"),
@@ -1305,6 +1329,37 @@ export default function DocumentEditor({
         Math.min(slash.from, editor.state.doc.content.size),
       );
     } catch {}
+  openFootnote.current = (target) => {
+    if (!editor) return;
+    setFootnote({ ...target, at: editor.state.selection.to, original: target.note });
+  };
+  // Saves the note being written: changes it, or adds the marker.
+  function saveFootnote(remove = false) {
+    if (!editor || !footnote) return;
+    const note = footnoteText(footnote.note);
+    if (footnote.pos === null) {
+      if (note && !remove)
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(Math.min(footnote.at, editor.state.doc.content.size), { type: "footnote", attrs: { note } })
+          .run();
+      setFootnote(null);
+      return;
+    }
+    const current = editor.state.doc.nodeAt(footnote.pos);
+    if (current?.type.name !== "footnote" || String(current.attrs.note || "") !== footnote.original) {
+      onError(t("Die Fußnote wurde inzwischen geändert. Bitte erneut öffnen.", "The footnote was changed in the meantime. Please open it again."));
+      setFootnote(null);
+      return;
+    }
+    const tr = editor.state.tr;
+    if (remove || !note) tr.delete(footnote.pos, footnote.pos + current.nodeSize);
+    else tr.setNodeMarkup(footnote.pos, undefined, { ...current.attrs, note });
+    editor.view.dispatch(tr);
+    editor.commands.focus();
+    setFootnote(null);
+  }
   function openInlineMath() {
     if (!editor) return;
     const { from, to } = editor.state.selection;
@@ -1367,7 +1422,7 @@ export default function DocumentEditor({
   return (
     <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
-        {editable && !embedded && (
+        {editable && !embedded && !source && (
           <div
             className="editor-toolbar"
             role="toolbar"
@@ -1730,17 +1785,29 @@ export default function DocumentEditor({
             </p>
           </aside>
         )}
-        {!embedded && (outline || headings.length > 0) && (
+        {!embedded && !source && (outline || headings.length > 0) && (
           <OutlineToggle open={outline} count={headings.length} onToggle={() => setOutline(!outline)} />
         )}
         {!embedded && outline && <DocumentOutline editor={editor} headings={headings} onClose={() => setOutline(false)} />}
-        {embedded ? (
-          <EditorContent editor={editor} />
-        ) : (
-          <DocumentBlockControls editor={editor}>
-            <EditorContent editor={editor} />
-          </DocumentBlockControls>
+        {source && !embedded && editor && (
+          <MarkdownSourceView
+            editor={editor}
+            pageId={pageId}
+            editable={editable}
+            notice={sourceNotice}
+            onClose={() => onSourceClose?.()}
+            onError={onError}
+          />
         )}
+        <div className="editor-content-holder" hidden={source && !embedded}>
+          {embedded ? (
+            <EditorContent editor={editor} />
+          ) : (
+            <DocumentBlockControls editor={editor}>
+              <EditorContent editor={editor} />
+            </DocumentBlockControls>
+          )}
+        </div>
         {editor?.isActive("table") && editable && (
           <div className="table-tools">
             <button onClick={() => editor.chain().focus().addRowAfter().run()}>
@@ -2271,6 +2338,50 @@ export default function DocumentEditor({
             />
           </label>
           <button className="button primary">{t("Einbetten", "Embed")}</button>
+        </form>
+      </Modal>
+      <Modal
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor?.commands.focus();
+        }}
+        open={!!footnote}
+        onClose={() => setFootnote(null)}
+        title={footnote?.pos === null ? t("Fußnote einfügen", "Insert footnote") : t("Fußnote bearbeiten", "Edit footnote")}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveFootnote();
+          }}
+        >
+          <label>
+            {t("Text der Fußnote", "Footnote text")}
+            <textarea
+              autoFocus
+              rows={4}
+              maxLength={MAX_FOOTNOTE}
+              value={footnote?.note || ""}
+              onChange={(e) => footnote && setFootnote({ ...footnote, note: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  saveFootnote();
+                }
+              }}
+            />
+          </label>
+          <p className="muted">
+            {t("Erscheint nummeriert unter „Fußnoten“ am Ende der Seite. Webadressen werden zu Links.", "Appears numbered under “Footnotes” at the end of the page. Web addresses become links.")}
+          </p>
+          <div className="modal-actions">
+            {footnote?.pos !== null && (
+              <button type="button" className="button" onClick={() => saveFootnote(true)}>
+                {t("Fußnote entfernen", "Remove footnote")}
+              </button>
+            )}
+            <button className="button primary">{footnote?.pos === null ? t("Einfügen", "Insert") : t("Speichern", "Save")}</button>
+          </div>
         </form>
       </Modal>
       <Modal

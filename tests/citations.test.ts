@@ -210,3 +210,30 @@ test("the workspace bibliography: import, update, permissions and DOIs", async (
   const garbage = async () => ({ url: "", status: 200, type: "application/json", body: "{}", data: Buffer.alloc(0) });
   await assert.rejects(resolveDoi("10.5555/garbage", garbage as never), (e: any) => e.status === 502);
 });
+
+test("citations, the bibliography and footnotes survive editing the page as Markdown", async () => {
+  const { markdownSource } = await import("../lib/markdown");
+  const { markdownToHtml } = await import("../lib/markdown-import");
+  const [mueller] = parseBibtex(fixture("zotero.bib"));
+  const attr = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+  const html =
+    `<p>Siehe <span data-citation="mueller2021" data-citation-item="${attr(JSON.stringify(mueller))}">x</span>` +
+    `<sup data-footnote="Eine Anmerkung"></sup>.</p><div data-bibliography="true" data-bibliography-title="Quellen"></div>`;
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, htmlState(html));
+  const stored = stateHtml(doc);
+  // The normal export: Pandoc citation, bibliography and footnote together.
+  const exported = htmlToMarkdown(stored, { url: (u: string) => u, linked: () => null });
+  assert.match(exported, /Siehe \[@mueller2021\]\[\^1\]\./);
+  assert.match(exported, /## Quellen\n\n- Müller/);
+  assert.match(exported, /\n\[\^1\]: Eine Anmerkung\n$/);
+  // The source view keeps the citation as HTML and the bibliography as a block.
+  const source = markdownSource(stored);
+  const back = markdownToHtml(source.markdown, (href) => href, { source: true, blocks: (i) => source.blocks[i]?.html ?? null });
+  const again = new Y.Doc();
+  Y.applyUpdate(again, htmlState(back));
+  const applied = stateHtml(again);
+  assert.match(applied, /data-citation="mueller2021"/);
+  assert.match(applied, /data-bibliography-title="Quellen"/);
+  assert.match(applied, /data-footnote="Eine Anmerkung"/);
+});
