@@ -27,6 +27,7 @@ import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
 import { PagePeople } from "./page-people";
+import { AiBlockToggle } from "./ai-settings";
 import {
   imageAccept,
   imageFileId,
@@ -3231,6 +3232,7 @@ export default function WorkspaceApp({
               onChanged={() => void refresh().catch(() => {})}
               onError={notify}
             />
+            <AiBlockToggle targetId={data.page.id} kind="page" onError={notify} />
             {data.role !== "viewer" && (
               <ShareLinks
                 pageId={data.page.id}

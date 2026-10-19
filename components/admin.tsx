@@ -18,7 +18,9 @@ import {
   SlidersHorizontal,
   ListChecks,
   ArrowCircleUp,
+  Sparkle,
 } from "@phosphor-icons/react";
+import { AdminAi, AiUserSwitch } from "./ai-settings";
 import { api, Avatar, Modal } from "./ui";
 import { Select } from "./select";
 import { AdminStorage } from "./admin-storage";
@@ -94,6 +96,8 @@ type AdminData = {
     target: "s3" | "local";
     last: { at: number; target: string; name: string; bytes: number; error: string | null } | null;
   };
+  // Who may use AI when only selected people may (lib/ai/settings.ts).
+  aiPolicy?: { access: "everyone" | "selected"; enabled: boolean; allowed: string[] };
   restorePending: {
     createdAt: string;
     users: number;
@@ -135,6 +139,12 @@ const adminTabs = [
     ["Instanz", "Instance"],
     SlidersHorizontal,
     ["Name, Hinweise, Grenzen und Sicherung der gesamten Instanz.", "Name, notices, limits and backup of the whole instance."],
+  ],
+  [
+    "ai",
+    ["KI", "AI"],
+    Sparkle,
+    ["Künstliche Intelligenz: Anbieter, wer sie nutzen darf und welche Funktionen es gibt. Standardmäßig aus.", "Artificial intelligence: provider, who may use it and which features exist. Off by default."],
   ],
   [
     "audit",
@@ -336,6 +346,7 @@ export default function Admin({
                       user={u}
                       usage={data.userUsage?.find((x) => x.id === u.id)}
                       settings={data.settings}
+                      ai={data.aiPolicy?.enabled && data.aiPolicy.access === "selected" ? { allowed: data.aiPolicy.allowed.includes(u.id), onChange: load } : null}
                       local={data.localAccounts?.[u.id]}
                       resetLink={resetLink?.userId === u.id ? resetLink.url : null}
                       act={act}
@@ -505,6 +516,7 @@ export default function Admin({
             </section>
           )}
           {tab === "operations" && <AdminStorage onError={onError} />}
+          {tab === "ai" && <AdminAi onError={onError} onChange={load} />}
           {tab === "audit" && (
             <section className="settings-section">
               <div className="settings-list-head">
@@ -601,11 +613,14 @@ function UserRow({
   user: u,
   usage,
   settings,
+  ai,
   local,
   resetLink,
   act,
   onResetLink,
 }: {
+  // The AI switch, when only selected people may use AI.
+  ai: { allowed: boolean; onChange: () => void } | null;
   user: User;
   usage?: NonNullable<AdminData["userUsage"]>[number];
   settings: InstanceSettings;
@@ -644,6 +659,7 @@ function UserRow({
           </small>
         </span>
         <span className="user-row-chips">
+          {ai && <AiUserSwitch userId={u.id} name={u.name} allowed={ai.allowed} onChange={ai.onChange} />}
           {!!u.disabled && <span className="status-chip muted-chip">{t("Deaktiviert", "Disabled")}</span>}
           {local?.admin && <span className="status-chip">{t("Admin", "Admin")}</span>}
           {local && !local.verified && (
