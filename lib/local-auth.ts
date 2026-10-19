@@ -20,7 +20,7 @@ import {
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { all, id, one, run } from "./db";
-import { HttpError, acceptInvites, adminGroup, appUrl, hash } from "./auth";
+import { HttpError, acceptInvites, adminGroup, appUrl, hash, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
 import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
@@ -470,6 +470,8 @@ export function loginOptions() {
     firstAccount: localLoginEnabled() && firstAccount(),
     mail: !!mailConfig(),
     demo: process.env.NODE_ENV !== "production",
+    // "Stay signed in on this device" (SESSION_REMEMBER=true).
+    remember: !!rememberPolicy(),
   };
 }
 export type LoginOptions = ReturnType<typeof loginOptions>;

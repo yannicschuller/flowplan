@@ -99,7 +99,7 @@ test("admin requires exact verified group, never a substring", () => {
 test("expired and disabled sessions are rejected", () => {
   const token = "test-secret";
   run(
-    "INSERT INTO sessions VALUES(?,?,?,?)",
+    "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",
     hash(token),
     owner.id,
     "[]",

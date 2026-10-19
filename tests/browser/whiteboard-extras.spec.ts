@@ -121,7 +121,7 @@ test("laser pointer and follow me reach the other person", async ({ page, browse
     token = randomBytes(32).toString("hex");
   db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, uid, "Lea Laser", `${uid}@test.invalid`);
   db.prepare("INSERT INTO members VALUES(?,?,?)").run(boot.workspace.id, uid, "editor");
-  db.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600000);
+  db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600000);
   db.close();
   const context = await browser.newContext({ viewport: page.viewportSize() });
   await context.addCookies([{ name: "flowplan_session", value: token, url: origin }]);

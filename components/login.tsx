@@ -41,6 +41,7 @@ export default function Login({
   signupOpen = false,
   firstAccount = false,
   mail = false,
+  remember: rememberAvailable = false,
   error,
   instanceName = "",
   mode: initialMode,
@@ -54,6 +55,9 @@ export default function Login({
     [pendingEmail, setPendingEmail] = useState("");
   const [loginUrl, setLoginUrl] = useState("/api/auth/login");
   const [passkeys, setPasskeys] = useState(false);
+  // "Stay signed in on this device": for password, passkey and SSO alike.
+  const [remember, setRemember] = useState(false);
+  const stay = rememberAvailable && remember;
   // The desktop and mobile apps sign in with passkeys and SSO in the system
   // browser (lib/desktop-sign-in.ts): in the app these buttons hand over to
   // it, in the browser ?desktop= carries the app's request through the sign-in.
@@ -93,7 +97,7 @@ export default function Login({
     const form = new FormData(event.currentTarget);
     if (mode === "signin")
       void run("password", async () => {
-        await post("password", { email: field(form, "email"), password: field(form, "password") });
+        await post("password", { email: field(form, "email"), password: field(form, "password"), remember: stay });
         done();
       });
     else if (mode === "register")
@@ -129,7 +133,7 @@ export default function Login({
       } catch {
         throw new Error(t("Anmeldung mit Passkey abgebrochen.", "Passkey sign-in was cancelled."));
       }
-      await post("passkey", response);
+      await post("passkey", { ...response, remember: stay });
       done();
     });
   const devWorkspace = () =>
@@ -275,6 +279,15 @@ export default function Login({
             )}
           </form>
         )}
+        {rememberAvailable && mode === "signin" && !desktopApp && (localLogin || configured) && (
+          <label className="checkbox-label login-remember">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <span>
+              {t("Auf diesem Gerät angemeldet bleiben", "Stay signed in on this device")}
+              <small>{t("Nur auf eigenen Geräten. Die Anmeldung bleibt bestehen, solange du Flowplan nutzt.", "Only on your own devices. You stay signed in while you use Flowplan.")}</small>
+            </span>
+          </label>
+        )}
         {localLogin && mode === "signin" && desktopApp && (
           <a className="button wide" href="/api/auth/desktop" title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}>
             <Fingerprint size={19} />
@@ -293,7 +306,7 @@ export default function Login({
             {localLogin && <div className="login-or">{t("oder", "or")}</div>}
             <a
               className={`button wide${localLogin ? "" : " primary"}`}
-              href={desktopApp ? "/api/auth/desktop?via=sso" : loginUrl}
+              href={desktopApp ? "/api/auth/desktop?via=sso" : stay ? `${loginUrl}&remember=1` : loginUrl}
               title={desktopApp ? t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser") : undefined}
             >
               <ShieldCheck size={19} />

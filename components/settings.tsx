@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
 import { AccountSecurity } from "./account-security";
 import { DeleteOwnAccount } from "./delete-own-account";
+import { MySessions } from "./my-sessions";
 import {
   GearSix,
   Users,
@@ -261,6 +262,7 @@ export default function Settings({
                   ) : (
                     <p className="muted small">{t("Name und E-Mail werden von deinem Identitätsanbieter übernommen.", "Your name and e-mail come from your identity provider.")}</p>
                   )}
+                  {!boot.user.demo && <MySessions onError={onError} />}
                 </div>
                 <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>
                   <Select

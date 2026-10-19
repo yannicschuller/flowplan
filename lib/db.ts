@@ -388,6 +388,21 @@ function migrate(d: DatabaseSync) {
   }[];
   if (!flowColumns.some((c) => c.name === "return_to"))
     d.exec("ALTER TABLE oidc_flows ADD COLUMN return_to TEXT");
+  // "Stay signed in on this device" through SSO: remembered for the callback.
+  if (!flowColumns.some((c) => c.name === "remember"))
+    d.exec("ALTER TABLE oidc_flows ADD COLUMN remember INTEGER NOT NULL DEFAULT 0");
+  // Sessions: when they began, whether they slide while used ("stay signed
+  // in"), whether SSO groups came with them, and the device for the list of
+  // one's own sessions.
+  const sessionColumns = (d.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((c) => c.name);
+  for (const [name, type] of [
+    ["created_at", "INTEGER"],
+    ["remember", "INTEGER NOT NULL DEFAULT 0"],
+    ["sso", "INTEGER NOT NULL DEFAULT 0"],
+    ["last_seen", "INTEGER"],
+    ["agent", "TEXT NOT NULL DEFAULT ''"],
+  ])
+    if (!sessionColumns.includes(name)) d.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
   if (
     !(
       d.prepare("PRAGMA table_info(inline_messages)").all() as {

@@ -42,6 +42,7 @@ import {
   verifyEmail,
   localGroups,
   resendVerification,
+  isLocalAccount,
 } from "@/lib/local-auth";
 import { requestLocale } from "@/lib/i18n-server";
 import { translate } from "@/lib/i18n";
@@ -71,12 +72,16 @@ async function takeChallengeCookie() {
   jar.delete(WEBAUTHN_COOKIE);
   return token;
 }
-async function signIn(userId: string, groups: string[]) {
+async function signIn(userId: string, groups: string[], remember = false) {
   const user = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", userId);
   if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
   ensureWorkspace(userId);
-  await issueSession(userId, groups);
+  // Groups from an SSO provider (e.g. the desktop app of an SSO account) are
+  // checked again after SESSION_GROUPS_HOURS.
+  await issueSession(userId, groups, undefined, { remember, sso: !isLocalAccount(userId) });
 }
+// "Stay signed in on this device" from the sign-in form.
+const wantsRemember = (input: unknown) => !!input && typeof input === "object" && (input as { remember?: unknown }).remember === true;
 import { clientAddress } from "@/lib/client-address";
 export const GET = withRequestLocale(handleGET);
 async function handleGET(
@@ -102,13 +107,14 @@ async function handleGET(
         flow = randomBytes(32).toString("base64url");
       run("DELETE FROM oidc_flows WHERE expires<?", Date.now());
       run(
-        "INSERT INTO oidc_flows(id,state,verifier,nonce,expires,return_to) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO oidc_flows(id,state,verifier,nonce,expires,return_to,remember) VALUES(?,?,?,?,?,?,?)",
         hash(flow),
         state,
         verifier,
         nonce,
         Date.now() + 600000,
         returnTo,
+        params.get("remember") === "1" ? 1 : 0,
       );
       (await cookies()).set("flowplan_oidc", flow, {
         httpOnly: true,
@@ -179,6 +185,7 @@ async function handleGET(
         nonce: string;
         expires: number;
         return_to: string | null;
+        remember: number;
       }>("SELECT * FROM oidc_flows WHERE id=?", hash(flow));
       run("DELETE FROM oidc_flows WHERE id=?", hash(flow));
       if (!f || f.expires < Date.now())
@@ -218,7 +225,7 @@ async function handleGET(
       await syncAvatar(user.id, profile.picture);
       acceptInvites(user, profile.email_verified === true);
       ensureWorkspace(user.id);
-      await issueSession(user.id, groups);
+      await issueSession(user.id, groups, undefined, { remember: !!f.remember, sso: true });
       return NextResponse.redirect(new URL(returnTo, appUrl()));
     }
     return NextResponse.json({ error: "Nicht gefunden" }, { status: 404 });
@@ -302,7 +309,9 @@ async function handlePOST(
       const handoff = redeemDesktopCode(code, verifier);
       if (!handoff)
         throw new HttpError(400, translate(locale)("Der Anmeldecode ist ungültig oder abgelaufen. Bitte erneut anmelden.", "The sign-in code is invalid or has expired. Please sign in again."));
-      await signIn(handoff.userId, handoff.groups);
+      // The desktop and mobile apps are a device of their own: they stay
+      // signed in when the instance allows it.
+      await signIn(handoff.userId, handoff.groups, true);
       return NextResponse.json({ ok: true });
     }
     const body = () => req.json().catch(() => ({}));
@@ -326,8 +335,9 @@ async function handlePOST(
       return NextResponse.json({ ok: true });
     }
     if (action === "password") {
-      const { userId, groups } = await passwordLogin(await body(), clientAddress(req.headers), locale);
-      await signIn(userId, groups);
+      const input = await body();
+      const { userId, groups } = await passwordLogin(input, clientAddress(req.headers), locale);
+      await signIn(userId, groups, wantsRemember(input));
       return NextResponse.json({ ok: true });
     }
     if (action === "reset-request") {
@@ -345,8 +355,9 @@ async function handlePOST(
       return NextResponse.json(options);
     }
     if (action === "passkey") {
-      const { userId, groups } = await passkeyLogin(await takeChallengeCookie(), await body(), clientAddress(req.headers), locale);
-      await signIn(userId, groups);
+      const input = await body();
+      const { userId, groups } = await passkeyLogin(await takeChallengeCookie(), input, clientAddress(req.headers), locale);
+      await signIn(userId, groups, wantsRemember(input));
       return NextResponse.json({ ok: true });
     }
     // ---- The signed-in person's password and passkeys ----

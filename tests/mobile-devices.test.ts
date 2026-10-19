@@ -20,7 +20,7 @@ function account(name: string) {
   const uid = id(),
     token = id();
   run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name}@example.test`);
-  run("INSERT INTO sessions VALUES(?,?,?,?)", token, uid, "[]", Date.now() + 3600000);
+  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", token, uid, "[]", Date.now() + 3600000);
   const user = { id: uid, name, email: `${name}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
   return { user, token };
 }

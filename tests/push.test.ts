@@ -28,7 +28,7 @@ function account(name: string) {
     `${name}@example.test`,
   );
   run(
-    "INSERT INTO sessions VALUES(?,?,?,?)",
+    "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",
     token,
     uid,
     "[]",

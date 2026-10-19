@@ -24,14 +24,48 @@ export function extractGroups(claims: Record<string, unknown>): string[] {
     ? val.filter((g): g is string => typeof g === "string")
     : [];
 }
+// How long sessions last. A normal session ends SESSION_HOURS after signing
+// in (default 8, at most 24). With SESSION_REMEMBER=true people can choose
+// "Stay signed in on this device": the session then lives on while it is
+// used (SESSION_IDLE_HOURS after the last request, default 7 days), never
+// beyond SESSION_MAX_DAYS after signing in (default 30) and, for SSO, never
+// beyond SESSION_GROUPS_HOURS (default 7 days), so group changes at the
+// provider take effect.
+const bounded = (raw: string | undefined, fallback: number, min: number, max: number) => {
+  const value = Number(raw);
+  return Math.min(max, Math.max(min, Number.isFinite(value) && value > 0 ? value : fallback));
+};
+export const sessionHours = () => bounded(process.env.SESSION_HOURS, 8, 1, 24);
+export function rememberPolicy() {
+  if (process.env.SESSION_REMEMBER !== "true") return null;
+  const maxHours = bounded(process.env.SESSION_MAX_DAYS, 30, 1, 365) * 24;
+  return {
+    idleHours: Math.min(maxHours, bounded(process.env.SESSION_IDLE_HOURS, 168, 1, 24 * 90)),
+    maxHours,
+    groupsHours: Math.min(maxHours, bounded(process.env.SESSION_GROUPS_HOURS, 168, 1, 24 * 365)),
+  };
+}
+// The latest end of a remembered session, from when it began.
+function rememberedEnd(created: number, sso: boolean, policy: NonNullable<ReturnType<typeof rememberPolicy>>) {
+  return created + (sso ? Math.min(policy.maxHours, policy.groupsHours) : policy.maxHours) * 3_600_000;
+}
 export function identityFromToken(token: string): Identity | null {
-  const s = one<User & { groups_json: string; expires: number }>(
-    "SELECT u.*,s.groups_json,s.expires FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
+  const now = Date.now();
+  const s = one<User & { groups_json: string; expires: number; created_at_s: number | null; remember: number; sso: number; last_seen: number | null }>(
+    "SELECT u.*,s.groups_json,s.expires,s.created_at created_at_s,s.remember,s.sso,s.last_seen FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>? AND u.disabled=0",
     hash(token),
-    Date.now(),
+    now,
   );
   if (!s) return null;
   const groups = JSON.parse(s.groups_json) as string[];
+  // A remembered session lives on while used (written at most every few
+  // minutes); turning the option off on the instance ends the sliding.
+  const policy = rememberPolicy();
+  if (s.remember && policy && s.created_at_s) {
+    const next = Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(s.created_at_s, !!s.sso, policy));
+    if (next - s.expires > 5 * 60_000) run("UPDATE sessions SET expires=?,last_seen=? WHERE token=?", next, now, hash(token));
+  } else if (!s.demo_until && now - (s.last_seen || 0) > 5 * 60_000)
+    run("UPDATE sessions SET last_seen=? WHERE token=?", now, hash(token));
   // Demo sessions live on while used: 45 minutes after the last request,
   // never beyond the end of the demo.
   if (s.demo_until) {
@@ -70,28 +104,45 @@ export async function issueSession(
   groups: string[],
   // Demo sessions: their own end (the cookie lasts until the demo's end).
   demo?: { expires: number; until: number },
+  // "Stay signed in on this device" (only when the instance allows it), and
+  // whether the groups came from an SSO provider.
+  options: { remember?: boolean; sso?: boolean } = {},
 ) {
   const token = randomBytes(32).toString("base64url");
-  if (!demo) run("UPDATE users SET last_login_at=? WHERE id=?", Date.now(), userId);
-  const hours = Math.min(
-    24,
-    Math.max(1, Number(process.env.SESSION_HOURS) || 8),
-  );
+  const now = Date.now();
+  if (!demo) run("UPDATE users SET last_login_at=? WHERE id=?", now, userId);
+  const hours = sessionHours();
+  const policy = !demo && options.remember ? rememberPolicy() : null;
+  const expires = demo
+    ? demo.expires
+    : policy
+      ? Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(now, !!options.sso, policy))
+      : now + hours * 3_600_000;
+  const agent = ((await headers()).get("user-agent") || "").slice(0, 300);
   run(
-    "INSERT INTO sessions VALUES(?,?,?,?)",
+    "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?)",
     hash(token),
     userId,
     JSON.stringify(groups),
-    demo ? demo.expires : Date.now() + hours * 3600000,
+    expires,
+    now,
+    policy ? 1 : 0,
+    options.sso ? 1 : 0,
+    now,
+    agent,
   );
   (await cookies()).set(cookieName, token, {
     httpOnly: true,
     secure: new URL(appUrl()).protocol === "https:",
     sameSite: "lax",
     path: "/",
+    // A remembered session keeps its cookie until its latest possible end;
+    // the server decides earlier whether it is still alive.
     maxAge: demo
-      ? Math.max(60, Math.round((demo.until - Date.now()) / 1000))
-      : hours * 3600,
+      ? Math.max(60, Math.round((demo.until - now) / 1000))
+      : policy
+        ? Math.round((rememberedEnd(now, !!options.sso, policy) - now) / 1000)
+        : hours * 3600,
   });
 }
 export function upsertUser(subject: string, name: string, email: string) {

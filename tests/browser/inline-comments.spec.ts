@@ -72,7 +72,7 @@ async function fixture(page: Page, browser: Browser) {
     uid,
     "viewer",
   );
-  db.prepare("INSERT INTO sessions VALUES(?,?,?,?)").run(
+  db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(
     createHash("sha256").update(token).digest("hex"),
     uid,
     "[]",

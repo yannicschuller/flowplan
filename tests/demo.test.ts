@@ -13,7 +13,7 @@ const { command, bootstrap } = await import("../lib/api");
 
 function session(userId: string, expires = Date.now() + 60_000) {
   const token = randomBytes(16).toString("hex");
-  run("INSERT INTO sessions VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), userId, "[]", expires);
+  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", createHash("sha256").update(token).digest("hex"), userId, "[]", expires);
   return identityFromToken(token)!;
 }
 const workspaceOf = (uid: string) =>

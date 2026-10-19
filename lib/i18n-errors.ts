@@ -29,6 +29,8 @@ const exact: Record<string, string> = {
   "Ungültige Datei.": "Invalid file.",
   "Bitte eine Datei wählen.": "Please choose a file.",
   "Nur in eine Datenbank.": "Only into a database.",
+  "Diese Sitzung gibt es nicht mehr.": "This session no longer exists.",
+  "Mit einem API-Token nicht möglich.": "Not possible with an API token.",
   "Nur ein Eintrag einer Datenbank.": "Only one record of a database.",
   "In diese Datenbank kann nicht erfasst werden.": "You cannot capture into this database.",
   "In diese Datenbank kann nicht verschoben werden.": "You cannot move into this database.",

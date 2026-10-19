@@ -50,6 +50,7 @@ import {
   HttpError,
   adminGroup,
   cookieName,
+  rememberPolicy,
   hash,
 } from "@/lib/auth";
 import { bootstrap, pageData, command, rows, database } from "@/lib/api";
@@ -66,6 +67,7 @@ import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
+import { endMySessions, mySessions } from "@/lib/my-sessions";
 import { pageToRecordPlan } from "@/lib/page-to-record";
 import { importTracker } from "@/lib/tracker-import";
 import { recordBacklinks } from "@/lib/relation-backlinks";
@@ -256,6 +258,12 @@ async function handleGET(
       requireRow(user, page.id, rowId);
       return NextResponse.json({ mentions: unlinkedMentions(user, page, rowId) }, { headers: { "Cache-Control": "no-store" } });
     }
+    // The person's own sessions (devices).
+    if (path.length === 1 && path[0] === "sessions")
+      return NextResponse.json(
+        { sessions: mySessions(user, (await cookies()).get(cookieName)?.value), rememberAvailable: !!rememberPolicy() },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     // What moving a page into a database would change (confirmation).
     if (path.length === 3 && path[0] === "pages" && path[2] === "to-record") {
       const plan = pageToRecordPlan(user, z.uuid().parse(path[1]));
@@ -979,6 +987,13 @@ async function handlePOST(
           Buffer.from(await file.arrayBuffer()),
         ),
       );
+    }
+    // Signs out one of the person's devices, or all others.
+    if (path.length === 2 && path[0] === "sessions" && path[1] === "end") {
+      const jar = await cookies();
+      const result = endMySessions(user, jar.get(cookieName)?.value, await req.json().catch(() => ({})));
+      if (result.current) jar.delete(cookieName);
+      return NextResponse.json(result);
     }
     if (path[0] === "upload") {
       const data = await req.formData();

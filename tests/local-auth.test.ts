@@ -96,7 +96,7 @@ test("password reset by e-mail and by an administrator's link", async () => {
   assert.match(link, /^https:\/\/flowplan\.example\.test\/reset\?token=/);
   const token = new URL(link).searchParams.get("token")!;
   const dana = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='dana@example.test'")!.user_id;
-  run("INSERT INTO sessions VALUES(?,?,?,?)", "s-dana", dana, "[]", Date.now() + 60_000);
+  run("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)", "s-dana", dana, "[]", Date.now() + 60_000);
   await assert.rejects(auth.resetPassword({ token, password: "kurz" }, "de"), /mindestens/);
   await auth.resetPassword({ token, password: "ganz-neues-passwort" }, "de");
   assert.equal(one("SELECT 1 FROM sessions WHERE user_id=?", dana), undefined, "signed out everywhere");
