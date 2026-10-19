@@ -1,0 +1,250 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "id": "rect1",
+      "type": "rectangle",
+      "x": 100,
+      "y": 100,
+      "width": 200,
+      "height": 100,
+      "angle": 0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "#ffc9c9",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roundness": {
+        "type": 3
+      },
+      "isDeleted": false,
+      "boundElements": [
+        {
+          "id": "label1",
+          "type": "text"
+        },
+        {
+          "id": "arrow1",
+          "type": "arrow"
+        }
+      ]
+    },
+    {
+      "id": "label1",
+      "type": "text",
+      "x": 150,
+      "y": 140,
+      "width": 100,
+      "height": 25,
+      "angle": 0,
+      "strokeColor": "#1971c2",
+      "backgroundColor": "transparent",
+      "text": "Start <b>here</b>",
+      "originalText": "Start <b>here</b>",
+      "fontSize": 20,
+      "textAlign": "center",
+      "containerId": "rect1",
+      "isDeleted": false
+    },
+    {
+      "id": "ell1",
+      "type": "ellipse",
+      "x": 500,
+      "y": 100,
+      "width": 120,
+      "height": 80,
+      "angle": 0,
+      "strokeColor": "#2f9e44",
+      "backgroundColor": "transparent",
+      "strokeWidth": 1,
+      "strokeStyle": "dashed",
+      "isDeleted": false
+    },
+    {
+      "id": "dia1",
+      "type": "diamond",
+      "x": 500,
+      "y": 300,
+      "width": 100,
+      "height": 100,
+      "angle": 1.5707963267948966,
+      "strokeColor": "#e03131",
+      "backgroundColor": "#fff3bf",
+      "strokeWidth": 4,
+      "isDeleted": false
+    },
+    {
+      "id": "arrow1",
+      "type": "arrow",
+      "x": 300,
+      "y": 150,
+      "width": 200,
+      "height": 0,
+      "angle": 0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "strokeWidth": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          200,
+          -10
+        ]
+      ],
+      "startBinding": {
+        "elementId": "rect1",
+        "focus": 0,
+        "gap": 1
+      },
+      "endBinding": {
+        "elementId": "ell1",
+        "focus": 0,
+        "gap": 1
+      },
+      "startArrowhead": null,
+      "endArrowhead": "arrow",
+      "isDeleted": false
+    },
+    {
+      "id": "line1",
+      "type": "line",
+      "x": 100,
+      "y": 400,
+      "width": 100,
+      "height": 50,
+      "angle": 0,
+      "strokeColor": "#868e96",
+      "backgroundColor": "transparent",
+      "strokeWidth": 1,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          100,
+          50
+        ]
+      ],
+      "isDeleted": false
+    },
+    {
+      "id": "free1",
+      "type": "freedraw",
+      "x": 50,
+      "y": 500,
+      "width": 40,
+      "height": 20,
+      "angle": 0,
+      "strokeColor": "#7048e8",
+      "backgroundColor": "transparent",
+      "strokeWidth": 2,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          20,
+          20
+        ],
+        [
+          40,
+          0
+        ]
+      ],
+      "pressures": [],
+      "simulatePressure": true,
+      "isDeleted": false
+    },
+    {
+      "id": "text1",
+      "type": "text",
+      "x": 700,
+      "y": 50,
+      "width": 160,
+      "height": 25,
+      "angle": 0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "text": "Freier Text",
+      "originalText": "Freier Text",
+      "fontSize": 16,
+      "textAlign": "left",
+      "containerId": null,
+      "isDeleted": false
+    },
+    {
+      "id": "img1",
+      "type": "image",
+      "x": 700,
+      "y": 300,
+      "width": 64,
+      "height": 64,
+      "angle": 0,
+      "strokeColor": "transparent",
+      "backgroundColor": "transparent",
+      "fileId": "file1",
+      "isDeleted": false
+    },
+    {
+      "id": "img2",
+      "type": "image",
+      "x": 800,
+      "y": 300,
+      "width": 64,
+      "height": 64,
+      "angle": 0,
+      "fileId": "file2",
+      "isDeleted": false
+    },
+    {
+      "id": "frame1",
+      "type": "frame",
+      "x": 0,
+      "y": 0,
+      "width": 900,
+      "height": 600,
+      "name": "Skizze",
+      "isDeleted": false
+    },
+    {
+      "id": "emb1",
+      "type": "embeddable",
+      "x": 950,
+      "y": 0,
+      "width": 200,
+      "height": 120,
+      "link": "https://example.com/video",
+      "isDeleted": false
+    },
+    {
+      "id": "gone",
+      "type": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 10,
+      "height": 10,
+      "isDeleted": true
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {
+    "file1": {
+      "mimeType": "image/png",
+      "id": "file1",
+      "dataURL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+    },
+    "file2": {
+      "mimeType": "image/svg+xml",
+      "id": "file2",
+      "dataURL": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzY3JpcHQ+YWxlcnQoMSk8L3NjcmlwdD48L3N2Zz4="
+    }
+  }
+}

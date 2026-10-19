@@ -2,6 +2,8 @@ import { generateJSON } from "@tiptap/html/server";
 import type { Node } from "@tiptap/pm/model";
 import { calloutType, documentExtensions, documentSchema } from "./document-schema";
 import { cleanHtml } from "./document-server";
+import { citedWorks, formatReference, pandocCitation } from "./citations";
+import { ct } from "./content-locale";
 export type MarkdownContext = {
   url: (url: string) => string | null;
   linked: (source: string) => { title: string; url: string } | null;
@@ -55,8 +57,37 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
   const doc = documentSchema().nodeFromJSON(
     generateJSON(cleanHtml(html), documentExtensions),
   );
+  // Citations as Pandoc "[@key]"; the bibliography lists every cited work.
+  const cited: { key: string; item: string }[] = [];
+  let bibliographies = 0;
+  doc.descendants((node) => {
+    if (node.type.name === "citation") cited.push({ key: String(node.attrs.key || ""), item: String(node.attrs.item || "") });
+    if (node.type.name === "bibliography") bibliographies++;
+  });
+  const references = () =>
+    citedWorks(cited)
+      .map(
+        (item) =>
+          "- " +
+          formatReference(item, ct)
+            .map((part) =>
+              /^https?:\/\/\S+$/.test(part.text)
+                ? `<${markdownUrl(part.text)}>`
+                : part.italic
+                  ? wrapMark(markdownText(part.text), "*")
+                  : markdownText(part.text),
+            )
+            .join(""),
+      )
+      .join("\n");
+  const bibliography = (title: string) => {
+    const list = references();
+    return `## ${markdownText(title)}` + (list ? `\n\n${list}` : "");
+  };
   function inline(node: Node, inTable = false): string {
     if (node.type.name === "hardBreak") return "  \n";
+    if (node.type.name === "citation")
+      return pandocCitation(String(node.attrs.key || ""), String(node.attrs.locator || ""));
     if (node.type.name === "mention")
       return markdownText("@" + String(node.attrs.label || ""));
     if (node.type.name === "mathInline") {
@@ -106,6 +137,8 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
         );
       case "horizontalRule":
         return "---";
+      case "bibliography":
+        return bibliography(String(node.attrs.title || ct("Literaturverzeichnis", "References")));
       case "codeBlock":
         return inTable
           ? inlineCode(node.textContent, true)
@@ -247,5 +280,7 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
         return children(node, inTable);
     }
   }
-  return children(doc).trim() + "\n";
+  const body = children(doc).trim();
+  // Cited works without a bibliography block: listed at the end.
+  return (cited.length && !bibliographies ? `${body}\n\n${bibliography(ct("Literaturverzeichnis", "References"))}` : body) + "\n";
 }

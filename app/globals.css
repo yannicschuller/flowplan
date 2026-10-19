@@ -2259,6 +2259,57 @@ tr:hover .row-open {
   stroke: #cf4850;
   stroke-dasharray: 4 3;
 }
+.timeline-dependencies > path.critical {
+  stroke: #d9480f;
+  stroke-width: 2.5;
+}
+.timeline-dependencies > path.linking {
+  stroke: var(--blue);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+.timeline-range.critical {
+  background: color-mix(in srgb, #d9480f 16%, var(--bg));
+  border-color: #d9480f;
+}
+.timeline-range.link-target:hover {
+  outline: 2px dashed var(--blue);
+}
+.timeline-link-handle {
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  translate: 0 -50%;
+  border-radius: 50%;
+  border: 2px solid var(--blue);
+  background: var(--bg);
+  cursor: crosshair;
+  touch-action: none;
+  opacity: 0;
+  z-index: 2;
+  transition: opacity 0.12s;
+}
+.timeline-range:hover .timeline-link-handle,
+.timeline-link-handle:focus-visible,
+.timeline-link-handle:active {
+  opacity: 1;
+}
+@media (hover: none) {
+  .timeline-link-handle {
+    opacity: 1;
+  }
+}
+.timeline-drag-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  color: #cf4850;
+  font-size: 13px;
+}
 .timeline-conflict {
   display: inline-flex;
   flex-shrink: 0;
@@ -9207,6 +9258,20 @@ textarea {
 .wb-zoom-value {
   min-width: 52px;
 }
+.wb-zoom .wb-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wb-zoom .wb-import:hover,
+.wb-zoom .wb-import:focus-within {
+  background: var(--hover, var(--blue-light));
+}
 .wb-status {
   padding: 0 8px;
   color: var(--muted);
@@ -14913,6 +14978,177 @@ h3 .block-reactions {
 .portal-fields p {
   margin: 0 0 4px;
   font-size: 12.5px;
+}
+
+/* ---------- Citations (lib/citation-nodes.ts) ---------- */
+.citation {
+  color: var(--blue);
+  white-space: nowrap;
+  cursor: default;
+}
+.ProseMirror-selectednode.citation {
+  outline: 2px solid var(--blue-light);
+  border-radius: 3px;
+}
+.bibliography {
+  margin: 1.2em 0;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--border);
+}
+.bibliography-title {
+  margin: 0 0 0.5em;
+  font-weight: 600;
+  font-size: 1.15em;
+}
+.bibliography-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bibliography-list li {
+  margin: 0 0 0.45em;
+  padding-left: 2em;
+  text-indent: -2em;
+  overflow-wrap: anywhere;
+}
+.bibliography-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.citation-dialog {
+  display: grid;
+  gap: 10px;
+}
+.citation-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.citation-search input {
+  flex: 1;
+}
+.citation-locator {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.citation-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.citation-results li {
+  border-bottom: 1px solid var(--border);
+}
+.citation-results li:last-child {
+  border-bottom: none;
+}
+.citation-results li.muted {
+  padding: 10px 12px;
+}
+.citation-results button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+}
+.citation-results button:hover,
+.citation-results button:focus-visible {
+  background: var(--hover);
+}
+.citation-results button span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.citation-import textarea {
+  width: 100%;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+/* ---------- Who wrote what (lib/authorship-plugin.ts) ---------- */
+.author-mark {
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.author-mark.earlier {
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--muted) 30%, transparent) 2px,
+    transparent 2px
+  );
+}
+.author-legend {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  width: 250px;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.author-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.author-legend-head button {
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.author-legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.author-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.author-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-swatch {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+.author-swatch.earlier {
+  border: 1px dashed var(--muted);
+}
+.author-legend-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+}
+@media print {
+  .author-legend {
+    display: none;
+  }
+  .author-mark {
+    background: none !important;
+  }
 }
 
 /* ---------- Ticket numbers in text (lib/ticket-ref-plugin.ts) ---------- */

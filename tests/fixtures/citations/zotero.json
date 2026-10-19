@@ -1,0 +1,28 @@
+[
+  {
+    "id": "http://zotero.org/users/1/items/ABCD1234",
+    "citation-key": "lee2020",
+    "type": "article-journal",
+    "title": "Local-first <i>software</i>",
+    "container-title": "Communications of the ACM",
+    "volume": "63",
+    "issue": 11,
+    "page": "40-49",
+    "DOI": "https://doi.org/10.1145/3365199",
+    "URL": "https://dl.acm.org/doi/10.1145/3365199",
+    "author": [
+      { "family": "Lee", "given": "Min-Jae" },
+      { "family": "Kleppmann", "given": "Martin" },
+      { "literal": "Ink & Switch" }
+    ],
+    "issued": { "date-parts": [["2020", 11]] }
+  },
+  {
+    "id": "nameless",
+    "type": "webpage",
+    "title": "Eine Seite ohne Autor",
+    "URL": "data:text/html,<script>alert(1)</script>"
+  },
+  { "id": "empty", "type": "book" },
+  "kein Objekt"
+]

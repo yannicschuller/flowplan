@@ -63,8 +63,15 @@ import {
   AlignCenterVertical,
   TreeStructure,
   MagnifyingGlass,
+  UploadSimple,
 } from "@phosphor-icons/react";
 import { Modal, api } from "../ui";
+import {
+  BOARD_IMPORT_LIMITS,
+  boardFileName,
+  placeDrafts,
+  type BoardDraft,
+} from "@/lib/whiteboard-import";
 import { Select } from "../select";
 import {
   templateItems,
@@ -609,41 +616,62 @@ export default function Whiteboard({
   });
   // Inserts a ready-made board around the middle of the view.
   function insertTemplate(kind: WhiteboardTemplate) {
-    const drafts = templateItems(kind);
+    insertDrafts(templateItems(kind));
+    setTemplatesOpen(false);
+  }
+  // Items with local ids (templates, imports) placed around a point,
+  // by default the middle of the view.
+  function insertDrafts(drafts: BoardDraft[], at = center()) {
     const box = contentBounds(
       drafts.map((d) => ({ ...d, z: 0 })),
       new Map(drafts.map((d) => [d.id, { ...d, z: 0 }])),
     );
-    const at = center();
-    const dx = at.x - (box ? box.x + box.w / 2 : 0),
-      dy = at.y - (box ? box.y + box.h / 2 : 0);
-    const ids = new Map(drafts.map((d) => [d.id, crypto.randomUUID()]));
+    const zs = read().map((i) => i.z || 0);
+    const placed = placeDrafts(drafts, {
+      dx: at.x - (box ? box.x + box.w / 2 : 0),
+      dy: at.y - (box ? box.y + box.h / 2 : 0),
+      newId: () => crypto.randomUUID(),
+      topZ: Math.max(0, ...zs),
+      bottomZ: Math.min(0, ...zs),
+    });
     change(() => {
-      const zs = read().map((i) => i.z || 0);
-      let top = Math.max(0, ...zs),
-        bottom = Math.min(0, ...zs);
-      for (const d of drafts) {
+      for (const item of placed) {
         const map = new Y.Map<unknown>();
-        const item: Partial<WhiteboardItem> = {
-          ...d,
-          x: d.x + dx,
-          y: d.y + dy,
-          z: d.type === "frame" ? --bottom : ++top,
-          ...(d.type === "connector"
-            ? {
-                from: { ...d.from!, id: ids.get(d.from!.id!) },
-                to: { ...d.to!, id: ids.get(d.to!.id!) },
-              }
-            : {}),
-        };
-        delete item.id;
         for (const [key, value] of Object.entries(item))
-          if (value !== undefined) map.set(key, value);
-        itemsMap.set(ids.get(d.id)!, map);
+          if (key !== "id" && value !== undefined) map.set(key, value);
+        itemsMap.set(item.id, map);
       }
     });
-    setSelection(new Set(ids.values()));
-    setTemplatesOpen(false);
+    setSelection(new Set(placed.map((item) => item.id)));
+    return placed;
+  }
+  // Excalidraw and draw.io files: the server reads them and stores their
+  // pictures; the items land in the view (or where the file was dropped).
+  async function importBoardFile(file: File, at?: Point) {
+    if (file.size > BOARD_IMPORT_LIMITS.bytes)
+      return onError(t("Die Datei ist zu groß (höchstens 20 MB).", "The file is too large (at most 20 MB)."));
+    try {
+      setStatus(t("Datei wird importiert …", "Importing file …"));
+      const body = new FormData();
+      body.set("pageId", pageId);
+      body.set("file", file);
+      const response = await fetch("/api/whiteboards/import", { method: "POST", body });
+      const result = await response.json();
+      if (!response.ok) throw new Error(serverMessage(result.error) || t("Import fehlgeschlagen.", "Import failed."));
+      const drafts = result.items as BoardDraft[];
+      if (!drafts.length) return onError(t("Die Datei enthält nichts, was sich übernehmen lässt.", "The file contains nothing that can be imported."));
+      const placed = insertDrafts(drafts, at);
+      if (!at) fitToContent(placed);
+      if (result.replaced)
+        onError(
+          t(
+            `${result.replaced} Elemente ließen sich nicht genau übernehmen und sind jetzt Notizen.`,
+            `${result.replaced} elements could not be taken over exactly and are now notes.`,
+          ),
+        );
+    } catch (e) {
+      onError((e as Error).message);
+    }
   }
   // Presentation: frames in reading order, one at a time.
   const slides = items
@@ -2559,9 +2587,22 @@ export default function Whiteboard({
         editable && e.dataTransfer.types.includes("Files") && e.preventDefault()
       }
       onDrop={(e) => {
-        const file = [...e.dataTransfer.files].find((f) =>
-          f.type.startsWith("image/"),
-        );
+        const files = [...e.dataTransfer.files];
+        const board =
+          files.find((f) => boardFileName(f.name)) ||
+          files.find((f) => /\.(xml|svg)$/i.test(f.name));
+        if (editable && board) {
+          // A drawing (Excalidraw, draw.io; SVGs only when they carry one).
+          e.preventDefault();
+          const at = toWorld(e.clientX, e.clientY);
+          void (async () => {
+            if (!boardFileName(board.name) && !/mxfile|mxGraphModel/.test(await board.slice(0, 1_000_000).text()))
+              return board.type.startsWith("image/") ? addImage(board, at) : undefined;
+            await importBoardFile(board, at);
+          })();
+          return;
+        }
+        const file = files.find((f) => f.type.startsWith("image/"));
         if (!editable || !file) return;
         e.preventDefault();
         void addImage(file, toWorld(e.clientX, e.clientY));
@@ -3559,6 +3600,25 @@ export default function Whiteboard({
         >
           <ChatCircle size={16} weight={showComments ? "fill" : "regular"} />
         </button>
+        {editable && (
+          <label
+            className="wb-import"
+            title={t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)")}
+          >
+            <UploadSimple size={16} /> {t("Importieren …", "Import …")}
+            <input
+              type="file"
+              hidden
+              accept=".excalidraw,.drawio,.xml,.svg,.json,application/json"
+              aria-label={t("Excalidraw- oder draw.io-Datei importieren", "Import an Excalidraw or draw.io file")}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void importBoardFile(file);
+              }}
+            />
+          </label>
+        )}
         <button
           aria-label={t("Als SVG exportieren", "Export as SVG")}
           title={t("Als SVG exportieren", "Export as SVG")}

@@ -29,6 +29,8 @@ import {
   timelinePeriod,
   timelineDependencies,
   dependencyFields,
+  criticalPath,
+  successorShifts,
   dependencyConflict,
   dependencyTypes,
   type DependencyType,
@@ -46,7 +48,9 @@ type Drag = {
   days: number;
   pointer: number;
 };
-type Arrow = { key: string; d: string; conflict: boolean };
+type Arrow = { key: string; d: string; conflict: boolean; critical?: boolean };
+// Drawing a dependency from the end of a bar onto another one.
+type Linking = { from: string; pointer: number; x1: number; y1: number; x2: number; y2: number };
 export default function DatabaseTimeline({
   pageId,
   rows,
@@ -58,7 +62,11 @@ export default function DatabaseTimeline({
   onOpen,
   onSchedule,
   onView,
+  onSchema,
 }: {
+  // Changes properties and this view together (absent where properties
+  // cannot be changed, e.g. in linked views).
+  onSchema?: (fields: Field[], patch: Partial<View>) => Promise<unknown>;
   pageId: string;
   rows: Row[];
   fields: Field[];
@@ -84,6 +92,7 @@ export default function DatabaseTimeline({
       end: string;
     } | null>(null);
   const [arrows, setArrows] = useState<Arrow[]>([]);
+  const [linking, setLinking] = useState<Linking | null>(null);
   const grid = useRef<HTMLDivElement>(null);
   const dragging = useRef<Drag | null>(null),
     suppressed = useRef(false),
@@ -98,13 +107,53 @@ export default function DatabaseTimeline({
   const relations = dependencyFields(fields, pageId),
     dependencyField = relations.find((f) => f.id === config.dependencyField),
     dependencyType = config.dependencyType || "fs",
-    { links, cyclic } = timelineDependencies(
-      rows,
+    moveSuccessors = !!dependencyField && !!config.moveSuccessors;
+  // While dragging, the bars show where they would land; with "Nachfolger
+  // mitverschieben" the records waiting for the dragged one move along.
+  const preview = (() => {
+    const changed = new Map<string, Row>();
+    if (!drag?.days) return { rows, changed };
+    try {
+      const moved = {
+        ...drag.row,
+        cells: {
+          ...drag.row.cells,
+          ...schedulePatch(drag.row, fields, view, {
+            operation: drag.operation,
+            days: drag.days,
+          }),
+        },
+      };
+      changed.set(drag.row.id, moved);
+      const before = rowRange(drag.row, start, end),
+        after = rowRange(moved, start, end);
+      if (moveSuccessors && before && after)
+        for (const [id, days] of successorShifts(rows, dependencyField, start, end, drag.row.id, after.end - before.end) || []) {
+          const row = rows.find((r) => r.id === id)!;
+          changed.set(id, {
+            ...row,
+            cells: { ...row.cells, ...schedulePatch(row, fields, view, { operation: "move", days }) },
+          });
+        }
+    } catch {}
+    return { rows: rows.map((row) => changed.get(row.id) || row), changed };
+  })();
+  const { links, cyclic } = timelineDependencies(
+      preview.rows,
       dependencyField,
       start,
       end,
       dependencyType,
-    );
+    ),
+    critical = config.criticalPath
+      ? criticalPath(preview.rows, dependencyField, start, end, dependencyType)
+      : new Set<string>();
+  // Links the current drag would break (shown as a warning before letting go).
+  const dragConflicts = preview.changed.size
+    ? links.filter(
+        (l) => l.shift > 0 && (preview.changed.has(l.to) || preview.changed.has(l.from)),
+      )
+    : [];
   // Arrows follow the rendered bars, including clipping and active drags.
   useLayoutEffect(() => {
     const root = grid.current;
@@ -133,6 +182,7 @@ export default function DatabaseTimeline({
           key: `${link.from}>${link.to}`,
           d: `M ${x1} ${y1} C ${x1 + out} ${y1}, ${x2 + into} ${y2}, ${x2 + (toStart ? -6 : 6)} ${y2}`,
           conflict: link.shift > 0 || cyclic.has(link.to),
+          critical: critical.has(link.from) && critical.has(link.to),
         });
       }
     }
@@ -269,6 +319,42 @@ export default function DatabaseTimeline({
     setDrag(null);
     suppressed.current = true;
   }
+  // The end handle of a bar: drop it on another bar to make that one wait.
+  function linkPoint(event: { clientX: number; clientY: number }) {
+    const origin = grid.current?.getBoundingClientRect();
+    return { x: event.clientX - (origin?.left || 0), y: event.clientY - (origin?.top || 0) };
+  }
+  function beginLink(event: ReactPointerEvent<HTMLButtonElement>, row: Row) {
+    if (!canEdit || busy || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const p = linkPoint(event);
+    setError("");
+    setLinking({ from: row.id, pointer: event.pointerId, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+  }
+  function moveLink(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!linking || linking.pointer !== event.pointerId) return;
+    const p = linkPoint(event);
+    setLinking({ ...linking, x2: p.x, y2: p.y });
+  }
+  async function finishLink(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!linking || linking.pointer !== event.pointerId) return;
+    const from = linking.from;
+    setLinking(null);
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-row-id]")?.dataset.rowId;
+    if (!target || target === from) return;
+    setBusy(true);
+    try {
+      await onSchedule({ action: "timeline.link", viewId: view.id, version, from, to: target });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   function edit(row: Row) {
     setError("");
     setDraft({
@@ -388,7 +474,34 @@ export default function DatabaseTimeline({
             ))}
           </Select>
         </label>
+        {!dependencyField && viewEditable && onSchema && (
+          <button
+            className="button compact"
+            disabled={busy}
+            title={t("Legt eine Eigenschaft an, in der jeder Eintrag die Einträge nennt, auf die er wartet.", "Adds a property in which each record names the records it waits for.")}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                const field: Field = {
+                  id: crypto.randomUUID(),
+                  name: t("Abhängigkeiten", "Dependencies"),
+                  type: "relation",
+                  relationPage: pageId,
+                };
+                await onSchema([...fields, field], { timeline: { ...config, dependencyField: field.id } });
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {t("Abhängigkeiten einrichten", "Set up dependencies")}
+          </button>
+        )}
         {dependencyField && (
+          <>
           <label>
             {t("Verknüpfung", "Link")}
             <Select
@@ -408,6 +521,31 @@ export default function DatabaseTimeline({
               ))}
             </Select>
           </label>
+          <label
+            className="checkbox-label"
+            title={t("Wird ein Eintrag verschoben, rücken alle Einträge, die auf ihn warten, um dieselben Tage mit.", "When a record moves, every record waiting for it moves by the same number of days.")}
+          >
+            <input
+              type="checkbox"
+              checked={moveSuccessors}
+              disabled={busy || !viewEditable}
+              onChange={(event) => void configure({ moveSuccessors: event.target.checked })}
+            />
+            {t("Nachfolger mitverschieben", "Move successors along")}
+          </label>
+          <label
+            className="checkbox-label"
+            title={t("Einträge ohne Puffer: Verzögert sich einer, verschiebt sich das Ende des ganzen Plans.", "Records without slack: if one is delayed, the end of the whole plan moves.")}
+          >
+            <input
+              type="checkbox"
+              checked={!!config.criticalPath}
+              disabled={busy || !viewEditable}
+              onChange={(event) => void configure({ criticalPath: event.target.checked })}
+            />
+            {t("Kritischen Pfad hervorheben", "Highlight critical path")}
+          </label>
+          </>
         )}
         {canEdit && !cyclic.size && links.some((l) => l.shift > 0) && (
           <button
@@ -447,6 +585,19 @@ export default function DatabaseTimeline({
               : t("Einträge öffnen oder den angezeigten Zeitraum ändern.", "Open records or change the period shown.")}{" "}
             {t("Vorhandene Uhrzeiten bleiben erhalten.", "Existing times are kept.")}
           </p>
+          {dragConflicts.length > 0 && (
+            <p className="timeline-drag-warning" role="status">
+              <Warning size={15} weight="fill" />{" "}
+              {(() => {
+                const name = (id: string) => title(preview.rows.find((r) => r.id === id) || rows.find((r) => r.id === id)!);
+                const first = dragConflicts[0];
+                return t(
+                  `„${name(first.to)}“ läge dann zu früh: Es wartet auf „${name(first.from)}“.${dragConflicts.length > 1 ? ` (+${dragConflicts.length - 1} weitere)` : ""}`,
+                  `“${name(first.to)}” would then be too early: it waits for “${name(first.from)}”.${dragConflicts.length > 1 ? ` (+${dragConflicts.length - 1} more)` : ""}`,
+                );
+              })()}
+            </p>
+          )}
           <div
             className="timeline-scroll"
             tabIndex={0}
@@ -494,7 +645,7 @@ export default function DatabaseTimeline({
                   })}
                 </div>
               </div>
-              {arrows.length > 0 && (
+              {(arrows.length > 0 || linking) && (
                 <svg className="timeline-dependencies" aria-hidden="true">
                   <defs>
                     {(["ok", "conflict"] as const).map((kind) => (
@@ -517,27 +668,21 @@ export default function DatabaseTimeline({
                     <path
                       key={arrow.key}
                       d={arrow.d}
-                      className={arrow.conflict ? "conflict" : undefined}
+                      className={arrow.conflict ? "conflict" : arrow.critical ? "critical" : undefined}
                       markerEnd={`url(#timeline-arrow-${view.id}-${arrow.conflict ? "conflict" : "ok"})`}
                     />
                   ))}
+                  {linking && (
+                    <path
+                      className="linking"
+                      d={`M ${linking.x1} ${linking.y1} L ${linking.x2} ${linking.y2}`}
+                      markerEnd={`url(#timeline-arrow-${view.id}-ok)`}
+                    />
+                  )}
                 </svg>
               )}
               {rows.map((row) => {
-                let effective = row;
-                if (drag?.row.id === row.id)
-                  try {
-                    effective = {
-                      ...row,
-                      cells: {
-                        ...row.cells,
-                        ...schedulePatch(drag.row, fields, view, {
-                          operation: drag.operation,
-                          days: drag.days,
-                        }),
-                      },
-                    };
-                  } catch {}
+                const effective = preview.changed.get(row.id) || row;
                 const range = rowRange(effective, start, end),
                   bar = range && clipRange(range.start, range.end, period),
                   name = title(row);
@@ -633,7 +778,7 @@ export default function DatabaseTimeline({
                         )}
                       {bar ? (
                         <div
-                          className={`timeline-range ${drag?.row.id === row.id ? "is-dragging" : ""}`}
+                          className={`timeline-range${preview.changed.has(row.id) || drag?.row.id === row.id ? " is-dragging" : ""}${critical.has(row.id) ? " critical" : ""}${linking && linking.from !== row.id ? " link-target" : ""}`}
                           style={{ left: bar.left, width: bar.width }}
                           title={`${label(range!.start, { day: "numeric", month: "short", year: "numeric" })} – ${label(range!.end, { day: "numeric", month: "short", year: "numeric" })}`}
                         >
@@ -712,6 +857,18 @@ export default function DatabaseTimeline({
                                   />
                                 ),
                             )}
+                          {canEdit && dependencyField && !bar.clippedEnd && (
+                            <button
+                              className="timeline-link-handle"
+                              aria-label={t(`Abhängigkeit von ${name} auf einen anderen Eintrag ziehen`, `Drag a dependency from ${name} onto another record`)}
+                              title={t("Auf einen anderen Balken ziehen: Er wartet dann auf diesen.", "Drag onto another bar: it then waits for this one.")}
+                              disabled={busy}
+                              onPointerDown={(event) => beginLink(event, row)}
+                              onPointerMove={moveLink}
+                              onPointerUp={(event) => void finishLink(event)}
+                              onPointerCancel={() => setLinking(null)}
+                            />
+                          )}
                         </div>
                       ) : (
                         <button

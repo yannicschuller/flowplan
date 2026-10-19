@@ -7,6 +7,11 @@ export const timelineSchema = z.object({
   dependencyField: z.string().max(200).optional(),
   // Which ends of predecessor and successor are linked (default finish-start).
   dependencyType: z.enum(["fs", "ss", "ff", "sf"]).optional(),
+  // "Nachfolger mitverschieben": moving a record moves everything that
+  // waits for it by the same number of days.
+  moveSuccessors: z.boolean().optional(),
+  // Highlights the records without slack (critical path).
+  criticalPath: z.boolean().optional(),
 });
 export type DependencyType = NonNullable<TimelineConfig["dependencyType"]>;
 export const dependencyTypes: { id: DependencyType; label: string }[] = [
@@ -16,21 +21,24 @@ export const dependencyTypes: { id: DependencyType; label: string }[] = [
   { id: "sf", label: "Anfang → Ende" },
 ];
 type Range = { start: number; end: number };
+// Days between what the link requires and where the successor is; negative
+// when the successor is too early.
+export function linkGap(type: DependencyType, before: Range, after: Range) {
+  return -(type === "fs"
+    ? before.end + 1 - after.start
+    : type === "ss"
+      ? before.start - after.start
+      : type === "ff"
+        ? before.end - after.end
+        : before.start - after.end);
+}
 // Days the successor must move (keeping its length) to satisfy the link.
 export function requiredShift(
   type: DependencyType,
   before: Range,
   after: Range,
 ) {
-  const needed =
-    type === "fs"
-      ? before.end + 1 - after.start
-      : type === "ss"
-        ? before.start - after.start
-        : type === "ff"
-          ? before.end - after.end
-          : before.start - after.end;
-  return Math.max(0, needed);
+  return Math.max(0, -linkGap(type, before, after));
 }
 // Wording for conflict hints, e.g. "beginnt vor dem Ende von".
 export function dependencyConflict(type: DependencyType) {
@@ -329,4 +337,125 @@ export function cascadeShifts(
     }
   }
   return shifts;
+}
+
+// Predecessors of every row (existing rows only, no self-links).
+function predecessorMap(rows: Pick<Row, "id" | "cells">[], field: Field) {
+  const ids = new Set(rows.map((r) => r.id));
+  return new Map(
+    rows.map((row) => {
+      const raw = row.cells[field.id];
+      return [
+        row.id,
+        [...new Set((Array.isArray(raw) ? raw : []).filter((v): v is string => typeof v === "string" && v !== row.id && ids.has(v)))],
+      ];
+    }),
+  );
+}
+// Everything that waits for the row, directly or through others, nearest
+// first. `cyclic` when the row waits for itself on the way.
+export function successorsOf(
+  rows: Pick<Row, "id" | "cells">[],
+  field: Field | undefined,
+  rowId: string,
+) {
+  const ids: string[] = [];
+  if (!field) return { ids, cyclic: false };
+  const successors = new Map<string, string[]>();
+  for (const [row, predecessors] of predecessorMap(rows, field))
+    for (const p of predecessors) successors.set(p, [...(successors.get(p) || []), row]);
+  const seen = new Set<string>([rowId]);
+  let cyclic = false;
+  const queue = [...(successors.get(rowId) || [])];
+  while (queue.length) {
+    const next = queue.shift()!;
+    if (next === rowId) cyclic = true;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    ids.push(next);
+    queue.push(...(successors.get(next) || []));
+  }
+  return { ids, cyclic };
+}
+// Whether "to waits for from" would close a circle.
+export function createsCycle(
+  rows: Pick<Row, "id" | "cells">[],
+  field: Field,
+  from: string,
+  to: string,
+) {
+  return from === to || successorsOf(rows, field, to).ids.includes(from);
+}
+// "Nachfolger mitverschieben": the days every successor with a valid period
+// moves when a record moves by `days`. Null when the dependencies are
+// circular.
+export function successorShifts(
+  rows: Pick<Row, "id" | "cells">[],
+  field: Field | undefined,
+  start: Field | undefined,
+  end: Field | undefined,
+  rowId: string,
+  days: number,
+): Map<string, number> | null {
+  const shifts = new Map<string, number>();
+  if (!field || !days) return shifts;
+  const { ids, cyclic } = successorsOf(rows, field, rowId);
+  if (cyclic) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const id of ids) if (rowRange(byId.get(id)!, start, end)) shifts.set(id, days);
+  return shifts;
+}
+// Records without slack: delaying one of them by a day delays the end of
+// the whole plan (critical path, from the scheduled dates). Empty for
+// circular dependencies.
+export function criticalPath(
+  rows: Pick<Row, "id" | "cells">[],
+  field: Field | undefined,
+  start?: Field,
+  end?: Field,
+  type: DependencyType = "fs",
+) {
+  const critical = new Set<string>();
+  if (!field) return critical;
+  const ranges = new Map<string, Range>();
+  for (const row of rows) {
+    const range = rowRange(row, start, end);
+    if (range) ranges.set(row.id, range);
+  }
+  const predecessors = predecessorMap(rows, field);
+  const successors = new Map<string, string[]>();
+  let linked = false;
+  for (const [row, list] of predecessors)
+    for (const p of list)
+      if (ranges.has(row) && ranges.has(p)) {
+        successors.set(p, [...(successors.get(p) || []), row]);
+        linked = true;
+      }
+  if (!linked || timelineDependencies(rows, field, start, end, type).cyclic.size) return critical;
+  let finish = -Infinity;
+  for (const r of ranges.values()) finish = Math.max(finish, r.end);
+  // Kahn's order (predecessors first); slack is then summed up backwards.
+  const incoming = new Map([...ranges.keys()].map((id) => [id, 0]));
+  for (const list of successors.values()) for (const s of list) incoming.set(s, incoming.get(s)! + 1);
+  const order = [...ranges.keys()].filter((id) => !incoming.get(id));
+  for (let i = 0; i < order.length; i++)
+    for (const s of successors.get(order[i]) || []) {
+      incoming.set(s, incoming.get(s)! - 1);
+      if (!incoming.get(s)) order.push(s);
+    }
+  const slack = new Map<string, number>();
+  for (const id of order.reverse()) {
+    const own = ranges.get(id)!,
+      next = successors.get(id) || [];
+    slack.set(
+      id,
+      next.length ? Math.min(...next.map((s) => linkGap(type, own, ranges.get(s)!) + slack.get(s)!)) : finish - own.end,
+    );
+  }
+  for (const [id, value] of slack) {
+    // Only records that take part in a dependency are highlighted.
+    const takesPart = successors.has(id) || (predecessors.get(id) || []).some((p) => ranges.has(p));
+    if (takesPart && value <= 0) critical.add(id);
+  }
+  return critical;
 }

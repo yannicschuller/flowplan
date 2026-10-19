@@ -91,6 +91,7 @@ import {
   Rows,
   ListBullets,
   ListNumbers,
+  Books,
   CheckSquare,
   Quotes,
   Code,
@@ -122,6 +123,7 @@ import {
   CalendarBlank,
   PencilSimpleLine,
   ChartLine,
+  UsersThree,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
@@ -149,6 +151,11 @@ import {
   AnnotatedImage,
 } from "@/lib/document-schema";
 import { compressImage } from "@/lib/image-compress";
+import { boardFileName } from "@/lib/whiteboard-import";
+import { Authorship, authorshipKey, type AuthorShares } from "@/lib/authorship-plugin";
+import { authorColor } from "@/lib/authorship";
+import { BibliographyView, CitationView } from "./citation-views";
+import { CitationDialog } from "./citation-dialog";
 export default function DocumentEditor({
   pageId,
   rowId,
@@ -229,6 +236,13 @@ export default function DocumentEditor({
   const [boardPicker, setBoardPicker] = useState(false),
     [boardSearch, setBoardSearch] = useState("");
   const [voice, setVoice] = useState(false);
+  const [citeOpen, setCiteOpen] = useState(false);
+  // "Autoren anzeigen": who wrote what, as colours (lib/authorship.ts).
+  const [authorsOn, setAuthorsOn] = useState(false),
+    [authorPeople, setAuthorPeople] = useState<Record<string, string>>({}),
+    [authorShares, setAuthorShares] = useState<AuthorShares["shares"]>([]);
+  const authorFetch = useRef({ at: 0, unknown: "" });
+  const authorSharesRef = useRef((_result: AuthorShares) => {});
   // "Vorschlagen": changes become suggestions others can accept or reject.
   const [suggesting, setSuggesting] = useState(false);
   const suggestingRef = useRef(false);
@@ -401,6 +415,9 @@ export default function DocumentEditor({
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }, liveId),
         inlineCommentExtension(generation),
+        CitationView,
+        BibliographyView,
+        Authorship.configure({ onShares: (result) => authorSharesRef.current(result) }),
       ],
       editorProps: {
         transformPasted: freshLinkedIds,
@@ -527,6 +544,64 @@ export default function DocumentEditor({
     },
     [doc],
   );
+  // Who wrote what: the people behind the sessions, from the server (only
+  // for people who may read the page); this session counts as oneself.
+  const loadAuthors = useCallback(async () => {
+    if (!editor || editor.isDestroyed) return;
+    authorFetch.current.at = Date.now();
+    const params = new URLSearchParams({ page: pageId });
+    if (rowId) params.set("row", rowId);
+    const response = await fetch(`/api/document-authors?${params}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(serverMessage(data.error) || t("Autoren konnten nicht geladen werden.", "Authors could not be loaded."));
+    const names: Record<string, string> = Object.fromEntries(
+      (data.people as { id: string; name: string }[]).map((p) => [p.id, p.name]),
+    );
+    names[userId] ||= memberNames.current.get(userId) || t("Du", "You");
+    setAuthorPeople(names);
+    if (editor.isDestroyed) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(authorshipKey, {
+        info: {
+          clients: data.clients,
+          self: { client: doc.clientID, userId },
+          names,
+          earlier: t("Früher geschrieben (vor der Aufzeichnung)", "Written earlier (before tracking)"),
+        },
+      }),
+    );
+  }, [editor, pageId, rowId, userId, doc]);
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (!authorsOn) {
+      if (authorshipKey.getState(editor.state)?.info)
+        editor.view.dispatch(editor.state.tr.setMeta(authorshipKey, { info: null }));
+      setAuthorShares([]);
+      return;
+    }
+    loadAuthors().catch((e) => {
+      setAuthorsOn(false);
+      onError((e as Error).message);
+    });
+  }, [authorsOn, editor, loadAuthors]);
+  authorSharesRef.current = ({ shares, unknown }) => {
+    setAuthorShares(shares);
+    // Sessions of others that arrived meanwhile: ask again (at most every 5 s).
+    const key = [...unknown].sort().join(",");
+    if (unknown.length && key !== authorFetch.current.unknown && Date.now() - authorFetch.current.at > 5000) {
+      authorFetch.current.unknown = key;
+      void loadAuthors().catch(() => {});
+    }
+  };
+  // The page menu's "Autoren anzeigen".
+  useEffect(() => {
+    if (embedded || rowId) return;
+    const toggle = (event: Event) => {
+      if ((event as CustomEvent).detail === pageId) setAuthorsOn((on) => !on);
+    };
+    window.addEventListener("flowplan:authors", toggle);
+    return () => window.removeEventListener("flowplan:authors", toggle);
+  }, [pageId, rowId, embedded]);
   // Changes of others, from the push channel or a save/poll answer.
   const applyRemote = useCallback(
     (state: string) => {
@@ -774,7 +849,32 @@ export default function DocumentEditor({
     editor?.setEditable(editable);
   }, [editable, editor]);
   uploadFile.current = (file: File) => upload(file);
+  async function importDrawing(file: File) {
+    const host = pages.find((p) => p.id === pageId);
+    if (!host) return;
+    try {
+      onStatus(t("Zeichnung wird importiert …", "Importing drawing …"));
+      const form = new FormData();
+      form.set("workspaceId", host.workspace_id);
+      form.set("spaceId", host.space_id);
+      if (!rowId) form.set("parentId", host.id);
+      form.set("file", file);
+      const r = await fetch("/api/whiteboards/import", { method: "POST", body: form });
+      const data = await r.json();
+      if (!r.ok) throw new Error(serverMessage(data.error) || t("Import fehlgeschlagen.", "Import failed."));
+      insertBoard(data.pageId);
+    } catch (error) {
+      onError((error as Error).message);
+    }
+  }
   async function upload(original: File) {
+    // Excalidraw and draw.io drawings become a new whiteboard shown here.
+    if (
+      boardFileName(original.name) ||
+      (/\.(xml|svg)$/i.test(original.name) &&
+        /mxfile|mxGraphModel/.test(await original.slice(0, 1_000_000).text()))
+    )
+      return importDrawing(original);
     // Photos shrink before upload; the alt text keeps the original name.
     const file = await compressImage(original);
     const form = new FormData();
@@ -882,6 +982,26 @@ export default function DocumentEditor({
       description: t("Eine geordnete Liste", "An ordered list"),
       icon: ListNumbers,
       run: () => editor?.chain().focus().toggleOrderedList().run(),
+    },
+    // Before the quote block, so "/zitat" finds the citation first.
+    {
+      name: t("Literaturzitat", "Citation"),
+      keywords: ["zitat", "cite", "citation", "doi", "bibtex", "zotero", "literatur", "quelle", "source", "reference"],
+      description: t("Quelle zitieren: DOI, BibTeX oder Zotero", "Cite a source: DOI, BibTeX or Zotero"),
+      icon: Books,
+      run: () => setCiteOpen(true),
+    },
+    {
+      name: t("Literaturverzeichnis", "Bibliography"),
+      keywords: ["bibliography", "literatur", "references", "quellen", "bibliographie", "literaturliste"],
+      description: t("Alle zitierten Werke als Liste", "All cited works as a list"),
+      icon: Books,
+      run: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({ type: "bibliography", attrs: { title: t("Literaturverzeichnis", "References") } })
+          .run(),
     },
     {
       name: t("Zitat", "Quote"),
@@ -1430,6 +1550,15 @@ export default function DocumentEditor({
               {suggesting && <span>{t("Vorschlagen", "Suggest")}</span>}
             </button>
             <button
+              title={authorsOn ? t("Autoren ausblenden", "Hide authors") : t("Autoren anzeigen: Text nach Person einfärben", "Show authors: colour the text by person")}
+              aria-label={t("Autoren anzeigen", "Show authors")}
+              aria-pressed={authorsOn}
+              className={authorsOn ? "active" : ""}
+              onClick={() => setAuthorsOn(!authorsOn)}
+            >
+              <UsersThree />
+            </button>
+            <button
               title="Link"
               onClick={() => {
                 setLinkUrl(editor?.getAttributes("link").href || "");
@@ -1559,6 +1688,48 @@ export default function DocumentEditor({
             </div>
           );
         })()}
+        {authorsOn && !embedded && (
+          <aside className="author-legend" aria-label={t("Autoren", "Authors")}>
+            <div className="author-legend-head">
+              <strong>{t("Autoren", "Authors")}</strong>
+              <button
+                type="button"
+                aria-label={t("Autoren ausblenden", "Hide authors")}
+                onClick={() => setAuthorsOn(false)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {authorShares.length ? (
+              <ul>
+                {(() => {
+                  const total = authorShares.reduce((sum, [, n]) => sum + n, 0) || 1;
+                  return authorShares.map(([uid, chars]) => (
+                    <li key={uid ?? "earlier"}>
+                      <span
+                        className={`author-swatch${uid ? "" : " earlier"}`}
+                        style={uid ? { background: authorColor(uid, 0.6) } : undefined}
+                        aria-hidden
+                      />
+                      <span className="author-name">
+                        {uid ? authorPeople[uid] || t("Unbekannt", "Unknown") : t("früher", "earlier")}
+                      </span>
+                      <small>{Math.max(chars / total < 0.005 ? 0 : 1, Math.round((chars / total) * 100))} %</small>
+                    </li>
+                  ));
+                })()}
+              </ul>
+            ) : (
+              <p className="muted">{t("Noch kein Text.", "No text yet.")}</p>
+            )}
+            <p className="muted author-legend-note">
+              {t(
+                "Wer was geschrieben hat, wird erst seit Einführung dieser Anzeige aufgezeichnet. Älterer Text erscheint als „früher“.",
+                "Who wrote what is only recorded since this view was introduced. Older text appears as “earlier”.",
+              )}
+            </p>
+          </aside>
+        )}
         {!embedded && (outline || headings.length > 0) && (
           <OutlineToggle open={outline} count={headings.length} onToggle={() => setOutline(!outline)} />
         )}
@@ -1711,6 +1882,24 @@ export default function DocumentEditor({
           )}
         </div>
       </Modal>
+      {citeOpen && (
+        <CitationDialog
+          open
+          workspaceId={pages.find((p) => p.id === pageId)?.workspace_id || ""}
+          onClose={() => setCiteOpen(false)}
+          onError={onError}
+          onInsert={(item, locator) =>
+            editor
+              ?.chain()
+              .focus()
+              .insertContent({
+                type: "citation",
+                attrs: { key: item.id, item: JSON.stringify(item), locator },
+              })
+              .run()
+          }
+        />
+      )}
       <Modal
         open={boardPicker}
         title={t("Whiteboard einbetten", "Embed whiteboard")}
