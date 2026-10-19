@@ -41,6 +41,28 @@ services:
   #     - whisper-models:/home/ubuntu/.cache/huggingface/hub
   #   restart: unless-stopped
 
+  # Optional: local AI with Ollama – nothing leaves your server. Start with
+  #   docker compose --profile ai up -d
+  # and set FLOWPLAN_AI=on and OLLAMA_URL=http://ollama:11434 in .env (or
+  # choose Ollama under Administration → KI). Download a model there or with
+  #   docker compose exec ollama ollama pull llama3.1
+  # Ollama has no authentication: do not publish its port.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+    # With an NVIDIA GPU (NVIDIA Container Toolkit installed):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
 volumes:
   flowplan-data:
+  ollama-models:
   # whisper-models:

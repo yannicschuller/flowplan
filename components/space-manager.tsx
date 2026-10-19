@@ -1,4 +1,5 @@
 "use client";
+import { AiBlockToggle } from "./ai-settings";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { SpaceAppearance } from "./space-appearance";
@@ -141,6 +142,7 @@ export function SpaceManager({
                 }}
               />
             )}
+            {!duplicating && <AiBlockToggle targetId={space.id} kind="space" onError={setError} />}
             {!duplicating && (
               <div className="lifecycle-buttons">
                 <button

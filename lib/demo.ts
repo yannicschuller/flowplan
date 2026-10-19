@@ -40,7 +40,8 @@ const BLOCKED = new Set([
   "ticket.reply",
 ]);
 export function demoAllows(action: string, input: Record<string, unknown>) {
-  if (BLOCKED.has(action) || action.startsWith("admin.")) return false;
+  // AI settings (and AI itself) are not part of the demo.
+  if (BLOCKED.has(action) || action.startsWith("admin.") || action.startsWith("ai.")) return false;
   // Forms can be built, not opened to the public.
   if (action === "form.update" && input.config && typeof input.config === "object") {
     const config = input.config as Record<string, unknown>;

@@ -17603,3 +17603,64 @@ h3 .block-reactions {
   font-size: 12px;
   font-weight: 400;
 }
+
+/* AI settings (components/ai-settings.tsx) */
+.ai-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.ai-test-result {
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.ai-ollama {
+  display: grid;
+  gap: 10px;
+}
+.ai-ollama-list,
+.ai-ollama-pull,
+.ai-rule-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ai-ollama-pull input {
+  width: min(260px, 100%);
+}
+.ai-progress {
+  display: grid;
+  gap: 4px;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.ai-progress progress {
+  width: min(420px, 100%);
+}
+.ai-rule-add > :first-child {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.ai-user-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--secondary);
+}
+.ai-block {
+  margin: 14px 0;
+}
+.ai-block .muted {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+}
+.ai-key-note {
+  margin: 0 22px 14px;
+}
+.ai-secrets-note {
+  margin: 0 0 22px;
+  font-size: 12.5px;
+}

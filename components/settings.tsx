@@ -40,7 +40,9 @@ import {
   PlugsConnected,
   EnvelopeSimple,
   X,
+  Sparkle,
 } from "@phosphor-icons/react";
+import { UserAiSettings } from "./ai-settings";
 import { api, Avatar, download, downloadBlob, Modal } from "./ui";
 import type { Bootstrap, Space } from "@/lib/types";
 type SettingsData = {
@@ -91,6 +93,12 @@ const settingsTabs = [
     ["Benachrichtigungen", "Notifications"],
     BellSimple,
     ["Welche Benachrichtigungen dich im Posteingang, per Push und per E-Mail erreichen.", "Which notifications reach you in the inbox, as push and by e-mail."],
+  ],
+  [
+    "ai",
+    ["KI", "AI"],
+    Sparkle,
+    ["Deine KI-Funktionen, ein eigener Anbieter und worauf die KI zugreifen darf.", "Your AI features, an own provider and what the AI may access."],
   ],
   [
     "integrations",
@@ -182,6 +190,7 @@ export default function Settings({
               return intro ? t(intro[0], intro[1]) : null;
             })()}
           </p>
+          {tab === "ai" && <UserAiSettings boot={boot} onError={onError} onRefresh={onRefresh} />}
           {tab === "integrations" && (
             <IntegrationSettings
               workspaceId={boot.workspace.id}

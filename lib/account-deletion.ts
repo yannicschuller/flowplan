@@ -21,6 +21,10 @@ type Plan = {
 // Personal data of the account, removed in any case.
 const PERSONAL = [
   "sessions",
+  // AI settings with a sealed key, rules on what the AI may read.
+  "ai_user_settings",
+  "ai_user_policy",
+  "ai_access_rules",
   "api_tokens",
   "auth_tokens",
   "auth_challenges",
