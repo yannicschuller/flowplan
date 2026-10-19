@@ -1,0 +1,171 @@
+# Flowplan Helm chart. Flowplan keeps its data in SQLite on a volume, so it
+# always runs as exactly one pod (no replicas, no rolling updates).
+# Full configuration reference: https://docs.flowplan.org/configuration
+
+image:
+  repository: ghcr.io/yannicschuller/flowplan
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Public address exactly as typed in the browser (scheme, host, port; no
+# trailing slash). Required: used for sign-in redirects, cookies, passkeys
+# and links. With the ingress enabled it is usually https://<first host>.
+appUrl: ""
+
+# E-mail + password and passkeys. false leaves only single sign-on.
+localLogin: true
+
+# Single sign-on with OpenID Connect. Redirect URI at the provider:
+# <appUrl>/api/auth/callback
+oidc:
+  issuer: ""
+  clientId: flowplan
+  # Better in existingSecret as OIDC_CLIENT_SECRET.
+  clientSecret: ""
+  scopes: openid profile email groups
+  groupsClaim: groups
+  adminGroup: flowplan-admins
+  allowedGroup: ""
+
+# E-mail for invitations and notification digests.
+smtp:
+  host: ""
+  port: 587
+  user: ""
+  # Better in existingSecret as SMTP_PASSWORD.
+  password: ""
+  from: ""
+
+# S3-compatible storage: files are mirrored there and the database is
+# replicated continuously with Litestream (restored on start when the
+# volume is empty).
+s3:
+  bucket: ""
+  endpoint: ""
+  region: us-east-1
+  prefix: flowplan
+  # Better in existingSecret as S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY.
+  accessKeyId: ""
+  secretAccessKey: ""
+
+# Encryption of files in the bucket, backups and exports (32 bytes, base64:
+# openssl rand -base64 32). Better in existingSecret as
+# FLOWPLAN_ENCRYPTION_KEY. Keep a copy apart from the backups.
+encryptionKey: ""
+
+# An existing Secret whose keys are environment variables, e.g.
+#   kubectl create secret generic flowplan-env \
+#     --from-literal=OIDC_CLIENT_SECRET=… \
+#     --from-literal=FLOWPLAN_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+# Its values win over the secret values above.
+existingSecret: ""
+
+# Further plain settings as environment variables (see .env.example), e.g.
+#   SESSION_HOURS: "8"
+#   FLOWPLAN_TRUSTED_PROXIES: "1"
+env: {}
+# Further environment entries in Kubernetes form (valueFrom etc.).
+extraEnv: []
+# Further envFrom sources (ConfigMaps or Secrets).
+extraEnvFrom: []
+
+persistence:
+  # SQLite database, uploads and keys in /app/data. Without persistence the
+  # data is lost with the pod – only for trying it out.
+  enabled: true
+  # Use an existing PersistentVolumeClaim instead of creating one.
+  existingClaim: ""
+  # "" uses the cluster's default storage class; "-" sets none.
+  storageClass: ""
+  # SQLite needs a block or local file system (no NFS/SMB with locking
+  # problems). One pod only, so ReadWriteOnce is enough.
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt
+    # nginx.ingress.kubernetes.io/proxy-body-size: 110m
+  hosts:
+    - host: flowplan.example.org
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: flowplan-tls
+  #    hosts:
+  #      - flowplan.example.org
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # Flowplan does not talk to the Kubernetes API.
+  automount: false
+
+podAnnotations: {}
+podLabels: {}
+
+# The image runs as the user "node" (uid/gid 1000).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  # Next.js writes its cache below /app/.next.
+  readOnlyRootFilesystem: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+# Probes on /api/health (database and upload directory). The startup probe
+# allows time for a Litestream restore from S3 on the first start.
+startupProbe:
+  enabled: true
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 60
+livenessProbe:
+  enabled: true
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  enabled: true
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Time for pending work (uploads to S3, Litestream) when the pod stops.
+terminationGracePeriodSeconds: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

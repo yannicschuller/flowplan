@@ -1,0 +1,22 @@
+Flowplan {{ .Values.image.tag | default .Chart.AppVersion }} is being deployed as {{ include "flowplan.fullname" . }}.
+
+Public address (APP_URL): {{ include "flowplan.appUrl" . }}
+{{- if .Values.ingress.enabled }}
+It is served through the ingress for: {{ range .Values.ingress.hosts }}{{ .host }} {{ end }}
+{{- else }}
+
+Without an ingress, try it with a port forward:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "flowplan.fullname" . }} 3000:{{ .Values.service.port }}
+and open http://localhost:3000 (set appUrl to http://localhost:3000 for this).
+{{- end }}
+
+{{- if not .Values.persistence.enabled }}
+
+WARNING: persistence is disabled – the database and uploads are lost when the pod is replaced.
+{{- end }}
+
+Flowplan runs as a single pod with SQLite (strategy Recreate): updates have a short downtime.
+{{- if .Values.localLogin }}
+The first account registered with e-mail and password administers the instance.
+{{- end }}
+Check it: helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

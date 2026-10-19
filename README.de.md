@@ -91,6 +91,8 @@ curl -o .env https://raw.githubusercontent.com/yannicschuller/flowplan/main/.env
 docker compose up -d
 ```
 
+Auf Kubernetes nimmst du das Helm-Chart in [`deploy/helm/flowplan`](deploy/helm/flowplan/README.md) (ein Pod mit Volume, wie SQLite es braucht).
+
 Öffne deine Domain: Eine neue Instanz bietet **Konto erstellen** an – das erste Konto verwaltet die Instanz. Weitere Personen registrieren sich, wenn du es erlaubst oder sie einlädst. Passkeys richtest du in den Profileinstellungen ein.
 
 Für Single Sign-on legst du beim OIDC-Anbieter einen vertraulichen Web-Client mit der Weiterleitungsadresse `https://<deine-domain>/api/auth/callback` an; Mitglieder der Gruppe aus `OIDC_ADMIN_GROUP` verwalten die Instanz.

@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "flowplan.fullname" . }}-test-health"
+  labels:
+    {{- include "flowplan.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: health
+      # The Flowplan image itself: node is there, no extra image needed.
+      image: {{ include "flowplan.image" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command:
+        - node
+        - -e
+        - "fetch('http://{{ include "flowplan.fullname" . }}:{{ .Values.service.port }}/api/health').then(r=>r.json().then(b=>{console.log(JSON.stringify(b));process.exit(r.ok&&b.service==='flowplan'?0:1)})).catch(e=>{console.error(e);process.exit(1)})"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
