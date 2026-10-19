@@ -3,6 +3,7 @@ import { requireBodySize } from "@/lib/upload-safety";
 import { z } from "zod";
 import { checkOrigin, HttpError } from "@/lib/auth";
 import { guestUpload, MAX_GUEST_UPLOAD } from "@/lib/shared-uploads";
+import { withShareRequest } from "@/lib/share-access";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = {
@@ -23,7 +24,7 @@ export async function POST(
       file = form.get("file");
     if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
     const pageId = z.string().uuid().parse(form.get("pageId"));
-    return NextResponse.json(await guestUpload(token, pageId, file), {
+    return NextResponse.json(await withShareRequest(req, () => guestUpload(token, pageId, file)), {
       headers,
     });
   } catch (e) {

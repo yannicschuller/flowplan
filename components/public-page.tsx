@@ -7,6 +7,9 @@ import { whiteboardSnapshotItems } from "@/lib/whiteboard";
 import { rowOrderRanks } from "@/lib/row-order";
 import { PageIcon } from "./ui";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
+import { SHARE_COOKIE, shareState, withShareCookie } from "@/lib/share-access";
+import { SharePasswordForm } from "./share-password-form";
 import { one } from "@/lib/db";
 import { database, publicRows as rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
@@ -37,19 +40,55 @@ import {
   publicMonth,
 } from "./public-views";
 
-export async function PublishedPage({
-  token,
-  pageId,
-  rowId,
-  viewId,
-  month: monthParam,
-}: {
+type PublishedPageProps = {
   token: string;
   pageId?: string;
   rowId?: string;
   viewId?: string;
   month?: string;
-}) {
+};
+// A link with an end date or a password (lib/share-access.ts): after its end
+// a short note, without the unlock cookie the password form. Everything
+// else is rendered with the cookie in hand, so every check sees it.
+export async function PublishedPage(props: PublishedPageProps) {
+  const unlock = (await cookies()).get(SHARE_COOKIE)?.value;
+  const state = shareState(props.token, unlock);
+  if (state === "missing") notFound();
+  if (state !== "open") {
+    const t = await serverT();
+    return (
+      <main className="public-page share-gate">
+        <a href="/" className="public-brand">
+          flowplan <span className="muted">/ {t("Geteilte Seite", "Shared page")}</span>
+        </a>
+        <section className="share-gate-card">
+          {state === "expired" ? (
+            <>
+              <h1>{t("Link abgelaufen", "Link expired")}</h1>
+              <p className="muted">
+                {t("Dieser Link ist abgelaufen. Bitte frage die Person, die ihn geteilt hat, nach einem neuen.", "This link has expired. Please ask the person who shared it for a new one.")}
+              </p>
+            </>
+          ) : (
+            <>
+              <h1>{t("Passwort erforderlich", "Password required")}</h1>
+              <p className="muted">{t("Diese Seite ist mit einem Passwort geschützt.", "This page is protected with a password.")}</p>
+              <SharePasswordForm token={props.token} />
+            </>
+          )}
+        </section>
+      </main>
+    );
+  }
+  return withShareCookie(unlock, () => renderPublishedPage(props));
+}
+async function renderPublishedPage({
+  token,
+  pageId,
+  rowId,
+  viewId,
+  month: monthParam,
+}: PublishedPageProps) {
   const t = await serverT();
   let context;
   try {
@@ -130,7 +169,8 @@ export async function PublishedPage({
   const publication =
     root.public_token === token
       ? one<{ published_at: string | null; allow_copy: number }>(
-          "SELECT published_at,allow_copy FROM publications WHERE page_id=?",
+          // Behind a password, a publication is not offered for copying.
+          "SELECT published_at,allow_copy AND password_hash IS NULL allow_copy FROM publications WHERE page_id=?",
           root.id,
         )
       : undefined;

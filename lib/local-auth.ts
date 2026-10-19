@@ -9,7 +9,7 @@
 // - Passwords are hashed with scrypt; failed attempts are limited per
 //   address and per e-mail.
 import { promisify } from "node:util";
-import { randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt as scryptCb, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   generateAuthenticationOptions,
@@ -42,6 +42,16 @@ export async function hashPassword(password: string) {
   const key = await scrypt(password.normalize("NFKC"), salt, 64, SCRYPT);
   return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("base64url")}$${key.toString("base64url")}`;
 }
+// The same hash, computed synchronously: for passwords set inside a database
+// transaction (share links).
+export function hashPasswordSync(password: string) {
+  const salt = randomBytes(16);
+  const key = scryptSync(password.normalize("NFKC"), salt, 64, SCRYPT);
+  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("base64url")}$${key.toString("base64url")}`;
+}
+// A stored hash to compare against when there is none, so a wrong guess
+// takes as long as a real check.
+export const DUMMY_HASH = "scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAA";
 export async function verifyPassword(password: string, stored: string) {
   const [kind, n, r, p, salt, key] = stored.split("$");
   if (kind !== "scrypt" || !salt || !key) return false;
@@ -169,7 +179,9 @@ function noteExistingAccount(email: string, locale: Locale) {
 // ---- Failed attempts ----
 
 const WINDOW = 15 * 60_000;
-function limited(keys: string[]) {
+// Whether one of the keys had too many failures in the last 15 minutes:
+// 30 per address ("ip:…"), 8 for everything else (an account, a code).
+export function limited(keys: string[]) {
   const since = Date.now() - WINDOW;
   run("DELETE FROM login_failures WHERE at<?", since);
   return keys.some((key) => {
@@ -177,7 +189,7 @@ function limited(keys: string[]) {
     return Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, since)?.n || 0) >= limit;
   });
 }
-function failed(keys: string[]) {
+export function failed(keys: string[]) {
   for (const key of keys) run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, Date.now());
 }
 
@@ -191,7 +203,7 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   const account = accountByEmail(email);
   // The same work and the same answer whether the account exists or not.
-  const ok = await verifyPassword(password, account?.password_hash || "scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAA");
+  const ok = await verifyPassword(password, account?.password_hash || DUMMY_HASH);
   if (!account || !ok) {
     failed(keys);
     throw new HttpError(401, t("E-Mail-Adresse oder Passwort stimmt nicht.", "E-mail address or password is wrong."));
@@ -353,9 +365,9 @@ export function setLocalAdmin(userId: string, admin: boolean) {
 }
 export function localAccountInfo() {
   return Object.fromEntries(
-    all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number }>(
-      "SELECT a.user_id,a.is_admin,a.email_verified,(SELECT COUNT(*) FROM passkeys p WHERE p.user_id=a.user_id) passkeys FROM local_accounts a",
-    ).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys) }]),
+    all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number; totp: number }>(
+      "SELECT a.user_id,a.is_admin,a.email_verified,(SELECT COUNT(*) FROM passkeys p WHERE p.user_id=a.user_id) passkeys,EXISTS(SELECT 1 FROM user_totp t WHERE t.user_id=a.user_id AND t.enabled=1) totp FROM local_accounts a",
+    ).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys), totp: !!a.totp }]),
   );
 }
 

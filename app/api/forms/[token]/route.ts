@@ -3,7 +3,7 @@ import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "
 import { z } from "zod";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { currentUser, checkOrigin, HttpError, hash } from "@/lib/auth";
+import { activeUser, checkOrigin, HttpError, hash } from "@/lib/auth";
 import { getForm, saveFormSubmission } from "@/lib/forms";
 import {
   FORM_FILE_BYTES,
@@ -24,7 +24,7 @@ async function handlePOST(
   try {
     checkOrigin(req);
     const { token } = await params;
-    const user = await currentUser(),
+    const user = await activeUser(),
       form = getForm(token, user);
     const fileFields = form.fields.filter((f) => f.type === "files");
     let raw: string;

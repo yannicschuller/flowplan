@@ -1,6 +1,7 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
-// Settings → General → your profile: name, password and passkeys of an
+// Settings → General → your profile: name, password, authenticator app
+// (components/two-factor.tsx) and passkeys of an
 // account with e-mail and password. SSO accounts are managed by their
 // provider.
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -8,6 +9,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Fingerprint, Trash } from "@phosphor-icons/react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
 import { useT } from "./i18n";
+import { TwoFactorSettings } from "./two-factor";
 
 type Passkey = { id: string; name: string; created_at: number; last_used_at: number | null };
 async function post<T = { ok: true; passkeys: Passkey[] }>(path: string, body?: unknown): Promise<T> {
@@ -129,6 +131,8 @@ export function AccountSecurity({ name, onRenamed }: { name: string; onRenamed: 
           {t("Passwort ändern", "Change password")}
         </button>
       </form>
+      <h3>{t("Zwei-Faktor-Anmeldung", "Two-factor sign-in")}</h3>
+      <TwoFactorSettings />
       <h3>{t("Passkeys", "Passkeys")}</h3>
       <p className="muted">
         {t(

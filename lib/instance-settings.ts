@@ -25,6 +25,9 @@ export const instanceSettingsSchema = z.object({
   // Defaults for every account without its own limits (0 = unlimited).
   defaultUserStorageMb: z.number().int().min(0).max(10_000_000).nullable().default(null),
   defaultUserWorkspaces: z.number().int().min(0).max(10_000).nullable().default(null),
+  // Two-factor sign-in for accounts with e-mail and password: not required,
+  // required for administrators, or for everyone (lib/two-factor-policy.ts).
+  twoFactor: z.enum(["off", "admins", "all"]).default("off"),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -42,6 +45,7 @@ const defaults: InstanceSettings = {
   inactiveDays: null,
   defaultUserStorageMb: null,
   defaultUserWorkspaces: null,
+  twoFactor: "off",
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

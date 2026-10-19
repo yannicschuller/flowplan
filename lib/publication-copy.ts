@@ -27,11 +27,12 @@ export function copyPublication(user: Identity, input: unknown) {
       spaceId: z.string().uuid(),
     })
     .parse(input);
-  const publication = one<{ allow_copy: number }>(
-    "SELECT p.allow_copy FROM publications p JOIN pages g ON g.id=p.page_id WHERE g.public_token=? AND g.deleted_at IS NULL",
+  const publication = one<{ allow_copy: number; password_hash: string | null }>(
+    "SELECT p.allow_copy,p.password_hash FROM publications p JOIN pages g ON g.id=p.page_id WHERE g.public_token=? AND g.deleted_at IS NULL",
     b.token,
   );
-  if (!publication || !publication.allow_copy)
+  // A publication behind a password stays with those who know it.
+  if (!publication || !publication.allow_copy || publication.password_hash)
     throw new HttpError(
       403,
       "Diese Veröffentlichung darf nicht kopiert werden.",

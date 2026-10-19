@@ -10,6 +10,7 @@ import { requestLocale } from "@/lib/i18n-server";
 import WorkspaceApp from "@/components/workspace-app";
 import { instanceSettings } from "@/lib/instance-settings";
 import Login from "@/components/login";
+import { TwoFactorRequired } from "@/components/two-factor";
 import { loginOptions } from "@/lib/local-auth";
 export const dynamic = "force-dynamic";
 export default async function Home({
@@ -29,6 +30,8 @@ export default async function Home({
         instanceName={instanceSettings().name}
       />
     );
+  // The instance requires a second factor this account does not have yet.
+  if (user.twoFactorSetup) return <TwoFactorRequired name={user.name} instanceName={instanceSettings().name} />;
   const locale = await requestLocale();
   rememberLocale(user.id, locale);
   withContentLocale(locale, () => ensureWorkspace(user.id));

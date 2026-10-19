@@ -23,7 +23,9 @@ const DEMO_QUOTA_MB = 25;
 const BLOCKED = new Set([
   "workspace.create",
   "share.create",
+  "share.protect",
   "page.publish",
+  "publication.protect",
   "publication.copy",
   "member.invite",
   "page.share",

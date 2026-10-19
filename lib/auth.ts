@@ -3,6 +3,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { all, one, run, id } from "./db";
 import type { Identity, User } from "./types";
 import { identityFromApiToken } from "./api-tokens";
+import { needsTwoFactorSetup } from "./two-factor-policy";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -84,6 +85,7 @@ export function identityFromToken(token: string): Identity | null {
     demo: !!s.demo_until,
     groups,
     isAdmin: !s.demo_until && groups.includes(adminGroup()),
+    ...(!s.demo_until && needsTwoFactorSetup(s.id) ? { twoFactorSetup: true } : {}),
   };
 }
 export async function currentUser() {
@@ -94,6 +96,12 @@ export async function currentUser() {
   const token = jar.get(cookieName)?.value;
   return token ? identityFromToken(token) : null;
 }
+// The signed-in person, unless they still have to set up the second factor
+// the instance requires (then they count as not signed in).
+export async function activeUser() {
+  const u = await currentUser();
+  return u?.twoFactorSetup ? null : u;
+}
 // Ends the person's other sessions (after a password change), keeping this one.
 export async function endOtherSessions(userId: string) {
   const token = (await cookies()).get(cookieName)?.value;
@@ -102,6 +110,7 @@ export async function endOtherSessions(userId: string) {
 export async function requireUser() {
   const u = await currentUser();
   if (!u) throw new HttpError(401, "Bitte melde dich an.");
+  if (u.twoFactorSetup) throw new HttpError(403, "Bitte richte zuerst die Zwei-Faktor-Anmeldung ein.");
   return u;
 }
 export async function issueSession(

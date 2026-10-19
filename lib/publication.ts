@@ -5,6 +5,7 @@ import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { cleanHtml } from "./document-server";
+import { checkShareProtection } from "./share-access";
 import type { Identity, Page } from "./types";
 
 export function publicationSettings(pageId: string) {
@@ -12,14 +13,18 @@ export function publicationSettings(pageId: string) {
     include_children: number;
     allow_copy: number;
     published_at: string | null;
+    password: number;
+    expires_at: number | null;
   }>(
-    "SELECT include_children,allow_copy,published_at FROM publications WHERE page_id=?",
+    "SELECT include_children,allow_copy,published_at,password_hash IS NOT NULL password,expires_at FROM publications WHERE page_id=?",
     pageId,
   );
   return {
     includeChildren: !!row?.include_children,
     allowCopy: row ? !!row.allow_copy : true,
     publishedAt: row?.published_at || null,
+    password: !!row?.password,
+    expiresAt: row?.expires_at ?? null,
     count:
       one<{ count: number }>(
         "SELECT count(*) count FROM publication_pages WHERE root_id=?",
@@ -41,6 +46,11 @@ export function publishPage(
       )
     : [page];
   if (enabled) for (const p of pages) requirePage(user, p.id, true);
+  // Password and end date stay while the page remains published.
+  const kept = one<{ password_hash: string | null; expires_at: number | null }>(
+    "SELECT password_hash,expires_at FROM publications WHERE page_id=?",
+    page.id,
+  );
   run("DELETE FROM publication_pages WHERE root_id=?", page.id);
   run("DELETE FROM publications WHERE page_id=?", page.id);
   run(
@@ -50,11 +60,13 @@ export function publishPage(
   );
   if (enabled) {
     run(
-      "INSERT INTO publications(page_id,include_children,published_at,published_by,allow_copy) VALUES(?,?,CURRENT_TIMESTAMP,?,?)",
+      "INSERT INTO publications(page_id,include_children,published_at,published_by,allow_copy,password_hash,expires_at) VALUES(?,?,CURRENT_TIMESTAMP,?,?,?,?)",
       page.id,
       includeChildren ? 1 : 0,
       user.id,
       allowCopy ? 1 : 0,
+      kept?.password_hash ?? null,
+      kept?.expires_at ?? null,
     );
     for (const p of pages)
       run(
@@ -68,7 +80,9 @@ export function publicTree(token: string) {
   const link = one<{
     root_id: string;
     role: "viewer" | "commenter" | "editor";
-  }>("SELECT root_id,role FROM share_links WHERE token=?", token);
+    password_hash: string | null;
+    expires_at: number | null;
+  }>("SELECT root_id,role,password_hash,expires_at FROM share_links WHERE token=?", token);
   const root = link
     ? one<Page>(
         "SELECT * FROM pages WHERE id=? AND deleted_at IS NULL",
@@ -79,6 +93,16 @@ export function publicTree(token: string) {
         token,
       );
   if (!root) throw new HttpError(404, "Veröffentlichung nicht gefunden.");
+  // End date and password (lib/share-access.ts) hold for everything served
+  // through the link: pages, records, files, live updates and guest edits.
+  checkShareProtection(
+    token,
+    link ||
+      one<{ password_hash: string | null; expires_at: number | null }>(
+        "SELECT password_hash,expires_at FROM publications WHERE page_id=?",
+        root.id,
+      ) || { password_hash: null, expires_at: null },
+  );
   // The explicit publication set is intersected with the current tree. Moving a page out revokes inherited publication.
   const descendants = all<Page>(
     `WITH RECURSIVE tree AS (SELECT * FROM pages WHERE id=? AND deleted_at IS NULL UNION ALL SELECT p.* FROM pages p JOIN tree t ON p.parent_id=t.id WHERE p.deleted_at IS NULL) SELECT * FROM tree ORDER BY position`,
@@ -240,4 +264,14 @@ export function publishedHtml(
     }
     return { tagName, attribs: attrs };
   });
+}
+
+// Password and end date of a publication (owners with write access).
+export function protectPublication(page: Page, changes: { password_hash?: string | null; expires_at?: number | null }) {
+  if (!page.public_token || !one("SELECT 1 FROM publications WHERE page_id=?", page.id))
+    throw new HttpError(400, "Diese Seite ist nicht veröffentlicht.");
+  if (changes.password_hash !== undefined)
+    run("UPDATE publications SET password_hash=? WHERE page_id=?", changes.password_hash, page.id);
+  if (changes.expires_at !== undefined)
+    run("UPDATE publications SET expires_at=? WHERE page_id=?", changes.expires_at, page.id);
 }

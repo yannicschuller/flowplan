@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { ZodError } from "zod";
-import { checkOrigin, cookieName, currentUser, hash, HttpError } from "@/lib/auth";
+import { activeUser, checkOrigin, cookieName, hash, HttpError } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import {
   identityFromDeviceToken,
@@ -52,7 +52,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     if (action === "unregister" && authorization?.startsWith("Bearer fpd_"))
       return NextResponse.json({ ok: unregisterByDeviceToken(authorization) });
     checkOrigin(req);
-    const user = await currentUser();
+    const user = await activeUser();
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
     const text = await req.text();
     if (text.length > 10_000) throw new HttpError(413, "Anfrage zu groß.");

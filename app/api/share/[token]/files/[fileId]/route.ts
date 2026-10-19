@@ -1,6 +1,7 @@
 import { publicFile } from "@/lib/publication";
 import { fileResponse } from "@/lib/file-response";
 import { HttpError } from "@/lib/auth";
+import { withShareRequest } from "@/lib/share-access";
 export const dynamic = "force-dynamic";
 export async function GET(
   req: Request,
@@ -8,7 +9,7 @@ export async function GET(
 ) {
   try {
     const { token, fileId } = await params;
-    return await fileResponse(req, publicFile(token, fileId));
+    return await fileResponse(req, withShareRequest(req, () => publicFile(token, fileId)));
   } catch (e) {
     return Response.json(
       { error: e instanceof HttpError ? e.message : "Datei nicht verfügbar." },

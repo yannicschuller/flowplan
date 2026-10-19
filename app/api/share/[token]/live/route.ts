@@ -3,6 +3,7 @@ import { z } from "zod";
 import { HttpError } from "@/lib/auth";
 import { watchPrefix } from "@/lib/document-live";
 import { shareAccess } from "@/lib/share-presence";
+import { shareCookieOf, withShareCookie } from "@/lib/share-access";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     const pageId = z.uuid().parse(url.searchParams.get("pageId"));
     const rowId = url.searchParams.get("rowId") ? z.uuid().parse(url.searchParams.get("rowId")) : null;
     const clientId = z.uuid().parse(url.searchParams.get("client"));
-    shareAccess(token, pageId, rowId);
+    // Password and end date count on every keepalive too: a new password or
+    // the link's end closes the stream.
+    const unlock = shareCookieOf(req.headers);
+    const check = () => withShareCookie(unlock, () => shareAccess(token, pageId, rowId));
+    check();
     const encoder = new TextEncoder();
     let stop = () => {};
     const stream = new ReadableStream<Uint8Array>({
@@ -25,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
         const unwatch = watchPrefix(pageId, rowId, clientId, send);
         const ping = setInterval(() => {
           try {
-            shareAccess(token, pageId, rowId);
+            check();
             send(": ping\n\n");
           } catch {
             try {

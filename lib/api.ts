@@ -129,7 +129,9 @@ import {
   validateCellPatch,
 } from "./database-operations";
 import { field, view } from "./database-schema";
-import { publishPage, publicationSettings } from "./publication";
+import { publishPage, publicationSettings, protectPublication } from "./publication";
+import { protectionChanges } from "./share-access";
+import { adminResetTwoFactor } from "./two-factor";
 import { manageShareLink, listShareLinks } from "./share-links";
 import { relatedData, validateDatabaseRelations } from "./related-data";
 import { configureRelation } from "./two-way-relations";
@@ -2002,7 +2004,11 @@ export function command(
       }
       case "share.create":
       case "share.revoke":
+      case "share.protect":
         result = manageShareLink(user, b);
+        break;
+      case "publication.protect":
+        protectPublication(write(), protectionChanges(b));
         break;
       case "page.publish": {
         const p = write();
@@ -2532,6 +2538,11 @@ export function command(
         setLocalAdmin(uid, b.admin === true);
         break;
       }
+      // Lost phone: the authenticator app of an account is turned off.
+      case "admin.twoFactorReset":
+        requireAdmin(user);
+        adminResetTwoFactor(uuid.parse(b.userId));
+        break;
       case "admin.resetLink":
         requireAdmin(user);
         result = { url: adminResetLink(uuid.parse(b.userId)) };

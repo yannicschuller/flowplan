@@ -33,6 +33,7 @@ import {
 import { listPageTemplates } from "@/lib/page-templates";
 import { fileResponse } from "@/lib/file-response";
 import { publicFile } from "@/lib/publication";
+import { withShareRequest } from "@/lib/share-access";
 import { requireRow, rowDocumentData } from "@/lib/row-documents";
 import { documentKey, publishPresence, watchDocument } from "@/lib/document-live";
 import { calendarFeed, hasCalendarFeed } from "@/lib/calendar-feed";
@@ -137,7 +138,7 @@ async function handleGET(
     const url = new URL(req.url);
     // Keep public asset authorization identical when the catch-all handles the URL.
     if (path.length === 4 && path[0] === "share" && path[2] === "files")
-      return await fileResponse(req, publicFile(path[1], path[3]));
+      return await fileResponse(req, withShareRequest(req, () => publicFile(path[1], path[3])));
     // Calendar subscriptions: the secret link is the authorization.
     if (path.length === 2 && path[0] === "calendar" && path[1].endsWith(".ics"))
       return new Response(calendarFeed(path[1].slice(0, -4)), {
