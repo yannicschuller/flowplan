@@ -9,12 +9,13 @@ const { run, one, all, id } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
 const { requirePage } = await import("../lib/permissions");
-const { acceptInvites } = await import("../lib/auth");
+const { acceptInvites, acceptInviteToken } = await import("../lib/auth");
 const { pageShares } = await import("../lib/page-share");
 
-function person(name: string): Identity {
+// Accounts with a proven address by default (as after SSO or a confirmation link).
+function person(name: string, verified = true): Identity {
   const uid = id();
-  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`);
+  run("INSERT INTO users(id,subject,name,email,email_verified) VALUES(?,?,?,?,?)", uid, uid, name, `${name.toLowerCase()}@example.test`, verified ? 1 : 0);
   return { id: uid, name, email: `${name.toLowerCase()}@example.test`, groups: [], isAdmin: false, disabled: 0, created_at: "" } as Identity;
 }
 const ada = person("Ada"),
@@ -107,7 +108,7 @@ test("an existing account takes over a later invitation when the app loads", () 
   assert.match(one<{ body: string }>("SELECT body FROM notifications WHERE user_id=? AND kind='share'", fritz.id)!.body, /Ada hat dich zum Arbeitsbereich „Familie“ hinzugefügt/);
   assert.equal(one("SELECT 1 FROM invites WHERE email=?", fritz.email), undefined);
   // Unconfirmed addresses wait.
-  const gina = person("Gina");
+  const gina = person("Gina", false);
   run("INSERT INTO local_accounts(user_id,email,password_hash,is_admin,email_verified,verify_required,created_at) VALUES(?,?,?,?,?,?,?)", gina.id, gina.email, "x", 0, 0, 1, Date.now());
   as(ada)({ action: "member.invite", email: gina.email, role: "viewer" });
   bootstrap(gina, createWorkspace(gina.id, "Gina"));
@@ -147,4 +148,50 @@ test("open invitations can be withdrawn with their pages, or sent again", () => 
   as(ada)({ action: "invite.cancel", inviteId: invite.id });
   assert.equal(one("SELECT 1 FROM invites WHERE email='jan@example.test'"), undefined);
   assert.equal(one("SELECT 1 FROM invite_grants WHERE email='jan@example.test'"), undefined);
+});
+
+test("an unproven address gets an invitation link, not the page", () => {
+  // Anyone can sign up with any address where mail is not set up: such an
+  // account does not take over pages shared with that address.
+  const kim = person("Kim", false);
+  const doc = String(as(ada)({ action: "page.create", spaceId: team, title: "Steuer", kind: "document" }).id);
+  assert.equal(as(ada)({ action: "page.share", pageId: doc, email: kim.email, role: "viewer" }).status, "invited");
+  bootstrap(kim, createWorkspace(kim.id, "Kim"));
+  assert.ok(!canRead(kim, doc));
+  // The link from the invitation proves it.
+  const token = one<{ token: string }>("SELECT token FROM invites WHERE email=?", kim.email)!.token;
+  assert.match(token, /^[A-Za-z0-9_-]{32}$/);
+  assert.equal(acceptInviteToken(kim as unknown as User, "falsch"), null);
+  assert.equal(acceptInviteToken(kim as unknown as User, token), wid);
+  assert.ok(canRead(kim, doc));
+  assert.equal(one("SELECT 1 FROM invites WHERE token=?", token), undefined);
+});
+
+test("guests keep shared pages where they are and see no one's addresses", () => {
+  const doc = String(as(ada)({ action: "page.create", spaceId: team, title: "Urlaub", kind: "document" }).id);
+  as(ada)({ action: "page.share", pageId: doc, email: ben.email, role: "editor" });
+  const own = createWorkspace(ben.id, "Ben");
+  const ownSpace = bootstrap(ben, own).spaces[0].id;
+  assert.throws(() => command(ben, { action: "page.move", workspaceId: wid, pageId: doc, spaceId: ownSpace }), /Gäste/);
+  assert.equal(one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", doc)!.workspace_id, wid);
+  assert.deepEqual(pageShares(ben, doc).people, []);
+  // Members see who has access, but only owners see the addresses.
+  assert.ok(pageShares(cleo, doc).people.every((p) => !("email" in p) || !p.email));
+});
+
+test("read-only API tokens do not write", () => {
+  const reader = { ...ada, apiScope: "read" } as Identity;
+  assert.throws(() => command(reader, { workspaceId: wid, action: "page.create", spaceId: team, title: "Nein", kind: "document" }), /nur lesen/);
+  assert.throws(() => command(reader, { workspaceId: wid, action: "page.update", pageId: secret, title: "Nein" }), /nur lesen/);
+});
+
+test("removing a member leaves no rights or traces behind", () => {
+  const lou = person("Lou");
+  run("INSERT INTO members VALUES(?,?,?)", wid, lou.id, "editor");
+  run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", secret, lou.id, "editor");
+  run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", lou.id, secret);
+  as(ada)({ action: "member.role", userId: lou.id, role: "remove" });
+  assert.equal(one("SELECT 1 FROM members WHERE user_id=?", lou.id), undefined);
+  assert.equal(one("SELECT 1 FROM grants WHERE user_id=?", lou.id), undefined, "a later invitation does not bring old rights back");
+  assert.equal(one("SELECT 1 FROM favorites WHERE user_id=?", lou.id), undefined);
 });

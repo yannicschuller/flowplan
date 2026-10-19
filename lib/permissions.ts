@@ -28,6 +28,9 @@ export function requireMember(
   const role = memberRole(user, workspace);
   if (!role || rank[role] < rank[min])
     throw new HttpError(403, "Keine Berechtigung für diesen Arbeitsbereich.");
+  // Read tokens never write, whichever route they come through.
+  if (min !== "viewer" && user.apiScope === "read")
+    throw new HttpError(403, "Dieses API-Token darf nur lesen.");
   if (min !== "viewer" && isGuest(user, workspace))
     throw new HttpError(
       403,
@@ -88,6 +91,8 @@ export function requirePage(
   const role = pageRole(user, page);
   if (!role || (write && rank[role] < 2))
     throw new HttpError(403, "Keine Berechtigung für diese Seite.");
+  if (write && user.apiScope === "read")
+    throw new HttpError(403, "Dieses API-Token darf nur lesen.");
   return page;
 }
 export function requireAdmin(user: Identity) {

@@ -56,6 +56,7 @@ export async function POST(req: Request) {
   try {
     checkOrigin(req);
     const user = await requireUser();
+    if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     const wid = z
       .string()
       .uuid()

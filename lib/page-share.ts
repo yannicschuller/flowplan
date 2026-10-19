@@ -6,10 +6,12 @@
 // waits in invite_grants until they sign in (lib/auth.ts acceptInvites).
 import { z } from "zod";
 import { all, id, one, run } from "./db";
-import { HttpError } from "./auth";
+import { HttpError, inviteToken } from "./auth";
 import { memberRole, requirePage } from "./permissions";
-import { canManageSpace } from "./workspace-lifecycle";
+import { canManageSpace, removeFromWorkspace } from "./workspace-lifecycle";
 import { queueShareMail } from "./mail";
+import { limitInviter, mailAllowed } from "./action-limits";
+import { isGuest } from "./permissions";
 import type { Identity, Page, Role, Space } from "./types";
 
 const rank: Record<string, number> = { viewer: 1, editor: 2, owner: 3 };
@@ -37,12 +39,15 @@ function requireSharer(user: Identity, pageId: string) {
 export function pageShares(user: Identity, pageId: string) {
   const page = requirePage(user, pageId);
   const manage = canSharePage(user, page);
+  // Who else has access is for those who manage it; members see names,
+  // guests see nobody else.
+  if (!manage && isGuest(user, page.workspace_id)) return { manage, people: [], pending: [] };
   const people = all<{ id: string; name: string; email: string; role: Role; guest: number }>(
     `SELECT u.id,u.name,u.email,g.role,EXISTS(SELECT 1 FROM workspace_guests w WHERE w.workspace_id=? AND w.user_id=u.id) guest
      FROM grants g JOIN users u ON u.id=g.user_id WHERE g.resource_id=? AND g.user_id<>'' ORDER BY u.name`,
     page.workspace_id,
     page.id,
-  ).map((p) => ({ ...p, guest: !!p.guest }));
+  ).map((p) => ({ ...p, email: manage ? p.email : "", guest: !!p.guest }));
   const pending = manage
     ? all<{ email: string; role: Role }>("SELECT email,role FROM invite_grants WHERE resource_id=? ORDER BY email", page.id)
     : [];
@@ -52,9 +57,12 @@ export function pageShares(user: Identity, pageId: string) {
 export function sharePage(user: Identity, raw: unknown) {
   const b = input.parse(raw);
   const page = requireSharer(user, b.pageId);
+  limitInviter(user.id);
   const email = b.email.trim().toLowerCase();
+  // Only an account whose address is confirmed counts as this person; for
+  // any other the invitation path applies (link or confirmed address).
   const target = one<{ id: string; name: string }>(
-    "SELECT id,name FROM users WHERE lower(email)=? AND disabled=0 AND demo_until IS NULL AND subject NOT LIKE 'deleted:%'",
+    "SELECT id,name FROM users WHERE lower(email)=? AND email_verified=1 AND disabled=0 AND demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at LIMIT 1",
     email,
   );
   if (target?.id === user.id) throw new HttpError(400, "Du hast bereits Zugriff.");
@@ -71,7 +79,7 @@ export function sharePage(user: Identity, raw: unknown) {
     run("INSERT INTO grants VALUES(?,?,?,?)", page.id, target.id, "", b.role);
     const workspace = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", page.workspace_id);
     // The e-mail goes out right away; the summary then leaves this one out.
-    const mailed = queueShareMail({ userId: target.id, inviter: user.name, pageId: page.id, page: page.title, workspace: workspace?.name || "Flowplan" });
+    const mailed = mailAllowed(email) && queueShareMail({ userId: target.id, inviter: user.name, pageId: page.id, page: page.title, workspace: workspace?.name || "Flowplan" });
     run(
       "INSERT INTO notifications(id,user_id,body,page_id,kind,emailed_at) VALUES(?,?,?,?,'share',?)",
       id(),
@@ -86,13 +94,14 @@ export function sharePage(user: Identity, raw: unknown) {
   const invite = one<{ guest: number; role: Role }>("SELECT guest,role FROM invites WHERE workspace_id=? AND email=?", page.workspace_id, email);
   if (!invite)
     run(
-      "INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at) VALUES(?,?,?,?,?,1,?)",
+      "INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at,token) VALUES(?,?,?,?,?,1,?,?)",
       id(),
       page.workspace_id,
       email,
       b.role,
       user.id,
       Date.now(),
+      inviteToken(),
     );
   else if (invite.guest && rank[invite.role] < rank[b.role])
     run("UPDATE invites SET role=? WHERE workspace_id=? AND email=?", b.role, page.workspace_id, email);
@@ -106,7 +115,15 @@ export function sharePage(user: Identity, raw: unknown) {
   const workspace = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", page.workspace_id);
   return {
     status: "invited" as const,
-    mail: { email, inviter: user.name, workspace: workspace?.name || "Flowplan", guest: true, page: page.title },
+    send: mailAllowed(email),
+    mail: {
+      email,
+      inviter: user.name,
+      workspace: workspace?.name || "Flowplan",
+      guest: true,
+      page: page.title,
+      token: one<{ token: string | null }>("SELECT token FROM invites WHERE workspace_id=? AND email=?", page.workspace_id, email)?.token || undefined,
+    },
     ...pageShares(user, page.id),
   };
 }
@@ -138,10 +155,7 @@ export function updatePageShare(user: Identity, raw: unknown) {
       page.workspace_id,
       page.workspace_id,
     );
-    if (guest && !left) {
-      run("DELETE FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, b.userId);
-      run("DELETE FROM workspace_guests WHERE workspace_id=? AND user_id=?", page.workspace_id, b.userId);
-    }
+    if (guest && !left) removeFromWorkspace(b.userId, page.workspace_id);
   } else {
     if (!one("SELECT 1 FROM members WHERE workspace_id=? AND user_id=?", page.workspace_id, b.userId)) throw new HttpError(400, "Mitglied fehlt.");
     run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", page.id, b.userId);

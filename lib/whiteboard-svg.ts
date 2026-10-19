@@ -40,12 +40,13 @@ const STYLE =
 function html(width: number, height: number, inner: string, x = 0, y = 0) {
   return `<foreignObject x="${x}" y="${y}" width="${Math.max(1, width)}" height="${Math.max(1, height)}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%">${inner}</div></foreignObject>`;
 }
+const ALIGN = new Set(["left", "center", "right", "justify"]);
 function textBox(item: WhiteboardItem, padding = 10, align?: string) {
   const style = [
     `padding:${padding}px`,
     `font-size:${num(item.fontSize, 16)}px`,
     `font-weight:${item.bold ? 700 : 400}`,
-    `text-align:${align || item.align || "center"}`,
+    `text-align:${[align, item.align].find((a) => a && ALIGN.has(a)) || "center"}`,
     `color:${color(item.textColor, "#1f2937")}`,
     `justify-content:${item.type === "text" ? "flex-start" : "center"}`,
   ].join(";");
@@ -72,7 +73,7 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
     case "sticky":
       return g(`<rect width="${item.w}" height="${item.h}" rx="4" fill="${attr(color(item.fill, "#fff6b6"))}" filter="url(#wb-shadow)"/>${textBox(item)}`);
     case "text":
-      return g(textBox(item, 2, item.align || "left"));
+      return g(textBox(item, 2, item.align && ALIGN.has(item.align) ? item.align : "left"));
     case "shape":
       return g(
         `<path d="${shapePath(item.shape, item.w, item.h)}" fill="${attr(color(item.fill, "#ffffff"))}" stroke="${attr(color(item.stroke, "#1f2937"))}" stroke-width="${num(item.strokeWidth, 2)}"${item.dashed ? ' stroke-dasharray="8 6"' : ""}/>${textBox(item)}`,

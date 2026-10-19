@@ -11,6 +11,7 @@ import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { privateAddress } from "./safe-fetch";
+import { safePost } from "./safe-fetch";
 import type { Identity } from "./types";
 
 export const webhookEvents = {
@@ -157,20 +158,14 @@ export async function flushWebhooks(now = Date.now()) {
       // The address is checked again: DNS may point elsewhere by now.
       await checkTarget(delivery.url);
       const signature = createHmac("sha256", delivery.secret).update(delivery.body).digest("hex");
-      const response = await fetch(delivery.url, {
-        method: "POST",
-        redirect: "manual",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "Flowplan-Webhook/1.0",
-          "X-Flowplan-Signature": `sha256=${signature}`,
-          "X-Flowplan-Event": (JSON.parse(delivery.body) as { event: string }).event,
-        },
-        body: delivery.body,
-        signal: AbortSignal.timeout(10_000),
-      });
-      status = response.status;
-      if (!response.ok) error = `HTTP ${response.status}`;
+      // Sent to the address that was checked (pinned DNS, no redirects).
+      status = await safePost(delivery.url, delivery.body, {
+        "Content-Type": "application/json",
+        "User-Agent": "Flowplan-Webhook/1.0",
+        "X-Flowplan-Signature": `sha256=${signature}`,
+        "X-Flowplan-Event": (JSON.parse(delivery.body) as { event: string }).event,
+      }, allowPrivate());
+      if (status < 200 || status >= 300) error = `HTTP ${status}`;
     } catch (e) {
       error = String((e as Error).message || e).slice(0, 300);
     }

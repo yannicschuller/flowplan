@@ -1,6 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -114,4 +114,31 @@ test("exports are pushed to Git, and changes made there come back", { skip: !exi
   const log = execFileSync("git", ["-C", clone, "log", "--format=%s"]).toString();
   assert.match(log, /Notes/);
   assert.match(log, /Flowplan export/);
+});
+
+test("a repository cannot read server files or reach pages it was not given", { skip: !existsSync(backend) && "git http-backend missing" }, async () => {
+  const other = String(act({ action: "page.create", spaceId: space, title: "Nicht exportiert", kind: "document" }).id);
+  write(other, "<p>Bleibt so.</p>");
+  const otherDb = String(act({ action: "page.create", spaceId: space, title: "Andere Datenbank", kind: "database" }).id);
+  const before = one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", otherDb)!.n;
+  const clone = mkdtempSync(join(tmpdir(), "flowplan-git-attack-"));
+  execFileSync("git", ["clone", "-q", `http://flowplan:secret-token@127.0.0.1:${port}/notes.git`, clone]);
+  const folder = readdirSync(clone).find((f) => f.startsWith("Haus-"))!;
+  // A symlink to a file outside the working copy …
+  const secretFile = join(mkdtempSync(join(tmpdir(), "flowplan-secret-")), "secret.txt");
+  writeFileSync(secretFile, "TOP-SECRET-ENV");
+  execFileSync("rm", [join(clone, folder, "index.md")]);
+  execFileSync("ln", ["-s", secretFile, join(clone, folder, "index.md")]);
+  // … a page and a database that were never exported, named by id.
+  mkdirSync(join(clone, folder, "pages"), { recursive: true });
+  writeFileSync(join(clone, folder, "pages", `x-${other}.md`), "# Nicht exportiert\n\nÜBERSCHRIEBEN\n");
+  mkdirSync(join(clone, folder, "records", otherDb), { recursive: true });
+  writeFileSync(join(clone, folder, "records", otherDb, "neu.md"), "---\ntitle: Eingeschleust\n---\n# Eingeschleust\n");
+  execFileSync("git", ["-C", clone, "add", "-A"]);
+  execFileSync("git", ["-C", clone, "-c", "user.name=Eve", "-c", "user.email=eve@example.test", "commit", "-qm", "Attack"]);
+  execFileSync("git", ["-C", clone, "push", "-q", "origin", "HEAD:main"]);
+  await runMarkdownExports(Date.UTC(2026, 9, 6, 3));
+  assert.doesNotMatch(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", house)!.html, /TOP-SECRET-ENV/);
+  assert.match(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", other)!.html, /Bleibt so/);
+  assert.equal(one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", otherDb)!.n, before);
 });

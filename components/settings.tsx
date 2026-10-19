@@ -44,7 +44,7 @@ import {
 import { api, Avatar, download, downloadBlob, Modal } from "./ui";
 import type { Bootstrap, Space } from "@/lib/types";
 type SettingsData = {
-  invites: { id: string; email: string; role: string; guest?: number; created_at?: number | null; inviter?: string | null; pages?: string[] }[];
+  invites: { id: string; email: string; role: string; guest?: number; created_at?: number | null; inviter?: string | null; pages?: string[]; token?: string }[];
   groups: { id: string; name: string }[];
   groupMembers: { group_id: string; user_id: string }[];
   grants: {
@@ -467,8 +467,8 @@ export default function Settings({
                           "The person gets an invitation by e-mail. With an existing account they see the workspace the next time they open Flowplan, otherwise after signing up with this address – even if sign-ups are otherwise closed.",
                         )
                       : t(
-                          "Auf dieser Instanz werden keine E-Mails verschickt – sag der Person selbst Bescheid. Mit einem bestehenden Konto sieht sie den Arbeitsbereich beim nächsten Öffnen von Flowplan, sonst nach der Registrierung mit dieser Adresse.",
-                          "This instance sends no e-mail – let the person know yourself. With an existing account they see the workspace the next time they open Flowplan, otherwise after signing up with this address.",
+                          "Auf dieser Instanz werden keine E-Mails verschickt: Kopiere bei der Einladung unten den Link und schick ihn der Person. Wer ihn angemeldet öffnet (oder sich darüber registriert), nimmt die Einladung an.",
+                          "This instance sends no e-mail: copy the link of the invitation below and send it to the person. Whoever opens it signed in (or signs up through it) takes the invitation.",
                         )}
                   </p>
                   <form
@@ -550,6 +550,23 @@ export default function Settings({
                               }}
                             >
                               {t("Erneut senden", "Send again")}
+                            </button>
+                          )}
+                          {i.token && (
+                            <button
+                              type="button"
+                              className="button compact"
+                              title={t("Wer den Link angemeldet öffnet, nimmt die Einladung an – gib ihn nur der eingeladenen Person.", "Whoever opens the link signed in takes the invitation – give it only to the invited person.")}
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(`${location.origin}/?invite=${i.token}`);
+                                  onError(t("Einladungslink kopiert.", "Invitation link copied."));
+                                } catch {
+                                  onError(`${location.origin}/?invite=${i.token}`);
+                                }
+                              }}
+                            >
+                              {t("Link kopieren", "Copy link")}
                             </button>
                           )}
                           <button

@@ -11,7 +11,7 @@
 //   EXPORT_GIT_USERNAME the user name for the token (default "flowplan")
 //   EXPORT_GIT_BRANCH   default "main"
 //   EXPORT_GIT_IMPORT   "true": take over changes made in the repository
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs";
 import { dirname, posix, resolve } from "node:path";
 import git from "isomorphic-git";
@@ -19,6 +19,7 @@ import http from "isomorphic-git/http/node";
 import { id, one, run, transaction } from "./db";
 import { readZip } from "./archive";
 import { requirePage } from "./permissions";
+import { requireUnlocked } from "./journal-extras";
 import { htmlState } from "./document-server";
 import { documentChanged } from "./document-live";
 import { markdownToHtml } from "./markdown-import";
@@ -70,9 +71,17 @@ async function prepare(config: GitConfig) {
   return { options, remote };
 }
 
-// Files that changed in the repository between two commits.
+// Markdown files that changed in the repository between two commits, read
+// from Git's object store (never from the working copy: a symlink there
+// could point anywhere on the server). Only regular files count, and only
+// what Flowplan exported itself at `from`: existing files, or new records in
+// a database folder that was part of the export – a repository cannot reach
+// other pages or databases by naming their ids in a path.
 async function changedFiles(from: string, to: string) {
-  const changed: string[] = [];
+  const changed: { path: string; text: string }[] = [];
+  const known = new Set<string>(),
+    folders = new Set<string>();
+  const candidates: { path: string; existed: boolean }[] = [];
   await git.walk({
     fs,
     dir: dir(),
@@ -81,10 +90,23 @@ async function changedFiles(from: string, to: string) {
       if (path === ".") return true;
       const [typeA, typeB] = [await a?.type(), await b?.type()];
       if (typeA === "tree" || typeB === "tree") return true;
-      if ((await a?.oid()) !== (await b?.oid()) && b && path.endsWith(".md")) changed.push(path);
+      if (typeA === "blob" && (await a?.mode()) !== 0o120000) {
+        known.add(path);
+        folders.add(posix.dirname(path));
+      }
+      // 0o120000: a symbolic link.
+      if (typeB !== "blob" || (await b?.mode()) === 0o120000 || !path.endsWith(".md")) return true;
+      if ((await a?.oid()) !== (await b?.oid())) candidates.push({ path, existed: typeA === "blob" });
       return true;
     },
   });
+  for (const { path, existed } of candidates) {
+    const newRecord = !existed && /\/records\/[0-9a-f-]{36}$/.test(posix.dirname(path)) && folders.has(posix.dirname(path));
+    if (!(existed && known.has(path)) && !newRecord) continue;
+    const { blob } = await git.readBlob({ fs, dir: dir(), oid: to, filepath: path });
+    if (blob.length > 2_000_000) continue;
+    changed.push({ path, text: Buffer.from(blob).toString("utf8") });
+  }
   return changed;
 }
 
@@ -100,6 +122,8 @@ function readableBoard(user: Identity, id: string) {
 function updateDocument(user: Identity, pageId: string, markdown: string) {
   const page = requirePage(user, pageId, true);
   if (page.kind !== "document" || page.locked) return false;
+  // Journal days behind a PIN stay untouched.
+  requireUnlocked(user, page);
   const body = splitFrontmatter(markdown)
     .body.replace(/^\s*#\s+[^\n]*\n+/, "")
     .replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "");
@@ -131,13 +155,12 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
 // and comment and version files are read-only copies.
 async function importChanges(user: Identity, folders: Map<string, string>, from: string, to: string) {
   let imported = 0;
-  for (const path of await changedFiles(from, to)) {
+  for (const { path, text } of await changedFiles(from, to)) {
     const [folder, ...rest] = path.split("/");
     // Folders end with the start of the page id; the title part may change.
     const rootId = folders.get(folder.split("-").pop() || "");
     if (!rootId || /\.comments\.md$|\.versions\//.test(path)) continue;
     const inside = rest.join("/");
-    const text = readFileSync(resolve(dir(), path), "utf8");
     try {
       const record = /^records\/([0-9a-f-]{36})\/[^/]+\.md$/.exec(inside);
       if (record) {

@@ -541,7 +541,13 @@ export async function exportArchive(user: Identity, wid: string) {
 }
 // Foreign exports (Notion, AppFlowy, Markdown) use arbitrary names; they only
 // skip folders and macOS metadata instead of rejecting unknown entries.
-export type ZipOptions = { foreign?: boolean; maxEntries?: number };
+// Foreign ZIPs (imports, Git) are unpacked in memory: they get a smaller
+// budget than Flowplan's own archives, shared across nested ZIPs through
+// `budget`, and entries that unpack hundreds of times larger than they are
+// (zip bombs) are refused.
+export type ZipOptions = { foreign?: boolean; maxEntries?: number; budget?: { left: number } };
+const FOREIGN_LIMIT = 512 * 1024 * 1024,
+  MAX_RATIO = 200;
 export async function readZip(
   bytes: Buffer,
   options: ZipOptions = {},
@@ -560,6 +566,7 @@ export async function readZip(
         let total = 0,
           count = 0,
           failed = false;
+        const budget = options.budget ?? { left: options.foreign ? FOREIGN_LIMIT : EXPANDED_LIMIT };
         const result = new Map<string, Buffer>();
         const fail = (e: unknown) => {
           if (failed) return;
@@ -609,7 +616,9 @@ export async function readZip(
               : 10 * 1024 * 1024;
           if (
             entry.uncompressedSize > max ||
-            total + entry.uncompressedSize > EXPANDED_LIMIT
+            total + entry.uncompressedSize > EXPANDED_LIMIT ||
+            entry.uncompressedSize > budget.left ||
+            (options.foreign && entry.uncompressedSize > 1024 * 1024 && entry.uncompressedSize > entry.compressedSize * MAX_RATIO)
           ) {
             fail(
               new HttpError(
@@ -630,7 +639,8 @@ export async function readZip(
             stream.on("data", (chunk: Buffer) => {
               size += chunk.length;
               total += chunk.length;
-              if (size > max || total > EXPANDED_LIMIT) {
+              budget.left -= chunk.length;
+              if (size > max || total > EXPANDED_LIMIT || budget.left < 0) {
                 stream.destroy();
                 fail(
                   new HttpError(

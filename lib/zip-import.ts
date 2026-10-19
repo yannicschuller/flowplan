@@ -54,7 +54,9 @@ function nodeKey(path: string) {
 
 // Notion puts a large export into several inner ZIP files.
 async function entriesOf(bytes: Buffer) {
-  let entries = await readZip(bytes, { foreign: true, maxEntries: 5000 });
+  // One budget for the outer ZIP and every inner one.
+  const budget = { left: 512 * 1024 * 1024 };
+  let entries = await readZip(bytes, { foreign: true, maxEntries: 5000, budget });
   const names = [...entries.keys()];
   if (names.length && names.every((n) => /\.zip$/i.test(n))) {
     const merged = new Map<string, Buffer>();
@@ -62,6 +64,7 @@ async function entriesOf(bytes: Buffer) {
       for (const [name, data] of await readZip(inner, {
         foreign: true,
         maxEntries: 5000,
+        budget,
       }))
         merged.set(name, data);
     entries = merged;

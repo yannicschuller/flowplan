@@ -94,7 +94,8 @@ export async function guestUpload(token: string, pageId: string, file: File) {
     };
   });
 }
-// Guest uploads not referenced by any document after a day are deleted.
+// Guest uploads not referenced by any document or record after a day are
+// deleted.
 export function purgeUnusedGuestUploads(now = Date.now()) {
   const stale = all<{ id: string; page_id: string }>(
     `SELECT f.id,f.page_id FROM share_uploads s JOIN files f ON f.id=s.file_id
@@ -107,9 +108,13 @@ export function purgeUnusedGuestUploads(now = Date.now()) {
     const used = all(
       `SELECT 1 FROM documents WHERE page_id=? AND html LIKE ?
        UNION ALL SELECT 1 FROM row_documents d JOIN rows r ON r.id=d.row_id WHERE r.page_id=? AND d.html LIKE ?
+       UNION ALL SELECT 1 FROM rows WHERE page_id=? AND cells LIKE ?
        LIMIT 1`,
       f.page_id,
       needle,
+      f.page_id,
+      needle,
+      // Files properties of records keep their uploads too.
       f.page_id,
       needle,
     ).length;

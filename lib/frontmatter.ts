@@ -68,7 +68,12 @@ function scalar(raw: string): FrontmatterValue {
   return text;
 }
 
-export function parseYaml(source: string): Frontmatter {
+// Frontmatter is small; nesting deeper than a few levels is not part of the
+// format and would only cost time (each level re-reads the block).
+const MAX_YAML = 64 * 1024,
+  MAX_DEPTH = 4;
+export function parseYaml(source: string, depth = 0): Frontmatter {
+  if (source.length > MAX_YAML || depth > MAX_DEPTH) return {};
   const lines = source.split(/\r?\n/);
   const result: Frontmatter = {};
   const keyLine = /^([^\s:#'"][^:]*?|"[^"]*"|'[^']*')\s*:(?:\s+(.*)|\s*)$/;
@@ -97,7 +102,7 @@ export function parseYaml(source: string): Frontmatter {
       result[key] = filled.map((l) => scalar(l.replace(/^\s*-\s?/, "")));
     else if (filled.length) {
       const indent = Math.min(...filled.map((l) => l.length - l.trimStart().length));
-      result[key] = parseYaml(filled.map((l) => l.slice(indent)).join("\n"));
+      result[key] = parseYaml(filled.map((l) => l.slice(indent)).join("\n"), depth + 1);
     } else result[key] = null;
   }
   return result;

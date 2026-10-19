@@ -1,4 +1,6 @@
-import { currentUser } from "@/lib/auth";
+import { acceptInviteToken, currentUser } from "@/lib/auth";
+import { one } from "@/lib/db";
+import type { User } from "@/lib/types";
 import { legalLinks } from "@/lib/legal-links";
 import { bootstrap } from "@/lib/api";
 import { ensureWorkspace } from "@/lib/seed";
@@ -13,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ authError?: string; useTemplate?: string }>;
+  searchParams: Promise<{ authError?: string; useTemplate?: string; invite?: string; confirmed?: string }>;
 }) {
   const user = await currentUser();
   // Visitors sign in.
@@ -23,16 +25,21 @@ export default async function Home({
         legal={legalLinks()}
         {...loginOptions()}
         error={(await searchParams).authError}
+        notice={(await searchParams).confirmed ? "confirmed" : undefined}
         instanceName={instanceSettings().name}
       />
     );
   const locale = await requestLocale();
   rememberLocale(user.id, locale);
   withContentLocale(locale, () => ensureWorkspace(user.id));
-  const { useTemplate } = await searchParams;
+  const { useTemplate, invite } = await searchParams;
+  // An invitation link: taken over by whoever opens it signed in, and the
+  // app opens in that workspace.
+  const invited = invite ? acceptInviteToken(one<User>("SELECT * FROM users WHERE id=?", user.id)!, invite) : null;
   return (
     <WorkspaceApp
-      initial={bootstrap(user) as never}
+      initial={bootstrap(user, invited || undefined) as never}
+      inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
       useTemplate={
         useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))
           ? useTemplate

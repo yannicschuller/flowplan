@@ -32,8 +32,10 @@ export function markdownToHtml(
   // be embedded here; otherwise the image and link stay as they are.
   options: { whiteboard?: (pageId: string) => boolean } = {},
 ) {
+  // The link parts match in linear time ("\]" and "\)" end them), so a large
+  // file cannot hold up the server.
   markdown = markdown.replace(
-    /<!-- flowplan:whiteboard ([0-9a-f-]{36}) (\d{2,4}) -->\n(?:!\[[^\n]*\]\([^\n]*\)\n\n)?\[[^\n]*\]\([^\n]*\)/g,
+    /<!-- flowplan:whiteboard ([0-9a-f-]{36}) (\d{2,4}) -->\n(?:!\[(?:\\.|[^\]\\\n])*\]\((?:<[^>\n]*>|[^)\n]*)\)\n\n)?\[(?:\\.|[^\]\\\n])*\]\((?:<[^>\n]*>|[^)\n]*)\)/g,
     (block, pageId: string, height: string) =>
       options.whiteboard?.(pageId) ? `<!-- flowplan:whiteboard ${pageId} ${height} -->` : block.replace(/^<!--[^\n]*-->\n/, ""),
   );
@@ -57,8 +59,11 @@ export function markdownToHtml(
       },
       // Raw HTML in Markdown is shown as text, never interpreted.
       html({ text }: Tokens.HTML | Tokens.Tag) {
+        // Only a marker the caller vouched for above becomes an embed.
         const board = /^<!-- flowplan:whiteboard ([0-9a-f-]{36}) (\d{2,4}) -->\s*$/.exec(text);
-        if (board) return `<div data-whiteboard="${board[1]}" data-whiteboard-height="${Math.min(2000, Math.max(120, Number(board[2])))}"></div>`;
+        if (board && options.whiteboard?.(board[1]))
+          return `<div data-whiteboard="${board[1]}" data-whiteboard-height="${Math.min(2000, Math.max(120, Number(board[2])))}"></div>`;
+        if (board) return "";
         return escaped(text);
       },
     },

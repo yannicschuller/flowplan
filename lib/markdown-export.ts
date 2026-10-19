@@ -1,4 +1,5 @@
 import { visibleRows } from "./row-access";
+import { hiddenFileIds } from "./row-files";
 import { fileUrls } from "./file-cells";
 import { readFileSync, statSync } from "node:fs";
 import { resolve, posix } from "node:path";
@@ -172,13 +173,24 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     zip && paths.has(id)
       ? relative(from, paths.get(id)!)
       : `${appUrl().replace(/\/$/, "")}/#page=${id}`;
+  // A file comes along only if the person could download it: its page is
+  // readable and unlocked, and it does not belong to a private record.
+  const hiddenFiles = new Map<string, Set<string>>();
   const fileInfo = (id: string) => {
     if (!/^[a-f0-9-]{36}$/i.test(id)) return null;
     const file = one<{ id: string; page_id: string; name: string }>(
       "SELECT id,page_id,name FROM files WHERE id=?",
       id,
     );
-    return file && readable(file.page_id) ? file : null;
+    const owner = file ? readable(file.page_id) : null;
+    if (!file || !owner || locked.has(owner.id)) return null;
+    try {
+      requireUnlocked(user, owner);
+    } catch {
+      return null;
+    }
+    if (!hiddenFiles.has(owner.id)) hiddenFiles.set(owner.id, hiddenFileIds(user, owner));
+    return hiddenFiles.get(owner.id)!.has(file.id) ? null : file;
   };
   function context(from: string): MarkdownContext {
     return {

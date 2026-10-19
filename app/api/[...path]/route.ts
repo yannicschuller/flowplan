@@ -55,6 +55,7 @@ import {
   cookieName,
   rememberPolicy,
   hash,
+  inviteToken,
 } from "@/lib/auth";
 import { bootstrap, pageData, command, rows, database } from "@/lib/api";
 import {
@@ -402,13 +403,18 @@ async function handleGET(
       const wid = url.searchParams.get("workspace") || "";
       requireMember(user, wid, "owner");
       return NextResponse.json({
-        // With who invited, when, and the pages waiting for them.
-        invites: all<{ id: string; email: string; role: string; guest: number; created_at: number | null; inviter: string | null; pages: string | null }>(
-          `SELECT i.id,i.email,i.role,i.guest,i.created_at,u.name inviter,
+        // With who invited, when, the pages waiting for them and the link.
+        invites: (() => {
+          type Invite = { id: string; email: string; role: string; guest: number; created_at: number | null; token: string; inviter: string | null; pages: string | null };
+          for (const open of all<{ id: string }>("SELECT id FROM invites WHERE workspace_id=? AND token IS NULL", wid))
+            run("UPDATE invites SET token=? WHERE id=?", inviteToken(), open.id);
+          return all<Invite>(
+          `SELECT i.id,i.email,i.role,i.guest,i.created_at,i.token,u.name inviter,
              (SELECT json_group_array(p.title) FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE g.workspace_id=i.workspace_id AND lower(g.email)=lower(i.email) AND p.deleted_at IS NULL) pages
            FROM invites i LEFT JOIN users u ON u.id=i.created_by WHERE i.workspace_id=? ORDER BY i.created_at DESC`,
           wid,
-        ).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] })),
+        ).map((i) => ({ ...i, pages: JSON.parse(i.pages || "[]") as string[] }));
+        })(),
         groups: all("SELECT * FROM groups WHERE workspace_id=?", wid),
         groupMembers: all(
           "SELECT gm.* FROM group_members gm JOIN groups g ON g.id=gm.group_id WHERE g.workspace_id=?",
@@ -796,6 +802,9 @@ async function handlePOST(
     else if (Number(req.headers.get("content-length") || 0) > maxBody)
       throw new HttpError(413, "Anfrage zu groß.");
     const user = await requireUser();
+    // Every POST here changes something; read tokens only read (the
+    // Markdown export has a route of its own).
+    if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     if (path.length === 1 && path[0] === "webhooks") {
       if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
       return NextResponse.json(await createWebhook(user, await req.json()));

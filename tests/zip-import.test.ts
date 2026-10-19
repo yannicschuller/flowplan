@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import type { Identity } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
   join(tmpdir(), "flowplan-zipimport-"),
@@ -170,11 +171,14 @@ test("imports need write access, content and stay within limits", async () => {
     importZip(owner, wid, space, Buffer.from("kein zip")),
     /ZIP/,
   );
+  // A tiny archive that unpacks to a lot (a "zip bomb") is refused.
+  const bomb = await zip({ "Notiz.md": "Hallo", "leer.bin": Buffer.alloc(8 * 1024 * 1024) });
+  await assert.rejects(importZip(owner, wid, space, bomb), /Größenlimit/);
   const before = one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n;
   process.env.FLOWPLAN_WORKSPACE_QUOTA_MB = "1";
   const big = await zip({
     "Groß.md": "![x](gross.bin)",
-    "gross.bin": Buffer.alloc(2 * 1024 * 1024),
+    "gross.bin": randomBytes(2 * 1024 * 1024),
   });
   await assert.rejects(importZip(owner, wid, space, big), /Speicherkontingent/);
   delete process.env.FLOWPLAN_WORKSPACE_QUOTA_MB;

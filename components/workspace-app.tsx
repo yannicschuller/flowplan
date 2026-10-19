@@ -254,10 +254,13 @@ type Screen =
 export default function WorkspaceApp({
   initial,
   useTemplate,
+  inviteResult,
 }: {
   initial: Bootstrap;
   // Public gallery: create a page from this template once signed in.
   useTemplate?: string;
+  // Opened through an invitation link (?invite=…).
+  inviteResult?: "accepted" | "invalid";
 }) {
   const toggleReadingRef = useRef(() => {});
   const t = useT();
@@ -495,6 +498,19 @@ export default function WorkspaceApp({
     return () => {
       window.fetch = original;
     };
+  }, []);
+  // An invitation link: say what happened and drop it from the address.
+  useEffect(() => {
+    if (!inviteResult) return;
+    notify(
+      inviteResult === "accepted"
+        ? t(`Einladung angenommen – willkommen in „${boot.workspace.name}“.`, `Invitation accepted – welcome to “${boot.workspace.name}”.`)
+        : t("Dieser Einladungslink ist ungültig oder wurde schon verwendet.", "This invitation link is invalid or was already used."),
+    );
+    const url = new URL(location.href);
+    url.searchParams.delete("invite");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Settings → General opens the introduction again.
   useEffect(() => {

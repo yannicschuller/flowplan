@@ -163,6 +163,7 @@ const exact: Record<string, string> = {
   "Du hast bereits Zugriff.": "You already have access.",
   "Person fehlt.": "Person missing.",
   "Einladung nicht gefunden.": "Invitation not found.",
+  "Zu viele Einladungen in kurzer Zeit. Bitte später erneut versuchen.": "Too many invitations in a short time. Please try again later.",
   "Gruppe fehlt.": "Group missing.",
   "Gruppe fehlt": "Group missing",
   "Mitglied fehlt": "Member missing",

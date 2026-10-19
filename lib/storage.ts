@@ -12,7 +12,7 @@ import { AwsClient } from "aws4fetch";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { currentKeyId, seal, unseal } from "./encryption";
+import { currentKeyId, isEncrypted, seal, unseal } from "./encryption";
 
 export type StorageConfig = {
   endpoint: string;
@@ -238,15 +238,20 @@ export async function ensureLocal(key: string) {
   try {
     const response = await aws(config).fetch(objectUrl(config, key));
     if (!response.ok) return false;
-    // Plain objects (from before encryption) come back as they are.
-    const data = unseal(Buffer.from(await response.arrayBuffer()));
+    // Plain objects (from before encryption) come back as they are – but one
+    // that went up encrypted must still be: a plain object in its place was
+    // swapped in the bucket.
+    const raw = Buffer.from(await response.arrayBuffer());
+    const sealedWith = state.flowplanStorage?.db.prepare("SELECT key_id FROM storage_sealed WHERE key=?").get(key) as { key_id: string } | undefined;
+    if (sealedWith?.key_id && !isEncrypted(raw)) throw new Error("Unverschlüsseltes Objekt anstelle eines verschlüsselten – nicht übernommen.");
+    const data = unseal(raw);
     mkdirSync(uploadsDir(), { recursive: true });
     const partial = `${path}.${process.pid}.part`;
     writeFileSync(partial, data);
     renameSync(partial, path);
     return true;
   } catch (error) {
-    if (/Schlüssel|Entschlüsseln/.test(String((error as Error)?.message)))
+    if (/Schlüssel|Entschlüsseln|verschlüsselt/.test(String((error as Error)?.message)))
       console.error(`Dateispeicher: ${key} – ${(error as Error).message}`);
     return false;
   }

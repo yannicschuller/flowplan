@@ -227,6 +227,18 @@ function migrate(d: DatabaseSync) {
     )
   )
     d.exec("ALTER TABLE invites ADD COLUMN guest INTEGER NOT NULL DEFAULT 0");
+  // Whether an account's address is proven (confirmation link, an
+  // administrator, the SSO provider): only then do invitations and shared
+  // pages for that address reach it. Invitations also carry a secret link.
+  if (!(d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "email_verified")) {
+    d.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0");
+    if (d.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='local_accounts'").get())
+      d.exec("UPDATE users SET email_verified=1 WHERE id IN (SELECT user_id FROM local_accounts WHERE email_verified=1)");
+  }
+  if (!(d.prepare("PRAGMA table_info(invites)").all() as { name: string }[]).some((c) => c.name === "token")) {
+    d.exec("ALTER TABLE invites ADD COLUMN token TEXT");
+    d.exec("CREATE UNIQUE INDEX IF NOT EXISTS invites_token ON invites(token)");
+  }
   // When an invitation went out (shown in Settings → Members).
   if (!(d.prepare("PRAGMA table_info(invites)").all() as { name: string }[]).some((c) => c.name === "created_at"))
     d.exec("ALTER TABLE invites ADD COLUMN created_at INTEGER");

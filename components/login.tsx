@@ -17,6 +17,8 @@ import { LegalFooter } from "./legal-footer";
 type Mode = "signin" | "register" | "forgot" | "confirm";
 type Props = Partial<LoginOptions> & {
   error?: string;
+  // "confirmed": the address was confirmed from another browser.
+  notice?: "confirmed";
   instanceName?: string;
   mode?: Mode;
   // Legal notice and privacy policy of the instance (when set).
@@ -43,6 +45,7 @@ export default function Login({
   mail = false,
   remember: rememberAvailable = false,
   error,
+  notice: initialNotice,
   instanceName = "",
   mode: initialMode,
   legal,
@@ -51,7 +54,9 @@ export default function Login({
   const [mode, setMode] = useState<Mode>(initialMode || (firstAccount ? "register" : "signin"));
   const [busy, setBusy] = useState(""),
     [message, setMessage] = useState(error || ""),
-    [notice, setNotice] = useState(""),
+    [notice, setNotice] = useState(
+      initialNotice === "confirmed" ? t("Deine E-Mail-Adresse ist bestätigt – melde dich jetzt an.", "Your e-mail address is confirmed – sign in now.") : "",
+    ),
     [pendingEmail, setPendingEmail] = useState("");
   const [loginUrl, setLoginUrl] = useState("/api/auth/login");
   const [passkeys, setPasskeys] = useState(false);
@@ -109,7 +114,8 @@ export default function Login({
       });
     else if (mode === "register")
       void run("register", async () => {
-        const result = await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password") });
+        const invite = new URLSearchParams(location.search).get("invite") || undefined;
+        const result = await post("register", { name: field(form, "name"), email: field(form, "email"), password: field(form, "password"), invite });
         // The instance sends e-mail: the account waits for the link.
         if (result?.pending) {
           setBusy("");

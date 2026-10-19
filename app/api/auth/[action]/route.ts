@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { withRequestLocale } from "@/lib/content-locale";
 import { DEMO_MAX_MS, demoSessionExpiry, endDemo, startDemo } from "@/lib/demo";
 import { syncAvatar } from "@/lib/avatars";
@@ -18,6 +19,7 @@ import {
   acceptPendingInvites,
   adminGroup,
   currentUser,
+  endOtherSessions,
   HttpError,
 } from "@/lib/auth";
 import { one, run, transaction } from "@/lib/db";
@@ -170,10 +172,16 @@ async function handleGET(
     if (action === "verify") {
       const token = new URL(req.url).searchParams.get("token") || "";
       const userId = verifyEmail(token);
-      // Confirmed: signed in right away.
-      if (userId) await signIn(userId, localGroups(userId));
+      // Confirmed: signed in right away in the browser that signed up;
+      // elsewhere the person signs in themselves.
+      const jar = await cookies();
+      const here = !!userId && jar.get("flowplan_verify")?.value === userId;
+      if (userId && here) {
+        jar.delete("flowplan_verify");
+        await signIn(userId, localGroups(userId));
+      }
       return NextResponse.redirect(
-        new URL(userId ? "/?verified=1" : `/?authError=${encodeURIComponent(translate(await requestLocale())("Der Bestätigungslink ist abgelaufen. Melde dich an, um einen neuen zu bekommen.", "The confirmation link has expired. Sign in to get a new one."))}`, appUrl()),
+        new URL(userId ? (here ? "/?verified=1" : "/?confirmed=1") : `/?authError=${encodeURIComponent(translate(await requestLocale())("Der Bestätigungslink ist abgelaufen. Melde dich an, um einen neuen zu bekommen.", "The confirmation link has expired. Sign in to get a new one."))}`, appUrl()),
       );
     }
     if (action === "callback") {
@@ -225,6 +233,9 @@ async function handleGET(
         String(profile.email || ""),
       );
       await syncAvatar(user.id, profile.picture);
+      // Whether the provider vouches for the address: decides whether
+      // invitations and shared pages for it reach this account.
+      run("UPDATE users SET email_verified=? WHERE id=?", profile.email_verified === true ? 1 : 0, user.id);
       acceptInvites(user, profile.email_verified === true);
       ensureWorkspace(user.id);
       await issueSession(user.id, groups, undefined, { remember: !!f.remember, sso: true });
@@ -321,14 +332,19 @@ async function handlePOST(
     if (action === "register") {
       let registered: Awaited<ReturnType<typeof register>>;
       try {
-        registered = await register(await body(), locale);
+        registered = await register(await body(), locale, clientAddress(req.headers));
       } catch (e) {
         if (e instanceof AccountExists && e.noted) return NextResponse.json({ ok: true, pending: true, email: e.email });
         throw e;
       }
       const { user, groups, pending } = registered;
-      // With e-mail confirmation the account waits for the link.
-      if (pending) return NextResponse.json({ ok: true, pending: true, email: user.email });
+      // With e-mail confirmation the account waits for the link. This
+      // browser is remembered: the link signs in only here, so a link sent
+      // to someone else cannot sign them into a stranger's account.
+      if (pending) {
+        (await cookies()).set("flowplan_verify", user.id, { httpOnly: true, secure: appUrl().startsWith("https:"), sameSite: "lax", path: "/api/auth", maxAge: 7 * 86400 });
+        return NextResponse.json({ ok: true, pending: true, email: user.email });
+      }
       await signIn(user.id, groups);
       return NextResponse.json({ ok: true });
     }
@@ -343,7 +359,7 @@ async function handlePOST(
       return NextResponse.json({ ok: true });
     }
     if (action === "reset-request") {
-      requestPasswordReset(await body(), locale);
+      requestPasswordReset(await body(), locale, clientAddress(req.headers));
       return NextResponse.json({ ok: true });
     }
     if (action === "reset") {
@@ -369,7 +385,10 @@ async function handlePOST(
       // API tokens act for scripts: they never change how the person signs in.
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
       if (action === "profile") updateLocalProfile(user.id, await body(), locale);
-      else if (action === "password-change") await changePassword(user.id, await body(), locale);
+      else if (action === "password-change") {
+        await changePassword(user.id, await body(), locale);
+        await endOtherSessions(user.id);
+      }
       else if (action === "passkey-register-options") {
         const { options, token } = await passkeyRegistrationOptions(user, locale);
         await rememberChallenge(token);
@@ -410,9 +429,11 @@ async function handlePOST(
     }
     throw new HttpError(404, "Nicht gefunden");
   } catch (e) {
+    // Messages of our own go out; anything else stays in the log.
+    if (!(e instanceof HttpError) && !(e instanceof z.ZodError)) console.error(e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Fehler" },
-      { status: e instanceof HttpError ? e.status : 500 },
+      { error: e instanceof HttpError ? e.message : e instanceof z.ZodError ? "Ungültige Eingabe." : "Anmeldung fehlgeschlagen. Bitte erneut versuchen." },
+      { status: e instanceof HttpError ? e.status : e instanceof z.ZodError ? 400 : 500 },
     );
   }
 }

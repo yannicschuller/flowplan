@@ -72,6 +72,41 @@ type Options = {
   accept?: string;
   allowPrivate?: boolean;
 };
+// DNS lookup that refuses internal addresses and hands the request the very
+// address it checked (no second lookup that could point elsewhere).
+function pinnedLookup(allowPrivate: boolean) {
+  return (host: string, options: object, callback: (...args: never[]) => void) =>
+    dnsLookup(host, { all: true }, (error, addresses) => {
+      const done = callback as unknown as (e: Error | null, a: string | { address: string; family: number }[], f?: number) => void;
+      if (error) return done(error, "", 4);
+      const list = addresses as { address: string; family: number }[];
+      if (!list.length || (!allowPrivate && list.some((a) => privateAddress(a.address))))
+        return done(new Error("Interne Adressen sind nicht erlaubt."), "", 4);
+      if ((options as { all?: boolean }).all) return done(null, [list[0]]);
+      done(null, list[0].address, list[0].family);
+    });
+}
+// A POST to an outside address (webhooks), with the same pinned lookup and
+// no redirects. Resolves with the status code. With allowPrivate (webhooks
+// to the own network) plain http and internal addresses are fine.
+export function safePost(raw: string, body: string, headers: Record<string, string>, allowPrivate = false, timeout = 10_000) {
+  return new Promise<number>((resolve, reject) => {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && !(allowPrivate && url.protocol === "http:")) return reject(new Error("Nur https-Adressen sind erlaubt."));
+    const request = url.protocol === "http:" ? httpRequest : httpsRequest;
+    const req = request(
+      url,
+      { method: "POST", timeout, headers: { ...headers, "content-length": String(Buffer.byteLength(body)) }, lookup: pinnedLookup(allowPrivate) as never },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode || 0);
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("Zeitüberschreitung.")));
+    req.on("error", reject);
+    req.end(body);
+  });
+}
 function once(url: URL, maxBytes: number, timeout: number, accept: string, allowPrivate: boolean) {
   return new Promise<Fetched & { location?: string }>((resolve, reject) => {
     const request = url.protocol === "http:" ? httpRequest : httpsRequest;
@@ -85,28 +120,7 @@ function once(url: URL, maxBytes: number, timeout: number, accept: string, allow
           accept,
         },
         // Resolve, check and pin the address that is used.
-        lookup: (host, options, callback) =>
-          dnsLookup(host, { all: true }, (error, addresses) => {
-            if (error) return callback(error, "", 4);
-            const list = addresses as { address: string; family: number }[];
-            if (
-              !list.length ||
-              (!allowPrivate && list.some((a) => privateAddress(a.address)))
-            )
-              return callback(
-                new Error("Interne Adressen sind nicht erlaubt."),
-                "",
-                4,
-              );
-            if ((options as { all?: boolean }).all)
-              return (
-                callback as unknown as (
-                  e: null,
-                  a: { address: string; family: number }[],
-                ) => void
-              )(null, [list[0]]);
-            callback(null, list[0].address, list[0].family);
-          }),
+        lookup: pinnedLookup(allowPrivate),
       },
       (res) => {
         const status = res.statusCode || 0;

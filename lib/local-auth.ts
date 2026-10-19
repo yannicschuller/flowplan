@@ -24,6 +24,7 @@ import { HttpError, acceptInvites, adminGroup, appUrl, hash, rememberPolicy } fr
 import { instanceSettings } from "./instance-settings";
 import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
+import { allow } from "./action-limits";
 import { translate, type Locale } from "./i18n";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, length: number, options: object) => Promise<Buffer>;
@@ -93,9 +94,13 @@ const registerSchema = z.object({
   name: z.string().trim().min(1).max(80),
   email: z.string().trim().toLowerCase().email().max(200),
   password: z.string(),
+  // The invitation link the person came with (?invite=…).
+  invite: z.string().max(80).optional(),
 });
-export async function register(input: unknown, locale: Locale) {
+export async function register(input: unknown, locale: Locale, address = "") {
   const t = tr(locale);
+  if (address && !allow(`register-ip:${address}`, 10, 3_600_000))
+    throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   if (!localLoginEnabled()) throw new HttpError(403, t("Anmeldung mit Passwort ist ausgeschaltet.", "Password sign-in is turned off."));
   const parsed = registerSchema.safeParse(input);
   if (!parsed.success) throw new HttpError(400, t("Bitte Name und eine gültige E-Mail-Adresse angeben.", "Please enter a name and a valid e-mail address."));
@@ -103,7 +108,8 @@ export async function register(input: unknown, locale: Locale) {
   const password = passwordSchema(t).safeParse(parsed.data.password);
   if (!password.success) throw new HttpError(400, password.error.issues[0].message);
   const first = firstAccount();
-  if (!first && !instanceSettings().allowSignup && !invited(email))
+  const linked = !!parsed.data.invite && !!one("SELECT 1 FROM invites WHERE token=?", parsed.data.invite);
+  if (!first && !instanceSettings().allowSignup && !invited(email) && !linked)
     throw new HttpError(403, t("Neue Konten legen hier nur Admins an – oder du wirst eingeladen.", "Only administrators create new accounts here – or you get invited."));
   const passwordHash = await hashPassword(password.data);
   if (accountByEmail(email) || one("SELECT 1 FROM users WHERE lower(email)=lower(?) AND subject LIKE 'local:%'", email)) {
@@ -270,6 +276,7 @@ function recentlySent(userId: string) {
 }
 export function confirmAddress(userId: string) {
   run("UPDATE local_accounts SET email_verified=1 WHERE user_id=?", userId);
+  run("UPDATE users SET email_verified=1 WHERE id=?", userId);
   const user = one<User>("SELECT * FROM users WHERE id=?", userId);
   if (user) acceptInvites(user, true);
 }
@@ -290,12 +297,16 @@ export function resendVerification(input: unknown, locale: Locale) {
   }
 }
 // Always the same answer, so it does not tell which addresses have accounts.
-export function requestPasswordReset(input: unknown, locale: Locale) {
+export function requestPasswordReset(input: unknown, locale: Locale, address = "") {
   const t = tr(locale);
   const { email } = z.object({ email: z.string().trim().max(200) }).parse(input);
   if (!mailConfig()) throw new HttpError(400, t("Diese Instanz versendet keine E-Mails. Bitte wende dich an die Administration.", "This instance does not send e-mails. Please contact the administrators."));
+  if (address && !allow(`reset-ip:${address}`, 20, 3_600_000))
+    throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   const account = accountByEmail(email);
-  if (account && !account.disabled) {
+  // One link per address every few minutes: more would flood the inbox and
+  // keep replacing the link. The answer stays the same either way.
+  if (account && !account.disabled && allow(`reset:${email.toLowerCase()}`, 1, 5 * 60_000)) {
     const url = `${appUrl().replace(/\/$/, "")}/reset?token=${issueToken(account.user_id, "reset")}`;
     queueLinkMail({
       to: account.email,

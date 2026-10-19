@@ -94,6 +94,11 @@ export async function currentUser() {
   const token = jar.get(cookieName)?.value;
   return token ? identityFromToken(token) : null;
 }
+// Ends the person's other sessions (after a password change), keeping this one.
+export async function endOtherSessions(userId: string) {
+  const token = (await cookies()).get(cookieName)?.value;
+  run("DELETE FROM sessions WHERE user_id=? AND token<>?", userId, token ? hash(token) : "");
+}
 export async function requireUser() {
   const u = await currentUser();
   if (!u) throw new HttpError(401, "Bitte melde dich an.");
@@ -162,23 +167,25 @@ export function upsertUser(subject: string, name: string, email: string) {
     run("UPDATE users SET name=?,email=? WHERE id=?", name, email, user.id);
   return user;
 }
-// Invitations waiting for a local account whose address is confirmed: taken
+// Invitations waiting for an account whose address is confirmed: taken
 // over at sign-in and when the app loads, so an account that already exists
 // gets a later invitation too. SSO accounts take them over at sign-in, when
 // the provider confirms the address.
 export function acceptPendingInvites(userId: string) {
   const user = one<User>("SELECT * FROM users WHERE id=?", userId);
   if (!user || !one("SELECT 1 FROM invites WHERE lower(email)=lower(?)", user.email)) return;
-  if (one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=1", userId)) acceptInvites(user, true);
+  // Only a confirmed address (by e-mail link, an administrator or the SSO
+  // provider) proves it is this person's.
+  if (one("SELECT 1 FROM users WHERE id=? AND email_verified=1", userId)) acceptInvites(user, true);
 }
 export function acceptInvites(user: User, emailVerified: boolean) {
   if (!emailVerified) return;
-  for (const inv of all<{
-    id: string;
-    workspace_id: string;
-    role: string;
-    guest: number;
-  }>("SELECT * FROM invites WHERE lower(email)=lower(?)", user.email)) {
+  for (const inv of all<Invite>("SELECT * FROM invites WHERE lower(email)=lower(?)", user.email)) acceptInvite(user, inv);
+}
+type Invite = { id: string; workspace_id: string; email: string; role: string; guest: number };
+// One invitation for this person: membership (as guest when invited so),
+// the pages that waited for it, and a note in the inbox.
+function acceptInvite(user: User, inv: Invite) {
     const added = run(
       "INSERT OR IGNORE INTO members VALUES(?,?,?)",
       inv.workspace_id,
@@ -191,7 +198,7 @@ export function acceptInvites(user: User, emailVerified: boolean) {
       const by = one<{ name: string }>("SELECT u.name FROM invites i JOIN users u ON u.id=i.created_by WHERE i.id=?", inv.id);
       const page = one<{ id: string; title: string }>(
         "SELECT p.id,p.title FROM invite_grants g JOIN pages p ON p.id=g.resource_id WHERE lower(g.email)=lower(?) AND g.workspace_id=? AND p.deleted_at IS NULL",
-        user.email,
+        inv.email,
         inv.workspace_id,
       );
       run(
@@ -214,17 +221,28 @@ export function acceptInvites(user: User, emailVerified: boolean) {
     // Pages shared before the account existed (lib/page-share.ts).
     for (const g of all<{ resource_id: string; role: string }>(
       "SELECT resource_id,role FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?",
-      user.email,
+      inv.email,
       inv.workspace_id,
     )) {
       if (!one("SELECT 1 FROM pages WHERE id=? AND workspace_id=? AND deleted_at IS NULL", g.resource_id, inv.workspace_id)) continue;
       run("DELETE FROM grants WHERE resource_id=? AND user_id=? AND group_id=''", g.resource_id, user.id);
       run("INSERT INTO grants VALUES(?,?,?,?)", g.resource_id, user.id, "", g.role);
     }
-    run("DELETE FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?", user.email, inv.workspace_id);
+    run("DELETE FROM invite_grants WHERE lower(email)=lower(?) AND workspace_id=?", inv.email, inv.workspace_id);
     run("DELETE FROM invites WHERE id=?", inv.id);
-  }
 }
+// The link from an invitation (?invite=…): whoever opens it signed in takes
+// the invitation over, whatever their address – the link is the proof. This
+// is the way in on instances without e-mail, where an address cannot be
+// confirmed. Returns the workspace, or null for an unknown or used link.
+export function acceptInviteToken(user: User, token: string) {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+  const inv = one<Invite>("SELECT * FROM invites WHERE token=?", token);
+  if (!inv) return null;
+  acceptInvite(user, inv);
+  return inv.workspace_id;
+}
+export const inviteToken = () => randomBytes(24).toString("base64url");
 export class HttpError extends Error {
   constructor(
     public status: number,

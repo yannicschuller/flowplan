@@ -76,6 +76,7 @@ import {
   manageWorkspace,
   canManageSpace,
   requireSpaceManager,
+  removeFromWorkspace,
 } from "./workspace-lifecycle";
 import {
   coverSchema,
@@ -107,6 +108,7 @@ import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
 import { notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { sharePage, updatePageShare } from "./page-share";
+import { limitInviter, mailAllowed } from "./action-limits";
 import { templateCategoryIds } from "./template-categories";
 import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
 import {
@@ -146,7 +148,7 @@ import {
 import { z } from "zod";
 import * as Y from "yjs";
 import { all, one, run, id, transaction, audit } from "./db";
-import { HttpError, acceptPendingInvites } from "./auth";
+import { HttpError, acceptPendingInvites, inviteToken } from "./auth";
 import {
   cleanHtml,
   htmlState,
@@ -1061,8 +1063,12 @@ export function command(
           throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
         subtree.forEach((child) => requirePage(user, child, true, true));
         // Into another workspace: rights, favourites and quota follow it.
-        if (destination.workspace_id !== p.workspace_id)
+        // Only full members take pages out; a guest edits what was shared
+        // with them but cannot carry it off into a workspace of their own.
+        if (destination.workspace_id !== p.workspace_id) {
+          requireMember(user, p.workspace_id, "editor");
           transferPages(user, subtree, p.workspace_id, destination.workspace_id);
+        }
         for (const child of subtree)
           run("UPDATE pages SET space_id=? WHERE id=?", sid, child);
         run(
@@ -2067,10 +2073,11 @@ export function command(
         break;
       case "member.invite": {
         requireMember(user, wid(), "owner");
+        limitInviter(user.id);
         const email = z.email().parse(b.email).toLowerCase(),
           role = z.enum(["editor", "viewer"]).parse(b.role);
         run(
-          "INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(workspace_id,email) DO UPDATE SET role=excluded.role,guest=excluded.guest,created_at=excluded.created_at",
+          "INSERT INTO invites(id,workspace_id,email,role,created_by,guest,created_at,token) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,email) DO UPDATE SET role=excluded.role,guest=excluded.guest,created_at=excluded.created_at,token=COALESCE(invites.token,excluded.token)",
           id(),
           wid(),
           email,
@@ -2078,14 +2085,17 @@ export function command(
           user.id,
           b.guest === true ? 1 : 0,
           Date.now(),
+          inviteToken(),
         );
         // With SMTP configured the person hears about it by e-mail.
         {
           const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
-          const invite = { email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: b.guest === true };
-          afterCommit.push(() => {
-            if (queueInviteMail(invite)) void dispatchMail();
-          });
+          const token = one<{ token: string }>("SELECT token FROM invites WHERE workspace_id=? AND email=?", wid(), email)?.token;
+          const invite = { email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: b.guest === true, token };
+          if (mailAllowed(email))
+            afterCommit.push(() => {
+              if (queueInviteMail(invite)) void dispatchMail();
+            });
         }
         break;
       }
@@ -2105,7 +2115,14 @@ export function command(
             wid(),
             invite.email,
           );
-          const mail = { email: invite.email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: !!invite.guest, page: invite.guest ? page?.title : undefined };
+          let token = one<{ token: string | null }>("SELECT token FROM invites WHERE id=?", uuid.parse(b.inviteId))?.token;
+          if (!token) {
+            token = inviteToken();
+            run("UPDATE invites SET token=? WHERE id=?", token, uuid.parse(b.inviteId));
+          }
+          const mail = { email: invite.email, inviter: user.name, workspace: ws?.name || "Flowplan", guest: !!invite.guest, page: invite.guest ? page?.title : undefined, token };
+          limitInviter(user.id);
+          if (!mailAllowed(invite.email)) throw new HttpError(429, "Zu viele Einladungen in kurzer Zeit. Bitte später erneut versuchen.");
           run("UPDATE invites SET created_at=? WHERE id=?", Date.now(), uuid.parse(b.inviteId));
           afterCommit.push(() => {
             if (queueInviteMail(mail)) void dispatchMail();
@@ -2139,16 +2156,8 @@ export function command(
             "Gäste zuerst zu Mitgliedern machen, bevor sie Eigentümer werden.",
           );
         if (role === "remove") {
-          run(
-            "DELETE FROM members WHERE workspace_id=? AND user_id=?",
-            wid(),
-            target,
-          );
-          run(
-            "DELETE FROM workspace_guests WHERE workspace_id=? AND user_id=?",
-            wid(),
-            target,
-          );
+          // Grants, groups and spaces go too: re-inviting starts afresh.
+          removeFromWorkspace(target, wid(), user.id);
         } else
           run(
             "UPDATE members SET role=? WHERE workspace_id=? AND user_id=?",
@@ -2170,6 +2179,9 @@ export function command(
         if (!member) throw new HttpError(404, "Mitglied nicht gefunden.");
         if (guest && member.role === "owner")
           throw new HttpError(400, "Eigentümer können keine Gäste sein.");
+        // A guest manages no space: their spaces go to the owner acting.
+        if (guest)
+          run("UPDATE spaces SET owner_id=?,version=version+1 WHERE workspace_id=? AND owner_id=?", user.id, wid(), target);
         if (guest)
           run(
             "INSERT OR IGNORE INTO workspace_guests(workspace_id,user_id) VALUES(?,?)",
@@ -2188,10 +2200,11 @@ export function command(
       case "page.share": {
         const shared = sharePage(user, b);
         if (shared.status === "invited") {
-          const { mail, ...rest } = shared;
-          afterCommit.push(() => {
-            if (queueInviteMail(mail)) void dispatchMail();
-          });
+          const { mail, send, ...rest } = shared;
+          if (send)
+            afterCommit.push(() => {
+              if (queueInviteMail(mail)) void dispatchMail();
+            });
           result = rest;
         } else {
           if (shared.mailed) afterCommit.push(() => void dispatchMail());

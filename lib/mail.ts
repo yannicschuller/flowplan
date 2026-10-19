@@ -144,8 +144,10 @@ export function queueInviteMail(input: {
   guest: boolean;
   // A single shared page (lib/page-share.ts).
   page?: string;
+  // The invitation's own link: works with any account that opens it.
+  token?: string;
 }) {
-  const url = appUrl();
+  const url = input.token ? `${appUrl()}/?invite=${input.token}` : appUrl();
   // The invited person's language if they have an account, else the inviter's.
   const known = one<{ id: string }>("SELECT id FROM users WHERE lower(email)=lower(?)", input.email);
   const locale = known ? userLocale(known.id) : contentLocale();
