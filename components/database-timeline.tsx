@@ -40,6 +40,7 @@ import {
   type TimelineConfig,
 } from "@/lib/database-timeline";
 import type { Field, Row, View } from "@/lib/types";
+import { glide, layoutPosition, motionAllowed, prefersReducedMotion, type Point } from "@/lib/motion";
 type Drag = {
   row: Row;
   version: number;
@@ -48,7 +49,7 @@ type Drag = {
   days: number;
   pointer: number;
 };
-type Arrow = { key: string; d: string; conflict: boolean; critical?: boolean };
+type Arrow = { key: string; d: string; conflict: boolean; critical?: boolean; fresh?: boolean };
 // Drawing a dependency from the end of a bar onto another one.
 type Linking = { from: string; pointer: number; x1: number; y1: number; x2: number; y2: number };
 export default function DatabaseTimeline({
@@ -93,7 +94,14 @@ export default function DatabaseTimeline({
     } | null>(null);
   const [arrows, setArrows] = useState<Arrow[]>([]);
   const [linking, setLinking] = useState<Linking | null>(null);
+  // A dropped bar (and the successors moving with it) stays where it was
+  // let go until the saved dates arrive, instead of jumping back first.
+  const [landing, setLanding] = useState<Drag | null>(null);
   const grid = useRef<HTMLDivElement>(null);
+  // Arrows of links that appear after the first render draw in once.
+  const knownArrows = useRef<Map<string, number> | null>(null);
+  // Bar positions of the last render, to let moved bars glide (FLIP).
+  const barPositions = useRef<{ period: string; at: Map<string, Point> } | null>(null);
   const dragging = useRef<Drag | null>(null),
     suppressed = useRef(false),
     pending = useRef(false);
@@ -110,8 +118,12 @@ export default function DatabaseTimeline({
     moveSuccessors = !!dependencyField && !!config.moveSuccessors;
   // While dragging, the bars show where they would land; with "Nachfolger
   // mitverschieben" the records waiting for the dragged one move along.
+  const shownDrag =
+    drag ||
+    (landing && rows.find((r) => r.id === landing.row.id)?.version === landing.row.version ? landing : null);
   const preview = (() => {
     const changed = new Map<string, Row>();
+    const drag = shownDrag;
     if (!drag?.days) return { rows, changed };
     try {
       const moved = {
@@ -149,7 +161,7 @@ export default function DatabaseTimeline({
       ? criticalPath(preview.rows, dependencyField, start, end, dependencyType)
       : new Set<string>();
   // Links the current drag would break (shown as a warning before letting go).
-  const dragConflicts = preview.changed.size
+  const dragConflicts = drag && preview.changed.size
     ? links.filter(
         (l) => l.shift > 0 && (preview.changed.has(l.to) || preview.changed.has(l.from)),
       )
@@ -160,10 +172,16 @@ export default function DatabaseTimeline({
     const next: Arrow[] = [];
     if (root && links.length) {
       const origin = root.getBoundingClientRect();
-      const bar = (id: string) =>
-        root
-          .querySelector(`[data-row-id="${CSS.escape(id)}"] .timeline-range`)
-          ?.getBoundingClientRect();
+      // Layout positions, not screen boxes: a bar gliding to its new place
+      // must not pull its arrows along the old way.
+      const bar = (id: string) => {
+        const el = root.querySelector<HTMLElement>(
+          `[data-row-id="${CSS.escape(id)}"] .timeline-range`,
+        );
+        if (!el) return undefined;
+        const at = layoutPosition(el, root, origin);
+        return { left: at.x, right: at.x + el.offsetWidth, top: at.y, height: el.offsetHeight };
+      };
       for (const link of links) {
         const a = bar(link.from),
           b = bar(link.to);
@@ -171,24 +189,74 @@ export default function DatabaseTimeline({
         // Arrows leave and enter the linked ends of both bars.
         const fromEnd = dependencyType === "fs" || dependencyType === "ff",
           toStart = dependencyType === "fs" || dependencyType === "ss";
-        const x1 = (fromEnd ? a.right : a.left) - origin.left,
-          y1 = a.top + a.height / 2 - origin.top,
-          x2 = (toStart ? b.left : b.right) - origin.left,
-          y2 = b.top + b.height / 2 - origin.top,
+        const x1 = fromEnd ? a.right : a.left,
+          y1 = a.top + a.height / 2,
+          x2 = toStart ? b.left : b.right,
+          y2 = b.top + b.height / 2,
           bend = Math.max(12, Math.min(40, Math.abs(x2 - x1) / 2)),
           out = fromEnd ? bend : -bend,
           into = toStart ? -bend : bend;
+        const key = `${link.from}>${link.to}`;
         next.push({
-          key: `${link.from}>${link.to}`,
+          key,
+          ...(arrowFresh(key) ? { fresh: true } : {}),
           d: `M ${x1} ${y1} C ${x1 + out} ${y1}, ${x2 + into} ${y2}, ${x2 + (toStart ? -6 : 6)} ${y2}`,
           conflict: link.shift > 0 || cyclic.has(link.to),
           critical: critical.has(link.from) && critical.has(link.to),
         });
       }
     }
+    if (!knownArrows.current) knownArrows.current = new Map(next.map((a) => [a.key, 0]));
     setArrows((previous) =>
       JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
     );
+  });
+  // Links made after the first render (drawn onto a bar, set in a record)
+  // count as fresh for a moment: their arrows draw in.
+  function arrowFresh(key: string) {
+    const known = knownArrows.current;
+    if (!known) return false;
+    if (!known.has(key)) known.set(key, Date.now() + 600);
+    return Date.now() < known.get(key)!;
+  }
+  // Bars that moved without being the one dragged glide to their new place:
+  // successors moving along (while dragging and after the drop), all
+  // conflicts resolved, a move after the predecessor, a change by someone
+  // else, a new sort. The arrows fade back in once the bars have arrived.
+  // Not when the period or scale changes, nor in large timelines.
+  useLayoutEffect(() => {
+    const root = grid.current;
+    if (!root) return;
+    const bars = [...root.querySelectorAll<HTMLElement>(".timeline-entry[data-row-id] .timeline-range")];
+    const id = (el: Element) => el.closest<HTMLElement>(".timeline-entry")?.dataset.rowId;
+    const origin = root.getBoundingClientRect(),
+      at = new Map<string, Point>();
+    for (const el of bars) {
+      const key = id(el);
+      if (key) at.set(key, layoutPosition(el, root, origin));
+    }
+    const period = `${scale}:${anchor}:${weekends}`,
+      previous = barPositions.current;
+    barPositions.current = { period, at };
+    if (!previous || previous.period !== period || bars.length > 150) return;
+    // During a drag the pointer is held: only the successors' preview moves.
+    if (drag ? prefersReducedMotion() : !motionAllowed()) return;
+    let moved = false;
+    for (const el of bars) {
+      const key = id(el),
+        from = key && previous.at.get(key),
+        to = key && at.get(key);
+      if (!from || !to || key === drag?.row.id) continue;
+      const dx = from.x - to.x,
+        dy = from.y - to.y;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      glide(el, { x: dx, y: dy }, { duration: drag ? 150 : 260 });
+      moved = true;
+    }
+    if (moved && !drag)
+      root
+        .querySelector(".timeline-dependencies")
+        ?.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], { duration: 420, easing: "ease-out" });
   });
   const title = (row: Row) => cellText(row.cells[fields[0]?.id]) || t("Unbenannt", "Untitled");
   const label = (
@@ -239,6 +307,8 @@ export default function DatabaseTimeline({
     } catch (error) {
       setError((error as Error).message);
     } finally {
+      // The reloaded rows are in place by now (or the change failed).
+      setLanding(null);
       pending.current = false;
       setBusy(false);
     }
@@ -308,11 +378,13 @@ export default function DatabaseTimeline({
     if (!current || current.pointer !== event.pointerId) return;
     dragging.current = null;
     setDrag(null);
-    if (current.days)
+    if (current.days) {
+      setLanding(current);
       void apply(current.row, current.version, {
         operation: current.operation,
         days: current.days,
       });
+    }
   }
   function cancel() {
     dragging.current = null;
@@ -668,7 +740,12 @@ export default function DatabaseTimeline({
                     <path
                       key={arrow.key}
                       d={arrow.d}
-                      className={arrow.conflict ? "conflict" : arrow.critical ? "critical" : undefined}
+                      pathLength={arrow.fresh && !arrow.conflict ? 1 : undefined}
+                      className={
+                        [arrow.conflict ? "conflict" : arrow.critical ? "critical" : "", arrow.fresh ? "is-new" : ""]
+                          .filter(Boolean)
+                          .join(" ") || undefined
+                      }
                       markerEnd={`url(#timeline-arrow-${view.id}-${arrow.conflict ? "conflict" : "ok"})`}
                     />
                   ))}

@@ -65,8 +65,20 @@ import {
   useLayoutEffect,
   useRef,
   useEffect,
+  startTransition,
+  ViewTransition,
   type DragEvent,
 } from "react";
+import {
+  appear,
+  FLIP_LIMIT,
+  flash,
+  glide,
+  layoutPosition,
+  pointerHeld,
+  prefersReducedMotion,
+  typedRecently,
+} from "@/lib/motion";
 import DatabaseFeed from "./database-feed";
 import { defaultFeed } from "@/lib/database-feed";
 import DatabaseChart from "./database-chart";
@@ -377,17 +389,31 @@ export default function DatabaseView({
   function setRowId(id: string | null, occurrence?: string) {
     setOccurrence(id && occurrence ? { rowId: id, date: occurrence } : null);
     setLocalRowId(id);
-    if (routeNavigation)
-      location.hash = pageLocationHash({
+    if (routeNavigation) {
+      const hash = pageLocationHash({
         pageId: page.id,
         rowId: id || undefined,
       });
+      ownHash.current = hash;
+      location.hash = hash;
+    }
   }
+  const ownHash = useRef("");
   useEffect(() => {
     if (!routeNavigation) return;
     const navigate = () => {
       const target = parsePageLocation(location.hash);
-      setLocalRowId(target?.pageId === page.id ? target.rowId || null : null);
+      const rowId = target?.pageId === page.id ? target.rowId || null : null;
+      setLocalRowId(rowId);
+      // Arriving by a link to a record: its card or row in the view flashes
+      // briefly where it is visible, for orientation behind the record.
+      if (rowId && location.hash !== ownHash.current)
+        requestAnimationFrame(() => {
+          const el = boardRef.current?.querySelector(`[data-row-id="${CSS.escape(rowId)}"]`);
+          const box = el?.getBoundingClientRect();
+          if (box && box.bottom > 0 && box.top < window.innerHeight) flash(el);
+        });
+      ownHash.current = "";
     };
     navigate();
     window.addEventListener("hashchange", navigate);
@@ -527,6 +553,8 @@ export default function DatabaseView({
   // Moved records glide to their new place (see the FLIP effect below).
   const boardRef = useRef<HTMLDivElement | null>(null),
     cardPositions = useRef(new Map<string, { x: number; y: number }>()),
+    cardWidth = useRef(0),
+    cardView = useRef(""),
     lastMove = useRef(0),
     lastMovedId = useRef<string | null>(null);
   const [orderStatus, setOrderStatus] = useState("");
@@ -1215,9 +1243,12 @@ export default function DatabaseView({
       ? `order-drop-${dropHint.placement}`
       : "";
   }
-  // After a move, the moved record and its neighbours glide to their new
-  // places (FLIP) instead of jumping; positions relative to the view so
-  // scrolling does not count as movement.
+  // Records glide to their new places (FLIP) instead of jumping: after a
+  // move, a sort or filter change, a move between columns and live changes
+  // from others. Positions are relative to the view's content, so scrolling
+  // does not count as movement. Nothing glides on the first render, for
+  // changes made by typing (search field) or while a pointer is held
+  // (resizing, dragging), in large views or with reduced motion.
   useLayoutEffect(() => {
     const root = boardRef.current;
     if (!root) return;
@@ -1236,42 +1267,58 @@ export default function DatabaseView({
         ".record-card-wrap[data-row-id], tr[data-row-id], .record-list-item[data-row-id]",
       ),
     ];
-    if (items.length > 500) return;
+    if (items.length > 500) {
+      cardPositions.current = new Map();
+      return;
+    }
     const origin = root.getBoundingClientRect();
+    const own = Date.now() - lastMove.current < 3000,
+      width = root.offsetWidth,
+      resized = width !== cardWidth.current;
+    cardWidth.current = width;
     const animate =
-      Date.now() - lastMove.current < 3000 &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      items.length <= FLIP_LIMIT &&
+      !resized &&
+      !prefersReducedMotion() &&
+      (own || (!typedRecently() && !pointerHeld()));
     const seen = new Map<string, number>(),
-      next = new Map<string, { x: number; y: number }>();
+      next = new Map<string, { x: number; y: number }>(),
+      previous = cardView.current === view.id ? cardPositions.current : new Map<string, { x: number; y: number }>();
+    cardView.current = view.id;
+    const fresh: HTMLElement[] = [];
     for (const el of items) {
       const id = el.dataset.rowId!,
         n = seen.get(id) || 0;
       seen.set(id, n + 1);
       const key = `${view.id}:${id}:${n}`,
-        rect = el.getBoundingClientRect(),
-        at = { x: rect.left - origin.left, y: rect.top - origin.top },
-        seed = n === 0 ? seeds?.get(id) : undefined,
-        before = seed
-          ? { x: seed.left - origin.left, y: seed.top - origin.top }
-          : cardPositions.current.get(key);
+        at = layoutPosition(el, root, origin),
+        seed = n === 0 ? seeds?.get(id) : undefined;
+      let before = previous.get(key);
+      if (seed) {
+        const rect = el.getBoundingClientRect();
+        before = { x: at.x + seed.left - rect.left, y: at.y + seed.top - rect.top };
+      }
       next.set(key, at);
-      if (!animate || !before) continue;
+      if (!animate) continue;
+      if (!before) {
+        if (previous.size) fresh.push(el);
+        continue;
+      }
       const dx = before.x - at.x,
         dy = before.y - at.y;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-      const moved = id === lastMovedId.current;
-      el.style.transition = "none";
-      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      const moved = own && id === lastMovedId.current;
       if (moved) el.classList.add("row-sliding");
-      requestAnimationFrame(() => {
-        el.style.transition = `transform ${moved ? 320 : 220}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
-        el.style.transform = "";
-        setTimeout(() => {
-          el.classList.remove("row-sliding");
-          el.style.transition = "";
-        }, 340);
-      });
+      const glided = glide(el, { x: dx, y: dy }, { duration: moved ? 320 : 220 });
+      if (moved) {
+        const done = () => el.classList.remove("row-sliding");
+        if (glided) glided.finished.then(done, done);
+        else done();
+      }
     }
+    // Records that came in (a filter loosened, someone else added one)
+    // fade in; not a whole page of them.
+    if (fresh.length <= 20) for (const el of fresh) appear(el);
     cardPositions.current = next;
   });
   cardHoverRef.current = (x, y) => cardDrag.current?.move(x, y);
@@ -2445,7 +2492,12 @@ export default function DatabaseView({
               key={v.id}
               aria-current={v.id === view.id ? "true" : undefined}
               className={`${v.id === view.id ? "selected" : ""}${viewDrop?.id === v.id ? (viewDrop.after ? " view-drop-after" : " view-drop-before") : ""}${draggedView === v.id ? " dragging" : ""}`}
-              onClick={() => setViewId(v.id)}
+              onClick={() => {
+                if (v.id === view.id) return;
+                // A transition lets <ViewTransition> cross-fade the views.
+                if (prefersReducedMotion()) setViewId(v.id);
+                else startTransition(() => setViewId(v.id));
+              }}
               onDoubleClick={() => viewEditable && setRenamingView(v.id)}
               onContextMenu={(e) => {
                 if (!viewEditable) return;
@@ -2693,6 +2745,10 @@ export default function DatabaseView({
           </button>
         </div>
       )}
+      {/* Switching views cross-fades (React view transitions, started by the
+          tabs; browsers without the API switch instantly). */}
+      <ViewTransition key={view.id} enter="db-view-in" exit="db-view-out" default="none">
+      <>
       {view.type === "table" && (
         <div className="data-table-scroll">
           <table
@@ -3515,6 +3571,8 @@ export default function DatabaseView({
           </p>
         </div>
       )}
+      </>
+      </ViewTransition>
       <input
         type="file"
         accept=".csv,.md,.markdown,.zip"

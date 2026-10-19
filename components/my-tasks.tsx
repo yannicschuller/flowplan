@@ -4,7 +4,8 @@
 // of my other workspaces follow in their own section. Ticking one off
 // changes the document it lives in.
 import { useT } from "./i18n";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DURATION, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
 import { CheckSquare, X } from "@phosphor-icons/react";
 import { api, PageIcon } from "./ui";
 import { MyRecords } from "./my-records";
@@ -77,6 +78,10 @@ export function MyTasks({
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState("");
   const [tab, setTab] = useState<"tasks" | "records">("tasks");
+  // Tasks just ticked off stay in their group, struck through, until they
+  // have folded away (height and opacity) – then the reload drops them.
+  const [settling, setSettling] = useState<Set<string>>(new Set());
+  const list = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
     try {
       const result = await api<{ tasks: Task[]; others?: Others }>(
@@ -94,6 +99,8 @@ export function MyTasks({
   const change = async (task: Task, patch: { checked?: boolean; due?: string | null }) => {
     const key = `${task.pageId}:${task.rowId}:${task.index}`;
     setBusy(key);
+    const leaving = patch.checked === true && !done && !task.checked;
+    if (leaving) setSettling((s) => new Set(s).add(key));
     // Show the change at once; the reload below brings the stored state.
     const same = (t: Task) =>
       t.pageId === task.pageId && t.rowId === task.rowId && t.index === task.index;
@@ -110,6 +117,7 @@ export function MyTasks({
         text: task.text,
         ...patch,
       });
+      if (leaving) await foldAway(key);
       await load();
       onChanged();
     } catch (e) {
@@ -117,16 +125,40 @@ export function MyTasks({
       await load();
     } finally {
       setBusy("");
+      if (leaving)
+        setSettling((s) => {
+          const n = new Set(s);
+          n.delete(key);
+          return n;
+        });
     }
   };
+  // Lets the struck-through task be seen briefly, then folds it away.
+  async function foldAway(key: string) {
+    const el = list.current?.querySelector<HTMLElement>(`li[data-task-key="${CSS.escape(key)}"]`);
+    if (!el || prefersReducedMotion() || typeof el.animate !== "function") return;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    if (!el.isConnected) return;
+    el.style.overflow = "clip";
+    await el
+      .animate(
+        [
+          { height: `${el.offsetHeight}px`, opacity: 1 },
+          { height: "0px", paddingTop: "0px", paddingBottom: "0px", borderBottomWidth: "0px", opacity: 0 },
+        ],
+        { duration: DURATION.slow, easing: EASE_OUT, fill: "forwards" },
+      )
+      .finished.catch(() => {});
+  }
   const item = (task: Task) => {
     const key = `${task.pageId}:${task.rowId}:${task.index}`;
+    const checked = task.checked || settling.has(key);
     return (
-      <li key={`${key}:${task.text}`} className={task.checked ? "checked" : ""}>
+      <li key={`${key}:${task.text}`} data-task-key={key} className={checked ? "checked" : ""}>
         <input
           type="checkbox"
           aria-label={`${task.text} erledigt`}
-          checked={task.checked}
+          checked={checked}
           disabled={busy === key}
           onChange={(e) => void change(task, { checked: e.target.checked })}
         />
@@ -161,7 +193,7 @@ export function MyTasks({
     );
   };
   return (
-    <div className="utility-content my-tasks">
+    <div className="utility-content my-tasks" ref={list}>
       <div className="utility-title">
         <CheckSquare size={30} />
         <h1>{t("Meine Aufgaben", "My tasks")}</h1>
@@ -196,7 +228,10 @@ export function MyTasks({
           </p>
         </div>
       ) : (
-        groupTasks(tasks).map(([name, list]) => (
+        groupTasks(
+          // Tasks folding away keep their place until they are gone.
+          settling.size ? tasks.map((x) => (settling.has(`${x.pageId}:${x.rowId}:${x.index}`) ? { ...x, checked: false } : x)) : tasks,
+        ).map(([name, list]) => (
           <section key={name} className={`my-tasks-group ${name === "Überfällig" ? "overdue" : ""}`}>
             <h2>
               {t(name, groupNames[name] || name)} <small>{list.length}</small>

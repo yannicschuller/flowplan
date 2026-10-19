@@ -52,7 +52,10 @@ import {
   registerServiceWorker,
 } from "./offline";
 import SavedTemplates from "./saved-templates";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
+import { anyOf, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
+import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
+import { Collapse, CrossFade, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -719,6 +722,7 @@ export default function WorkspaceApp({
     location.hash = s;
   }
   useEffect(() => {
+    installTaskFeedback();
     const choice = themeChoice();
     setTheme(choice);
     setDark(applyTheme(choice));
@@ -1091,6 +1095,37 @@ export default function WorkspaceApp({
           shown.add(at.id);
     return shown;
   })();
+  // After a page is dropped elsewhere in the tree, the other pages move up
+  // or down to make room smoothly instead of jumping (FLIP from the
+  // positions measured at the drop).
+  const treeRoot = useRef<HTMLDivElement>(null),
+    treeMove = useRef<{ at: Map<string, Point>; order: string[]; time: number } | null>(null);
+  const treeItems = () =>
+    [...(treeRoot.current?.querySelectorAll<HTMLElement>(".page-nav[data-page-id]") || [])];
+  function markTreeMove() {
+    const root = treeRoot.current;
+    if (!root) return;
+    const items = treeItems();
+    treeMove.current = {
+      at: flipList(root, items, (el) => (el as HTMLElement).dataset.pageId, null),
+      order: items.map((el) => el.dataset.pageId!),
+      time: Date.now(),
+    };
+  }
+  useLayoutEffect(() => {
+    const move = treeMove.current,
+      root = treeRoot.current;
+    if (!move || !root) return;
+    if (Date.now() - move.time > 4000) {
+      treeMove.current = null;
+      return;
+    }
+    const items = treeItems(),
+      order = items.map((el) => el.dataset.pageId!);
+    if (sameRelativeOrder(move.order, order) && order.length === move.order.length) return;
+    treeMove.current = null;
+    flipList(root, items, (el) => (el as HTMLElement).dataset.pageId, move.at, { duration: 220 });
+  });
   function tree(
     parentId: string | null,
     sid: string,
@@ -1180,13 +1215,15 @@ export default function WorkspaceApp({
                 const source = e.dataTransfer.getData(
                   "application/x-flowplan-page",
                 );
-                if (source && source !== p.id)
+                if (source && source !== p.id) {
+                  markTreeMove();
                   void act({
                     action: "page.move",
                     pageId: source,
                     targetId: p.id,
                     placement: treeDrop?.placement || "inside",
                   });
+                }
                 setTreeDrop(null);
               }}
               style={{ paddingLeft: 12 + level * 14 }}
@@ -1269,6 +1306,7 @@ export default function WorkspaceApp({
                     if (drag?.pointer !== e.pointerId) return;
                     const target = touchTarget(e.clientX, e.clientY);
                     setTreeDrop(null);
+                    if (target && target.id !== drag.source) markTreeMove();
                     if (target && target.id !== drag.source)
                       void act({
                         action: "page.move",
@@ -1296,7 +1334,10 @@ export default function WorkspaceApp({
                 </button>
               )}
             </div>
-            {children && !closed && tree(p.id, sid, level + 1)}
+            {/* Sub-pages unfold and fold instead of popping in and out. */}
+            <Collapse open={children && !closed} className="nav-children">
+              {children && !closed ? tree(p.id, sid, level + 1) : null}
+            </Collapse>
           </div>
         );
       });
@@ -1482,7 +1523,7 @@ export default function WorkspaceApp({
             </Dropdown.Content>
           </Dropdown.Portal>
         </Dropdown.Root>
-        <div className="sidebar-scroll">
+        <div className="sidebar-scroll" ref={treeRoot}>
           <nav className="main-nav">
             <button onClick={() => setSearch(true)}>
               <MagnifyingGlass size={19} />
@@ -1862,18 +1903,12 @@ export default function WorkspaceApp({
           </div>
           {screen === "page" && data ? (
             <div className="page-top-actions">
-              <span className="save-status">
+              {/* Saving and offline states cross-fade instead of switching hard. */}
+              <CrossFade className="save-status" value={`${online}:${statusLabel(status)}`}>
                 {online ? <CloudCheck size={15} /> : <WifiSlash size={15} />}
                 <span>{statusLabel(status)}</span>
-              </span>
-              <div className="presence">
-                {data.present
-                  .filter((u) => u.id !== boot.user.id)
-                  .slice(0, 3)
-                  .map((u) => (
-                    <Avatar name={u.name} userId={u.id} small key={u.id} />
-                  ))}
-              </div>
+              </CrossFade>
+              <PresenceAvatars users={data.present.filter((u) => u.id !== boot.user.id).slice(0, 3)} />
               {canRead && (
                 <button
                   className={`icon-button read-mode-toggle${reading ? " active" : ""}`}
@@ -2525,9 +2560,12 @@ export default function WorkspaceApp({
                         key={data.page.id}
                         pageId={data.page.id}
                         editable={editable}
-                        onOpen={(id, rowId) =>
-                          rowId ? (location.hash = pageLocationHash({ pageId: id, rowId })) : void openPage(id)
-                        }
+                        onOpen={(id, rowId) => {
+                          // Where the title is mentioned flashes on arrival.
+                          jumpTo({ pageId: id, rowId }, byText(data.page.title));
+                          if (rowId) location.hash = pageLocationHash({ pageId: id, rowId });
+                          else void openPage(id);
+                        }}
                         onLinked={() => void refresh()}
                         onError={notify}
                       />
@@ -2538,11 +2576,18 @@ export default function WorkspaceApp({
                         {data.backlinks.map((p) => (
                           <button
                             key={`${p.id}-${p.rowId || ""}`}
-                            onClick={() =>
-                              p.rowId
-                                ? (location.hash = pageLocationHash({ pageId: p.id, rowId: p.rowId }))
-                                : openPage(p.id)
-                            }
+                            onClick={() => {
+                              // The block linking here flashes on arrival.
+                              jumpTo(
+                                { pageId: p.id, rowId: p.rowId },
+                                anyOf(
+                                  bySelector(`a[href*="page=${CSS.escape(data.page.id)}"]`),
+                                  bySelector(`[data-link-card*="page=${CSS.escape(data.page.id)}"]`),
+                                ),
+                              );
+                              if (p.rowId) location.hash = pageLocationHash({ pageId: p.id, rowId: p.rowId });
+                              else void openPage(p.id);
+                            }}
                           >
                             <PageIcon name={p.icon} />
                             {p.title}
@@ -2778,7 +2823,15 @@ export default function WorkspaceApp({
                         const target = parsePageLocation(
                           notificationUrl(n).slice(1),
                         );
-                        if (target) void openPage(target.pageId, target);
+                        if (!target) return;
+                        // The commented passage or the mention flashes.
+                        jumpTo(
+                          target,
+                          target.threadId
+                            ? bySelector(`[data-comment-thread="${CSS.escape(target.threadId)}"]`)
+                            : bySelector(`[data-mention="${CSS.escape(boot.user.id)}"]`),
+                        );
+                        void openPage(target.pageId, target);
                       }}
                     >
                       <ChatCircle size={22} />
@@ -3146,6 +3199,9 @@ export default function WorkspaceApp({
               key={`${p.id}:${p.rowId || ""}`}
               onClick={() => {
                 setSearch(false);
+                // The block with the hit flashes once the page is open.
+                const hit = p.kind === "comment" || p.kind === "file" ? "" : snippetHit(p.snippet);
+                if (hit) jumpTo({ pageId: p.id, rowId: p.rowId }, byText(hit));
                 void openPage(
                   p.id,
                   p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined,
@@ -4139,6 +4195,20 @@ function relativeTime(value: string, clock: number | null, locale: Locale = "de"
 }
 function InfoIcon() {
   return <Check size={18} />;
+}
+// Who else has the page open: avatars pop in when someone arrives and
+// shrink away when they leave.
+function PresenceAvatars({ users }: { users: { id: string; name: string }[] }) {
+  const shown = useLeaving(users, (u) => u.id);
+  return (
+    <div className="presence">
+      {shown.map(({ item: u, leaving }) => (
+        <span key={u.id} className={`presence-item${leaving ? " leaving" : ""}`} aria-hidden={leaving || undefined}>
+          <Avatar name={u.name} userId={u.id} small />
+        </span>
+      ))}
+    </div>
+  );
 }
 function SearchSnippet({ text }: { text: string }) {
   // Server marks hits with \u0002…\u0003; everything is rendered as text.

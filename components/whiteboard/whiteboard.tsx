@@ -101,6 +101,7 @@ import {
   emptyTable,
 } from "@/lib/whiteboard-model";
 import { compressImage } from "@/lib/image-compress";
+import { DURATION, interpolateCamera, tween } from "@/lib/motion";
 import { MediaSearch } from "./media-search";
 import {
   alignItems,
@@ -417,7 +418,7 @@ export default function Whiteboard({
         return;
       }
     } catch {}
-    fitToContent();
+    fitToContent(read(), false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
   useEffect(() => {
@@ -689,28 +690,45 @@ export default function Whiteboard({
       (rect.width - 80) / frame.w,
       (rect.height - 120) / (frame.h + 30),
     );
-    setView({
+    moveCamera({
       zoom,
       x: frame.x + frame.w / 2 - rect.width / zoom / 2,
       y: frame.y - 15 + frame.h / 2 - rect.height / zoom / 2,
     });
   }
-  function fitToContent(list = read()) {
+  // "Alles anzeigen", "Auswahl zeigen" (⇧2), the next frame of a
+  // presentation and jumping to a collaborator glide there (eased pan and
+  // zoom) instead of cutting; any own pan or zoom stops the glide.
+  const stopCamera = useRef(() => {});
+  function moveCamera(target: View) {
+    stopCamera.current();
+    const from = viewRef.current,
+      rect = svg.current?.getBoundingClientRect();
+    const size = { width: rect?.width || 800, height: rect?.height || 600 };
+    stopCamera.current = tween(DURATION.camera, (progress) =>
+      setView(interpolateCamera(from, target, progress, size)),
+    );
+  }
+  function fitToContent(list = read(), animate = true) {
     const rect = container.current?.getBoundingClientRect();
     const box = contentBounds(list, new Map(list.map((i) => [i.id, i])));
-    if (!rect || !box) return setView({ x: -80, y: -60, zoom: 1 });
-    const zoom = Math.max(
-      0.1,
-      Math.min(2, (rect.width - 120) / box.w, (rect.height - 120) / box.h),
-    );
-    setView({
-      zoom,
-      x: box.x + box.w / 2 - rect.width / zoom / 2,
-      y: box.y + box.h / 2 - rect.height / zoom / 2,
-    });
+    const target = !rect || !box ? { x: -80, y: -60, zoom: 1 } : (() => {
+      const zoom = Math.max(
+        0.1,
+        Math.min(2, (rect.width - 120) / box.w, (rect.height - 120) / box.h),
+      );
+      return {
+        zoom,
+        x: box.x + box.w / 2 - rect.width / zoom / 2,
+        y: box.y + box.h / 2 - rect.height / zoom / 2,
+      };
+    })();
+    if (animate) moveCamera(target);
+    else setView(target);
   }
   const zoomAt = useCallback((factor: number, at?: Point) => {
     stopFollowing.current();
+    stopCamera.current();
     setView((v) => {
       const rect = svg.current?.getBoundingClientRect();
       const sx = at ? at.x : (rect?.width || 0) / 2,
@@ -727,6 +745,7 @@ export default function Whiteboard({
     if (!el) return;
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      stopCamera.current();
       const rect = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey)
         zoomAt(Math.exp(-e.deltaY * 0.01), {
@@ -818,6 +837,7 @@ export default function Whiteboard({
     const w = rect?.width || 800,
       h = rect?.height || 600;
     const zoom = Math.max(0.1, Math.min(4, Math.min(w / target.w, h / target.h)));
+    stopCamera.current();
     setView({
       zoom,
       x: target.x + target.w / 2 - w / 2 / zoom,
@@ -1161,6 +1181,7 @@ export default function Whiteboard({
   }
   // Runs before every pointer-down on the board (items, handles, background).
   function onDownCapture(e: ReactPointerEvent<SVGSVGElement>) {
+    stopCamera.current();
     const running = owner.current;
     if (gesture.current && running && running.id !== e.pointerId && running.type === "pen" && e.pointerType === "touch") {
       e.stopPropagation();
@@ -1976,6 +1997,10 @@ export default function Whiteboard({
       return;
     }
     if (e.shiftKey && e.key === "!") return fitToContent();
+    if (e.shiftKey && e.code === "Digit2" && selection.size) {
+      e.preventDefault();
+      return fitToContent(read().filter((i) => selection.has(i.id)));
+    }
     if (mod || e.altKey) return;
     const keys: Record<string, Tool> = {
       v: "select",
@@ -2830,11 +2855,11 @@ export default function Whiteboard({
               background: colorFor(p.user_id),
             }}
             onClick={() =>
-              setView((v) => ({
-                ...v,
-                x: p.x - w / 2 / v.zoom,
-                y: p.y - h / 2 / v.zoom,
-              }))
+              moveCamera({
+                ...view,
+                x: p.x - w / 2 / view.zoom,
+                y: p.y - h / 2 / view.zoom,
+              })
             }
           >
             <i style={{ transform: `rotate(${angle}deg)` }} aria-hidden="true">

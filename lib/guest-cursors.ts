@@ -6,6 +6,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { DecorationSet } from "@tiptap/pm/view";
 import { decorations, type Peer } from "./collaboration-cursors";
 import { toTextCursor } from "./text-anchors";
+import { followCarets, type Point } from "./motion";
 import type { CursorPeer } from "./cursor-protocol";
 
 type State = { peers: Peer[]; decorations: DecorationSet };
@@ -92,8 +93,13 @@ export function guestCursors(scope: { token: string; pageId: string; rowId?: str
             view.dom.addEventListener("focusin", () => schedule(0));
             view.dom.addEventListener("focusout", () => schedule(0));
             schedule(0);
+            // Carets of others glide to where they moved (lib/motion.ts).
+            const carets = new Map<string, Point>();
+            let frame = 0;
             return {
               update() {
+                cancelAnimationFrame(frame);
+                frame = requestAnimationFrame(() => followCarets(view.dom as HTMLElement, carets));
                 const next = JSON.stringify([view.state.selection.anchor, view.state.selection.head, view.hasFocus()]);
                 if (next !== last) {
                   last = next;
@@ -102,6 +108,7 @@ export function guestCursors(scope: { token: string; pageId: string; rowId?: str
               },
               destroy() {
                 destroyed = true;
+                cancelAnimationFrame(frame);
                 clearTimeout(timer);
                 clearInterval(heartbeat);
                 window.removeEventListener("flowplan:presence", ping);
