@@ -3363,6 +3363,15 @@ export default function DatabaseView({
           onOpen={setRowId}
           onView={updateView}
           onSchedule={(input) => mutate({ pageId: page.id, ...input })}
+          onSchema={
+            allowFieldChanges
+              ? (nextFields, patch) =>
+                  updateSchema(
+                    nextFields,
+                    views.map((v) => (v.id === view.id ? { ...v, ...patch } : v)),
+                  )
+              : undefined
+          }
         />
       )}
       {view.type === "chart" && (

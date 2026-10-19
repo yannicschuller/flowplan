@@ -65,7 +65,7 @@ import {
   visibleRows,
 } from "./row-access";
 import { cellText } from "./cell-text";
-import { scheduleRow, cascadeTimeline } from "./row-schedule";
+import { scheduleRow, cascadeTimeline, linkTimeline } from "./row-schedule";
 import { rewriteFormulaReferences } from "./formula";
 import { validateCalculations } from "./database-summary";
 import { spaceColorSchema, spaceIconSchema } from "./space-appearance";
@@ -1601,6 +1601,9 @@ export function command(
       case "timeline.cascade":
         result = cascadeTimeline(user, pid(), b);
         break;
+      case "timeline.link":
+        result = linkTimeline(user, pid(), b);
+        break;
       case "row.move":
         result = moveRow(user, pid(), b);
         break;
@@ -2567,6 +2570,7 @@ const editActions = new Set([
   "survey.save",
   "row.schedule",
   "timeline.cascade",
+  "timeline.link",
   "row.move",
   "rows.bulk",
   "rows.transfer",

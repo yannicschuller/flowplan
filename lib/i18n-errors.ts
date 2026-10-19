@@ -407,6 +407,8 @@ const exact: Record<string, string> = {
   "Timeline-Ansicht fehlt.": "Timeline view missing.",
   "Keine Abhängigkeiten eingerichtet.": "No dependencies set up.",
   "Zyklische Abhängigkeiten lassen sich nicht auflösen.": "Circular dependencies cannot be resolved.",
+  "Diese Abhängigkeit würde einen Kreis bilden.": "This dependency would form a circle.",
+  "Zu viele Abhängigkeiten.": "Too many dependencies.",
   "Eintrag nicht im Papierkorb.": "Record not in the trash.",
   "Ein Eintrag mit dieser Kennung existiert bereits.": "A record with this ID already exists.",
   "Interne Adressen sind nicht erlaubt.": "Internal addresses are not allowed.",

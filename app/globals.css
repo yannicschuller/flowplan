@@ -2259,6 +2259,57 @@ tr:hover .row-open {
   stroke: #cf4850;
   stroke-dasharray: 4 3;
 }
+.timeline-dependencies > path.critical {
+  stroke: #d9480f;
+  stroke-width: 2.5;
+}
+.timeline-dependencies > path.linking {
+  stroke: var(--blue);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+.timeline-range.critical {
+  background: color-mix(in srgb, #d9480f 16%, var(--bg));
+  border-color: #d9480f;
+}
+.timeline-range.link-target:hover {
+  outline: 2px dashed var(--blue);
+}
+.timeline-link-handle {
+  position: absolute;
+  top: 50%;
+  right: -7px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  translate: 0 -50%;
+  border-radius: 50%;
+  border: 2px solid var(--blue);
+  background: var(--bg);
+  cursor: crosshair;
+  touch-action: none;
+  opacity: 0;
+  z-index: 2;
+  transition: opacity 0.12s;
+}
+.timeline-range:hover .timeline-link-handle,
+.timeline-link-handle:focus-visible,
+.timeline-link-handle:active {
+  opacity: 1;
+}
+@media (hover: none) {
+  .timeline-link-handle {
+    opacity: 1;
+  }
+}
+.timeline-drag-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  color: #cf4850;
+  font-size: 13px;
+}
 .timeline-conflict {
   display: inline-flex;
   flex-shrink: 0;
