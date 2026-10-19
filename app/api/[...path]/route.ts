@@ -39,6 +39,7 @@ import { listApiTokens } from "@/lib/api-tokens";
 import { createWebhook, listWebhooks, webhookEvents } from "@/lib/webhooks";
 import { mailStatus, sendTestMail } from "@/lib/mail";
 import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
+import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -669,6 +670,10 @@ async function handleGET(
         headers: { "Cache-Control": "no-store" },
       });
     }
+    if (path.length === 2 && path[0] === "admin" && path[1] === "export-pages") {
+      requireAdmin(user);
+      return NextResponse.json({ pages: exportablePages(user) }, { headers: { "Cache-Control": "no-store" } });
+    }
     if (path[0] === "admin") {
       requireAdmin(user);
       return NextResponse.json({
@@ -680,6 +685,7 @@ async function handleGET(
         ),
         mail: mailStatus(),
         backup: scheduledBackupStatus(),
+        markdownExport: markdownExportStatus(),
         workspaces: all(
           "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages FROM workspaces w",
         ),
@@ -788,9 +794,15 @@ async function handlePOST(
       await sendTestMail(to);
       return NextResponse.json({ ok: true });
     }
+    // The pages of the scheduled Markdown export (lib/scheduled-markdown-export.ts).
+    if (path.length === 2 && path[0] === "admin" && path[1] === "markdown-export") {
+      requireAdmin(user);
+      return NextResponse.json(setMarkdownExport(user, (await req.json().catch(() => ({}))).pageIds));
+    }
     if (path.length === 2 && path[0] === "admin" && path[1] === "backup-run") {
       requireAdmin(user);
-      return NextResponse.json(await runScheduledBackup());
+      const backup = await runScheduledBackup();
+      return NextResponse.json({ ...backup, exports: await runMarkdownExports() });
     }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
       if (Number(req.headers.get("content-length") || 0) > 512)

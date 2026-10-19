@@ -10,9 +10,12 @@ const options = z
     format: z.enum(["markdown", "zip"]),
     includeSubpages: z.boolean().default(false),
     rowId: z.string().uuid().optional(),
+    history: z.boolean().default(false),
   })
   .strict();
-// Labels, README and frontmatter keys follow the reader's language.
+// Labels, README and frontmatter keys follow the reader's language. Exporting
+// only reads, so personal API tokens with read access may use it (e.g. a
+// cron job that commits the export to Git); see the API documentation.
 export const POST = withRequestLocale(exportPost);
 async function exportPost(req: Request) {
   try {

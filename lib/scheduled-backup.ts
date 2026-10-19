@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { id, one, run } from "./db";
 import { instanceSettings } from "./instance-settings";
 import { bucketFetch, storageConfig } from "./storage";
+import { runMarkdownExports } from "./scheduled-markdown-export";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
 const DAY_MS = 86400_000;
@@ -99,6 +100,8 @@ export function startBackupWorker() {
     runtime.flowplanBackupBusy = true;
     try {
       await runScheduledBackup();
+      // The readable copy (Markdown, optionally into Git) comes along.
+      await runMarkdownExports().catch((error) => console.error("Markdown export failed", error));
     } finally {
       runtime.flowplanBackupBusy = false;
     }

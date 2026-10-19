@@ -18,6 +18,7 @@ export function PageExportDialog({
   const t = useT();
   const [format, setFormat] = useState("markdown"),
     [children, setChildren] = useState(false),
+    [history, setHistory] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function download() {
@@ -37,6 +38,7 @@ export function PageExportDialog({
           pageId: page.id,
           format,
           includeSubpages: format === "zip" && children,
+          history: format === "zip" && history,
         }),
       });
       if (!response.ok)
@@ -93,6 +95,12 @@ export function PageExportDialog({
               onChange={(event) => setChildren(event.target.checked)}
             />
             {t("Zugängliche Unterseiten einschließen", "Include accessible sub-pages")}
+          </label>
+        )}
+        {format === "zip" && (
+          <label className="export-children">
+            <input type="checkbox" checked={history} disabled={busy} onChange={(event) => setHistory(event.target.checked)} />
+            {t("Kommentare und frühere Versionen einschließen", "Include comments and earlier versions")}
           </label>
         )}
         <p className="muted">

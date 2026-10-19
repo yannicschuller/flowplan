@@ -1,4 +1,5 @@
 "use client";
+import { MarkdownExportSettings, type MarkdownExportStatus } from "./markdown-export-settings";
 import { NumberField, SaveBar, SettingGroup, SettingRow, SwitchRow, UsageMeter } from "./settings-ui";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -82,6 +83,7 @@ type AdminData = {
     sentWeek: number;
     lastError: string | null;
   };
+  markdownExport: MarkdownExportStatus;
   backup: {
     enabled: boolean;
     keep: number;
@@ -434,6 +436,7 @@ export default function Admin({
                 onChange={load}
                 onError={onError}
               />
+              <MarkdownExportSettings status={data.markdownExport} onChange={load} onError={onError} />
               <InstanceBackup
                 pending={data.restorePending}
                 onChange={load}

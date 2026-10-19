@@ -17102,3 +17102,33 @@ h3 .block-reactions {
   margin: 0;
   font-size: 14px;
 }
+
+/* Admin: pages of the scheduled Markdown export. */
+.markdown-export-pages {
+  margin: 8px 0 12px;
+  padding-left: 18px;
+}
+.markdown-export-picker {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+.markdown-export-choices {
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.markdown-export-choices span {
+  display: grid;
+}
+.markdown-export-choices small {
+  color: var(--secondary);
+}
+.markdown-export-settings h3 {
+  margin: 18px 0 6px;
+  font-size: 14px;
+}

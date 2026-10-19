@@ -20,6 +20,7 @@ import {
 } from "./markdown";
 import { exportName } from "./export-name";
 import { ct } from "./content-locale";
+import { commentText } from "./comment-content";
 import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
 import type { Identity, Page, Row, Field } from "./types";
 export type MarkdownExportOptions = {
@@ -28,6 +29,9 @@ export type MarkdownExportOptions = {
   includeSubpages: boolean;
   // One record of the database instead of the whole database.
   rowId?: string;
+  // ZIP only: comments (<file>.comments.md) and earlier versions
+  // (<file>.versions/<date>.md) of every page and record.
+  history?: boolean;
 };
 const unavailable = () => ct("Nicht verfügbar", "Not available"),
   recordWord = () => ct("Eintrag", "Record");
@@ -305,6 +309,58 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     };
   }
   const tableCell = (text: string) => text.replace(/\r?\n/g, "<br>");
+  // Comments and versions of a page or record, next to its file.
+  const commentBody = (body: string) => {
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed === "object") return commentText(parsed);
+    } catch {}
+    return body;
+  };
+  function history(path: string, pageId: string, rowId: string | null, title: string) {
+    if (!zip || !options.history) return;
+    const base = path.replace(/\.md$/, "");
+    const comments = all<{ name: string | null; body: string; resolved: number; created_at: string }>(
+      `SELECT u.name,c.body,c.resolved,c.created_at FROM comments c LEFT JOIN users u ON u.id=c.author_id
+       WHERE c.page_id=? AND ${rowId ? "c.row_id=?" : "c.row_id IS NULL"} ORDER BY c.created_at`,
+      ...(rowId ? [pageId, rowId] : [pageId]),
+    );
+    const threads = all<{ id: string; anchor: string; resolved: number }>(
+      `SELECT id,anchor,resolved FROM inline_threads WHERE page_id=? AND ${rowId ? "row_id=?" : "row_id IS NULL"} ORDER BY created_at`,
+      ...(rowId ? [pageId, rowId] : [pageId]),
+    );
+    const when = (at: string) => at.replace("T", " ").slice(0, 16);
+    let text = "";
+    for (const c of comments)
+      text += `## ${markdownText(c.name || ct("Unbekannt", "Unknown"))} · ${when(c.created_at)}${c.resolved ? ` · ${ct("erledigt", "resolved")}` : ""}\n\n${markdownText(commentBody(c.body))}\n\n`;
+    for (const thread of threads) {
+      let quote = "";
+      try {
+        quote = String(JSON.parse(thread.anchor).quote || "");
+      } catch {}
+      text += `## ${ct("Zur Textstelle", "On the passage")}${thread.resolved ? ` · ${ct("erledigt", "resolved")}` : ""}\n\n${quote ? `> ${markdownText(quote).replace(/\n/g, "\n> ")}\n\n` : ""}`;
+      for (const m of all<{ author_name: string; body: string; created_at: string }>(
+        "SELECT author_name,body,created_at FROM inline_messages WHERE thread_id=? AND deleted=0 ORDER BY created_at",
+        thread.id,
+      ))
+        text += `- **${markdownText(m.author_name)}** · ${when(m.created_at)}: ${markdownText(commentBody(m.body)).replace(/\n/g, " ")}\n`;
+      text += "\n";
+    }
+    if (text) add(`${base}.comments.md`, Buffer.from(`# ${ct("Kommentare", "Comments")} – ${markdownText(title)}\n\n${text.trimEnd()}\n`), true);
+    const versions = rowId
+      ? all<{ id: string; html: string; created_at: string }>(
+          "SELECT id,html,created_at FROM row_snapshots WHERE row_id=? ORDER BY created_at DESC LIMIT 50",
+          rowId,
+        )
+      : all<{ id: string; html: string; created_at: string }>(
+          "SELECT id,html,created_at FROM snapshots WHERE page_id=? AND html IS NOT NULL AND html!='' ORDER BY created_at DESC LIMIT 50",
+          pageId,
+        );
+    for (const version of versions) {
+      const versionPath = `${base}.versions/${version.created_at.replace(/[: T]/g, "-").slice(0, 19)}-${version.id.slice(0, 8)}.md`;
+      add(versionPath, Buffer.from(`# ${markdownText(title)} (${when(version.created_at)})\n\n${render(version.html, context(versionPath))}`), true);
+    }
+  }
   // Record properties as YAML frontmatter, readable by Obsidian and other
   // tools. Computed values (formulas, rollups, timestamps …) go below
   // "flowplan:" so an import does not take them for properties.
@@ -355,6 +411,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       const cover = ctx.url(page.cover);
       if (cover) markdown += `![Cover](<${markdownUrl(cover)}>)\n\n`;
     }
+    if (page.kind === "document") history(path, page.id, null, page.title);
     if (page.kind === "document")
       markdown += render(
         one<{ html: string }>(
@@ -466,7 +523,10 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         document += content.trimStart().startsWith("<")
           ? render(content, recordContext)
           : markdownText(content) + "\n";
-        if (zip) add(recordPath, Buffer.from(document), true);
+        if (zip) {
+          add(recordPath, Buffer.from(document), true);
+          history(recordPath, page.id, row.id, title);
+        }
         else markdown += "\n\n" + document;
       }
     }
