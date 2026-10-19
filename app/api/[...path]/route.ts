@@ -69,6 +69,8 @@ import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
+import { importWhiteboardFile } from "@/lib/whiteboard-import-server";
+import { BOARD_IMPORT_LIMITS } from "@/lib/whiteboard-import";
 import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
@@ -1024,6 +1026,23 @@ async function handlePOST(
           z.uuid().parse(data.get("spaceId")),
           Buffer.from(await file.arrayBuffer()),
         ),
+      );
+    }
+    // Excalidraw and draw.io files: onto a board (pageId) or as a new one.
+    if (path.length === 2 && path[0] === "whiteboards" && path[1] === "import") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > BOARD_IMPORT_LIMITS.bytes)
+        throw new HttpError(413, "Die Datei ist zu groß (höchstens 20 MB).");
+      const fields = Object.fromEntries(
+        ["pageId", "workspaceId", "spaceId", "parentId"]
+          .map((key) => [key, data.get(key)])
+          .filter(([, value]) => typeof value === "string" && value),
+      );
+      return NextResponse.json(
+        await importWhiteboardFile(user, file.name, Buffer.from(await file.arrayBuffer()), fields),
       );
     }
     // Signs out one of the person's devices, or all others.

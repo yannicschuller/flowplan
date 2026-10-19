@@ -9207,6 +9207,20 @@ textarea {
 .wb-zoom-value {
   min-width: 52px;
 }
+.wb-zoom .wb-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px;
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wb-zoom .wb-import:hover,
+.wb-zoom .wb-import:focus-within {
+  background: var(--hover, var(--blue-light));
+}
 .wb-status {
   padding: 0 8px;
   color: var(--muted);

@@ -149,6 +149,7 @@ import {
   AnnotatedImage,
 } from "@/lib/document-schema";
 import { compressImage } from "@/lib/image-compress";
+import { boardFileName } from "@/lib/whiteboard-import";
 export default function DocumentEditor({
   pageId,
   rowId,
@@ -774,7 +775,32 @@ export default function DocumentEditor({
     editor?.setEditable(editable);
   }, [editable, editor]);
   uploadFile.current = (file: File) => upload(file);
+  async function importDrawing(file: File) {
+    const host = pages.find((p) => p.id === pageId);
+    if (!host) return;
+    try {
+      onStatus(t("Zeichnung wird importiert …", "Importing drawing …"));
+      const form = new FormData();
+      form.set("workspaceId", host.workspace_id);
+      form.set("spaceId", host.space_id);
+      if (!rowId) form.set("parentId", host.id);
+      form.set("file", file);
+      const r = await fetch("/api/whiteboards/import", { method: "POST", body: form });
+      const data = await r.json();
+      if (!r.ok) throw new Error(serverMessage(data.error) || t("Import fehlgeschlagen.", "Import failed."));
+      insertBoard(data.pageId);
+    } catch (error) {
+      onError((error as Error).message);
+    }
+  }
   async function upload(original: File) {
+    // Excalidraw and draw.io drawings become a new whiteboard shown here.
+    if (
+      boardFileName(original.name) ||
+      (/\.(xml|svg)$/i.test(original.name) &&
+        /mxfile|mxGraphModel/.test(await original.slice(0, 1_000_000).text()))
+    )
+      return importDrawing(original);
     // Photos shrink before upload; the alt text keeps the original name.
     const file = await compressImage(original);
     const form = new FormData();
