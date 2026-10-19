@@ -232,8 +232,8 @@ export function validateSurvey(survey: Survey, fields: Field[], values: Record<s
       const n = typeof v === "number" ? v : Number(String(v).replace(",", "."));
       const r = range(q);
       if (!Number.isFinite(n)) bad("Bitte eine Zahl angeben.", "Please enter a number.");
-      else if ((r.min !== undefined && n < r.min) || (r.max !== undefined && n > r.max)) bad(`Bitte zwischen ${r.min ?? "…"} und ${r.max ?? "…"}.`, `Please between ${r.min ?? "…"} and ${r.max ?? "…"}.`);
-      else if (q.type !== "number" && q.type !== "slider" && !Number.isInteger(n)) bad("Bitte eine ganze Zahl.", "Please a whole number.");
+      else if ((r.min !== undefined && n < r.min) || (r.max !== undefined && n > r.max)) bad(`Bitte zwischen ${r.min ?? "…"} und ${r.max ?? "…"}.`, `Please enter a value between ${r.min ?? "…"} and ${r.max ?? "…"}.`);
+      else if (q.type !== "number" && q.type !== "slider" && !Number.isInteger(n)) bad("Bitte eine ganze Zahl.", "Please enter a whole number.");
       else cells[q.field] = n;
     } else {
       if (typeof v !== "string") {
@@ -242,12 +242,12 @@ export function validateSurvey(survey: Survey, fields: Field[], values: Record<s
       }
       const text = v.trim();
       if (text.length > (q.type === "long" ? 10000 : 1000)) bad("Zu lang.", "Too long.");
-      else if (q.type === "short" && /\n/.test(text)) bad("Bitte nur eine Zeile.", "Please a single line.");
-      else if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) bad("Bitte eine gültige E-Mail-Adresse.", "Please a valid e-mail address.");
-      else if (q.type === "phone" && !PHONE.test(text)) bad("Bitte eine gültige Telefonnummer.", "Please a valid phone number.");
-      else if (q.type === "url" && !/^https?:\/\/\S+$/i.test(text)) bad("Bitte eine Adresse mit https://.", "Please an address with https://.");
-      else if (q.type === "date" && !validDateValue(text)) bad("Bitte ein gültiges Datum.", "Please a valid date.");
-      else if (q.type === "time" && !TIME.test(text)) bad("Bitte eine Uhrzeit wie 14:30.", "Please a time like 14:30.");
+      else if (q.type === "short" && /\n/.test(text)) bad("Bitte nur eine Zeile.", "Please use a single line.");
+      else if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) bad("Bitte eine gültige E-Mail-Adresse.", "Please enter a valid e-mail address.");
+      else if (q.type === "phone" && !PHONE.test(text)) bad("Bitte eine gültige Telefonnummer.", "Please enter a valid phone number.");
+      else if (q.type === "url" && !/^https?:\/\/\S+$/i.test(text)) bad("Bitte eine Adresse mit https://.", "Please enter an address starting with https://.");
+      else if (q.type === "date" && !validDateValue(text)) bad("Bitte ein gültiges Datum.", "Please enter a valid date.");
+      else if (q.type === "time" && !TIME.test(text)) bad("Bitte eine Uhrzeit wie 14:30.", "Please enter a time like 14:30.");
       else cells[q.field] = text;
     }
   }

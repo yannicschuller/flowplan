@@ -24,7 +24,7 @@ export function unknownReferences(prompt: string, fields: Field[], self: string)
     .map((m) => m[1].trim())
     .filter((name) => {
       const f = fields.find((x) => x.id === name || x.name.trim().toLowerCase() === name.toLowerCase());
-      if (!f) return !["inhalt", "content"].includes(name.toLowerCase());
+      if (!f) return !["inhalt", "content", "contenu"].includes(name.toLowerCase());
       return f.id === self || !REFERENCE_TYPES.includes(f.type);
     });
 }
@@ -92,7 +92,7 @@ export function AiFieldEditor({
               {`{${f.name}}`}
             </button>
           ))}
-        {!fields.some((f) => ["inhalt", "content"].includes(f.name.trim().toLowerCase())) && (
+        {!fields.some((f) => ["inhalt", "content", "contenu"].includes(f.name.trim().toLowerCase())) && (
           <button type="button" className="chip" disabled={disabled} onClick={() => insert(t("Inhalt", "Content"))} title={t("Der Seiteninhalt des Eintrags", "The record's page content")}>
             {t("{Inhalt}", "{Content}")}
           </button>

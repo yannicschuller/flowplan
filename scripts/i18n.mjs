@@ -5,8 +5,8 @@
 //   npm run i18n -- --add it  start a catalogue for a new language
 //   npm run i18n -- --check   only report what is missing (exit code 0)
 //
-// The English text of t(de, en), tr(de, en), ct(de, en) and translate(…)
-// calls is the key; texts with variables get numbered placeholders
+// The English text of t(de, en), tr(de, en), ct(de, en), translate(…)(…),
+// tr(…)(…) and (await serverT())(…) calls is the key; texts with variables get numbered placeholders
 // (`Group ${name}` → "Group {0}"). The tables of lib/i18n-errors.ts,
 // lib/i18n-labels.ts and the saving states in components/i18n.tsx count as
 // well. locales/en.json lists all keys (the source for translation tools);
@@ -18,7 +18,8 @@ import { parse } from "@babel/parser";
 
 const root = new URL("..", import.meta.url).pathname;
 const localesDir = join(root, "locales");
-const TRANSLATORS = new Set(["t", "tr", "ct", "pick", "say"]);
+const TRANSLATORS = new Set(["t", "tr", "ct", "pick", "say", "bad"]);
+const CURRIED = new Set(["translate", "tr", "serverT"]);
 const TABLE_FILES = new Set(["lib/i18n-errors.ts", "lib/i18n-labels.ts", "components/i18n.tsx"]);
 
 function files(dir) {
@@ -76,7 +77,9 @@ for (const file of ["components", "lib", "app"].flatMap((d) => files(join(root, 
     if (node.type === "CallExpression" && node.arguments.length >= 2) {
       const callee = node.callee;
       const named = callee.type === "Identifier" && TRANSLATORS.has(callee.name);
-      const curried = callee.type === "CallExpression" && callee.callee.type === "Identifier" && callee.callee.name === "translate";
+      // translate(locale)(de, en), tr(locale)(de, en), (await serverT())(de, en)
+      const factory = callee.type === "AwaitExpression" ? callee.argument : callee;
+      const curried = factory?.type === "CallExpression" && factory.callee.type === "Identifier" && CURRIED.has(factory.callee.name);
       if (named || curried) {
         const de = text(node.arguments[0]), en = text(node.arguments[1]);
         if (de !== null && en !== null) add(en, file, node.arguments[1]);
