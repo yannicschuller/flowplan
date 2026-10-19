@@ -11,7 +11,7 @@ list, feed, chart, form), whiteboards and journals in one page tree. A
 **journal** creates a page for every day (diary and tasks): open tasks move
 on to the new day, days without an entry of their own disappear again.
 Functionally it covers what AppFlowy and Notion offer for teams, plus
-Miro-style whiteboards. **Deliberately without AI features.**
+Miro-style whiteboards. **AI is optional and off by default**: admins switch it on per feature and per person, users choose what it may read, and it runs completely locally with Ollama or with a key for a big provider.
 
 Pages can be **dashboards**: metric cards that count or add up records from
 any database (optionally through a view's filters), next to linked chart
@@ -154,7 +154,7 @@ colour, our own fonts and mark. Binding description in [DESIGN.md](DESIGN.md).
 
 ## Non-goals
 
-- No AI features.
+- No AI that is on by default or reads content without consent; no AI that requires a cloud provider (Ollama always works).
 - No tracking, no advertising, no sharing of data with third parties.
 - No imitation of other brands in the look – not of AppFlowy, Notion or
   Miro either.

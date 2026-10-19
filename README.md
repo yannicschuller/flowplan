@@ -24,7 +24,7 @@ Open source, self-hosted in one container – or hosted in Germany.
 
 </div>
 
-Flowplan is a workspace for knowledge and projects in the spirit of Notion and AppFlowy: pages in a tree, a block editor, databases with many views, whiteboards and a journal – with real-time collaboration, fine-grained permissions and single sign-on. It runs as **one container with SQLite**: no Postgres, no Redis, no external search service. **No AI, no tracking.** The interface is available in English, German and French – further languages can be added as JSON catalogues ([Languages and translations](https://docs.flowplan.org/languages)); the documentation is in English and German.
+Flowplan is a workspace for knowledge and projects in the spirit of Notion and AppFlowy: pages in a tree, a block editor, databases with many views, whiteboards and a journal – with real-time collaboration, fine-grained permissions and single sign-on. It runs as **one container with SQLite**: no Postgres, no Redis, no external search service. **No tracking. AI is optional:** off by default, switched on by the admin per feature and per person – completely local with Ollama or with your own key for OpenAI, Anthropic, Gemini or any OpenAI-compatible service. The interface is available in English, German and French – further languages can be added as JSON catalogues ([Languages and translations](https://docs.flowplan.org/languages)); the documentation is in English and German.
 
 ## Write and think
 
