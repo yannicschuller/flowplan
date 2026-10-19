@@ -2,6 +2,23 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.4.1 – 2026-10-19
+
+- Encryption test waits until the upload is recorded ([64e868e](https://github.com/yannicschuller/flowplan/commit/64e868e102e0c0fc8930634c5b8f92289d6bd967))
+- "Seen by" opens as a proper menu ([5e94b45](https://github.com/yannicschuller/flowplan/commit/5e94b45dbeb6ba0f1637222c4d69f515ccd0b81b))
+- E-mail for shared pages; pending invitations that say something ([bee9cd1](https://github.com/yannicschuller/flowplan/commit/bee9cd1b36ddcccbfa96a4878cd5a6eca37a1a6c))
+- Tab indents paragraphs and headings visibly again ([9639655](https://github.com/yannicschuller/flowplan/commit/9639655efbb330c5cf300d02dd3933ef05c08ac2))
+- Share a page with a person without the whole workspace ([692c972](https://github.com/yannicschuller/flowplan/commit/692c972ebcc6943ad7c26b4a48405fe7f6077d49))
+- Whiteboards in the Markdown export as SVG images ([e36d6ab](https://github.com/yannicschuller/flowplan/commit/e36d6ab0c3a64aebe40254afd9800c7c38596616))
+- Export a whole space as Markdown; introduction for new accounts ([5d7e639](https://github.com/yannicschuller/flowplan/commit/5d7e639fb13ad89b933ab1e5124359648ad07cb3))
+- Encryption at rest for the bucket, backups and exports ([41af8a4](https://github.com/yannicschuller/flowplan/commit/41af8a4646b60259f4b16b6e69895a48ef582922))
+- Sign-in footer: one quiet line ([e613b88](https://github.com/yannicschuller/flowplan/commit/e613b8897cd850d9af541677660674ce2ee377dc))
+- Sign-in and sign-up fit the screen without scrolling ([86877fc](https://github.com/yannicschuller/flowplan/commit/86877fc9839cbd68f54980410e4d7cbb65fdb38b))
+- Scheduled Markdown export with comments and versions, pushed to Git ([99ee13e](https://github.com/yannicschuller/flowplan/commit/99ee13e804b8102bc1f524e9cf2f7fddb486ee9f))
+- Stay signed in on this device; list and sign out own devices ([f107f4b](https://github.com/yannicschuller/flowplan/commit/f107f4b7c98f720ef51d7d1de76379db411c99e4))
+- Pages move into databases; records export and print; localised manifest ([94d37cd](https://github.com/yannicschuller/flowplan/commit/94d37cdbdff0382a7a08498339b0ec7c28089e3d))
+- Databases as note collections: kinds, frontmatter, capture ([29529c4](https://github.com/yannicschuller/flowplan/commit/29529c4018c8ac6148fe5cce0b98f9dbeca76e36))
+
 ## v0.4.0 – 2026-10-18
 
 - Commits are co-authored by the maintainer and Claude ([0fbc896](https://github.com/yannicschuller/flowplan/commit/0fbc896742ab49f2108a155728553e4652ebcb91))
