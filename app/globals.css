@@ -922,9 +922,8 @@ kbd,
   flex-shrink: 0;
 }
 .save-status {
-  display: flex;
+  display: grid;
   align-items: center;
-  gap: 5px;
   font-size: 10px;
   color: var(--muted);
   margin-right: 8px;
@@ -1153,8 +1152,17 @@ kbd,
 .document-editor ul[data-type="taskList"] li > div {
   flex: 1;
 }
-/* Only the done task's own text: its subtasks show their own state. */
-.document-editor li[data-checked="true"] > div > :not(ul, ol) {
+/* Only the done task's own text: its subtasks show their own state. The
+   strike-through is always there, transparent while open, so ticking off
+   fades it in once the drawn line (lib/motion.ts) has crossed the text. */
+.document-editor ul[data-type="taskList"] li > div > :not(ul, ol) {
+  text-decoration: line-through transparent;
+  transition:
+    color 0.2s ease,
+    text-decoration-color 0.15s ease 0.2s;
+}
+.document-editor li[data-checked="true"] > div > :not(ul, ol),
+.document-editor ul[data-type="taskList"] li[data-checked="true"] > div > :not(ul, ol) {
   color: var(--muted);
   text-decoration: line-through;
 }
@@ -9002,6 +9010,181 @@ textarea {
     translate: none;
   }
 }
+/* ---------- Purposeful motion (lib/motion.ts, components/motion.tsx) ----------
+   Shows what moved, where a jump landed and what just changed. Only
+   transform and opacity animate (height where content folds); everything
+   is off with the system setting "reduce motion" (rules below and JS
+   checks). */
+
+/* A jump target (outline, search hit, backlink, mention, notification,
+   footnote) lights up briefly: an overlay following the element, removed
+   after the animation; nothing is added to the document itself. */
+.jump-flash {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 49;
+  pointer-events: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 30%, transparent);
+  animation: jump-flash 1.2s ease-out both;
+}
+@keyframes jump-flash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+/* Reduced motion: the same highlight, still, for the same time. */
+.jump-flash.still {
+  animation: none !important;
+}
+
+/* Ticking off a task: a line is drawn through the text. */
+.strike-draw {
+  position: fixed;
+  z-index: 49;
+  height: 1.5px;
+  pointer-events: none;
+  transform-origin: left center;
+  border-radius: 1px;
+}
+
+/* Timeline: arrows of new links draw in; the dashed conflict arrows fade. */
+.timeline-dependencies > path.is-new:not(.conflict) {
+  stroke-dasharray: 1;
+  animation: arrow-draw 0.4s var(--ease-out) both;
+}
+.timeline-dependencies > path.is-new.conflict {
+  animation: fade-in 0.3s ease both;
+}
+@keyframes arrow-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Switching database views cross-fades (React <ViewTransition>). The rest
+   of the page swaps without its own fade. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+::view-transition-group(.db-view-in),
+::view-transition-group(.db-view-out) {
+  animation-duration: 0.2s;
+}
+::view-transition-new(.db-view-in) {
+  animation: db-view-in 0.2s var(--ease-out) both;
+}
+::view-transition-old(.db-view-out) {
+  animation: fade-out 0.15s ease both;
+}
+@keyframes db-view-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Toggle blocks open and close smoothly where the browser can animate
+   the content of <details> (CSS only, nothing in the editor changes). */
+@supports selector(::details-content) and (interpolate-size: allow-keywords) {
+  .document-editor details {
+    interpolate-size: allow-keywords;
+  }
+  .document-editor details::details-content {
+    block-size: 0;
+    overflow: clip;
+    opacity: 0;
+    transition:
+      block-size 0.22s var(--ease-out),
+      opacity 0.18s ease,
+      content-visibility 0.22s allow-discrete;
+  }
+  .document-editor details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
+}
+
+/* Presence: avatars pop in and shrink away; collaborators' whiteboard
+   cursors appear the same way. */
+.presence-item {
+  display: inline-flex;
+  animation: presence-pop 0.22s var(--ease-spring) both;
+}
+.presence-item.leaving {
+  animation: presence-out 0.2s ease both;
+}
+.wb-cursor {
+  animation: fade-in 0.2s ease both;
+}
+@keyframes presence-pop {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+@keyframes presence-out {
+  to {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
+/* Small labels that change (saving, offline) cross-fade in place. */
+.cross-fade {
+  display: inline-grid;
+}
+.cross-fade > span {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cross-fade-in {
+  animation: fade-in 0.2s ease both;
+}
+.cross-fade-out {
+  animation: fade-out 0.2s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-editor ul[data-type="taskList"] li > div > :not(ul, ol),
+  .my-tasks-group li .my-task-text {
+    transition: none;
+  }
+  .document-editor details::details-content {
+    transition: none;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+  .cross-fade-out,
+  .presence-item.leaving {
+    display: none;
+  }
+}
 .recurrence-choice > .fp-select {
   min-width: 160px;
 }
@@ -11333,6 +11516,12 @@ label.task-due {
   gap: 10px;
   padding: 9px 4px;
   border-bottom: 1px solid var(--border);
+}
+.my-tasks-group li .my-task-text {
+  text-decoration: line-through transparent;
+  transition:
+    color 0.2s ease,
+    text-decoration-color 0.15s ease 0.2s;
 }
 .my-tasks-group li.checked .my-task-text {
   color: var(--muted);
@@ -18099,17 +18288,6 @@ h3 .block-reactions {
   color: var(--blue);
   cursor: pointer;
   font: inherit;
-}
-.document-editor .footnote-flash {
-  animation: footnote-flash 1.4s ease-out;
-}
-@keyframes footnote-flash {
-  from {
-    background: var(--blue-light);
-  }
-  to {
-    background: transparent;
-  }
 }
 @media print {
   .document-editor .footnote-back {

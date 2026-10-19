@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { ListBullets, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { reveal } from "@/lib/motion";
 
 export type OutlineHeading = { text: string; pos: number; level: number };
 const KEY = "flowplan.outline";
@@ -88,7 +89,8 @@ export function DocumentOutline({ editor, headings, onClose }: { editor: Editor 
                 aria-current={active === h.pos ? "location" : undefined}
                 onClick={() => {
                   if (!editor) return;
-                  headingElement(editor, h.pos)?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+                  // Scrolls to the heading, which then flashes briefly.
+                  reveal(headingElement(editor, h.pos), "start", true);
                   setActive(h.pos);
                   // The caret goes to the heading, so typing continues there.
                   editor.commands.setTextSelection(h.pos + 1 + h.text.length);

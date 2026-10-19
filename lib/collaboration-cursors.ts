@@ -15,6 +15,7 @@ import {
   type CursorRequest,
 } from "./cursor-protocol";
 import { fromTextPoint, toTextCursor } from "./text-anchors";
+import { followCarets, type Point } from "./motion";
 
 export type Peer = CursorPeer & { deadline: number };
 type PresenceState = { peers: Peer[]; decorations: DecorationSet };
@@ -146,9 +147,12 @@ export function collaborationCursors(
           view(view) {
             const clientId = liveClientId || crypto.randomUUID();
             let layoutFrame = 0;
+            const carets = new Map<string, Point>();
             function alignLabels() {
               cancelAnimationFrame(layoutFrame);
               layoutFrame = requestAnimationFrame(() => {
+                // Carets of others glide to where they moved.
+                followCarets(view.dom as HTMLElement, carets);
                 for (const caret of view.dom.querySelectorAll<HTMLElement>(
                   ".collaborator-cursor",
                 )) {

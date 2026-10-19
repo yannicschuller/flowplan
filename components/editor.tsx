@@ -2,6 +2,7 @@
 import { DocumentOutline, OutlineToggle, useOutlineOpen } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/i18n-errors";
+import { reveal } from "@/lib/motion";
 import { useLocale, useT } from "./i18n";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
@@ -1795,7 +1796,7 @@ export default function DocumentEditor({
                         onClick={() => {
                           editor.chain().focus().setTextSelection(g.from).run();
                           const node = editor.view.domAtPos(g.from).node as HTMLElement;
-                          (node.nodeType === 1 ? node : node.parentElement)?.scrollIntoView({ block: "center" });
+                          reveal(node.nodeType === 1 ? (node as Element) : node.parentElement);
                         }}
                       >
                         <strong>{g.name || t("Jemand", "Someone")}</strong>

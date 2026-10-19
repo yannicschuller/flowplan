@@ -3,6 +3,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { tr } from "./locale-tag";
+import { reveal } from "./motion";
 
 // Footnotes: a marker in the text that carries its note. The note travels
 // with the marker (moving, copying, deleting, undo), and two people editing
@@ -43,13 +44,11 @@ declare module "@tiptap/core" {
 
 const key = new PluginKey<{ list: FootnoteEntry[]; decorations: DecorationSet }>("footnotes");
 
-// Shows a note: scrolls to it and lets it light up briefly.
+// Shows a note: scrolls to it and lets it light up briefly (the generic
+// jump highlight of lib/motion.ts: an overlay, nothing in the editor DOM).
 function flash(element: Element | null | undefined) {
   if (!(element instanceof HTMLElement)) return;
-  element.scrollIntoView({ block: "center", behavior: "smooth" });
-  element.classList.remove("footnote-flash");
-  void element.offsetWidth;
-  element.classList.add("footnote-flash");
+  reveal(element);
 }
 
 function section(view: EditorView, list: FootnoteEntry[], editable: boolean, edit: FootnoteOptions["edit"]) {
