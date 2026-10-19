@@ -105,7 +105,7 @@ import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
-import { notificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
+import { notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { sharePage, updatePageShare } from "./page-share";
 import { templateCategoryIds } from "./template-categories";
 import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
@@ -539,6 +539,9 @@ export function command(
       case "profile.onboarded":
         run("UPDATE users SET onboarded_at=? WHERE id=?", Date.now(), user.id);
         result = { ok: true };
+        break;
+      case "notification.reset":
+        result = resetNotificationPrefs(user);
         break;
       case "notification.email":
         result = setEmailForAll(user, b.email);

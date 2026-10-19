@@ -6,6 +6,7 @@ import { pageRole } from "./permissions";
 import { compareParagraphs, type TextChange } from "./text-diff";
 import { htmlParagraphs } from "./version-history";
 import type { Identity, Page } from "./types";
+import { notificationOn } from "./notification-kinds";
 
 const BASELINE_LIMIT = 300_000;
 const now = () => Date.now();
@@ -146,7 +147,7 @@ export function recordPageEdit(user: Identity, pageId: string) {
     `SELECT u.* FROM page_follows f JOIN users u ON u.id=f.user_id
      WHERE f.page_id=? AND f.user_id!=? AND u.disabled=0
      AND NOT EXISTS(SELECT 1 FROM notifications n WHERE n.user_id=f.user_id AND n.page_id=f.page_id AND n.kind='change' AND n.read_at IS NULL)
-     AND NOT EXISTS(SELECT 1 FROM notification_prefs p WHERE p.user_id=f.user_id AND p.kind='change' AND p.inbox=0)`,
+     AND ${notificationOn("inbox", "f.user_id", "'change'")}`,
     page.id,
     user.id,
   );

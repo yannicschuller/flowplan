@@ -10,6 +10,7 @@ import { contentLocale, ct } from "./content-locale";
 import { translate, type Locale } from "./i18n";
 import { localizedMessage } from "./i18n-errors";
 import { userLocale } from "./user-locale";
+import { notificationOn } from "./notification-kinds";
 
 export type MailConfig = {
   host: string;
@@ -204,7 +205,7 @@ export function queueInviteMail(input: {
 export function queueShareMail(input: { userId: string; inviter: string; pageId: string; page: string; workspace: string }) {
   const user = one<{ email: string; disabled: number; demo_until: number | null }>("SELECT email,disabled,demo_until FROM users WHERE id=?", input.userId);
   if (!user || user.disabled || user.demo_until) return false;
-  if (one("SELECT 1 FROM notification_prefs WHERE user_id=? AND kind='share' AND email=0", input.userId)) return false;
+  if (!one(`SELECT 1 WHERE ${notificationOn("email", "?", "'share'")}`, input.userId)) return false;
   const t = translate(userLocale(input.userId));
   const url = `${appUrl()}/#page=${input.pageId}`;
   const subject = t(`${input.inviter} hat „${input.page}“ mit dir geteilt`, `${input.inviter} shared “${input.page}” with you`);
@@ -247,7 +248,7 @@ export function queueNotificationDigests(now = Date.now()) {
      JOIN users u ON u.id=n.user_id
      WHERE n.read_at IS NULL AND n.emailed_at IS NULL AND n.created_at<=? AND u.disabled=0 AND u.demo_until IS NULL
        AND u.email LIKE '%@%'
-       AND NOT EXISTS (SELECT 1 FROM notification_prefs p WHERE p.user_id=n.user_id AND p.kind=COALESCE(n.kind,'comment') AND p.email=0)
+       AND ${notificationOn("email", "n.user_id", "COALESCE(n.kind,'comment')")}
      ORDER BY n.created_at LIMIT 2000`,
     cutoff,
   );

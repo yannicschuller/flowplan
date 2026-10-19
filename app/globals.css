@@ -17595,3 +17595,11 @@ h3 .block-reactions {
   background: rgba(240, 200, 100, 0.14);
   color: #e8c98a;
 }
+
+.notification-prefs .notification-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}

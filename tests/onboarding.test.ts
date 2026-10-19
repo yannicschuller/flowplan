@@ -32,6 +32,8 @@ test("the introduction turns e-mail summaries off and on for every kind", () => 
   const off = command(ben, { action: "notification.email", workspaceId: wid, email: false }) as Record<string, { email: boolean; inbox: boolean }>;
   assert.ok(Object.values(off).every((p) => p.email === false && p.inbox === true));
   const on = command(ben, { action: "notification.email", workspaceId: wid, email: true }) as Record<string, { email: boolean }>;
-  assert.ok(Object.values(on).every((p) => p.email === true));
+  // On means: as by default – what concerns the person, not every edit.
+  assert.equal(on.mention.email, true);
+  assert.equal(on.change.email, false);
   assert.throws(() => command(ben, { action: "notification.email", workspaceId: wid, email: "ja" }));
 });

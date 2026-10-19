@@ -2,6 +2,7 @@ import { z } from "zod";
 import { all, run } from "./db";
 import type { Identity } from "./types";
 import {
+  notificationDefaults,
   notificationKinds,
   type NotificationKind,
   type NotificationPrefs,
@@ -13,7 +14,7 @@ const kindIds = Object.keys(notificationKinds) as [
   ...NotificationKind[],
 ];
 
-// Unset kinds are on for both channels.
+// Unset kinds follow notificationDefaults.
 export function notificationPrefs(user: Identity): NotificationPrefs {
   const stored = new Map(
     all<{ kind: string; inbox: number; push: number; email: number }>(
@@ -27,9 +28,9 @@ export function notificationPrefs(user: Identity): NotificationPrefs {
       return [
         kind,
         {
-          inbox: p ? !!p.inbox : true,
-          push: p ? !!p.push : true,
-          email: p ? !!p.email : true,
+          inbox: p ? !!p.inbox : notificationDefaults[kind].inbox,
+          push: p ? !!p.push : notificationDefaults[kind].push,
+          email: p ? !!p.email : notificationDefaults[kind].email,
         },
       ];
     }),
@@ -59,9 +60,16 @@ export function setNotificationPref(user: Identity, input: unknown) {
   return notificationPrefs(user);
 }
 
-// E-mail summaries on or off for every kind at once (the introduction).
+// Back to the defaults for every kind.
+export function resetNotificationPrefs(user: Identity) {
+  run("DELETE FROM notification_prefs WHERE user_id=?", user.id);
+  return notificationPrefs(user);
+}
+
+// E-mail summaries on (as by default: what concerns the person directly)
+// or off for every kind at once (the introduction).
 export function setEmailForAll(user: Identity, input: unknown) {
-  const email = z.boolean().parse(input);
+  const on = z.boolean().parse(input);
   const prefs = notificationPrefs(user);
   for (const kind of kindIds)
     run(
@@ -71,7 +79,7 @@ export function setEmailForAll(user: Identity, input: unknown) {
       kind,
       prefs[kind].inbox ? 1 : 0,
       prefs[kind].push ? 1 : 0,
-      email && prefs[kind].inbox ? 1 : 0,
+      on && notificationDefaults[kind].email && prefs[kind].inbox ? 1 : 0,
     );
   return notificationPrefs(user);
 }

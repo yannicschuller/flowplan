@@ -14,6 +14,7 @@ import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { requireRow } from "./row-documents";
 import { journalLocked } from "./journal-extras";
+import { notificationOn } from "./notification-kinds";
 import type { Identity, Page } from "./types";
 
 
@@ -270,7 +271,7 @@ export function processDueTasks(today = localToday()) {
     `SELECT t.id,t.page_id,t.row_id,t.text,t.assignee,p.title FROM doc_tasks t JOIN pages p ON p.id=t.page_id
      WHERE t.due=? AND t.checked=0 AND t.assignee IS NOT NULL AND p.deleted_at IS NULL
      AND NOT EXISTS(SELECT 1 FROM task_reminders r WHERE r.user_id=t.assignee AND r.page_id=t.page_id AND r.text=t.text AND r.due=t.due)
-     AND NOT EXISTS(SELECT 1 FROM notification_prefs n WHERE n.user_id=t.assignee AND n.kind='reminder' AND n.inbox=0)
+     AND ${notificationOn("inbox", "t.assignee", "'reminder'")}
      LIMIT 500`,
     today,
   );

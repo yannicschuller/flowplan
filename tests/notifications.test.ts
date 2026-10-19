@@ -139,7 +139,8 @@ test("notification kinds can be switched off for the inbox or for push", () => {
     push: true,
   }) as Record<string, { inbox: boolean; push: boolean }>;
   assert.deepEqual(prefs.reminder, { inbox: false, push: false, email: false });
-  assert.deepEqual(prefs.guest, { inbox: true, push: true, email: true });
+  // Untouched kinds follow the defaults (guest comments: no e-mail).
+  assert.deepEqual(prefs.guest, { inbox: true, push: true, email: false });
   assert.throws(() =>
     command(person, {
       action: "notification.prefs",

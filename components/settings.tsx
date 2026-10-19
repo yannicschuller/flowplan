@@ -195,6 +195,13 @@ export default function Settings({
               {boot.notificationPrefs && (
                 <NotificationSettings
                   prefs={boot.notificationPrefs}
+                  onReset={async () => {
+                    try {
+                      await mutate({ action: "notification.reset" });
+                    } catch (e) {
+                      onError((e as Error).message);
+                    }
+                  }}
                   onChange={async (kind, value) => {
                     try {
                       await mutate({

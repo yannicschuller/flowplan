@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
 import type { Identity } from "./types";
+import { notificationDefaults, notificationOn } from "./notification-kinds";
 const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
@@ -381,14 +382,21 @@ function migrate(d: DatabaseSync) {
     inbox INTEGER NOT NULL DEFAULT 1,
     push INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY(user_id,kind));
-    CREATE TRIGGER IF NOT EXISTS notification_inbox_pref BEFORE INSERT ON notifications
-    WHEN EXISTS(SELECT 1 FROM notification_prefs p WHERE p.user_id=NEW.user_id AND p.kind=NEW.kind AND p.inbox=0)
+    -- Defaults per kind (lib/notification-kinds.ts), refreshed below.
+    CREATE TABLE IF NOT EXISTS notification_defaults(kind TEXT PRIMARY KEY,inbox INTEGER NOT NULL,push INTEGER NOT NULL,email INTEGER NOT NULL);
+    DROP TRIGGER IF EXISTS notification_inbox_pref;
+    CREATE TRIGGER notification_inbox_pref BEFORE INSERT ON notifications
+    WHEN NOT (${notificationOn("inbox", "NEW.user_id", "NEW.kind")})
     BEGIN SELECT RAISE(IGNORE); END;
     DROP TRIGGER IF EXISTS queue_notification_push;
     CREATE TRIGGER queue_notification_push AFTER INSERT ON notifications BEGIN
       INSERT INTO push_deliveries(notification_id,subscription_id) SELECT NEW.id,s.id FROM push_subscriptions s JOIN sessions se ON se.token=s.session_token WHERE s.user_id=NEW.user_id AND se.expires>unixepoch()*1000
-      AND NOT EXISTS(SELECT 1 FROM notification_prefs p WHERE p.user_id=NEW.user_id AND p.kind=NEW.kind AND p.push=0);
+      AND ${notificationOn("push", "NEW.user_id", "NEW.kind")};
     END;`);
+  for (const [kind, on] of Object.entries(notificationDefaults))
+    d.prepare(
+      "INSERT INTO notification_defaults(kind,inbox,push,email) VALUES(?,?,?,?) ON CONFLICT(kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email",
+    ).run(kind, on.inbox ? 1 : 0, on.push ? 1 : 0, on.email ? 1 : 0);
   const flowColumns = d.prepare("PRAGMA table_info(oidc_flows)").all() as {
     name: string;
   }[];
