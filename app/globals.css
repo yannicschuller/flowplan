@@ -17038,3 +17038,16 @@ h3 .block-reactions {
   border-radius: 999px;
   font-size: 12px;
 }
+
+/* Moving a page into a database: what ends. */
+.page-to-record p {
+  margin: 0 0 12px;
+}
+.page-to-record-ends {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--orange, #e0782c);
+  border-radius: 8px;
+  font-size: 13px;
+}

@@ -75,3 +75,62 @@ test("databases for notes: kind on creation, capture, share and Markdown import"
   await expect(page.getByText(`Heizung ${stamp}`).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// Issue #29 and the follow-ups of #26–#28: a page becomes a record, records
+// and databases are exported from their menus, the manifest follows the
+// reader's language.
+test("a page moves into a database; records and databases export from their menus", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "One run covers it.");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
+  await page.request.post("/api/auth/demo", { headers: { origin } });
+  const boot = await (await page.request.get("/api/bootstrap")).json();
+  const command = async (data: Record<string, unknown>) => {
+    const response = await page.request.post("/api/command", { headers: { origin }, data });
+    expect(response.ok(), await response.text()).toBe(true);
+    return response.json();
+  };
+  const stamp = String(Date.now());
+  const create = (title: string, kind: string, extra: Record<string, unknown> = {}) =>
+    command({ action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title, kind, ...extra });
+  const database = (await create(`Wissen ${stamp}`, "database", { databaseKind: "documents" })).id;
+  const guide = (await create(`Anleitung ${stamp}`, "document")).id;
+
+  await page.goto(`/#page=${guide}`);
+  await page.locator(".ProseMirror").first().click();
+  await page.keyboard.type("Schritt eins.");
+  await expect.poll(async () => (await (await page.request.get(`/api/pages/${guide}`)).json()).html as string, { timeout: 15000 }).toContain("Schritt eins");
+  await page.getByRole("button", { name: "Seitenaktionen" }).click();
+  await page.getByRole("menuitem", { name: "In Datenbank verschieben …" }).click();
+  const dialog = page.getByRole("dialog", { name: "In Datenbank verschieben" });
+  await dialog.getByLabel("Datenbank").selectOption(database);
+  await page.screenshot({ path: "test-results/page-to-record.png" });
+  await dialog.getByRole("button", { name: "Verschieben" }).click();
+  await expect(page).toHaveURL(new RegExp(`page=${database}&row=`));
+  const record = page.getByRole("dialog", { name: "Eintrag" });
+  await expect(record).toContainText("Schritt eins.");
+
+  // The record's menu exports it as Markdown with frontmatter.
+  await record.getByRole("button", { name: "Weitere Aktionen" }).click();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("menuitem", { name: "Als Markdown exportieren (.md)" }).click(),
+  ]);
+  const text = await (await import("node:fs/promises")).readFile((await download.path())!, "utf8");
+  expect(text).toMatch(new RegExp(`^---\\ntitle: Anleitung ${stamp}\\n`));
+  expect(text).toContain("Schritt eins.");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  // The database toolbar has one export menu with CSV and Markdown.
+  await page.getByRole("button", { name: "Exportieren", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "CSV (aktuelle Ansicht)" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Markdown mit Dateien (.zip)" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // The manifest in English for English readers.
+  const english = await (await page.request.get("/manifest.webmanifest", { headers: { "Accept-Language": "en-US", cookie: "" } })).json();
+  expect(english.shortcuts.map((s: { name: string }) => s.name)).toEqual(["Capture", "New page", "Search"]);
+  expect(errors).toEqual([]);
+});

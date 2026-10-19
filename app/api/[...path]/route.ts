@@ -66,6 +66,7 @@ import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
+import { pageToRecordPlan } from "@/lib/page-to-record";
 import { importTracker } from "@/lib/tracker-import";
 import { recordBacklinks } from "@/lib/relation-backlinks";
 import { hiddenFileIds } from "@/lib/row-files";
@@ -254,6 +255,12 @@ async function handleGET(
       const rowId = z.uuid().parse(path[3]);
       requireRow(user, page.id, rowId);
       return NextResponse.json({ mentions: unlinkedMentions(user, page, rowId) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // What moving a page into a database would change (confirmation).
+    if (path.length === 3 && path[0] === "pages" && path[2] === "to-record") {
+      const plan = pageToRecordPlan(user, z.uuid().parse(path[1]));
+      const { page, ...rest } = plan;
+      return NextResponse.json({ ...rest, title: page.title }, { headers: { "Cache-Control": "no-store" } });
     }
     // Databases to capture into, and the person's default.
     if (path.length === 1 && path[0] === "capture") {
@@ -954,6 +961,7 @@ async function handlePOST(
         importMarkdownRecords(user, z.uuid().parse(path[1]), entries, {
           dryRun: data.get("dryRun") === "1",
           createMissing: data.get("createMissing") === "1",
+          updateExisting: data.get("updateExisting") === "1",
         }),
       );
     }

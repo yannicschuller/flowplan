@@ -11,6 +11,7 @@ type Plan = {
   matched: string[];
   missing: { name: string; type: string }[];
   skipped: string[];
+  existing: number;
 };
 
 async function send(pageId: string, files: File[], options: Record<string, string>) {
@@ -33,12 +34,13 @@ export function MarkdownRecordsImport({
   pageId: string;
   files: File[];
   onClose: () => void;
-  onDone: (created: number) => void;
+  onDone: (created: number, updated: number) => void;
   onError: (message: string) => void;
 }) {
   const t = useT();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [createMissing, setCreateMissing] = useState(true);
+  const [updateExisting, setUpdateExisting] = useState(true);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let current = true;
@@ -74,8 +76,11 @@ export function MarkdownRecordsImport({
             e.preventDefault();
             setBusy(true);
             try {
-              const result = await send(pageId, files, { createMissing: createMissing ? "1" : "0" });
-              onDone(Number(result.created) || 0);
+              const result = await send(pageId, files, {
+                createMissing: createMissing ? "1" : "0",
+                updateExisting: updateExisting ? "1" : "0",
+              });
+              onDone(Number(result.created) || 0, Number(result.updated) || 0);
             } catch (error) {
               onError((error as Error).message);
             } finally {
@@ -115,11 +120,25 @@ export function MarkdownRecordsImport({
               )}
             </>
           )}
+          {plan.existing > 0 && (
+            <label className="checkbox-label">
+              <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
+              {plan.existing === 1
+                ? t("1 Eintrag stammt aus dieser Datenbank: aktualisieren statt neu anlegen", "1 record came from this database: update it instead of adding a new one")
+                : t(`${plan.existing} Einträge stammen aus dieser Datenbank: aktualisieren statt neu anlegen`, `${plan.existing} records came from this database: update them instead of adding new ones`)}
+            </label>
+          )}
           {plan.skipped.length > 0 && (
             <p className="muted small">
               {t("Berechnet und daher nicht übernommen:", "Computed and therefore not taken over:")} {plan.skipped.join(", ")}
             </p>
           )}
+          <p className="muted small">
+            {t(
+              "Links im Text werden als normale Markdown-Links gelesen. Aus Obsidian: Wikilinks vorher in Markdown-Links umwandeln (Einstellungen → Dateien und Links → „[[Wikilinks]] verwenden“ aus).",
+              "Links in the text are read as standard Markdown links. From Obsidian: convert wikilinks to Markdown links first (Settings → Files and links → turn off “Use [[Wikilinks]]”).",
+            )}
+          </p>
           <div className="modal-actions">
             <button type="button" className="button" onClick={onClose}>
               {t("Abbrechen", "Cancel")}

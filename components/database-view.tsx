@@ -80,6 +80,7 @@ import {
 import RowDocument from "./row-document";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { MarkdownRecordsImport } from "./markdown-records-import";
+import { DatabaseExportMenu, RecordExportMenu } from "./record-export";
 import { RollupValue } from "./rollup-value";
 import {
   allowedAggregates,
@@ -730,6 +731,13 @@ export default function DatabaseView({
         >
           <LinkIcon size={17} />
         </button>
+        <RecordExportMenu
+          pageId={page.id}
+          rowId={row.id}
+          title={cellText(row.cells[fields[0]?.id || "title"]) || t("Eintrag", "Record")}
+          printRoot={() => document.querySelector<HTMLElement>(".modal .row-detail")}
+          onError={onError}
+        />
         {canManageAccess(row) && (
           <button
             type="button"
@@ -2478,9 +2486,11 @@ export default function DatabaseView({
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <button
-            title="CSV exportieren"
-            onClick={() =>
+          <DatabaseExportMenu
+            pageId={page.id}
+            title={page.title}
+            onError={onError}
+            onCsv={() =>
               download(
                 `${page.title}.csv`,
                 Papa.unparse({
@@ -2492,9 +2502,7 @@ export default function DatabaseView({
                 "text/csv",
               )
             }
-          >
-            <DownloadSimple size={17} />
-          </button>
+          />
           {editable && (
             <>
               <button
@@ -3465,10 +3473,16 @@ export default function DatabaseView({
           files={markdownFiles}
           onClose={() => setMarkdownFiles(null)}
           onError={onError}
-          onDone={async (created) => {
+          onDone={async (created, updated) => {
             setMarkdownFiles(null);
             await onRefresh();
-            onError(created === 1 ? t("1 Eintrag importiert.", "1 record imported.") : t(`${created} Einträge importiert.`, `${created} records imported.`));
+            onError(
+              updated
+                ? t(`${created} Einträge importiert, ${updated} aktualisiert.`, `${created} records imported, ${updated} updated.`)
+                : created === 1
+                  ? t("1 Eintrag importiert.", "1 record imported.")
+                  : t(`${created} Einträge importiert.`, `${created} records imported.`),
+            );
           }}
         />
       )}

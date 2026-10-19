@@ -185,3 +185,73 @@ test("captured items become records in the chosen or default database", () => {
   assert.match(sharedRow.content, /Volltext/);
   assert.throws(() => act(ben, { action: "capture.record", pageId: inbox, title: "x" }), /Berechtigung|erfasst/);
 });
+
+test("one record is exported with frontmatter, and a re-import updates it", async () => {
+  const [row] = (await import("../lib/db")).all<{ id: string }>("SELECT id FROM rows WHERE page_id=? ORDER BY position LIMIT 1", notes);
+  const single = await exportMarkdown(anna, { pageId: notes, format: "markdown", includeSubpages: false, rowId: row.id });
+  assert.match(single.name, /^Heating . maintenance\.md$/);
+  const text = single.bytes.toString("utf8");
+  const { data } = splitFrontmatter(text);
+  assert.equal((data.flowplan as Record<string, unknown>).id, row.id);
+  assert.match(text, /\n# Heating – maintenance\n/);
+  assert.doesNotMatch(text, /\| Eigenschaft/);
+  await assert.rejects(() => exportMarkdown(anna, { pageId: notes, format: "markdown", includeSubpages: false, rowId: id() }), /fehlt/);
+  // Edited outside and imported again: the same record changes.
+  const edited = Buffer.from(text.replace("PARA: Resource", "PARA: Project").replace("**autumn**", "**spring**"));
+  const entries = new Map([["Heating.md", edited]]);
+  const before = rowsOf(notes);
+  assert.equal(importMarkdownRecords(anna, notes, entries, { dryRun: true }).existing, 1);
+  const result = importMarkdownRecords(anna, notes, entries, { updateExisting: true });
+  assert.equal(result.updated, 1);
+  assert.equal(result.created, 0);
+  assert.equal(rowsOf(notes), before);
+  const changed = one<{ cells: string; content: string }>("SELECT cells,content FROM rows WHERE id=?", row.id)!;
+  assert.equal(JSON.parse(changed.cells).para, "Project");
+  assert.match(changed.content, /spring/);
+  // The previous state is kept as a version.
+  assert.ok(one("SELECT 1 FROM row_snapshots WHERE row_id=? AND html LIKE '%autumn%'", row.id));
+});
+
+test("a page moves into a database with its content, links and comments", async () => {
+  const create = (title: string, parentId?: string) =>
+    String(act(anna, { action: "page.create", spaceId: space, title, kind: "document", ...(parentId ? { parentId } : {}) }).id);
+  const parent = create("Haus");
+  const guide = create("Heizung entlüften", parent);
+  const child = create("Fotos", guide);
+  const other = create("Übersicht");
+  const { htmlState } = await import("../lib/document-server");
+  const write = (pageId: string, html: string) => run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+  write(guide, "<p>Ventil <strong>vorsichtig</strong> öffnen.</p>");
+  write(other, `<p>Siehe <a href="/#page=${guide}">Heizung entlüften</a>.</p>`);
+  const fid = id();
+  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, guide, "foto.png", "image/png", 1, anna.id);
+  act(anna, { action: "comment.create", pageId: guide, body: "Im Herbst machen" });
+  run("INSERT INTO grants(resource_id,user_id,role) VALUES(?,?,?)", guide, ben.id, "editor");
+  run("INSERT INTO favorites(user_id,page_id) VALUES(?,?)", anna.id, guide);
+
+  const { pageToRecordPlan } = await import("../lib/page-to-record");
+  const plan = pageToRecordPlan(anna, guide);
+  assert.equal(plan.subpages, 1);
+  assert.equal(plan.grants, 1);
+  assert.equal(plan.comments, 1);
+  assert.ok(plan.databases.some((d) => d.id === notes));
+  // Viewers cannot move it; databases are not documents.
+  assert.throws(() => act(ben, { action: "page.toRecord", pageId: other, databaseId: notes }));
+  assert.throws(() => act(anna, { action: "page.toRecord", pageId: notes, databaseId: areas }), /Dokumentseiten/);
+
+  const moved = act(anna, { action: "page.toRecord", pageId: guide, databaseId: notes });
+  const rid = String(moved.rowId);
+  const record = one<{ cells: string; content: string }>("SELECT cells,content FROM rows WHERE id=? AND page_id=?", rid, notes)!;
+  assert.equal(JSON.parse(record.cells).title, "Heizung entlüften");
+  assert.match(record.content, /<strong>vorsichtig<\/strong>/);
+  assert.match(String(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rid)!.html), /vorsichtig/);
+  // Same file, now of the database; comment, favourite and links follow.
+  assert.equal(one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", fid)!.page_id, notes);
+  assert.equal(one<{ row_id: string }>("SELECT row_id FROM comments WHERE body='Im Herbst machen'")!.row_id, rid);
+  assert.ok(one("SELECT 1 FROM row_favorites WHERE user_id=? AND row_id=?", anna.id, rid));
+  assert.match(String(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", other)!.html), new RegExp(`href="/#page=${notes}&amp;row=${rid}"`));
+  // Sub-pages move up; sharing of the page ends; the page is in the trash.
+  assert.equal(one<{ parent_id: string }>("SELECT parent_id FROM pages WHERE id=?", child)!.parent_id, parent);
+  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM grants WHERE resource_id=?", guide)!.n, 0);
+  assert.ok(one<{ deleted_at: string | null }>("SELECT deleted_at FROM pages WHERE id=?", guide)!.deleted_at);
+});

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { requireUser, checkOrigin, HttpError } from "@/lib/auth";
 import { exportMarkdown } from "@/lib/markdown-export";
+import { withRequestLocale } from "@/lib/content-locale";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const options = z
@@ -8,9 +9,12 @@ const options = z
     pageId: z.string().uuid(),
     format: z.enum(["markdown", "zip"]),
     includeSubpages: z.boolean().default(false),
+    rowId: z.string().uuid().optional(),
   })
   .strict();
-export async function POST(req: Request) {
+// Labels, README and frontmatter keys follow the reader's language.
+export const POST = withRequestLocale(exportPost);
+async function exportPost(req: Request) {
   try {
     checkOrigin(req);
     const user = await requireUser();

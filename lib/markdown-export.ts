@@ -26,6 +26,8 @@ export type MarkdownExportOptions = {
   pageId: string;
   format: "markdown" | "zip";
   includeSubpages: boolean;
+  // One record of the database instead of the whole database.
+  rowId?: string;
 };
 const unavailable = () => ct("Nicht verfügbar", "Not available"),
   recordWord = () => ct("Eintrag", "Record");
@@ -40,6 +42,8 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   const locked = lockedPageIds(user, root.workspace_id);
   if (!zip && options.includeSubpages)
     throw new HttpError(400, "Unterseiten sind nur im ZIP-Export verfügbar.");
+  if (options.rowId && (root.kind !== "database" || options.includeSubpages))
+    throw new HttpError(400, "Nur ein Eintrag einer Datenbank.");
   const visible = all<Page>(
     "SELECT * FROM pages WHERE workspace_id=? AND deleted_at IS NULL ORDER BY position,id",
     root.workspace_id,
@@ -107,11 +111,12 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         page.id,
         {
           schema: database(page.id),
-          rows: visibleRows(user, page, rows(page.id)),
+          rows: visibleRows(user, page, rows(page.id)).filter((row) => !options.rowId || row.id === options.rowId),
           ...relatedData(user, page),
         },
       ]),
   );
+  if (options.rowId && !dbs.get(root.id)?.rows.length) throw new HttpError(404, "Datensatz fehlt.");
   let rowCount = 0;
   const rowPaths = new Map<string, string>();
   for (const [pageId, data] of dbs)
@@ -123,7 +128,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         );
       rowPaths.set(
         row.id,
-        `records/${pageId}/${exportName(cellText(row.cells[data.schema.fields[0].id]) || recordWord())}-${row.id}.md`,
+        options.rowId ? "index.md" : `records/${pageId}/${exportName(cellText(row.cells[data.schema.fields[0].id]) || recordWord())}-${row.id}.md`,
       );
     }
   const relative = (from: string, to: string) =>
@@ -395,7 +400,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           : "") +
         value.replaceAll('"', '""') +
         '"';
-      if (zip)
+      if (zip && !options.rowId)
         add(
           `tables/${page.id}.csv`,
           Buffer.from(
@@ -420,6 +425,23 @@ function collect(user: Identity, options: MarkdownExportOptions) {
             data.relatedSchemas,
           );
         const title = cellText(computed[fields[0].id]) || recordWord();
+        // A single record is its own file, with frontmatter in both formats.
+        if (options.rowId) {
+          const content =
+            one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ?? row.content ?? "";
+          add(
+            "index.md",
+            Buffer.from(
+              toFrontmatter(frontmatter(row, computed, fields, data, recordPath)) +
+                "\n# " +
+                markdownText(title) +
+                "\n\n" +
+                (content.trimStart().startsWith("<") ? render(content, recordContext) : markdownText(content) + "\n"),
+            ),
+            true,
+          );
+          continue;
+        }
         let document = zip
           ? toFrontmatter(frontmatter(row, computed, fields, data, recordPath)) + "\n# " + markdownText(title) + "\n\n"
           : `<a id="record-${row.id}"></a>\n\n## ` + markdownText(title) + "\n\n";
@@ -461,17 +483,19 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         "\n";
     add(path, Buffer.from(markdown.trimEnd() + "\n"), true);
   }
-  return { entries, root };
+  const record = options.rowId ? dbs.get(root.id)!.rows[0] : null;
+  const name = record ? cellText(record.cells[dbs.get(root.id)!.schema.fields[0].id]) || recordWord() : root.title;
+  return { entries, root, name };
 }
 export async function exportMarkdown(
   user: Identity,
   options: MarkdownExportOptions,
 ) {
-  const { entries, root } = transaction(() => collect(user, options));
+  const { entries, root, name } = transaction(() => collect(user, options));
   if (options.format === "markdown")
     return {
       bytes: entries.get("index.md")!,
-      name: `${exportName(root.title)}.md`,
+      name: `${exportName(name)}.md`,
       mime: "text/markdown; charset=utf-8",
     };
   entries.set(
@@ -487,7 +511,7 @@ export async function exportMarkdown(
   audit(user.id, "page.markdown.export", root.id);
   return {
     bytes,
-    name: `${exportName(root.title)}.zip`,
+    name: `${exportName(name)}.zip`,
     mime: "application/zip",
   };
 }

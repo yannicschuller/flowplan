@@ -24,8 +24,7 @@ function offlineKind(request, url) {
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/") ||
     url.pathname === "/fonts.css" ||
-    url.pathname.startsWith("/fonts/") ||
-    url.pathname === "/manifest.webmanifest"
+    url.pathname.startsWith("/fonts/")
   )
     return "static";
   if (

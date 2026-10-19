@@ -16,6 +16,8 @@ import { enforceUserStorage } from "./user-limits";
 import { cellText } from "./cell-text";
 import { autoDatabaseSnapshot } from "./database-operations";
 import { rowCreated } from "./automations";
+import { assertRowAccess } from "./row-access";
+import { replaceRowDocument, snapshotRow } from "./row-documents";
 import { splitFrontmatter, type FrontmatterValue } from "./frontmatter";
 import { computedTypes } from "./markdown-export";
 import { exportTitle, importDate } from "./zip-import";
@@ -41,7 +43,7 @@ export async function markdownEntries(name: string, bytes: Buffer) {
   return new Map([[posix.basename(name.replaceAll("\\", "/")) || "import.md", bytes]]);
 }
 
-type Parsed = { path: string; title: string; values: Map<string, FrontmatterValue>; body: string };
+type Parsed = { path: string; title: string; values: Map<string, FrontmatterValue>; body: string; flowplanId?: string };
 const lower = (text: string) => text.trim().toLocaleLowerCase("de");
 const isList = (value: FrontmatterValue): value is FrontmatterValue[] => Array.isArray(value);
 const asText = (value: FrontmatterValue): string =>
@@ -57,6 +59,12 @@ function parse(path: string, text: string, titleNames: string[]): Parsed {
   const { data, body } = splitFrontmatter(text);
   const values = new Map<string, FrontmatterValue>();
   let title = "";
+  // The id of a record exported from Flowplan (below "flowplan:").
+  const meta = Object.entries(data).find(([key]) => lower(key) === "flowplan")?.[1];
+  const flowplanId =
+    meta && typeof meta === "object" && !Array.isArray(meta) && typeof meta.id === "string" && /^[0-9a-f-]{36}$/i.test(meta.id)
+      ? meta.id
+      : undefined;
   for (const [key, value] of Object.entries(data)) {
     if (lower(key) === "flowplan" || value === null) continue;
     if (!title && titleNames.includes(lower(key)) && !isList(value) && typeof value !== "object") title = asText(value);
@@ -69,7 +77,7 @@ function parse(path: string, text: string, titleNames: string[]): Parsed {
     rest = rest.slice(heading[0].length);
   }
   title ||= exportTitle(posix.basename(path));
-  return { path, title: title.slice(0, 1000), values, body: rest.trim() };
+  return { path, title: title.slice(0, 1000), values, body: rest.trim(), flowplanId };
 }
 
 // The type a new property gets from the values of all files.
@@ -95,14 +103,16 @@ export type MarkdownImportPlan = {
   matched: string[];
   missing: { name: string; type: Field["type"] }[];
   skipped: string[];
+  // Files exported from this database whose record still exists.
+  existing: number;
 };
 
-export type MarkdownImportResult = MarkdownImportPlan & { created?: number; fieldsCreated?: string[]; files?: number };
+export type MarkdownImportResult = MarkdownImportPlan & { created?: number; updated?: number; fieldsCreated?: string[]; files?: number };
 export function importMarkdownRecords(
   user: Identity,
   pageId: string,
   entries: Map<string, Buffer>,
-  options: { dryRun?: boolean; createMissing?: boolean } = {},
+  options: { dryRun?: boolean; createMissing?: boolean; updateExisting?: boolean } = {},
 ): MarkdownImportResult {
   const page = requirePage(user, pageId, true);
   requireUnlocked(user, page);
@@ -128,7 +138,23 @@ export function importMarkdownRecords(
       entry.values.push(value);
       keys.set(lower(key), entry);
     }
-  const plan: MarkdownImportPlan = { records: parsed.length, matched: [], missing: [], skipped: [] };
+  // Records of this database the files came from (round trip), as far as
+  // the person may change them.
+  const existing = new Map<string, { id: string; access: string; created_by: string }>();
+  for (const file of parsed) {
+    if (!file.flowplanId) continue;
+    const row = one<{ id: string; access: string; created_by: string }>(
+      "SELECT id,access,created_by FROM rows WHERE id=? AND page_id=?",
+      file.flowplanId,
+      page.id,
+    );
+    if (!row) continue;
+    try {
+      assertRowAccess(user, page, row, true);
+      existing.set(file.path, row);
+    } catch {}
+  }
+  const plan: MarkdownImportPlan = { records: parsed.length, matched: [], missing: [], skipped: [], existing: existing.size };
   for (const [key, entry] of keys) {
     const field = byName.get(key);
     if (!field) plan.missing.push({ name: entry.name, type: guessType(entry.values).type });
@@ -225,7 +251,8 @@ export function importMarkdownRecords(
       }
     };
     // Record ids first, so links between the imported files point to records.
-    const rowIds = new Map(parsed.map((file) => [file.path, id()]));
+    const update = (file: Parsed) => (options.updateExisting ? existing.get(file.path) : undefined);
+    const rowIds = new Map(parsed.map((file) => [file.path, update(file)?.id || id()]));
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const uploaded = new Map<string, string>();
     let bytesAdded = 0;
@@ -278,11 +305,23 @@ export function importMarkdownRecords(
     });
     if (JSON.stringify(next) !== raw.fields)
       run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(next), page.id);
+    let updated = 0;
     rows.forEach(({ file, cells }, i) => {
       const rid = rowIds.get(file.path)!;
+      const html = file.body ? markdownToHtml(file.body, resolver(file.path)) : "";
+      // Round trip: the exported record gets the file's values and text.
+      if (update(file)) {
+        const before = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rid)!.cells) as Record<string, unknown>;
+        const merged = JSON.stringify({ ...before, ...cells });
+        if (merged.length > 200000) throw new HttpError(413, `${file.path}: Datensatz zu groß.`);
+        run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?", merged, user.id, rid);
+        snapshotRow(user, page.id, rid);
+        replaceRowDocument(rid, html, user.id);
+        updated++;
+        return;
+      }
       const serialized = JSON.stringify(cells);
       if (serialized.length > 200000) throw new HttpError(413, `${file.path}: Datensatz zu groß.`);
-      const html = file.body ? markdownToHtml(file.body, resolver(file.path)) : "";
       run(
         "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content) VALUES(?,?,?,?,?,?,?)",
         rid,
@@ -301,6 +340,7 @@ export function importMarkdownRecords(
     return {
       ...plan,
       created: created.length,
+      updated,
       fieldsCreated: options.createMissing ? plan.missing.slice(0, 80).map((m) => m.name) : [],
       files: uploaded.size,
     };

@@ -27,6 +27,7 @@ import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { followRename } from "./link-titles";
 import { captureRecord, setCaptureTarget } from "./capture";
+import { pageToRecord } from "./page-to-record";
 import { textBacklinks } from "./text-backlinks";
 import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
@@ -2331,6 +2332,12 @@ export function command(
         const created = createPage(wid(), sid, user.id, title.slice(0, 200), "document");
         run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), created);
         result = { id: created };
+        break;
+      }
+      case "page.toRecord": {
+        const moved = pageToRecord(user, pid(), uuid.parse(b.databaseId));
+        afterCommit.push(...moved.publish);
+        result = moved.result;
         break;
       }
       case "capture.record":
