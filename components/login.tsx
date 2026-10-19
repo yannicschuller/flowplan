@@ -63,6 +63,13 @@ export default function Login({
   // it, in the browser ?desktop= carries the app's request through the sign-in.
   const [desktopApp, setDesktopApp] = useState(false);
   const [desktopRequest, setDesktopRequest] = useState("");
+  // One line: "Stay signed in" on the left, "Forgot password?" on the right.
+  const rememberBox = rememberAvailable && !desktopApp && (
+    <label className="login-remember" title={t("Nur auf eigenen Geräten. Die Anmeldung bleibt bestehen, solange du Flowplan nutzt.", "Only on your own devices. You stay signed in while you use Flowplan.")}>
+      <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+      {t("Angemeldet bleiben", "Stay signed in")}
+    </label>
+  );
   useEffect(() => {
     const request = new URLSearchParams(location.search).get("desktop") || "";
     const desktopReturn = /^[A-Za-z0-9_-]{43}$/.test(request) ? `/api/auth/desktop?challenge=${request}` : "";
@@ -264,6 +271,16 @@ export default function Login({
                 {mode === "register" && <small>{t("Mindestens 10 Zeichen.", "At least 10 characters.")}</small>}
               </label>
             )}
+            {mode === "signin" && (rememberBox || mail) && (
+              <div className="login-options">
+                {rememberBox}
+                {mail && (
+                  <button type="button" className="text-button login-forgot" onClick={() => switchTo("forgot")}>
+                    {t("Passwort vergessen?", "Forgot password?")}
+                  </button>
+                )}
+              </div>
+            )}
             <button className="button primary wide" disabled={!!busy}>
               {busy && busy !== "passkey" && busy !== "demo" ? <SpinnerGap className="spin" /> : null}
               {mode === "register"
@@ -272,21 +289,7 @@ export default function Login({
                   ? t("Link senden", "Send link")
                   : t("Anmelden", "Sign in")}
             </button>
-            {mode === "signin" && mail && (
-              <button type="button" className="text-button login-link" onClick={() => switchTo("forgot")}>
-                {t("Passwort vergessen?", "Forgot password?")}
-              </button>
-            )}
           </form>
-        )}
-        {rememberAvailable && mode === "signin" && !desktopApp && (localLogin || configured) && (
-          <label className="checkbox-label login-remember">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            <span>
-              {t("Auf diesem Gerät angemeldet bleiben", "Stay signed in on this device")}
-              <small>{t("Nur auf eigenen Geräten. Die Anmeldung bleibt bestehen, solange du Flowplan nutzt.", "Only on your own devices. You stay signed in while you use Flowplan.")}</small>
-            </span>
-          </label>
         )}
         {localLogin && mode === "signin" && desktopApp && (
           <a className="button wide" href="/api/auth/desktop" title={t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser")}>
@@ -304,6 +307,7 @@ export default function Login({
         {configured && mode === "signin" && (
           <>
             {localLogin && <div className="login-or">{t("oder", "or")}</div>}
+            {!localLogin && rememberBox && <div className="login-options">{rememberBox}</div>}
             <a
               className={`button wide${localLogin ? "" : " primary"}`}
               href={desktopApp ? "/api/auth/desktop?via=sso" : stay ? `${loginUrl}&remember=1` : loginUrl}
