@@ -31,6 +31,7 @@ import {
 import { applyBlockChange } from "@/lib/block-shortcuts";
 import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType } from "@/lib/document-schema";
 import { calloutLabels } from "@/lib/callout-types";
+import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
 import { Modal } from "./ui";
 type Positioned = DocumentBlock & {
   left: number;
@@ -38,6 +39,9 @@ type Positioned = DocumentBlock & {
   width: number;
   height: number;
   handleTop: number;
+  // Right-to-left blocks take their handle on the right.
+  rtl: boolean;
+  right: number;
   glide?: Animation;
 };
 // Handles sit on the middle of a block's first text line, so they stay
@@ -156,16 +160,17 @@ export function DocumentBlockControls({
         const list = listItems.includes(b.node.type.name)
           ? editor.view.nodeDOM(b.parentPos)
           : null;
-        const left =
-          list instanceof HTMLElement
-            ? list.getBoundingClientRect().left
-            : rect.left;
+        const rtl = getComputedStyle(dom).direction === "rtl";
+        const listRect = list instanceof HTMLElement ? list.getBoundingClientRect() : null;
+        const left = listRect ? listRect.left : rect.left;
         return [
           {
             ...b,
             left: left - origin.left - dx,
+            right: (listRect ? listRect.right : rect.right) - origin.left - dx,
             top: rect.top - origin.top - dy,
             width: rect.width,
+            rtl,
             height: rect.height,
             handleTop: firstLineCenter(editor, b, rect) - origin.top - 14 - dy,
             glide: glide?.animation,
@@ -549,7 +554,7 @@ export function DocumentBlockControls({
       )}
       <div
         ref={surface}
-        className={`block-editor-surface ${editor?.isEditable ? "with-block-handles" : ""}`}
+        className={`block-editor-surface ${editor?.isEditable ? "with-block-handles" : ""}${blocks.some((block) => block.rtl) ? " with-rtl-blocks" : ""}`}
       >
         {children}
         {editor?.isEditable && (
@@ -563,7 +568,7 @@ export function DocumentBlockControls({
                 data-block-pos={block.pos}
                 className={`document-block-handle ${selected.current.includes(block.pos) ? "selected" : ""}`}
                 style={{
-                  left: Math.max(0, block.left - 25),
+                  left: block.rtl ? block.right + 2 : Math.max(0, block.left - 25),
                   top: block.handleTop,
                 }}
                 aria-label={t(`Blockaktionen: ${block.label}`, `Block actions: ${block.label}`)}
@@ -731,6 +736,59 @@ export function DocumentBlockControls({
                     {w} %
                   </option>
                 ))}
+              </Select>
+            </label>
+          );
+        })()}
+        {(() => {
+          // Text direction: automatic (by the text), left to right, right
+          // to left – for the blocks and everything inside them.
+          const chosen = all.filter((b) => selected.current.includes(b.pos));
+          const turnable = chosen.filter((b) => {
+            if (TEXT_DIRECTION_TYPES.includes(b.node.type.name)) return true;
+            let inside = false;
+            b.node.descendants((n) => {
+              if (TEXT_DIRECTION_TYPES.includes(n.type.name)) inside = true;
+              return !inside;
+            });
+            return inside;
+          });
+          if (!editor || !turnable.length) return null;
+          const values = new Set(turnable.map((b) => textDirection(b.node.attrs.dir) || ""));
+          return (
+            <label className="block-media-width">
+              {t("Textrichtung", "Text direction")}
+              <Select
+                aria-label={t("Textrichtung", "Text direction")}
+                disabled={!editor.isEditable}
+                value={values.size === 1 ? [...values][0] : "mixed"}
+                onChange={(event) => {
+                  const direction = (textDirection(event.target.value) || null) as BlockDirection | null;
+                  const tr = editor.state.tr;
+                  for (const block of turnable) setBlockDirection(tr, block.pos, direction);
+                  // A list whose items all go one way goes that way as a whole.
+                  const lists = new Set(
+                    turnable
+                      .filter((b) => ["listItem", "taskItem"].includes(b.node.type.name))
+                      .map((b) => b.parentPos),
+                  );
+                  for (const pos of lists) {
+                    const list = tr.doc.nodeAt(pos);
+                    if (!list) continue;
+                    const dirs = new Set<string | null>();
+                    list.forEach((item) => dirs.add(textDirection(item.attrs.dir)));
+                    const shared = dirs.size === 1 ? [...dirs][0] : null;
+                    if ((list.attrs.dir ?? null) !== shared) tr.setNodeAttribute(pos, "dir", shared);
+                  }
+                  if (!tr.docChanged) return;
+                  editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [...selected.current]));
+                  setTick((t) => t + 1);
+                }}
+              >
+                {values.size > 1 && <option value="mixed">{t("Gemischt", "Mixed")}</option>}
+                <option value="">{t("Automatisch", "Automatic")}</option>
+                <option value="ltr">{t("Links nach rechts", "Left to right")}</option>
+                <option value="rtl">{t("Rechts nach links", "Right to left")}</option>
               </Select>
             </label>
           );

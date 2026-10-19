@@ -10,6 +10,7 @@ import {
   type MathTarget,
 } from "./math-editor";
 import { documentExtensions, Media, widthStyle } from "@/lib/document-schema";
+import { BlockDirectionExtension } from "@/lib/text-direction";
 import {
   mermaidNodeView,
   DiagramEditorDialog,
@@ -91,7 +92,9 @@ export default function SharedEditor({
                   return ["p", {}, t("Medium nicht verfügbar", "Media not available")];
                 },
               })
-            : e,
+            : e.name === "blockDirection"
+              ? BlockDirectionExtension.configure({ auto: true })
+              : e,
         ),
       ...(ydoc ? [Collaboration.configure({ document: ydoc })] : []),
       ...(ydoc && presence ? [guestCursors(presence)] : []),

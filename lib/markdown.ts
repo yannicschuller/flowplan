@@ -1,7 +1,9 @@
-import { generateJSON } from "@tiptap/html/server";
-import type { Node } from "@tiptap/pm/model";
+import { generateHTML, generateJSON } from "@tiptap/html/server";
+import type { DOMOutputSpec, Mark, Node } from "@tiptap/pm/model";
 import { calloutType, documentExtensions, documentSchema } from "./document-schema";
 import { cleanHtml } from "./document-server";
+import { URL_PATTERN, footnoteText } from "./footnotes";
+import { ct as tr } from "./content-locale";
 export type MarkdownContext = {
   url: (url: string) => string | null;
   linked: (source: string) => { title: string; url: string } | null;
@@ -51,12 +53,149 @@ function wrapMark(text: string, delimiter: string) {
     ? match[1] + delimiter + match[2] + delimiter + match[3]
     : text;
 }
-export function htmlToMarkdown(html: string, context: MarkdownContext): string {
+// Source view ("Als Markdown bearbeiten"): what Markdown cannot hold stays
+// intact. Blocks without a Markdown form become a marker
+// <!-- flowplan:block N … --> naming blocks[N]; marks and inline nodes
+// without one are written as inline HTML, which the import reads back.
+export type MarkdownSource = {
+  blocks: { html: string; label: string }[];
+  // What gets lost anyway (alignment, indent …), for the notice.
+  lossy: Set<string>;
+};
+export const BLOCK_MARKER = /^<!-- flowplan:block (\d{1,5})(?: [^\n]*?)? -->\s*$/;
+// Blocks Markdown holds completely (with their content).
+const MARKDOWN_BLOCKS = new Set([
+  "paragraph",
+  "heading",
+  "horizontalRule",
+  "codeBlock",
+  "mathBlock",
+  "mermaidBlock",
+  "bulletList",
+  "orderedList",
+  "taskList",
+  "listItem",
+  "taskItem",
+  "blockquote",
+  "callout",
+  "toggle",
+  "table",
+  "tableRow",
+  "tableCell",
+  "tableHeader",
+  "image",
+]);
+const attributeText = (value: unknown) =>
+  String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+// A schema's DOM description as HTML: [tag, attrs?, ...children | 0].
+function specHtml(spec: DOMOutputSpec, content = ""): string | null {
+  if (typeof spec === "string") return htmlText(spec);
+  if (!Array.isArray(spec) || typeof spec[0] !== "string" || !/^[a-z][a-z0-9]*$/i.test(spec[0])) return null;
+  const [tag, ...rest] = spec as unknown as [string, ...unknown[]];
+  let attrs = "",
+    inner = "";
+  for (const [index, part] of rest.entries()) {
+    if (index === 0 && part && typeof part === "object" && !Array.isArray(part)) {
+      for (const [name, value] of Object.entries(part as Record<string, unknown>))
+        if (value !== null && value !== undefined && value !== false && /^[a-z][\w-]*$/i.test(name))
+          attrs += ` ${name}="${attributeText(value)}"`;
+      continue;
+    }
+    if (part === 0) inner += content;
+    else {
+      const child = specHtml(part as DOMOutputSpec, content);
+      if (child === null) return null;
+      inner += child;
+    }
+  }
+  return `<${tag}${attrs}>${inner}</${tag}>`;
+}
+function markHtml(mark: Mark) {
+  const spec = mark.type.spec.toDOM?.(mark, true);
+  if (!spec) return null;
+  const html = specHtml(spec, "\u0000");
+  if (!html) return null;
+  const [open, close] = html.split("\u0000");
+  return close === undefined ? null : { open, close };
+}
+const blockLabels: Record<string, () => string> = {
+  linkedDatabase: () => tr("Verknüpfte Datenbank", "Linked database"),
+  syncedBlock: () => tr("Synchronisierter Block", "Synced block"),
+  whiteboardEmbed: () => tr("Whiteboard", "Whiteboard"),
+  media: () => tr("Medium", "Media"),
+  linkCard: () => tr("Linkvorschau", "Link preview"),
+  functionPlot: () => tr("Funktionsgraph", "Function graph"),
+  metricBlock: () => tr("Kennzahl", "Metric"),
+  columns: () => tr("Spalten", "Columns"),
+  table: () => tr("Tabelle", "Table"),
+  image: () => tr("Bild", "Image"),
+};
+// Tables Markdown holds: no merged cells, widths, or more than one
+// paragraph per cell.
+function plainTable(node: Node) {
+  let plain = true;
+  node.descendants((child) => {
+    if (!plain) return false;
+    if (child.type.name === "tableCell" || child.type.name === "tableHeader") {
+      if (
+        (Number(child.attrs.colspan) || 1) > 1 ||
+        (Number(child.attrs.rowspan) || 1) > 1 ||
+        child.attrs.colwidth ||
+        child.childCount > 1 ||
+        child.firstChild?.type.name !== "paragraph"
+      )
+        plain = false;
+      return false;
+    }
+    return true;
+  });
+  return plain;
+}
+export function htmlToMarkdown(
+  html: string,
+  context: MarkdownContext,
+  options: { source?: MarkdownSource } = {},
+): string {
   const doc = documentSchema().nodeFromJSON(
     generateJSON(cleanHtml(html), documentExtensions),
   );
+  const source = options.source;
+  const notes: string[] = [];
+  // Whole blocks Markdown cannot hold, as a marker (source view only).
+  function placeholder(node: Node) {
+    if (!source) return null;
+    const keep =
+      !MARKDOWN_BLOCKS.has(node.type.name) ||
+      (node.type.name === "table" && !plainTable(node)) ||
+      (node.type.name === "image" && !!(node.attrs.width || node.attrs.height || node.attrs.annotations || node.attrs.title));
+    if (!keep) return null;
+    const index = source.blocks.length;
+    const label = (blockLabels[node.type.name]?.() || node.type.name).replace(/-{2,}|>/g, " ");
+    source.blocks.push({
+      html: generateHTML({ type: "doc", content: [node.toJSON()] }, documentExtensions),
+      label,
+    });
+    return `<!-- flowplan:block ${index} ${label} -->`;
+  }
+  function lose(node: Node) {
+    if (!source) return;
+    if (node.attrs.textAlign && node.attrs.textAlign !== "left") source.lossy.add(tr("Ausrichtung", "Alignment"));
+    if (node.attrs.indent) source.lossy.add(tr("Einzug", "Indent"));
+    if (node.attrs.dir) source.lossy.add(tr("Textrichtung", "Text direction"));
+    if (node.attrs.reactions) source.lossy.add(tr("Reaktionen", "Reactions"));
+    if (node.attrs.journalSince) source.lossy.add(tr("Übertragene Aufgaben", "Carried-over tasks"));
+  }
   function inline(node: Node, inTable = false): string {
     if (node.type.name === "hardBreak") return "  \n";
+    if (node.type.name === "footnote") {
+      notes.push(footnoteText(node.attrs.note));
+      return `[^${notes.length}]`;
+    }
+    if (node.type.name === "mention" && source) {
+      const spec = node.type.spec.toDOM?.(node);
+      const html = spec && specHtml(spec);
+      if (html) return html;
+    }
     if (node.type.name === "mention")
       return markdownText("@" + String(node.attrs.label || ""));
     if (node.type.name === "mathInline") {
@@ -81,10 +220,20 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
       if (mark.type.name === "italic") result = wrapMark(result, "*");
       if (mark.type.name === "strike") result = wrapMark(result, "~~");
       if (mark.type.name === "underline") result = `<u>${result}</u>`;
-      if (mark.type.name === "highlight") result = `<mark>${result}</mark>`;
+      if (mark.type.name === "highlight" && !(source && mark.attrs.color)) result = `<mark>${result}</mark>`;
       if (mark.type.name === "link") {
         const url = context.url(String(mark.attrs.href || ""));
         if (url) result = `[${result}](<${markdownUrl(url)}>)`;
+      }
+      // Without a Markdown form: as inline HTML in the source view.
+      if (
+        source &&
+        !["bold", "italic", "strike", "underline", "link", "code"].includes(mark.type.name) &&
+        !(mark.type.name === "highlight" && !mark.attrs.color)
+      ) {
+        const wrap = markHtml(mark);
+        if (wrap) result = wrap.open + result + wrap.close;
+        else source.lossy.add(mark.type.name);
       }
     }
     return result;
@@ -95,6 +244,9 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
     return result.filter(Boolean).join("\n\n");
   }
   function block(node: Node, inTable = false): string {
+    const kept = placeholder(node);
+    if (kept !== null) return kept;
+    lose(node);
     switch (node.type.name) {
       case "paragraph":
         return inline(node, inTable);
@@ -149,7 +301,11 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
               : node.type.name === "taskList"
                 ? `- [${item.attrs.checked ? "x" : " "}] `
                 : "- ";
+          lose(item);
           const content = children(item, inTable).split("\n");
+          // Due dates as in Obsidian Tasks: "- [ ] Call 📅 2026-05-04".
+          if (node.type.name === "taskList" && /^\d{4}-\d{2}-\d{2}$/.test(String(item.attrs.due || "")))
+            content[0] += ` 📅 ${item.attrs.due}`;
           result.push(
             prefix +
               content[0] +
@@ -247,5 +403,27 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
         return children(node, inTable);
     }
   }
-  return children(doc).trim() + "\n";
+  const body = children(doc).trim();
+  // Web addresses stay as they are, so they remain links.
+  const noteText = (note: string) =>
+    note
+      .split(URL_PATTERN)
+      .map((part, index) => (index % 2 ? part : markdownText(part)))
+      .join("");
+  const definitions = notes.map((note, index) => `[^${index + 1}]: ${noteText(note) || " "}`).join("\n");
+  return (definitions ? `${body}\n\n${definitions}` : body) + "\n";
+}
+// The page as Markdown for the source view, and the blocks kept aside.
+export function markdownSource(html: string) {
+  const source: MarkdownSource = { blocks: [], lossy: new Set() };
+  const markdown = htmlToMarkdown(
+    html,
+    {
+      // Links and files stay as they are (relative to Flowplan).
+      url: (url) => (/^(https?:|mailto:|\/)/i.test(url) ? url : null),
+      linked: () => null,
+    },
+    { source },
+  );
+  return { markdown, blocks: source.blocks, lossy: [...source.lossy] };
 }

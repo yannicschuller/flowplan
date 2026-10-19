@@ -107,6 +107,7 @@ import {
   ClockCounterClockwise,
   Graph,
   Sparkle,
+  MarkdownLogo,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -142,6 +143,7 @@ import { FocusBar } from "./focus-bar";
 import { PageGraph } from "./page-graph";
 import { QuickCapture } from "./quick-capture";
 import { printPage } from "./print-page";
+import { exportDocumentHtml } from "@/lib/document-html";
 import { PageToRecord } from "./page-to-record";
 import {
   DatabaseKindPicker,
@@ -302,6 +304,8 @@ export default function WorkspaceApp({
     [templates, setTemplates] = useState(false),
     [share, setShare] = useState(false),
     [pageExport, setPageExport] = useState(false),
+    // The page shown as Markdown ("Als Markdown bearbeiten").
+    [sourcePage, setSourcePage] = useState<string | null>(null),
     [spaceExport, setSpaceExport] = useState<string | null>(null),
     [onboarding, setOnboarding] = useState(!!boot.onboarding),
     [spaceManager, setSpaceManager] = useState<{
@@ -846,6 +850,7 @@ export default function WorkspaceApp({
   toggleReadingRef.current = toggleReading;
   const activePages = boot.pages.filter((p) => !p.deleted_at),
     editable = mayEdit && !reading,
+    sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id));
   function addPage(
@@ -1334,6 +1339,16 @@ export default function WorkspaceApp({
           { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
           { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
           { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: printPage },
+          ...(openPageData.page.kind === "document"
+            ? [
+                {
+                  label: t("Als Markdown bearbeiten", "Edit as Markdown"),
+                  keywords: "markdown quelltext source text md",
+                  icon: MarkdownLogo,
+                  run: () => setSourcePage(openPageData.page.id),
+                },
+              ]
+            : []),
           { label: t("Versionsverlauf", "Version history"), keywords: "history versionen wiederherstellen", icon: ClockCounterClockwise, run: () => setHistory(true) },
           { label: t("Teilen", "Share"), keywords: "share link freigeben", icon: ShareNetwork, run: () => setShare(true) },
         ]
@@ -1982,6 +1997,19 @@ export default function WorkspaceApp({
                       <FileText />
                       {t("Drucken / PDF", "Print / PDF")}
                     </Dropdown.Item>
+                    {data.page.kind === "document" && !data.locked && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => setSourcePage(sourceOpen ? null : data.page.id)}
+                      >
+                        <MarkdownLogo />
+                        {sourceOpen
+                          ? t("Markdown-Ansicht schließen", "Close Markdown view")
+                          : editable
+                            ? t("Als Markdown bearbeiten", "Edit as Markdown")
+                            : t("Als Markdown anzeigen", "View as Markdown")}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setHistory(true)}
@@ -2415,6 +2443,15 @@ export default function WorkspaceApp({
                       onError={notify}
                       onHtml={setHtml}
                       transcription={!!boot.instance?.transcription}
+                      source={sourceOpen}
+                      sourceNotice={
+                        data.page.locked
+                          ? t("Die Seite ist gesperrt. Zum Bearbeiten zuerst entsperren.", "The page is locked. Unlock it first to edit.")
+                          : reading
+                            ? t("Im Lesemodus lässt sich der Text nur ansehen.", "In reading mode the text can only be viewed.")
+                            : undefined
+                      }
+                      onSourceClose={() => setSourcePage(null)}
                     />
                     </>
                   )}
@@ -3907,7 +3944,7 @@ export default function WorkspaceApp({
             if (data.page.kind === "document")
               download(
                 `${data.page.title}.html`,
-                `<!doctype html><html lang="de"><meta charset="utf-8"><title>${data.page.title.replace(/[<>&]/g, "")}</title><body>${html.current}</body></html>`,
+                `<!doctype html><html lang="de"><meta charset="utf-8"><title>${data.page.title.replace(/[<>&]/g, "")}</title><body>${exportDocumentHtml(html.current)}</body></html>`,
                 "text/html",
               );
             else

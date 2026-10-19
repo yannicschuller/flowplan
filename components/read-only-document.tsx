@@ -7,6 +7,7 @@ import { revealSpoiler } from "./link-preview";
 import { mountDiagram } from "@/lib/mermaid-render";
 import { renderMath } from "@/lib/math-render";
 import { renderCode, languageLabel } from "@/lib/code-highlight";
+import { finishDocumentHtml } from "@/lib/document-html";
 // Callers provide server-sanitized HTML. Generated math is never stored as document content.
 export function ReadOnlyDocument({
   html,
@@ -20,6 +21,8 @@ export function ReadOnlyDocument({
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
+    // Right-to-left blocks and footnotes (numbers, list at the end).
+    finishDocumentHtml(root);
     const diagrams = Array.from(
       root.querySelectorAll<HTMLElement>("[data-mermaid]"),
     ).map((element) => mountDiagram(element, element.dataset.mermaid || ""));
