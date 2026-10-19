@@ -2,6 +2,12 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.4.2 – 2026-10-19
+
+- Print view shows only content under a bar naming its author; sub-pages keep their sharing when a page becomes a record ([8f347f1](https://github.com/yannicschuller/flowplan/commit/8f347f1a6391cea0cba4deba184b18f09edcf216))
+- Security review: close access gaps, abuse paths and resource limits ([cee66c0](https://github.com/yannicschuller/flowplan/commit/cee66c0ab2c70e161a07c7d850473748474df905))
+- Notifications: sensible defaults per kind instead of everything everywhere ([420fb12](https://github.com/yannicschuller/flowplan/commit/420fb1269f65925e250de94f6342ff2b672aa7f2))
+
 ## v0.4.1 – 2026-10-19
 
 - Encryption test waits until the upload is recorded ([64e868e](https://github.com/yannicschuller/flowplan/commit/64e868e102e0c0fc8930634c5b8f92289d6bd967))
