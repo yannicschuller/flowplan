@@ -22,6 +22,8 @@ import { exportName } from "./export-name";
 import { ct } from "./content-locale";
 import { commentText } from "./comment-content";
 import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
+import { whiteboardSnapshotItems } from "./whiteboard";
+import { whiteboardSvg } from "./whiteboard-svg";
 import type { Identity, Page, Row, Field, Space } from "./types";
 export type MarkdownExportOptions = {
   // One page (with its sub-pages) or a whole space: every top-level page
@@ -237,7 +239,48 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           ? { title: page.title, url: pageUrl(page.id, from) }
           : null;
       },
+      whiteboard(pageId) {
+        const page = readable(pageId);
+        if (!page || page.kind !== "whiteboard" || locked.has(page.id)) return null;
+        const image = zip ? boardImage(page, prefixOfPath(from)) : null;
+        return {
+          title: page.title,
+          image: image ? relative(from, image) : null,
+          url: `${appUrl().replace(/\/$/, "")}/#page=${page.id}`,
+        };
+      },
     };
+  }
+  // Whiteboards as SVG next to the attachments (#34), once per folder; null
+  // for an empty board.
+  const boards = new Map<string, string | null>();
+  function boardImage(page: Page, folder: string) {
+    const path = `${folder}assets/${exportName(page.title)}-${page.id}.svg`;
+    if (boards.has(path)) return boards.get(path)!;
+    const images = context(path);
+    const svg = whiteboardSvg(
+      whiteboardSnapshotItems(page),
+      {
+        image: (src) => images.url(src),
+        page: (id) => {
+          const target = readable(id);
+          return target && !locked.has(target.id) ? { title: target.title, kind: target.kind } : null;
+        },
+        record: (databaseId, rowId) => {
+          const db = readable(databaseId);
+          if (!db || db.kind !== "database" || locked.has(db.id)) return null;
+          const row = visibleRows(user, db, rows(db.id)).find((r) => r.id === rowId);
+          if (!row) return null;
+          const fields = database(db.id).fields;
+          return { title: cellText(row.cells[fields[0]?.id || "title"]) || recordWord(), database: db.title };
+        },
+        label: ct,
+      },
+      page.title,
+    );
+    boards.set(path, svg ? path : null);
+    if (svg) add(path, Buffer.from(svg), true);
+    return svg ? path : null;
   }
   function render(html: string, ctx: MarkdownContext) {
     try {
@@ -441,7 +484,14 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       if (cover) markdown += `![Cover](<${markdownUrl(cover)}>)\n\n`;
     }
     if (page.kind === "document") history(path, page.id, null, page.title);
-    if (page.kind === "document")
+    if (page.kind === "whiteboard") {
+      const image = zip ? boardImage(page, prefix(page.id)) : null;
+      markdown += image
+        ? `![${markdownText(page.title || "Whiteboard")}](<${markdownUrl(relative(path, image))}>)\n`
+        : zip
+          ? ct("*Dieses Whiteboard ist leer.*", "*This whiteboard is empty.*") + "\n"
+          : markdownLink(ct("Whiteboard in Flowplan öffnen", "Open the whiteboard in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n";
+    } else if (page.kind === "document" || page.kind === "journal")
       markdown += render(
         one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
@@ -620,8 +670,8 @@ export async function exportMarkdown(
       ct("Flowplan Markdown-Export\n\n", "Flowplan Markdown export\n\n") +
         spaceNote +
         ct(
-          "Öffne index.md. Unterseiten liegen unter pages/, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nJeder Datensatz unter records/ beginnt mit seinen Eigenschaften als YAML-Frontmatter (wie in Obsidian); berechnete Werte wie Formeln und Zeitstempel stehen unter \"flowplan:\". Eine Datenbank liest solche Dateien über „Markdown importieren“ wieder ein.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. ",
-          "Open index.md. Sub-pages are in pages/, record documents in records/, tables also as CSV in tables/ and local attachments in assets/. Links within this export are relative. Other page links still need a Flowplan sign-in. External media are exported as links and not downloaded.\n\nEvery record in records/ starts with its properties as YAML frontmatter (as in Obsidian); computed values such as formulas and timestamps are below \"flowplan:\". A database reads such files back with \"Import Markdown\".\n\nThe database output contains all records and properties, regardless of view filters. Markdown shows columns one after another and normalises merged table cells. Formulas use math code fences, diagrams mermaid code fences. Text values in CSV that start like spreadsheet formulas get a leading apostrophe.\n\nThis is a portable content format, not a Flowplan restore archive. ",
+          "Öffne index.md. Unterseiten liegen unter pages/, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/ – dort liegen auch Whiteboards als SVG-Bild. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nJeder Datensatz unter records/ beginnt mit seinen Eigenschaften als YAML-Frontmatter (wie in Obsidian); berechnete Werte wie Formeln und Zeitstempel stehen unter \"flowplan:\". Eine Datenbank liest solche Dateien über „Markdown importieren“ wieder ein.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. ",
+          "Open index.md. Sub-pages are in pages/, record documents in records/, tables also as CSV in tables/ and local attachments in assets/ – where whiteboards are too, as SVG images. Links within this export are relative. Other page links still need a Flowplan sign-in. External media are exported as links and not downloaded.\n\nEvery record in records/ starts with its properties as YAML frontmatter (as in Obsidian); computed values such as formulas and timestamps are below \"flowplan:\". A database reads such files back with \"Import Markdown\".\n\nThe database output contains all records and properties, regardless of view filters. Markdown shows columns one after another and normalises merged table cells. Formulas use math code fences, diagrams mermaid code fences. Text values in CSV that start like spreadsheet formulas get a leading apostrophe.\n\nThis is a portable content format, not a Flowplan restore archive. ",
         ) +
         historyNote,
     ),

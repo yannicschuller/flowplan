@@ -5,6 +5,8 @@ import { cleanHtml } from "./document-server";
 export type MarkdownContext = {
   url: (url: string) => string | null;
   linked: (source: string) => { title: string; url: string } | null;
+  // Embedded whiteboards: an image (SVG in the ZIP export) and the link.
+  whiteboard?: (pageId: string) => { title: string; image: string | null; url: string } | null;
 };
 export function markdownText(text: string) {
   return text
@@ -177,6 +179,14 @@ export function htmlToMarkdown(html: string, context: MarkdownContext): string {
           ),
         );
         return columns.join("\n\n");
+      }
+      case "whiteboardEmbed": {
+        const board = context.whiteboard?.(String(node.attrs.pageId || ""));
+        if (!board) return "Whiteboard nicht verfügbar";
+        const link = markdownLink(board.title || "Whiteboard", board.url);
+        // The marker lets a re-import (Git, lib/git-export.ts) restore the embed.
+        const marker = `<!-- flowplan:whiteboard ${String(node.attrs.pageId)} ${Math.round(Number(node.attrs.height) || 380)} -->\n`;
+        return marker + (board.image ? `![${markdownText(board.title || "Whiteboard")}](<${markdownUrl(board.image)}>)\n\n${link}` : link);
       }
       case "linkedDatabase": {
         const linked = context.linked(String(node.attrs.source || ""));

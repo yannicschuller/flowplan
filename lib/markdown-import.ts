@@ -27,7 +27,16 @@ export function markdownToHtml(
   markdown: string,
   resolve: (href: string, kind: "link" | "image") => string | null = (href) =>
     href,
+  // Embedded whiteboards from Flowplan's own export (lib/markdown.ts): the
+  // marker, the SVG and the link become the embed again when the board may
+  // be embedded here; otherwise the image and link stay as they are.
+  options: { whiteboard?: (pageId: string) => boolean } = {},
 ) {
+  markdown = markdown.replace(
+    /<!-- flowplan:whiteboard ([0-9a-f-]{36}) (\d{2,4}) -->\n(?:!\[[^\n]*\]\([^\n]*\)\n\n)?\[[^\n]*\]\([^\n]*\)/g,
+    (block, pageId: string, height: string) =>
+      options.whiteboard?.(pageId) ? `<!-- flowplan:whiteboard ${pageId} ${height} -->` : block.replace(/^<!--[^\n]*-->\n/, ""),
+  );
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
     renderer: {
@@ -48,6 +57,8 @@ export function markdownToHtml(
       },
       // Raw HTML in Markdown is shown as text, never interpreted.
       html({ text }: Tokens.HTML | Tokens.Tag) {
+        const board = /^<!-- flowplan:whiteboard ([0-9a-f-]{36}) (\d{2,4}) -->\s*$/.exec(text);
+        if (board) return `<div data-whiteboard="${board[1]}" data-whiteboard-height="${Math.min(2000, Math.max(120, Number(board[2])))}"></div>`;
         return escaped(text);
       },
     },

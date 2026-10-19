@@ -88,6 +88,13 @@ async function changedFiles(from: string, to: string) {
   return changed;
 }
 
+function readableBoard(user: Identity, id: string) {
+  try {
+    return requirePage(user, id).kind === "whiteboard";
+  } catch {
+    return false;
+  }
+}
 // A document page from its exported file: the text below the title, without
 // the list of sub-pages. The previous state is kept as a version.
 function updateDocument(user: Identity, pageId: string, markdown: string) {
@@ -96,7 +103,12 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
   const body = splitFrontmatter(markdown)
     .body.replace(/^\s*#\s+[^\n]*\n+/, "")
     .replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "");
-  const html = markdownToHtml(body.replace(/^!\[Cover\]\([^)]*\)\n+/, ""), (href) => (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null));
+  const html = markdownToHtml(
+    body.replace(/^!\[Cover\]\([^)]*\)\n+/, ""),
+    (href) => (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null),
+    // Embedded boards come back as embeds when this person may read them.
+    { whiteboard: (id) => one<{ workspace_id: string; kind: string }>("SELECT workspace_id,kind FROM pages WHERE id=? AND deleted_at IS NULL", id)?.workspace_id === page.workspace_id && readableBoard(user, id) },
+  );
   const current = one<{ html: string; state: Uint8Array | null }>("SELECT html,state FROM documents WHERE page_id=?", page.id);
   if (!current || current.html === html) return false;
   run(
