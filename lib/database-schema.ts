@@ -54,6 +54,14 @@ export const field = z.object({
   doneValues: z.array(z.string().max(100)).max(50).optional(),
   estimateField: z.string().max(500).optional(),
   prefix: z.string().regex(/^[A-Z][A-Z0-9]{0,9}$/, "Präfix: Großbuchstaben und Ziffern, z. B. WEB.").optional(),
+  // AI property (lib/ai/database-fields.ts checks it further).
+  ai: z
+    .object({
+      prompt: z.string().trim().min(1).max(2000),
+      auto: z.boolean().optional(),
+      autoBy: z.string().max(100).optional(),
+    })
+    .optional(),
 });
 export const view = z
   .object({

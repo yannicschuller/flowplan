@@ -33,6 +33,7 @@ type InstanceAi = {
   guests: boolean;
   userProviders: boolean;
   features: Partial<Record<AiFeature, boolean>>;
+  semanticSearch?: boolean;
 };
 type AdminView = {
   settings: InstanceAi;
@@ -40,6 +41,8 @@ type AdminView = {
   env: { provider: { kind: AiProviderKind; baseUrl: string } | null; key: boolean };
   secretsKey: "encryption-key" | "secrets-key" | "file";
   allowedUsers: string[];
+  // Semantic search (lib/ai/semantic.ts): what is stored.
+  semantic?: { active: boolean; model: string; chunks: number; bytes: number; sources: number; pending: number };
 };
 type TestResult = { models: string[]; reply: string; ms: number; modelListed: boolean; listError: string };
 // What the save sends for the key: a new one, null to remove, nothing to keep.
@@ -328,6 +331,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
   }, []);
   if (!view || !draft) return <div className="loading-content">{t("Wird geladen …", "Loading …")}</div>;
   const dirty = JSON.stringify(draft) !== JSON.stringify(view.settings) || "apiKey" in keyChange;
+  const mb = (bytes: number) => (bytes / 1_048_576).toLocaleString(undefined, { maximumFractionDigits: 1 });
   const set = (patch: Partial<InstanceAi>) => setDraft({ ...draft, ...patch });
   const provider = draft.provider;
   const local = provider?.kind === "ollama";
@@ -445,6 +449,34 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
             onChange={(on) => set({ features: { ...draft.features, [f.id]: on } })}
           />
         ))}
+      </SettingGroup>
+      <SettingGroup
+        title={t("Suche nach Bedeutung", "Semantic search")}
+        description={t(
+          "Für „KI fragen“: Inhalte werden zusätzlich mit dem Embedding-Modell des Instanz-Anbieters als Vektoren gespeichert, damit Fragen auch ohne gleiche Wörter passende Stellen finden. Journale mit PIN, für die KI gesperrte Seiten und Bereiche sowie der Papierkorb werden nie eingebettet; persönliche KI-Regeln und Berechtigungen gelten bei jeder Frage. Speicherbedarf: 4 Byte je Dimension und Abschnitt (768 Dimensionen ≈ 3 KB je Abschnitt von bis zu ~900 Zeichen, etwa das 3- bis 4-Fache des Textes).",
+          "For “Ask AI”: content is also stored as vectors with the instance provider's embedding model, so questions find matching passages without the same words. Journals with a PIN, pages and spaces closed to the AI and the trash are never embedded; personal AI rules and permissions apply to every question. Storage: 4 bytes per dimension and chunk (768 dimensions ≈ 3 KB per chunk of up to ~900 characters, roughly 3–4 times the text).",
+        )}
+      >
+        <SwitchRow
+          label={t("Suche nach Bedeutung einschalten", "Turn on semantic search")}
+          description={
+            !provider?.embeddingModel?.trim() || provider.kind === "anthropic"
+              ? t("Braucht ein Embedding-Modell beim Anbieter der Instanz (z. B. nomic-embed-text bei Ollama). Anthropic bietet keines.", "Needs an embedding model at the instance provider (e.g. nomic-embed-text with Ollama). Anthropic has none.")
+              : t(`Mit ${provider.embeddingModel}. Ausschalten löscht alle gespeicherten Vektoren.`, `With ${provider.embeddingModel}. Turning it off deletes all stored vectors.`)
+          }
+          checked={!!draft.semanticSearch}
+          onChange={(semanticSearch) => set({ semanticSearch })}
+        />
+        {view.semantic && (view.semantic.active || view.semantic.chunks > 0) && (
+          <SettingRow label={t("Gespeichert", "Stored")}>
+            <span className="setting-value">
+              {t(
+                `${view.semantic.chunks} Abschnitte aus ${view.semantic.sources} Seiten und Einträgen · ${mb(view.semantic.bytes)} MB${view.semantic.pending ? ` · ${view.semantic.pending} warten` : ""}`,
+                `${view.semantic.chunks} chunks from ${view.semantic.sources} pages and records · ${mb(view.semantic.bytes)} MB${view.semantic.pending ? ` · ${view.semantic.pending} waiting` : ""}`,
+              )}
+            </span>
+          </SettingRow>
+        )}
       </SettingGroup>
       <p className="muted ai-secrets-note">
         {view.secretsKey === "file"

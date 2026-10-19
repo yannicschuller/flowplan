@@ -117,6 +117,10 @@ export type Field = {
   doneValues?: string[];
   // "time": a number property with the estimate in hours.
   estimateField?: string;
+  // AI property (text, select, multiselect or number): a prompt over other
+  // properties ({Name}); `auto` recomputes when they change, as `autoBy`
+  // (set by the server: the person who switched it on). lib/ai/database.ts
+  ai?: { prompt: string; auto?: boolean; autoBy?: string };
 };
 export type Row = {
   id: string;

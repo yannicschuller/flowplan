@@ -13,6 +13,8 @@
 //                                       provider equals the one from the environment
 //   FLOWPLAN_AI_ACCESS=everyone|selected, FLOWPLAN_AI_GUESTS=on,
 //   FLOWPLAN_AI_USER_PROVIDERS=on, FLOWPLAN_AI_FEATURES=write,summarize,…
+//   FLOWPLAN_AI_SEMANTIC_SEARCH=on      semantic search ("ask") with the
+//                                       instance's embedding model
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { HttpError } from "../auth";
@@ -38,6 +40,9 @@ const instanceSchema = z.object({
   guests: z.boolean(),
   userProviders: z.boolean(),
   features: featureFlags,
+  // Semantic search for "ask": embeddings of the workspace content with the
+  // instance's embedding model (lib/ai/semantic.ts). Off unless switched on.
+  semanticSearch: z.boolean().default(false),
 });
 export type AiInstanceSettings = z.infer<typeof instanceSchema>;
 const userSchema = z.object({
@@ -89,6 +94,7 @@ function envDefaults(): AiInstanceSettings {
     access: process.env.FLOWPLAN_AI_ACCESS?.trim() === "selected" ? "selected" : "everyone",
     guests: on(process.env.FLOWPLAN_AI_GUESTS),
     userProviders: on(process.env.FLOWPLAN_AI_USER_PROVIDERS),
+    semanticSearch: on(process.env.FLOWPLAN_AI_SEMANTIC_SEARCH),
     features: Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, features.includes(id)])) as Record<AiFeature, boolean>,
   };
 }

@@ -78,7 +78,7 @@ import {
   hasRelativeFilters,
 } from "@/lib/database-filters";
 import RowDocument from "./row-document";
-import { useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { AiSummaryDialog, type AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { MarkdownRecordsImport } from "./markdown-records-import";
@@ -107,6 +107,8 @@ import {
 } from "@/lib/database-groups";
 import { CellInput } from "./cell-input";
 export { CellInput } from "./cell-input";
+import { AI_OUTPUT_TYPES, AiCellControl, AiFieldEditor, AiFillAll, AiFillDialog, unknownReferences, useAiDatabaseStatus } from "./ai-database";
+import { aiPageReadable, aiUsable, type AiStatus } from "@/lib/ai/client";
 import DatabaseForm from "./database-form";
 import type { FormConfig } from "@/lib/form-settings";
 import {
@@ -297,7 +299,10 @@ export default function DatabaseView({
   routeNavigation = false,
   mutate,
   onError,
+  ai,
 }: {
+  // AI features of the person (bootstrap); without it no AI controls.
+  ai?: AiStatus;
   data: DatabaseData;
   page: Page;
   userId: string;
@@ -406,6 +411,24 @@ export default function DatabaseView({
     [bulkField, setBulkField] = useState(""),
     [bulkValue, setBulkValue] = useState<unknown>(undefined),
     [bulkBusy, setBulkBusy] = useState(false);
+  // AI in this database: may the person use it here, the queue, fresh cells.
+  // From the props or, e.g. for linked databases, from the workspace's AI context.
+  const contextAi = useAi().status;
+  ai = ai ?? contextAi ?? undefined;
+  const canAi = aiUsable(ai, "database") && aiPageReadable(ai, page.id);
+  const hasAiFields = data.database.fields.some((f) => f.ai);
+  const [aiFill, setAiFill] = useState(false),
+    [aiWatch, setAiWatch] = useState(false);
+  const aiStatus = useAiDatabaseStatus(page.id, hasAiFields || aiWatch, onRefresh);
+  const aiQueued = (queued: number, skipped = 0) => {
+    setAiWatch(true);
+    aiStatus.watch();
+    onError(
+      skipped
+        ? t(`${queued} Werte werden von der KI berechnet, ${skipped} übersprungen (schon ausgefüllt, schreibgeschützt oder für die KI gesperrt).`, `${queued} values are being computed by the AI, ${skipped} skipped (already filled, read-only or closed to the AI).`)
+        : t(`${queued} Werte werden von der KI berechnet.`, `${queued} values are being computed by the AI.`),
+    );
+  };
   const [resize, setResize] = useState<{
     id: string;
     startX: number;
@@ -2272,6 +2295,7 @@ export default function DatabaseView({
         {visibleFields.map((f, i) => (
           <td
             key={f.id}
+            className={aiStatus.fresh.has(`${r.id}:${f.id}`) ? "ai-filled" : undefined}
             onClick={() => {
               if (
                 !rowEditable(r) ||
@@ -2597,6 +2621,11 @@ export default function DatabaseView({
           >
             {t("Duplizieren", "Duplicate")}
           </button>
+          {canAi && (
+            <button className="button compact" disabled={bulkBusy} onClick={() => setAiFill(true)}>
+              <Sparkle size={14} /> {t("Mit KI ausfüllen", "Fill in with AI")}
+            </button>
+          )}
           <button className="button compact" disabled={bulkBusy} onClick={() => setTransfer({ rowIds: [...selection.keys()], mode: "move" })}>
             {t("Verschieben / kopieren nach …", "Move / copy to …")}
           </button>
@@ -2615,6 +2644,24 @@ export default function DatabaseView({
           </button>
         </div>
       )}
+      {!!aiStatus.status?.pending && (
+        <div className="ai-pending" role="status">
+          <Sparkle size={14} /> {t(`KI berechnet ${aiStatus.status.pending} Werte …`, `AI is computing ${aiStatus.status.pending} values …`)}
+        </div>
+      )}
+      <AiFillDialog
+        open={aiFill}
+        pageId={page.id}
+        fields={fields}
+        rowIds={selectionRows.map((r) => r.id)}
+        ai={ai}
+        onClose={() => setAiFill(false)}
+        onQueued={(queued, skipped) => {
+          setSelection(new Map());
+          aiQueued(queued, skipped);
+        }}
+        onError={onError}
+      />
       {grouped && (
         <div className="group-view-toolbar">
           <span>
@@ -2746,7 +2793,9 @@ export default function DatabaseView({
                       }}
                     >
                       <span className="property-type">
-                        {f.type === "number"
+                        {f.ai
+                          ? "✦"
+                          : f.type === "number"
                           ? "#"
                           : f.type === "date"
                             ? "◷"
@@ -4382,6 +4431,10 @@ export default function DatabaseView({
               (relationChanged && !relationReady)
             )
               return;
+            if (fieldDraft.ai && unknownReferences(fieldDraft.ai.prompt, fields, fieldDraft.id).length) {
+              setFieldError(t("Der KI-Auftrag verweist auf unbekannte Eigenschaften.", "The AI instruction refers to unknown properties."));
+              return;
+            }
             if (formulaProblem || formulaTooLong) {
               setFieldError(
                 formulaProblem?.message ||
@@ -4443,18 +4496,21 @@ export default function DatabaseView({
             {t("Typ", "Type")}
             <Select
               aria-label={t("Eigenschaftstyp", "Property type")}
-              value={fieldDraft.parent ? "@parent" : fieldDraft.type}
+              value={fieldDraft.ai ? "@ai" : fieldDraft.parent ? "@parent" : fieldDraft.type}
               disabled={
                 !editable || !allowFieldChanges || schemaBusy || !!relationPair
               }
               onChange={(e) =>
                 setFieldDraft((f) =>
-                  e.target.value === "@parent"
-                    ? { ...f, type: "relation", parent: true, relationPage: page.id }
+                  e.target.value === "@ai"
+                    ? { ...f, type: AI_OUTPUT_TYPES.includes(f.type) ? f.type : "text", parent: undefined, ai: { prompt: f.ai?.prompt || "" } }
+                    : e.target.value === "@parent"
+                    ? { ...f, type: "relation", parent: true, relationPage: page.id, ai: undefined }
                     : {
                         ...f,
                         type: e.target.value as FieldType,
                         parent: undefined,
+                        ai: undefined,
                         ...(e.target.value === "id" && !f.prefix ? { prefix: suggestedPrefix(page.title) } : {}),
                       },
                 )
@@ -4466,8 +4522,23 @@ export default function DatabaseView({
                 </option>
               ))}
               <option value="@parent">{t("Übergeordneter Eintrag (Unteraufgaben)", "Parent record (subtasks)")}</option>
+              {(canAi || fieldDraft.ai) && <option value="@ai">{t("KI-Eigenschaft", "AI property")}</option>}
             </Select>
           </label>
+          {fieldDraft.ai && (
+            <AiFieldEditor
+              draft={fieldDraft}
+              fields={fields}
+              disabled={!editable || !allowFieldChanges || schemaBusy || !canAi}
+              onChange={(patch) => setFieldDraft((f) => ({ ...f, ...patch }))}
+            />
+          )}
+          {fieldDraft.ai && canAi && editable && fields.some((f) => f.id === fieldDraft.id && f.ai?.prompt === fieldDraft.ai?.prompt && f.type === fieldDraft.type) && (
+            <div className="ai-field-run">
+              <AiFillAll pageId={page.id} field={fieldDraft} onError={onError} onQueued={(n) => aiQueued(n)} />
+              <small className="muted">{t("Berechnet die Werte aller Einträge neu (im Hintergrund).", "Recomputes the values of all records (in the background).")}</small>
+            </div>
+          )}
           {fieldDraft.type === "id" && (
             <label>
               {t("Präfix", "Prefix")}
@@ -5291,6 +5362,20 @@ export default function DatabaseView({
                         />
                       )}
                     </PropertyRow>
+                    {f.ai && (
+                      <AiCellControl
+                        pageId={page.id}
+                        field={f}
+                        rowId={selected.id}
+                        meta={aiStatus.status?.meta[selected.id]?.[f.id]}
+                        editable={canAi && !!selectedEditable && aiPageReadable(ai, page.id)}
+                        onDone={() => {
+                          void onRefresh().catch(() => {});
+                          void aiStatus.reload();
+                        }}
+                        onError={onError}
+                      />
+                    )}
                     {f.type === "date" && reminderControl(selected, f)}
                     {f.type === "date" &&
                       f.id === fields.find((x) => x.type === "date")?.id &&

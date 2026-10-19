@@ -97,3 +97,57 @@ export async function streamAiFrom(
   }
   return text;
 }
+
+// ---- Ask the workspace (POST /api/ai/ask, lib/ai/ask.ts) ----
+
+export type AskSource = { n: number; pageId: string; rowId?: string; title: string; pageTitle?: string; kind: string };
+export type AskScope = { kind: "workspace" } | { kind: "page"; pageId: string } | { kind: "space"; spaceId: string };
+export type AskOptions = {
+  workspaceId: string;
+  question: string;
+  // Earlier turns of the conversation (the server keeps none).
+  history: { role: "user" | "assistant"; content: string }[];
+  scope: AskScope;
+  signal?: AbortSignal;
+  // The numbered sources, as soon as they are known (before the answer).
+  onSources?: (sources: AskSource[], semantic: boolean) => void;
+  onText?: (piece: string, text: string) => void;
+};
+function decodeSources(header: string | null): AskSource[] {
+  if (!header) return [];
+  try {
+    const bytes = Uint8Array.from(atob(header), (c) => c.charCodeAt(0));
+    const list = JSON.parse(new TextDecoder().decode(bytes));
+    return Array.isArray(list) ? list.filter((s) => s && typeof s.n === "number" && typeof s.pageId === "string" && typeof s.title === "string") : [];
+  } catch {
+    return [];
+  }
+}
+export async function askAi({ signal, onText, onSources, ...body }: AskOptions): Promise<{ text: string; sources: AskSource[] }> {
+  let sources: AskSource[] = [];
+  const text = await streamAiFrom("/api/ai/ask", body, {
+    signal,
+    onText,
+    onResponse: (response) => {
+      sources = decodeSources(response.headers.get("X-Flowplan-Sources"));
+      onSources?.(sources, response.headers.get("X-Flowplan-Semantic") === "1");
+    },
+  });
+  return { text, sources };
+}
+
+// An answer split into text and citations: "… [1][2]" → parts with numbers
+// that exist among the sources (others stay text).
+export function citationParts(text: string, sources: AskSource[]): ({ text: string } | { cite: number })[] {
+  const parts: ({ text: string } | { cite: number })[] = [];
+  let last = 0;
+  for (const match of text.matchAll(/\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]/g)) {
+    const numbers = match[1].split(",").map((n) => Number(n.trim()));
+    if (!numbers.every((n) => sources.some((s) => s.n === n))) continue;
+    if (match.index! > last) parts.push({ text: text.slice(last, match.index) });
+    for (const n of numbers) parts.push({ cite: n });
+    last = match.index! + match[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
