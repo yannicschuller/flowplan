@@ -393,6 +393,44 @@ export const Indent = Extension.create({
       },
     ];
   },
+  // Lists, tasks and tables indent by nesting: a paragraph that ends up
+  // inside one (Enter after an indented line, "- " at its start, pasting)
+  // drops its own indent, or the item would be indented twice.
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("indentInContainers"),
+        appendTransaction: (transactions, _old, state) => {
+          if (!transactions.some((t) => t.docChanged)) return null;
+          // Only where something changed, mapped to the final document.
+          const ranges: [number, number][] = [];
+          transactions.forEach((t, index) =>
+            t.mapping.maps.forEach((map, step) =>
+              map.forEach((_a, _b, start, end) => {
+                let from = start,
+                  to = end;
+                for (const later of [...t.mapping.maps.slice(step + 1), ...transactions.slice(index + 1).flatMap((n) => n.mapping.maps)]) {
+                  from = later.map(from, -1);
+                  to = later.map(to, 1);
+                }
+                ranges.push([from, to]);
+              }),
+            ),
+          );
+          const tr = state.tr;
+          const size = state.doc.content.size;
+          for (const [from, to] of ranges)
+            state.doc.nodesBetween(Math.max(0, from - 1), Math.min(size, to + 1), (node, pos, parent) => {
+              if (!node.isTextblock) return true;
+              if (node.attrs.indent && parent && ["listItem", "taskItem", "tableCell", "tableHeader"].includes(parent.type.name))
+                tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: 0 });
+              return false;
+            });
+          return tr.docChanged ? tr : null;
+        },
+      }),
+    ];
+  },
   addKeyboardShortcuts() {
     // Caret moves by the browser (arrow keys) reach the editor a moment
     // later; take them over before reading the selection.

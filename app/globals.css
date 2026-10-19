@@ -11772,30 +11772,32 @@ label.task-due {
   }
 }
 
-/* Indented paragraphs and headings (Tab / Shift+Tab) */
+/* Indented paragraphs and headings (Tab / Shift+Tab). Padding, not margin:
+   the editor's and the published page's "p { margin: … }" rules are more
+   specific and would reset a margin. */
 [data-indent="1"] {
-  margin-left: 1.75em;
+  padding-inline-start: 1.75em;
 }
 [data-indent="2"] {
-  margin-left: 3.5em;
+  padding-inline-start: 3.5em;
 }
 [data-indent="3"] {
-  margin-left: 5.25em;
+  padding-inline-start: 5.25em;
 }
 [data-indent="4"] {
-  margin-left: 7em;
+  padding-inline-start: 7.0em;
 }
 [data-indent="5"] {
-  margin-left: 8.75em;
+  padding-inline-start: 8.75em;
 }
 [data-indent="6"] {
-  margin-left: 10.5em;
+  padding-inline-start: 10.5em;
 }
 [data-indent="7"] {
-  margin-left: 12.25em;
+  padding-inline-start: 12.25em;
 }
 [data-indent="8"] {
-  margin-left: 14em;
+  padding-inline-start: 14.0em;
 }
 
 /* Move page dialog */
