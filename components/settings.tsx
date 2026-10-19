@@ -412,6 +412,7 @@ export default function Settings({
                     [t("Neue Seite", "New page"), "⌘ / Ctrl + N"],
                     [t("Editor-Befehle", "Editor commands"), "/"],
                     [t("Fett / Kursiv", "Bold / italic"), "⌘ / Ctrl + B / I"],
+                    ...(boot.ai?.features.write.ok ? [[t("KI-Schreibassistent", "AI writing assistant"), "⌘ / Ctrl + J"] as const] : []),
                   ] as const
                 ).map(([label, keys]) => (
                   <SettingRow key={label} label={label}>

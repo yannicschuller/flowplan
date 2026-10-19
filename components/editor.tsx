@@ -18,6 +18,11 @@ import {
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
+import { AiWriter, blocksFromHtml, type AiWriterRequest } from "./ai-writer";
+import { useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { aiTargetPlugin } from "@/lib/ai/target";
+import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml } from "@/lib/ai/insert";
+import { registerAiInserter } from "@/lib/ai/editor-bridge";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { Select } from "./select";
@@ -70,7 +75,7 @@ import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import Typography from "@tiptap/extension-typography";
 import Collaboration from "@tiptap/extension-collaboration";
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Extension, Node, mergeAttributes } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
 import { rankCommands } from "@/lib/slash-commands";
@@ -125,6 +130,7 @@ import {
   ChartLine,
   UsersThree,
   Note,
+  Sparkle,
 } from "@phosphor-icons/react";
 import { api, isTransient, Modal } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
@@ -257,6 +263,18 @@ export default function DocumentEditor({
     [authorShares, setAuthorShares] = useState<AuthorShares["shares"]>([]);
   const authorFetch = useRef({ at: 0, unknown: "" });
   const authorSharesRef = useRef((_result: AuthorShares) => {});
+  // The writing assistant (components/ai-writer.tsx): its panel and what it
+  // works on. Hidden without the feature, disabled on pages the AI may not
+  // read.
+  const [aiRequest, setAiRequest] = useState<AiWriterRequest | null>(null);
+  const aiWrite = useAiAvailability("write", pageId);
+  const aiSummarize = useAiAvailability("summarize", pageId);
+  const aiBlockedHint = useAiBlockedHint();
+  const aiWriteRef = useRef(aiWrite);
+  aiWriteRef.current = aiWrite;
+  // ⌘J, the text menu and /ki: the selection, else the current line, else
+  // (an empty line) a free prompt.
+  const openAi = useRef((_prompt?: boolean) => {});
   // "Vorschlagen": changes become suggestions others can accept or reject.
   const [suggesting, setSuggesting] = useState(false);
   const suggestingRef = useRef(false);
@@ -435,6 +453,9 @@ export default function DocumentEditor({
         CitationView,
         BibliographyView,
         Authorship.configure({ onShares: (result) => authorSharesRef.current(result) }),
+        // Marks the text the writing assistant works on (lib/ai/target.ts) and
+        // briefly what it inserted (lib/ai/insert.ts).
+        Extension.create({ name: "aiTarget", addProseMirrorPlugins: () => [aiTargetPlugin, aiInsertedPlugin] }),
       ],
       editorProps: {
         transformPasted: freshLinkedIds,
@@ -493,6 +514,19 @@ export default function DocumentEditor({
           return true;
         },
         handleKeyDown: (_view, event) => {
+          // ⌘J / Ctrl+J: the writing assistant for the selection or line.
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            !event.altKey &&
+            !event.shiftKey &&
+            event.key.toLowerCase() === "j" &&
+            editable &&
+            aiWriteRef.current !== "hidden"
+          ) {
+            event.preventDefault();
+            openAi.current();
+            return true;
+          }
           if (_view.state.selection.$from.parent.type.name === "codeBlock")
             return false;
           // Tab and Escape belong to a visible calculation hint ("3/4 =" also
@@ -884,6 +918,36 @@ export default function DocumentEditor({
       onError((error as Error).message);
     }
   }
+  openAi.current = (prompt = false) => {
+    if (!editor || editor.isDestroyed || !editable || embedded) return;
+    if (aiWriteRef.current === "blocked") return onError(aiBlockedHint);
+    if (aiWriteRef.current !== "ok") return;
+    const { from, to, empty, $from } = editor.state.selection;
+    if (!prompt && !empty && editor.state.doc.textBetween(from, to, " ").trim())
+      return setAiRequest({ kind: "selection", from, to });
+    // The current line when it has text.
+    if (!prompt && $from.parent.isTextblock && $from.parent.textContent.trim())
+      return setAiRequest({ kind: "selection", from: $from.start(), to: $from.end() });
+    setAiRequest({ kind: "prompt", from, to: from });
+  };
+  // Summaries from the side panel or a record's dialog land here.
+  useEffect(() => {
+    if (!editor || !editable || embedded) return;
+    return registerAiInserter(pageId, rowId, (markdown, place) => {
+      if (editor.isDestroyed) return false;
+      const { from, to } = editor.state.selection;
+      const tr = aiInsertTransaction(
+        editor.state,
+        blocksFromHtml(editor.schema, aiMarkdownToHtml(markdown)),
+        place === "top" ? { from: 0, to: 0 } : { from, to },
+        place === "top" ? "top" : "below",
+      );
+      if (!tr) return false;
+      editor.view.dispatch(tr);
+      editor.commands.focus();
+      return true;
+    });
+  }, [editor, editable, embedded, pageId, rowId]);
   async function upload(original: File) {
     // Excalidraw and draw.io drawings become a new whiteboard shown here.
     if (
@@ -951,6 +1015,18 @@ export default function DocumentEditor({
   const calloutLabel = calloutLabels(t),
     calloutDescription = calloutDescriptions(t);
   const commands: SlashItem[] = [
+    ...(aiWrite !== "hidden" && !embedded
+      ? [
+          {
+            name: t("KI-Assistent", "AI assistant"),
+            keywords: ["ki", "ai", "assistent", "assistant", "schreiben", "write", "gpt"],
+            description: aiWrite === "blocked" ? aiBlockedHint : t("Text von der KI schreiben lassen (⌘J)", "Let the AI write text (⌘J)"),
+            icon: Sparkle,
+            disabled: aiWrite === "blocked",
+            run: () => openAi.current(true),
+          },
+        ]
+      : []),
     {
       name: t("Text", "Text"),
       keywords: ["text", "p", "absatz", "paragraph"],
@@ -1300,7 +1376,7 @@ export default function DocumentEditor({
     const list = slashItems.current,
       item = list[Math.min(index, list.length - 1)],
       menu = slashState.current;
-    if (!item || !menu) return;
+    if (!item || !menu || item.disabled) return;
     setSlash(null);
     if (menu.mode === "inline" && editor) {
       const to = editor.state.selection.from;
@@ -1885,17 +1961,32 @@ export default function DocumentEditor({
           editor={editor}
           userId={userId}
           editable={editable}
+          ai={aiWrite}
+          aiHint={aiBlockedHint}
+          onAi={() => openAi.current()}
           onLink={() => {
             setLinkUrl(editor?.getAttributes("link").href || "");
             setLink(true);
           }}
         />
       )}
+      {aiRequest && editor && !editor.isDestroyed && (
+        <AiWriter
+          key={`${aiRequest.kind}-${aiRequest.from}-${aiRequest.to}`}
+          editor={editor}
+          pageId={pageId}
+          rowId={rowId}
+          request={aiRequest}
+          onClose={() => setAiRequest(null)}
+        />
+      )}
       <VoiceRecorder
         open={voice}
         transcription={transcription}
+        summarize={embedded ? "hidden" : aiSummarize}
+        summarizeHint={aiBlockedHint}
         onClose={() => setVoice(false)}
-        onInsert={async (file, toText) => {
+        onInsert={async (file, toText, summarize) => {
           setVoice(false);
           await upload(file);
           if (!toText) return;
@@ -1911,13 +2002,18 @@ export default function DocumentEditor({
               .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÄÖÜ])/)
               .map((p) => p.trim())
               .filter(Boolean);
-            if (paragraphs.length)
+            if (paragraphs.length) {
               editor
                 ?.chain()
                 .focus()
                 .insertContent(paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })))
                 .run();
-            else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
+              // The summary goes below the transcript, through the preview.
+              if (summarize && editor && !editor.isDestroyed) {
+                const at = editor.state.selection.from;
+                setAiRequest({ kind: "transcript", from: at, to: at, text: paragraphs.join("\n\n") });
+              }
+            } else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
           } catch (error) {
             onError((error as Error).message);
           } finally {

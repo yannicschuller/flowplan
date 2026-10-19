@@ -16,6 +16,8 @@ import { aiStreamResponse, AI_LIMITS } from "@/lib/ai/run";
 import { listModels, pullModel, testConnection } from "@/lib/ai/providers";
 import { adminAiView, assertSettingsCaller, instanceAiSettings, userAiSettings, userKeyInfo } from "@/lib/ai/settings";
 import { redactSecrets } from "@/lib/ai/redact";
+import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
+import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -131,6 +133,14 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
         { workspaceId: b.workspaceId, pageId: b.pageId, rowId: b.rowId, signal: req.signal },
       );
     }
+    // The writing assistant: an action on the selection or a free prompt;
+    // the prompt is built on the server (lib/ai/write.ts).
+    if (path.length === 1 && path[0] === "write")
+      return await aiWriteResponse(user, await body(req, (WRITE_LIMITS.maxText + WRITE_LIMITS.maxInstruction) * 4 + 10_000), req.signal);
+    // A summary of a page, record, database view or transcript; the content
+    // is loaded on the server (lib/ai/summarize.ts).
+    if (path.length === 1 && path[0] === "summarize")
+      return await aiSummaryResponse(user, await body(req, SUMMARY_LIMITS.maxText * 4 + 20_000 * 40), req.signal);
     // The person's own provider (as saved): test it, list its models.
     if (path.length === 1 && (path[0] === "test" || path[0] === "models")) {
       limitAiSetup(user.id);

@@ -64,7 +64,7 @@ export type MarkdownSource = {
   // What gets lost anyway (alignment, indent …), for the notice.
   lossy: Set<string>;
 };
-export const BLOCK_MARKER = /^<!-- flowplan:block (\d{1,5})(?: [^\n]*?)? -->\s*$/;
+export { BLOCK_MARKER } from "./markdown-html";
 // Blocks Markdown holds completely (with their content).
 const MARKDOWN_BLOCKS = new Set([
   "paragraph",

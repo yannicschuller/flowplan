@@ -28,6 +28,9 @@ import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
 import { PagePeople } from "./page-people";
 import { AiBlockToggle } from "./ai-settings";
+import { AiProvider } from "./ai-context";
+import { AiSummaryPanel, type AiSummaryTarget } from "./ai-summary";
+import { aiPageReadable, aiUsable } from "@/lib/ai/client";
 import {
   imageAccept,
   imageFileId,
@@ -319,6 +322,8 @@ export default function WorkspaceApp({
     } | null>(null),
     [history, setHistory] = useState(false),
     [comments, setComments] = useState(false),
+    // "Mit KI zusammenfassen" of the open page (side panel).
+    [aiSummary, setAiSummary] = useState<AiSummaryTarget | null>(null),
     [focusMode, setFocusMode] = useState(false),
     // Documents opened for reading on this device (no editing, no handles).
     [readPages, setReadPages] = useState<string[]>([]),
@@ -658,6 +663,7 @@ export default function WorkspaceApp({
       currentId.current = id;
       setData(null);
       setComments(false);
+      setAiSummary(null);
       setBusy(true);
       const hash = pageLocationHash(target || { pageId: id });
       if (location.hash !== hash) location.hash = hash;
@@ -1372,6 +1378,7 @@ export default function WorkspaceApp({
     action.run();
   };
   return (
+    <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <div
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}`}
       inert={switching}
@@ -1995,6 +2002,23 @@ export default function WorkspaceApp({
                       <DownloadSimple />
                       {t("Exportieren", "Export")}
                     </Dropdown.Item>
+                    {data.page.kind === "document" && !data.locked && aiUsable(boot.ai, "summarize") && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        disabled={!aiPageReadable(boot.ai, data.page.id)}
+                        title={aiPageReadable(boot.ai, data.page.id) ? undefined : t("KI hat keinen Zugriff auf diese Seite", "The AI has no access to this page")}
+                        onSelect={() => {
+                          setComments(false);
+                          setAiSummary({ pageId: data.page.id, title: data.page.title, kind: "page" });
+                        }}
+                      >
+                        <Sparkle />
+                        {t("Mit KI zusammenfassen", "Summarise with AI")}
+                        {!aiPageReadable(boot.ai, data.page.id) && (
+                          <small className="dropdown-hint">{t("KI hat keinen Zugriff auf diese Seite", "The AI has no access to this page")}</small>
+                        )}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => printPage()}
@@ -2531,6 +2555,9 @@ export default function WorkspaceApp({
                     )}
                   </div>
                 </article>
+                {aiSummary?.pageId === data.page.id && !comments && (
+                  <AiSummaryPanel target={aiSummary} onClose={() => setAiSummary(null)} />
+                )}
                 {comments && (
                   <aside className="comments-panel">
                     <header>
@@ -4004,6 +4031,7 @@ export default function WorkspaceApp({
         </div>
       )}
     </div>
+    </AiProvider>
   );
 }
 function greeting(clock: number | null, t: (de: string, en: string) => string) {
