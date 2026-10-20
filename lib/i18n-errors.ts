@@ -639,8 +639,6 @@ const exact: Record<string, string> = {
   "Dazu habe ich nichts gefunden.": "I found nothing about that.",
   "Keine Embeddings": "No embeddings",
   // stored secrets, encryption, sign-in codes
-  "Kein verschlüsseltes Geheimnis.": "Not an encrypted secret.",
-  "Das Geheimnis wurde mit einem Schlüssel verschlüsselt, der hier nicht eingerichtet ist.": "The secret was encrypted with a key that is not set up here.",
   "Kein Schlüssel für gespeicherte Geheimnisse.": "No key for stored secrets.",
   "Unverschlüsseltes Objekt anstelle eines verschlüsselten – nicht übernommen.": "Unencrypted object instead of an encrypted one – not taken over.",
   "Ungültiges Base32.": "Invalid Base32.",
@@ -668,7 +666,6 @@ const exact: Record<string, string> = {
   "Unbekannter Kalender.": "Unknown calendar.",
   "Unbekannter Push-Dienst.": "Unknown push service.",
   "Unbekannte Push-Aktion.": "Unknown push action.",
-  "Nur https-Adressen sind erlaubt.": "Only https addresses are allowed.",
   "Zu viele Weiterleitungen.": "Too many redirects.",
   // notifications
   "Push-Testbenachrichtigung": "Push test notification",
