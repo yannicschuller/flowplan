@@ -1,0 +1,3 @@
+# Changes to the pipelines and the repository settings in .github need the
+# owner's review (with "Require review from Code Owners" on main).
+/.github/ @yannicschuller

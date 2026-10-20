@@ -25,10 +25,15 @@ concurrency:
 
 jobs:
   release:
-    # Own runner (label self-hosted) for this repository's own work. Dependabot
-    # and pull requests from forks run on GitHub's runners instead: their code
-    # never reaches the self-hosted machine.
-    runs-on: ${{ (github.actor == 'dependabot[bot]' || github.triggering_actor == 'dependabot[bot]' || (github.event_name == 'pull_request' && (github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.full_name != github.repository))) && 'ubuntu-latest' || 'self-hosted' }}
+    # Only the repository owner starts this (collaborators can't): it runs
+    # on the own runner and uses the signing and deploy secrets.
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    # Own runner (label self-hosted) only for the repository owner's own
+    # work: pushes, runs and pull requests started by the owner from a branch
+    # of this repository. Everyone else – collaborators, forks, Dependabot,
+    # re-runs started by someone else – runs on GitHub's runners, so their
+    # code never reaches the self-hosted machine.
+    runs-on: ${{ (github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && (github.event_name != 'pull_request' || (github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository))) && 'self-hosted' || 'ubuntu-latest' }}
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -63,6 +68,9 @@ jobs:
         run: gh release create "v${{ steps.version.outputs.version }}" --notes-file "$RUNNER_TEMP/notes.md" --title "v${{ steps.version.outputs.version }}"
 
   image:
+    # Only the repository owner starts this (collaborators can't): it runs
+    # on the own runner and uses the signing and deploy secrets.
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     needs: release
     uses: ./.github/workflows/docker.yml
     with:
