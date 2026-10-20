@@ -26,7 +26,7 @@ test("server messages have an English version, with values kept", async () => {
   assert.equal(englishMessage("Something else"), "Something else");
 });
 
-test("every German HttpError message has an English version", async () => {
+test("every German HttpError or Error message has an English version", async () => {
   const { englishMessage } = await import("../lib/i18n-errors");
   const { readdirSync, readFileSync } = await import("node:fs");
   const { join } = await import("node:path");
@@ -36,8 +36,12 @@ test("every German HttpError message has an English version", async () => {
     );
   const missing = [];
   for (const file of [...files("lib"), ...files("app")])
-    for (const [, text] of readFileSync(file, "utf8").matchAll(/new HttpError\(\s*\d+,\s*"([^"]+)"/g))
-      if (/[äöüß]|\b(nicht|kein|Keine?|Bitte|Ungültig\w*|fehlt)\b/.test(text) && englishMessage(text) === text)
+    // Plain Errors too: they reach the reader through API answers and job states.
+    for (const [, text] of readFileSync(file, "utf8").matchAll(/new (?:HttpError\(\s*\d+,|Error\()\s*"([^"]+)"/g))
+      if (
+        /[äöüß]|\b(nicht|kein\w*|Keine?|Bitte|Ungültig\w*|Unbekannt\w*|fehlt|Zuerst|Nur|Zu|der|die|das|Der|Die|Das)\b/.test(text) &&
+        englishMessage(text) === text
+      )
         missing.push(`${file}: ${text}`);
   assert.deepEqual(missing, []);
 });

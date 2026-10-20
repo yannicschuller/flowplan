@@ -86,7 +86,9 @@ export function MediaLibrary({
         <p>
           {t("Bilder, Videos und Dateien aus allen Seiten, die du lesen kannst.", "Images, videos and files from all pages you can read.")}
           {total > 0 &&
-            ` ${total} ${total === 1 ? "Datei" : "Dateien"} · ${size(bytes)}`}
+            (total === 1
+              ? t(` 1 Datei · ${size(bytes)}`, ` 1 file · ${size(bytes)}`)
+              : t(` ${total} Dateien · ${size(bytes)}`, ` ${total} files · ${size(bytes)}`))}
         </p>
       </div>
       <div className="media-filters">

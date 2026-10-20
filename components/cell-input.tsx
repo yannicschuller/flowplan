@@ -62,7 +62,7 @@ export function CellInput({
             type="button"
             role="radio"
             aria-checked={current === n}
-            aria-label={`${n} ${n === 1 ? "Stern" : "Sterne"}`}
+            aria-label={n === 1 ? t("1 Stern", "1 star") : t(`${n} Sterne`, `${n} stars`)}
             className={n <= current ? "on" : ""}
             disabled={disabled}
             // Choosing the current rating again clears it.
