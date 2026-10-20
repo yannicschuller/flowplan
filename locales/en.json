@@ -2033,6 +2033,7 @@
   "Map": "Map",
   "Map groups from your identity provider to a role in this workspace and/or to a group. At every SSO sign-in matching people are added; whoever no longer has the SSO group loses what the mapping gave. Members added by hand stay untouched, the last owner always stays.": "Map groups from your identity provider to a role in this workspace and/or to a group. At every SSO sign-in matching people are added; whoever no longer has the SSO group loses what the mapping gave. Members added by hand stay untouched, the last owner always stays.",
   "Map SSO groups centrally": "Map SSO groups centrally",
+  "Mappings are set up by the instance's administrators.": "Mappings are set up by the instance's administrators.",
   "Mark all as read": "Mark all as read",
   "Mark as read": "Mark as read",
   "Mark as resolved": "Mark as resolved",

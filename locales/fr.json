@@ -2033,6 +2033,7 @@
   "Map": "Carte",
   "Map groups from your identity provider to a role in this workspace and/or to a group. At every SSO sign-in matching people are added; whoever no longer has the SSO group loses what the mapping gave. Members added by hand stay untouched, the last owner always stays.": "Associez les groupes de votre fournisseur d’identité à un rôle dans cet espace de travail et/ou à un groupe. À chaque connexion SSO, les personnes concernées sont ajoutées ; qui n’a plus le groupe SSO perd ce que la correspondance lui avait donné. Les membres ajoutés à la main restent intacts, le dernier propriétaire reste toujours.",
   "Map SSO groups centrally": "Associer les groupes SSO de manière centrale",
+  "Mappings are set up by the instance's administrators.": "Les correspondances sont définies par l’administration de l’instance.",
   "Mark all as read": "Tout marquer comme lu",
   "Mark as read": "Marquer comme lu",
   "Mark as resolved": "Marquer comme résolu",
