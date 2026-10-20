@@ -31,14 +31,15 @@ const shift = (day: string, days: number) => {
   return d.toISOString().slice(0, 10);
 };
 // Group names are German keys; shown in the reader's language.
-const groupNames: Record<string, string> = {
-  Überfällig: "Overdue",
-  Heute: "Today",
-  "Nächste 7 Tage": "Next 7 days",
-  Später: "Later",
-  "Ohne Datum": "No date",
-  Erledigt: "Completed",
-};
+const groupName = (name: string, t: (de: string, en: string) => string) =>
+  ({
+    Überfällig: t("Überfällig", "Overdue"),
+    Heute: t("Heute", "Today"),
+    "Nächste 7 Tage": t("Nächste 7 Tage", "Next 7 days"),
+    Später: t("Später", "Later"),
+    "Ohne Datum": t("Ohne Datum", "No date"),
+    Erledigt: t("Erledigt", "Completed"),
+  })[name] ?? name;
 export function groupTasks(tasks: Task[], today = localToday()) {
   const week = shift(today, 7);
   const groups: [string, Task[]][] = [
@@ -234,7 +235,7 @@ export function MyTasks({
         ).map(([name, list]) => (
           <section key={name} className={`my-tasks-group ${name === "Überfällig" ? "overdue" : ""}`}>
             <h2>
-              {t(name, groupNames[name] || name)} <small>{list.length}</small>
+              {groupName(name, t)} <small>{list.length}</small>
             </h2>
             <ul>
               {list.map(item)}

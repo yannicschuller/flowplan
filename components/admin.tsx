@@ -1044,12 +1044,12 @@ function MailAndBackup({
   return (
     <>
       <section className="settings-section">
-        <h2>E-Mail-Versand</h2>
+        <h2>{t("E-Mail-Versand", "Sending e-mail")}</h2>
         {mail.configured ? (
           <p>
             SMTP: <code>{mail.host}</code> {t("als", "as")}{" "}<code>{mail.from}</code> ·{" "}
             {mail.pending} {t("in der Warteschlange ·", "queued ·")}{" "}{mail.sentWeek} {t("gesendet (7 Tage)", "sent (7 days)")}
-            {mail.failed > 0 && ` · ${mail.failed} aufgegeben`}
+            {mail.failed > 0 && t(` · ${mail.failed} aufgegeben`, ` · ${mail.failed} given up`)}
           </p>
         ) : (
           <p className="muted">

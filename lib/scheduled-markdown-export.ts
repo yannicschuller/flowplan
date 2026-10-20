@@ -17,6 +17,7 @@ import { exportFolder, exportMarkdown } from "./markdown-export";
 import { instanceSettings } from "./instance-settings";
 import { bucketFetch, storageConfig } from "./storage";
 import { withContentLocale } from "./content-locale";
+import { fixedLanguage, userLocale } from "./user-locale";
 import { gitConfig, syncGit, type GitRun } from "./git-export";
 import { encryptionEnabled, seal } from "./encryption";
 import type { Identity, Page, User } from "./types";
@@ -121,6 +122,9 @@ export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]>
   if (!config?.pageIds.length) return [];
   const keep = Math.max(1, instanceSettings().backupKeep ?? 7);
   const user = exporter(config.userId);
+  // README, labels, comment and version files in the language of the
+  // administrator who set the export up (German if never known).
+  const locale = fixedLanguage(config.userId) ?? userLocale(config.userId);
   const stamp = new Date(now).toISOString().slice(0, 16).replace(/[:T]/g, "-");
   const storage = storageConfig();
   const runs: ExportRun[] = [];
@@ -134,7 +138,7 @@ export async function runMarkdownExports(now = Date.now()): Promise<ExportRun[]>
       if (!user) throw new Error("Das Konto, das den Export eingerichtet hat, gibt es nicht mehr oder es ist deaktiviert.");
       const encrypted = encryptionEnabled();
       if (encrypted) name += ".enc";
-      const { bytes } = await withContentLocale("de", () => exportMarkdown(user, { pageId, format: "zip", includeSubpages: true, history: true }));
+      const { bytes } = await withContentLocale(locale, () => exportMarkdown(user, { pageId, format: "zip", includeSubpages: true, history: true }));
       const stored = seal(bytes as Buffer);
       if (storage) {
         const response = await bucketFetch(`exports/${name}`, {

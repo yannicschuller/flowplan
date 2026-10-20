@@ -5448,7 +5448,9 @@ export default function DatabaseView({
                   >
                     {showEmpty
                       ? t("Leere Eigenschaften ausblenden", "Hide empty properties")
-                      : `${emptyHidden} leere ${emptyHidden === 1 ? "Eigenschaft" : "Eigenschaften"} anzeigen`}
+                      : emptyHidden === 1
+                        ? t("1 leere Eigenschaft anzeigen", "Show 1 empty property")
+                        : t(`${emptyHidden} leere Eigenschaften anzeigen`, `Show ${emptyHidden} empty properties`)}
                   </button>
                 )}
                 <RelationBacklinks

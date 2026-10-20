@@ -122,7 +122,10 @@ export function SinceVisitBanner({
       <span>
         {t("Seit deinem letzten Besuch (", "Since your last visit (")}{ago(since.seenAt, Date.now(), locale)}{t(") geändert von", ") changed by")}{" "}
         <strong>{names(since.editors, t)}</strong>
-        {since.rows > 0 && ` · ${since.rows} ${since.rows === 1 ? "Eintrag" : "Einträge"} bearbeitet`}
+        {since.rows > 0 &&
+          (since.rows === 1
+            ? t(" · 1 Eintrag bearbeitet", " · 1 record edited")
+            : t(` · ${since.rows} Einträge bearbeitet`, ` · ${since.rows} records edited`))}
       </span>
       {hasText && (
         <button type="button" className="text-button" onClick={() => setOpen(true)}>
