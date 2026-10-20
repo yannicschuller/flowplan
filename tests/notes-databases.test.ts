@@ -262,3 +262,79 @@ test("a page moves into a database with its content, links and comments", async 
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM grants WHERE resource_id=?", guide)!.n, 0);
   assert.ok(one<{ deleted_at: string | null }>("SELECT deleted_at FROM pages WHERE id=?", guide)!.deleted_at);
 });
+
+test("a record turns into a page with its content, links, comments and versions", async () => {
+  const { htmlState } = await import("../lib/document-server");
+  const { recordToPagePlan } = await import("../lib/record-to-page");
+  const { all } = await import("../lib/db");
+  const parent = String(act(anna, { action: "page.create", spaceId: space, title: "Wissen", kind: "document" }).id);
+  run("UPDATE pages SET parent_id=? WHERE id=?", parent, notes);
+  const make = (title: string) =>
+    String(act(anna, { action: "row.create", pageId: notes, cells: { title, para: "Resource", area: [house], tags: ["heating"] } }).id);
+  const rid = make("Wasser nachfüllen");
+  const fid = id();
+  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, notes, "druck.png", "image/png", 1, anna.id);
+  const html = `<p>Druck auf <strong>1,5 bar</strong>.</p><p><a href="/api/files/${fid}">druck.png</a></p>`;
+  run("DELETE FROM row_documents WHERE row_id=?", rid);
+  run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, "gen-1");
+  run("UPDATE rows SET content=?,icon=?,cover=? WHERE id=?", html, "drop", "#3366ff", rid);
+  run("INSERT INTO row_snapshots(id,row_id,state,html,created_by,kind) VALUES(?,?,?,?,?,?)", id(), rid, htmlState("<p>alt</p>"), "<p>alt</p>", anna.id, "manual");
+  act(anna, { action: "comment.create", pageId: notes, rowId: rid, body: "Jeden Herbst prüfen" });
+  const thread = id();
+  run("INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor) VALUES(?,?,?,?,?)", thread, notes, rid, anna.id, "{}");
+  run("INSERT INTO row_favorites(user_id,row_id,page_id) VALUES(?,?,?)", anna.id, rid, notes);
+  // Links from a page and from another record.
+  const overview = String(act(anna, { action: "page.create", spaceId: space, title: "Hausübersicht", kind: "document" }).id);
+  const link = `/#page=${notes}&amp;row=${rid}`;
+  run("UPDATE documents SET html=?,state=? WHERE page_id=?", `<p><a href="${link}">Wasser</a></p>`, htmlState(`<p><a href="${link}">Wasser</a></p>`), overview);
+  const other = make("Heizung");
+  const otherHtml = `<p>Siehe <a href="${link}">Wasser</a>.</p>`;
+  run("DELETE FROM row_documents WHERE row_id=?", other);
+  run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", other, htmlState(otherHtml), otherHtml, "gen-2");
+
+  const plan = recordToPagePlan(anna, notes, rid);
+  assert.equal(plan.title, "Wasser nachfüllen");
+  assert.deepEqual(plan.target, { spaceId: space, parentId: parent }, "by default where the database is");
+  assert.equal(plan.comments, 1);
+  assert.equal(plan.versions, 1);
+  assert.deepEqual(
+    plan.properties.map((p) => `${p.name}: ${p.text}`),
+    ["Tags: heating", "Area: House", "PARA: Resource"],
+  );
+  // Viewers cannot turn records into pages, nor go to a place they cannot write.
+  assert.throws(() => act(ben, { action: "record.toPage", pageId: notes, rowId: rid, spaceId: space, parentId: null }), /Berechtigung/);
+  assert.throws(() => recordToPagePlan(ben, notes, rid), /Berechtigung/);
+  assert.throws(() => act(anna, { action: "record.toPage", pageId: notes, rowId: rid, spaceId: space, parentId: notes }), /diesen Ort/);
+
+  const moved = act(anna, { action: "record.toPage", pageId: notes, rowId: rid, spaceId: space, parentId: parent });
+  const pageId = String(moved.id);
+  const page = one<{ title: string; icon: string; cover: string; parent_id: string; kind: string }>("SELECT title,icon,cover,parent_id,kind FROM pages WHERE id=?", pageId)!;
+  assert.deepEqual({ ...page }, { title: "Wasser nachfüllen", icon: "drop", cover: "#3366ff", parent_id: parent, kind: "document" });
+  const doc = one<{ html: string; generation: string }>("SELECT html,generation FROM documents WHERE page_id=?", pageId)!;
+  assert.match(doc.html, /<strong>1,5 bar<\/strong>/);
+  assert.equal(doc.generation, "gen-1", "text comments keep their anchors");
+  // Properties as a list at the top, with a link to the related record.
+  assert.match(doc.html, /^<ul><li><p><strong>Tags:<\/strong> heating<\/p><\/li>/);
+  assert.match(doc.html, new RegExp(`<strong>Area:</strong> <a [^>]*href="/#page=${areas}&amp;row=${house}"`));
+  const md = (await exportMarkdown(anna, { pageId, format: "markdown", includeSubpages: false })).bytes.toString("utf8");
+  assert.match(md, /- \*\*PARA:\*\* Resource/);
+  // Same file, now of the page; comments, text comments, versions and favourites follow.
+  assert.equal(one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", fid)!.page_id, pageId);
+  assert.deepEqual({ ...one<{ page_id: string; row_id: string | null }>("SELECT page_id,row_id FROM comments WHERE body='Jeden Herbst prüfen'")! }, { page_id: pageId, row_id: null });
+  assert.equal(one<{ page_id: string }>("SELECT page_id FROM inline_threads WHERE id=?", thread)!.page_id, pageId);
+  assert.equal(all("SELECT 1 FROM snapshots WHERE page_id=? AND html='<p>alt</p>'", pageId).length, 1);
+  assert.ok(one("SELECT 1 FROM favorites WHERE user_id=? AND page_id=?", anna.id, pageId));
+  // Links point to the page now, from pages and records.
+  assert.match(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", overview)!.html, new RegExp(`href="/#page=${pageId}"`));
+  assert.match(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", other)!.html, new RegExp(`href="/#page=${pageId}"`));
+  // The record is in the trash and can come back.
+  assert.equal(one("SELECT 1 FROM rows WHERE id=?", rid), undefined);
+  act(anna, { action: "row.trash.restore", trashId: rid });
+  assert.ok(one("SELECT 1 FROM rows WHERE id=? AND page_id=?", rid, notes));
+
+  // Without properties: the content stays as it is; the top of the space works too.
+  const plain = make("Ohne Eigenschaften");
+  const bare = String(act(anna, { action: "record.toPage", pageId: notes, rowId: plain, spaceId: space, parentId: null, keepProperties: false }).id);
+  assert.doesNotMatch(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", bare)!.html, /PARA/);
+  assert.equal(one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", bare)!.parent_id, null);
+});

@@ -82,6 +82,7 @@ import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
 import { pageToRecordPlan } from "@/lib/page-to-record";
+import { recordToPagePlan } from "@/lib/record-to-page";
 import { importTracker } from "@/lib/tracker-import";
 import { recordBacklinks } from "@/lib/relation-backlinks";
 import { hiddenFileIds } from "@/lib/row-files";
@@ -285,6 +286,23 @@ async function handleGET(
       const plan = pageToRecordPlan(user, z.uuid().parse(path[1]));
       const { page, ...rest } = plan;
       return NextResponse.json({ ...rest, title: page.title }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // What turning a record into a page would change (confirmation).
+    if (path.length === 5 && path[0] === "pages" && path[2] === "rows" && path[4] === "to-page") {
+      const plan = recordToPagePlan(user, z.uuid().parse(path[1]), z.uuid().parse(path[3]));
+      return NextResponse.json(
+        {
+          title: plan.title,
+          properties: plan.properties.map(({ name, text }) => ({ name, text })),
+          comments: plan.comments,
+          versions: plan.versions,
+          restricted: plan.restricted,
+          relations: plan.relations,
+          targets: plan.targets,
+          target: plan.target,
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     // Databases to capture into, and the person's default.
     if (path.length === 1 && path[0] === "capture") {

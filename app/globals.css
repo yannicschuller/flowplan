@@ -17488,6 +17488,18 @@ h3 .block-reactions {
 .page-to-record p {
   margin: 0 0 12px;
 }
+/* Turning a record into a page: the properties that stay as a list. */
+.record-to-page-properties {
+  margin: 0 0 12px;
+  padding: 8px 12px 8px 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.record-to-page-properties.dropped {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
 .page-to-record-ends {
   margin: 4px 0 12px;
   padding: 10px 12px;

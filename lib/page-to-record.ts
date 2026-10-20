@@ -41,15 +41,16 @@ export function pageToRecordPlan(user: Identity, pageId: string) {
 }
 
 const address = /^(.*#page=)([0-9a-f-]{36})$/i;
-// Links to the page (not to one of its records) now point to the record.
-function relinked(doc: PMNode, pageId: string, target: string) {
+// Changes the href of link marks (page and record links, @ links); `href`
+// returns the new address or null to keep a link as it is.
+export function relinkDocument(doc: PMNode, href: (current: string) => string | null) {
   const changes: { from: number; to: number; href: string; mark: PMNode["marks"][number] }[] = [];
   doc.descendants((node, pos) => {
     if (!node.isText) return true;
     for (const mark of node.marks) {
       if (mark.type.name !== "link" || typeof mark.attrs.href !== "string") continue;
-      const match = address.exec(mark.attrs.href.trim());
-      if (match && match[2] === pageId) changes.push({ from: pos, to: pos + node.nodeSize, href: `${match[1]}${target}`, mark });
+      const next = href(mark.attrs.href.trim());
+      if (next !== null) changes.push({ from: pos, to: pos + node.nodeSize, href: next, mark });
     }
     return false;
   });
@@ -58,6 +59,13 @@ function relinked(doc: PMNode, pageId: string, target: string) {
   for (const change of changes)
     tr.removeMark(change.from, change.to, change.mark).addMark(change.from, change.to, change.mark.type.create({ ...change.mark.attrs, href: change.href }));
   return tr.doc;
+}
+// Links to the page (not to one of its records) now point to the record.
+function relinked(doc: PMNode, pageId: string, target: string) {
+  return relinkDocument(doc, (href) => {
+    const match = address.exec(href);
+    return match && match[2] === pageId ? `${match[1]}${target}` : null;
+  });
 }
 
 export function pageToRecord(user: Identity, pageId: string, databaseId: string) {
@@ -75,7 +83,7 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     const template = selectedRowTemplate(database.id, undefined);
     const cells: Record<string, unknown> = template ? JSON.parse(template.cells) : {};
     cells[fields[0]?.id || "title"] = page.title;
-    const doc = one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM documents WHERE page_id=?", page.id);
+    const doc = one<{ state: Uint8Array | null; html: string; generation: string | null }>("SELECT state,html,generation FROM documents WHERE page_id=?", page.id);
     const html = doc?.html || "";
     const rid = id();
     run(
@@ -96,7 +104,8 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
       rid,
       doc?.state || htmlState(html),
       html,
-      id(),
+      // The same generation keeps text comments anchored.
+      doc?.generation || id(),
     );
     // Files stay the same files; they now belong to the database.
     run("UPDATE files SET page_id=? WHERE page_id=?", database.id, page.id);

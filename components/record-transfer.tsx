@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, Trash } from "@phosphor-icons/react";
+import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, NotePencil, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon, api } from "./ui";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
@@ -8,7 +8,7 @@ import { ContextMenu, type ContextMenuItem } from "./context-menu";
 type Target = { id: string; title: string; icon: string };
 
 // Right-click on a record (or several selected ones): open, duplicate,
-// copy or move into another database, delete.
+// copy or move into another database, turn into a page, delete.
 export function RecordMenu({
   x,
   y,
@@ -17,6 +17,7 @@ export function RecordMenu({
   onOpen,
   onDuplicate,
   onTransfer,
+  onToPage,
   onDelete,
   onClose,
 }: {
@@ -27,6 +28,7 @@ export function RecordMenu({
   onOpen?: () => void;
   onDuplicate: () => void;
   onTransfer: (mode: "copy" | "move") => void;
+  onToPage?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -39,6 +41,7 @@ export function RecordMenu({
   if (editable)
     items.push(
       { icon: <ArrowsLeftRight />, label: many ? t(`${count} verschieben nach …`, `Move ${count} to …`) : t("Verschieben nach …", "Move to …"), run: () => onTransfer("move") },
+      ...(onToPage && !many ? [{ icon: <NotePencil />, label: t("In Seite umwandeln …", "Turn into page …"), run: onToPage }] : []),
       "separator",
       { icon: <Trash />, label: many ? t(`${count} löschen`, `Delete ${count}`) : t("Löschen", "Delete"), run: onDelete, danger: true },
     );
