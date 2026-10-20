@@ -47,6 +47,10 @@ jobs:
     # code never reaches the self-hosted machine.
     runs-on: ${{ (github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && (github.event_name != 'pull_request' || (github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository))) && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 90
+    # The Coolify secrets live in the environment "production", which only
+    # main and tags v* may use (Settings → Environments): a workflow changed
+    # on another branch cannot read them.
+    environment: production
     steps:
       # A release: the version from release.yml or from a pushed tag v1.2.3.
       - id: release
