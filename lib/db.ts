@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 39) return;
+  if (globalDb.flowplanSchema === 40) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -587,7 +587,17 @@ function migrate(d: DatabaseSync) {
   // key) and resolved DOIs (lib/citations-server.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS bibliography(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,key TEXT NOT NULL,item TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL,UNIQUE(workspace_id,key));
     CREATE TABLE IF NOT EXISTS doi_cache(doi TEXT PRIMARY KEY,item TEXT NOT NULL,fetched_at INTEGER NOT NULL);`);
-  globalDb.flowplanSchema = 39;
+  // Git export of a space, set up by its owner (lib/space-git-export.ts):
+  // the access token sealed with lib/secret-box.ts, the last run as JSON.
+  // It ends with the owner's role: a new owner, a space in the trash, the
+  // owner leaving the workspace or becoming a guest remove the row.
+  d.exec(`CREATE TABLE IF NOT EXISTS space_git_exports(space_id TEXT PRIMARY KEY REFERENCES spaces(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,url TEXT NOT NULL,branch TEXT NOT NULL,username TEXT NOT NULL,token TEXT NOT NULL,frequency TEXT NOT NULL CHECK(frequency IN ('daily','weekly')),history INTEGER NOT NULL DEFAULT 0,last_run TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS space_git_exports_user ON space_git_exports(user_id);
+    CREATE TRIGGER IF NOT EXISTS space_git_owner AFTER UPDATE OF owner_id ON spaces WHEN OLD.owner_id IS NOT NEW.owner_id BEGIN DELETE FROM space_git_exports WHERE space_id=NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS space_git_trash AFTER UPDATE OF deleted_at ON spaces WHEN NEW.deleted_at IS NOT NULL BEGIN DELETE FROM space_git_exports WHERE space_id=NEW.id; END;
+    CREATE TRIGGER IF NOT EXISTS space_git_member AFTER DELETE ON members BEGIN DELETE FROM space_git_exports WHERE user_id=OLD.user_id AND space_id IN (SELECT id FROM spaces WHERE workspace_id=OLD.workspace_id); END;
+    CREATE TRIGGER IF NOT EXISTS space_git_guest AFTER INSERT ON workspace_guests BEGIN DELETE FROM space_git_exports WHERE user_id=NEW.user_id AND space_id IN (SELECT id FROM spaces WHERE workspace_id=NEW.workspace_id); END;`);
+  globalDb.flowplanSchema = 40;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

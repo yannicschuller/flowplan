@@ -21,14 +21,23 @@ export type MarkdownExportStatus = {
     last: { at: number; commit: string | null; pushed: boolean; imported: number; error: string | null } | null;
   };
 };
+// Git export of spaces (lib/space-git-export.ts): without addresses or content.
+export type SpaceGitOverview = {
+  enabled: boolean;
+  allowedHosts: string[];
+  spaces: number;
+  failing: { at: number; error: string; workspace: string; owner: string }[];
+};
 type Choice = { id: string; title: string; kind: string; workspace: string; parent: string };
 
 export function MarkdownExportSettings({
   status,
+  spaceGit,
   onChange,
   onError,
 }: {
   status: MarkdownExportStatus;
+  spaceGit: SpaceGitOverview;
   onChange: () => void;
   onError: (message: string) => void;
 }) {
@@ -130,6 +139,12 @@ export function MarkdownExportSettings({
       <h3>{t("Git-Repository", "Git repository")}</h3>
       {git.configured ? (
         <>
+          <p className="callout warning" role="note">
+            {t(
+              "Veraltet: Der Git-Export der Instanz (EXPORT_GIT_*) läuft weiter, wird aber durch den Git-Export der Bereiche ersetzt, den Bereichseigentümer selbst einrichten (SPACE_GIT_EXPORT=true).",
+              "Deprecated: the instance Git export (EXPORT_GIT_*) keeps working but is replaced by the Git export of spaces, which space owners set up themselves (SPACE_GIT_EXPORT=true).",
+            )}
+          </p>
           <p>
             {t("Jeder Export wird nach", "Every export is pushed to")} <code>{git.url}</code> ({git.branch}) {t("übertragen – jede Seite in einem eigenen Ordner.", "– every page in a folder of its own.")}{" "}
             {git.importChanges
@@ -150,7 +165,42 @@ export function MarkdownExportSettings({
         <p className="muted">
           {git.problem ? <span className="error">{serverMessage(git.problem)} </span> : null}
           {t("Nicht eingerichtet. Mit", "Not set up. With")} <code>EXPORT_GIT_URL</code> {t("und", "and")} <code>EXPORT_GIT_TOKEN</code>{" "}
-          {t("überträgt Flowplan jeden Export in ein Git-Repository (Forgejo, Gitea, GitHub, GitLab).", "Flowplan pushes every export into a Git repository (Forgejo, Gitea, GitHub, GitLab).")}
+          {t("überträgt Flowplan jeden Export in ein Git-Repository (Forgejo, Gitea, GitHub, GitLab).", "Flowplan pushes every export into a Git repository (Forgejo, Gitea, GitHub, GitLab).")}{" "}
+          {t("Veraltet – besser ist der Git-Export der Bereiche (unten).", "Deprecated – the Git export of spaces (below) is the better choice.")}
+        </p>
+      )}
+      <h3>{t("Git-Export der Bereiche", "Git export of spaces")}</h3>
+      {spaceGit.enabled ? (
+        <>
+          <p className="muted">
+            {t(
+              "Eingeschaltet: Bereichseigentümer richten in den Bereichseinstellungen ihr eigenes Repository ein.",
+              "On: space owners set up their own repository in the space settings.",
+            )}{" "}
+            {spaceGit.allowedHosts.length
+              ? `${t("Erlaubte Git-Server:", "Allowed Git servers:")} ${spaceGit.allowedHosts.join(", ")}.`
+              : t("Alle öffentlichen https-Server sind erlaubt (SPACE_GIT_ALLOWED_HOSTS schränkt das ein).", "Every public https server is allowed (SPACE_GIT_ALLOWED_HOSTS narrows this down).")}{" "}
+            {t(`${spaceGit.spaces} Bereiche nutzen ihn.`, `${spaceGit.spaces} spaces use it.`)}
+          </p>
+          {spaceGit.failing.length > 0 && (
+            <ul className="space-git-errors">
+              {spaceGit.failing.map((f, index) => (
+                <li key={index}>
+                  <small className="error">
+                    {when(f.at)} · {f.workspace} · {f.owner}: {serverMessage(f.error)}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <p className="muted">
+          {t("Ausgeschaltet. Mit", "Off. With")} <code>SPACE_GIT_EXPORT=true</code>{" "}
+          {t(
+            "richten Bereichseigentümer selbst einen Git-Export ihres Bereichs ein; SPACE_GIT_ALLOWED_HOSTS begrenzt die Git-Server.",
+            "space owners set up a Git export of their space themselves; SPACE_GIT_ALLOWED_HOSTS limits the Git servers.",
+          )}
         </p>
       )}
     </section>

@@ -13,6 +13,7 @@ import { instanceSettings } from "./instance-settings";
 import { bucketFetch, storageConfig } from "./storage";
 import { lastMarkdownExport, runMarkdownExports } from "./scheduled-markdown-export";
 import { encryptionEnabled, seal } from "./encryption";
+import { runDueSpaceGitExports } from "./space-git-export";
 
 const dataDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data");
 const DAY_MS = 86400_000;
@@ -110,20 +111,27 @@ const runtime = globalThis as unknown as { flowplanBackupTimer?: ReturnType<type
 // Checks every 10 minutes whether the next backup is due.
 export function startBackupWorker() {
   if (runtime.flowplanBackupTimer) return;
+  const backupDue = () => {
+    const status = scheduledBackupStatus();
+    if (!status.enabled) return false;
+    if (status.last && Date.now() - status.last.at < (status.hourly ? HOUR_MS - 5 * 60_000 : DAY_MS) && !status.last.error) return false;
+    return !(status.last?.error && Date.now() - status.last.at < 3600_000);
+  };
   const tick = async () => {
     if (runtime.flowplanBackupBusy) return;
-    const status = scheduledBackupStatus();
-    if (!status.enabled) return;
-    if (status.last && Date.now() - status.last.at < (status.hourly ? HOUR_MS - 5 * 60_000 : DAY_MS) && !status.last.error) return;
-    if (status.last?.error && Date.now() - status.last.at < 3600_000) return;
     runtime.flowplanBackupBusy = true;
     try {
-      await runScheduledBackup();
-      // The readable copy (Markdown, optionally into Git) comes along, once
-      // a day also with hourly backups.
-      const exported = lastMarkdownExport();
-      if (!exported || Date.now() - exported >= DAY_MS - 30 * 60_000)
-        await runMarkdownExports().catch((error) => console.error("Markdown export failed", error));
+      if (backupDue()) {
+        await runScheduledBackup();
+        // The readable copy (Markdown, optionally into Git) comes along, once
+        // a day also with hourly backups.
+        const exported = lastMarkdownExport();
+        if (!exported || Date.now() - exported >= DAY_MS - 30 * 60_000)
+          await runMarkdownExports().catch((error) => console.error("Markdown export failed", error));
+      }
+      // The Git export of spaces whose interval has passed, also when
+      // backups are off (lib/space-git-export.ts).
+      await runDueSpaceGitExports().catch((error) => console.error("Space Git export failed", error));
     } finally {
       runtime.flowplanBackupBusy = false;
     }

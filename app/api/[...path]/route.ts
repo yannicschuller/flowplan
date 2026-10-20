@@ -45,6 +45,7 @@ import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backu
 import { encryptExisting, encryptionOverview } from "@/lib/encryption-status";
 import { pageShares } from "@/lib/page-share";
 import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
+import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space-git-export";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -516,6 +517,9 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    // Git export of a space: only its owner sees the settings (no token).
+    if (path.length === 3 && path[0] === "spaces" && path[2] === "git-export")
+      return NextResponse.json(spaceGitStatus(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });
     if (path[0] === "git-config")
       return NextResponse.json(gitConfig(user, z.uuid().parse(url.searchParams.get("page"))), { headers: { "Cache-Control": "no-store" } });
     if (path[0] === "git-links")
@@ -729,6 +733,7 @@ async function handleGET(
         mail: mailStatus(),
         backup: scheduledBackupStatus(),
         markdownExport: markdownExportStatus(),
+        spaceGitExport: spaceGitOverview(),
         encryption: encryptionOverview(),
         workspaces: all(
           "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages FROM workspaces w",
@@ -855,6 +860,9 @@ async function handlePOST(
       requireAdmin(user);
       return NextResponse.json(encryptExisting(user));
     }
+    // "Run now" in the Git export settings of a space.
+    if (path.length === 4 && path[0] === "spaces" && path[2] === "git-export" && path[3] === "run")
+      return NextResponse.json(await runSpaceGitExport(user, z.uuid().parse(path[1])));
     if (path.length === 2 && path[0] === "admin" && path[1] === "backup-run") {
       requireAdmin(user);
       const backup = await runScheduledBackup();
