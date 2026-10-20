@@ -4,6 +4,9 @@ All releases of Flowplan, newest first. Generated from the commits by the releas
 
 ## v0.5.0 – 2026-10-20
 
+- Release workflow: push with a deploy key through the rulesets, release an untagged version as it is ([7af5d69](https://github.com/yannicschuller/flowplan/commit/7af5d6967ac04540529c6a4880a9315f2f8138f0))
+- Space Git export: internal addresses for listed servers with SPACE_GIT_ALLOW_PRIVATE (#37) ([9a5c2a9](https://github.com/yannicschuller/flowplan/commit/9a5c2a9262b6648fb79fd25be165707eb2322fab))
+- Settings: space between setting groups again, AI access rule in one row ([b7a6e2d](https://github.com/yannicschuller/flowplan/commit/b7a6e2d340df43ff294c5848696bace51e9bb087))
 - Release workflow: accurate comment on why only the owner starts it ([0f2b91b](https://github.com/yannicschuller/flowplan/commit/0f2b91b08c01d0390fe1b3159f30b23344d02f14))
 - Docker image: the deploy secrets come from the environment production ([ae4c859](https://github.com/yannicschuller/flowplan/commit/ae4c8594f0e568e0f23d66f71a9fe48570d5d0df))
 - CI: only the owner's own work uses the self-hosted runner ([b6d33a4](https://github.com/yannicschuller/flowplan/commit/b6d33a4a5868e7d4c37d1b9293e0462278debfd7))
