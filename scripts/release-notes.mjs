@@ -50,7 +50,12 @@ if (process.argv.includes("--changelog")) {
   const head = "# Changelog\n\nAll releases of Flowplan, newest first. Generated from the commits by the release workflow.\n";
   const existing = existsSync("CHANGELOG.md") ? readFileSync("CHANGELOG.md", "utf8") : "";
   const start = existing.indexOf("\n## ");
-  const older = start === -1 ? "" : `\n${existing.slice(start + 1)}`;
+  let older = start === -1 ? "" : `\n${existing.slice(start + 1)}`;
+  // Released again (a version raised but not yet tagged): its section is replaced.
+  if (older.startsWith(`\n## v${version} `)) {
+    const next = older.indexOf("\n## ", 1);
+    older = next === -1 ? "" : older.slice(next);
+  }
   writeFileSync("CHANGELOG.md", `${head}\n${section}${older}`);
 }
 process.stdout.write(`${notes}\n`);
