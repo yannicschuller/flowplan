@@ -861,7 +861,10 @@ export default function DatabaseTimeline({
                         >
                           <button
                             className="timeline-range-body"
-                            aria-label={`${name}: ${dayKey(range!.start)} bis ${dayKey(range!.end)}`}
+                            aria-label={t(
+                              `${name}: ${dayKey(range!.start)} bis ${dayKey(range!.end)}`,
+                              `${name}: ${dayKey(range!.start)} to ${dayKey(range!.end)}`,
+                            )}
                             aria-disabled={busy}
                             style={{ touchAction: canEdit ? "none" : "auto" }}
                             onPointerDown={(event) => begin(event, row, "move")}
