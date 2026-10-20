@@ -10320,7 +10320,7 @@ textarea {
    apply to them. */
 .settings-body > section.setting-group,
 .settings-body .setting-group {
-  margin: 0;
+  margin: 0 0 16px;
   padding: 0;
 }
 .settings-body .instance-settings .setting-group {
@@ -18064,6 +18064,7 @@ h3 .block-reactions {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  width: 100%;
 }
 .ai-ollama-pull input {
   width: min(260px, 100%);
@@ -18078,8 +18079,15 @@ h3 .block-reactions {
   width: min(420px, 100%);
 }
 .ai-rule-add > :first-child {
-  flex: 1 1 260px;
+  flex: 1 1 240px;
   min-width: 0;
+}
+.ai-rule-add > :first-child select,
+.ai-rule-add > :first-child button {
+  width: 100%;
+}
+.ai-rule-add > :not(:first-child) {
+  flex: none;
 }
 .ai-user-switch {
   display: inline-flex;

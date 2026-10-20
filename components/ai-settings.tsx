@@ -757,8 +757,8 @@ function AiAccessRules({ boot, view, command }: { boot: Bootstrap; view: UserVie
             ))}
           </Select>
           <Select aria-label={t("Erlauben oder ausschließen", "Allow or exclude")} value={mode} onChange={(e) => setMode(e.target.value as "include" | "exclude")}>
-            <option value="exclude">{t("ausschließen", "exclude")}</option>
-            <option value="include">{t("erlauben", "allow")}</option>
+            <option value="exclude">{t("Ausschließen", "Exclude")}</option>
+            <option value="include">{t("Erlauben", "Allow")}</option>
           </Select>
           <button
             type="button"
