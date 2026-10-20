@@ -26,7 +26,7 @@ concurrency:
 jobs:
   release:
     # Only the repository owner starts this (collaborators can't): it runs
-    # on the own runner and uses the signing and deploy secrets.
+    # on the own runner, tags the release and deploys the image.
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     # Own runner (label self-hosted) only for the repository owner's own
     # work: pushes, runs and pull requests started by the owner from a branch
@@ -69,7 +69,7 @@ jobs:
 
   image:
     # Only the repository owner starts this (collaborators can't): it runs
-    # on the own runner and uses the signing and deploy secrets.
+    # on the own runner, tags the release and deploys the image.
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     needs: release
     uses: ./.github/workflows/docker.yml
