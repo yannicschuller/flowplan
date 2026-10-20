@@ -59,6 +59,7 @@ const exact: Record<string, string> = {
   "In diese Datenbank kann nicht erfasst werden.": "You cannot capture into this database.",
   "In diese Datenbank kann nicht verschoben werden.": "You cannot move into this database.",
   "Nur Dokumentseiten lassen sich in eine Datenbank verschieben.": "Only document pages can be moved into a database.",
+  "An diesen Ort kann nicht verschoben werden.": "You cannot move to this location.",
   "Keine Markdown-Dateien gefunden.": "No Markdown files found.",
   "Die Dateien dürfen zusammen maximal 100 MB groß sein.": "The files may be at most 100 MB together.",
   "Der Absatz steht nicht in dieser Version.": "The paragraph is not in this version.",

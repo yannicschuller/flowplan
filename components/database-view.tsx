@@ -95,6 +95,7 @@ import { AiSummaryDialog, type AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
 import { MarkdownRecordsImport } from "./markdown-records-import";
 import { DatabaseExportMenu, RecordExportMenu } from "./record-export";
+import { RecordToPage } from "./record-to-page";
 import { RollupValue } from "./rollup-value";
 import {
   allowedAggregates,
@@ -433,6 +434,8 @@ export default function DatabaseView({
   const [draggedView, setDraggedView] = useState<string | null>(null);
   const [viewDrop, setViewDrop] = useState<{ id: string; after: boolean } | null>(null);
   const [transfer, setTransfer] = useState<{ rowIds: string[]; mode: "copy" | "move" } | null>(null);
+  // "Turn into page": the record whose dialog is open.
+  const [toPage, setToPage] = useState<string | null>(null);
   const [bulk, setBulk] = useState<"update" | "delete" | null>(null),
     [bulkField, setBulkField] = useState(""),
     [bulkValue, setBulkValue] = useState<unknown>(undefined),
@@ -810,6 +813,7 @@ export default function DatabaseView({
           title={cellText(row.cells[fields[0]?.id || "title"]) || t("Eintrag", "Record")}
           printRoot={() => document.querySelector<HTMLElement>(".modal .row-detail")}
           onError={onError}
+          onToPage={editable && row.role !== "viewer" ? () => setToPage(row.id) : undefined}
         />
         {canManageAccess(row) && (
           <button
@@ -5715,7 +5719,27 @@ export default function DatabaseView({
           onDuplicate={() => void recordsAction(recordMenu.rowIds, "duplicate")}
           onDelete={() => void recordsAction(recordMenu.rowIds, "delete")}
           onTransfer={(mode) => setTransfer({ rowIds: recordMenu.rowIds, mode })}
+          onToPage={
+            editable && data.rows.find((r) => r.id === recordMenu.rowIds[0])?.role !== "viewer"
+              ? () => setToPage(recordMenu.rowIds[0])
+              : undefined
+          }
           onClose={() => setRecordMenu(null)}
+        />
+      )}
+      {toPage && (
+        <RecordToPage
+          pageId={page.id}
+          rowId={toPage}
+          onClose={() => setToPage(null)}
+          onError={onError}
+          onMoved={(created) => {
+            setToPage(null);
+            if (rowId === toPage) setLocalRowId(null);
+            onError(t("In eine Seite umgewandelt.", "Turned into a page."));
+            void onRefresh().catch(() => {});
+            location.hash = pageLocationHash({ pageId: created });
+          }}
         />
       )}
       {transfer && (

@@ -33,6 +33,7 @@ import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { followRename } from "./link-titles";
 import { captureRecord, setCaptureTarget } from "./capture";
 import { pageToRecord } from "./page-to-record";
+import { recordToPage } from "./record-to-page";
 import { textBacklinks } from "./text-backlinks";
 import { hiddenFileIds } from "./row-files";
 import { addBookmarks, bookmarksDatabase, parseBookmarksHtml } from "./web-clip";
@@ -2554,6 +2555,17 @@ export function command(
       }
       case "page.toRecord": {
         const moved = pageToRecord(user, pid(), uuid.parse(b.databaseId));
+        afterCommit.push(...moved.publish);
+        result = moved.result;
+        break;
+      }
+      case "record.toPage": {
+        // The reverse: a record becomes a page (lib/record-to-page.ts).
+        const moved = recordToPage(user, pid(), uuid.parse(b.rowId), {
+          spaceId: uuid.parse(b.spaceId),
+          parentId: b.parentId ? uuid.parse(b.parentId) : null,
+          keepProperties: b.keepProperties !== false,
+        });
         afterCommit.push(...moved.publish);
         result = moved.result;
         break;

@@ -3,7 +3,7 @@
 // Markdown (with frontmatter) as one file or as a ZIP with files, and for a
 // record also Print / PDF.
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { DotsThree, DownloadSimple, FileCsv, FileText, FileZip, Printer } from "@phosphor-icons/react";
+import { DotsThree, DownloadSimple, FileCsv, FileText, FileZip, NotePencil, Printer } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/i18n-errors";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { exportName } from "@/lib/export-name";
@@ -63,19 +63,21 @@ export function DatabaseExportMenu({
   );
 }
 
-// The record header: export one record or print it.
+// The record header: export one record or print it, or turn it into a page.
 export function RecordExportMenu({
   pageId,
   rowId,
   title,
   printRoot,
   onError,
+  onToPage,
 }: {
   pageId: string;
   rowId: string;
   title: string;
   printRoot: () => HTMLElement | null;
   onError: (message: string) => void;
+  onToPage?: () => void;
 }) {
   const t = useT();
   const run = (format: "markdown" | "zip") => () =>
@@ -101,6 +103,15 @@ export function RecordExportMenu({
             <Printer />
             {t("Drucken / PDF", "Print / PDF")}
           </Dropdown.Item>
+          {onToPage && (
+            <>
+              <Dropdown.Separator className="dropdown-separator" />
+              <Dropdown.Item className="dropdown-item" onSelect={onToPage}>
+                <NotePencil />
+                {t("In Seite umwandeln …", "Turn into page …")}
+              </Dropdown.Item>
+            </>
+          )}
         </Dropdown.Content>
       </Dropdown.Portal>
     </Dropdown.Root>
