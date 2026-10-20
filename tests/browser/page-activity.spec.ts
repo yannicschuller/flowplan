@@ -44,7 +44,7 @@ test("follow a page, see changes since the last visit and recently viewed pages"
   const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
   db.exec("PRAGMA busy_timeout=5000;");
   const kim = randomUUID();
-  db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(kim, kim, "Kim Weber", `${kim}@example.test`);
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(kim, kim, "Kim Weber", `${kim}@example.test`, Date.now());
   await page.goto("/#home");
   await expect(page.locator(".visited-section")).toContainText(title);
   // Let background reloads of the page settle before going back in time.

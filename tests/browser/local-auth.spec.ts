@@ -25,6 +25,10 @@ const register = async (page: Page, email: string, password: string) => {
   await page.locator("input[name=password]").fill(password);
   await page.getByRole("button", { name: "Konto erstellen" }).click();
   await expect(page.getByLabel("Dokumentinhalt", { exact: true }).or(page.locator(".sidebar"))).toBeVisible({ timeout: 20_000 });
+  // A new account starts with the introduction.
+  const intro = page.getByRole("dialog", { name: "Willkommen bei Flowplan" });
+  await intro.getByRole("button", { name: "Überspringen" }).click();
+  await expect(intro).toBeHidden();
 };
 
 test("create an account, sign out, sign in with the password and change it", async ({ browser }, info) => {

@@ -78,11 +78,12 @@ async function fixture(page: Page, browser: Browser) {
   );
   const uid = randomUUID(),
     token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(
     uid,
     uid,
     "Cursor Kollegin",
     `${uid}@test.invalid`,
+    Date.now(),
   );
   db.prepare("INSERT INTO members VALUES(?,?,?)").run(
     boot.workspace.id,

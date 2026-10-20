@@ -177,6 +177,9 @@ test("timeline scales persist, mouse and touch shift and resize ranges, keyboard
       "aria-label",
       "Plan: 2026-09-23 bis 2026-09-25",
     );
+    // A dropped bar shows its new dates while they are saved; the next
+    // gesture waits until the bar takes input again.
+    await expect(body).toBeEnabled();
     await drag(
       page,
       row.getByRole("button", { name: "Beginn von Plan ziehen", exact: true }),
@@ -187,6 +190,7 @@ test("timeline scales persist, mouse and touch shift and resize ranges, keyboard
       "aria-label",
       "Plan: 2026-09-22 bis 2026-09-25",
     );
+    await expect(body).toBeEnabled();
     await body.focus();
     await page.keyboard.press("Alt+ArrowRight");
     await expect(body).toHaveAttribute(

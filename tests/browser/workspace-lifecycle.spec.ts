@@ -360,11 +360,12 @@ test("leaving a workspace transfers private areas and removes the leaving member
     token = randomBytes(32).toString("hex"),
     subject = `lifecycle-test:${uid}`;
   run(
-    "INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)",
+    "INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)",
     uid,
     subject,
     "Lifecycle member",
     `${uid}@example.test`,
+    Date.now(),
   );
   run("INSERT INTO members VALUES(?,?,?)", workspace.id, uid, "editor");
   run(

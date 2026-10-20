@@ -28,7 +28,7 @@ test("MCP endpoint answers tokens with the person's rights only", async ({ page,
   // A real person with a read and a write token, member of the demo workspace.
   const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
   const uid = randomUUID();
-  db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, uid, "MCP Person", `mcp-${uid}@example.test`);
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, uid, "MCP Person", `mcp-${uid}@example.test`, Date.now());
   db.prepare("INSERT INTO members VALUES(?,?,?)").run(boot.workspace.id, uid, "editor");
   const token = (scope: string) => {
     const value = `fp_${randomBytes(30).toString("base64url")}`;

@@ -43,11 +43,12 @@ test("owners turn members into guests who only see shared pages", async ({
   db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
   const uid = randomUUID(),
     token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(
     uid,
     `guest-test:${uid}`,
     `Gast ${tag}`,
     `${uid}@example.test`,
+    Date.now(),
   );
   db.prepare("INSERT INTO members VALUES(?,?,?)").run(
     workspace.id,

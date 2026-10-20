@@ -15,7 +15,7 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
   const session = (groups: string[], name: string) => {
     const uid = randomUUID(),
       token = randomBytes(32).toString("hex");
-    db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, `limits:${uid}`, name, `${uid}@example.test`);
+    db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, `limits:${uid}`, name, `${uid}@example.test`, Date.now());
     db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(createHash("sha256").update(token).digest("hex"), uid, JSON.stringify(groups), Date.now() + 600000);
     return { uid, token };
   };

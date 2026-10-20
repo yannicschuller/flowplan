@@ -20,7 +20,7 @@ test("a page moves into another workspace from the page menu", async ({ page }, 
   });
   await page.goto(`/#page=${moving.id}`);
   await page.getByRole("button", { name: "Seitenaktionen" }).click();
-  await page.getByRole("menuitem", { name: "Verschieben" }).click();
+  await page.getByRole("menuitem", { name: "Verschieben", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Seite verschieben" });
   await dialog.getByLabel("Arbeitsbereich").selectOption({ label: `Ziel ${tag}` });
   await expect(dialog).toContainText("wechseln den Arbeitsbereich");

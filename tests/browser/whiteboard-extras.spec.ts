@@ -119,7 +119,7 @@ test("laser pointer and follow me reach the other person", async ({ page, browse
   const db = new DatabaseSync(join(process.env.FLOWPLAN_DATA_DIR!, "flowplan.sqlite"));
   const uid = randomUUID(),
     token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, uid, "Lea Laser", `${uid}@test.invalid`);
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, uid, "Lea Laser", `${uid}@test.invalid`, Date.now());
   db.prepare("INSERT INTO members VALUES(?,?,?)").run(boot.workspace.id, uid, "editor");
   db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(createHash("sha256").update(token).digest("hex"), uid, "[]", Date.now() + 3600000);
   db.close();

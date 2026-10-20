@@ -22,11 +22,12 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
   db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
   const uid = randomUUID(),
     token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(
     uid,
     `ops-admin:${uid}`,
     "Ops Admin",
     `${uid}@example.test`,
+    Date.now(),
   );
   db.prepare(
     "INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)",

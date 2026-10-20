@@ -4,7 +4,7 @@
 // numbered placeholders – "Group {0}" – and are matched as patterns, so
 // t(`Gruppe ${name}`, `Group ${name}`) needs no change in the code. An
 // empty or missing translation shows the English text.
-import fr from "../locales/fr.json";
+import fr from "../locales/fr.json" with { type: "json" };
 
 type Catalog = Record<string, string>;
 // Register a new language here and in LANGUAGES (lib/i18n.ts).

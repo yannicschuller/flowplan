@@ -28,12 +28,14 @@ export function Collapse({
     setWas(open);
     setClosing(!open && motionAllowed());
   }
-  const first = useRef(true);
+  // The state the last run of the effect saw: only a real change animates,
+  // not the first render nor a replay of the effect (Strict Mode, a subtree
+  // shown again) while nothing changed.
+  const shown = useRef<boolean | null>(null);
   useLayoutEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
+    const before = shown.current;
+    shown.current = open;
+    if (before === null || (before === open && !closing)) return;
     const el = ref.current;
     if (!el || typeof el.animate !== "function") return;
     if (open) {

@@ -14,7 +14,8 @@ test("an admin deletes a disabled account after seeing what happens", async ({ b
   const make = (name: string, groups: string[]) => {
     const uid = randomUUID(),
       token = randomBytes(32).toString("hex");
-    db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, `del:${uid}`, name, `${uid}@example.test`);
+    // onboarded_at: past the introduction new accounts see first.
+    db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, `del:${uid}`, name, `${uid}@example.test`, Date.now());
     db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(createHash("sha256").update(token).digest("hex"), uid, JSON.stringify(groups), Date.now() + 600000);
     return { uid, token };
   };
@@ -67,7 +68,7 @@ test("an SSO account deletes itself after choosing a successor", async ({ browse
   const stamp = Date.now();
   const person = (name: string) => {
     const uid = randomUUID();
-    db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, `self:${uid}`, name, `${uid}@example.test`);
+    db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, `self:${uid}`, name, `${uid}@example.test`, Date.now());
     return uid;
   };
   const me = person(`Selbst ${stamp}`),
@@ -136,6 +137,10 @@ test("an account with a password confirms with it; the last admin is refused", a
     await page.locator("input[name=password]").fill("ein-langes-passwort");
     await page.getByRole("button", { name: "Konto erstellen" }).click();
     await expect(page.getByLabel("Dokumentinhalt", { exact: true }).or(page.locator(".sidebar"))).toBeVisible({ timeout: 20_000 });
+    // A new account starts with the introduction.
+    const intro = page.getByRole("dialog", { name: "Willkommen bei Flowplan" });
+    await intro.getByRole("button", { name: "Überspringen" }).click();
+    await expect(intro).toBeHidden();
     const uid = (db.prepare("SELECT user_id FROM local_accounts WHERE email=?").get(email) as { user_id: string }).user_id;
     const open = async () => {
       await page.goto(`${origin}/#settings`);

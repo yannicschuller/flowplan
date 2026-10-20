@@ -14,7 +14,7 @@ test("the administration announces a newer release", async ({ browser }, testInf
   db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
   const uid = randomUUID(),
     token = randomBytes(32).toString("hex");
-  db.prepare("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)").run(uid, `update-admin:${uid}`, "Update Admin", `${uid}@example.test`);
+  db.prepare("INSERT INTO users(id,subject,name,email,onboarded_at) VALUES(?,?,?,?,?)").run(uid, `update-admin:${uid}`, "Update Admin", `${uid}@example.test`, Date.now());
   db.prepare("INSERT INTO sessions(token,user_id,groups_json,expires) VALUES(?,?,?,?)").run(
     createHash("sha256").update(token).digest("hex"),
     uid,
