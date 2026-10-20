@@ -7,10 +7,12 @@
 //
 // What a mapping granted is recorded in sso_sources (target '' = workspace
 // membership, otherwise the workspace group's id, plus the SSO group that
-// granted it). Memberships and group memberships added by hand have no source
-// and are never changed or removed here. A manual change of an SSO membership
-// (role, removal, group checkbox) takes it over: it is then managed by hand.
-// The last owner of a workspace always stays.
+// granted it). SSO always wins: a membership or group membership a mapping
+// matches is set to what the mapping says, even one added or changed by
+// hand, and becomes SSO-managed from then on. Manual changes last until the
+// next sign-in (or mapping change) of that person. Memberships no mapping
+// matches and that never came from SSO stay untouched. The last owner of a
+// workspace always stays.
 import { z } from "zod";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
@@ -59,13 +61,13 @@ function applyWorkspace(userId: string, workspaceId: string, matched: SsoMapping
     if (!member) {
       run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", workspaceId, userId, desired);
       setSources(workspaceId, userId, "", roleMappings.map((m) => m.sso_group));
-    } else if (managed) {
+    } else {
+      // Also a membership added or changed by hand: the mapping wins.
       const lastOwner = member.role === "owner" && owners(workspaceId) <= 1;
       if (member.role !== desired && !lastOwner)
         run("UPDATE members SET role=? WHERE workspace_id=? AND user_id=?", desired, workspaceId, userId);
       setSources(workspaceId, userId, "", roleMappings.map((m) => m.sso_group));
     }
-    // A membership added by hand stays as it is.
   } else if (managed) {
     if (member?.role === "owner" && owners(workspaceId) <= 1) {
       // The last owner stays; the membership remains SSO-managed and goes
@@ -98,11 +100,9 @@ function applyWorkspace(userId: string, workspaceId: string, matched: SsoMapping
   );
   for (const [groupId, ssoGroups] of wanted) {
     const has = !!one("SELECT 1 FROM group_members WHERE group_id=? AND user_id=?", groupId, userId);
-    if (!has) {
-      run("INSERT INTO group_members(group_id,user_id) VALUES(?,?)", groupId, userId);
-      setSources(workspaceId, userId, groupId, ssoGroups);
-    } else if (sourced.has(groupId)) setSources(workspaceId, userId, groupId, ssoGroups);
-    // Added by hand: untouched.
+    if (!has) run("INSERT INTO group_members(group_id,user_id) VALUES(?,?)", groupId, userId);
+    // Added by hand or not: from now on it comes from SSO.
+    setSources(workspaceId, userId, groupId, ssoGroups);
   }
   for (const groupId of sourced)
     if (!wanted.has(groupId)) {
@@ -219,9 +219,4 @@ export function addSsoMapping(workspaceId: string, input: unknown) {
 export function deleteSsoMapping(workspaceId: string, mappingId: unknown) {
   run("DELETE FROM sso_mappings WHERE id=? AND workspace_id=?", z.string().max(100).parse(mappingId), workspaceId);
   reapplySsoMappings(workspaceId);
-}
-
-// A manual change of a membership takes it over from SSO.
-export function takeOverMembership(workspaceId: string, userId: string, target = "") {
-  run("DELETE FROM sso_sources WHERE workspace_id=? AND user_id=? AND target=?", workspaceId, userId, target);
 }

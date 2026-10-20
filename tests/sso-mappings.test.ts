@@ -72,25 +72,35 @@ test("a matching SSO group adds the membership and the group membership", () => 
   assert.equal(ssoSources(wid).some((s) => s.user_id === ana.id), false);
 });
 
-test("memberships and group memberships added by hand are never changed or removed", () => {
+test("SSO always wins over memberships added or changed by hand", () => {
   const ben = account("ben");
   run("INSERT INTO members VALUES(?,?,?)", wid, ben.id, "owner");
   run("INSERT INTO group_members VALUES(?,?)", marketing, ben.id);
+  // No mapping matches: what was added by hand stays.
+  syncSsoMemberships(ben.id, ["unrelated"]);
+  assert.equal(role(wid, ben.id), "owner", "unmatched manual membership kept");
+  assert.ok(inGroup(marketing, ben.id), "unmatched manual group membership kept");
+  // A matching mapping sets the role and takes both over.
   syncSsoMemberships(ben.id, ["staff", "mkt"]);
-  assert.equal(role(wid, ben.id), "owner", "manual owner not demoted");
+  assert.equal(role(wid, ben.id), "viewer", "the mapping sets the role");
+  assert.ok(inGroup(marketing, ben.id));
   syncSsoMemberships(ben.id, []);
-  assert.equal(role(wid, ben.id), "owner", "manual membership kept");
-  assert.ok(inGroup(marketing, ben.id), "manual group membership kept");
-  run("DELETE FROM members WHERE workspace_id=? AND user_id=?", wid, ben.id);
-  run("DELETE FROM group_members WHERE user_id=?", ben.id);
+  assert.equal(role(wid, ben.id), null, "now SSO-managed: goes with the SSO groups");
+  assert.equal(inGroup(marketing, ben.id), false);
 });
 
-test("a manual role change takes the membership over from SSO", () => {
+test("a manual change lasts until the next SSO sign-in", () => {
   const cem = account("cem");
-  syncSsoMemberships(cem.id, ["staff"]);
+  syncSsoMemberships(cem.id, ["staff", "mkt"]);
   command(owner, { action: "member.role", workspaceId: wid, userId: cem.id, role: "editor" });
-  syncSsoMemberships(cem.id, []);
+  command(owner, { action: "group.member", workspaceId: wid, groupId: marketing, userId: cem.id, enabled: false });
   assert.equal(role(wid, cem.id), "editor");
+  assert.equal(inGroup(marketing, cem.id), false);
+  syncSsoMemberships(cem.id, ["staff", "mkt"]);
+  assert.equal(role(wid, cem.id), "viewer", "the mapping sets the role again");
+  assert.ok(inGroup(marketing, cem.id), "the mapping adds the group again");
+  syncSsoMemberships(cem.id, []);
+  assert.equal(role(wid, cem.id), null);
 });
 
 test("the last owner granted through SSO is neither demoted nor removed", () => {

@@ -126,6 +126,25 @@ export function TwoFactorSettings({
         "Two-factor sign-in is off.",
       );
     });
+  // Turning it on needs nothing; turning it off is confirmed like the rest.
+  const toggleAfterPasskey = (enabled: boolean) =>
+    run("after-passkey", async () => {
+      const result = await post<{ status: TwoFactorStatus }>(
+        "totp-after-passkey",
+        enabled ? { enabled } : { enabled, ...confirmation(confirm) },
+      );
+      setConfirm("");
+      setStatus(result.status);
+      return enabled
+        ? t(
+            "Nach dem Passkey wird jetzt auch ein Code aus der App verlangt.",
+            "A code from the app is now also asked for after the passkey.",
+          )
+        : t(
+            "Mit dem Passkey meldest du dich jetzt ohne Code an.",
+            "With the passkey you now sign in without a code.",
+          );
+    });
   const codesText = (codes || []).join("\n");
   return (
     <div className="two-factor">
@@ -311,6 +330,28 @@ export function TwoFactorSettings({
               {t("Ausschalten", "Turn off")}
             </button>
           </div>
+          {status.passkey && (
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={status.afterPasskey}
+                disabled={!!busy || (status.afterPasskey && !confirm)}
+                onChange={(e) => void toggleAfterPasskey(e.target.checked)}
+              />
+              <span>
+                {t(
+                  "Auch nach dem Passkey einen Code verlangen",
+                  "Also ask for a code after the passkey",
+                )}
+                <small className="muted">
+                  {t(
+                    "Ein Passkey reicht sonst allein. Zum Ausschalten oben Passwort oder Code eingeben.",
+                    "Otherwise a passkey is enough on its own. To turn this off, enter your password or a code above.",
+                  )}
+                </small>
+              </span>
+            </label>
+          )}
           {status.required && !status.passkey && (
             <small className="muted">
               {t(

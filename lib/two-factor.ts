@@ -8,8 +8,8 @@
 //   short-lived signed token (not a session) and enters a code from the app
 //   or a recovery code. Codes count once (the last accepted time step is
 //   kept), wrong ones are limited per account and per address.
-// - Passkeys count as strong on their own; SSO accounts and API tokens are
-//   not affected. The policy lives in lib/two-factor-policy.ts.
+// - Passkeys count as strong on their own: no code after a passkey, unless
+//   the person turns that on. SSO accounts and API tokens are not affected. The policy lives in lib/two-factor-policy.ts.
 import { createHash, randomInt } from "node:crypto";
 import { z } from "zod";
 import { one, run } from "./db";
@@ -18,7 +18,7 @@ import { failed, limited, localGroups, verifyPassword } from "./local-auth";
 import { openSecret, sealSecret, signValue, validSignature } from "./secret-box";
 import { matchTotp, newTotpSecret, otpauthUri } from "./totp";
 import { qrModules, qrPath } from "./qr";
-import { hasPasskey, totpEnabled, twoFactorRequired } from "./two-factor-policy";
+import { codeAfterPasskey, hasPasskey, totpEnabled, twoFactorRequired } from "./two-factor-policy";
 import { instanceSettings } from "./instance-settings";
 import { queueLinkMail } from "./mail";
 import { translate, type Locale } from "./i18n";
@@ -61,6 +61,7 @@ export function twoFactorStatus(userId: string) {
     enabled: totpEnabled(userId),
     recoveryLeft: Number(one<{ n: number }>("SELECT COUNT(*) n FROM recovery_codes WHERE user_id=? AND used_at IS NULL", userId)?.n || 0),
     passkey: hasPasskey(userId),
+    afterPasskey: codeAfterPasskey(userId),
     required: twoFactorRequired(userId),
   };
 }
@@ -178,6 +179,16 @@ export async function regenerateRecoveryCodes(userId: string, input: unknown, ad
   await confirmWithPasswordOrCode(userId, input, address, t);
   return { recoveryCodes: newRecoveryCodes(userId) };
 }
+// Whether signing in with a passkey also asks for a code from the app.
+export async function setCodeAfterPasskey(userId: string, input: unknown, address: string, locale: Locale) {
+  const t = tr(locale);
+  if (!totpEnabled(userId)) throw new HttpError(400, t("Die Zwei-Faktor-Anmeldung ist nicht eingeschaltet.", "Two-factor sign-in is not turned on."));
+  const { enabled } = z.object({ enabled: z.boolean() }).passthrough().parse(input);
+  // Turning the extra check off weakens the account: confirm it.
+  if (!enabled) await confirmWithPasswordOrCode(userId, input, address, t);
+  run("UPDATE user_totp SET after_passkey=? WHERE user_id=?", enabled ? 1 : 0, userId);
+  return twoFactorStatus(userId);
+}
 function removeTotp(userId: string) {
   run("DELETE FROM user_totp WHERE user_id=?", userId);
   run("DELETE FROM recovery_codes WHERE user_id=?", userId);
@@ -192,6 +203,11 @@ export function afterPassword(userId: string, remember: boolean, locale: Locale)
   if (totpEnabled(userId)) return { pending: pendingToken(userId, remember) };
   if (twoFactorRequired(userId) && hasPasskey(userId))
     throw new HttpError(403, tr(locale)("Für dein Konto ist eine Zwei-Faktor-Anmeldung vorgeschrieben – bitte melde dich mit deinem Passkey an.", "Your account requires two-factor sign-in – please sign in with your passkey."));
+  return { userId };
+}
+// After a passkey: signed in, or a code first if the person asked for one.
+export function afterPasskey(userId: string, remember: boolean): { pending: string } | { userId: string } {
+  if (codeAfterPasskey(userId) && account(userId)) return { pending: pendingToken(userId, remember) };
   return { userId };
 }
 // "<user>.<expires>.<remember>.<password fingerprint>.<signature>": signed by

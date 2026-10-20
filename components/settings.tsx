@@ -159,6 +159,11 @@ export default function Settings({
       .filter((s) => s.user_id === userId && s.target === target)
       .map((s) => s.sso_group)
       .join(", ");
+  // After a manual change of something SSO manages.
+  const ssoNotice = t(
+    "Geändert. Diese Zuordnung kommt aus SSO: Bei der nächsten SSO-Anmeldung der Person gilt wieder, was die SSO-Zuordnung sagt.",
+    "Changed. This comes from SSO: at the person's next SSO sign-in, what the SSO mapping says applies again.",
+  );
   async function act(b: Record<string, unknown>) {
     try {
       await mutate({ workspaceId: boot.workspace.id, ...b });
@@ -437,7 +442,7 @@ export default function Settings({
                       {(() => {
                         const via = ssoVia(m.id, "");
                         return via ? (
-                          <span className="tag" title={t("Diese Mitgliedschaft wird über die SSO-Gruppen verwaltet. Eine Rollenänderung hier übernimmt sie von Hand.", "This membership is managed through SSO groups. Changing the role here takes it over by hand.")}>
+                          <span className="tag" title={t("Diese Mitgliedschaft wird über die SSO-Gruppen verwaltet. Eine Änderung hier gilt nur bis zur nächsten SSO-Anmeldung der Person – dann setzt die Zuordnung die Rolle wieder.", "This membership is managed through SSO groups. A change here lasts only until the person's next SSO sign-in – then the mapping sets the role again.")}>
                             {t(`über SSO-Gruppe „${via}“`, `via SSO group “${via}”`)}
                           </span>
                         ) : null;
@@ -467,13 +472,15 @@ export default function Settings({
                       <Select
                         aria-label={t(`Rolle für ${m.name}`, `Role for ${m.name}`)}
                         value={m.role}
-                        onChange={(e) =>
-                          act({
+                        onChange={async (e) => {
+                          const changed = await act({
                             action: "member.role",
                             userId: m.id,
                             role: e.target.value,
-                          })
-                        }
+                          });
+                          if (changed && e.target.value !== "remove" && ssoVia(m.id, ""))
+                            onError(ssoNotice);
+                        }}
                       >
                         <option value="owner">{t("Eigentümer", "Owner")}</option>
                         <option value="editor">{t("Bearbeiten", "Edit")}</option>
@@ -671,8 +678,8 @@ export default function Settings({
                     <h2>{t("SSO-Gruppen", "SSO groups")}</h2>
                     <p className="muted">
                       {t(
-                        "Ordne Gruppen aus deinem Identitätsanbieter einer Rolle in diesem Arbeitsbereich und/oder einer Gruppe zu. Bei jeder SSO-Anmeldung kommen passende Personen hinzu; wer die SSO-Gruppe nicht mehr hat, verliert, was die Zuordnung gegeben hat. Von Hand hinzugefügte Mitglieder bleiben unberührt, der letzte Eigentümer bleibt immer.",
-                        "Map groups from your identity provider to a role in this workspace and/or to a group. At every SSO sign-in matching people are added; whoever no longer has the SSO group loses what the mapping gave. Members added by hand stay untouched, the last owner always stays.",
+                        "Ordne Gruppen aus deinem Identitätsanbieter einer Rolle in diesem Arbeitsbereich und/oder einer Gruppe zu. Bei jeder SSO-Anmeldung kommen passende Personen hinzu; wer die SSO-Gruppe nicht mehr hat, verliert, was die Zuordnung gegeben hat. Die Zuordnung hat immer Vorrang: Rollen und Gruppen, die von Hand geändert wurden, setzt die nächste SSO-Anmeldung wieder so, wie die Zuordnung sagt. Der letzte Eigentümer bleibt immer.",
+                        "Map groups from your identity provider to a role in this workspace and/or to a group. At every SSO sign-in matching people are added; whoever no longer has the SSO group loses what the mapping gave. The mapping always wins: roles and groups changed by hand are set back to what the mapping says at the next SSO sign-in. The last owner always stays.",
                       )}{" "}
                       {!boot.user.isAdmin &&
                         t(
@@ -1099,14 +1106,15 @@ export default function Settings({
                   (g) => g.group_id === groupId && g.user_id === m.id,
                 )
               }
-              onChange={(e) =>
-                act({
+              onChange={async (e) => {
+                const changed = await act({
                   action: "group.member",
                   groupId,
                   userId: m.id,
                   enabled: e.target.checked,
-                })
-              }
+                });
+                if (changed && groupId && ssoVia(m.id, groupId)) onError(ssoNotice);
+              }}
             />
             <Avatar name={m.name} userId={m.id} />
             <span>

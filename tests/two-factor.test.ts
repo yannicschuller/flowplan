@@ -104,7 +104,7 @@ test("setting up: QR code, confirmation with a code, recovery codes shown once a
   assert.equal(hashes.length, 10);
   assert.ok(hashes.every((h) => !recoveryCodes.includes(h.code_hash)));
   assert.equal(policy.totpEnabled(ana.id), true);
-  assert.deepEqual(tf.twoFactorStatus(ana.id), { enabled: true, recoveryLeft: 10, passkey: false, required: false });
+  assert.deepEqual(tf.twoFactorStatus(ana.id), { enabled: true, recoveryLeft: 10, passkey: false, afterPasskey: false, required: false });
   assert.throws(() => tf.startTotpSetup({ id: ana.id }, "de"), /schon eingerichtet/);
 });
 
@@ -258,4 +258,22 @@ test("a long instance name and address still give a QR code, a very long one the
   } finally {
     run("DELETE FROM instance_settings WHERE key='name'");
   }
+});
+
+test("a passkey signs in on its own unless the person asks for a code after it", async () => {
+  saveInstanceSettings({ twoFactor: "off" });
+  const hana = await account("hana");
+  run("INSERT INTO passkeys(id,user_id,public_key,created_at) VALUES(?,?,?,?)", `pk-${hana.id}`, hana.id, Buffer.from([1]), Date.now());
+  // Without the app, and with the app but the option off: no code.
+  assert.ok("userId" in tf.afterPasskey(hana.id, false));
+  const { secret } = enable(hana.id);
+  assert.ok("userId" in tf.afterPasskey(hana.id, false));
+  assert.equal(tf.twoFactorStatus(hana.id).afterPasskey, false);
+  // Turned on: a code follows, just like after the password.
+  await tf.setCodeAfterPasskey(hana.id, { enabled: true }, "127.0.0.9", "de");
+  assert.ok("pending" in tf.afterPasskey(hana.id, false));
+  // Turning it off again needs the password or a code.
+  await assert.rejects(tf.setCodeAfterPasskey(hana.id, { enabled: false }, "127.0.0.9", "de"), /Passwort/);
+  await tf.setCodeAfterPasskey(hana.id, { enabled: false, code: totp.totpCode(secret, Date.now()) }, "127.0.0.9", "de");
+  assert.ok("userId" in tf.afterPasskey(hana.id, false));
 });

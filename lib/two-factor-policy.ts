@@ -1,13 +1,17 @@
 // Whether an account must sign in with a second factor, and whether it has
 // one. Only accounts with e-mail and password take part: SSO accounts get
 // their second factor from the provider, API tokens act for scripts.
-// A passkey counts as strong on its own. Kept free of other imports, so
-// lib/auth.ts can ask on every request.
+// A passkey counts as strong on its own: signing in with it asks for no
+// code, unless the person turned on "also after a passkey". Kept free of
+// other imports, so lib/auth.ts can ask on every request.
 import { one } from "./db";
 import { instanceSettings } from "./instance-settings";
 
 export function totpEnabled(userId: string) {
   return !!one("SELECT 1 FROM user_totp WHERE user_id=? AND enabled=1", userId);
+}
+export function codeAfterPasskey(userId: string) {
+  return !!one("SELECT 1 FROM user_totp WHERE user_id=? AND enabled=1 AND after_passkey=1", userId);
 }
 export function hasPasskey(userId: string) {
   return !!one("SELECT 1 FROM passkeys WHERE user_id=? LIMIT 1", userId);

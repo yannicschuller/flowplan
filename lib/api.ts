@@ -2270,8 +2270,8 @@ export function command(
             wid(),
             target,
           );
-          // Changed by hand: no longer managed through SSO groups.
-          takeOverMembership(wid(), target);
+          // An SSO-managed membership keeps its source: the next SSO
+          // sign-in sets the mapped role again (lib/sso-mappings.ts).
         }
         break;
       }
@@ -2421,7 +2421,6 @@ export function command(
             gid,
             uid,
           );
-        takeOverMembership(g.workspace_id, uid, gid);
         break;
       }
       case "template.save": {
@@ -2808,7 +2807,7 @@ import { ensureRowDocument } from "./row-documents";
 import { createCalendarFeed, revokeCalendarFeed } from "./calendar-feed";
 import { createApiToken, revokeApiToken } from "./api-tokens";
 import { deleteWebhook, emitWebhook } from "./webhooks";
-import { addSsoMapping, deleteSsoMapping, takeOverMembership } from "./sso-mappings";
+import { addSsoMapping, deleteSsoMapping } from "./sso-mappings";
 import { dispatchMail, mailConfig, queueInviteMail } from "./mail";
 import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";

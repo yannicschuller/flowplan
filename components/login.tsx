@@ -160,7 +160,14 @@ export default function Login({
       } catch {
         throw new Error(t("Anmeldung mit Passkey abgebrochen.", "Passkey sign-in was cancelled."));
       }
-      await post("passkey", { ...response, remember: stay });
+      const result = await post("passkey", { ...response, remember: stay });
+      // Only if the person asked for a code after the passkey as well.
+      if (result?.twoFactor) {
+        setBusy("");
+        setRecovery(false);
+        setMode("totp");
+        return;
+      }
       done();
     });
   const devWorkspace = () =>

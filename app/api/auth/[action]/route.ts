@@ -50,10 +50,12 @@ import {
 } from "@/lib/local-auth";
 import {
   PENDING_MAX_AGE,
+  afterPasskey,
   afterPassword,
   completeSignIn,
   confirmTotpSetup,
   disableTotp,
+  setCodeAfterPasskey,
   regenerateRecoveryCodes,
   startTotpSetup,
   twoFactorStatus,
@@ -418,12 +420,18 @@ async function handlePOST(
     if (action === "passkey") {
       const input = await body();
       const { userId, groups } = await passkeyLogin(await takeChallengeCookie(), input, clientAddress(req.headers), locale);
+      // A code from the app follows only if the person asked for it.
+      const next = afterPasskey(userId, wantsRemember(input));
+      if ("pending" in next) {
+        await rememberPending(next.pending);
+        return NextResponse.json({ ok: true, twoFactor: true });
+      }
       await signIn(userId, groups, wantsRemember(input));
       return NextResponse.json({ ok: true });
     }
     // ---- The signed-in person's authenticator app (also while the
     // instance waits for it to be set up) ----
-    if (["two-factor", "totp-setup", "totp-confirm", "totp-disable", "totp-recovery"].includes(action)) {
+    if (["two-factor", "totp-setup", "totp-confirm", "totp-disable", "totp-recovery", "totp-after-passkey"].includes(action)) {
       const user = await currentUser();
       if (!user || user.demo) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
       if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
@@ -433,6 +441,8 @@ async function handlePOST(
         return NextResponse.json({ ...confirmTotpSetup(user.id, await body(), locale), status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
       if (action === "totp-recovery")
         return NextResponse.json({ ...(await regenerateRecoveryCodes(user.id, await body(), address, locale)), status: twoFactorStatus(user.id) }, { headers: { "Cache-Control": "no-store" } });
+      if (action === "totp-after-passkey")
+        return NextResponse.json({ status: await setCodeAfterPasskey(user.id, await body(), address, locale) });
       if (action === "totp-disable") return NextResponse.json({ status: await disableTotp(user.id, await body(), address, locale) });
       return NextResponse.json({ status: twoFactorStatus(user.id) });
     }
