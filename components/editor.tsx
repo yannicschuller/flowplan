@@ -166,6 +166,7 @@ import { BibliographyView, CitationView } from "./citation-views";
 import { CitationDialog } from "./citation-dialog";
 import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/footnotes";
 import { BlockDirectionExtension } from "@/lib/text-direction";
+import { ListTidy } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
 export default function DocumentEditor({
   pageId,
@@ -384,6 +385,7 @@ export default function DocumentEditor({
         PlainNewLine,
         TaskList,
         FlowTaskItem.configure({ nested: true }),
+        ListTidy,
         TaskDue,
         CalcHint.configure({ locale }),
         TicketRefs.configure({ pageId }),

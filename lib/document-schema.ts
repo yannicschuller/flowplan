@@ -25,6 +25,7 @@ import { FlowCodeBlock } from "./code-block";
 import { Bibliography, Citation } from "./citation-nodes";
 import { Footnote } from "./footnotes";
 import { BlockDirectionExtension } from "./text-direction";
+import { ListTidy } from "./list-tidy";
 // Images that were marked up keep their original and the markings
 // (components/image-annotator.tsx), so they can be edited again.
 export const AnnotatedImage = Image.extend({
@@ -504,6 +505,7 @@ export const documentExtensions = [
   MetricBlock,
   TaskList,
   FlowTaskItem.configure({ nested: true }),
+  ListTidy,
   BlockReactionAttribute,
   SyncedBlock,
   Suggestion,
