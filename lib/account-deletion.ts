@@ -39,6 +39,9 @@ const PERSONAL = [
   // Two-factor: the sealed app secret and the recovery codes.
   "user_totp",
   "recovery_codes",
+  // Git export of spaces they own, with the sealed access token; the
+  // working copies go after the command (lib/space-git-export.ts).
+  "space_git_exports",
   "local_accounts",
   "mobile_devices",
   "sso_sources",

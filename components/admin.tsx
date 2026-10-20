@@ -1,5 +1,5 @@
 "use client";
-import { MarkdownExportSettings, type MarkdownExportStatus } from "./markdown-export-settings";
+import { MarkdownExportSettings, type MarkdownExportStatus, type SpaceGitOverview } from "./markdown-export-settings";
 import { EncryptionSettings, type EncryptionStatus } from "./encryption-settings";
 import { NumberField, SaveBar, SettingGroup, SettingRow, SwitchRow, UsageMeter } from "./settings-ui";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -91,6 +91,7 @@ type AdminData = {
     lastError: string | null;
   };
   markdownExport: MarkdownExportStatus;
+  spaceGitExport: SpaceGitOverview;
   encryption: EncryptionStatus;
   backup: {
     enabled: boolean;
@@ -474,7 +475,7 @@ export default function Admin({
                 onError={onError}
               />
               <EncryptionSettings status={data.encryption} onChange={load} onError={onError} />
-              <MarkdownExportSettings status={data.markdownExport} onChange={load} onError={onError} />
+              <MarkdownExportSettings status={data.markdownExport} spaceGit={data.spaceGitExport} onChange={load} onError={onError} />
               <InstanceBackup
                 pending={data.restorePending}
                 onChange={load}

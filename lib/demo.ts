@@ -40,6 +40,8 @@ const BLOCKED = new Set([
   "webhook.delete",
   "sso.mapping.add",
   "sso.mapping.delete",
+  // Would push content to a Git server outside the instance.
+  "space.gitExport",
   // Would e-mail people outside the demo.
   "ticket.reply",
 ]);

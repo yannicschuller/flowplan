@@ -85,6 +85,7 @@ import {
   requireSpaceManager,
   removeFromWorkspace,
 } from "./workspace-lifecycle";
+import { saveSpaceGitExport, sweepSpaceGitCopies } from "./space-git-export";
 import {
   coverSchema,
   appearanceSchema,
@@ -502,6 +503,17 @@ function restorableImage(
     return "";
   }
 }
+const GIT_EXPORT_ENDS = new Set([
+  "space.gitExport",
+  "space.delete",
+  "space.purge",
+  "workspace.delete",
+  "workspace.leave",
+  "member.role",
+  "member.guest",
+  "account.delete",
+  "admin.deleteUser",
+]);
 export function command(
   user: Identity,
   input: unknown,
@@ -850,6 +862,10 @@ export function command(
       }
       case "space.duplicate":
         result = duplicateSpace(user, b);
+        break;
+      // Git export of the space, by its owner (lib/space-git-export.ts).
+      case "space.gitExport":
+        result = saveSpaceGitExport(user, b);
         break;
       case "space.create": {
         requireMember(user, wid(), "editor");
@@ -2662,6 +2678,9 @@ export function command(
     check();
     return value;
   };
+  // Commands that may end the Git export of a space: its working copy goes
+  // once the settings are gone.
+  if (GIT_EXPORT_ENDS.has(action)) afterCommit.push(sweepSpaceGitCopies);
   const result = withinTransaction ? checked() : transaction(checked, user);
   try {
     commandWebhooks(action, b, result);

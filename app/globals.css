@@ -18082,6 +18082,28 @@ h3 .block-reactions {
   margin: 6px 0 0;
   font-size: 12.5px;
 }
+/* Space settings → Git export (components/space-git-export.tsx). */
+.space-git-export {
+  margin: 14px 0;
+}
+.space-git-export summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.space-git-export > .muted,
+.space-git-export > .error {
+  margin: 8px 0;
+  font-size: 12.5px;
+}
+.space-git-errors {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.space-git-fields label small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
 .ai-key-note {
   margin: 0 22px 14px;
 }

@@ -11,11 +11,15 @@
 //   EXPORT_GIT_USERNAME the user name for the token (default "flowplan")
 //   EXPORT_GIT_BRANCH   default "main"
 //   EXPORT_GIT_IMPORT   "true": take over changes made in the repository
+//
+// Deprecated in favour of the Git export each space owner sets up for
+// their space (lib/space-git-export.ts, SPACE_GIT_EXPORT); keeps working.
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs";
 import { dirname, posix, resolve } from "node:path";
 import git from "isomorphic-git";
 import http from "isomorphic-git/http/node";
+import type { HttpClient } from "isomorphic-git";
 import { id, one, run, transaction } from "./db";
 import { readZip } from "./archive";
 import { requirePage } from "./permissions";
@@ -47,28 +51,59 @@ const dir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "git-export
 const author = () => ({ name: process.env.EXPORT_GIT_AUTHOR || "Flowplan", email: process.env.EXPORT_GIT_EMAIL || "flowplan@localhost" });
 export type GitRun = { at: number; commit: string | null; pushed: boolean; imported: number; error: string | null };
 
+// Where a working copy lives and how it reaches its remote. The instance
+// export uses <data>/git-export with the default transport, the export of
+// a space (lib/space-git-export.ts) a folder of its own and a transport
+// that refuses internal addresses.
+export type GitTarget = { dir: string; url: string; branch: string; username: string; token: string; http?: HttpClient };
+
 // Brings the working copy to the state of the remote branch.
-async function prepare(config: GitConfig) {
-  const options = { fs, http, dir: dir(), onAuth: () => ({ username: config.username, password: config.token }) };
-  if (!existsSync(resolve(dir(), ".git"))) {
-    rmSync(dir(), { recursive: true, force: true });
-    mkdirSync(dir(), { recursive: true });
-    await git.init({ fs, dir: dir(), defaultBranch: config.branch });
-    await git.addRemote({ fs, dir: dir(), remote: "origin", url: config.url });
-  } else await git.setConfig({ fs, dir: dir(), path: "remote.origin.url", value: config.url });
+export async function prepareRepo(target: GitTarget) {
+  const dir = target.dir;
+  const options = { fs, http: target.http || http, dir, onAuth: () => ({ username: target.username, password: target.token }) };
+  if (!existsSync(resolve(dir, ".git"))) {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    await git.init({ fs, dir, defaultBranch: target.branch });
+    await git.addRemote({ fs, dir, remote: "origin", url: target.url });
+  } else await git.setConfig({ fs, dir, path: "remote.origin.url", value: target.url });
   let remote: string | null = null;
   try {
-    await git.fetch({ ...options, remote: "origin", ref: config.branch, singleBranch: true, tags: false });
-    remote = await git.resolveRef({ fs, dir: dir(), ref: `refs/remotes/origin/${config.branch}` });
+    await git.fetch({ ...options, remote: "origin", ref: target.branch, singleBranch: true, tags: false });
+    remote = await git.resolveRef({ fs, dir, ref: `refs/remotes/origin/${target.branch}` });
   } catch (error) {
     // An empty repository has no branch yet: the first push creates it.
     if (!/NotFoundError|Could not find|couldn't find|ref/i.test(String((error as Error).message || error))) throw error;
   }
   if (remote) {
-    await git.writeRef({ fs, dir: dir(), ref: `refs/heads/${config.branch}`, value: remote, force: true });
-    await git.checkout({ fs, dir: dir(), ref: config.branch, force: true });
+    await git.writeRef({ fs, dir, ref: `refs/heads/${target.branch}`, value: remote, force: true });
+    await git.checkout({ fs, dir, ref: target.branch, force: true });
   }
   return { options, remote };
+}
+const prepare = (config: GitConfig) => prepareRepo({ ...config, dir: dir() });
+
+// Stages everything that changed in the working copy, deletions included,
+// and pushes one commit – only when something changed, or with `always`
+// (the first export into an empty repository).
+export async function commitAndPush(target: GitTarget, options: Awaited<ReturnType<typeof prepareRepo>>["options"], at: number, always = false) {
+  const status = await git.statusMatrix({ fs, dir: target.dir });
+  let changes = 0;
+  for (const [file, head, workdir, stage] of status) {
+    if (head === 1 && workdir === 1 && stage === 1) continue;
+    if (workdir === 0) await git.remove({ fs, dir: target.dir, filepath: file });
+    else await git.add({ fs, dir: target.dir, filepath: file });
+    changes++;
+  }
+  if (!changes && !always) return { commit: null, changes };
+  const commit = await git.commit({
+    fs,
+    dir: target.dir,
+    author: author(),
+    message: `Flowplan export ${new Date(at).toISOString().slice(0, 16).replace("T", " ")}`,
+  });
+  await git.push({ ...options, remote: "origin", ref: target.branch, remoteRef: target.branch });
+  return { commit, changes };
 }
 
 // Markdown files that changed in the repository between two commits, read
@@ -205,25 +240,9 @@ export async function syncGit(
         writeFileSync(path, data);
       }
     }
-    // Stage everything that changed, including deletions.
-    const status = await git.statusMatrix({ fs, dir: dir() });
-    let changes = 0;
-    for (const [file, head, workdir, stage] of status) {
-      if (head === 1 && workdir === 1 && stage === 1) continue;
-      if (workdir === 0) await git.remove({ fs, dir: dir(), filepath: file });
-      else await git.add({ fs, dir: dir(), filepath: file });
-      changes++;
-    }
-    let commit = remote;
-    if (changes || !remote) {
-      commit = await git.commit({
-        fs,
-        dir: dir(),
-        author: author(),
-        message: `Flowplan export ${new Date(at).toISOString().slice(0, 16).replace("T", " ")}`,
-      });
-      await git.push({ ...options, remote: "origin", ref: config.branch, remoteRef: config.branch });
-    }
+    const pushed = await commitAndPush({ ...config, dir: dir() }, options, at, !remote);
+    const commit = pushed.commit ?? remote;
+    const changes = pushed.changes;
     return { at, commit, pushed: !!changes || !remote, imported, error: null };
   } catch (error) {
     return { at, commit: last?.commit ?? null, pushed: false, imported: 0, error: String((error as Error).message || error).slice(0, 300) };

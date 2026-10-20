@@ -3,6 +3,7 @@ import { AiBlockToggle } from "./ai-settings";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { SpaceAppearance } from "./space-appearance";
+import { SpaceGitExport } from "./space-git-export";
 import { useState } from "react";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import type { Space } from "@/lib/types";
@@ -143,6 +144,7 @@ export function SpaceManager({
               />
             )}
             {!duplicating && <AiBlockToggle targetId={space.id} kind="space" onError={setError} />}
+            {!duplicating && <SpaceGitExport spaceId={space.id} onError={setError} />}
             {!duplicating && (
               <div className="lifecycle-buttons">
                 <button
