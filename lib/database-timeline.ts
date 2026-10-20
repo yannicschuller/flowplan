@@ -1,3 +1,4 @@
+import { tr } from "./locale-tag";
 import { z } from "zod";
 import type { Field, Row, View } from "./types";
 export const timelineSchema = z.object({
@@ -14,11 +15,11 @@ export const timelineSchema = z.object({
   criticalPath: z.boolean().optional(),
 });
 export type DependencyType = NonNullable<TimelineConfig["dependencyType"]>;
-export const dependencyTypes: { id: DependencyType; label: string }[] = [
-  { id: "fs", label: "Ende → Anfang" },
-  { id: "ss", label: "Anfang → Anfang" },
-  { id: "ff", label: "Ende → Ende" },
-  { id: "sf", label: "Anfang → Ende" },
+export const dependencyTypes: { id: DependencyType; label: () => string }[] = [
+  { id: "fs", label: () => tr("Ende → Anfang", "End → start") },
+  { id: "ss", label: () => tr("Anfang → Anfang", "Start → start") },
+  { id: "ff", label: () => tr("Ende → Ende", "End → end") },
+  { id: "sf", label: () => tr("Anfang → Ende", "Start → end") },
 ];
 type Range = { start: number; end: number };
 // Days between what the link requires and where the successor is; negative
@@ -43,10 +44,10 @@ export function requiredShift(
 // Wording for conflict hints, e.g. "beginnt vor dem Ende von".
 export function dependencyConflict(type: DependencyType) {
   return {
-    fs: "beginnt vor dem Ende von",
-    ss: "beginnt vor dem Anfang von",
-    ff: "endet vor dem Ende von",
-    sf: "endet vor dem Anfang von",
+    fs: tr("beginnt vor dem Ende von", "starts before the end of"),
+    ss: tr("beginnt vor dem Anfang von", "starts before the start of"),
+    ff: tr("endet vor dem Ende von", "ends before the end of"),
+    sf: tr("endet vor dem Anfang von", "ends before the start of"),
   }[type];
 }
 export type TimelineConfig = z.infer<typeof timelineSchema>;

@@ -18513,6 +18513,8 @@ h3 .block-reactions {
 }
 .ai-writer-actions button[role="menuitem"] {
   display: grid;
+  justify-content: start;
+  justify-items: start;
   width: 100%;
   padding: 6px 9px;
   border-radius: 8px;

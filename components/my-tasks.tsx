@@ -168,7 +168,7 @@ export function MyTasks({
           {task.title || t("Ohne Titel", "Untitled")}
         </button>
         <label className={`task-due ${task.due ? `task-due-${dueState(task.due, task.checked)}` : "task-due-add"}`}>
-          {task.due ? `📅 ${dueLabel(task.due)}` : "+ Datum"}
+          {task.due ? `📅 ${dueLabel(task.due)}` : t("+ Datum", "+ Date")}
           <input
             type="date"
             aria-label={t(`Fälligkeit von ${task.text}`, `Due date of ${task.text}`)}

@@ -588,7 +588,7 @@ export default function DatabaseTimeline({
             >
               {dependencyTypes.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.label}
+                  {t.label()}
                 </option>
               ))}
             </Select>
