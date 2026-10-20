@@ -14,9 +14,13 @@
 // The administrator only switches it on (environment):
 //   SPACE_GIT_EXPORT=true                        off by default
 //   SPACE_GIT_ALLOWED_HOSTS=git.example.org,…    only these Git servers
+//   SPACE_GIT_ALLOW_PRIVATE=true                  those listed servers may
+//                                                 have internal addresses
 // Without the list any public https server is fine. The transport resolves
 // and pins every address (lib/safe-fetch.ts) and follows no redirects, so
-// an address typed in by a person never reaches internal services.
+// an address typed in by a person never reaches internal services – only a
+// server the administrator listed by name, and only with the opt-in (a Git
+// server on the same host, reached via the host gateway).
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest, type IncomingMessage } from "node:http";
@@ -63,6 +67,16 @@ export const spaceGitHosts = () =>
     .filter(Boolean);
 // Plain http and local servers only for tests, never in production.
 const testServer = () => process.env.FLOWPLAN_GIT_ALLOW_HTTP === "1" && process.env.NODE_ENV !== "production";
+// Internal addresses: for tests, or for a server the administrator listed
+// in SPACE_GIT_ALLOWED_HOSTS when SPACE_GIT_ALLOW_PRIVATE=true. Never for
+// any other server, and never without the list.
+export function privateAllowedFor(url: URL) {
+  if (testServer()) return true;
+  if (process.env.SPACE_GIT_ALLOW_PRIVATE !== "true") return false;
+  const hosts = spaceGitHosts();
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return hosts.includes(host) || hosts.includes(url.host.toLowerCase());
+}
 const spacesDir = () => resolve(/* turbopackIgnore: true */ process.env.FLOWPLAN_DATA_DIR || "./data", "git-export", "spaces");
 const copyDir = (spaceId: string) => resolve(spacesDir(), z.uuid().parse(spaceId));
 // The token opens only for the space it was saved for.
@@ -88,13 +102,13 @@ export function checkedGitUrl(raw: string) {
   const hosts = spaceGitHosts();
   if (hosts.length && !hosts.includes(host) && !hosts.includes(url.host.toLowerCase()))
     throw new HttpError(400, "Dieser Git-Server ist auf dieser Instanz nicht freigegeben.");
-  if (!testServer() && isIP(host) && privateAddress(host)) throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
+  if (!privateAllowedFor(url) && isIP(host) && privateAddress(host)) throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
   return url.href;
 }
 
 // The HTTP transport for isomorphic-git: only the configured server, every
 // address resolved, checked and pinned, no redirects (a 3xx fails the run).
-export function safeGitHttp(gitUrl: string, allowPrivate = testServer()): HttpClient {
+export function safeGitHttp(gitUrl: string, allowPrivate = privateAllowedFor(new URL(gitUrl))): HttpClient {
   const origin = new URL(gitUrl).origin;
   return {
     async request({ url, method = "GET", headers = {}, body }) {
@@ -359,5 +373,5 @@ export function spaceGitOverview() {
     .filter((row) => row.last?.error)
     .map((row) => ({ at: row.last!.at, error: row.last!.error!, workspace: row.workspace, owner: row.owner }))
     .slice(0, 20);
-  return { enabled: spaceGitEnabled(), allowedHosts: spaceGitHosts(), spaces: rows.length, failing };
+  return { enabled: spaceGitEnabled(), allowedHosts: spaceGitHosts(), allowPrivate: process.env.SPACE_GIT_ALLOW_PRIVATE === "true" && spaceGitHosts().length > 0, spaces: rows.length, failing };
 }

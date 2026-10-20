@@ -98,6 +98,35 @@ test("a host name that resolves to an internal address is refused when the expor
   delete process.env.SPACE_GIT_ALLOWED_HOSTS;
 });
 
+test("internal addresses only for servers the administrator listed, with SPACE_GIT_ALLOW_PRIVATE", async () => {
+  const base = { username: "ben", token: "t0ken-value" };
+  // Same host behind a gateway: listed by name and opted in.
+  process.env.SPACE_GIT_ALLOWED_HOSTS = "localhost";
+  process.env.SPACE_GIT_ALLOW_PRIVATE = "true";
+  save(ben, projects, { ...base, url: "https://localhost:9/ben/notes.git" });
+  const status = await runSpaceGitExport(ben, projects);
+  // Port 9 has no server: the run gets as far as connecting, the address is not refused.
+  assert.doesNotMatch(String(status.available && status.last?.error), /Interne Adressen/);
+  as(ben)({ action: "space.gitExport", spaceId: projects, enabled: false });
+  // Not listed: still refused, also with the opt-in.
+  process.env.SPACE_GIT_ALLOWED_HOSTS = "git.example.org";
+  await assert.rejects(() => safeGitHttp("https://10.0.0.1/x.git").request({ url: "https://10.0.0.1/x.git/info/refs" }), /Interne Adressen/);
+  // Without a list the opt-in does nothing.
+  delete process.env.SPACE_GIT_ALLOWED_HOSTS;
+  await assert.rejects(() => safeGitHttp("https://127.0.0.1/x.git").request({ url: "https://127.0.0.1/x.git/info/refs" }), /Interne Adressen/);
+  assert.equal(spaceGitOverview().allowPrivate, false);
+  // Listed but without the opt-in: refused as before.
+  process.env.SPACE_GIT_ALLOWED_HOSTS = "127.0.0.1";
+  delete process.env.SPACE_GIT_ALLOW_PRIVATE;
+  assert.throws(() => save(ben, projects, { ...base, url: "https://127.0.0.1/ben/notes.git" }), /Interne Adressen/);
+  process.env.SPACE_GIT_ALLOW_PRIVATE = "true";
+  save(ben, projects, { ...base, url: "https://127.0.0.1/ben/notes.git" });
+  assert.equal(spaceGitOverview().allowPrivate, true);
+  as(ben)({ action: "space.gitExport", spaceId: projects, enabled: false });
+  delete process.env.SPACE_GIT_ALLOW_PRIVATE;
+  delete process.env.SPACE_GIT_ALLOWED_HOSTS;
+});
+
 test("the token is stored sealed for this space and never shown again", async () => {
   save(ben, projects, { url: "https://git.example.org/ben/notes.git", username: "ben", token: "PLAIN-TOKEN-123" });
   const status = spaceGitStatus(ben, projects);

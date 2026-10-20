@@ -3965,6 +3965,7 @@
   "These block types do not fit the chosen target.": "Ces types de blocs ne correspondent pas à la cible choisie.",
   "These blocks are missing from the text and will be removed:": "Ces blocs manquent dans le texte et seront supprimés :",
   "These blocks cannot be duplicated here.": "Ces blocs ne peuvent pas être dupliqués ici.",
+  "These servers may also have internal addresses (SPACE_GIT_ALLOW_PRIVATE).": "Ces serveurs peuvent aussi avoir des adresses internes (SPACE_GIT_ALLOW_PRIVATE).",
   "These workspaces had only this person as a member and are deleted with all content:": "Ces espaces de travail n’avaient que cette personne comme membre et sont supprimés avec tout leur contenu :",
   "These workspaces have only you as a member and are deleted with all content:": "Ces espaces de travail n’ont que vous comme membre et sont supprimés avec tout leur contenu :",
   "This account is disabled.": "Ce compte est désactivé.",

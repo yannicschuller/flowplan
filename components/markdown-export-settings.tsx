@@ -25,6 +25,7 @@ export type MarkdownExportStatus = {
 export type SpaceGitOverview = {
   enabled: boolean;
   allowedHosts: string[];
+  allowPrivate: boolean;
   spaces: number;
   failing: { at: number; error: string; workspace: string; owner: string }[];
 };
@@ -180,6 +181,8 @@ export function MarkdownExportSettings({
             {spaceGit.allowedHosts.length
               ? `${t("Erlaubte Git-Server:", "Allowed Git servers:")} ${spaceGit.allowedHosts.join(", ")}.`
               : t("Alle öffentlichen https-Server sind erlaubt (SPACE_GIT_ALLOWED_HOSTS schränkt das ein).", "Every public https server is allowed (SPACE_GIT_ALLOWED_HOSTS narrows this down).")}{" "}
+            {spaceGit.allowPrivate &&
+              `${t("Diese Server dürfen auch interne Adressen haben (SPACE_GIT_ALLOW_PRIVATE).", "These servers may also have internal addresses (SPACE_GIT_ALLOW_PRIVATE).")} `}
             {t(`${spaceGit.spaces} Bereiche nutzen ihn.`, `${spaceGit.spaces} spaces use it.`)}
           </p>
           {spaceGit.failing.length > 0 && (

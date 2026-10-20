@@ -3965,6 +3965,7 @@
   "These block types do not fit the chosen target.": "These block types do not fit the chosen target.",
   "These blocks are missing from the text and will be removed:": "These blocks are missing from the text and will be removed:",
   "These blocks cannot be duplicated here.": "These blocks cannot be duplicated here.",
+  "These servers may also have internal addresses (SPACE_GIT_ALLOW_PRIVATE).": "These servers may also have internal addresses (SPACE_GIT_ALLOW_PRIVATE).",
   "These workspaces had only this person as a member and are deleted with all content:": "These workspaces had only this person as a member and are deleted with all content:",
   "These workspaces have only you as a member and are deleted with all content:": "These workspaces have only you as a member and are deleted with all content:",
   "This account is disabled.": "This account is disabled.",
