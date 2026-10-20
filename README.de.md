@@ -9,10 +9,11 @@ Open Source, selbst gehostet in einem Container – oder gehostet in Deutschland
 
 [English](README.md) · **Deutsch**
 
-[Website](https://flowplan.org) · [Dokumentation](https://docs.flowplan.org/de) · [Selbst hosten](https://docs.flowplan.org/de/installation) · [Gehostete Version](https://app.flowplan.org) · [Änderungen](CHANGELOG.md)
+[Website](https://flowplan.org) · [Dokumentation](https://docs.flowplan.org/de) · [Selbst hosten](https://docs.flowplan.org/de/installation) · [Gehostete Version](https://app.flowplan.org) · [Discord](https://discord.gg/bCEdB6MPrR) · [Änderungen](CHANGELOG.md)
 
 [![CI](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml/badge.svg)](https://github.com/yannicschuller/flowplan/actions/workflows/ci.yml)
 [![Docker-Image](https://github.com/yannicschuller/flowplan/actions/workflows/docker.yml/badge.svg)](https://github.com/yannicschuller/flowplan/pkgs/container/flowplan)
+[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/bCEdB6MPrR)
 [![Lizenz: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-3b3fd8.svg)](LICENSE)
 
 <br>
@@ -35,7 +36,7 @@ Open Source, selbst gehostet in einem Container – oder gehostet in Deutschland
 
 Die Oberfläche gibt es auf Deutsch, Englisch und Französisch – weitere Sprachen lassen sich als JSON-Kataloge ergänzen ([Sprachen und Übersetzungen](https://docs.flowplan.org/de/languages)); die Dokumentation ist auf Deutsch und Englisch.
 
-**Inhalt:** [Schreiben](#schreiben-und-denken) · [Datenbanken](#ordnen-mit-datenbanken) · [KI](#ki-optional) · [Whiteboards und Journal](#whiteboards-und-ein-journal) · [Gemeinsam](#gemeinsam-überall) · [Admins und Integrationen](#für-admins-und-integrationen) · [Schnellstart](#schnellstart-docker) · [Entwicklung](#entwicklung)
+**Inhalt:** [Schreiben](#schreiben-und-denken) · [Datenbanken](#ordnen-mit-datenbanken) · [KI](#ki-optional) · [Whiteboards und Journal](#whiteboards-und-ein-journal) · [Gemeinsam](#gemeinsam-überall) · [Admins und Integrationen](#für-admins-und-integrationen) · [Schnellstart](#schnellstart-docker) · [Entwicklung](#entwicklung) · [Community](#community)
 
 ## Schreiben und denken
 
@@ -230,6 +231,10 @@ Im Entwicklungsmodus gibt es zusätzlich **Lokalen Arbeitsbereich öffnen**, ein
 | `npm run check:standalone` | Startet den Standalone-Build wie im Container und prüft Health, Persistenz und Wiederherstellung |
 
 Stack: Next.js 16 (App Router), React 19, TypeScript, SQLite (`node:sqlite`), TipTap/ProseMirror mit Yjs, Zod und Playwright. Die Dokumentation liegt in [flowplan-docs](https://github.com/yannicschuller/flowplan-docs) (docs.flowplan.org), die Website in [flowplan-website](https://github.com/yannicschuller/flowplan-website) (flowplan.org), die Desktop-Apps in [flowplan-desktop](https://github.com/yannicschuller/flowplan-desktop); dieses Repository enthält die App, das Helm-Chart (`deploy/helm`) und den n8n-Knoten (`integrations/n8n`).
+
+## Community
+
+Fragen, Ideen, zeigen, was ihr gebaut habt, oder einfach Hallo sagen: Kommt in den **[Flowplan-Discord](https://discord.gg/bCEdB6MPrR)**. Fehler und Funktionswünsche am besten als [GitHub-Issue](https://github.com/yannicschuller/flowplan/issues) melden, damit nichts verloren geht.
 
 ## Mitmachen, Sicherheit und Lizenz
 

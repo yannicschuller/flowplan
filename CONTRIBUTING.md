@@ -4,6 +4,7 @@ Thanks for your interest! Bug reports, ideas and pull requests are welcome.
 
 ## Before you start
 
+- **Questions and ideas:** ask in the [Flowplan Discord](https://discord.gg/bCEdB6MPrR).
 - **Bugs:** open an issue with steps to reproduce, what you expected and what happened. Include your browser, whether you self-host (and how) and the Flowplan version or image tag.
 - **Larger changes:** open an issue first so we can agree on the approach before you invest time.
 - **Security issues:** do not open a public issue – see [SECURITY.md](SECURITY.md).
