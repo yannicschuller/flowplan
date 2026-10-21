@@ -19577,6 +19577,7 @@ td.ai-filled {
 }
 .push-ios-hint p {
   margin-top: 6px;
+}
 /* "/" block menu rebuilt as a listbox in sections (components/slash-menu.tsx):
    section headings, "Recently used" first, a second level for the callout
    kinds. Overrides the earlier .slash-menu rules above. */
@@ -19966,3 +19967,259 @@ tr:hover .row-open-mark,
     width: 110px;
   }
 }
+
+/* ==========================================================================
+   Unified error presentation and the mobile shell
+   - .error-alert: inline alert at the top of an open dialog (ErrorAlert in
+     components/ui.tsx), the same copy as the error toast.
+   - .toast-text / .toast-action: error toast with a detail line and "Retry".
+   - .mobile-tab-bar: bottom bar on phones (components/mobile-tab-bar.tsx);
+     --tab-bar-space is the room it takes (0 while the keyboard is open).
+   ========================================================================== */
+.error-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #f0c9c9;
+  border-radius: 8px;
+  background: #fdf0f0;
+  color: #8e1f24;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.error-alert > svg {
+  flex: none;
+  margin-top: 1px;
+  color: #b3262d;
+}
+.error-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.error-alert-text strong {
+  font-weight: 600;
+}
+.error-alert-text span {
+  color: #7a2a2e;
+  overflow-wrap: anywhere;
+}
+.error-alert .error-alert-retry {
+  flex: none;
+  align-self: center;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #8e1f24;
+  border-color: #e5b5b5;
+  background: #fff;
+}
+.error-alert .icon-button {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  color: inherit;
+}
+[data-theme="dark"] .error-alert {
+  background: #3a1b1e;
+  border-color: #5c2a2f;
+  color: #ffd9db;
+}
+[data-theme="dark"] .error-alert > svg {
+  color: #ff8f96;
+}
+[data-theme="dark"] .error-alert-text span {
+  color: #f4b9bd;
+}
+[data-theme="dark"] .error-alert .error-alert-retry {
+  background: #2a1416;
+  border-color: #6d343a;
+  color: #ffd9db;
+}
+.toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.toast-text strong {
+  font-weight: 600;
+}
+.toast-text span {
+  opacity: 0.9;
+  overflow-wrap: anywhere;
+}
+.toast .toast-action {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.toast .toast-action:hover {
+  background: #ffffff22;
+}
+.mobile-tab-bar {
+  display: none;
+}
+@media (max-width: 767px) {
+  .app-shell {
+    --tab-bar-space: calc(56px + var(--safe-bottom));
+  }
+  .app-shell.keyboard-open,
+  .app-shell.focus-mode {
+    --tab-bar-space: 0px;
+  }
+  .mobile-tab-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 43;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    height: var(--tab-bar-space);
+    padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+    background: var(--sidebar);
+    border-top: 1px solid var(--border);
+  }
+  .mobile-tab-bar[hidden] {
+    display: none;
+  }
+  .mobile-tab {
+    flex: 1 1 0;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.1;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-tab:hover {
+    background: transparent;
+  }
+  .mobile-tab:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -4px;
+    border-radius: 10px;
+  }
+  .mobile-tab[aria-current="page"],
+  .mobile-tab[aria-expanded="true"] {
+    color: var(--text);
+  }
+  .mobile-tab[aria-current="page"] > span:last-child {
+    font-weight: 600;
+  }
+  .mobile-tab:disabled {
+    opacity: 0.4;
+  }
+  .mobile-tab-icon {
+    position: relative;
+    display: inline-flex;
+  }
+  .mobile-tab-badge {
+    position: absolute;
+    top: -5px;
+    left: 13px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 9px;
+    border: 2px solid var(--sidebar);
+    /* Darker than --signal: white text at 10 px needs ≥ 4.5:1. */
+    background: #c23a17;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 13px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    box-sizing: content-box;
+  }
+  .mobile-tab-new-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 24px;
+    border-radius: 8px;
+    background: var(--blue);
+    color: var(--on-accent);
+  }
+  .mobile-tab-new {
+    color: var(--text);
+  }
+  .mobile-tab:active .mobile-tab-new-icon,
+  .mobile-tab:active > svg,
+  .mobile-tab:active .mobile-tab-icon {
+    transform: scale(0.92);
+    transition: transform 0.08s ease;
+  }
+  /* The bar replaces the hamburger in the top bar. */
+  .mobile-menu {
+    display: none;
+  }
+  .main {
+    height: calc(100dvh - var(--tab-bar-space));
+  }
+  .sidebar {
+    bottom: var(--tab-bar-space);
+  }
+  .mobile-scrim {
+    bottom: var(--tab-bar-space);
+  }
+  /* The document toolbar sits on the bar; with the keyboard open the bar is
+     gone and the toolbar takes the bottom edge alone. */
+  .app-shell:not(.keyboard-open) .page-layout .editor-toolbar {
+    bottom: var(--tab-bar-space);
+    padding-bottom: 4px;
+  }
+  .toast {
+    bottom: calc(12px + var(--tab-bar-space));
+  }
+  .comments-panel {
+    bottom: var(--tab-bar-space);
+  }
+  .outline-toggle {
+    bottom: calc(72px + var(--tab-bar-space));
+  }
+  .author-legend {
+    bottom: calc(16px + var(--tab-bar-space));
+  }
+  .error-alert {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .mobile-tab:active .mobile-tab-new-icon,
+  .mobile-tab:active > svg,
+  .mobile-tab:active .mobile-tab-icon {
+    transform: none;
+    transition: none;
+  }
+}
+@media print {
+  .mobile-tab-bar,
+  .error-alert {
+    display: none !important;
+  }
+}
+/* ======================= end of error presentation / mobile shell ======== */

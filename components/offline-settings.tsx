@@ -1,5 +1,6 @@
 "use client";
 import { useT } from "./i18n";
+import { friendlyError } from "./ui";
 import { useEffect, useState } from "react";
 import {
   disableOffline,
@@ -43,7 +44,7 @@ export function OfflineSettings({
         t(`${pageIds.length} ${pageIds.length === 1 ? "Seite ist" : "Seiten sind"} auf diesem Gerät offline verfügbar.`, `${pageIds.length} ${pageIds.length === 1 ? "page is" : "pages are"} available offline on this device.`),
       );
     } catch (error) {
-      setMessage((error as Error).message);
+      setMessage(friendlyError(error));
     } finally {
       setBusy(false);
       setProgress(null);

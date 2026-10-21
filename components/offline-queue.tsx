@@ -11,7 +11,7 @@ import {
   type QueuedChange,
 } from "@/lib/offline-queue";
 import { cellText } from "@/lib/cell-text";
-import { Modal } from "./ui";
+import { friendlyError, Modal } from "./ui";
 import type { Field, Row } from "@/lib/types";
 
 class HttpFailure extends Error {
@@ -215,7 +215,8 @@ export function useOfflineQueue({
           }
         } catch (e) {
           if (offline(e)) break;
-          notify(tr(`Offline-Änderung verworfen: ${(e as Error).message}`, `Offline change discarded: ${(e as Error).message}`));
+          const reason = friendlyError(e);
+          notify(tr(`Offline-Änderung verworfen: ${reason}`, `Offline change discarded: ${reason}`));
         }
         store(queueRef.current.slice(1));
       }

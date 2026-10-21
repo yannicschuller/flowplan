@@ -1,5 +1,13 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
+import {
+  classifyError,
+  describeError,
+  NETWORK_ERRORS,
+  rememberError,
+  type ErrorKind,
+  type ErrorText,
+} from "@/lib/error-kinds";
 import { tr } from "@/lib/locale-tag";
 import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
 import { useT } from "./i18n";
@@ -26,8 +34,18 @@ import {
   ChartBar,
   Article,
   ClipboardText,
+  WarningCircle,
 } from "@phosphor-icons/react";
-import { useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 const icons = {
   file: FileText,
   table: Table,
@@ -121,7 +139,26 @@ export function Modal({
   onOpenAutoFocus?: (event: Event) => void;
 }) {
   const t = useT();
+  // Failures while the dialog is open show at its top instead of as a toast
+  // behind it (see showError below).
+  const [alert, setAlert] = useState<ShownError | null>(null),
+    content = useRef<HTMLDivElement>(null),
+    alertRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const sink: DialogSink = { el: () => content.current, show: setAlert };
+    dialogSinks.push(sink);
+    return () => {
+      const i = dialogSinks.indexOf(sink);
+      if (i >= 0) dialogSinks.splice(i, 1);
+      setAlert(null);
+    };
+  }, [open]);
+  useEffect(() => {
+    if (alert) alertRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [alert]);
   return (
+    <DialogErrorContext.Provider value={setAlert}>
     <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
@@ -133,6 +170,7 @@ export function Modal({
           aria-modal="true"
           onCloseAutoFocus={onCloseAutoFocus}
           onOpenAutoFocus={onOpenAutoFocus}
+          ref={content}
         >
           <div className="modal-heading">
             <Dialog.Title>{title}</Dialog.Title>
@@ -143,10 +181,113 @@ export function Modal({
                 one as before; CSS puts the actions in front of it. */}
             {actions && <div className="modal-heading-actions">{actions}</div>}
           </div>
+          {alert && (
+            <ErrorAlert ref={alertRef} error={alert} onDismiss={() => setAlert(null)} />
+          )}
           {children}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+    </DialogErrorContext.Provider>
+  );
+}
+// ---------------------------------------------------------------------------
+// Error presentation: one path for every failure the reader sees.
+//   showError(kind, detail, { retry })  – a classified failure
+//   reportError(error, { retry })       – anything thrown (ApiError, TypeError, message)
+// While the reader works in an open dialog (focus inside it) the message is an
+// inline alert at the dialog's top; otherwise an error toast of the shell.
+export type ShownError = ErrorText & { kind: ErrorKind; retry?: () => void };
+type DialogSink = { el: () => HTMLElement | null; show: (e: ShownError) => void };
+const dialogSinks: DialogSink[] = [];
+const DialogErrorContext = createContext<((e: ShownError | null) => void) | null>(null);
+let toaster: ((e: ShownError) => void) | null = null;
+// The workspace shell renders the error toasts; returns the unregister function.
+export function setErrorToaster(show: (e: ShownError) => void) {
+  toaster = show;
+  return () => {
+    if (toaster === show) toaster = null;
+  };
+}
+export function errorView(kind: ErrorKind, detail?: string, retry?: () => void): ShownError {
+  return { kind, ...describeError({ kind, detail }, tr), ...(retry ? { retry } : {}) };
+}
+// The topmost open dialog the reader is working in, if any.
+function activeDialog() {
+  const sink = dialogSinks[dialogSinks.length - 1];
+  const el = sink?.el();
+  if (!sink || !el || typeof document === "undefined") return null;
+  const focus = document.activeElement;
+  return !focus || focus === document.body || el.contains(focus) ? sink : null;
+}
+export type ErrorOptions = { retry?: () => void; toast?: boolean };
+export function showError(kind: ErrorKind, detail?: string, options: ErrorOptions = {}) {
+  const view = errorView(kind, detail, options.retry);
+  const dialog = options.toast ? null : activeDialog();
+  if (dialog) dialog.show(view);
+  else if (toaster) toaster(view);
+  else console.error(view.title, view.detail || "");
+}
+export function reportError(error: unknown, options: ErrorOptions = {}) {
+  const { kind, detail } = classifyError(error);
+  showError(kind, detail, options);
+}
+// For dialogs that handle their own failures: the alert always goes into the
+// surrounding Modal (a toast outside of one). Passing null clears it.
+export function useDialogError() {
+  const set = useContext(DialogErrorContext);
+  return useCallback(
+    (error: unknown, retry?: () => void) => {
+      if (error === null) return set?.(null);
+      const { kind, detail } = classifyError(error);
+      if (set) set(errorView(kind, detail, retry));
+      else showError(kind, detail, { retry, toast: true });
+    },
+    [set],
+  );
+}
+export function ErrorAlert({
+  error,
+  onDismiss,
+  ref,
+  className = "",
+}: {
+  error: ShownError;
+  onDismiss?: () => void;
+  ref?: Ref<HTMLDivElement>;
+  className?: string;
+}) {
+  const t = useT();
+  return (
+    <div className={`error-alert ${className}`} role="alert" ref={ref} data-kind={error.kind}>
+      <WarningCircle size={18} weight="fill" aria-hidden="true" />
+      <div className="error-alert-text">
+        <strong>{error.title}</strong>
+        {error.detail && <span>{error.detail}</span>}
+      </div>
+      {error.retry && (
+        <button
+          type="button"
+          className="button error-alert-retry"
+          onClick={() => {
+            onDismiss?.();
+            error.retry?.();
+          }}
+        >
+          {t("Erneut versuchen", "Retry")}
+        </button>
+      )}
+      {onDismiss && (
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={t("Meldung schließen", "Dismiss message")}
+          onClick={onDismiss}
+        >
+          <X size={16} />
+        </button>
+      )}
+    </div>
   );
 }
 // Placeholder while a page opens: the outline of a document or a table
@@ -302,13 +443,13 @@ export function endedSession(url: string, status: number) {
   }
   return true;
 }
-// Browsers' wording for a request that never reached the server.
-const NETWORK_ERRORS = /^(Failed to fetch|NetworkError when attempting to fetch resource\.|Load failed|The network connection was lost\.)$/;
 export const connectionMessage = () => tr("Keine Verbindung – bitte erneut versuchen.", "No connection – try again.");
-// What a toast shows for a failed request: network and server failures get
-// plain words; the server's own messages (HttpError 4xx) stay as they are.
-export function friendlyError(message: string) {
-  return NETWORK_ERRORS.test(message) ? connectionMessage() : message;
+// One line for a failed request (e.g. in a status text): network and server
+// failures get plain words; the server's own 4xx messages stay as they are.
+export function friendlyError(error: unknown) {
+  if (typeof error === "string" && NETWORK_ERRORS.test(error)) return connectionMessage();
+  const { title, detail } = describeError(classifyError(error), tr);
+  return detail ? `${title} ${detail}` : title;
 }
 export async function api<T = Record<string, unknown>>(
   url: string,
@@ -330,13 +471,15 @@ export async function api<T = Record<string, unknown>>(
     data = await r.json();
   } catch {
     // An HTML page instead of JSON: a proxy or gateway answered.
-    throw new ApiError(serverMessage(unavailableMessage), r.ok ? 502 : r.status, true);
+    const error = new ApiError(serverMessage(unavailableMessage), r.ok ? 502 : r.status, true);
+    rememberError(error.message, error.status, true);
+    throw error;
   }
   // No "please sign in" message: the sign-in page is on its way.
   if (endedSession(url, r.status)) return new Promise<T>(() => {});
   const transient = [502, 503, 504].includes(r.status);
-  if (!r.ok)
-    throw new ApiError(
+  if (!r.ok) {
+    const error = new ApiError(
       r.status === 401 && !url.includes("/api/auth/")
         ? signedOutMessage()
         : r.status >= 500 && !transient
@@ -345,6 +488,10 @@ export async function api<T = Record<string, unknown>>(
       r.status,
       transient,
     );
+    // onError props receive only the message; its status stays findable.
+    rememberError(error.message, error.status, error.transient);
+    throw error;
+  }
   // The mobile app updates its widgets and badge after a change.
   if (body) nativeRefresh();
   return data;
