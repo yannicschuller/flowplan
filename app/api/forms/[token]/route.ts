@@ -4,7 +4,7 @@ import { z } from "zod";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { activeUser, checkOrigin, HttpError, hash } from "@/lib/auth";
-import { getForm, saveFormSubmission } from "@/lib/forms";
+import { confirmFormAnswer, deleteFormDraft, formDraft, getForm, saveFormDraft, saveFormSubmission } from "@/lib/forms";
 import {
   FORM_FILE_BYTES,
   FORM_FILES_PER_QUESTION,
@@ -14,8 +14,8 @@ import { one, run, id, transaction, onTransactionRollback } from "@/lib/db";
 import { enforceQuota } from "@/lib/instance-ops";
 import { takeAnonymousBudget } from "@/lib/anonymous-budget";
 import { clientAddress } from "@/lib/client-address";
-import { withRequestLocale } from "@/lib/content-locale";
-import { createTicket } from "@/lib/service-desk";
+import { contentLocale, withRequestLocale } from "@/lib/content-locale";
+import { createTicket, mailTicketLink } from "@/lib/service-desk";
 import { surveyClosed } from "@/lib/survey";
 
 async function handlePOST(
@@ -140,10 +140,20 @@ async function handlePOST(
           return `/api/files/${fid}`;
         });
       }
-      const saved = saveFormSubmission(form.page_id, user, cells);
-      // Customer portal: a private link to follow the request.
-      if (form.config.portal)
-        ticket = createTicket({ pageId: form.page_id, rowId: saved.id, title: form.title, fields: form.fields, cells });
+      const sender = user?.id || address;
+      const confirm = form.config.confirmation.enabled;
+      const saved = saveFormSubmission(form.page_id, user, cells, false, { confirm: !form.config.portal, sender });
+      // Customer portal: a private link to follow the request. With a
+      // confirmation e-mail the link goes out in that mail instead.
+      if (form.config.portal) {
+        const created = createTicket({ pageId: form.page_id, rowId: saved.id, title: form.title, fields: form.fields, cells: saved.cells, mail: !confirm });
+        let mailed = created.mailed;
+        if (confirm) {
+          mailed = confirmFormAnswer(form.page_id, user, saved.cells, { sender, anonymous: !!form.anonymous, ticketUrl: created.url });
+          if (!mailed && created.email) mailed = mailTicketLink({ token: created.token, email: created.email, title: form.title, locale: contentLocale() });
+        }
+        ticket = { token: created.token, mailed };
+      }
       run(
         "INSERT INTO form_submissions VALUES(?,?,?,?)",
         id(),
@@ -175,3 +185,31 @@ async function handlePOST(
   }
 }
 export const POST = withRequestLocale(handlePOST);
+
+// Save and continue later (signed-in people, forms that are not
+// anonymous): GET reads the draft, PUT stores it, DELETE discards it.
+function draftHandler(kind: "get" | "put" | "delete") {
+  return async (req: Request, { params }: { params: Promise<{ token: string }> }) => {
+    try {
+      if (kind !== "get") checkOrigin(req);
+      const { token } = await params;
+      const user = await activeUser();
+      if (kind === "get") return NextResponse.json({ draft: formDraft(token, user) });
+      if (kind === "delete") return NextResponse.json(deleteFormDraft(token, user));
+      requireBodySize(req, 110_000, "Entwurf zu groß.");
+      const raw = await req.text();
+      if (raw.length > 110_000) throw new HttpError(413, "Entwurf zu groß.");
+      return NextResponse.json(saveFormDraft(token, user, JSON.parse(raw)));
+    } catch (e) {
+      const known = e instanceof HttpError,
+        input = e instanceof z.ZodError || e instanceof SyntaxError;
+      return NextResponse.json(
+        { error: known ? e.message : input ? "Bitte Eingaben prüfen." : "Entwurf konnte nicht gespeichert werden." },
+        { status: known ? e.status : input ? 400 : 500 },
+      );
+    }
+  };
+}
+export const GET = withRequestLocale(draftHandler("get"));
+export const PUT = withRequestLocale(draftHandler("put"));
+export const DELETE = withRequestLocale(draftHandler("delete"));

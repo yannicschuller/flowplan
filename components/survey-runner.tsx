@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, Star } from "@phosphor-icons/react";
+import { useMemo, useState } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Star } from "@phosphor-icons/react";
 import { useT, useLocale } from "./i18n";
 import { FormFiles } from "./form-questions";
-import { isQuestion, range, surveyPages, validateSurvey, visible, type Survey, type SurveyItem, type SurveyQuestion } from "@/lib/survey";
+import { DraftControls, FormThanks, type Draft } from "./form-flow";
+import { logicPages } from "@/lib/form-logic";
+import { isQuestion, questionFields, range, surveyLogic, surveyLogicItems, validateSurvey, type Survey, type SurveyItem, type SurveyQuestion } from "@/lib/survey";
 import type { Field } from "@/lib/types";
 
 type Texts = { title: string; description: string; submitLabel: string; successTitle: string; successMessage: string };
@@ -30,6 +32,9 @@ export function SurveyRunner({
   onSubmit,
   after,
   preview = false,
+  redirect,
+  initial = null,
+  draft,
 }: {
   survey: Survey;
   fields: Field[];
@@ -39,48 +44,54 @@ export function SurveyRunner({
   // Shown on the thank-you screen (e.g. the link of a customer portal).
   after?: React.ReactNode;
   preview?: boolean;
+  // Where the thank-you screen leads (https only, {Question} placeholders).
+  redirect?: { url: string; delay: number };
+  // Save and continue later.
+  initial?: Draft;
+  draft?: { status: string; save: (values: Record<string, unknown>, page: number) => Promise<void> };
 }) {
   const t = useT();
   const locale = useLocale();
-  const [started, setStarted] = useState(!survey.welcome.enabled);
-  const [page, setPage] = useState(0);
-  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [started, setStarted] = useState(!survey.welcome.enabled || !!initial);
+  const [values, setValues] = useState<Record<string, unknown>>(initial?.cells || {});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const seed = useMemo(() => Math.random().toString(36), []);
-  const pages = surveyPages(survey);
-  // Pages without a visible item are skipped.
-  const shown = pages.map((p) => p.items.filter((i) => visible(i, values)));
-  const indexes = shown.flatMap((items, i) => (items.length || i === 0 ? [i] : []));
-  const at = Math.max(0, indexes.indexOf(page));
-  const last = at === indexes.length - 1;
-  useEffect(() => {
-    if (done && survey.redirect && /^https?:\/\//.test(survey.redirect) && !preview) {
-      const timer = setTimeout(() => location.assign(survey.redirect!), 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [done, survey.redirect, preview]);
+  // Pages whose break is hidden or that show nothing are skipped.
+  const logic = surveyLogic(survey, values);
+  const byId = new Map(survey.items.map((i) => [i.id, i]));
+  const pages = logicPages(surveyLogicItems(survey), logic).map((p) => ({
+    key: p.brk?.id ?? "",
+    title: p.brk ? ((byId.get(p.brk.id) as { title?: string })?.title ?? "") : "",
+    items: p.shown.map((i) => byId.get(i.id)!),
+  }));
+  const [pageKey, setPageKey] = useState(() => pages[Math.min(initial?.page ?? 0, pages.length - 1)]?.key ?? "");
+  const at = Math.max(0, pages.findIndex((p) => p.key === pageKey));
+  const current = pages[at];
+  const last = at === pages.length - 1;
   const set = (field: string, value: unknown) => {
     setValues((v) => ({ ...v, [field]: value }));
     setErrors((e) => ({ ...e, [field]: "" }));
   };
-  // Checks the current page only (the server checks everything).
+  // Checks the current page only (the server checks everything); the whole
+  // survey is checked so conditions see the answers of earlier pages.
   const check = () => {
-    const part = { ...survey, items: shown[page] || [] };
-    const result = validateSurvey(part, fields, values, locale);
+    const result = validateSurvey(survey, fields, values, locale);
+    const here = new Set((current?.items || []).filter(isQuestion).flatMap(questionFields));
     // Files are held as File objects until sending.
-    for (const item of part.items)
+    for (const item of current?.items || [])
       if (isQuestion(item) && item.type === "file" && item.required && !(Array.isArray(values[item.field]) && (values[item.field] as unknown[]).length))
         result.errors[item.field] = t("Bitte eine Datei wählen.", "Please choose a file.");
-    setErrors(result.errors);
-    return !Object.keys(result.errors).length;
+    const mine = Object.fromEntries(Object.entries(result.errors).filter(([key]) => here.has(key)));
+    setErrors(mine);
+    return !Object.keys(mine).length;
   };
   const next = async () => {
     if (!check()) return;
     if (!last) {
-      setPage(indexes[at + 1]);
+      setPageKey(pages[at + 1].key);
       window.scrollTo?.({ top: 0, behavior: "smooth" });
       return;
     }
@@ -88,16 +99,16 @@ export function SurveyRunner({
     setError("");
     try {
       // Answers of questions hidden by conditions are not sent.
-      const hidden = new Set(survey.items.filter((i) => isQuestion(i) && !visible(i, values)).flatMap((i) => (isQuestion(i) ? (i.type === "matrix" ? i.rows.map((r) => r.field) : [i.field]) : [])));
-      await onSubmit(Object.fromEntries(Object.entries(values).filter(([k]) => !hidden.has(k))));
-      setDone(true);
+      const answers = Object.fromEntries(Object.entries(values).filter(([k]) => !logic.hiddenFields.has(k)));
+      await onSubmit(answers);
+      setDone(answers);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   };
-  const progress = indexes.length > 1 ? Math.round((at / indexes.length) * 100) : 0;
+  const progress = pages.length > 1 ? Math.round((at / pages.length) * 100) : 0;
   return (
     <div className={`survey survey-accent-${survey.accent}`}>
       {!started ? (
@@ -109,22 +120,17 @@ export function SurveyRunner({
           </button>
         </div>
       ) : done ? (
-        <div className="survey-done" role="status">
-          <span className="survey-done-check">
-            <Check weight="bold" />
-          </span>
-          <h2>{texts.successTitle}</h2>
-          {texts.successMessage && <p>{texts.successMessage}</p>}
+        <FormThanks survey title={texts.successTitle} message={texts.successMessage} fields={fields} values={done} redirect={redirect} preview={preview}>
           {after}
-        </div>
+        </FormThanks>
       ) : (
         <>
-          {survey.progress && indexes.length > 1 && (
+          {survey.progress && pages.length > 1 && (
             <div className="survey-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label={t("Fortschritt", "Progress")}>
               <span style={{ width: `${progress}%` }} />
             </div>
           )}
-          {pages[page]?.title && <h2 className="survey-page-title">{pages[page].title}</h2>}
+          {current?.title && <h2 className="survey-page-title">{current.title}</h2>}
           <form
             noValidate
             onSubmit={(e) => {
@@ -132,7 +138,7 @@ export function SurveyRunner({
               void next();
             }}
           >
-            {(shown[page] || []).map((item) => (
+            {(current?.items || []).map((item) => (
               <Item key={item.id} item={item} fields={fields} values={values} errors={errors} seed={seed} disabled={busy} onChange={set} />
             ))}
             {error && (
@@ -142,7 +148,7 @@ export function SurveyRunner({
             )}
             <div className="survey-nav">
               {at > 0 && (
-                <button type="button" className="button" disabled={busy} onClick={() => setPage(indexes[at - 1])}>
+                <button type="button" className="button" disabled={busy} onClick={() => setPageKey(pages[at - 1].key)}>
                   <ArrowLeft /> {t("Zurück", "Back")}
                 </button>
               )}
@@ -150,9 +156,10 @@ export function SurveyRunner({
                 {busy ? t("Wird gesendet …", "Sending …") : last ? texts.submitLabel : t("Weiter", "Next")}
                 {!last && <ArrowRight />}
               </button>
-              {indexes.length > 1 && (
+              {draft && !preview && <DraftControls status={draft.status} disabled={busy} onSave={() => void draft.save(values, at).catch(() => {})} />}
+              {pages.length > 1 && (
                 <span className="muted survey-step">
-                  {t(`Seite ${at + 1} von ${indexes.length}`, `Page ${at + 1} of ${indexes.length}`)}
+                  {t(`Seite ${at + 1} von ${pages.length}`, `Page ${at + 1} of ${pages.length}`)}
                 </span>
               )}
             </div>

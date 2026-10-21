@@ -1,15 +1,18 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState } from "react";
-import { ChartBar, Check, Copy, SlidersHorizontal } from "@phosphor-icons/react";
+import { Fragment, useState } from "react";
+import { Article, ChartBar, Copy, Rows, SlidersHorizontal, Trash } from "@phosphor-icons/react";
 import { Modal } from "./ui";
-import FormQuestions from "./form-questions";
+import { FormFlow, FormThanks } from "./form-flow";
+import { FormConditionEditor, FormFollowUpSettings, fieldTarget, type ConditionTarget } from "./form-logic-editor";
+import { validRedirect } from "@/lib/form-logic";
 import {
   formConfigSchema,
+  formRedirect,
   localizedFormTexts,
   publicFormFields,
-  validateFormValues,
+  type FormBlock,
   type FormConfig,
   questionStyles,
   type QuestionStyle,
@@ -50,9 +53,8 @@ export default function DatabaseForm({
   const t = useT();
   const config = form?.config || formConfigSchema.parse({});
   const texts = localizedFormTexts(config, t);
-  const [values, setValues] = useState<Record<string, unknown>>({}),
+  const [sent, setSent] = useState<Record<string, unknown> | null>(null),
     [done, setDone] = useState(false),
-    [errors, setErrors] = useState<Record<string, string>>({}),
     [design, setDesign] = useState(false),
     [builder, setBuilder] = useState(false),
     [draft, setDraft] = useState(config),
@@ -101,10 +103,24 @@ export default function DatabaseForm({
     [order[index], order[index + delta]] = [order[index + delta], order[index]];
     setDraft({ ...draft, fieldOrder: order });
   }
+  // Conditions may look at shown questions before the item.
+  const targetsBefore = (index: number) =>
+    designFields
+      .slice(0, index)
+      .filter((f) => !draft.hiddenFields.includes(f.id))
+      .map((f) => fieldTarget(f))
+      .filter((x): x is ConditionTarget => !!x);
+  const addBlock = (kind: "text" | "page", before: string) =>
+    setDraft({
+      ...draft,
+      blocks: [...draft.blocks, { id: Math.random().toString(36).slice(2, 10), kind, before, title: kind === "text" ? t("Abschnitt", "Section") : "", body: "" }].slice(0, 100),
+    });
+  const updateBlock = (id: string, patch: Partial<FormBlock>) => setDraft({ ...draft, blocks: draft.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
+  const removeBlock = (id: string) => setDraft({ ...draft, blocks: draft.blocks.filter((b) => b.id !== id) });
   const survey = config.survey?.enabled ? config.survey : null;
   const builderModal = (
     <Modal open={builder} onClose={() => setBuilder(false)} title={t("Umfrage bauen", "Build survey")} wide className="survey-builder-modal">
-      {builder && <SurveyBuilder pageTitle={page.title} fields={fields} version={version} form={form} rows={rows} editable={editable} act={act} />}
+      {builder && <SurveyBuilder pageTitle={page.title} fields={fields} version={version} form={form} rows={rows} editable={editable} act={act} members={members} />}
     </Modal>
   );
   if (survey)
@@ -165,57 +181,28 @@ export default function DatabaseForm({
           </div>
         )}
       </div>
-      {done ? (
-        <div className="success">
-          <Check />
-          <h3>{texts.successTitle}</h3>
-          <p>{texts.successMessage}</p>
-          <button
-            className="button"
-            onClick={() => {
-              setDone(false);
-              setValues({});
-            }}
-          >
+      {sent ? (
+        <FormThanks heading="h3" title={texts.successTitle} message={texts.successMessage} fields={fields} values={sent} redirect={formRedirect(config)} preview>
+          <button className="button" onClick={() => setSent(null)}>
             {t("Weitere Antwort", "Another answer")}
           </button>
-        </div>
+        </FormThanks>
       ) : (
-        <form
-          noValidate
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (!e.currentTarget.reportValidity()) return;
-            const result = validateFormValues(fields, config, values, true);
-            setErrors(result.errors);
-            if (Object.keys(result.errors).length) return;
-            setBusy(true);
-            try {
-              if (await act({ action: "form.submit", cells: values }))
-                setDone(true);
-            } finally {
-              setBusy(false);
-            }
+        <FormFlow
+          key={JSON.stringify([config.logic, config.blocks, config.fieldOrder, config.hiddenFields])}
+          internal
+          members={members}
+          related={related}
+          upload={upload}
+          fields={fields}
+          config={config}
+          disabled={!editable}
+          submitLabel={texts.submitLabel}
+          onSubmit={async (values) => {
+            if (!(await act({ action: "form.submit", cells: values }))) throw new Error(t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."));
+            setSent(values);
           }}
-        >
-          <FormQuestions
-            internal
-            members={members}
-            related={related}
-            upload={upload}
-            fields={fields}
-            config={config}
-            values={values}
-            errors={errors}
-            disabled={!editable || busy}
-            onChange={(id, value) =>
-              setValues((previous) => ({ ...previous, [id]: value }))
-            }
-          />
-          <button className="button primary" disabled={!editable || busy}>
-            {busy ? t("Wird gesendet …", "Sending …") : texts.submitLabel}
-          </button>
-        </form>
+        />
       )}
       {editable && (
         <div className="form-sharing">
@@ -338,7 +325,11 @@ export default function DatabaseForm({
           </label>
           <h3>{t("Fragen", "Questions")}</h3>
           {designFields.map((f, index) => (
-            <section className="form-field-design" key={f.id}>
+            <Fragment key={f.id}>
+            {draft.blocks.filter((b) => b.before === f.id).map((b) => (
+              <BlockDesign key={b.id} block={b} targets={targetsBefore(index)} onChange={(patch) => updateBlock(b.id, patch)} onRemove={() => removeBlock(b.id)} />
+            ))}
+            <section className="form-field-design">
               <div className="property-order">
                 <strong>{f.name}</strong>
                 <button
@@ -439,8 +430,45 @@ export default function DatabaseForm({
                   }
                 />
               </label>
+              {!draft.hiddenFields.includes(f.id) && (
+                <FormConditionEditor
+                  condition={draft.logic[f.id]}
+                  targets={targetsBefore(index)}
+                  onChange={(c) => {
+                    const logic = { ...draft.logic };
+                    if (c) logic[f.id] = c;
+                    else delete logic[f.id];
+                    setDraft({ ...draft, logic });
+                  }}
+                />
+              )}
+              <div className="form-block-add">
+                <button type="button" className="text-button" onClick={() => addBlock("text", f.id)}>
+                  <Article aria-hidden /> {t("Textblock davor", "Text block before")}
+                </button>
+                {index > 0 && (
+                  <button type="button" className="text-button" onClick={() => addBlock("page", f.id)}>
+                    <Rows aria-hidden /> {t("Neue Seite ab hier", "New page from here")}
+                  </button>
+                )}
+              </div>
             </section>
+            </Fragment>
           ))}
+          {draft.blocks.filter((b) => !designFields.some((f) => f.id === b.before)).map((b) => (
+            <BlockDesign key={b.id} block={b} targets={targetsBefore(designFields.length)} onChange={(patch) => updateBlock(b.id, patch)} onRemove={() => removeBlock(b.id)} />
+          ))}
+          <div className="form-block-add">
+            <button type="button" className="text-button" onClick={() => addBlock("text", "")}>
+              <Article aria-hidden /> {t("Textblock am Ende", "Text block at the end")}
+            </button>
+          </div>
+          {draft.blocks.some((b) => b.kind === "page") && (
+            <label className="checkbox-label">
+              <input type="checkbox" checked={draft.progress} onChange={(e) => setDraft({ ...draft, progress: e.target.checked })} />
+              {t("Fortschrittsbalken bei mehreren Seiten", "Progress bar for several pages")}
+            </label>
+          )}
           <label>
             {t("Beschriftung der Senden-Schaltfläche", "Submit button label")}
             <input
@@ -474,11 +502,62 @@ export default function DatabaseForm({
               }
             />
           </label>
-          <button className="button primary" disabled={busy}>
+          <FormFollowUpSettings
+            value={draft}
+            members={members}
+            anonymous={!!form?.anonymous}
+            onChange={(patch) => setDraft({ ...draft, ...patch })}
+          />
+          <button className="button primary" disabled={busy || !validRedirect(draft.redirectUrl)}>
             {busy ? t("Wird gespeichert …", "Saving …") : t("Formular speichern", "Save form")}
           </button>
         </form>
       </Modal>
     </div>
+  );
+}
+
+// A text block or page break between the questions, with its condition.
+function BlockDesign({
+  block,
+  targets,
+  onChange,
+  onRemove,
+}: {
+  block: FormBlock;
+  targets: ConditionTarget[];
+  onChange: (patch: Partial<FormBlock>) => void;
+  onRemove: () => void;
+}) {
+  const t = useT();
+  const page = block.kind === "page";
+  const name = page ? t("Seitenumbruch", "Page break") : t("Textblock", "Text block");
+  return (
+    <section className={`form-field-design form-block-design kind-${block.kind}`}>
+      <div className="property-order">
+        <strong>
+          {page ? <Rows aria-hidden /> : <Article aria-hidden />} {name}
+        </strong>
+        <button type="button" className="icon-button" aria-label={t(`${name} entfernen`, `Remove ${name}`)} onClick={onRemove}>
+          <Trash />
+        </button>
+      </div>
+      <label>
+        {page ? t("Titel der neuen Seite (optional)", "Title of the new page (optional)") : t("Überschrift", "Heading")}
+        <input value={block.title} maxLength={300} onChange={(e) => onChange({ title: e.target.value })} />
+      </label>
+      {!page && (
+        <label>
+          {t("Text", "Text")}
+          <textarea rows={3} value={block.body} maxLength={5000} onChange={(e) => onChange({ body: e.target.value })} />
+        </label>
+      )}
+      <FormConditionEditor
+        condition={block.showIf}
+        targets={targets}
+        label={page ? t("Seite nur zeigen, wenn …", "Only show this page if …") : undefined}
+        onChange={(c) => onChange({ showIf: c })}
+      />
+    </section>
   );
 }

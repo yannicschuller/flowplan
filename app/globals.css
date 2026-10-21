@@ -20051,6 +20051,24 @@ tr:hover .row-open-mark,
 }
 .automation-schedule {
   display: flex;
+/* Forms with logic and pages (components/form-flow.tsx) and their
+   settings (components/form-logic-editor.tsx). */
+.form-flow {
+  --survey: var(--blue);
+  display: grid;
+  gap: 4px;
+}
+.form-flow .survey-progress {
+  margin-bottom: 16px;
+}
+.form-flow .survey-page-title {
+  margin-bottom: 12px;
+}
+.form-text-block {
+  margin: 0 0 20px;
+}
+.form-draft {
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
@@ -20329,4 +20347,33 @@ tr:hover .row-open-mark,
   .dashboard-progress > span {
     transition: none;
   }
+.form-thanks-text {
+  white-space: pre-wrap;
+}
+.form-block-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+}
+.form-block-design {
+  border-left: 3px solid var(--border);
+  padding-left: 12px;
+}
+.form-followup {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.form-followup legend {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.form-followup-members {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px 12px;
 }

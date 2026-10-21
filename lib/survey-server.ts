@@ -7,7 +7,7 @@ import { z } from "zod";
 import { id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { field as fieldSchema } from "./database-schema";
-import { formConfigSchema, publicFormFields } from "./form-settings";
+import { formConfigSchema, formFollowUpSchema, publicFormFields } from "./form-settings";
 import { formSettings } from "./forms";
 import { isQuestion, questionFields, storageType, surveySchema, type Survey, type SurveyItem } from "./survey";
 import { newQuestion } from "./survey";
@@ -25,6 +25,8 @@ const inputSchema = z.object({
       submitLabel: z.string().min(1).max(80),
       successTitle: z.string().min(1).max(200),
       successMessage: z.string().max(3000).default(""),
+      // Redirect, confirmation e-mail and team notification.
+      ...formFollowUpSchema.shape,
     })
     .partial()
     .default({}),
@@ -32,6 +34,7 @@ const inputSchema = z.object({
 
 export function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
   const b = inputSchema.parse(raw);
+  const sentForm = ((raw as { form?: unknown }).form && typeof (raw as { form?: unknown }).form === "object" ? (raw as { form: object }).form : {}) as object;
   const db = one<{ fields: string; version: number }>("SELECT fields,version FROM databases WHERE page_id=?", page.id);
   if (!db) throw new HttpError(404, "Datenbank nicht gefunden.");
   if (db.version !== b.version) throw new HttpError(409, "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden.");
@@ -65,14 +68,14 @@ export function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
   if (fields.length > 80) throw new HttpError(400, "Eine Datenbank hat höchstens 80 Eigenschaften – bitte weniger Fragen.");
   const map = (ref: string) => refs.get(ref) || ref;
   const items: SurveyItem[] = b.survey.items.map((item) => {
-    const showIf = item.kind !== "page" && item.showIf ? { ...item.showIf, field: map(item.showIf.field) } : undefined;
-    if (!isQuestion(item)) return item.kind === "text" ? { ...item, showIf } : item;
+    const showIf = item.showIf ? { ...item.showIf, field: map(item.showIf.field) } : undefined;
+    if (!isQuestion(item)) return { ...item, showIf };
     return { ...item, title: b.questions[item.id].title, field: item.type === "matrix" ? map(item.rows[0].field) : map(item.field), rows: item.rows.map((r) => ({ ...r, field: map(r.field) })), showIf };
   });
   // Conditions may only look at questions before them.
   const seen = new Set<string>();
   for (const item of items) {
-    if (item.kind !== "page" && item.showIf && !seen.has(item.showIf.field)) throw new HttpError(400, "Eine Bedingung verweist auf eine spätere oder fehlende Frage.");
+    if (item.showIf && !seen.has(item.showIf.field)) throw new HttpError(400, "Eine Bedingung verweist auf eine spätere oder fehlende Frage.");
     if (isQuestion(item)) questionFields(item).forEach((f) => seen.add(f));
   }
   const survey: Survey = { ...b.survey, items };
@@ -86,7 +89,8 @@ export function saveSurvey(page: Pick<Page, "id">, raw: unknown) {
   const asked = questions.flatMap(questionFields);
   const next = formConfigSchema.parse({
     ...config,
-    ...Object.fromEntries(Object.entries(b.form).filter(([, v]) => v !== undefined)),
+    // Only the settings sent (defaults of the others must not overwrite them).
+    ...Object.fromEntries(Object.entries(b.form).filter(([k, v]) => v !== undefined && k in sentForm)),
     fieldOrder: asked,
     requiredFields: questions.filter((q) => q.required).flatMap(questionFields),
     hiddenFields: publicFormFields(stored, true)

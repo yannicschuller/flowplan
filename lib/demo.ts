@@ -55,6 +55,9 @@ export function demoAllows(action: string, input: Record<string, unknown>) {
   }
   if (action === "form.update" && (input.enabled === true || input.anonymous === true))
     return false;
+  // Confirmation e-mails would reach addresses outside the demo.
+  const settings = (action === "form.update" ? input.config : action === "survey.save" ? input.form : null) as { confirmation?: { enabled?: unknown } } | null;
+  if (settings && typeof settings === "object" && settings.confirmation?.enabled === true) return false;
   return true;
 }
 

@@ -2,7 +2,36 @@ import { numberCell } from "./field-format";
 import { z } from "zod";
 import { validDateValue } from "./date-values";
 import type { Field } from "./types";
-import { surveySchema, validateSurvey } from "./survey";
+import { isQuestion, surveyLogic, surveySchema, validateSurvey } from "./survey";
+import { conditionSchema, evaluateLogic, validRedirect, type Condition, type LogicItem } from "./form-logic";
+// Text blocks and page breaks between the questions of an ordinary form:
+// placed before a question (`before`, a property id) or at the end ("").
+export const formBlockSchema = z.object({
+  id: z.string().min(1).max(60),
+  kind: z.enum(["text", "page"]),
+  before: z.string().max(500).default(""),
+  title: z.string().max(300).default(""),
+  body: z.string().max(5000).default(""),
+  showIf: conditionSchema.optional(),
+});
+export type FormBlock = z.infer<typeof formBlockSchema>;
+// What happens after an answer arrived; shared by forms and surveys.
+export const formFollowUpSchema = z.object({
+  // Thank-you page: then go to this address (https only; {Question}
+  // placeholders after the host) after this many seconds.
+  redirectUrl: z.string().max(500).refine(validRedirect, "Bitte eine Adresse mit https:// angeben.").default(""),
+  redirectDelay: z.number().int().min(0).max(60).default(3),
+  // A copy of the answers by e-mail to the person who answered.
+  confirmation: z
+    .object({
+      enabled: z.boolean().default(false),
+      subject: z.string().max(200).default(""),
+      message: z.string().max(3000).default(""),
+    })
+    .default({ enabled: false, subject: "", message: "" }),
+  // Members told about each new answer (notification kind "guest").
+  notifyMembers: z.array(z.string().max(60)).max(50).default([]),
+});
 export const formConfigSchema = z.object({
   title: z.string().max(200).default(""),
   description: z.string().max(3000).default(""),
@@ -24,6 +53,12 @@ export const formConfigSchema = z.object({
   // conversation with the team; these properties are shown there.
   portal: z.boolean().default(false),
   portalFields: z.array(z.string()).max(80).default([]),
+  // Conditions per question ("only show if …"), text blocks, page breaks and
+  // a progress bar for ordinary forms (surveys keep theirs in `survey`).
+  logic: z.record(z.string(), conditionSchema).default({}),
+  blocks: z.array(formBlockSchema).max(100).default([]),
+  progress: z.boolean().default(true),
+  ...formFollowUpSchema.shape,
   // Survey mode (lib/survey.ts): question types, pages, conditions …
   survey: surveySchema.optional(),
 });
@@ -41,6 +76,13 @@ export function localizedFormTexts(
         ? t("Deine Antwort wurde gespeichert.", "Your answer has been saved.")
         : config.successMessage,
   };
+}
+// Where the thank-you page leads; surveys saved before the shared setting
+// kept their address in `survey.redirect` (followed only with https).
+export function formRedirect(config: Pick<FormConfig, "redirectUrl" | "redirectDelay" | "survey">) {
+  const legacy = config.survey?.redirect || "";
+  const url = config.redirectUrl || (validRedirect(legacy) ? legacy : "");
+  return url ? { url, delay: config.redirectUrl ? config.redirectDelay : 3 } : undefined;
 }
 export type QuestionStyle = "long" | "buttons" | "scale";
 export const SCALE_MIN = 1,
@@ -95,6 +137,36 @@ export function orderedFormFields(
         (order.includes(b.id) ? order.indexOf(b.id) : 999),
     );
 }
+// An ordinary form in order: questions with the text blocks and page
+// breaks placed before them; blocks at the end (or before a question that
+// is not asked) come last.
+export type FormItem =
+  | { kind: "question"; id: string; field: Field; showIf?: Condition }
+  | (FormBlock & { kind: "text" | "page" });
+export function formItems(fields: Field[], config: FormConfig, internal = false): FormItem[] {
+  const questions = orderedFormFields(fields, config, internal);
+  const asked = new Set(questions.map((f) => f.id));
+  const items: FormItem[] = [];
+  for (const f of questions) {
+    items.push(...config.blocks.filter((b) => b.before === f.id));
+    items.push({ kind: "question", id: f.id, field: f, showIf: config.logic[f.id] });
+  }
+  items.push(...config.blocks.filter((b) => !asked.has(b.before)));
+  // A condition may only look at a question before it.
+  const seen = new Set<string>();
+  return items.map((item) => {
+    const valid = !item.showIf || seen.has(item.showIf.field);
+    if (item.kind === "question") seen.add(item.id);
+    return valid ? item : { ...item, showIf: undefined };
+  });
+}
+export const formLogicItems = (items: FormItem[]): LogicItem[] =>
+  items.map((i) => ({ id: i.id, kind: i.kind, fields: i.kind === "question" ? [i.id] : [], showIf: i.showIf }));
+// Which questions are shown for these answers – surveys and forms alike.
+export function formLogic(fields: Field[], config: FormConfig, values: Record<string, unknown>, internal = false) {
+  if (config.survey?.enabled) return surveyLogic(config.survey, values);
+  return evaluateLogic(formLogicItems(formItems(fields, config, internal)), values);
+}
 export function validateFormValues(
   fields: Field[],
   config: FormConfig,
@@ -103,10 +175,11 @@ export function validateFormValues(
 ) {
   if (config.survey?.enabled) {
     const result = validateSurvey(config.survey, fields, values);
+    const logic = surveyLogic(config.survey, values);
     // Files: the uploaded addresses the form route put in (or File objects
     // in the browser); checked like in ordinary forms.
     for (const item of config.survey.items)
-      if (item.kind === "question" && item.type === "file") {
+      if (isQuestion(item) && item.type === "file" && logic.shown.has(item.id)) {
         const value = values[item.field];
         if (Array.isArray(value) && value.length) {
           if (value.length > FORM_FILES_PER_QUESTION) result.errors[item.field] = "Zu viele Dateien.";
@@ -118,7 +191,11 @@ export function validateFormValues(
   }
   const cells: Record<string, unknown> = {},
     errors: Record<string, string> = {};
+  // Questions hidden by conditions are not required; their answers are
+  // dropped.
+  const logic = evaluateLogic(formLogicItems(formItems(fields, config, internal)), values);
   for (const f of orderedFormFields(fields, config, internal)) {
+    if (logic.hiddenFields.has(f.id)) continue;
     const value = values[f.id],
       required = config.requiredFields.includes(f.id),
       empty =
