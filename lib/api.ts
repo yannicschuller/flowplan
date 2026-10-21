@@ -412,6 +412,20 @@ export function pageData(user: Identity, pid: string) {
       form: formSettings(pid),
     };
   }
+  if (p.kind === "dashboard")
+    return {
+      page: p,
+      images: pageImages(pid),
+      publication: publicationSettings(pid),
+      shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+      role,
+      comments,
+      snapshots,
+      present,
+      backlinks,
+      dashboard: dashboardData(user, p, role),
+      html: "",
+    };
   if (p.kind === "whiteboard")
     return {
       page: p,
@@ -929,7 +943,7 @@ export function command(
         const kind =
           savedTemplate?.kind ||
           z
-            .enum(["document", "database", "whiteboard", "journal"])
+            .enum(["document", "database", "whiteboard", "journal", "dashboard"])
             .parse(b.kind || "document");
         const created = createPage(
           wid(),
@@ -1471,6 +1485,8 @@ export function command(
         if (p.kind === "whiteboard") {
           if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
           restoreWhiteboardSnapshot(p, s.state);
+        } else if (p.kind === "dashboard") {
+          // Versions of a dashboard only hold its appearance (restored above).
         } else if (p.kind === "document") {
           run(
             "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",
@@ -1928,6 +1944,9 @@ export function command(
       }
       case "whiteboard.sync":
         result = syncWhiteboard(user, b);
+        break;
+      case "dashboard.save":
+        result = saveDashboard(write(), b.tiles);
         break;
       case "row.access":
         result = setRowAccess(user, b);
@@ -2845,6 +2864,7 @@ import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
+import { dashboardData, saveDashboard } from "./dashboard";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";

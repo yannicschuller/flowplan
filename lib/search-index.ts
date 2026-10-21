@@ -230,7 +230,7 @@ export function searchWorkspace(
         ? ("file" as const)
         : key
           ? ("row" as const)
-          : page.kind === "journal"
+          : page.kind === "journal" || page.kind === "dashboard"
             ? ("document" as const)
             : page.kind;
   const matchesKind = (page: Page, key: string) =>

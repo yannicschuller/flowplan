@@ -696,6 +696,8 @@ const exact: Record<string, string> = {
   "Anhänge überschreiten 100 MB.": "Attachments exceed 100 MB.",
   "E-Book überschreitet 100 MB.": "The e-book exceeds 100 MB.",
   "Tabelle zu groß (höchstens 200 Spalten und 5.000 Zeilen).": "Table too large (at most 200 columns and 5,000 rows).",
+  "Kein Dashboard.": "Not a dashboard.",
+  "Kachel-IDs doppelt.": "Duplicate tile IDs.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],

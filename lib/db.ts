@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 42) return;
+  if (globalDb.flowplanSchema === 43) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -604,7 +604,9 @@ function migrate(d: DatabaseSync) {
   // Daily byte budgets of anonymous visitors (lib/anonymous-budget.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS anonymous_uploads(scope TEXT NOT NULL,bytes INTEGER NOT NULL,at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS anonymous_uploads_scope ON anonymous_uploads(scope,at);`);
-  globalDb.flowplanSchema = 42;
+  // Dashboard pages: their tiles as JSON (lib/dashboard-schema.ts).
+  d.exec(`CREATE TABLE IF NOT EXISTS dashboards(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,tiles TEXT NOT NULL DEFAULT '[]',updated_at TEXT DEFAULT CURRENT_TIMESTAMP);`);
+  globalDb.flowplanSchema = 43;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

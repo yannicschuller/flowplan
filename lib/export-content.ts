@@ -23,6 +23,8 @@ import { documentExtensions, documentSchema } from "./document-schema";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { whiteboardSvg } from "./whiteboard-svg";
 import { ct } from "./content-locale";
+import { dashboardSummary } from "./dashboard";
+import { markdownToHtml } from "./markdown-import";
 import type { Identity, Page, Row, Field, Space } from "./types";
 
 export type ExportSelection = {
@@ -255,6 +257,17 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
   const pages = selected.map(({ page, depth }): ExportPage => {
     const cover = page.cover.startsWith("/api/files/") && fileInfo(page.cover) ? page.cover : null;
     if (page.kind === "whiteboard") return { page, depth, title: page.title, html: "", svg: boardSvg(page.id), cover };
+    if (page.kind === "dashboard")
+      return {
+        page,
+        depth,
+        title: page.title,
+        html: dashboardSummary(user, page)
+          .map((t) => `<h2>${escaped(t.title)}</h2>` + (t.text ? markdownToHtml(t.text) : `<p><em>${escaped(t.source ? `${t.kind} · ${t.source}` : t.kind)}</em></p>`))
+          .join(""),
+        svg: null,
+        cover,
+      };
     if (page.kind === "document" || page.kind === "journal")
       return { page, depth, title: page.title, html: one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id)?.html || "", svg: null, cover };
     // A database: its records as a table, then every record's document.

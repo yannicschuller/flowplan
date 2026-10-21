@@ -62,7 +62,7 @@ Page = TypedDict("Page", {
     "icon": Required[str],
     "cover": Required[str],
     "cover_position": float,
-    "kind": Required[Literal["document", "database", "whiteboard", "journal"]],
+    "kind": Required[Literal["document", "database", "whiteboard", "journal", "dashboard"]],
     "position": Required[float],
     "deleted_at": Required[Optional[str]],
     "created_by": Required[str],
@@ -371,7 +371,7 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "workspaceId": Required[str],
     "spaceId": Required[str],
     "title": Required[str],
-    "kind": Literal["document", "database", "whiteboard", "journal"],  # Default: document
+    "kind": Literal["document", "database", "whiteboard", "journal", "dashboard"],  # Default: document
     "parentId": str,  # Parent page in the same space
     "databaseKind": Literal["tasks", "documents", "empty"],
     "templateId": str,  # A saved page template of the workspace
@@ -566,6 +566,17 @@ CommandCalendarFeedRevokeResult = TypedDict("CommandCalendarFeedRevokeResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Replace the tiles of a dashboard page. Needs editor rights on the page. Each tile has an `id`, a `type` (view, number, chart, journal, tasks, recent, text), a `size` (small, medium, large, full) and the settings of its type; the order of the list is the order on the page.
+CommandDashboardSave = TypedDict("CommandDashboardSave", {
+    "action": Required[Literal["dashboard.save"]],
+    "pageId": Required[str],
+    "tiles": Required[list[dict[str, Any]]],
+}, total=False)
+
+CommandDashboardSaveResult = TypedDict("CommandDashboardSaveResult", {
+    "tiles": Required[list[dict[str, Any]]],
+}, total=False)
+
 # Remove a webhook. Workspace owners only.
 CommandWebhookDelete = TypedDict("CommandWebhookDelete", {
     "action": Required[Literal["webhook.delete"]],
@@ -578,7 +589,7 @@ CommandWebhookDeleteResult = TypedDict("CommandWebhookDeleteResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandWebhookDelete", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

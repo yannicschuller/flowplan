@@ -21,6 +21,7 @@ import {
 } from "./markdown";
 import { exportName } from "./export-name";
 import { ct } from "./content-locale";
+import { dashboardSummary } from "./dashboard";
 import { commentText } from "./comment-content";
 import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
 import { whiteboardSnapshotItems } from "./whiteboard";
@@ -507,6 +508,13 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         : zip
           ? ct("*Dieses Whiteboard ist leer.*", "*This whiteboard is empty.*") + "\n"
           : markdownLink(ct("Whiteboard in Flowplan öffnen", "Open the whiteboard in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n";
+    } else if (page.kind === "dashboard") {
+      // A text summary: the data of the tiles depends on who looks.
+      for (const tile of dashboardSummary(user, page)) {
+        markdown += `## ${markdownText(tile.title)}\n\n`;
+        if (tile.text) markdown += `${tile.text.trim()}\n\n`;
+        else markdown += `*${markdownText(tile.source ? `${tile.kind} · ${tile.source}` : tile.kind)}*\n\n`;
+      }
     } else if (page.kind === "document" || page.kind === "journal")
       markdown += render(
         one<{ html: string }>(
