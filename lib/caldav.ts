@@ -7,6 +7,7 @@
 //
 // Served from proxy.ts, because route handlers do not accept the WebDAV
 // methods PROPFIND and REPORT.
+import { assertFieldsWritable } from "./field-access";
 import { createHash, randomBytes } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import { all, id, one, run, transaction } from "./db";
@@ -315,6 +316,12 @@ export async function handleCalDav(request: Request): Promise<Response> {
       const patch: Record<string, unknown> = { [start.id]: event.start.value };
       if (end) patch[end.id] = event.end?.value ?? "";
       if (event.title) patch[ctx.fields[0].id] = event.title;
+      // Date properties this person may not change (lib/field-access.ts).
+      try {
+        assertFieldsWritable(ctx.user, ctx.page, ctx.fields, Object.keys(patch));
+      } catch {
+        return new Response("Nur lesen", { status: 403 });
+      }
       const saved = transaction(() => {
         if (row) {
           const stored = one<Row & { cells: string }>("SELECT * FROM rows WHERE id=?", row.id)!;

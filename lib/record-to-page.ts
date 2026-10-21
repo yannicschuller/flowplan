@@ -4,6 +4,7 @@
 // properties can stay as a short list at the top of the text, and the new
 // page follows the permissions of the place it goes to. The record goes to
 // the trash, so nothing is lost if the change was a mistake.
+import { hiddenFieldsFor } from "./field-access";
 import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
@@ -125,6 +126,10 @@ export function recordToPagePlan(user: Identity, databaseId: string, rowId: stri
   // Creating pages is for full members (as "New page").
   requireMember(user, database.workspace_id, "editor");
   const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", database.id)!.fields) as Field[];
+  // The page would show (and the record lose) properties hidden from this
+  // person (lib/field-access.ts).
+  if (hiddenFieldsFor(user, database, fields).size)
+    throw new HttpError(403, "Dieser Eintrag hat Eigenschaften, die du nicht sehen darfst.");
   const cells = (typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells) as Record<string, unknown>;
   const count = (sql: string, ...args: string[]) => one<{ n: number }>(sql, ...args)!.n;
   const targets = pageTargets(user, database.workspace_id);

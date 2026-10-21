@@ -70,6 +70,17 @@ import {
   setRowAccess,
   visibleRows,
 } from "./row-access";
+import {
+  assertFieldsWritable,
+  hasFieldAccess,
+  hiddenFieldsFor,
+  mergeHiddenFields,
+  publicHiddenFieldIds,
+  readOnlyFieldIds,
+  stripCells,
+  validateFieldAccess,
+  visibleFields,
+} from "./field-access";
 import { cellText } from "./cell-text";
 import { scheduleRow, cascadeTimeline, linkTimeline } from "./row-schedule";
 import { recordDocumentAuthors } from "./document-authors";
@@ -217,8 +228,12 @@ export function rows(pid: string): Row[] {
   ).map((r) => ({ ...r, cells: JSON.parse(r.cells) }));
 }
 // Records visible on public pages and share links: private ones stay hidden.
+// Cells of properties with a read rule are left out (lib/field-access.ts).
 export function publicRows(pid: string): Row[] {
-  return rows(pid).filter((r) => r.access !== "private");
+  const hidden = publicHiddenFieldIds(database(pid).fields);
+  return rows(pid)
+    .filter((r) => r.access !== "private")
+    .map((r) => ({ ...r, cells: stripCells(r.cells, hidden) }));
 }
 export function bootstrap(user: Identity, wid?: string) {
   if (!user.demo && !user.apiScope) acceptPendingInvites(user.id);
@@ -388,7 +403,10 @@ export function pageData(user: Identity, pid: string) {
       snapshots,
       present,
       backlinks,
-      database: data,
+      // Properties hidden from this person are left out (lib/field-access.ts).
+      database: { ...data, fields: visibleFields(user, p, data.fields) },
+      // Visible properties this person may not change.
+      readOnlyFields: readOnlyFieldIds(user, p, data.fields),
       relationPairs: relationPairs(pid),
       // Each record carries the viewer's role; hidden ones are left out.
       rows: visibleRows(user, p, rows(pid)).map((r) => ({
@@ -1497,6 +1515,16 @@ export function command(
               403,
               "Diese Version enthält Einträge mit eigenen Rechten. Nur Besitzer stellen sie wieder her.",
             );
+          // Likewise with properties only some people read or write.
+          if (
+            pageRole(user, p) !== "owner" &&
+            (hasFieldAccess(database(p.id).fields) ||
+              hasFieldAccess(data.database?.fields || []))
+          )
+            throw new HttpError(
+              403,
+              "Diese Version enthält Eigenschaften mit eigener Sichtbarkeit. Nur Besitzer stellen sie wieder her.",
+            );
           run(
             "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
             JSON.stringify(data.database.fields),
@@ -1604,7 +1632,17 @@ export function command(
             409,
             "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden.",
           );
-        const fields = z.array(field).min(1).max(80).parse(b.fields);
+        // Properties hidden from this person stay as they are; only owners
+        // change who reads and writes a property (lib/field-access.ts).
+        const fields = mergeHiddenFields(
+          user,
+          write(),
+          z.array(field).min(1).max(80).parse(b.fields),
+          d.fields,
+        );
+        if (fields.length > 80)
+          throw new HttpError(400, "Zu viele Eigenschaften.");
+        validateFieldAccess(user, write(), fields, d.fields);
         // AI properties: references, output types, who automatic updates run as.
         const aiChanges = prepareAiFields(user, write(), fields, d.fields);
         if (
@@ -1693,6 +1731,21 @@ export function command(
           }
         }
         validateViewRowOrders(pid(), views);
+        // Changed read rules change what search may index.
+        if (
+          JSON.stringify(d.fields.map((f) => [f.id, f.access?.read ?? null])) !==
+          JSON.stringify(fields.map((f) => [f.id, f.access?.read ?? null]))
+        ) {
+          run(
+            "INSERT OR IGNORE INTO search_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=?",
+            pid(),
+          );
+          run(
+            "INSERT OR IGNORE INTO ai_embed_dirty(page_id,row_id) SELECT page_id,id FROM rows WHERE page_id=? UNION ALL SELECT ?,''",
+            pid(),
+            pid(),
+          );
+        }
         run(
           "UPDATE databases SET fields=?,views=?,version=version+1 WHERE page_id=?",
           JSON.stringify(fields),
@@ -1735,9 +1788,11 @@ export function command(
       case "row.create": {
         autoDatabaseSnapshot(user, write());
         const template = selectedRowTemplate(pid(), b.templateId);
+        const given = z.record(z.string(), z.unknown()).parse(b.cells || {});
+        assertFieldsWritable(user, write(), database(pid()).fields, Object.keys(given));
         const cells = {
           ...(template ? JSON.parse(template.cells) : {}),
-          ...z.record(z.string(), z.unknown()).parse(b.cells || {}),
+          ...given,
         };
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
@@ -1825,6 +1880,12 @@ export function command(
           .array(z.record(z.string(), z.unknown()))
           .max(5000)
           .parse(b.rows);
+        assertFieldsWritable(
+          user,
+          write(),
+          database(pid()).fields,
+          new Set(imported.flatMap((cells) => Object.keys(cells))),
+        );
         imported.forEach((cells, i) =>
           run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",

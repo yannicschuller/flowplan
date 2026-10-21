@@ -1,6 +1,7 @@
 import { whiteboardData, writeWhiteboard } from "./whiteboard";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import { hiddenRowIds, visibleRows } from "./row-access";
+import { visibleFields } from "./field-access";
 import { hiddenFileIds } from "./row-files";
 import { lockedPageIds } from "./journal-extras";
 import { parseRecurrence } from "./recurrence";
@@ -374,7 +375,8 @@ function snapshotFor(user: Identity, wid: string) {
         ...(db
           ? {
               database: {
-                fields: JSON.parse(db.fields),
+                // Without the properties hidden from this person.
+                fields: visibleFields(user, p, JSON.parse(db.fields)),
                 views: JSON.parse(db.views),
                 recordLayout: parseRecordLayout(db.record_layout),
                 rows: visibleRows(

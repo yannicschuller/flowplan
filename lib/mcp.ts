@@ -25,6 +25,7 @@ import { searchWorkspace, MARK_START, MARK_END } from "./search-index";
 import { myTasks } from "./doc-tasks";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { validateCellPatch } from "./database-operations";
+import { readableDatabase, stripHiddenCells } from "./field-access";
 import { requireRow } from "./row-documents";
 import { localizedMessage } from "./i18n-errors";
 import { contentLocale } from "./content-locale";
@@ -150,7 +151,8 @@ function members(workspaceId: string) {
 function databaseOf(user: Identity, databaseId: string) {
   const page = readable(user, databaseId);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  return { page, schema: database(page.id) };
+  // Properties hidden from this person are left out (lib/field-access.ts).
+  return { page, schema: readableDatabase(user, page, database(page.id)) };
 }
 const fieldInfo = (f: Field) => ({
   id: f.id,
@@ -215,9 +217,11 @@ function queryDatabase(
 function getRecord(user: Identity, args: { databaseId: string; recordId: string }) {
   const { page, row } = requireRow(user, args.databaseId, args.recordId);
   requireUnlocked(user, page);
-  const schema = database(page.id);
+  const schema = readableDatabase(user, page, database(page.id));
   const { related, relatedSchemas } = relatedData(user, page);
-  const parsed: Row = { ...row, cells: typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells };
+  const [parsed] = stripHiddenCells(user, page, [
+    { ...row, cells: typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells } as Row,
+  ]);
   const cells = computedCells(parsed, schema.fields, related, relatedSchemas);
   const html = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html || row.content || "";
   const people = new Map(members(page.workspace_id).map((m) => [m.id, m.name]));
@@ -360,7 +364,7 @@ function createRecord(user: Identity, args: { databaseId: string; properties: Re
   const page = requirePage(user, args.databaseId, true);
   requireUnlocked(user, page);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  const cells = cellPatch(user, page, database(page.id).fields, args.properties);
+  const cells = cellPatch(user, page, readableDatabase(user, page, database(page.id)).fields, args.properties);
   const { id } = command(user, { action: "row.create", pageId: page.id, cells }) as { id: string };
   return { id, databaseId: page.id, url: `${pageLink(page.id)}&row=${id}` };
 }
@@ -370,7 +374,7 @@ function updateRecord(
 ) {
   const { page, row } = requireRow(user, args.databaseId, args.recordId, true);
   requireUnlocked(user, page);
-  const cells = cellPatch(user, page, database(page.id).fields, args.properties);
+  const cells = cellPatch(user, page, readableDatabase(user, page, database(page.id)).fields, args.properties);
   command(user, {
     action: "row.update",
     pageId: page.id,

@@ -3,6 +3,7 @@
 // status (the properties the team chose), their answers and a conversation
 // with the team; the team answers from the record. Without an account – the
 // link is the key, like a share link.
+import { publicHiddenFieldIds } from "./field-access";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, id, one, run } from "./db";
@@ -101,7 +102,10 @@ const messages = (rowId: string) =>
 export function customerTicket(token: string) {
   const { ticket, config } = ticketRecord(token);
   const locale: Locale = isLocale(contentLocale()) ? contentLocale() : "de";
-  const fields = fieldsOf(ticket.page_id);
+  // Properties with a read rule never reach the customer (lib/field-access.ts).
+  const every = fieldsOf(ticket.page_id),
+    hidden = publicHiddenFieldIds(every),
+    fields = every.filter((f) => !hidden.has(f.id));
   const cells = JSON.parse(ticket.cells) as Record<string, unknown>;
   const show = (f: Field) => ({ id: f.id, name: f.name, type: f.type, value: display(f, cells[f.id], locale) });
   // Only public property types; people and relations stay inside.

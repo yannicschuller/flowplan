@@ -90,6 +90,14 @@ export type Field = {
     auto?: boolean;
     autoBy?: string;
   };
+  access?: {
+    read?: "all" | "editors" | "owners" | {
+      groups: string[];
+    };
+    write?: "all" | "editors" | "owners" | {
+      groups: string[];
+    };
+  };
 };
 
 /** A view of a database (table, board, calendar, …). */
@@ -673,6 +681,14 @@ export type CommandDatabaseUpdate = {
       prompt: string;
       auto?: boolean;
       autoBy?: string;
+    };
+    access?: {
+      read?: "all" | "editors" | "owners" | {
+        groups: string[];
+      };
+      write?: "all" | "editors" | "owners" | {
+        groups: string[];
+      };
     };
   })[];
   views?: ({

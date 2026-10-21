@@ -1602,6 +1602,38 @@ aside[data-callout] p:last-child {
   color: var(--muted);
   margin-right: 2px;
 }
+/* Field-level permissions: the lock beside a restricted property and the
+   "Visibility" section of its settings. */
+.field-lock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  color: var(--muted);
+}
+.field-access {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.field-access legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+.field-access-row {
+  display: grid;
+  gap: 6px;
+}
+.field-access-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
 .data-table td {
   height: 44px;
   padding: 9px 12px;

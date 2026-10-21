@@ -3,6 +3,7 @@
 import { all, one } from "./db";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
+import { visibleFields } from "./field-access";
 import { cellText } from "./cell-text";
 import { displayText } from "./field-format";
 import type { Field, Identity, Page } from "./types";
@@ -21,7 +22,8 @@ export function whiteboardRowCards(user: Identity, refs: { pageId: string; rowId
         page && pageRole(user, page)
           ? {
               page,
-              fields: JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]"),
+              // Without properties hidden from this person (lib/field-access.ts).
+              fields: visibleFields(user, page, JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]")),
               hidden: hiddenRowIds(user, page),
             }
           : null,

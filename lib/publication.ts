@@ -1,3 +1,4 @@
+import { publicHiddenFieldIds, stripCells } from "./field-access";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { createHash } from "node:crypto";
 import { imageFileId } from "./page-appearance";
@@ -187,13 +188,19 @@ export function publicFile(token: string, fileId: string) {
     pages.find((p) => p.id === file.page_id)?.icon || "",
   );
   if (iconId) referenced.add(iconId);
-  // Files attached to records of a published database are published with it.
+  // Files attached to records of a published database are published with
+  // it, except in properties with a read rule (lib/field-access.ts).
+  const restricted = publicHiddenFieldIds(
+    JSON.parse(
+      String(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", file.page_id)?.fields || "[]"),
+    ),
+  );
   for (const row of all<{ cells: string }>(
     "SELECT cells FROM rows WHERE page_id=? AND access!='private' AND cells LIKE ?",
     file.page_id,
     `%/api/files/${fileId}%`,
   ))
-    if (row.cells.includes(`"/api/files/${fileId}"`)) referenced.add(fileId);
+    if (stripCells(row.cells, restricted).includes(`"/api/files/${fileId}"`)) referenced.add(fileId);
   for (const row of all<{ icon: string; cover: string }>(
     "SELECT icon,cover FROM rows WHERE page_id=? AND access!='private' AND (icon LIKE '/api/files/%' OR cover LIKE '/api/files/%')",
     file.page_id,

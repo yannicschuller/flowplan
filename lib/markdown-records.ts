@@ -2,6 +2,7 @@
 // Obsidian keeps notes): the title from "title:", the first heading or the
 // file name, properties from the frontmatter by name, the rest as the
 // record document. Missing properties can be created with a guessed type.
+import { assertFieldsWritable } from "./field-access";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { posix, resolve } from "node:path";
 import { all, id, one, onTransactionRollback, run, transaction } from "./db";
@@ -303,6 +304,8 @@ export function importMarkdownRecords(
       }
       return { file, cells };
     });
+    // Properties this person may not change (lib/field-access.ts).
+    assertFieldsWritable(user, page, next, new Set(rows.flatMap((r) => Object.keys(r.cells))));
     if (JSON.stringify(next) !== raw.fields)
       run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(next), page.id);
     let updated = 0;

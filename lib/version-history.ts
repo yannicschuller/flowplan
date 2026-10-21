@@ -1,4 +1,5 @@
 import { rowRoleResolver } from "./row-access";
+import { hiddenFieldsFor, stripCells } from "./field-access";
 import { all, one, run, transaction } from "./db";
 import { instanceSettings } from "./instance-settings";
 import { HttpError } from "./auth";
@@ -115,12 +116,23 @@ export function snapshotChanges(
   if (page.kind === "database") {
     // Records hidden by their permissions stay out of the comparison.
     const visible = rowRoleResolver(user, page);
+    // Properties hidden from this person (now or in that version) as well.
+    const hiddenNow = hiddenFieldsFor(user, page);
+    const withoutHidden = (state: DatabaseState): DatabaseState => {
+      const hidden = new Set([...hiddenNow, ...hiddenFieldsFor(user, page, state.database.fields)]);
+      return hidden.size
+        ? {
+            database: { ...state.database, fields: state.database.fields.filter((f) => !hidden.has(f.id)) },
+            rows: state.rows.map((r) => ({ ...r, cells: stripCells(r.cells, hidden) })),
+          }
+        : state;
+    };
     const parse = (html: string): DatabaseState => {
       const parsed = JSON.parse(html || "{}") as Partial<DatabaseState>;
-      return {
+      return withoutHidden({
         database: parsed.database || { fields: [] },
         rows: (parsed.rows || []).filter((r) => visible(r)),
-      };
+      });
     };
     const current = (): DatabaseState => ({
       database: {
@@ -147,7 +159,7 @@ export function snapshotChanges(
       kind: "database",
       changes: databaseChanges(
         parse(before),
-        against ? parse(load(against)) : current(),
+        against ? parse(load(against)) : withoutHidden(current()),
       ),
     };
   }

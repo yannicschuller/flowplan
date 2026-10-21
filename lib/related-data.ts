@@ -1,4 +1,5 @@
 import { visibleRows } from "./row-access";
+import { visibleFields } from "./field-access";
 import { all, one } from "./db";
 import { requirePage } from "./permissions";
 import { HttpError } from "./auth";
@@ -29,7 +30,7 @@ export function relatedData(user: Identity, root: Page) {
     );
     if (!raw) continue;
     const fields: Field[] = JSON.parse(raw.fields);
-    relatedSchemas[pageId] = fields;
+    relatedSchemas[pageId] = visibleFields(user, page, fields);
     related[pageId] = visibleRows(
       user,
       page,
