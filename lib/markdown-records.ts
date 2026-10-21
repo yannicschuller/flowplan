@@ -20,6 +20,7 @@ import { rowCreated } from "./automations";
 import { assertRowAccess } from "./row-access";
 import { replaceRowDocument, snapshotRow } from "./row-documents";
 import { splitFrontmatter, type FrontmatterValue } from "./frontmatter";
+import { aliasField, aliasList, frontmatterAliases } from "./aliases";
 import { computedTypes } from "./markdown-export";
 import { exportTitle, importDate } from "./zip-import";
 import type { Field, Identity, Page } from "./types";
@@ -44,6 +45,8 @@ export async function markdownEntries(name: string, bytes: Buffer) {
   return new Map([[posix.basename(name.replaceAll("\\", "/")) || "import.md", bytes]]);
 }
 
+const ALIASES_KEY = "aliases",
+  ALIAS_KEYS = ["aliases", "alias"];
 type Parsed = { path: string; title: string; values: Map<string, FrontmatterValue>; body: string; flowplanId?: string };
 const lower = (text: string) => text.trim().toLocaleLowerCase("de");
 const isList = (value: FrontmatterValue): value is FrontmatterValue[] => Array.isArray(value);
@@ -66,8 +69,11 @@ function parse(path: string, text: string, titleNames: string[]): Parsed {
     meta && typeof meta === "object" && !Array.isArray(meta) && typeof meta.id === "string" && /^[0-9a-f-]{36}$/i.test(meta.id)
       ? meta.id
       : undefined;
+  // Obsidian's "aliases:" and "alias:" fill the aliases property together.
+  const aliases = frontmatterAliases(data);
+  if (aliases.length) values.set(ALIASES_KEY, aliases);
   for (const [key, value] of Object.entries(data)) {
-    if (lower(key) === "flowplan" || value === null) continue;
+    if (lower(key) === "flowplan" || value === null || ALIAS_KEYS.includes(lower(key))) continue;
     if (!title && titleNames.includes(lower(key)) && !isList(value) && typeof value !== "object") title = asText(value);
     else values.set(key, value);
   }
@@ -130,8 +136,12 @@ export function importMarkdownRecords(
   const parsed = paths
     .sort((a, b) => a.localeCompare(b, "de"))
     .map((path) => parse(path, entries.get(path)!.toString("utf8"), ["title", lower(titleField?.name || "title")]));
-  // Frontmatter keys to properties, by name and case-insensitive.
+  // Frontmatter keys to properties, by name and case-insensitive; aliases
+  // go to the aliases property, whatever its name.
   const byName = new Map(fields.map((f) => [lower(f.name), f]));
+  let current = fields;
+  const aliasTarget = () => aliasField(current);
+  const fieldFor = (key: string) => (lower(key) === ALIASES_KEY ? aliasTarget() || byName.get(key) : byName.get(lower(key)));
   const keys = new Map<string, { name: string; values: FrontmatterValue[] }>();
   for (const file of parsed)
     for (const [key, value] of file.values) {
@@ -157,8 +167,8 @@ export function importMarkdownRecords(
   }
   const plan: MarkdownImportPlan = { records: parsed.length, matched: [], missing: [], skipped: [], existing: existing.size };
   for (const [key, entry] of keys) {
-    const field = byName.get(key);
-    if (!field) plan.missing.push({ name: entry.name, type: guessType(entry.values).type });
+    const field = fieldFor(key);
+    if (!field) plan.missing.push(key === ALIASES_KEY ? { name: "Aliases", type: "aliases" } : { name: entry.name, type: guessType(entry.values).type });
     else if (computedTypes.includes(field.type) || field.type === "sprint" || field === titleField) plan.skipped.push(field.name);
     else plan.matched.push(field.name);
   }
@@ -167,15 +177,18 @@ export function importMarkdownRecords(
   return transaction(() => {
     autoDatabaseSnapshot(user, page);
     const next = structuredClone(fields);
+    current = next;
     byName.clear();
     for (const field of next) byName.set(lower(field.name), field);
     const titleField = next[0];
     if (options.createMissing)
       for (const missing of plan.missing.slice(0, 80)) {
-        const entry = keys.get(lower(missing.name))!;
-        const field: Field = { id: `f${id().slice(0, 8)}`, name: missing.name, ...guessType(entry.values) };
+        const field: Field =
+          missing.type === "aliases"
+            ? { id: `f${id().slice(0, 8)}`, name: missing.name, type: "aliases" }
+            : { id: `f${id().slice(0, 8)}`, name: missing.name, ...guessType(keys.get(lower(missing.name))!.values) };
         next.push(field);
-        byName.set(lower(field.name), field);
+        if (!byName.has(lower(field.name))) byName.set(lower(field.name), field);
       }
     // Records of related databases, by title, as far as the person may read them.
     const related = new Map<string, Map<string, string>>();
@@ -235,6 +248,8 @@ export function importMarkdownRecords(
           const ids = [...new Set(list.map((v) => titles.get(lower(linkTitle(v)))).filter((v): v is string => !!v))];
           return field.parent ? ids.slice(0, 1) : ids.slice(0, 500);
         }
+        case "aliases":
+          return aliasList(isList(value) ? list : text.split(","));
         case "checklist":
           return list.slice(0, 100).map((v) => {
             const done = /^\[[xX]\]\s*/.test(v);
@@ -297,7 +312,7 @@ export function importMarkdownRecords(
     const rows = parsed.map((file) => {
       const cells: Record<string, unknown> = { [titleField?.id || "title"]: file.title };
       for (const [key, value] of file.values) {
-        const field = byName.get(lower(key));
+        const field = fieldFor(key);
         if (!field || field === titleField || computedTypes.includes(field.type) || field.type === "sprint") continue;
         const cell = cellOf(field, value);
         if (cell !== undefined && !(Array.isArray(cell) && !cell.length && field.type !== "multiselect")) cells[field.id] = cell;

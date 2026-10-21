@@ -3,6 +3,7 @@
 // exactly their rights: reads go through requirePage, the journal lock and
 // record access; writes go through command() like an edit in the browser
 // (versions, notifications, webhooks). Read tokens only get read tools.
+import { aliasList } from "./aliases";
 import * as Y from "yjs";
 import { z } from "zod";
 import { Node as PMNode } from "@tiptap/pm/model";
@@ -352,6 +353,7 @@ function cellPatch(user: Identity, page: Page, fields: Field[], input: Record<st
         people.find((m) => m.id === value || m.email.toLocaleLowerCase() === wanted || m.name.toLocaleLowerCase() === wanted)
           ?.id || value;
     }
+    if (f.type === "aliases" && typeof value === "string") value = aliasList(value);
     if (["multiselect", "relation", "files"].includes(f.type) && typeof value === "string")
       value = value ? [value] : [];
     if (f.type === "number" && typeof value === "string" && value.trim() && !Number.isNaN(Number(value)))

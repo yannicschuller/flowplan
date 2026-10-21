@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CaretDown, CaretRight, LinkSimple } from "@phosphor-icons/react";
 import { api, PageIcon } from "./ui";
 
-type Mention = { id: string; rowId?: string; pageTitle?: string; title: string; icon: string; snippet: string };
+type Mention = { id: string; rowId?: string; pageTitle?: string; title: string; icon: string; snippet: string; alias?: string };
 
 export function UnlinkedMentions({
   pageId,
@@ -55,6 +55,7 @@ export function UnlinkedMentions({
               <button type="button" className="unlinked-page" onClick={() => onOpen(mention.id, mention.rowId)}>
                 <PageIcon name={mention.icon} size={15} />
                 {mention.title}
+                {mention.alias && <span className="alias-hit"> · {mention.alias}</span>}
                 {mention.pageTitle && <small className="muted">{mention.pageTitle}</small>}
               </button>
               <span className="unlinked-snippet">{mention.snippet}</span>

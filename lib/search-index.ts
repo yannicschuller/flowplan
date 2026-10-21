@@ -7,6 +7,7 @@ import { hiddenRowIds } from "./row-access";
 import { ticketId } from "./ticket-ids";
 import type { Field, Identity, Page } from "./types";
 import { footnoteTexts } from "./footnotes";
+import { matchedAlias, pageAliases, recordAliases } from "./aliases";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -23,6 +24,15 @@ const IGNORED: Field["type"][] = [
   "rollup",
   "sprint",
 ];
+
+// Aliases share the title column (and its weight), after this separator; a
+// query never contains it (control characters are removed).
+const ALIAS_SEPARATOR = "\u001f";
+const titleColumn = (title: string, aliases: string[]) => [title, ...aliases].join(ALIAS_SEPARATOR);
+const splitTitle = (column: string) => {
+  const [title, ...aliases] = column.split(ALIAS_SEPARATOR);
+  return { title, aliases };
+};
 
 export function htmlText(html: string) {
   return html
@@ -56,8 +66,8 @@ function cellWords(value: unknown): string {
 
 function indexPage(pageId: string) {
   run("DELETE FROM search_index WHERE page_id=? AND row_id=''", pageId);
-  const page = one<{ title: string; html: string | null; deleted_at: string }>(
-    "SELECT p.title,p.deleted_at,d.html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.id=?",
+  const page = one<{ title: string; aliases: string | null; html: string | null; deleted_at: string }>(
+    "SELECT p.title,p.aliases,p.deleted_at,d.html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.id=?",
     pageId,
   );
   if (!page || page.deleted_at) return;
@@ -65,7 +75,7 @@ function indexPage(pageId: string) {
     "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
     pageId,
     "",
-    page.title,
+    titleColumn(page.title, pageAliases(page)),
     documentText(page.html || "").slice(0, 400000),
   );
 }
@@ -84,7 +94,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
   const [titleField, ...rest] = fields.filter((f) => !hidden.has(f.id));
   const title = titleField ? cellWords(cells[titleField.id]) : "";
   const values = rest
-    .filter((f) => !IGNORED.includes(f.type))
+    .filter((f) => !IGNORED.includes(f.type) && f.type !== "aliases")
     .map((f) => (f.type === "id" ? ticketId(f, row.number) : cellWords(cells[f.id])))
     .filter(Boolean);
   const content = row.html ?? row.content ?? "";
@@ -92,7 +102,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
     "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
     pageId,
     rowId,
-    title || "Ohne Titel",
+    titleColumn(title || "Ohne Titel", recordAliases(fields, cells)),
     [...values, content.startsWith("<") ? documentText(content) : content]
       .join(" · ")
       .slice(0, 400000),
@@ -200,6 +210,8 @@ export type SearchResult = {
   space_id: string;
   kind: "document" | "database" | "whiteboard" | "row" | "comment" | "file";
   snippet: string;
+  // The alias the query matched when the title did not ("Title · alias").
+  alias?: string;
 };
 // Snippet markers; the client renders text between them highlighted.
 export const MARK_START = "\u0002",
@@ -257,8 +269,10 @@ export function searchWorkspace(
   const results: SearchResult[] = [];
   const hidden = new Map<string, Set<string>>(),
     hiddenFiles = new Map<string, Set<string>>();
-  const push = (hit: Page, key: string, title: string, snippet: string) => {
+  const push = (hit: Page, key: string, column: string, snippet: string) => {
     let page = hit;
+    let { title, aliases } = splitTitle(column);
+    if (!key) aliases = pageAliases(hit);
     // Text of a synced block leads to the page it was created on.
     if (page.synced) {
       const origin = page.parent_id
@@ -267,6 +281,7 @@ export function searchWorkspace(
       if (!origin || !allowed(origin) || results.some((r) => r.id === origin.id && !r.rowId)) return;
       page = origin;
       title = origin.title;
+      aliases = [];
     }
     const rowId = recordOf(key),
       type = hitKind(page, key);
@@ -280,6 +295,7 @@ export function searchWorkspace(
       if (!hiddenFiles.has(page.id)) hiddenFiles.set(page.id, hiddenFileIds(user, page));
       if (hiddenFiles.get(page.id)!.has(key.slice(2))) return;
     }
+    const alias = matchedAlias(key ? title : page.title, aliases, query);
     results.push({
       id: page.id,
       ...(rowId ? { rowId } : {}),
@@ -289,6 +305,7 @@ export function searchWorkspace(
       space_id: page.space_id,
       kind: type,
       snippet,
+      ...(alias ? { alias } : {}),
     });
   };
   const scope =

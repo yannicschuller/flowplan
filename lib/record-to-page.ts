@@ -5,6 +5,7 @@
 // page follows the permissions of the place it goes to. The record goes to
 // the trash, so nothing is lost if the change was a mistake.
 import { hiddenFieldsFor } from "./field-access";
+import { recordAliases, storedAliases } from "./aliases";
 import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
@@ -216,6 +217,12 @@ export function recordToPage(
   const quota = quotaCheckpoint(database.workspace_id);
   autoDatabaseSnapshot(user, database);
   const pageId = createPage(database.workspace_id, target.spaceId, user.id, plan.title, "document", target.parentId);
+  // The record's aliases stay the page's aliases.
+  {
+    const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", database.id)!.fields) as Field[];
+    const aliases = recordAliases(fields, (typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells) as Record<string, unknown>);
+    if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pageId);
+  }
   const creator = row.created_by && one("SELECT 1 FROM users WHERE id=?", row.created_by) ? row.created_by : user.id;
   // The same document: its Yjs state and generation stay, so text comments
   // and authorship keep their places.

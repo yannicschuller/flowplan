@@ -255,6 +255,7 @@ const fieldNames: Record<FieldType, [string, string]> = {
   progress: ["Fortschritt der Unteraufgaben", "Subtask progress"],
   time: ["Zeiterfassung", "Time tracking"],
   sprint: ["Sprint", "Sprint"],
+  aliases: ["Aliasse (andere Namen)", "Aliases (other names)"],
 };
 type RowMove = {
   viewId: string;
@@ -3680,7 +3681,7 @@ export default function DatabaseView({
                       ? ["true", "1", "ja"].includes(
                           (row[f.name] || "").toLowerCase(),
                         )
-                      : f.type === "multiselect"
+                      : f.type === "multiselect" || f.type === "aliases"
                         ? (row[f.name] || "")
                             .split(",")
                             .map((s) => s.trim())
@@ -4470,7 +4471,12 @@ export default function DatabaseView({
               }
             >
               {Object.entries(fieldNames).map(([k, n]) => (
-                <option key={k} value={k}>
+                <option
+                  key={k}
+                  value={k}
+                  // One aliases property per database.
+                  disabled={k === "aliases" && fields.some((f) => f.type === "aliases" && f.id !== fieldDraft.id)}
+                >
                   {t(n[0], n[1])}
                 </option>
               ))}

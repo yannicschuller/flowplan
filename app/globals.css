@@ -20755,3 +20755,34 @@ tr:hover .row-open-mark,
   border-color: var(--accent-strong);
   color: var(--accent-strong);
 }
+/* Aliases of a page (components/page-aliases.tsx) and the alias a search
+   or mention hit was found by. */
+.page-aliases-form {
+  display: grid;
+  gap: 12px;
+}
+.page-aliases-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.page-aliases-form label > span {
+  color: var(--secondary);
+}
+.page-aliases-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.page-aliases-list .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.alias-hit {
+  color: var(--secondary);
+  font-weight: 400;
+}

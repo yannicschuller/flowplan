@@ -4,6 +4,7 @@
 // sharing that only applied to the page (grants, share links, publication)
 // ends; the record follows the database's permissions. The old page goes
 // to the trash, so nothing is lost if the move was a mistake.
+import { aliasField, pageAliases } from "./aliases";
 import { Transform } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { all, id, one, run } from "./db";
@@ -83,6 +84,9 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     const template = selectedRowTemplate(database.id, undefined);
     const cells: Record<string, unknown> = template ? JSON.parse(template.cells) : {};
     cells[fields[0]?.id || "title"] = page.title;
+    // The page's aliases go to the aliases property, when the database has one.
+    const aliasProperty = aliasField(fields);
+    if (aliasProperty && pageAliases(page).length) cells[aliasProperty.id] = pageAliases(page);
     const doc = one<{ state: Uint8Array | null; html: string; generation: string | null }>("SELECT state,html,generation FROM documents WHERE page_id=?", page.id);
     const html = doc?.html || "";
     const rid = id();

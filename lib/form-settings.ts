@@ -1,3 +1,4 @@
+import { aliasList } from "./aliases";
 import { numberCell } from "./field-format";
 import { z } from "zod";
 import { validDateValue } from "./date-values";
@@ -244,7 +245,9 @@ export function validateFormValues(
           !value.every((v) => typeof File !== "undefined" && v instanceof File)
         )
           throw new Error();
-      } else if (f.type === "checklist")
+      } else if (f.type === "aliases")
+        cells[f.id] = aliasList(z.array(z.string().max(100)).max(10).parse(value));
+      else if (f.type === "checklist")
         cells[f.id] = z
           .array(
             z.object({

@@ -45,6 +45,7 @@ export const field = z.object({
     "progress",
     "time",
     "sprint",
+    "aliases",
   ]),
   options: z.array(z.string().max(100)).max(100).optional(),
   formula: z.string().max(2000).optional(),

@@ -29,6 +29,7 @@ import { Onboarding } from "./onboarding";
 import { KeyboardShortcuts } from "./keyboard-shortcuts";
 import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
+import { openPageAliases, AliasIcon } from "./page-aliases";
 import { AiBlockToggle } from "./ai-settings";
 import { AskPanel } from "./ai-ask";
 import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
@@ -2379,6 +2380,10 @@ export default function WorkspaceApp({
                       <UsersThree />
                       {t("Besitzer und Prüfung …", "Owner and review …")}
                     </Dropdown.Item>
+                    <Dropdown.Item className="dropdown-item" onSelect={() => openPageAliases(data.page.id)}>
+                      <AliasIcon />
+                      {t("Aliasse …", "Aliases …")}
+                    </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setHistory(true)}
@@ -3515,6 +3520,7 @@ export default function WorkspaceApp({
                     <PageIcon name={p.icon} />
                     <span>
                       {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
+                      {p.alias && <span className="alias-hit"> · {p.alias}</span>}
                       {p.pageTitle && (
                         <small className="search-context">
                           {p.kind === "comment"

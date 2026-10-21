@@ -1725,6 +1725,12 @@ export function command(
           new Set(views.map((v) => v.id)).size !== views.length
         )
           throw new HttpError(400, "Doppelte Eigenschaft oder Ansicht.");
+        if (fields.filter((f) => f.type === "aliases").length > 1)
+          throw new HttpError(400, "Eine Datenbank hat höchstens eine Alias-Eigenschaft.");
+        // Aliases weigh like the title in the search: index the records again
+        // when the aliases property changes.
+        if (aliasField(fields)?.id !== aliasField(d.fields)?.id)
+          run("INSERT OR IGNORE INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=?", pid());
         prepareSubtaskFields(write(), fields, databaseSettings(pid()));
         validateDatabaseRelations(user, write(), fields, d.fields);
         validateTicketPrefix(write(), fields);
@@ -1818,6 +1824,10 @@ export function command(
           ...(template ? JSON.parse(template.cells) : {}),
           ...given,
         };
+        // Aliases follow their limits (lib/aliases.ts).
+        const aliasProperty = aliasField(database(pid()).fields);
+        if (aliasProperty && cells[aliasProperty.id] !== undefined)
+          cells[aliasProperty.id] = parseAliases(Array.isArray(cells[aliasProperty.id]) ? cells[aliasProperty.id] : aliasList(cells[aliasProperty.id]));
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
         // Records created offline bring their own id; a repeat is a no-op.
@@ -2153,6 +2163,9 @@ export function command(
         break;
       case "page.review":
         result = setPageReview(user, b);
+        break;
+      case "page.aliases":
+        result = setPageAliases(user, b);
         break;
       case "row.detachOccurrence":
         result = detachOccurrence(user, b);
@@ -2963,6 +2976,8 @@ import { setRowAppearance, setRowRecurrence } from "./row-appearance";
 import { setRowRepeat } from "./repeat-records";
 import { parseRepeat } from "./recurrence";
 import { reviewsDue, setPageOwner, setPageReview } from "./page-review";
+import { parseAliases, setPageAliases } from "./page-aliases";
+import { aliasField, aliasList } from "./aliases";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
 import { dashboardData, saveDashboard } from "./dashboard";

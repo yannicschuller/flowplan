@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 46) return;
+  if (globalDb.flowplanSchema === 47) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -657,7 +657,14 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS issue_links_page ON issue_links(page_id);
     CREATE TABLE IF NOT EXISTS issue_comment_links(comment_id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,provider TEXT NOT NULL,repo TEXT NOT NULL,remote_id TEXT NOT NULL,UNIQUE(provider,repo,remote_id));
     CREATE TABLE IF NOT EXISTS issue_sync_queue(row_id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,at INTEGER NOT NULL);`);
-  globalDb.flowplanSchema = 46;
+  // Aliases of pages (lib/aliases.ts): a JSON array of other names, kept in
+  // the search index next to the title.
+  if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "aliases"))
+    d.exec("ALTER TABLE pages ADD COLUMN aliases TEXT");
+  d.exec(
+    "CREATE TRIGGER IF NOT EXISTS search_page_aliases AFTER UPDATE OF aliases ON pages BEGIN INSERT INTO search_dirty SELECT NEW.id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.id AND row_id=''); END;",
+  );
+  globalDb.flowplanSchema = 47;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

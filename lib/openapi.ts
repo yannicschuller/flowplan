@@ -50,7 +50,7 @@ export const commandActionNames = [
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport",
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
   "pages.bulk", "page.follow", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
-  "page.toRecord", "record.toPage", "page.owner", "page.review", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
+  "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
@@ -161,6 +161,18 @@ export const commandActions: ActionDoc[] = [
       done: z.literal(true).optional(),
     }),
     result: z.object({ ok: z.literal(true), reviewAt: z.string().nullable(), everyDays: z.number().nullable() }),
+  },
+  {
+    action: "page.aliases",
+    summary: "Set the aliases of a page",
+    description:
+      "Needs editor rights. Other names of the page (at most 10, each at most 100 characters; trimmed, duplicates ignoring case removed). @ mentions, the search and unlinked mentions find the page by them like by its title. An empty list removes them. Records keep their aliases in a property of type `aliases`.",
+    input: z.object({
+      action: z.literal("page.aliases"),
+      pageId: uuid,
+      aliases: z.array(z.string().max(100)).max(10),
+    }),
+    result: z.object({ ok: z.literal(true), aliases: z.array(z.string()) }),
   },
   {
     action: "row.repeat",

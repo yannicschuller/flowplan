@@ -757,6 +757,10 @@ const exact: Record<string, string> = {
     "The person who set up the connection is no longer an owner of the workspace – please connect again.",
   "Die verbindende Person darf diese Datenbank nicht bearbeiten.": "The connecting person may not edit this database.",
   "Diese Datenbank ist mit keinem Repository verbunden.": "This database is not connected to a repository.",
+  // Aliases of pages and records
+  "Ein Alias hat höchstens 100 Zeichen.": "An alias has at most 100 characters.",
+  "Höchstens 10 Aliasse.": "At most 10 aliases.",
+  "Eine Datenbank hat höchstens eine Alias-Eigenschaft.": "A database has at most one aliases property.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
