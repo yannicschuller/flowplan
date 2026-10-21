@@ -4,10 +4,13 @@
 // properties can stay as a short list at the top of the text, and the new
 // page follows the permissions of the place it goes to. The record goes to
 // the trash, so nothing is lost if the change was a mistake.
+import { copyFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
-import { all, id, one, run } from "./db";
+import { all, id, one, onTransactionRollback, run } from "./db";
 import { HttpError } from "./auth";
+import { quotaCheckpoint } from "./instance-ops";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { requireRow } from "./row-documents";
@@ -17,7 +20,7 @@ import { maintainRowOrders } from "./row-order-server";
 import { autoDatabaseSnapshot } from "./database-operations";
 import { cleanHtml, escaped, htmlState } from "./document-server";
 import { documentExtensions } from "./document-schema";
-import { rewriteDocument, rewriteSchema } from "./document-rewrite";
+import { rewriteDocument, rewriteReferences, rewriteSchema, rewriteStoredDocument } from "./document-rewrite";
 import { relinkDocument } from "./page-to-record";
 import { createPage } from "./seed";
 import { cellText } from "./cell-text";
@@ -162,6 +165,34 @@ function withProperties(doc: PMNode, properties: Property[]) {
 }
 
 const recordAddress = /^(.*#page=)([0-9a-f-]{36})&row=([0-9a-f-]{36})((?:&thread=[0-9a-f-]{36})?)$/i;
+const uploadsDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+
+// The page gets its own copies of the database's files the record refers
+// to (new rows, copies of the uploads; the S3 mirror follows the new rows).
+// The originals stay with the database: the record in the trash still shows
+// them after "Wiederherstellen", and versions of other records that refer to
+// them keep working. A file without a local upload keeps its reference.
+function copyFiles(fileIds: string[], database: Page, pageId: string, userId: string) {
+  const copies = new Map<string, string>();
+  const dir = uploadsDir();
+  for (const fid of fileIds) {
+    const file = one<{ name: string; mime: string; size: number }>("SELECT name,mime,size FROM files WHERE id=? AND page_id=?", fid, database.id);
+    const from = resolve(dir, fid);
+    if (!file || !existsSync(from)) continue;
+    const fresh = id(),
+      destination = resolve(dir, fresh);
+    mkdirSync(dir, { recursive: true });
+    copyFileSync(from, destination);
+    onTransactionRollback(() => {
+      try {
+        unlinkSync(destination);
+      } catch {}
+    });
+    run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fresh, pageId, file.name, file.mime, file.size, userId);
+    copies.set(fid, fresh);
+  }
+  return copies;
+}
 
 export function recordToPage(
   user: Identity,
@@ -176,10 +207,11 @@ export function recordToPage(
   // Runs inside the command's transaction; the updates for open editors go
   // out once it is stored.
   const publish: (() => void)[] = [];
+  // The copies of the files count against the workspace quota, like a page copy.
+  const quota = quotaCheckpoint(database.workspace_id);
   autoDatabaseSnapshot(user, database);
   const pageId = createPage(database.workspace_id, target.spaceId, user.id, plan.title, "document", target.parentId);
   const creator = row.created_by && one("SELECT 1 FROM users WHERE id=?", row.created_by) ? row.created_by : user.id;
-  run("UPDATE pages SET icon=?,cover=?,created_by=? WHERE id=?", row.icon || "file", row.cover || "", creator, pageId);
   // The same document: its Yjs state and generation stay, so text comments
   // and authorship keep their places.
   const doc = one<{ state: Uint8Array | null; html: string; generation: string }>(
@@ -187,39 +219,51 @@ export function recordToPage(
     row.id,
   );
   const html = doc?.html ?? row.content ?? "";
-  run("UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?", doc?.state || htmlState(html), html, doc?.generation || id(), pageId);
-  if (options.keepProperties && plan.properties.length) {
-    const result = rewriteDocument(pageId, null, user.id, (d) => withProperties(d, plan.properties));
-    if (result) publish.push(result.publish);
-  }
-  // Files stay the same files; they now belong to the page.
-  const comments = all<{ body: string }>("SELECT body FROM comments WHERE page_id=? AND row_id=?", database.id, row.id).map((c) => c.body);
+  // The page refers to its own copies of the files; the record keeps the originals.
+  const comments = all<{ id: string; body: string }>("SELECT id,body FROM comments WHERE page_id=? AND row_id=?", database.id, row.id);
   const fileIds = [
-    ...new Set([...[JSON.stringify(plan.cells), row.icon || "", row.cover || "", html, ...comments].join(" ").matchAll(FILE_URL)].map((m) => m[1].toLowerCase())),
+    ...new Set(
+      [...[JSON.stringify(plan.cells), row.icon || "", row.cover || "", html, ...comments.map((c) => c.body)].join(" ").matchAll(FILE_URL)].map((m) =>
+        m[1].toLowerCase(),
+      ),
+    ),
   ];
-  if (fileIds.length)
-    run(`UPDATE files SET page_id=? WHERE page_id=? AND id IN (${fileIds.map(() => "?").join(",")})`, pageId, database.id, ...fileIds);
+  const copies = copyFiles(fileIds, database, pageId, user.id);
+  const swap = (text: string) =>
+    copies.size ? text.replace(FILE_URL, (match, fid: string) => (copies.has(fid.toLowerCase()) ? `/api/files/${copies.get(fid.toLowerCase())}` : match)) : text;
+  run("UPDATE pages SET icon=?,cover=?,created_by=? WHERE id=?", swap(row.icon || "file"), swap(row.cover || ""), creator, pageId);
+  run("UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?", doc?.state || htmlState(html), html, doc?.generation || id(), pageId);
+  const result = rewriteDocument(pageId, null, user.id, (d) => {
+    const listed = options.keepProperties && plan.properties.length ? withProperties(d, plan.properties) : d;
+    const next = rewriteReferences(listed, swap) || listed;
+    return next === d ? null : next;
+  });
+  if (result) publish.push(result.publish);
+  for (const comment of comments) if (swap(comment.body) !== comment.body) run("UPDATE comments SET body=? WHERE id=?", swap(comment.body), comment.id);
   // Comments, text comments, tasks, authorship and notifications follow the content.
   for (const table of ["comments", "inline_threads", "shared_comments", "notifications"])
     run(`UPDATE ${table} SET page_id=?,row_id=NULL WHERE page_id=? AND row_id=?`, pageId, database.id, row.id);
   for (const table of ["doc_tasks", "document_authors"])
     run(`UPDATE OR IGNORE ${table} SET page_id=?,row_id='' WHERE page_id=? AND row_id=?`, pageId, database.id, row.id);
-  // The record's versions become versions of the page.
+  // The record's versions become versions of the page (referring to the page's files).
   for (const snapshot of all<{ state: Uint8Array; html: string; created_by: string | null; created_at: string; kind: string }>(
     "SELECT state,html,created_by,created_at,kind FROM row_snapshots WHERE row_id=? ORDER BY created_at",
     row.id,
-  ))
+  )) {
+    const rewritten =
+      copies.size && snapshot.html.includes("/api/files/") ? rewriteStoredDocument(snapshot.state, snapshot.html, (d) => rewriteReferences(d, swap)) : null;
     run(
       "INSERT INTO snapshots(id,page_id,state,html,title,created_by,created_at,kind) VALUES(?,?,?,?,?,?,?,?)",
       id(),
       pageId,
-      snapshot.state,
-      snapshot.html,
+      rewritten?.state || snapshot.state,
+      rewritten?.html || snapshot.html,
       plan.title,
       snapshot.created_by,
       snapshot.created_at,
       snapshot.kind,
     );
+  }
   // Record favourites become page favourites.
   run("INSERT OR IGNORE INTO favorites(user_id,page_id) SELECT user_id,? FROM row_favorites WHERE row_id=?", pageId, row.id);
   // The record goes to the trash (restorable, under the same id).
@@ -249,5 +293,6 @@ export function recordToPage(
     const result = rewriteDocument(source.page_id, source.row_id, user.id, relink);
     if (result) publish.push(result.publish);
   }
+  quota();
   return { result: { id: pageId }, publish };
 }

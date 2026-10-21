@@ -206,7 +206,10 @@ export default function DatabaseTimeline({
         });
       }
     }
-    if (!knownArrows.current) knownArrows.current = new Map(next.map((a) => [a.key, 0]));
+    // The first arrows seen once the records are there are known, not
+    // fresh: rows often arrive after the first render (an empty timeline
+    // first), and existing dependencies must not draw in then.
+    if (!knownArrows.current && rows.length) knownArrows.current = new Map(next.map((a) => [a.key, 0]));
     setArrows((previous) =>
       JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
     );

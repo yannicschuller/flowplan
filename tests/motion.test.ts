@@ -56,6 +56,29 @@ test("reduced motion guard follows the media query and is on without a window", 
   );
 });
 
+test("reduced motion guard reads window.matchMedia, not a global of the same name", () => {
+  const g = globalThis as unknown as { window?: unknown; matchMedia?: unknown };
+  const had = { window: g.window, matchMedia: g.matchMedia };
+  try {
+    // Without a window (Node, the server) motion is off, whatever a global says.
+    delete g.window;
+    g.matchMedia = () => ({ matches: false });
+    assert.equal(prefersReducedMotion(), true);
+    // With a window its media query decides.
+    g.window = { matchMedia: () => ({ matches: false }) };
+    assert.equal(prefersReducedMotion(), false);
+    g.window = { matchMedia: () => ({ matches: true }) };
+    assert.equal(prefersReducedMotion(), true);
+    g.window = {};
+    assert.equal(prefersReducedMotion(), true);
+  } finally {
+    if (had.window === undefined) delete g.window;
+    else g.window = had.window;
+    if (had.matchMedia === undefined) delete g.matchMedia;
+    else g.matchMedia = had.matchMedia;
+  }
+});
+
 test("tween jumps straight to the end without motion (server, reduced motion)", () => {
   const seen: number[] = [];
   tween(300, (p) => seen.push(p));
