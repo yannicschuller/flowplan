@@ -136,6 +136,7 @@ import type {
   Row,
 } from "@/lib/types";
 import { PageExportDialog } from "./page-export";
+import { MobileTabBar, useSoftKeyboard } from "./mobile-tab-bar";
 import {
   Modal,
   PageIcon,
@@ -147,7 +148,8 @@ import {
   isTransient,
   PageSkeleton,
   endedSession,
-  friendlyError,
+  reportError,
+  setErrorToaster,
   SIGNED_OUT_EVENT,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
@@ -365,7 +367,12 @@ export default function WorkspaceApp({
     [readPages, setReadPages] = useState<string[]>([]),
     [comment, setComment] = useState(""),
     [status, setStatus] = useState("Gespeichert"),
-    [toast, setToast] = useState<{ text: string; error: boolean } | null>(null),
+    [toast, setToast] = useState<{
+      text: string;
+      error: boolean;
+      detail?: string;
+      retry?: () => void;
+    } | null>(null),
     // The session ended while the app was open: a banner until the reader signs in again.
     [signedOut, setSignedOut] = useState(false),
     [busy, setBusy] = useState(false),
@@ -476,8 +483,24 @@ export default function WorkspaceApp({
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
-  // Failures: an error toast with plain words for network and server trouble.
-  const notifyError = useCallback((s: string) => notify(friendlyError(s), true), [notify]);
+  // Every failure goes through showError()/reportError() in components/ui.tsx:
+  // friendly copy per kind, inline in an open dialog, otherwise this toast.
+  useEffect(
+    () =>
+      setErrorToaster((view) => {
+        setToast({ text: view.title, detail: view.detail, error: true, retry: view.retry });
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        // Errors stay a little longer; one with a retry until it is used.
+        toastTimer.current = setTimeout(() => setToast(null), view.retry ? 12000 : 8000);
+      }),
+    [],
+  );
+  // The onError handler handed to components (they pass error.message; the
+  // kind is recovered from the request that failed).
+  const notifyError = useCallback(
+    (error: unknown, retry?: () => void) => reportError(error, { retry }),
+    [],
+  );
   const setHtml = useCallback((s: string) => {
     html.current = s;
   }, []);
@@ -676,15 +699,15 @@ export default function WorkspaceApp({
     };
   }, [hasJournal, rollJournal]);
   const act = useCallback(
-    async (b: Record<string, unknown>) => {
+    async (b: Record<string, unknown>, retry?: () => void) => {
       try {
         return await mutate(b);
       } catch (e) {
-        notifyError((e as Error).message);
+        notifyError(e, retry);
         return null;
       }
     },
-    [mutate, notify],
+    [mutate, notifyError],
   );
   // "Zuletzt angesehen" on the start page follows along without a reload.
   const shownPage = data?.page.id;
@@ -719,6 +742,8 @@ export default function WorkspaceApp({
         : { pageId: data.page.id, value: data.sinceVisit || null },
     );
   }, [data]);
+  // For "Retry" on a page that failed to open.
+  const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
   const openPage = useCallback(
     async (id: string, target?: PageLocation) => {
       const version = ++navigationVersion.current;
@@ -762,7 +787,8 @@ export default function WorkspaceApp({
           setStatus("Gespeichert");
         }
       } catch (e) {
-        if (version === navigationVersion.current) notifyError((e as Error).message);
+        if (version === navigationVersion.current)
+          notifyError(e, () => void openPageRef.current(id, target));
       } finally {
         if (version === navigationVersion.current) {
           navigationPending.current = false;
@@ -770,8 +796,9 @@ export default function WorkspaceApp({
         }
       }
     },
-    [notify],
+    [notifyError],
   );
+  openPageRef.current = openPage;
   function go(s: Screen) {
     setScreen(s);
     screenRef.current = s;
@@ -911,7 +938,7 @@ export default function WorkspaceApp({
         });
         if (created?.id) void openPage(String(created.id));
       } catch (e) {
-        notifyError((e as Error).message);
+        notifyError(e);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -945,6 +972,8 @@ export default function WorkspaceApp({
     setReadPages(toggleReadMode(data.page.id));
   };
   toggleReadingRef.current = toggleReading;
+  // Phones: the bottom bar steps aside while the keyboard is open.
+  const keyboardOpen = useSoftKeyboard();
   const activePages = boot.pages.filter((p) => !p.deleted_at),
     editable = mayEdit && !reading,
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
@@ -992,7 +1021,7 @@ export default function WorkspaceApp({
       go("home");
       setSpaceId(b.spaces[0]?.id || "");
     } catch (e) {
-      if (version === navigationVersion.current) notifyError((e as Error).message);
+      if (version === navigationVersion.current) notifyError(e, () => void switchWorkspace(id));
     } finally {
       if (version === navigationVersion.current)
         navigationPending.current = false;
@@ -1647,7 +1676,7 @@ export default function WorkspaceApp({
   return (
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <div
-      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}`}
+      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}`}
       inert={switching}
       aria-busy={switching}
     >
@@ -3554,6 +3583,8 @@ export default function WorkspaceApp({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
+            // A failure shows inside this dialog, with "Retry" submitting again.
+            const form = e.currentTarget;
             const result = await act({
               action: "page.create",
               workspaceId: boot.workspace.id,
@@ -3567,7 +3598,7 @@ export default function WorkspaceApp({
                   ? { aiDatabase: proposalPayload(aiProposal) }
                   : databaseChoicePayload(databaseChoice)
                 : {}),
-            });
+            }, () => form.requestSubmit());
             if (result?.id) {
               if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
               setCreate(false);
@@ -4460,10 +4491,62 @@ export default function WorkspaceApp({
           }}
         />
       )}
+      <MobileTabBar
+        active={mobile ? null : screen === "home" ? "home" : screen === "inbox" ? "inbox" : null}
+        unread={boot.notifications.filter((n) => !n.read_at).length}
+        menuOpen={mobile}
+        hidden={keyboardOpen || (focusMode && screen === "page")}
+        onHome={() => go("home")}
+        onSearch={() => {
+          setMobile(false);
+          openSearch();
+        }}
+        onNew={
+          canCreate
+            ? () => {
+                setMobile(false);
+                // In the space of the open page when the reader may edit
+                // there, otherwise where "New page" puts it by default.
+                addPage(
+                  "document",
+                  null,
+                  screen === "page" && data && ["editor", "owner"].includes(data.role)
+                    ? data.page.space_id
+                    : undefined,
+                );
+              }
+            : undefined
+        }
+        onInbox={() => go("inbox")}
+        onMenu={() => {
+          setDesktopCollapsed(false);
+          setMobile((open) => !open);
+        }}
+      />
       {toast && (
         <div className={`toast${toast.error ? " toast-error" : ""}`} role={toast.error ? "alert" : "status"}>
-          {toast.error ? <WarningCircle size={18} weight="fill" /> : <InfoIcon />}
-          {toast.text}
+          {toast.error ? <WarningCircle size={18} weight="fill" aria-hidden="true" /> : <InfoIcon />}
+          {toast.detail ? (
+            <span className="toast-text">
+              <strong>{toast.text}</strong>
+              <span>{toast.detail}</span>
+            </span>
+          ) : (
+            toast.text
+          )}
+          {toast.retry && (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                const retry = toast.retry;
+                setToast(null);
+                retry?.();
+              }}
+            >
+              {t("Erneut versuchen", "Retry")}
+            </button>
+          )}
           <button
             className="icon-button"
             aria-label={t("Meldung schließen", "Close message")}
