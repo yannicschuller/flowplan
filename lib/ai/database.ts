@@ -11,6 +11,7 @@
 // them (aiMayRead / aiFilter – related records too). Guests, viewers and API
 // tokens never trigger writes. Automatic updates stop (and switch off) when
 // the person who switched them on loses access.
+import { assertFieldsWritable, hiddenFieldsFor, stripCells } from "../field-access";
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { all, audit, one, run } from "../db";
@@ -78,7 +79,10 @@ function checkCell(user: Identity, pageId: string, fieldId: string, rowId: strin
   const resolved = resolveAi(user, "database", { workspaceId: page.workspace_id });
   if (!resolved.ok)
     throw new AiCellError(resolved.reason === "no-provider" || resolved.reason === "key-unreadable" ? 409 : 403, AI_REASON_TEXT[resolved.reason][0], INSTANCE_REASONS.includes(resolved.reason) ? "instance" : "access");
-  const fields = database(pageId).fields;
+  // The AI reads and writes only what this person may (lib/field-access.ts).
+  const allFields = database(pageId).fields;
+  const hidden = hiddenFieldsFor(user, page, allFields);
+  const fields = allFields.filter((f) => !hidden.has(f.id));
   const field = fields.find((f) => f.id === fieldId);
   if (!field) throw new AiCellError(404, "Eigenschaft fehlt.", "access");
   if (mode !== "fill" && !field.ai) throw new AiCellError(400, "Das ist keine KI-Eigenschaft.", "access");
@@ -97,7 +101,12 @@ function checkCell(user: Identity, pageId: string, fieldId: string, rowId: strin
     throw new AiCellError((e as HttpError).status, (e as Error).message, "row");
   }
   if (!aiMayRead(user, pageId, rowId)) throw new AiCellError(403, AI_BLOCKED_MESSAGE, "row");
-  return { page, fields, field, row, resolved };
+  try {
+    assertFieldsWritable(user, page, allFields, [field.id]);
+  } catch (e) {
+    throw new AiCellError((e as HttpError).status, (e as Error).message, "access");
+  }
+  return { page, fields, field, row: { ...row, cells: stripCells(row.cells, hidden) }, resolved };
 }
 
 const SYSTEM = (field: Field, task: string) =>
@@ -196,8 +205,10 @@ export function queueAiCells(user: Identity, raw: unknown) {
   if (isGuest(user, page.workspace_id)) throw new HttpError(403, "Gäste können keine KI-Werte schreiben.");
   const resolved = resolveAi(user, "database", { workspaceId: page.workspace_id });
   if (!resolved.ok) throw new HttpError(resolved.reason === "no-provider" || resolved.reason === "key-unreadable" ? 409 : 403, AI_REASON_TEXT[resolved.reason][0]);
-  const field = database(page.id).fields.find((f) => f.id === b.fieldId);
-  if (!field) throw new HttpError(404, "Eigenschaft fehlt.");
+  const allFields = database(page.id).fields;
+  const field = allFields.find((f) => f.id === b.fieldId);
+  if (!field || hiddenFieldsFor(user, page, allFields).has(field.id)) throw new HttpError(404, "Eigenschaft fehlt.");
+  assertFieldsWritable(user, page, allFields, [field.id]);
   if (b.mode === "compute" && !field.ai) throw new HttpError(400, "Das ist keine KI-Eigenschaft.");
   if (b.mode === "fill" && !(AI_FILL_TYPES as readonly string[]).includes(field.type)) throw new HttpError(400, "Diese Eigenschaft lässt sich nicht mit KI ausfüllen.");
   const rows = b.rowIds

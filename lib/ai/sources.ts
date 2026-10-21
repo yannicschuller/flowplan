@@ -2,6 +2,7 @@
 // semantic index). This module only reads; whether the AI may read a source
 // is decided elsewhere (lib/ai/access.ts) – callers check before using it.
 import { all, one } from "../db";
+import { publicHiddenFieldIds } from "../field-access";
 import { ct } from "../content-locale";
 import { ticketId } from "../ticket-ids";
 import type { Field } from "../types";
@@ -86,7 +87,11 @@ function databaseFields(pageId: string): Field[] {
   const hit = fieldsCache.get(pageId);
   if (hit && Date.now() - hit.at < 2000) return hit.fields;
   const stored = one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", pageId);
-  const fields = stored ? (JSON.parse(stored.fields) as Field[]) : [];
+  const every = stored ? (JSON.parse(stored.fields) as Field[]) : [];
+  // The index is shared by everyone: properties with a read rule (and what
+  // is derived from them) never go in (lib/field-access.ts).
+  const hidden = publicHiddenFieldIds(every);
+  const fields = every.filter((f) => f.type === "rollup" || !hidden.has(f.id));
   fieldsCache.set(pageId, { at: Date.now(), fields });
   if (fieldsCache.size > 500) fieldsCache.clear();
   return fields;

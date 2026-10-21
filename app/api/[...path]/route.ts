@@ -105,6 +105,7 @@ import {
   lockedPageIds,
 } from "@/lib/journal-extras";
 import { visibleRows } from "@/lib/row-access";
+import { readableDatabase } from "@/lib/field-access";
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
@@ -823,7 +824,7 @@ async function handleGET(
             ...p,
             data:
               p.kind === "database"
-                ? { database: database(p.id), rows: visibleRows(user, p, rows(p.id)) }
+                ? { database: readableDatabase(user, p, database(p.id)), rows: visibleRows(user, p, rows(p.id)) }
                 : one("SELECT html FROM documents WHERE page_id=?", p.id),
           })),
         },

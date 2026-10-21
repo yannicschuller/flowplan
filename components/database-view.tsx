@@ -124,6 +124,8 @@ import {
   type DatabaseGroup,
 } from "@/lib/database-groups";
 import { CellInput } from "./cell-input";
+import { FieldAccessEditor, FieldLock } from "./field-access-editor";
+import { describeRule } from "@/lib/field-access-rules";
 export { CellInput } from "./cell-input";
 import { AI_OUTPUT_TYPES, AiCellControl, AiFieldEditor, AiFillAll, AiFillDialog, unknownReferences, useAiDatabaseStatus } from "./ai-database";
 import { aiPageReadable, aiUsable, type AiStatus } from "@/lib/ai/client";
@@ -224,6 +226,8 @@ export type DatabaseData = {
   comments: Comment[];
   role?: string;
   groups?: { id: string; name: string }[];
+  // Visible properties this person may not change (lib/field-access.ts).
+  readOnlyFields?: string[];
 };
 // i18n-table: 1 – [German, English] pairs
 const fieldNames: Record<FieldType, [string, string]> = {
@@ -1004,6 +1008,12 @@ export default function DatabaseView({
     !relationTarget?.error;
   // Records can be read-only for this person (record permissions).
   const rowEditable = (r: Row) => editable && r.role !== "viewer";
+  // Properties only some people change (field-level permissions).
+  const lockedFields = new Set(data.readOnlyFields || []);
+  const lockedTitle = (f: Field) =>
+    lockedFields.has(f.id)
+      ? describeRule(f.access?.write, "write", data.groups || [], t)
+      : undefined;
   const act = async (b: Record<string, unknown>) => {
     try {
       return await mutate({ pageId: page.id, ...b });
@@ -2354,11 +2364,13 @@ export default function DatabaseView({
             role="gridcell"
             className={`${stickyCell(f, i).className}${aiStatus.fresh.has(`${r.id}:${f.id}`) ? " ai-filled" : ""}`.trim() || undefined}
             style={stickyCell(f, i).style}
+            title={lockedTitle(f)}
             onClick={() => {
               if (
                 !rowEditable(r) ||
                 f.id === fields[0].id ||
-                computedTypes.includes(f.type)
+                computedTypes.includes(f.type) ||
+                lockedFields.has(f.id)
               )
                 setRowId(r.id);
               else if (f.type === "checkbox")
@@ -2919,6 +2931,7 @@ export default function DatabaseView({
                                 : "≡"}
                       </span>
                       {f.name}
+                      <FieldLock field={f} groups={data.groups || []} />
                     </button>
                     {viewEditable && (
                       <span
@@ -3466,8 +3479,8 @@ export default function DatabaseView({
             editable
               ? (r) => ({
                   property: (f) =>
-                    computedTypes.includes(f.type) ? (
-                      display(r, f)
+                    computedTypes.includes(f.type) || lockedFields.has(f.id) ? (
+                      <span title={lockedTitle(f)}>{display(r, f)}</span>
                     ) : (
                       <CellInput
                         field={f}
@@ -4147,7 +4160,7 @@ export default function DatabaseView({
                 }}
               >
                 {fields
-                  .filter((f) => !computedTypes.includes(f.type))
+                  .filter((f) => !computedTypes.includes(f.type) && !lockedFields.has(f.id))
                   .map((f) => (
                     <option key={f.id} value={f.id}>
                       {f.name}
@@ -4911,6 +4924,19 @@ export default function DatabaseView({
               )}
             </>
           )}
+          <FieldAccessEditor
+            draft={fieldDraft}
+            groups={data.groups || []}
+            owner={data.role === "owner"}
+            isTitle={fields[0]?.id === fieldDraft.id || (!fields.length)}
+            disabled={!editable || !allowFieldChanges || schemaBusy}
+            onChange={(access) =>
+              setFieldDraft((f) => {
+                const { access: _old, ...rest } = f;
+                return access ? { ...rest, access } : rest;
+              })
+            }
+          />
           {(fieldError || fieldVersion !== data.database.version) && (
             <p role="alert" className="error">
               {fieldVersion !== data.database.version
@@ -5297,16 +5323,18 @@ export default function DatabaseView({
                           )}
                         </span>
                       ) : (
-                        <CellInput
-                          field={f}
-                          value={selected.cells[f.id]}
-                          members={members}
-                          related={related}
-                          disabled={!selectedEditable}
-                          onChange={(v) => updateCell(selected, f, v)}
-                          upload={selectedEditable ? uploadFile : undefined}
-                          files={data.files}
-                        />
+                        <span title={lockedTitle(f)}>
+                          <CellInput
+                            field={f}
+                            value={selected.cells[f.id]}
+                            members={members}
+                            related={related}
+                            disabled={!selectedEditable || lockedFields.has(f.id)}
+                            onChange={(v) => updateCell(selected, f, v)}
+                            upload={selectedEditable && !lockedFields.has(f.id) ? uploadFile : undefined}
+                            files={data.files}
+                          />
+                        </span>
                       )}
                     </PropertyRow>
                     {f.ai && (

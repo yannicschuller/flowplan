@@ -6,6 +6,7 @@
 // records with their content and files; a move keeps the record itself –
 // content, comments, versions, time and Git links travel with it – and
 // gives it a number in the new database.
+import { assertFieldsWritable, hiddenFieldsFor } from "./field-access";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -113,8 +114,13 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
   // Properties the target lacks, created on request.
   const created: string[] = [];
   const mapping = new Map<string, Field>();
+  // Properties hidden from this person are not copied; moving would lose
+  // them, so it is refused (lib/field-access.ts).
+  const hidden = hiddenFieldsFor(user, source, sourceFields);
+  if (hidden.size && b.mode === "move")
+    throw new HttpError(403, "Diese Einträge haben Eigenschaften, die du nicht sehen darfst.");
   sourceFields.forEach((f, i) => {
-    if (NOT_COPIED.has(f.type) || f.parent) return;
+    if (NOT_COPIED.has(f.type) || f.parent || hidden.has(f.id)) return;
     let to = match(f, targetFields, i === 0);
     if (!to && b.addMissing && !["relation", "time"].includes(f.type) && targetFields.length < 80) {
       to = { id: `t${id().slice(0, 7)}`, name: f.name, type: f.type, ...(f.options ? { options: [...f.options] } : {}), ...(f.format ? { format: f.format } : {}), ...(f.decimals !== undefined ? { decimals: f.decimals } : {}) };
@@ -123,6 +129,12 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
     }
     if (to) mapping.set(f.id, to);
   });
+  assertFieldsWritable(
+    user,
+    target,
+    targetFields,
+    [...mapping.values()].map((f) => f.id),
+  );
   let optionsAdded = false;
   const addOption = (f: Field, o: string) => {
     f.options = [...(f.options || []), o].slice(0, 100);

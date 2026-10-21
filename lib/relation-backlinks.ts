@@ -1,4 +1,5 @@
 import { rowRole, rowRoleResolver } from "./row-access";
+import { hiddenFieldsFor } from "./field-access";
 import { all, one } from "./db";
 import { pageRole, requirePage } from "./permissions";
 import { cellText } from "./cell-text";
@@ -37,8 +38,12 @@ export function relationBacklinks(
   const links: Backlink[] = [];
   for (const source of sources) {
     if (!pageRole(user, source)) continue;
+    const hidden = hiddenFieldsFor(user, source, JSON.parse(source.fields));
     const fields = (JSON.parse(source.fields) as Field[]).filter(
-      (f) => f.type === "relation" && f.relationPage === page.id,
+      (f) =>
+        f.type === "relation" &&
+        f.relationPage === page.id &&
+        !hidden.has(f.id),
     );
     if (!fields.length) continue;
     const visible = rowRoleResolver(user, source);

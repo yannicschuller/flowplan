@@ -4,6 +4,7 @@
 // /api/files/<id> – with the same rights as the Markdown export
 // (lib/markdown-export.ts): readable pages only, PIN-locked journals and
 // hidden records stay out.
+import { readableDatabase } from "./field-access";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
@@ -271,7 +272,8 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
     if (page.kind === "document" || page.kind === "journal")
       return { page, depth, title: page.title, html: one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id)?.html || "", svg: null, cover };
     // A database: its records as a table, then every record's document.
-    const schema = database(page.id),
+    // Properties hidden from this person are left out (lib/field-access.ts).
+    const schema = readableDatabase(user, page, database(page.id)),
       fields = schema.fields,
       related = relatedData(user, page),
       visibleRecords = visibleRows(user, page, rows(page.id)).filter((row) => !options.rowId || row.id === options.rowId);

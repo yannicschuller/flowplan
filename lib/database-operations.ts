@@ -13,6 +13,7 @@ import { all, one, run, id } from "./db";
 import { requirePage } from "./permissions";
 import { rowGrants, rowRoleResolver } from "./row-access";
 import { HttpError } from "./auth";
+import { assertFieldsWritable } from "./field-access";
 import { replaceRowDocument } from "./row-documents";
 import { relationPairs } from "./relation-sync";
 import type { Identity, Field, Page, Row } from "./types";
@@ -37,6 +38,8 @@ export function validateCellPatch(
     result: Record<string, unknown> = {};
   if (!Object.keys(patch).length)
     throw new HttpError(400, "Mindestens eine Eigenschaft wählen.");
+  // Properties this person may not change (lib/field-access.ts).
+  assertFieldsWritable(user, page, fields, Object.keys(patch));
   for (const [key, value] of Object.entries(patch)) {
     const f = fields.find((f) => f.id === key);
     if (!f || computed.includes(f.type))

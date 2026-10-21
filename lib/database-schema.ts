@@ -9,6 +9,15 @@ import { MAX_ORDERED_ROWS } from "./row-order";
 import { rollupAggregates } from "./rollups";
 import { calculationsSchema } from "./database-summary";
 const str = z.string().min(1).max(500);
+// Field-level permissions (lib/field-access.ts).
+const accessRule = z.union([
+  z.enum(["all", "editors", "owners"]),
+  z.object({ groups: z.array(z.string().min(1).max(100)).min(1).max(50) }),
+]);
+export const fieldAccess = z.object({
+  read: accessRule.optional(),
+  write: accessRule.optional(),
+});
 export const field = z.object({
   id: str,
   name: str,
@@ -62,6 +71,7 @@ export const field = z.object({
       autoBy: z.string().max(100).optional(),
     })
     .optional(),
+  access: fieldAccess.optional(),
 });
 export const view = z
   .object({

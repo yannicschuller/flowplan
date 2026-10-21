@@ -5,6 +5,7 @@
 // webhook's secret), queued and retried. Internal addresses are refused
 // unless FLOWPLAN_WEBHOOK_ALLOW_PRIVATE=true (e.g. Home Assistant or n8n in
 // the same network).
+import { publicHiddenFieldIds, stripCells } from "./field-access";
 import { createHmac, randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -118,6 +119,23 @@ export function emitWebhook(
     workspaceId,
   );
   let queued = 0;
+  // Receivers are outside: properties with a read rule are never sent
+  // (lib/field-access.ts).
+  if (data.pageId && (data.cells || data.changed) && hooks.length) {
+    const hidden = publicHiddenFieldIds(
+      JSON.parse(
+        String(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", data.pageId)?.fields || "[]"),
+      ),
+    );
+    if (hidden.size)
+      data = {
+        ...data,
+        ...(data.cells ? { cells: stripCells(data.cells, hidden) } : {}),
+        ...(Array.isArray(data.changed)
+          ? { changed: (data.changed as string[]).filter((key) => !hidden.has(key)) }
+          : {}),
+      };
+  }
   for (const hook of hooks) {
     if (!(JSON.parse(hook.events) as string[]).includes(event)) continue;
     if (hook.page_id && hook.page_id !== data.pageId) continue;

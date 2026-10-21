@@ -1,3 +1,4 @@
+import { hiddenFieldsFor, stripCells } from "./field-access";
 import { all } from "./db";
 import { hiddenRowIds } from "./row-access";
 import { trashedRole } from "./row-trash";
@@ -20,14 +21,22 @@ export function hiddenFileIds(user: Identity, page: Pick<Page, "id" | "kind" | "
     const payload = JSON.parse(trashed.payload) as Parameters<typeof trashedRole>[2];
     if (!trashedRole(user, page as Page, payload)) for (const id of ids(trashed.payload)) inHidden.add(id);
   }
-  if (!hidden.size && !inHidden.size) return new Set();
-  for (const row of all<{ id: string; text: string }>(
-    `SELECT r.id,r.cells||' '||COALESCE(r.icon,'')||' '||COALESCE(r.cover,'')||' '||COALESCE(r.content,'')||' '||COALESCE(d.html,'') text
+  // Files in properties hidden from this person (lib/field-access.ts).
+  const hiddenFields = hiddenFieldsFor(user, page as Page);
+  if (!hidden.size && !inHidden.size && !hiddenFields.size) return new Set();
+  for (const row of all<{ id: string; cells: string; text: string }>(
+    `SELECT r.id,r.cells,COALESCE(r.icon,'')||' '||COALESCE(r.cover,'')||' '||COALESCE(r.content,'')||' '||COALESCE(d.html,'') text
      FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.page_id=?`,
     page.id,
   )) {
     const target = hidden.has(row.id) ? inHidden : inVisible;
-    for (const id of ids(row.text)) target.add(id);
+    let cells = row.cells;
+    if (hiddenFields.size && cells.includes("/api/files/")) {
+      const parsed = JSON.parse(cells) as Record<string, unknown>;
+      for (const key of hiddenFields) for (const id of ids(JSON.stringify(parsed[key] ?? ""))) inHidden.add(id);
+      cells = stripCells(cells, hiddenFields);
+    }
+    for (const id of ids(`${cells} ${row.text}`)) target.add(id);
   }
   for (const id of inVisible) inHidden.delete(id);
   return inHidden;

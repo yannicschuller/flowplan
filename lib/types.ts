@@ -126,6 +126,9 @@ export type Field = {
   // properties ({Name}); `auto` recomputes when they change, as `autoBy`
   // (set by the server: the person who switched it on). lib/ai/database.ts
   ai?: { prompt: string; auto?: boolean; autoBy?: string };
+  // Who reads and who changes this property (lib/field-access.ts); unset
+  // means everyone with access reads and editors write.
+  access?: import("./field-access").FieldAccess;
 };
 export type Row = {
   id: string;

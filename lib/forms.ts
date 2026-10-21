@@ -1,4 +1,5 @@
 import { visibleRows } from "./row-access";
+import { fieldWriteMessage, publicWritable } from "./field-access";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requireMember, requirePage } from "./permissions";
@@ -55,7 +56,11 @@ export function getForm(token: string, user: Identity | null) {
     ),
     config = formConfigSchema.parse(JSON.parse(f.config));
   const internal = !!f.internal && !!user;
-  const questions = orderedFormFields(fields, config, internal);
+  // Properties with a read or write rule are never asked in a form
+  // (lib/field-access.ts).
+  const questions = orderedFormFields(fields, config, internal).filter((q) =>
+    publicWritable(q, fields),
+  );
   return {
     ...f,
     config,
@@ -120,6 +125,11 @@ export function saveFormSubmission(
       pageId,
     )!.fields,
   );
+  for (const key of Object.keys(values)) {
+    const f = fields.find((f) => f.id === key);
+    if (f && !publicWritable(f, fields))
+      throw new HttpError(403, fieldWriteMessage(f));
+  }
   const result = validateFormValues(fields, config, values, internal);
   if (Object.keys(result.errors).length)
     throw new HttpError(400, Object.values(result.errors).join(" "));

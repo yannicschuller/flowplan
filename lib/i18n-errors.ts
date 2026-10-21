@@ -705,6 +705,13 @@ const exact: Record<string, string> = {
   "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
   "Kein Dashboard.": "Not a dashboard.",
   "Kachel-IDs doppelt.": "Duplicate tile IDs.",
+  // Field-level permissions (lib/field-access.ts).
+  "Nur Besitzer der Datenbank ändern die Sichtbarkeit von Eigenschaften.": "Only owners of the database change the visibility of properties.",
+  "Die erste Eigenschaft (Titel) ist immer sichtbar.": "The first property (title) is always visible.",
+  "Zu viele Eigenschaften.": "Too many properties.",
+  "Diese Version enthält Eigenschaften mit eigener Sichtbarkeit. Nur Besitzer stellen sie wieder her.": "This version contains properties with their own visibility. Only owners restore it.",
+  "Dieser Eintrag hat Eigenschaften, die du nicht sehen darfst.": "This record has properties you may not see.",
+  "Diese Einträge haben Eigenschaften, die du nicht sehen darfst.": "These records have properties you may not see.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
@@ -776,6 +783,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
   [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],
+  [/^„(.+)“ ist nur für bestimmte Personen bearbeitbar\.$/, "“$1” can only be edited by certain people."],
 ];
 
 export function englishMessage(message: string) {

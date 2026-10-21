@@ -1,3 +1,4 @@
+import { readableDatabase } from "./field-access";
 import { visibleRows } from "./row-access";
 import { hiddenFileIds } from "./row-files";
 import { fileUrls } from "./file-cells";
@@ -150,7 +151,8 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       .map((page) => [
         page.id,
         {
-          schema: database(page.id),
+          // Properties hidden from this person are left out (lib/field-access.ts).
+          schema: readableDatabase(user, page, database(page.id)),
           rows: visibleRows(user, page, rows(page.id)).filter((row) => !options.rowId || row.id === options.rowId),
           ...relatedData(user, page),
         },

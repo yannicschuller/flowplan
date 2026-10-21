@@ -1,4 +1,5 @@
 import { lockedPageIds } from "./journal-extras";
+import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
 import { all, one, run, transaction } from "./db";
 import { pageRole } from "./permissions";
@@ -77,7 +78,10 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
   );
   if (!row) return;
   const cells = JSON.parse(row.cells) as Record<string, unknown>;
-  const [titleField, ...rest] = fields;
+  // One index serves everyone: properties with a read rule (and what is
+  // derived from them) are not indexed (lib/field-access.ts).
+  const hidden = publicHiddenFieldIds(fields);
+  const [titleField, ...rest] = fields.filter((f) => !hidden.has(f.id));
   const title = titleField ? cellWords(cells[titleField.id]) : "";
   const values = rest
     .filter((f) => !IGNORED.includes(f.type))

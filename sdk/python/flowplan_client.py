@@ -98,6 +98,7 @@ Field = TypedDict("Field", {
     "estimateField": str,
     "prefix": str,
     "ai": dict[str, Any],
+    "access": dict[str, Any],
 }, total=False)
 
 # A view of a database (table, board, calendar, …).

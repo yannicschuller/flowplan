@@ -3,6 +3,7 @@ import { all, one, run, audit } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { rowAccessModes, type RowAccessMode } from "./row-access-modes";
+import { hiddenFieldsFor, stripCells } from "./field-access";
 import type { Identity, Page, Role } from "./types";
 
 // Record permissions on top of the database page role. "readonly" records
@@ -81,17 +82,24 @@ export function roleWithGrants(
 export function rowRole(user: Identity, page: Page, row: AccessRow) {
   return rowRoleResolver(user, page)(row);
 }
-// Rows a person may see, each with the role they have on it.
+// Rows a person may see, each with the role they have on it, without the
+// cells of properties hidden from them (lib/field-access.ts).
 export function visibleRows<T extends AccessRow>(
   user: Identity,
   page: Page,
   rows: T[],
 ) {
-  const resolve = rowRoleResolver(user, page);
-  return rows.flatMap((r) => {
-    const role = resolve(r);
-    return role ? [{ ...r, role }] : [];
+  const role = pageRole(user, page);
+  const resolve = rowRoleResolver(user, page, role);
+  const shown = rows.flatMap((r) => {
+    const rowRole = resolve(r);
+    return rowRole ? [{ ...r, role: rowRole }] : [];
   });
+  if (!shown.some((r) => "cells" in r)) return shown;
+  const hidden = hiddenFieldsFor(user, page, undefined, role);
+  return hidden.size
+    ? shown.map((r) => ("cells" in r ? { ...r, cells: stripCells((r as { cells: unknown }).cells, hidden) } : r))
+    : shown;
 }
 // Ids of records hidden from a person in a database (for filters in queries).
 export function hiddenRowIds(user: Identity, page: Page) {

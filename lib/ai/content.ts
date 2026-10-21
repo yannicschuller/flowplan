@@ -2,6 +2,7 @@
 // server, after the AI read check (lib/ai/access.ts), never taken from the
 // browser. Pages and records come as Markdown (the Markdown export), records
 // of a database view as a compact list of their properties.
+import { visibleFields } from "../field-access";
 import { HttpError } from "../auth";
 import { all, one } from "../db";
 import { exportMarkdown, computedTypes } from "../markdown-export";
@@ -70,7 +71,7 @@ export function aiDatabaseText(
 ): DatabaseText {
   requireAiRead(user, page.id);
   if (page.kind !== "database") throw new HttpError(400, "Keine Datenbank.");
-  const fields = database(page.id).fields as Field[];
+  const fields = visibleFields(user, page, database(page.id).fields as Field[]);
   const visible = visibleRows(user, page, databaseRows(page.id));
   const byId = new Map(visible.map((row) => [row.id, row]));
   const asked: Row[] = rowIds ? [...new Set(rowIds)].flatMap((id) => byId.get(id) || []) : visible;

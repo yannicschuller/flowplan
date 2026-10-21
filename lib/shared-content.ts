@@ -16,6 +16,7 @@ import { cleanHtml, htmlState, stateHtml } from "./document-server";
 import { ensureRowDocument } from "./row-documents";
 import type { Field, Row } from "./types";
 import { formulaReferences } from "./formula";
+import { readRestricted, writeRestricted } from "./field-access";
 import { cellText } from "./cell-text";
 import {
   fileIdOf,
@@ -27,7 +28,9 @@ import { documentChanged } from "./document-live";
 import { rowChanged, rowCreated } from "./automations";
 import { GUEST_LIVE_MB, takeAnonymousBudget } from "./anonymous-budget";
 
+// Properties with a read rule are never public (lib/field-access.ts).
 export const publicField = (f: Field) =>
+  !readRestricted(f) &&
   ![
     "person",
     "created_by",
@@ -76,20 +79,25 @@ export function guestFields(fields: Field[], pages: { id: string }[]) {
   return fields.filter(
     (f) =>
       visible(f) ||
-      f.type === "files" ||
-      (f.type === "relation" &&
-        !!f.relationPage &&
-        published.has(f.relationPage)),
+      (!readRestricted(f) &&
+        (f.type === "files" ||
+          (f.type === "relation" &&
+            !!f.relationPage &&
+            published.has(f.relationPage)))),
   );
 }
 const guestWritable = (f: Field, pages: { id: string }[]) =>
   writablePublicField(f) ||
-  f.type === "files" ||
-  (f.type === "relation" &&
-    !!f.relationPage &&
-    pages.some((p) => p.id === f.relationPage));
+  (!readRestricted(f) &&
+    !writeRestricted(f) &&
+    (f.type === "files" ||
+      (f.type === "relation" &&
+        !!f.relationPage &&
+        pages.some((p) => p.id === f.relationPage))));
 export const writablePublicField = (f: Field) =>
-  publicField(f) && !["created_at", "updated_at"].includes(f.type);
+  publicField(f) &&
+  !writeRestricted(f) &&
+  !["created_at", "updated_at"].includes(f.type);
 export type SharedComment = {
   id: string;
   name: string;
