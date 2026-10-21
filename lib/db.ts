@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 43) return;
+  if (globalDb.flowplanSchema === 44) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -620,7 +620,15 @@ function migrate(d: DatabaseSync) {
   }
   // Dashboard pages: their tiles as JSON (lib/dashboard-schema.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS dashboards(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,tiles TEXT NOT NULL DEFAULT '[]',updated_at TEXT DEFAULT CURRENT_TIMESTAMP);`);
-  globalDb.flowplanSchema = 43;
+  // E-mail inbound capture (lib/inbound-mail.ts): addresses with their
+  // target and allowed senders, the Message-IDs already stored, and the
+  // deliveries of the last hour for the rate limit.
+  d.exec(`CREATE TABLE IF NOT EXISTS inbound_addresses(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,label TEXT NOT NULL DEFAULT '',token TEXT UNIQUE NOT NULL,secret TEXT NOT NULL DEFAULT '',senders TEXT NOT NULL DEFAULT '[]',created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,last_received_at INTEGER,last_error TEXT,received INTEGER NOT NULL DEFAULT 0);
+    CREATE INDEX IF NOT EXISTS inbound_addresses_workspace ON inbound_addresses(workspace_id);
+    CREATE TABLE IF NOT EXISTS inbound_messages(address_id TEXT NOT NULL REFERENCES inbound_addresses(id) ON DELETE CASCADE,message_id TEXT NOT NULL,page_id TEXT,row_id TEXT,received_at INTEGER NOT NULL,PRIMARY KEY(address_id,message_id));
+    CREATE TABLE IF NOT EXISTS inbound_deliveries(address_id TEXT NOT NULL,at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS inbound_deliveries_address ON inbound_deliveries(address_id,at);`);
+  globalDb.flowplanSchema = 44;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

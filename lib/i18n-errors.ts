@@ -705,6 +705,18 @@ const exact: Record<string, string> = {
   "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
   "Kein Dashboard.": "Not a dashboard.",
   "Kachel-IDs doppelt.": "Duplicate tile IDs.",
+  // E-mail inbound capture (lib/inbound-mail.ts)
+  "Nur Eigentümer verwalten E-Mail-Eingänge.": "Only owners manage inbound e-mail addresses.",
+  "Ungültiger Absender in der Liste.": "Invalid sender in the list.",
+  "E-Mails landen nur unter einer Seite oder in einer Datenbank.": "E-mails can only go below a page or into a database.",
+  "Bitte mindestens einen erlaubten Absender angeben.": "Please enter at least one allowed sender.",
+  "E-Mail-Eingang nicht gefunden.": "Inbound e-mail address not found.",
+  "Höchstens 50 E-Mail-Eingänge pro Arbeitsbereich.": "At most 50 inbound e-mail addresses per workspace.",
+  "Format nicht unterstützt.": "Format not supported.",
+  "Zu viele E-Mails an diese Adresse. Bitte später erneut versuchen.": "Too many e-mails to this address. Please try again later.",
+  "Das Ziel dieses E-Mail-Eingangs ist nicht mehr beschreibbar.": "The target of this inbound address can no longer be written to.",
+  "E-Mail zu groß.": "E-mail too large.",
+  "Die E-Mail konnte nicht verarbeitet werden.": "The e-mail could not be processed.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
@@ -776,6 +788,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
   [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],
+  [/^Absender abgelehnt: (.+)$/, "Sender rejected: $1"],
 ];
 
 export function englishMessage(message: string) {

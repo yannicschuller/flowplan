@@ -1,0 +1,8 @@
+From: plain@example.net
+To: someone@example.test
+Subject: Nur
+  Text
+Content-Type: text/plain; charset="ISO-8859-1"
+Content-Transfer-Encoding: 8bit
+
+Grüße aus Köln

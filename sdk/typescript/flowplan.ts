@@ -1083,11 +1083,53 @@ export type CommandWebhookDeleteResult = {
   ok: true;
 };
 
+/** Create or change an inbound e-mail address. Workspace owners only. Mail to the address becomes a page below `pageId` (a document) or a record in it (a database). Only the listed senders (addresses or domains) get in. Without `id` a new address with a fresh token is created (at most 50 per workspace). `secret` sets a signing key for the HMAC check of the webhook ("" removes it). */
+export type CommandInboundSave = {
+  action: "inbound.save";
+  workspaceId: string;
+  /** Change this address instead of creating one */
+  id?: string;
+  /** Target page (document) or database */
+  pageId: string;
+  label?: string;
+  /** Allowed senders: e-mail addresses or domains */
+  senders: string[];
+  /** Signing key (X-Flowplan-Signature or Mailgun signature) */
+  secret?: string;
+};
+
+export type CommandInboundSaveResult = {
+  id: string;
+};
+
+/** Give an inbound e-mail address a new token. Workspace owners only. The old webhook URL and address stop working at once. */
+export type CommandInboundRotate = {
+  action: "inbound.rotate";
+  workspaceId: string;
+  id: string;
+};
+
+export type CommandInboundRotateResult = {
+  id: string;
+  token: string;
+};
+
+/** Remove an inbound e-mail address. Workspace owners only. */
+export type CommandInboundDelete = {
+  action: "inbound.delete";
+  workspaceId: string;
+  id: string;
+};
+
+export type CommandInboundDeleteResult = {
+  ok: true;
+};
+
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : CommandResult;
 
 // ---- Client ----
 
@@ -1553,6 +1595,16 @@ export class FlowplanClient {
   /** Register a webhook — Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command. (POST /api/webhooks) */
   async createWebhook(body: WebhookCreate, options?: RequestOptions): Promise<WebhookCreated> {
     return this.json<WebhookCreated>("POST", `/api/webhooks`, { json: body }, options);
+  }
+
+  /** Inbound e-mail addresses of a workspace — Owners only. Each address with its target, allowed senders, webhook URL, e-mail address (IMAP mode, when INBOUND_MAIL_DOMAIN is set) and the last delivery. Created, rotated and removed with `inbound.save`, `inbound.rotate` and `inbound.delete`. (GET /api/inbound-mail) */
+  async listInboundMail(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/inbound-mail`, { query }, options);
+  }
+
+  /** Receive an e-mail (for mail providers) — External: the secret token of the address is the authorization; no bearer token. Accepts the generic JSON format (`from`, `to`, `subject`, `text`, `html`, `messageId`, `date`, `attachments[]` with base64 `content`, or `raw` for a whole message), multipart/form-data with the same fields, Mailgun, Postmark and SendGrid Inbound Parse posts, and raw `message/rfc822`. With a signing key the request needs `X-Flowplan-Signature: sha256=<HMAC of the body>` or Mailgun's signature fields. 60 mails per address and hour (429). Answers 200 for stored, duplicate (same Message-ID) and rejected (sender not allowed) mail. (POST /api/inbound-mail/{token}) */
+  async receiveInboundMail(token: string, body: Record<string, unknown>, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/inbound-mail/${encodeURIComponent(token)}`, { json: body }, options);
   }
 
   /** Whether a calendar view has an iCalendar link or CalDAV access (GET /api/calendar-feed) */

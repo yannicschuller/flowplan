@@ -634,8 +634,46 @@ CommandWebhookDeleteResult = TypedDict("CommandWebhookDeleteResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Create or change an inbound e-mail address. Workspace owners only. Mail to the address becomes a page below `pageId` (a document) or a record in it (a database). Only the listed senders (addresses or domains) get in. Without `id` a new address with a fresh token is created (at most 50 per workspace). `secret` sets a signing key for the HMAC check of the webhook ("" removes it).
+CommandInboundSave = TypedDict("CommandInboundSave", {
+    "action": Required[Literal["inbound.save"]],
+    "workspaceId": Required[str],
+    "id": str,  # Change this address instead of creating one
+    "pageId": Required[str],  # Target page (document) or database
+    "label": str,
+    "senders": Required[list[str]],  # Allowed senders: e-mail addresses or domains
+    "secret": str,  # Signing key (X-Flowplan-Signature or Mailgun signature)
+}, total=False)
+
+CommandInboundSaveResult = TypedDict("CommandInboundSaveResult", {
+    "id": Required[str],
+}, total=False)
+
+# Give an inbound e-mail address a new token. Workspace owners only. The old webhook URL and address stop working at once.
+CommandInboundRotate = TypedDict("CommandInboundRotate", {
+    "action": Required[Literal["inbound.rotate"]],
+    "workspaceId": Required[str],
+    "id": Required[str],
+}, total=False)
+
+CommandInboundRotateResult = TypedDict("CommandInboundRotateResult", {
+    "id": Required[str],
+    "token": Required[str],
+}, total=False)
+
+# Remove an inbound e-mail address. Workspace owners only.
+CommandInboundDelete = TypedDict("CommandInboundDelete", {
+    "action": Required[Literal["inbound.delete"]],
+    "workspaceId": Required[str],
+    "id": Required[str],
+}, total=False)
+
+CommandInboundDeleteResult = TypedDict("CommandInboundDeleteResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -850,6 +888,10 @@ EmbedQuery = TypedDict("EmbedQuery", {
 }, total=False)
 
 ListWebhooksQuery = TypedDict("ListWebhooksQuery", {
+    "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+ListInboundMailQuery = TypedDict("ListInboundMailQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
 
@@ -1200,6 +1242,14 @@ class FlowplanClient:
     def create_webhook(self, body: "WebhookCreate", headers: Optional[dict[str, str]] = None) -> "WebhookCreated":
         """Register a webhook — Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command. (POST /api/webhooks)"""
         return self._json("POST", "/api/webhooks", json_body=body, headers=headers)
+
+    def list_inbound_mail(self, query: "ListInboundMailQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Inbound e-mail addresses of a workspace — Owners only. Each address with its target, allowed senders, webhook URL, e-mail address (IMAP mode, when INBOUND_MAIL_DOMAIN is set) and the last delivery. Created, rotated and removed with `inbound.save`, `inbound.rotate` and `inbound.delete`. (GET /api/inbound-mail)"""
+        return self._json("GET", "/api/inbound-mail", query=dict(query) if query else None, headers=headers)
+
+    def receive_inbound_mail(self, token: str, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Receive an e-mail (for mail providers) — External: the secret token of the address is the authorization; no bearer token. Accepts the generic JSON format (`from`, `to`, `subject`, `text`, `html`, `messageId`, `date`, `attachments[]` with base64 `content`, or `raw` for a whole message), multipart/form-data with the same fields, Mailgun, Postmark and SendGrid Inbound Parse posts, and raw `message/rfc822`. With a signing key the request needs `X-Flowplan-Signature: sha256=<HMAC of the body>` or Mailgun's signature fields. 60 mails per address and hour (429). Answers 200 for stored, duplicate (same Message-ID) and rejected (sender not allowed) mail. (POST /api/inbound-mail/{token})"""
+        return self._json("POST", "/api/inbound-mail/" + _p(token), json_body=body, headers=headers)
 
     def calendar_feed_status(self, query: "CalendarFeedStatusQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Whether a calendar view has an iCalendar link or CalDAV access (GET /api/calendar-feed)"""

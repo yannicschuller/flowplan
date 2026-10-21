@@ -17,6 +17,7 @@ import { SpaceExportDialog } from "./space-export";
 import { IntegrationSettings } from "./integration-settings";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
+import { InboundMailSettings } from "./inbound-mail-settings";
 import { AccountSecurity } from "./account-security";
 import { DeleteOwnAccount } from "./delete-own-account";
 import { MySessions } from "./my-sessions";
@@ -448,6 +449,7 @@ export default function Settings({
                     </SettingRow>
                   ))}
               </SettingGroup>
+              {owner && <InboundMailSettings workspaceId={boot.workspace.id} pages={boot.pages} onError={onError} />}
               <WorkspaceLifecycle key={boot.workspace.id} boot={boot} onExit={onWorkspaceExit} />
             </>
           )}

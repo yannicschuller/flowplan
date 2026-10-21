@@ -32,6 +32,7 @@ import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { followRename } from "./link-titles";
 import { captureRecord, setCaptureTarget } from "./capture";
+import { deleteInboundAddress, rotateInboundToken, saveInboundAddress } from "./inbound-mail";
 import { pageToRecord } from "./page-to-record";
 import { recordToPage } from "./record-to-page";
 import { textBacklinks } from "./text-backlinks";
@@ -2640,6 +2641,16 @@ export function command(
         break;
       case "webhook.delete":
         deleteWebhook(user, b);
+        break;
+      // E-mail inbound capture, by workspace owners (lib/inbound-mail.ts).
+      case "inbound.save":
+        result = saveInboundAddress(user, b);
+        break;
+      case "inbound.rotate":
+        result = rotateInboundToken(user, b);
+        break;
+      case "inbound.delete":
+        result = deleteInboundAddress(user, b);
         break;
       case "admin.user": {
         requireAdmin(user);
