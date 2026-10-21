@@ -27,6 +27,21 @@ export const formConfigSchema = z.object({
   // Survey mode (lib/survey.ts): question types, pages, conditions …
   survey: surveySchema.optional(),
 });
+// The stored defaults are German; readers see them in their language as
+// long as nobody changed them.
+export function localizedFormTexts(
+  config: Pick<FormConfig, "submitLabel" | "successTitle" | "successMessage">,
+  t: (de: string, en: string) => string,
+) {
+  return {
+    submitLabel: config.submitLabel === "Antwort senden" ? t("Antwort senden", "Send answer") : config.submitLabel,
+    successTitle: config.successTitle === "Vielen Dank!" ? t("Vielen Dank!", "Thank you!") : config.successTitle,
+    successMessage:
+      config.successMessage === "Deine Antwort wurde gespeichert."
+        ? t("Deine Antwort wurde gespeichert.", "Your answer has been saved.")
+        : config.successMessage,
+  };
+}
 export type QuestionStyle = "long" | "buttons" | "scale";
 export const SCALE_MIN = 1,
   SCALE_MAX = 10;

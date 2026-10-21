@@ -148,9 +148,18 @@ export function AiWriter({
       void run({ url: "/api/ai/summarize", label: t("Sprachnotiz zusammenfassen", "Summarise voice note"), body: { pageId, ...(rowId ? { rowId } : {}), text: request.text, locale } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The prompt takes the focus once the panel is placed (hidden until then,
+  // and a hidden field cannot be focused) – once per return to "choose", so
+  // later repositioning (scrolling) leaves the focus alone.
+  const wantsFocus = useRef(false);
   useEffect(() => {
-    if (phase === "choose") input.current?.focus();
+    if (phase === "choose") wantsFocus.current = true;
   }, [phase]);
+  useEffect(() => {
+    if (phase !== "choose" || !place || !wantsFocus.current) return;
+    wantsFocus.current = false;
+    input.current?.focus();
+  }, [phase, place]);
 
   const close = useCallback(() => {
     controller.current?.abort();

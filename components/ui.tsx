@@ -1,5 +1,6 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
+import { tr } from "@/lib/locale-tag";
 import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
@@ -279,16 +280,30 @@ export const isTransient = (e: unknown) =>
   e instanceof TypeError || (e instanceof ApiError && e.transient);
 // The session ended (signed out elsewhere, expired): in the app, reload once –
 // "/" then shows the sign-in page and returns to the same page afterwards.
+// A listener that cancels the "flowplan:signed-out" event shows a banner
+// instead, so unsaved changes stay on this device until the reader signs in.
 let signingIn = false;
+export const SIGNED_OUT_EVENT = "flowplan:signed-out";
+export const signedOutMessage = () =>
+  tr("Du wurdest abgemeldet – melde dich erneut an, um deine Änderungen zu behalten.", "You were signed out – sign in again to keep your changes.");
 export function endedSession(url: string, status: number) {
   if (status !== 401 || typeof window === "undefined" || location.pathname !== "/") return false;
   const path = url.startsWith("http") ? new URL(url).pathname : url;
   if (!path.startsWith("/api/") || path.startsWith("/api/auth/")) return false;
+  if (!window.dispatchEvent(new CustomEvent(SIGNED_OUT_EVENT, { cancelable: true }))) return false;
   if (!signingIn) {
     signingIn = true;
     location.reload();
   }
   return true;
+}
+// Browsers' wording for a request that never reached the server.
+const NETWORK_ERRORS = /^(Failed to fetch|NetworkError when attempting to fetch resource\.|Load failed|The network connection was lost\.)$/;
+export const connectionMessage = () => tr("Keine Verbindung – bitte erneut versuchen.", "No connection – try again.");
+// What a toast shows for a failed request: network and server failures get
+// plain words; the server's own messages (HttpError 4xx) stay as they are.
+export function friendlyError(message: string) {
+  return NETWORK_ERRORS.test(message) ? connectionMessage() : message;
 }
 export async function api<T = Record<string, unknown>>(
   url: string,
@@ -314,11 +329,16 @@ export async function api<T = Record<string, unknown>>(
   }
   // No "please sign in" message: the sign-in page is on its way.
   if (endedSession(url, r.status)) return new Promise<T>(() => {});
+  const transient = [502, 503, 504].includes(r.status);
   if (!r.ok)
     throw new ApiError(
-      serverMessage(data?.error || "Anfrage fehlgeschlagen"),
+      r.status === 401 && !url.includes("/api/auth/")
+        ? signedOutMessage()
+        : r.status >= 500 && !transient
+          ? tr("Auf dem Server ist etwas schiefgelaufen. Bitte erneut versuchen.", "Something went wrong on the server. Try again.")
+          : serverMessage(data?.error || "Anfrage fehlgeschlagen"),
       r.status,
-      [502, 503, 504].includes(r.status),
+      transient,
     );
   // The mobile app updates its widgets and badge after a change.
   if (body) nativeRefresh();

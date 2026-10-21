@@ -1,4 +1,5 @@
 import { cellText } from "./database";
+import { tr } from "./locale-tag";
 import { orderedGroupRows } from "./row-order";
 import type { Field, Row, View, User } from "./types";
 export type DatabaseGroup = {
@@ -19,18 +20,18 @@ export function databaseGroups(
     const key = groupKey(value);
     if (!groups.has(key)) {
       const label = empty
-        ? "Ohne Gruppe"
+        ? tr("Ohne Gruppe", "No group")
         : field?.type === "relation"
           ? cellText(
               related[field.relationPage || ""]?.find((r) => r.id === value)
                 ?.cells.title,
-            ) || "Nicht verfügbar"
+            ) || tr("Nicht verfügbar", "Not available")
           : field && ["person", "created_by", "updated_by"].includes(field.type)
-            ? members.find((m) => m.id === value)?.name || "Unbekannte Person"
+            ? members.find((m) => m.id === value)?.name || tr("Unbekannte Person", "Unknown person")
             : field?.type === "checkbox"
               ? value
-                ? "Abgehakt"
-                : "Nicht abgehakt"
+                ? tr("Abgehakt", "Checked")
+                : tr("Nicht abgehakt", "Not checked")
               : cellText(value);
       groups.set(key, { key, label, value: empty ? null : value, rows: [] });
     }

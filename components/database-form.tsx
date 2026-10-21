@@ -7,6 +7,7 @@ import { Modal } from "./ui";
 import FormQuestions from "./form-questions";
 import {
   formConfigSchema,
+  localizedFormTexts,
   publicFormFields,
   validateFormValues,
   type FormConfig,
@@ -48,6 +49,7 @@ export default function DatabaseForm({
 }) {
   const t = useT();
   const config = form?.config || formConfigSchema.parse({});
+  const texts = localizedFormTexts(config, t);
   const [values, setValues] = useState<Record<string, unknown>>({}),
     [done, setDone] = useState(false),
     [errors, setErrors] = useState<Record<string, string>>({}),
@@ -120,7 +122,7 @@ export default function DatabaseForm({
           key={done ? "again" : "first"}
           survey={survey}
           fields={fields}
-          texts={{ title: config.title || page.title, description: config.description, submitLabel: config.submitLabel, successTitle: config.successTitle, successMessage: config.successMessage }}
+          texts={{ title: config.title || page.title, description: config.description, ...texts }}
           onSubmit={async (answers) => {
             const files = Object.values(answers).some((v) => Array.isArray(v) && v.some((x) => x instanceof File));
             if (files) throw new Error(t("Dateien lassen sich nur über den Link der Umfrage hochladen.", "Files can only be uploaded through the survey link."));
@@ -166,8 +168,8 @@ export default function DatabaseForm({
       {done ? (
         <div className="success">
           <Check />
-          <h3>{config.successTitle}</h3>
-          <p>{config.successMessage}</p>
+          <h3>{texts.successTitle}</h3>
+          <p>{texts.successMessage}</p>
           <button
             className="button"
             onClick={() => {
@@ -211,7 +213,7 @@ export default function DatabaseForm({
             }
           />
           <button className="button primary" disabled={!editable || busy}>
-            {busy ? t("Wird gesendet …", "Sending …") : config.submitLabel}
+            {busy ? t("Wird gesendet …", "Sending …") : texts.submitLabel}
           </button>
         </form>
       )}

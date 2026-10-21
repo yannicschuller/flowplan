@@ -113,6 +113,7 @@ export default function FormQuestions({
               disabled={disabled}
               commit="change"
               upload={upload}
+              placeholder={t("Hier eingeben …", "Type here …")}
               onChange={(v) => onChange(f.id, v)}
             />
           )}

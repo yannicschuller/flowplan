@@ -1,6 +1,6 @@
 "use client";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { useT } from "./i18n";
+import { useStatusLabel, useT } from "./i18n";
 import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Clock, Plus, SquaresFour } from "@phosphor-icons/react";
@@ -34,8 +34,10 @@ export default function RowDocument({
   onChanged: () => Promise<unknown>;
 }) {
   const t = useT();
+  const statusLabel = useStatusLabel();
+  // Saving states are German words, translated where shown (components/i18n.tsx).
   const [data, setData] = useState<RowDocumentData | null>(null),
-    [status, setStatus] = useState(t("Laden …", "Loading …")),
+    [status, setStatus] = useState("Laden …"),
     [history, setHistory] = useState(false),
     [changes, setChanges] = useState<string | null>(null),
     [saveTemplate, setSaveTemplate] = useState(false),
@@ -74,7 +76,7 @@ export default function RowDocument({
       <div className="row-document-heading">
         <h3>{t("Inhalt", "Content")}</h3>
         <span className="muted" role="status">
-          {status}
+          {statusLabel(status)}
         </span>
         <button
           className="icon-button"

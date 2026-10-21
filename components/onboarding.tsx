@@ -369,13 +369,13 @@ export function Onboarding({
             )}
             <ul className="onboarding-keys">
               <li>
-                <kbd>⌘/Strg K</kbd> {t("Suchen und Befehle", "Search and commands")}
+                <kbd>{t("⌘/Strg K", "⌘/Ctrl K")}</kbd> {t("Suchen und Befehle", "Search and commands")}
               </li>
               <li>
                 <kbd>/</kbd> {t("Blöcke in einer Seite", "Blocks in a page")}
               </li>
               <li>
-                <kbd>⌘/Strg ⌥ N</kbd> {t("Schnell erfassen", "Quick capture")}
+                <kbd>{t("⌘/Strg ⌥ N", "⌘/Ctrl ⌥ N")}</kbd> {t("Schnell erfassen", "Quick capture")}
               </li>
             </ul>
             <p className="muted">

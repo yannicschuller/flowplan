@@ -5,6 +5,7 @@ import {
   validDateValue,
   validZone,
 } from "./date-values";
+import { tr } from "./locale-tag";
 
 // Mirrors AppFlowy's reminder choices: offsets before a timed value, or days
 // before an all-day value at 09:00 in the reminder's time zone.
@@ -21,19 +22,22 @@ export type DateReminder = {
   timeZone: string;
 };
 
+// In the reader's language in the browser; German on the server.
 export function reminderLabel(offset: number, timed: boolean) {
   if (!timed) {
     const suffix = ` (${String(ALL_DAY_HOUR).padStart(2, "0")}:00)`;
-    if (offset === 0) return `Am Tag des Termins${suffix}`;
-    if (offset === 10080) return `1 Woche vorher${suffix}`;
-    return `${offset / 1440} ${offset === 1440 ? "Tag" : "Tage"} vorher${suffix}`;
+    if (offset === 0) return tr(`Am Tag des Termins${suffix}`, `On the day of the event${suffix}`);
+    if (offset === 10080) return tr(`1 Woche vorher${suffix}`, `1 week before${suffix}`);
+    if (offset === 1440) return tr(`1 Tag vorher${suffix}`, `1 day before${suffix}`);
+    return tr(`${offset / 1440} Tage vorher${suffix}`, `${offset / 1440} days before${suffix}`);
   }
-  if (offset === 0) return "Zum Zeitpunkt des Termins";
-  if (offset < 60) return `${offset} Minuten vorher`;
-  if (offset < 1440)
-    return `${offset / 60} ${offset === 60 ? "Stunde" : "Stunden"} vorher`;
-  if (offset === 10080) return "1 Woche vorher";
-  return `${offset / 1440} ${offset === 1440 ? "Tag" : "Tage"} vorher`;
+  if (offset === 0) return tr("Zum Zeitpunkt des Termins", "At the time of the event");
+  if (offset < 60) return tr(`${offset} Minuten vorher`, `${offset} minutes before`);
+  if (offset === 60) return tr("1 Stunde vorher", "1 hour before");
+  if (offset < 1440) return tr(`${offset / 60} Stunden vorher`, `${offset / 60} hours before`);
+  if (offset === 10080) return tr("1 Woche vorher", "1 week before");
+  if (offset === 1440) return tr("1 Tag vorher", "1 day before");
+  return tr(`${offset / 1440} Tage vorher`, `${offset / 1440} days before`);
 }
 
 export function reminderOffsets(value: unknown) {

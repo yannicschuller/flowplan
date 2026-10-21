@@ -6,7 +6,8 @@
   --hover: #ebe8e0;
   --border: #e4e0d6;
   --text: #1d1c22;
-  --muted: #8a8691;
+  /* Captions and hints: at least 4.5:1 on the page and sidebar backgrounds. */
+  --muted: #6f6b78;
   --secondary: #5e5a66;
   --blue: #3b3fd8;
   --blue-light: #ecebfc;
@@ -1194,6 +1195,12 @@ kbd,
 .document-editor .tableWrapper {
   overflow: auto;
 }
+/* Wide tables grow past the text column and scroll inside their wrapper
+   instead of squeezing every column to a character per line (the fixed
+   layout shares the width out regardless of the cells' minimum). */
+.document-editor .tableWrapper table {
+  table-layout: auto;
+}
 /* Callouts in the five kinds of GitHub alerts: a coloured left border, a
    light background and a title line with icon, in the reader's language. */
 .editor-callout,
@@ -1492,7 +1499,7 @@ aside[data-callout] p:last-child {
   white-space: nowrap;
 }
 .toolbar-right > .primary {
-  color: white;
+  color: var(--on-accent);
 }
 .toolbar-left > .active {
   color: var(--blue);
@@ -1518,6 +1525,57 @@ aside[data-callout] p:last-child {
 }
 .data-table-scroll {
   overflow-x: auto;
+}
+/* Horizontal scrollers (tables, boards): a scrollbar that stays visible and,
+   while more lies to the right, a fade at the edge (components/scroll-fade.tsx). */
+.data-table-scroll,
+.board {
+  scrollbar-gutter: stable;
+}
+.data-table-scroll::-webkit-scrollbar,
+.board::-webkit-scrollbar {
+  height: 9px;
+}
+.data-table-scroll::-webkit-scrollbar-thumb,
+.board::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+.data-table-scroll::-webkit-scrollbar-track,
+.board::-webkit-scrollbar-track {
+  background: transparent;
+}
+@supports not selector(::-webkit-scrollbar) {
+  .data-table-scroll,
+  .board {
+    scrollbar-width: thin;
+  }
+}
+.scroll-fade {
+  position: relative;
+  min-width: 0;
+}
+.scroll-fade::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--bg));
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.scroll-fade.scroll-more::after {
+  opacity: 1;
+}
+.scroll-fade > .database-tabs {
+  scrollbar-width: none;
+}
+.scroll-fade > .database-tabs::-webkit-scrollbar {
+  display: none;
 }
 .data-table {
   width: 100%;
@@ -1574,8 +1632,11 @@ aside[data-callout] p:last-child {
 .row-open {
   opacity: 0;
   color: var(--muted);
+  padding: 2px;
+  margin: -2px;
 }
-tr:hover .row-open {
+tr:hover .row-open,
+.row-open:focus-visible {
   opacity: 1;
 }
 .data-table .add-property {
@@ -1653,25 +1714,26 @@ tr:hover .row-open {
   color: var(--secondary);
   white-space: nowrap;
 }
+/* Chip text one step darker than its tint: 4.5:1 and more at 11 px. */
 .tag-blue {
   background: #e9f0fc;
-  color: #547fbd;
+  color: #3f6aa8;
 }
 .tag-green {
   background: #e8f3ec;
-  color: #59866b;
+  color: #3f6d52;
 }
 .tag-red {
   background: #fbecec;
-  color: #bd686a;
+  color: #a64f52;
 }
 .tag-yellow {
   background: #fbf1dc;
-  color: #a18a50;
+  color: #7d6a35;
 }
 .tag-gray {
   background: #eff0f3;
-  color: #848994;
+  color: #636873;
 }
 .tags {
   display: inline-flex;
@@ -3644,6 +3706,11 @@ tr:hover .row-open {
   color: #f3dc9a;
   border-color: #56461c;
 }
+.signed-out-banner a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
 .color-menu {
   padding: 8px;
   min-width: 220px;
@@ -4204,6 +4271,13 @@ mark[data-color] {
   color: inherit;
   width: 23px;
   height: 23px;
+}
+.toast > svg {
+  flex-shrink: 0;
+}
+.toast.toast-error {
+  background: #a32d2d;
+  color: #fff;
 }
 .callout {
   display: flex;
@@ -5055,6 +5129,23 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 [data-theme="dark"] .tag {
   filter: brightness(0.85);
 }
+/* Dark chips: a translucent tint with light text instead of the light tints. */
+[data-theme="dark"] .tag-blue {
+  background: rgba(110, 140, 240, 0.2);
+  color: #b4c6f5;
+}
+[data-theme="dark"] .tag-green {
+  background: rgba(90, 170, 120, 0.18);
+  color: #a8d8b9;
+}
+[data-theme="dark"] .tag-red {
+  background: rgba(235, 110, 110, 0.18);
+  color: #f3b0b0;
+}
+[data-theme="dark"] .tag-gray {
+  background: rgba(170, 175, 190, 0.18);
+  color: #c3c7d1;
+}
 [data-theme="dark"] .quick-icon {
   filter: brightness(0.8);
 }
@@ -5224,6 +5315,33 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .main {
     height: 100dvh;
+  }
+  /* The formatting tools dock at the bottom as one scrolling row instead of
+     sticking over the first lines of text (records keep theirs in place). */
+  .page-layout .editor-toolbar {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    width: auto;
+    margin: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    padding: 4px 8px calc(4px + var(--safe-bottom, 0px));
+    scrollbar-width: none;
+  }
+  .page-layout .editor-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .page-layout .editor-toolbar button {
+    flex-shrink: 0;
+  }
+  .page-layout .editor-wrapper {
+    padding-bottom: 56px;
   }
   .mobile-menu {
     display: flex;

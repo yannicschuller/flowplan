@@ -25,10 +25,13 @@ export function CellInput({
   commit = "blur",
   upload,
   files = [],
+  placeholder,
 }: {
   // Uploads a file to the database page and returns its URL.
   upload?: (file: File) => Promise<string>;
   files?: CellFile[];
+  // Text fields: what an empty field says (default "Empty", as in a table).
+  placeholder?: string;
   commit?: "change" | "blur";
   field: Field;
   value: unknown;
@@ -224,7 +227,7 @@ export function CellInput({
       step={f.type === "number" ? "any" : undefined}
       disabled={disabled}
       value={draft}
-      placeholder={t("Leer", "Empty")}
+      placeholder={placeholder ?? t("Leer", "Empty")}
       onChange={(e) => {
         setDraft(e.target.value);
         if (commit === "change")

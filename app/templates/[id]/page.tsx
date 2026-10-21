@@ -53,10 +53,10 @@ export default async function TemplatePreview({
     return (
       <main className="public-page template-preview">
         <a href="/templates" className="public-brand">
-          flowplan <span className="muted">/ Vorlagen</span>
+          flowplan <span className="muted">/ {t("Vorlagen", "Templates")}</span>
         </a>
         <p className="muted">
-          {builtIn.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")} · {templateCategories[builtIn.category]}
+          {builtIn.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")} · {t(templateCategories[builtIn.category])}
         </p>
         <h1>
           <span aria-hidden="true">{builtIn.icon}</span> {builtIn.name}
@@ -110,11 +110,11 @@ export default async function TemplatePreview({
   return (
     <main className="public-page template-preview">
       <a href="/templates" className="public-brand">
-        flowplan <span className="muted">/ Vorlagen</span>
+        flowplan <span className="muted">/ {t("Vorlagen", "Templates")}</span>
       </a>
       <p className="muted">
         {template.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")}
-        {template.categoryLabel && ` · ${template.categoryLabel}`}
+        {template.categoryLabel && ` · ${t(template.categoryLabel)}`}
       </p>
       <h1>{template.name}</h1>
       {/* After signing in, the app creates a page from this template. */}

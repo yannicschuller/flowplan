@@ -6,7 +6,7 @@ import { Check } from "@phosphor-icons/react";
 import { api } from "./ui";
 import FormQuestions from "./form-questions";
 import { SurveyRunner } from "./survey-runner";
-import { validateFormValues, type FormConfig } from "@/lib/form-settings";
+import { localizedFormTexts, validateFormValues, type FormConfig } from "@/lib/form-settings";
 import type { Field } from "@/lib/types";
 export default function FormClient({
   token,
@@ -31,6 +31,7 @@ export default function FormClient({
   config: FormConfig;
 }) {
   const t = useT();
+  const texts = localizedFormTexts(config, t);
   const [values, setValues] = useState<Record<string, unknown>>({}),
     [done, setDone] = useState(false),
     // Customer portal: the private link to the request.
@@ -81,7 +82,7 @@ export default function FormClient({
               <SurveyRunner
                 survey={config.survey}
                 fields={fields}
-                texts={{ title, description: config.description, submitLabel: config.submitLabel, successTitle: config.successTitle, successMessage: config.successMessage }}
+                texts={{ title, description: config.description, ...texts }}
                 after={ticketLink}
                 onSubmit={async (answers) => {
                   const result = await send(answers);
@@ -116,8 +117,8 @@ export default function FormClient({
         {done ? (
           <div className="success">
             <Check />
-            <h2>{config.successTitle}</h2>
-            <p>{config.successMessage}</p>
+            <h2>{texts.successTitle}</h2>
+            <p>{texts.successMessage}</p>
             {ticket && (
               <div className="ticket-link">
                 <p>
@@ -216,7 +217,7 @@ export default function FormClient({
               </p>
             )}
             <button className="button primary" disabled={busy}>
-              {busy ? t("Wird gesendet …", "Sending …") : config.submitLabel}
+              {busy ? t("Wird gesendet …", "Sending …") : texts.submitLabel}
             </button>
           </form>
         )}

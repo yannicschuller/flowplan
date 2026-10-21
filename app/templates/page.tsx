@@ -33,7 +33,7 @@ export default async function Templates({
   return (
     <main className="public-page template-gallery-page">
       <a href="/" className="public-brand">
-        flowplan <span className="muted">/ Vorlagen</span>
+        flowplan <span className="muted">/ {t("Vorlagen", "Templates")}</span>
       </a>
       <h1>{t("Vorlagengalerie", "Template gallery")}</h1>
       <p className="muted">
@@ -49,7 +49,7 @@ export default async function Templates({
             href={`/templates?category=${id}`}
             aria-current={active === id ? "page" : undefined}
           >
-            {label}
+            {t(label)}
           </a>
         ))}
       </nav>

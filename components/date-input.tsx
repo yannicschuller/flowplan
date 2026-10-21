@@ -148,12 +148,12 @@ export default function DateInput({
             )
           }
         />
-        {name}: Uhrzeit
+        {name}: {t("Uhrzeit", "Time")}
       </label>
       {timed && <small>{t("Zeitzone:", "Time zone:")}{" "}{zone}</small>}
       {timed && (
         <Select
-          aria-label={`${name}: Zeitumstellung`}
+          aria-label={t(`${name}: Zeitumstellung`, `${name}: clock change`)}
           disabled={disabled}
           value={choice}
           onChange={(e) => update(draft, timed, e.target.value as TimeChoice)}

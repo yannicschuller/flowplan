@@ -418,7 +418,7 @@ export default function Admin({
                                 placeholder={
                                   data.metrics.defaultQuotaMb
                                     ? t(`Standard ${data.metrics.defaultQuotaMb}`, `Default ${data.metrics.defaultQuotaMb}`)
-                                    : "unbegrenzt"
+                                    : t("unbegrenzt", "unlimited")
                                 }
                                 defaultValue={usage?.quotaMb ?? ""}
                                 onBlur={(e) => {
@@ -505,24 +505,25 @@ export default function Admin({
                     ],
                     [
                       t("Push-Warteschlange", "Push queue"),
-                      `${data.metrics.pushPending} offen · ${data.metrics.pushFailed} fehlgeschlagen`,
+                      t(`${data.metrics.pushPending} offen · ${data.metrics.pushFailed} fehlgeschlagen`, `${data.metrics.pushPending} pending · ${data.metrics.pushFailed} failed`),
                     ],
                     [
                       t("Suchindex", "Search index"),
                       data.metrics.searchBacklog
                         ? t(`${data.metrics.searchBacklog} Änderungen ausstehend`, `${data.metrics.searchBacklog} changes pending`)
-                        : "aktuell",
+                        : t("aktuell", "up to date"),
                     ],
                     [t("Erinnerungen", "Reminders"), String(data.metrics.reminders)],
                     [
                       t("Demos", "Demos"),
-                      `${data.metrics.demosActive} laufen · ${data.metrics.demosStarted} insgesamt gestartet${data.settings.publicDemo ? "" : " · ausgeschaltet"}`,
+                      t(`${data.metrics.demosActive} laufen · ${data.metrics.demosStarted} insgesamt gestartet`, `${data.metrics.demosActive} running · ${data.metrics.demosStarted} started in total`) +
+                        (data.settings.publicDemo ? "" : t(" · ausgeschaltet", " · switched off")),
                     ],
                     [
                       t("Standardkontingent", "Default quota"),
                       data.metrics.defaultQuotaMb
                         ? t(`${data.metrics.defaultQuotaMb} MB je Arbeitsbereich`, `${data.metrics.defaultQuotaMb} MB per workspace`)
-                        : "unbegrenzt",
+                        : t("unbegrenzt", "unlimited"),
                     ],
                     [
                       t("Laufzeit", "Uptime"),

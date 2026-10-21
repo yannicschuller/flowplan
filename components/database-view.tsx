@@ -56,6 +56,7 @@ import {
 } from "@/lib/date-values";
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
 import { GalleryCover } from "./gallery-cover";
+import { ScrollFade } from "./scroll-fade";
 import type { PageImage } from "@/lib/page-appearance";
 import {
   Fragment,
@@ -387,7 +388,10 @@ export default function DatabaseView({
     );
   // A record just created opens with its title ready for typing.
   const [freshRowId, setFreshRowId] = useState<string | null>(null);
+  // The record last opened: its row or card takes the focus back after closing.
+  const lastOpened = useRef<string | null>(null);
   function setRowId(id: string | null, occurrence?: string) {
+    if (id) lastOpened.current = id;
     setOccurrence(id && occurrence ? { rowId: id, date: occurrence } : null);
     setLocalRowId(id);
     if (routeNavigation) {
@@ -1651,6 +1655,11 @@ export default function DatabaseView({
   }
   const galleryConfig = view.gallery || defaultGallery;
   const galleryImages = new Set((data.images || []).map((image) => image.url));
+  // No cover boxes while no record has an image (or a colour) to show.
+  const galleryCovers =
+    view.type === "gallery" &&
+    galleryConfig.cover !== "none" &&
+    (galleryConfig.cover === "record" || shown.some((r) => galleryImage(r, galleryConfig, fields, galleryImages)));
   function card(r: Row, groupKey?: string) {
     return (
       <div
@@ -1678,7 +1687,7 @@ export default function DatabaseView({
             setRowId(r.id);
           }}
         >
-          {view.type === "gallery" && galleryConfig.cover !== "none" && (
+          {galleryCovers && (
             <GalleryCover
               key={
                 galleryImage(r, galleryConfig, fields, galleryImages) || "empty"
@@ -1695,7 +1704,8 @@ export default function DatabaseView({
           <div className="card-properties">
             {visibleFields
               .slice(1, 4)
-              .filter((f) => r.cells[f.id])
+              // The card's date sits in the footer; not twice.
+              .filter((f) => r.cells[f.id] && f.id !== dateField?.id)
               .map((f) => (
                 <span key={f.id}>{display(r, f)}</span>
               ))}
@@ -2410,7 +2420,17 @@ export default function DatabaseView({
                 )}
                 {display(r, f)}
                 {f.id === fields[0].id && (
-                  <ArrowSquareOut className="row-open" size={14} />
+                  <button
+                    type="button"
+                    className="row-open"
+                    aria-label={t(`Eintrag öffnen: ${cellText(r.cells[fields[0].id]) || "Ohne Titel"}`, `Open record: ${cellText(r.cells[fields[0].id]) || "Untitled"}`)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRowId(r.id);
+                    }}
+                  >
+                    <ArrowSquareOut size={14} />
+                  </button>
                 )}
               </span>
             )}
@@ -2463,7 +2483,7 @@ export default function DatabaseView({
         setRecordMenu({ x: e.clientX, y: e.clientY, rowIds });
       }}
     >
-      <div className="database-tabs" role="group" aria-label={t("Ansichten", "Views")}>
+      <ScrollFade className="database-tabs" role="group" aria-label={t("Ansichten", "Views")}>
         {data.database.views.map((v) => {
           const Icon = viewIcons[v.type];
           if (renamingView === v.id)
@@ -2554,7 +2574,7 @@ export default function DatabaseView({
             <Plus />
           </button>
         )}
-      </div>
+      </ScrollFade>
       <div className="database-toolbar">
         <div className="toolbar-left">
           <button
@@ -2754,7 +2774,7 @@ export default function DatabaseView({
       <ViewTransition key={view.id} enter="db-view-in" exit="db-view-out" default="none">
       <>
       {view.type === "table" && (
-        <div className="data-table-scroll">
+        <ScrollFade className="data-table-scroll">
           <table
             className="data-table configurable-table"
             style={{
@@ -3059,7 +3079,7 @@ export default function DatabaseView({
               </tr>
             </tfoot>
           </table>
-        </div>
+        </ScrollFade>
       )}
       {lanes && (
         <div className="board board-swimlanes">
@@ -3190,7 +3210,7 @@ export default function DatabaseView({
         </div>
       )}
       {view.type === "board" && !lanes && (
-        <div className="board">
+        <ScrollFade className="board">
           {groups.map((g) => (
             <section
               className={`board-column${collapsed(g.key) ? " collapsed" : ""}${groupDrop === g.key ? " group-drop" : ""}`}
@@ -3378,7 +3398,7 @@ export default function DatabaseView({
                 }
               />
             )}
-        </div>
+        </ScrollFade>
       )}
       {view.type === "sprint" && (
         <DatabaseSprints
@@ -5236,6 +5256,14 @@ export default function DatabaseView({
       <Modal
         open={!!selected}
         onClose={() => setRowId(null)}
+        // Back to the record's row or card, so the keyboard stays in the view.
+        onCloseAutoFocus={(event) => {
+          const row = lastOpened.current && boardRef.current?.querySelector(`[data-row-id="${CSS.escape(lastOpened.current)}"]`);
+          const opener = row && (row.querySelector<HTMLElement>(".row-open") || row.querySelector<HTMLElement>("button"));
+          if (!opener) return;
+          event.preventDefault();
+          opener.focus();
+        }}
         title={t("Eintrag", "Record")}
         wide
         actions={selected && recordActions(selected)}

@@ -848,7 +848,7 @@ export default function DocumentEditor({
       onStatus(
         navigator.onLine
           ? editable
-            ? t("Synchronisieren …", "Syncing …")
+            ? "Synchronisieren …"
             : "Gespeichert"
           : "Offline gespeichert",
       );
@@ -1121,30 +1121,11 @@ export default function DocumentEditor({
       icon: { note: Info, tip: Lightbulb, important: ChatCenteredText, warning: Warning, caution: WarningOctagon }[type],
       run: () => {
         if (editor?.isActive("callout")) return void editor.chain().focus().updateAttributes("callout", { type }).run();
+        // An empty paragraph (the placeholder invites typing), never sample text.
         editor
           ?.chain()
           .focus()
-          .insertContent({
-            type: "callout",
-            attrs: { type },
-            content: [
-              {
-                type: "paragraph",
-                content: [
-                  {
-                    type: "text",
-                    text: {
-                      note: t("Gut zu wissen …", "Good to know …"),
-                      tip: t("Ein Tipp …", "A tip …"),
-                      important: t("Wichtig ist …", "What matters …"),
-                      warning: t("Achtung bei …", "Watch out for …"),
-                      caution: t("Vorsicht: …", "Careful: …"),
-                    }[type],
-                  },
-                ],
-              },
-            ],
-          })
+          .insertContent({ type: "callout", attrs: { type }, content: [{ type: "paragraph" }] })
           .run();
       },
     })),
@@ -1337,9 +1318,10 @@ export default function DocumentEditor({
       keywords: ["spalten", "columns", "cols"],
       description: t("Inhalte nebeneinander", "Content side by side"),
       icon: TableIcon,
-      run: () =>
+      run: () => {
+        if (!editor) return;
         editor
-          ?.chain()
+          .chain()
           .focus()
           .insertContent({
             type: "columns",
@@ -1348,7 +1330,15 @@ export default function DocumentEditor({
               { type: "column", content: [{ type: "paragraph" }] },
             ],
           })
-          .run(),
+          .run();
+        // Writing starts in the left column, not where the insertion ended.
+        const { $from } = editor.state.selection;
+        for (let depth = $from.depth; depth > 0; depth--)
+          if ($from.node(depth).type.name === "columns") {
+            editor.commands.setTextSelection($from.before(depth) + 3);
+            break;
+          }
+      },
     },
     {
       name: t("Einbetten", "Embed"),
@@ -1890,12 +1880,12 @@ export default function DocumentEditor({
         {editor?.isActive("table") && editable && (
           <div className="table-tools">
             <button onClick={() => editor.chain().focus().addRowAfter().run()}>
-              + Zeile
+              {t("+ Zeile", "+ Row")}
             </button>
             <button
               onClick={() => editor.chain().focus().addColumnAfter().run()}
             >
-              + Spalte
+              {t("+ Spalte", "+ Column")}
             </button>
             <button onClick={() => editor.chain().focus().deleteRow().run()}>
               {t("Zeile löschen", "Delete row")}
@@ -2053,6 +2043,10 @@ export default function DocumentEditor({
           open
           workspaceId={pages.find((p) => p.id === pageId)?.workspace_id || ""}
           onClose={() => setCiteOpen(false)}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            editor?.commands.focus();
+          }}
           onError={onError}
           onInsert={(item, locator) =>
             editor

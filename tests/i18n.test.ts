@@ -81,6 +81,16 @@ test("catalogues keep the placeholders of their texts (missing translations are 
   }
 });
 
+test("the English texts carry no German words", async () => {
+  const { readFileSync } = await import("node:fs");
+  // Lower-case word lists are search keywords in both languages.
+  const german = /[äöüß]|\b(Uhrzeit|Gespeichert|Speichern|ziehen|unbegrenzt|fehlgeschlagen|vorher|Strg|Ohne Gruppe|offen|aktuell)\b/;
+  const leaked = Object.keys(JSON.parse(readFileSync("locales/en.json", "utf8"))).filter(
+    (key) => !/^[\p{Ll}\s]+$/u.test(key) && german.test(key),
+  );
+  assert.deepEqual(leaked, []);
+});
+
 test("short patterns do not rewrite whole sentences", () => {
   const t = translate("fr");
   assert.equal(t("3 von 5", "3 of 5"), "3 sur 5");

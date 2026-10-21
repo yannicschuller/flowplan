@@ -12,12 +12,15 @@ export function CitationDialog({
   open,
   workspaceId,
   onClose,
+  onCloseAutoFocus,
   onInsert,
   onError,
 }: {
   open: boolean;
   workspaceId: string;
   onClose: () => void;
+  // Where the focus goes after closing (the editor's caret).
+  onCloseAutoFocus?: (event: Event) => void;
   onInsert: (item: CslItem, locator: string) => void;
   onError: (message: string) => void;
 }) {
@@ -96,7 +99,7 @@ export function CitationDialog({
     }
   }
   return (
-    <Modal open={open} onClose={onClose} title={t("Literatur zitieren", "Cite a source")} wide>
+    <Modal open={open} onClose={onClose} onCloseAutoFocus={onCloseAutoFocus} title={t("Literatur zitieren", "Cite a source")} wide>
       <div className="citation-dialog">
         <label className="citation-search">
           <MagnifyingGlass size={16} aria-hidden />

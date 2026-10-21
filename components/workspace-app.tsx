@@ -118,6 +118,7 @@ import {
   Graph,
   Sparkle,
   MarkdownLogo,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -141,6 +142,8 @@ import {
   isTransient,
   PageSkeleton,
   endedSession,
+  friendlyError,
+  SIGNED_OUT_EVENT,
 } from "./ui";
 import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
@@ -339,7 +342,9 @@ export default function WorkspaceApp({
     [readPages, setReadPages] = useState<string[]>([]),
     [comment, setComment] = useState(""),
     [status, setStatus] = useState("Gespeichert"),
-    [toast, setToast] = useState(""),
+    [toast, setToast] = useState<{ text: string; error: boolean } | null>(null),
+    // The session ended while the app was open: a banner until the reader signs in again.
+    [signedOut, setSignedOut] = useState(false),
     [busy, setBusy] = useState(false),
     [dark, setDark] = useState(false),
     [theme, setTheme] = useState<ThemeChoice>("system"),
@@ -428,11 +433,13 @@ export default function WorkspaceApp({
   currentId.current = pageId;
   currentWorkspace.current = boot.workspace.id;
   screenRef.current = screen;
-  const notify = useCallback((s: string) => {
-    setToast(s);
+  const notify = useCallback((s: string, error = false) => {
+    setToast({ text: s, error });
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(""), 5000);
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
   }, []);
+  // Failures: an error toast with plain words for network and server trouble.
+  const notifyError = useCallback((s: string) => notify(friendlyError(s), true), [notify]);
   const setHtml = useCallback((s: string) => {
     html.current = s;
   }, []);
@@ -630,7 +637,7 @@ export default function WorkspaceApp({
       try {
         return await mutate(b);
       } catch (e) {
-        notify((e as Error).message);
+        notifyError((e as Error).message);
         return null;
       }
     },
@@ -638,6 +645,13 @@ export default function WorkspaceApp({
   );
   // "Zuletzt angesehen" on the start page follows along without a reload.
   const shownPage = data?.page.id;
+  // A page just created from the dialog: the caret goes into its title.
+  const focusTitleOf = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shownPage || focusTitleOf.current !== shownPage) return;
+    focusTitleOf.current = null;
+    document.querySelector<HTMLInputElement>("input.page-title")?.focus();
+  }, [shownPage]);
   useEffect(() => {
     if (!shownPage || screenRef.current !== "page") return;
     setBoot((b) => ({
@@ -705,7 +719,7 @@ export default function WorkspaceApp({
           setStatus("Gespeichert");
         }
       } catch (e) {
-        if (version === navigationVersion.current) notify((e as Error).message);
+        if (version === navigationVersion.current) notifyError((e as Error).message);
       } finally {
         if (version === navigationVersion.current) {
           navigationPending.current = false;
@@ -735,7 +749,7 @@ export default function WorkspaceApp({
       if (fragment.startsWith("page=")) {
         const target = parsePageLocation(location.hash);
         if (!target) {
-          notify(t("Dieser Seitenlink ist ungültig.", "This page link is invalid."));
+          notifyError(t("Dieser Seitenlink ist ungültig.", "This page link is invalid."));
           return;
         }
         if (currentId.current !== target.pageId || screenRef.current !== "page")
@@ -780,18 +794,27 @@ export default function WorkspaceApp({
         e.preventDefault();
         toggleReadingRef.current();
       }
+      // The navigation drawer on small screens closes like a dialog.
+      if (e.key === "Escape") setMobile(false);
     };
     const network = () => setOnline(navigator.onLine);
     network();
+    // A 401 while working: the banner instead of a reload (components/ui.tsx).
+    const signedOut = (e: Event) => {
+      e.preventDefault();
+      setSignedOut(true);
+    };
     window.addEventListener("keydown", key);
     window.addEventListener("online", network);
     window.addEventListener("offline", network);
+    window.addEventListener(SIGNED_OUT_EVENT, signedOut);
     return () => {
       stopTheme();
       window.removeEventListener("hashchange", navigate);
       window.removeEventListener("keydown", key);
       window.removeEventListener("online", network);
       window.removeEventListener("offline", network);
+      window.removeEventListener(SIGNED_OUT_EVENT, signedOut);
     };
   }, [initial.pages, openPage, notify]);
   const templateUsed = useRef(false);
@@ -836,7 +859,7 @@ export default function WorkspaceApp({
         });
         if (created?.id) void openPage(String(created.id));
       } catch (e) {
-        notify((e as Error).message);
+        notifyError((e as Error).message);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -917,7 +940,7 @@ export default function WorkspaceApp({
       go("home");
       setSpaceId(b.spaces[0]?.id || "");
     } catch (e) {
-      if (version === navigationVersion.current) notify((e as Error).message);
+      if (version === navigationVersion.current) notifyError((e as Error).message);
     } finally {
       if (version === navigationVersion.current)
         navigationPending.current = false;
@@ -1286,7 +1309,7 @@ export default function WorkspaceApp({
               {canCreate && (
                 <button
                   className="nav-drag"
-                  aria-label={`${p.title} ziehen`}
+                  aria-label={t(`${p.title} ziehen`, `Drag ${p.title}`)}
                   onPointerDown={(e) => {
                     // No native drag of the row: the handle drives the gesture.
                     e.preventDefault();
@@ -1862,6 +1885,21 @@ export default function WorkspaceApp({
         {!online && (
           <div className="offline-banner" role="status">
             {t("Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen werden später abgeglichen.", "Offline – you see the last saved state. Text changes are synced later.")}
+          </div>
+        )}
+        {signedOut && (
+          <div className="offline-banner signed-out-banner" role="alert">
+            {t("Du wurdest abgemeldet – melde dich erneut an, um deine Änderungen zu behalten.", "You were signed out – sign in again to keep your changes.")}{" "}
+            {/* The same address again: "/" shows the sign-in page and returns here. */}
+            <a
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                location.reload();
+              }}
+            >
+              {t("Anmelden", "Sign in")}
+            </a>
           </div>
         )}
         <header className="topbar">
@@ -2476,7 +2514,7 @@ export default function WorkspaceApp({
                         ai={boot.ai}
                         favoriteRows={boot.favoriteRows}
                         mutate={mutate}
-                        onError={notify}
+                        onError={notifyError}
                       />
                     </>
                   ) : data.locked ? (
@@ -2493,7 +2531,7 @@ export default function WorkspaceApp({
                       onOpen={(id) => void openPage(id)}
                       onRoll={rollJournal}
                       onChanged={refresh}
-                      onError={notify}
+                      onError={notifyError}
                     />
                   ) : data.page.kind === "whiteboard" && data.whiteboard ? (
                     <Whiteboard
@@ -2509,7 +2547,7 @@ export default function WorkspaceApp({
                         kind: p.kind,
                       }))}
                       onReload={refresh}
-                      onError={notify}
+                      onError={notifyError}
                       onOpenPage={(id) => void openPage(id)}
                       userId={boot.user.id}
                       userName={boot.user.name}
@@ -2525,7 +2563,7 @@ export default function WorkspaceApp({
                         entry={data.journalDay.entry}
                         options={data.journalDay.options}
                         editable={editable}
-                        onError={notify}
+                        onError={notifyError}
                       />
                     )}
                     <DocumentEditor
@@ -2539,7 +2577,7 @@ export default function WorkspaceApp({
                       html={data.html}
                       editable={editable}
                       onStatus={setStatus}
-                      onError={notify}
+                      onError={notifyError}
                       onHtml={setHtml}
                       transcription={!!boot.instance?.transcription}
                       source={sourceOpen}
@@ -2567,7 +2605,7 @@ export default function WorkspaceApp({
                           else void openPage(id);
                         }}
                         onLinked={() => void refresh()}
-                        onError={notify}
+                        onError={notifyError}
                       />
                     )}
                     {data.backlinks?.length > 0 && (
@@ -2662,6 +2700,12 @@ export default function WorkspaceApp({
                         required
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
+                        onKeyDown={(e) => {
+                          if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            e.currentTarget.form?.requestSubmit();
+                          }
+                        }}
                         placeholder={t("Schreibe einen Kommentar …", "Write a comment …")}
                       />
                       <button className="button primary compact">
@@ -2755,7 +2799,7 @@ export default function WorkspaceApp({
               workspaceId={boot.workspace.id}
               currentId={pageId}
               onOpen={(id, rowId) => (rowId ? (location.hash = pageLocationHash({ pageId: id, rowId })) : void openPage(id))}
-              onError={notify}
+              onError={notifyError}
             />
           )}
           {screen === "tasks" && (
@@ -2764,7 +2808,7 @@ export default function WorkspaceApp({
               onOpen={(pageId, rowId) => {
                 location.hash = rowId ? `page=${pageId}&row=${rowId}` : `page=${pageId}`;
               }}
-              onError={notify}
+              onError={notifyError}
               onChanged={() => void refresh()}
             />
           )}
@@ -2898,13 +2942,13 @@ export default function WorkspaceApp({
               onRefresh={refresh}
               boot={boot}
               mutate={mutate}
-              onError={notify}
+              onError={notifyError}
               theme={theme}
               setTheme={chooseTheme}
             />
           )}
           {screen === "admin" && boot.user.isAdmin && (
-            <Admin mutate={mutate} onError={notify} />
+            <Admin mutate={mutate} onError={notifyError} />
           )}
         </div>
       </main>
@@ -3196,7 +3240,7 @@ export default function WorkspaceApp({
         <div className="search-results">
           {searchResults.map((p) => (
             <button
-              key={`${p.id}:${p.rowId || ""}`}
+              key={`${p.kind}:${p.id}:${p.rowId || ""}`}
               onClick={() => {
                 setSearch(false);
                 // The block with the hit flashes once the page is open.
@@ -3210,7 +3254,7 @@ export default function WorkspaceApp({
             >
               <PageIcon name={p.icon} />
               <span>
-                {p.title}
+                {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
                 {p.pageTitle && (
                   <small className="search-context">
                     {p.kind === "comment"
@@ -3275,6 +3319,7 @@ export default function WorkspaceApp({
               setCreate(false);
               setAiCreate(false);
               setAiProposal(null);
+              focusTitleOf.current = String(result.id);
               void openPage(String(result.id));
             }
           }}
@@ -3358,7 +3403,7 @@ export default function WorkspaceApp({
               onTitle={(title) => {
                 if (!newTitle) setNewTitle(title);
               }}
-              onError={notify}
+              onError={notifyError}
             />
           )}
           {newKind === "database" && !starterTemplate && !(aiCreate && aiUsable(boot.ai, "database")) && (
@@ -3408,7 +3453,7 @@ export default function WorkspaceApp({
         <PageToRecord
           pageId={pageId}
           onClose={() => setToRecord(false)}
-          onError={notify}
+          onError={notifyError}
           onMoved={(db, rowId) => {
             setToRecord(false);
             notify(t("Als Eintrag in die Datenbank verschoben.", "Moved into the database as a record."));
@@ -3449,9 +3494,9 @@ export default function WorkspaceApp({
               workspaceId={boot.workspace.id}
               members={boot.members.filter((m) => m.id !== boot.user.id)}
               onChanged={() => void refresh().catch(() => {})}
-              onError={notify}
+              onError={notifyError}
             />
-            <AiBlockToggle targetId={data.page.id} kind="page" onError={notify} />
+            <AiBlockToggle targetId={data.page.id} kind="page" onError={notifyError} />
             {data.role !== "viewer" && (
               <ShareLinks
                 pageId={data.page.id}
@@ -3866,7 +3911,7 @@ export default function WorkspaceApp({
               aria-pressed={galleryCategory === id}
               onClick={() => setGalleryCategory(id)}
             >
-              {label}
+              {id === "all" ? label : t(label)}
             </button>
           ))}
         </nav>
@@ -3892,7 +3937,7 @@ export default function WorkspaceApp({
                 <small>{template.description}</small>
                 <small className="template-meta">
                   {template.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")} ·{" "}
-                  {templateCategories[template.category]}
+                  {t(templateCategories[template.category])}
                 </small>
               </button>
             ))}
@@ -3901,7 +3946,7 @@ export default function WorkspaceApp({
           workspaceId={boot.workspace.id}
           canCreate={canCreate}
           isAdmin={!!boot.user.isAdmin}
-          onError={notify}
+          onError={notifyError}
           onUse={async (t) => {
             const r = await act({
               action: "page.create",
@@ -4007,7 +4052,7 @@ export default function WorkspaceApp({
                           await navigator.clipboard.writeText(url());
                           notify(t("Link kopiert", "Link copied"));
                         } catch {
-                          notify(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
+                          notifyError(t("Link konnte nicht kopiert werden.", "The link could not be copied."));
                         }
                       }}
                     >
@@ -4157,13 +4202,13 @@ export default function WorkspaceApp({
         />
       )}
       {toast && (
-        <div className="toast" role="status">
-          <InfoIcon />
-          {toast}
+        <div className={`toast${toast.error ? " toast-error" : ""}`} role={toast.error ? "alert" : "status"}>
+          {toast.error ? <WarningCircle size={18} weight="fill" /> : <InfoIcon />}
+          {toast.text}
           <button
             className="icon-button"
             aria-label={t("Meldung schließen", "Close message")}
-            onClick={() => setToast("")}
+            onClick={() => setToast(null)}
           >
             <X size={16} />
           </button>
@@ -4172,6 +4217,14 @@ export default function WorkspaceApp({
     </div>
     </AiProvider>
   );
+}
+// Comment hits are indexed with a German title (lib/search-index.ts).
+function commentHitTitle(title: string, t: (de: string, en: string) => string) {
+  const comment = title.match(/^Kommentar von (.+)$/);
+  if (comment) return t(`Kommentar von ${comment[1]}`, `Comment by ${comment[1]}`);
+  const inline = title.match(/^Textkommentar von (.+)$/);
+  if (inline) return t(`Textkommentar von ${inline[1]}`, `Text comment by ${inline[1]}`);
+  return title;
 }
 function greeting(clock: number | null, t: (de: string, en: string) => string) {
   if (clock === null) return t("Hallo", "Hello");

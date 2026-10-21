@@ -552,7 +552,7 @@ export function CommentComposer({
         </p>
       )}
       <small className="comment-input-hint">
-        {body.length.toLocaleString(LOCALE_TAG)} / 5.000 · ⌘/Strg+Enter zum Senden
+        {body.length.toLocaleString(LOCALE_TAG)} / 5.000 · {t("⌘/Strg+Enter zum Senden", "⌘/Ctrl+Enter to send")}
       </small>
     </fieldset>
   );

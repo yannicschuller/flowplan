@@ -78,7 +78,8 @@ export function LanguageSwitch({ className }: { className?: string }) {
 const statusWords: Record<string, string> = {
   Gespeichert: "Saved",
   "Speichern …": "Saving …",
-  "Änderungen …": "Changes …",
+  "Synchronisieren …": "Syncing …",
+  "Änderungen …": "Unsaved changes",
   "Offline gespeichert": "Saved offline",
   Offline: "Offline",
   "Speichern fehlgeschlagen": "Saving failed",
@@ -87,6 +88,7 @@ const statusWords: Record<string, string> = {
   "Sprachnotiz wird in Text umgewandelt …": "Turning the voice note into text …",
   "Bild wird hochgeladen …": "Uploading image …",
   "Änderungen gespeichert": "Changes saved",
+  "Laden …": "Loading …",
 };
 export function useStatusLabel() {
   const locale = useLocale();
