@@ -81,5 +81,29 @@ export function transferPages(
     toWorkspace,
     ...ids,
   );
+  // "Für KI gesperrt" and personal AI rules on the moved pages keep applying
+  // in the new workspace (lib/ai/access.ts lists them per workspace).
+  run(
+    `UPDATE ai_blocks SET workspace_id=? WHERE target_id IN (${placeholders})`,
+    toWorkspace,
+    ...ids,
+  );
+  run(
+    `UPDATE ai_access_rules SET workspace_id=? WHERE target_id IN (${placeholders})`,
+    toWorkspace,
+    ...ids,
+  );
+  // Tasks of the documents ("Meine Aufgaben") and trashed records of the
+  // databases are listed per workspace as well.
+  run(
+    `UPDATE doc_tasks SET workspace_id=? WHERE page_id IN (${placeholders})`,
+    toWorkspace,
+    ...ids,
+  );
+  run(
+    `UPDATE row_trash SET workspace_id=? WHERE page_id IN (${placeholders})`,
+    toWorkspace,
+    ...ids,
+  );
   audit(user.id, "page.transfer", ids[0], toWorkspace);
 }

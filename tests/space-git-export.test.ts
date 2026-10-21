@@ -1,6 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -225,6 +225,34 @@ test("files of the repository that are not part of the export stay", { skip: !ex
   assert.equal(status.last?.error, null, String(status.last?.error));
   assert.equal(status.last?.pushed, false);
   assert.ok(existsSync(join(clone(), "LICENSE")));
+});
+
+test("a repository saved while a run was in progress starts from a fresh copy", { skip: !existsSync(backend) && "git http-backend missing" }, async () => {
+  local();
+  execFileSync("git", ["init", "--bare", "-q", "-b", "main", join(repos, "other.git")]);
+  execFileSync("git", ["config", "--file", join(repos, "other.git", "config"), "http.receivepack", "true"]);
+  // As left behind by a run: the copy of space.git with a file that is no
+  // part of the export, kept while the settings already name other.git.
+  const stale = mkdtempSync(join(tmpdir(), "flowplan-space-git-stale-"));
+  cpSync(copyOf(projects), stale, { recursive: true });
+  save(ben, projects, { url: `http://127.0.0.1:${port}/other.git`, username: "flowplan", token: "secret-token" });
+  assert.ok(!existsSync(copyOf(projects)), "a new address removes the copy when nothing runs");
+  cpSync(stale, copyOf(projects), { recursive: true });
+  writeFileSync(join(copyOf(projects), "leftover.txt"), "from the old repository\n");
+  const status = await runSpaceGitExport(ben, projects);
+  assert.ok(status.available);
+  assert.equal(status.last?.error, null, String(status.last?.error));
+  assert.equal(status.last?.pushed, true);
+  const dir = mkdtempSync(join(tmpdir(), "flowplan-space-git-clone-"));
+  execFileSync("git", ["clone", "-q", `http://flowplan:secret-token@127.0.0.1:${port}/other.git`, dir]);
+  assert.ok(!existsSync(join(dir, "leftover.txt")), "leftovers of the old copy are not pushed");
+  assert.ok(!existsSync(join(dir, "LICENSE")), "nor files of the old repository");
+  assert.ok(existsSync(join(dir, `Garten-${garden.slice(0, 8)}`, "index.md")));
+  assert.match(readFileSync(join(copyOf(projects), ".git", "config"), "utf8"), /other\.git/);
+  // Back to the first repository for the tests that follow.
+  save(ben, projects, { url: `http://127.0.0.1:${port}/space.git`, username: "flowplan", token: "secret-token" });
+  const back = await runSpaceGitExport(ben, projects);
+  assert.ok(back.available && back.last?.error === null, String(back.available && back.last?.error));
 });
 
 test("the scheduler runs spaces whose interval has passed", { skip: !existsSync(backend) && "git http-backend missing" }, async () => {

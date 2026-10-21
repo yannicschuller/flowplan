@@ -287,6 +287,38 @@ test("automatic updates: debounced, only when inputs change, stop when the perso
   run("UPDATE members SET role='editor' WHERE workspace_id=? AND user_id=?", wid, ben.id);
 });
 
+test("automatic values never take 'Zuletzt geändert' as input: refused when saved, left out of the hash", async () => {
+  const withChanged: Field[] = [...database(books).fields.filter((f) => f.id !== "summary"), { id: "changed", name: "Geändert", type: "updated_at" }];
+  const stamped = (ai: Partial<Field["ai"]> = {}): Field => ({ id: "summary", name: "Zusammenfassung", type: "text", ai: { prompt: "Fasse {Beschreibung} zusammen, Stand {Geändert}", ...ai } });
+  assert.throws(() => schema(ben, [...withChanged, stamped({ auto: true })]), /jedem Schreiben der KI/);
+  // Without automatic updates the reference is fine.
+  schema(ben, [...withChanged, stamped()]);
+  // A property switched on before this check existed: its own write must
+  // not queue it again once the minute changes.
+  run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify([...withChanged, stamped({ auto: true, autoBy: ben.id })]), books);
+  let calls = 0;
+  mock.answer = () => `{"value": "Antwort ${++calls}"}`;
+  // Only this record's prompts (jobs of earlier tests may still be waiting).
+  const asked = () => mock.chats.filter((c) => c.prompt.includes("Briefe"));
+  const r = row({ title: "Werther", desc: "Briefe eines Unglücklichen." });
+  assert.equal(processAutoDirty(0, Date.now() + 1), 1);
+  await processAiCellJobs(50);
+  assert.equal(asked().length, 1);
+  assert.match(asked()[0].prompt, /Stand \d{4}-\d{2}-\d{2}/, "the prompt itself carries the timestamp");
+  assert.ok(one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "marked dirty by its own write");
+  run("UPDATE rows SET cells=cells,updated_at=datetime('now','+2 minutes') WHERE id=?", r);
+  assert.equal(processAutoDirty(0, Date.now() + 1), 0, "a later minute is no new input");
+  await processAiCellJobs(50);
+  assert.equal(asked().length, 1);
+  // A referenced property changing still recomputes.
+  const v = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
+  command(admin, { action: "row.update", pageId: books, rowId: r, version: v, cells: { desc: "Briefe an Lotte." } });
+  assert.equal(processAutoDirty(0, Date.now() + 1), 1);
+  await processAiCellJobs(50);
+  assert.equal(asked().length, 2);
+  schema(admin, [...withChanged, stamped()]);
+});
+
 test("removing an AI property removes its bookkeeping", () => {
   assert.ok(one("SELECT 1 FROM ai_cell_meta WHERE page_id=? AND field_id='category'", books));
   schema(admin, database(books).fields.filter((f) => f.id !== "category"));

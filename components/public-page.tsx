@@ -190,7 +190,7 @@ async function renderPublishedPage({
   return (
     <main className={`public-page ${page.full_width ? "public-wide" : ""}`}>
       <a href="/" className="public-brand">
-        flowplan <span className="muted">/ Geteilte Seite</span>
+        flowplan <span className="muted">/ {t("Geteilte Seite", "Shared page")}</span>
       </a>
       {publication && (
         <div className="publication-meta">
@@ -211,7 +211,7 @@ async function renderPublishedPage({
               / <a href={href(page.id)}>{page.title}</a>
             </>
           )}
-          {record && " / Eintrag"}
+          {record && ` / ${t("Eintrag", "Record")}`}
         </nav>
       )}
       {page.cover && (

@@ -5,6 +5,7 @@ import { pageRole, requirePage } from "./permissions";
 import { maintainRowOrders } from "./row-order-server";
 import { roleWithGrants, rowGrants, type RowGrant } from "./row-access";
 import { cellText } from "./cell-text";
+import { ct } from "./content-locale";
 import type { Field, Identity, Page } from "./types";
 
 // Deleted records keep their content, document and comments in the trash so
@@ -68,7 +69,7 @@ export function trashRow(user: Identity, page: Page, rowId: string) {
     page.id,
     page.workspace_id,
     cellText(JSON.parse(row.cells)[fields[0]?.id || "title"]).slice(0, 300) ||
-      "Ohne Titel",
+      ct("Ohne Titel", "Untitled"),
     JSON.stringify(payload),
     user.id,
   );

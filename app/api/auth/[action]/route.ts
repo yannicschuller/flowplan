@@ -27,6 +27,7 @@ import { ensureWorkspace } from "@/lib/seed";
 import { syncSsoMemberships } from "@/lib/sso-mappings";
 import { command } from "@/lib/api";
 import { confirmsWithPassword, deleteOwnAccount } from "@/lib/account-deletion";
+import { sweepSpaceGitCopies } from "@/lib/space-git-export";
 export const runtime = "nodejs";
 import { oidcConfig as config } from "@/lib/oidc";
 import {
@@ -483,6 +484,9 @@ async function handlePOST(
         confirm = one<{ email: string }>("SELECT email FROM users WHERE id=?", user.id)?.email;
       }
       const result = transaction(() => deleteOwnAccount(user, { confirm, successors: input.successors }, !!local && !user.demo && confirmsWithPassword(user.id)));
+      // The Git exports of their spaces ended with the account: their
+      // working copies go with them (lib/space-git-export.ts).
+      sweepSpaceGitCopies();
       (await cookies()).delete(cookieName);
       return NextResponse.json(result);
     }

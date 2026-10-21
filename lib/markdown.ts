@@ -311,10 +311,10 @@ export function htmlToMarkdown(
           : fencedCode(String(node.attrs.source || ""), "mermaid");
       case "image": {
         const url = context.url(String(node.attrs.src || "")),
-          alt = String(node.attrs.alt || "Bild");
+          alt = String(node.attrs.alt || ct("Bild", "Image"));
         return url
           ? `![${markdownText(alt)}](<${markdownUrl(url)}>)`
-          : `${markdownText(alt)} (nicht verfügbar)`;
+          : `${markdownText(alt)} ${ct("(nicht verfügbar)", "(not available)")}`;
       }
       case "media": {
         const url = context.url(String(node.attrs.src || "")),
@@ -323,11 +323,11 @@ export function htmlToMarkdown(
               { audio: "Audio", video: "Video", embed: "Video" }[
                 node.attrs.kind as string
               ] ||
-              "Medium",
+              ct("Medium", "Media"),
           );
         return url
           ? markdownLink(title, url)
-          : `${markdownText(title)} nicht verfügbar`;
+          : `${markdownText(title)} ${ct("nicht verfügbar", "not available")}`;
       }
       case "bulletList":
       case "orderedList":
@@ -370,14 +370,14 @@ export function htmlToMarkdown(
         const columns: string[] = [];
         node.forEach((column, _offset, index) =>
           columns.push(
-            `**Spalte ${index + 1}**\n\n${children(column, inTable)}`,
+            `**${ct(`Spalte ${index + 1}`, `Column ${index + 1}`)}**\n\n${children(column, inTable)}`,
           ),
         );
         return columns.join("\n\n");
       }
       case "whiteboardEmbed": {
         const board = context.whiteboard?.(String(node.attrs.pageId || ""));
-        if (!board) return "Whiteboard nicht verfügbar";
+        if (!board) return ct("Whiteboard nicht verfügbar", "Whiteboard not available");
         const link = markdownLink(board.title || "Whiteboard", board.url);
         // The marker lets a re-import (Git, lib/git-export.ts) restore the embed.
         const marker = `<!-- flowplan:whiteboard ${String(node.attrs.pageId)} ${Math.round(Number(node.attrs.height) || 380)} -->\n`;
@@ -386,8 +386,8 @@ export function htmlToMarkdown(
       case "linkedDatabase": {
         const linked = context.linked(String(node.attrs.source || ""));
         return linked
-          ? markdownLink(`Verknüpfte Datenbank: ${linked.title}`, linked.url)
-          : "Verknüpfte Datenbank nicht verfügbar";
+          ? markdownLink(`${ct("Verknüpfte Datenbank", "Linked database")}: ${linked.title}`, linked.url)
+          : ct("Verknüpfte Datenbank nicht verfügbar", "Linked database not available");
       }
       case "table": {
         const grid: string[][] = [],

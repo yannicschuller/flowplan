@@ -15,6 +15,7 @@
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { all, one } from "../db";
+import { ct } from "../content-locale";
 import { pageRole, requirePage, spaceRole } from "../permissions";
 import { processSearchIndex } from "../search-index";
 import type { Identity, Page, Space } from "../types";
@@ -194,7 +195,7 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
         title = origin.title;
       }
     }
-    meta.set(k, { pageId: linkPage, ...(c.rowId ? { rowId: c.rowId } : {}), title: title || "Ohne Titel", ...(source.pageTitle ? { pageTitle: source.pageTitle } : {}), kind: source.kind });
+    meta.set(k, { pageId: linkPage, ...(c.rowId ? { rowId: c.rowId } : {}), title: title || ct("Ohne Titel", "Untitled"), ...(source.pageTitle ? { pageTitle: source.pageTitle } : {}), kind: source.kind });
     const chunks = source.chunks.length ? source.chunks : [title];
     chunks.forEach((text, index) =>
       passages.push({ key: k, text, title, index, sourceRank: rank, boost: c.chunks.has(index) ? 3 / (1 + c.chunks.get(index)!) : 0 }),

@@ -25,8 +25,9 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { isIP } from "node:net";
+import * as fs from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { HttpClient } from "isomorphic-git";
+import git, { type HttpClient } from "isomorphic-git";
 import { z } from "zod";
 import { all, audit, one, run } from "./db";
 import { HttpError } from "./auth";
@@ -289,6 +290,21 @@ const cleanError = (message: string, token: string) =>
 // (<title>-<id8>). Other files in the repository stay untouched.
 const EXPORTED = /^(index\.md|README\.txt|.+-[0-9a-f]{8})$/;
 
+// Whether the working copy belongs to another repository or branch than
+// the settings name – saved anew while a run was in progress, when
+// saveSpaceGitExport could not remove it. Its leftovers must not reach the
+// new repository, so the next run starts from a fresh copy.
+async function staleCopy(dir: string, url: string, branch: string) {
+  if (!existsSync(resolve(dir, ".git"))) return false;
+  try {
+    const origin = await git.getConfig({ fs, dir, path: "remote.origin.url" });
+    const current = await git.currentBranch({ fs, dir });
+    return origin !== url || (!!current && current !== branch);
+  } catch {
+    return true;
+  }
+}
+
 async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
   const found = exporter(row);
   if (!found) {
@@ -306,6 +322,7 @@ async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
     // Checked again: the administrator may have changed the list.
     const url = checkedGitUrl(row.url);
     const target: GitTarget = { dir: copyDir(row.space_id), url, branch: row.branch, username: row.username, token, http: safeGitHttp(url) };
+    if (await staleCopy(target.dir, url, row.branch)) rmSync(target.dir, { recursive: true, force: true });
     const { bytes } = await withContentLocale(userLocale(found.owner.id), () =>
       exportMarkdown(found.owner, { spaceId: row.space_id, format: "zip", includeSubpages: true, history: !!row.history }),
     );

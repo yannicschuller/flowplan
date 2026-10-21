@@ -8,6 +8,9 @@ process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-transfer-")
 const { run, id, one, all } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, pageData } = await import("../lib/api");
+const { aiMayRead, aiBlockInfo, setAiBlock, aiRules } = await import("../lib/ai/access");
+const { listRowTrash } = await import("../lib/row-trash");
+const { myTasks } = await import("../lib/doc-tasks");
 
 function account(name: string) {
   const uid = id();
@@ -83,6 +86,54 @@ test("relations to databases staying behind block the move; moving both together
   command(owner, { action: "page.move", workspaceId: from, pageId: folder, spaceId: toSpace });
   assert.equal(page(source).workspace_id, to);
   assert.equal(page(target).workspace_id, to);
+});
+
+test("'Für KI gesperrt' and personal AI rules stay with a page that moves", () => {
+  const folder = create("Vertraulich"),
+    secret = create("Geheim", "document", folder);
+  setAiBlock(owner, { targetId: secret, kind: "page", blocked: true });
+  command(owner, { action: "ai.rule", targetId: folder, mode: "exclude" });
+  assert.equal(aiMayRead(owner, secret), false);
+  assert.equal(aiMayRead(owner, folder), false);
+  command(owner, { action: "page.move", workspaceId: from, pageId: folder, spaceId: toSpace, parentId: null });
+  assert.equal(page(secret).workspace_id, to);
+  assert.equal(aiMayRead(owner, secret), false, "still blocked after the move");
+  assert.equal(aiMayRead(colleague, secret), false, "for everyone");
+  assert.equal(aiBlockInfo(owner, secret, "page").blocked, true);
+  assert.equal(one<{ workspace_id: string }>("SELECT workspace_id FROM ai_blocks WHERE target_id=?", secret)!.workspace_id, to);
+  // The personal rule is listed with the new workspace and keeps excluding.
+  assert.equal(aiMayRead(owner, folder), false);
+  assert.deepEqual(aiRules(owner, to).map((r) => r.targetId), [folder]);
+  assert.deepEqual(aiRules(owner, from), []);
+});
+
+test("document tasks and trashed records are listed in the new workspace", () => {
+  const notes = create("Notizen"),
+    orders = create("Bestellungen", "database", notes);
+  run(
+    "INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,assignee,due,workspace_id,updated_by,updated_at) VALUES(?,?,'',0,'Rechnung prüfen',0,?,NULL,?,?,?)",
+    id(),
+    notes,
+    owner.id,
+    from,
+    owner.id,
+    Date.now(),
+  );
+  const rowId = (command(owner, { action: "row.create", pageId: orders, cells: { title: "Schrauben" } }) as { id: string }).id;
+  command(owner, { action: "row.delete", pageId: orders, rowId });
+  assert.equal(myTasks(owner, from).length, 1);
+  assert.equal(listRowTrash(owner, from).length, 1);
+  command(owner, { action: "page.move", workspaceId: from, pageId: notes, spaceId: toSpace, parentId: null });
+  assert.deepEqual(
+    myTasks(owner, to).map((t) => t.text),
+    ["Rechnung prüfen"],
+  );
+  assert.equal(myTasks(owner, from).length, 0);
+  assert.deepEqual(
+    listRowTrash(owner, to).map((t) => t.title),
+    ["Schrauben"],
+  );
+  assert.equal(listRowTrash(owner, from).length, 0);
 });
 
 test("moving needs write access in the target workspace", () => {

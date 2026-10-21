@@ -87,12 +87,17 @@ export function useOfflineQueue({
       );
     } catch {}
   }, [key]);
+  // Takes the list or a function of the current one, like setState: a long
+  // flush must not overwrite conflicts resolved while it ran.
   const storeConflicts = useCallback(
-    (next: Conflict[]) => {
-      setConflicts(next);
-      try {
-        localStorage.setItem(`${key}:conflicts`, JSON.stringify(next));
-      } catch {}
+    (next: Conflict[] | ((current: Conflict[]) => Conflict[])) => {
+      setConflicts((current) => {
+        const list = typeof next === "function" ? next(current) : next;
+        try {
+          localStorage.setItem(`${key}:conflicts`, JSON.stringify(list));
+        } catch {}
+        return list;
+      });
     },
     [key],
   );
@@ -217,10 +222,10 @@ export function useOfflineQueue({
     } finally {
       running.current = false;
       setSyncing(false);
-      if (found.length) storeConflicts([...conflicts, ...found]);
+      if (found.length) storeConflicts((current) => [...current, ...found]);
       await onSynced().catch(() => undefined);
     }
-  }, [store, storeConflicts, conflicts, notify, onSynced]);
+  }, [store, storeConflicts, notify, onSynced]);
   useEffect(() => {
     const online = () => void flush();
     window.addEventListener("online", online);
@@ -318,8 +323,8 @@ export function OfflineConflicts({
             {conflict.fields.map((f) => (
               <tr key={f}>
                 <th scope="row">{name(f)}</th>
-                <td>{cellText(conflict.change.cells[f]) || "leer"}</td>
-                <td>{cellText(conflict.current![f]) || "leer"}</td>
+                <td>{cellText(conflict.change.cells[f]) || t("leer", "empty")}</td>
+                <td>{cellText(conflict.current![f]) || t("leer", "empty")}</td>
               </tr>
             ))}
           </tbody>

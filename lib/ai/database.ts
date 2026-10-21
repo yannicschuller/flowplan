@@ -143,7 +143,7 @@ export async function runAiCell(user: Identity, pageId: string, fieldId: string,
     hash = aiInputHash(field, content);
   } else {
     const rendered = renderAiPrompt(field.ai!.prompt, fields, cells, row, context);
-    hash = aiInputHash(field, rendered.text);
+    hash = aiInputHash(field, rendered.input);
     if (mode === "auto" && one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", rowId, fieldId)?.input_hash === hash)
       return { status: "unchanged" };
     if (rendered.empty) {
@@ -291,7 +291,7 @@ export function processAutoDirty(debounceMs = 8000, now = Date.now()) {
         if (!row) continue;
         const cells = JSON.parse(row.cells) as Record<string, unknown>;
         const rendered = renderAiPrompt(field.ai!.prompt, fields, cells, row, { ...context, content: contentOf(row.id) });
-        const hash = aiInputHash(field, rendered.text);
+        const hash = aiInputHash(field, rendered.input);
         const meta = one<{ input_hash: string }>("SELECT input_hash FROM ai_cell_meta WHERE row_id=? AND field_id=?", row.id, field.id);
         if (meta?.input_hash === hash) continue;
         if (!meta && rendered.empty && isEmptyCell(cells[field.id])) continue;

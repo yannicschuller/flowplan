@@ -132,6 +132,9 @@ export function startBackupWorker() {
       // The Git export of spaces whose interval has passed, also when
       // backups are off (lib/space-git-export.ts).
       await runDueSpaceGitExports().catch((error) => console.error("Space Git export failed", error));
+    } catch (error) {
+      // Nothing here may become an unhandled rejection of the interval.
+      console.error("Scheduled backup check failed", error);
     } finally {
       runtime.flowplanBackupBusy = false;
     }

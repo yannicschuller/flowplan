@@ -16,7 +16,7 @@ import type { Identity, Field, View } from "../lib/types";
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(
   join(tmpdir(), "flowplan-timeline-"),
 );
-const { id, run, one } = await import("../lib/db");
+const { id, run, one, all } = await import("../lib/db");
 const { command, database, rows, bootstrap } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { exportArchive, importArchive } = await import("../lib/archive");
@@ -668,6 +668,16 @@ test("cascading shifts push whole dependency chains after their predecessors", a
       after: [a],
     },
   }).id;
+  // Shifted records change like any edit: automations see them.
+  command(owner, {
+    action: "database.settings",
+    pageId: pid,
+    settings: {
+      automations: [
+        { id: "moved", name: "Moved", trigger: { type: "changed", field: "start" }, actions: [{ type: "notify", to: "@actor", message: "Verschoben" }] },
+      ],
+    },
+  });
   command(owner, {
     action: "timeline.cascade",
     pageId: pid,
@@ -679,6 +689,10 @@ test("cascading shifts push whole dependency chains after their predecessors", a
   assert.deepEqual(
     [moved.cells.start, moved.cells.end],
     ["2026-03-05T09:00", "2026-03-06T17:00"],
+  );
+  assert.deepEqual(
+    all<{ row_id: string }>("SELECT row_id FROM notifications WHERE user_id=? AND kind='automation'", owner.id).map((n) => n.row_id),
+    [b],
   );
   assert.throws(
     () =>

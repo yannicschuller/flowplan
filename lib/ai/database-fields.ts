@@ -43,6 +43,10 @@ export const AI_REFERENCE_TYPES: FieldType[] = [
   "id",
   "relation",
 ];
+// Values that change with every write – also with the AI's own write of its
+// value. They never count as input of an automatic property: the prompt
+// would differ after each computation and queue the record again and again.
+export const VOLATILE_REFERENCE_TYPES: FieldType[] = ["updated_at", "updated_by"];
 // {Inhalt} / {Content} / {Contenu}: the record's page content (unless a property has that name).
 export const CONTENT_REFERENCES = ["Inhalt", "Content", "Contenu"];
 export const AI_PROMPT_MAX = 2000;
@@ -84,6 +88,8 @@ export function prepareAiFields(user: Identity, page: Pick<Page, "workspace_id">
       if (!target) throw new HttpError(400, `Unbekannte Eigenschaft im KI-Prompt: {${name}}`);
       if (target.id === f.id) throw new HttpError(400, "Ein KI-Prompt kann nicht auf die eigene Eigenschaft verweisen.");
       if (!AI_REFERENCE_TYPES.includes(target.type)) throw new HttpError(400, `Diese Eigenschaft kann im KI-Prompt nicht verwendet werden: {${name}}`);
+      if (ai.auto && VOLATILE_REFERENCE_TYPES.includes(target.type))
+        throw new HttpError(400, `Ein automatischer KI-Wert kann nicht auf {${name}} verweisen: Der Wert ändert sich mit jedem Schreiben der KI.`);
     }
   }
   // AI properties referring to each other in a circle would recompute forever.
@@ -155,27 +161,35 @@ export function relationTitlesFor(user: Identity) {
 export const contentOf = (rowId: string) => () => recordContent(rowId);
 
 // The prompt with every {Name} replaced by the record's value. `empty`:
-// the prompt refers to properties and all of them are empty.
+// the prompt refers to properties and all of them are empty. `input`: the
+// same text with the volatile values ({Zuletzt geändert} …) left as their
+// references – what the input hash is made of, so that a value's own write
+// does not count as a changed input.
 export function renderAiPrompt(prompt: string, fields: Field[], cells: Record<string, unknown>, row: RowLike, context: PromptContext) {
   let references = 0,
     filled = 0;
-  const text = prompt.replace(/\{([^{}\n]{1,100})\}/g, (whole, raw: string) => {
-    const name = raw.trim();
-    const field = referencedField(name, fields);
-    let value: string;
-    if (field) {
-      if (!AI_REFERENCE_TYPES.includes(field.type)) return whole;
-      value =
-        field.type === "relation"
-          ? context.relationTitles(field, (Array.isArray(cells[field.id]) ? (cells[field.id] as unknown[]) : []).map(String)).filter(Boolean).join(", ")
-          : cellPlain(field, cells[field.id], row, context.names);
-    } else if (isContentReference(name, fields)) value = context.content();
-    else return whole;
-    references++;
-    if (value.trim()) filled++;
-    return value.slice(0, 8000);
-  });
-  return { text, empty: references > 0 && filled === 0 };
+  const render = (volatile: boolean) =>
+    prompt.replace(/\{([^{}\n]{1,100})\}/g, (whole, raw: string) => {
+      const name = raw.trim();
+      const field = referencedField(name, fields);
+      let value: string;
+      if (field) {
+        if (!AI_REFERENCE_TYPES.includes(field.type)) return whole;
+        if (!volatile && VOLATILE_REFERENCE_TYPES.includes(field.type)) return whole;
+        value =
+          field.type === "relation"
+            ? context.relationTitles(field, (Array.isArray(cells[field.id]) ? (cells[field.id] as unknown[]) : []).map(String)).filter(Boolean).join(", ")
+            : cellPlain(field, cells[field.id], row, context.names);
+      } else if (isContentReference(name, fields)) value = context.content();
+      else return whole;
+      if (volatile) {
+        references++;
+        if (value.trim()) filled++;
+      }
+      return value.slice(0, 8000);
+    });
+  const text = render(true);
+  return { text, input: render(false), empty: references > 0 && filled === 0 };
 }
 export const aiInputHash = (field: Field, rendered: string) =>
   createHash("sha256")

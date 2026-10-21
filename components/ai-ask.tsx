@@ -135,7 +135,7 @@ export function AskPanel({
           <Trash size={14} /> {t("Neues Gespräch", "New conversation")}
         </button>
       </div>
-      <div className="ai-ask-log" aria-live="polite">
+      <div className="ai-ask-log" aria-live="polite" aria-busy={busy}>
         {!messages.length && (
           <div className="ai-ask-empty">
             <Sparkle size={26} />

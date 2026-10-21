@@ -2,6 +2,7 @@
 // semantic index). This module only reads; whether the AI may read a source
 // is decided elsewhere (lib/ai/access.ts) – callers check before using it.
 import { all, one } from "../db";
+import { ct } from "../content-locale";
 import { ticketId } from "../ticket-ids";
 import type { Field } from "../types";
 import { chunkHtml, chunkPlain, chunkParagraphs } from "./chunks";
@@ -77,7 +78,7 @@ export function recordLines(fields: Field[], cells: Record<string, unknown>, row
 
 export const recordTitle = (fields: Field[], cells: Record<string, unknown>) => {
   const v = fields[0] ? cells[fields[0].id] : "";
-  return (typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v)).slice(0, 300) || "Ohne Titel";
+  return (typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v)).slice(0, 300) || ct("Ohne Titel", "Untitled");
 };
 
 const fieldsCache = new Map<string, { at: number; fields: Field[] }>();

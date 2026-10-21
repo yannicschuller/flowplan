@@ -31,8 +31,11 @@ export const AI_BLOCKED_MESSAGE = "Diese Seite ist für die KI gesperrt.";
 // Everything needed to judge many pages of one person at once.
 class AccessContext {
   private pages = new Map<string, PageLite | null>();
-  private workspaces = new Map<string, { spaces: Map<string, { deleted: boolean }>; blocks: Set<string>; pinned: Set<string> }>();
+  private workspaces = new Map<string, { spaces: Map<string, { deleted: boolean }>; pinned: Set<string> }>();
   private rules: Map<string, "include" | "exclude">;
+  // Every block by its target, whatever workspace the row names: a block
+  // follows a page that moves to another workspace.
+  private blocks = allAiBlocks();
   private scope: "all" | "selected";
   private roles = new Map<string, boolean>();
   constructor(private user: Identity) {
@@ -47,7 +50,6 @@ class AccessContext {
     for (const p of all<PageLite>("SELECT id,workspace_id,space_id,parent_id,deleted_at,kind FROM pages WHERE workspace_id=?", id)) this.pages.set(p.id, p);
     entry = {
       spaces: new Map(all<{ id: string; deleted_at: string | null }>("SELECT id,deleted_at FROM spaces WHERE workspace_id=?", id).map((s) => [s.id, { deleted: !!s.deleted_at }])),
-      blocks: new Set(all<{ target_id: string }>("SELECT target_id FROM ai_blocks WHERE workspace_id=?", id).map((r) => r.target_id)),
       pinned: new Set(
         all<{ page_id: string }>("SELECT s.page_id FROM journal_settings s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND s.lock_hash IS NOT NULL", id).map((r) => r.page_id),
       ),
@@ -83,7 +85,7 @@ class AccessContext {
     const space = ws.spaces.get(page.space_id);
     if (page.deleted_at || !space || space.deleted) return "trash";
     if (!this.visible(page)) return "hidden";
-    if (ws.blocks.has(page.space_id)) return "blocked";
+    if (this.blocks.has(page.space_id)) return "blocked";
     // The page and everything above it.
     const chain: PageLite[] = [];
     const seen = new Set<string>();
@@ -95,7 +97,7 @@ class AccessContext {
     for (const p of chain) {
       if (p.deleted_at) return "trash";
       if (ws.pinned.has(p.id)) return "pin";
-      if (ws.blocks.has(p.id)) return "blocked";
+      if (this.blocks.has(p.id)) return "blocked";
     }
     for (const level of [...chain.map((p) => p.id), page.space_id, page.workspace_id]) {
       const rule = this.rules.get(level);
@@ -262,10 +264,12 @@ export function setAiBlock(user: Identity, raw: unknown) {
   audit(user.id, b.blocked ? "ai.block" : "ai.unblock", b.targetId, b.kind);
   return aiBlockInfo(user, b.targetId, b.kind);
 }
+// The targets of every block (a small table; by target, not by workspace).
+const allAiBlocks = () => new Set(all<{ target_id: string }>("SELECT target_id FROM ai_blocks").map((r) => r.target_id));
 // Whether a page or space is closed to the AI, and by what.
 export function aiBlockInfo(user: Identity, targetId: string, kind: "page" | "space") {
   const target = managedTarget(user, targetId, kind);
-  const blocks = new Set(all<{ target_id: string }>("SELECT target_id FROM ai_blocks WHERE workspace_id=?", target.workspaceId).map((r) => r.target_id));
+  const blocks = allAiBlocks();
   let inherited: "space" | "page" | null = null;
   if (kind === "page") {
     if (blocks.has(target.spaceId)) inherited = "space";

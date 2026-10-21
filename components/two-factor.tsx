@@ -38,12 +38,14 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     );
   return data as T;
 }
-// The confirmation field takes either the password or a six-digit code
-// (passwords have at least ten characters).
-const confirmation = (value: string) =>
-  /^\d{6}$/.test(value.replace(/\s/g, ""))
+// The confirmation field takes the password, a six-digit code from the app
+// or a recovery code (passwords have at least ten characters).
+const confirmation = (value: string) => {
+  const compact = value.replace(/\s/g, "");
+  return /^\d{6}$/.test(compact) || /^[a-z0-9]{5}-?[a-z0-9]{5}$/.test(compact)
     ? { code: value }
     : { password: value };
+};
 
 export function TwoFactorSettings({
   enforced = false,

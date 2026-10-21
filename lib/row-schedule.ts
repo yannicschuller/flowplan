@@ -224,13 +224,14 @@ export function cascadeTimeline(
   assertRowsWritable(user, page, shifts.keys());
   for (const [rid, days] of shifts) {
     const row = rows.find((r) => r.id === rid)!;
-    const patch = schedulePatch(row, fields, view, { operation: "move", days });
+    const next = { ...row.cells, ...schedulePatch(row, fields, view, { operation: "move", days }) };
     run(
       "UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP,updated_by=? WHERE id=?",
-      JSON.stringify({ ...row.cells, ...patch }),
+      JSON.stringify(next),
       user.id,
       rid,
     );
+    rowChanged(user, page, rid, row.cells, next, fields);
   }
   return { ok: true, moved: shifts.size };
 }
