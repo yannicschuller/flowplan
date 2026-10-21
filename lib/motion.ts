@@ -14,7 +14,9 @@ export const FLIP_LIMIT = 150;
 type MediaWindow = { matchMedia?: (query: string) => { matches: boolean } };
 
 /** True when the system asks for reduced motion (and on the server). */
-export function prefersReducedMotion(win: MediaWindow | undefined = globalThis as MediaWindow): boolean {
+export function prefersReducedMotion(
+  win: MediaWindow | undefined = typeof window === "undefined" ? undefined : (window as MediaWindow),
+): boolean {
   if (!win || typeof win.matchMedia !== "function") return true;
   try {
     return win.matchMedia("(prefers-reduced-motion: reduce)").matches;

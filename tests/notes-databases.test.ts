@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Field, Identity, View } from "../lib/types";
@@ -273,13 +273,18 @@ test("a record turns into a page with its content, links, comments and versions"
     String(act(anna, { action: "row.create", pageId: notes, cells: { title, para: "Resource", area: [house], tags: ["heating"] } }).id);
   const rid = make("Wasser nachfüllen");
   const fid = id();
-  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, notes, "druck.png", "image/png", 1, anna.id);
-  const html = `<p>Druck auf <strong>1,5 bar</strong>.</p><p><a href="/api/files/${fid}">druck.png</a></p>`;
+  const uploads = join(process.env.FLOWPLAN_DATA_DIR!, "uploads");
+  mkdirSync(uploads, { recursive: true });
+  writeFileSync(join(uploads, fid), "png-bytes");
+  run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", fid, notes, "druck.png", "image/png", 9, anna.id);
+  const html = `<p>Druck auf <strong>1,5 bar</strong>.</p><p><img src="/api/files/${fid}"></p><p><a href="/api/files/${fid}">druck.png</a></p>`;
   run("DELETE FROM row_documents WHERE row_id=?", rid);
   run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, "gen-1");
   run("UPDATE rows SET content=?,icon=?,cover=? WHERE id=?", html, "drop", "#3366ff", rid);
   run("INSERT INTO row_snapshots(id,row_id,state,html,created_by,kind) VALUES(?,?,?,?,?,?)", id(), rid, htmlState("<p>alt</p>"), "<p>alt</p>", anna.id, "manual");
-  act(anna, { action: "comment.create", pageId: notes, rowId: rid, body: "Jeden Herbst prüfen" });
+  const oldHtml = `<p>alt <a href="/api/files/${fid}">druck.png</a></p>`;
+  run("INSERT INTO row_snapshots(id,row_id,state,html,created_by,kind) VALUES(?,?,?,?,?,?)", id(), rid, htmlState(oldHtml), oldHtml, anna.id, "manual");
+  act(anna, { action: "comment.create", pageId: notes, rowId: rid, body: `Jeden Herbst prüfen /api/files/${fid}` });
   const thread = id();
   run("INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor) VALUES(?,?,?,?,?)", thread, notes, rid, anna.id, "{}");
   run("INSERT INTO row_favorites(user_id,row_id,page_id) VALUES(?,?,?)", anna.id, rid, notes);
@@ -296,7 +301,7 @@ test("a record turns into a page with its content, links, comments and versions"
   assert.equal(plan.title, "Wasser nachfüllen");
   assert.deepEqual(plan.target, { spaceId: space, parentId: parent }, "by default where the database is");
   assert.equal(plan.comments, 1);
-  assert.equal(plan.versions, 1);
+  assert.equal(plan.versions, 2);
   assert.deepEqual(
     plan.properties.map((p) => `${p.name}: ${p.text}`),
     ["Tags: heating", "Area: House", "PARA: Resource"],
@@ -318,11 +323,24 @@ test("a record turns into a page with its content, links, comments and versions"
   assert.match(doc.html, new RegExp(`<strong>Area:</strong> <a [^>]*href="/#page=${areas}&amp;row=${house}"`));
   const md = (await exportMarkdown(anna, { pageId, format: "markdown", includeSubpages: false })).bytes.toString("utf8");
   assert.match(md, /- \*\*PARA:\*\* Resource/);
-  // Same file, now of the page; comments, text comments, versions and favourites follow.
-  assert.equal(one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", fid)!.page_id, pageId);
-  assert.deepEqual({ ...one<{ page_id: string; row_id: string | null }>("SELECT page_id,row_id FROM comments WHERE body='Jeden Herbst prüfen'")! }, { page_id: pageId, row_id: null });
+  // The page refers to its own copy of the file (image, link, comment and
+  // version alike); the original stays with the database, so the record in
+  // the trash keeps it. Comments, text comments, versions and favourites follow.
+  assert.equal(one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", fid)!.page_id, notes, "the record's file stays with the database");
+  const copy = one<{ id: string; name: string; mime: string; size: number }>("SELECT id,name,mime,size FROM files WHERE page_id=?", pageId);
+  assert.ok(copy && copy.id !== fid, "the page gets a copy");
+  assert.deepEqual({ name: copy.name, mime: copy.mime, size: copy.size }, { name: "druck.png", mime: "image/png", size: 9 });
+  assert.equal(readFileSync(join(uploads, copy.id), "utf8"), "png-bytes");
+  assert.doesNotMatch(doc.html, new RegExp(fid));
+  assert.match(doc.html, new RegExp(`<img src="/api/files/${copy.id}"`));
+  assert.match(doc.html, new RegExp(`<a [^>]*href="/api/files/${copy.id}"[^>]*>druck.png</a>`));
+  const comment = one<{ page_id: string; row_id: string | null; body: string }>("SELECT page_id,row_id,body FROM comments WHERE body LIKE 'Jeden Herbst prüfen%'")!;
+  assert.deepEqual({ ...comment }, { page_id: pageId, row_id: null, body: `Jeden Herbst prüfen /api/files/${copy.id}` });
   assert.equal(one<{ page_id: string }>("SELECT page_id FROM inline_threads WHERE id=?", thread)!.page_id, pageId);
   assert.equal(all("SELECT 1 FROM snapshots WHERE page_id=? AND html='<p>alt</p>'", pageId).length, 1);
+  const version = one<{ html: string; state: Uint8Array }>("SELECT html,state FROM snapshots WHERE page_id=? AND html LIKE '%druck.png%'", pageId)!;
+  assert.match(version.html, new RegExp(`href="/api/files/${copy.id}"`));
+  assert.ok(Buffer.from(version.state).toString("latin1").includes(copy.id), "the version's state refers to the copy too");
   assert.ok(one("SELECT 1 FROM favorites WHERE user_id=? AND page_id=?", anna.id, pageId));
   // Links point to the page now, from pages and records.
   assert.match(one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", overview)!.html, new RegExp(`href="/#page=${pageId}"`));
@@ -331,6 +349,10 @@ test("a record turns into a page with its content, links, comments and versions"
   assert.equal(one("SELECT 1 FROM rows WHERE id=?", rid), undefined);
   act(anna, { action: "row.trash.restore", trashId: rid });
   assert.ok(one("SELECT 1 FROM rows WHERE id=? AND page_id=?", rid, notes));
+  // Back from the trash, the record still has its file and its original text.
+  assert.match(one<{ content: string }>("SELECT content FROM rows WHERE id=?", rid)!.content, new RegExp(`/api/files/${fid}`));
+  assert.equal(one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", fid)!.page_id, notes);
+  assert.equal(readFileSync(join(uploads, fid), "utf8"), "png-bytes");
 
   // Without properties: the content stays as it is; the top of the space works too.
   const plain = make("Ohne Eigenschaften");

@@ -7,8 +7,11 @@ import { Window } from "happy-dom";
 const win = new Window();
 Object.assign(globalThis, { window: win, document: win.document, HTMLElement: win.HTMLElement, Element: win.Element, Node: win.Node });
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-// Motion is allowed: no reduced-motion preference.
-(globalThis as unknown as { matchMedia: unknown }).matchMedia = () => ({ matches: false });
+// Motion is allowed: no reduced-motion preference (prefersReducedMotion reads
+// window.matchMedia; the global alias is for code that calls it directly).
+const allowMotion = () => ({ matches: false });
+(win as unknown as { matchMedia: unknown }).matchMedia = allowMotion;
+(globalThis as unknown as { matchMedia: unknown }).matchMedia = allowMotion;
 const React = await import("react");
 const { act } = React;
 const { createRoot } = await import("react-dom/client");

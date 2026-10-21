@@ -3,6 +3,7 @@
 // editors, like an edit by a person.
 import * as Y from "yjs";
 import { Node as PMNode } from "@tiptap/pm/model";
+import { Transform } from "@tiptap/pm/transform";
 import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { one, run } from "./db";
 import { documentSchema } from "./document-schema";
@@ -12,6 +13,63 @@ import { HttpError } from "./auth";
 
 let cachedSchema: ReturnType<typeof documentSchema> | undefined;
 export const rewriteSchema = () => (cachedSchema ??= documentSchema());
+
+/**
+ * Passes every string attribute of nodes and marks (image sources, link
+ * targets, attachments …) through `replace`; returns the changed document
+ * or null when nothing changed. Attribute changes keep every position, so
+ * text comments and other anchors stay where they are.
+ */
+export function rewriteReferences(doc: PMNode, replace: (value: string) => string): PMNode | null {
+  type Attrs = Record<string, unknown>;
+  const changed = (attrs: Attrs): Attrs | null => {
+    let next: Attrs | null = null;
+    for (const [key, value] of Object.entries(attrs)) {
+      if (typeof value !== "string" || !value) continue;
+      const replaced = replace(value);
+      if (replaced !== value) (next ??= { ...attrs })[key] = replaced;
+    }
+    return next;
+  };
+  const nodes: { pos: number; attrs: Attrs }[] = [];
+  const marks: { from: number; to: number; mark: PMNode["marks"][number]; attrs: Attrs }[] = [];
+  doc.descendants((node, pos) => {
+    const attrs = changed(node.attrs);
+    if (attrs) nodes.push({ pos, attrs });
+    for (const mark of node.marks) {
+      const next = changed(mark.attrs);
+      if (next) marks.push({ from: pos, to: pos + node.nodeSize, mark, attrs: next });
+    }
+    return true;
+  });
+  if (!nodes.length && !marks.length) return null;
+  const tr = new Transform(doc);
+  for (const { pos, attrs } of nodes) tr.setNodeMarkup(pos, undefined, attrs);
+  for (const { from, to, mark, attrs } of marks) tr.removeMark(from, to, mark).addMark(from, to, mark.type.create(attrs));
+  return tr.doc;
+}
+
+/**
+ * Applies `change` to a stored document (its Yjs state, or the HTML when
+ * there is none) without touching the database: for versions and other
+ * copies kept beside the live document. Null when nothing changed.
+ */
+export function rewriteStoredDocument(
+  state: Uint8Array | null,
+  html: string,
+  change: (doc: PMNode) => PMNode | null,
+): { state: Uint8Array; html: string } | null {
+  const ydoc = new Y.Doc();
+  try {
+    Y.applyUpdate(ydoc, state || htmlState(html));
+    const next = change(PMNode.fromJSON(rewriteSchema(), yDocToProsemirrorJSON(ydoc, "default")));
+    if (!next) return null;
+    ydoc.transact(() => updateYFragment(ydoc, ydoc.getXmlFragment("default"), next, { mapping: new Map(), isOMark: new Map() }));
+    return { state: Y.encodeStateAsUpdate(ydoc), html: stateHtml(ydoc) };
+  } finally {
+    ydoc.destroy();
+  }
+}
 
 export function rewriteDocument(
   pageId: string,
