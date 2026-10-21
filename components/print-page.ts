@@ -14,57 +14,95 @@ export function printPage(root?: HTMLElement) {
     document.querySelector(".print-copy")?.remove();
     // Apps on the iPhone and iPad home screen cannot print at all: the view
     // opens in the browser instead.
-    if (isIOS() && isStandalone()) return void printInBrowser(source);
+    if (isIOS() && isStandalone())
+      return void printInBrowser(async () => {
+        const copy = leanCopy(source, document);
+        await inlineImages(copy);
+        return `<!doctype html><html lang="${escapeHtml(document.documentElement.lang)}" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(document.title)}</title>${appStyles()}</head><body class="print-view">${copy.outerHTML}</body></html>`;
+      });
     // iPhone and iPad print the page itself, not a frame, and only while the
     // tap still counts: the copy goes into the page, printed right away.
-    if (isIOS()) {
-      const holder = document.createElement("div");
-      holder.className = "print-copy";
-      holder.setAttribute("aria-hidden", "true");
-      holder.append(leanCopy(source, document));
-      document.body.append(holder);
-      document.documentElement.classList.add("printing-copy");
-      const done = () => {
-        document.documentElement.classList.remove("printing-copy");
-        holder.remove();
-      };
-      window.addEventListener("afterprint", done, { once: true });
-      window.print();
-      return;
-    }
+    if (isIOS()) return printInPage([leanCopy(source, document)]);
     // Elsewhere in a hidden frame with the app's styles.
-    const frame = document.createElement("iframe");
-    frame.className = "print-frame";
-    frame.setAttribute("aria-hidden", "true");
-    frame.tabIndex = -1;
-    frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
-    document.body.append(frame);
-    const doc = frame.contentDocument!;
     const styles = [...document.head.querySelectorAll('link[rel="stylesheet"], style')].map((el) => el.outerHTML).join("");
-    doc.open();
-    doc.write(
+    printInFrame(
       `<!doctype html><html lang="${document.documentElement.lang}" data-theme="light"><head><meta charset="utf-8"><base href="${location.origin}/"><title>${document.title.replace(/</g, "&lt;")}</title>${styles}</head><body class="print-view"></body></html>`,
+      (doc) => doc.body.append(doc.importNode(leanCopy(source, doc), true)),
     );
-    doc.close();
-    doc.body.append(doc.importNode(leanCopy(source, doc), true));
-    const ready = async () => {
-      const images = [...doc.images].map((img) => (img.complete ? null : new Promise((done) => ((img.onload = img.onerror = done)))));
-      await Promise.race([Promise.all([...images, doc.fonts?.ready]), new Promise((done) => setTimeout(done, 3000))]);
-      frame.contentWindow!.focus();
-      frame.contentWindow!.print();
-    };
-    // Styles from <link> load in the frame first.
-    if (doc.readyState === "complete") void ready();
-    else frame.addEventListener("load", () => void ready(), { once: true });
+  }, 120);
+}
+// A complete print view from the server (the combined PDF export,
+// app/api/export/pdf): printed the same three ways as a page – its pictures
+// are addresses behind the session, so the home screen app sends them along
+// as data.
+export function printDocument(html: string) {
+  setTimeout(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    document.querySelector("iframe.print-frame")?.remove();
+    document.querySelector(".print-copy")?.remove();
+    if (isIOS() && isStandalone())
+      return void printInBrowser(async () => {
+        const parsed = new DOMParser().parseFromString(html, "text/html");
+        await inlineImages(parsed.body);
+        return `<!doctype html>${parsed.documentElement.outerHTML}`;
+      });
+    if (isIOS()) {
+      const parsed = new DOMParser().parseFromString(html, "text/html");
+      return printInPage([...parsed.head.querySelectorAll("style"), ...parsed.body.children].map((el) => document.importNode(el, true) as HTMLElement));
+    }
+    printInFrame(html.replace(/<head>/i, `<head><base href="${location.origin}/">`));
   }, 120);
 }
 const isStandalone = () =>
   (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia("(display-mode: standalone)").matches;
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const appStyles = () =>
+  [...document.head.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style')]
+    .map((el) => (el instanceof HTMLLinkElement ? `<link rel="stylesheet" href="${escapeHtml(el.href)}">` : `<style>${el.textContent}</style>`))
+    .join("");
+// The copy goes into the page itself (iPhone, iPad), printed right away.
+function printInPage(elements: HTMLElement[]) {
+  const holder = document.createElement("div");
+  holder.className = "print-copy";
+  holder.setAttribute("aria-hidden", "true");
+  holder.append(...elements);
+  document.body.append(holder);
+  document.documentElement.classList.add("printing-copy");
+  const done = () => {
+    document.documentElement.classList.remove("printing-copy");
+    holder.remove();
+  };
+  window.addEventListener("afterprint", done, { once: true });
+  window.print();
+}
+// A hidden frame holds the document; it prints once pictures and fonts are
+// there (or after three seconds).
+function printInFrame(html: string, fill?: (doc: Document) => void) {
+  const frame = document.createElement("iframe");
+  frame.className = "print-frame";
+  frame.setAttribute("aria-hidden", "true");
+  frame.tabIndex = -1;
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+  document.body.append(frame);
+  const doc = frame.contentDocument!;
+  doc.open();
+  doc.write(html);
+  doc.close();
+  fill?.(doc);
+  const ready = async () => {
+    const images = [...doc.images].map((img) => (img.complete ? null : new Promise((done) => ((img.onload = img.onerror = done)))));
+    await Promise.race([Promise.all([...images, doc.fonts?.ready]), new Promise((done) => setTimeout(done, 3000))]);
+    frame.contentWindow!.focus();
+    frame.contentWindow!.print();
+  };
+  // Styles from <link> load in the frame first.
+  if (doc.readyState === "complete") void ready();
+  else frame.addEventListener("load", () => void ready(), { once: true });
+}
 // The print view as a document of its own (lib/print-snapshots.ts), stored
 // briefly under a secret address and opened in the browser, where printing
 // works. The browser there has no session: own pictures go along as data.
-async function printInBrowser(source: HTMLElement) {
+async function printInBrowser(build: () => Promise<string>) {
   document.querySelector("dialog.print-handoff")?.remove();
   const dialog = document.createElement("dialog");
   dialog.className = "print-handoff";
@@ -85,15 +123,7 @@ async function printInBrowser(source: HTMLElement) {
   document.body.append(dialog);
   dialog.showModal();
   try {
-    const copy = leanCopy(source, document);
-    await inlineImages(copy);
-    const styles = [...document.head.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style')]
-      .map((el) => (el instanceof HTMLLinkElement ? `<link rel="stylesheet" href="${escapeHtml(el.href)}">` : `<style>${el.textContent}</style>`))
-      .join("");
-    const html =
-      `<!doctype html><html lang="${escapeHtml(document.documentElement.lang)}" data-theme="light"><head><meta charset="utf-8">` +
-      `<meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(document.title)}</title>${styles}</head>` +
-      `<body class="print-view">${copy.outerHTML}</body></html>`;
+    const html = await build();
     const res = await fetch("/api/print", { method: "POST", headers: { "Content-Type": "text/html; charset=utf-8" }, body: html });
     const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
     if (!res.ok || !body.url) throw new Error(body.error ? serverMessage(body.error) : tr("Druckansicht konnte nicht erstellt werden.", "The print view could not be created."));

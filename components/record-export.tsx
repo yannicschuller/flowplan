@@ -3,13 +3,15 @@
 // Markdown (with frontmatter) as one file or as a ZIP with files, and for a
 // record also Print / PDF.
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { DotsThree, DownloadSimple, FileCsv, FileText, FileZip, NotePencil, Printer } from "@phosphor-icons/react";
+import { DotsThree, DownloadSimple, FileCsv, FileDoc, FileText, FileZip, NotePencil, Printer } from "@phosphor-icons/react";
+import { useState } from "react";
 import { serverMessage } from "@/lib/i18n-errors";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { exportName } from "@/lib/export-name";
 import { useT } from "./i18n";
 import { downloadBlob } from "./ui";
 import { printPage } from "./print-page";
+import { docxUrl, downloadExport } from "./export-download";
 
 export async function downloadMarkdown(pageId: string, title: string, format: "markdown" | "zip", rowId?: string) {
   await flushOpenDocuments();
@@ -35,11 +37,19 @@ export function DatabaseExportMenu({
   onError: (message: string) => void;
 }) {
   const t = useT();
+  const [busy, setBusy] = useState(false);
   const run = (format: "markdown" | "zip") => () => void downloadMarkdown(pageId, title, format).catch((e) => onError((e as Error).message));
+  // Word takes a moment for a large database: the entry says so meanwhile.
+  const word = () => {
+    setBusy(true);
+    void downloadExport(docxUrl(pageId), `${exportName(title)}.docx`)
+      .catch((e) => onError((e as Error).message))
+      .finally(() => setBusy(false));
+  };
   return (
     <Dropdown.Root>
       <Dropdown.Trigger asChild>
-        <button title={t("Exportieren", "Export")} aria-label={t("Exportieren", "Export")}>
+        <button title={t("Exportieren", "Export")} aria-label={t("Exportieren", "Export")} aria-busy={busy || undefined}>
           <DownloadSimple size={17} />
         </button>
       </Dropdown.Trigger>
@@ -56,6 +66,10 @@ export function DatabaseExportMenu({
           <Dropdown.Item className="dropdown-item" onSelect={run("markdown")}>
             <FileText />
             Markdown (.md)
+          </Dropdown.Item>
+          <Dropdown.Item className="dropdown-item" disabled={busy} onSelect={word}>
+            <FileDoc />
+            {busy ? t("Word wird erstellt …", "Creating Word file …") : t("Als Word (DOCX)", "As Word (DOCX)")}
           </Dropdown.Item>
         </Dropdown.Content>
       </Dropdown.Portal>
@@ -80,12 +94,19 @@ export function RecordExportMenu({
   onToPage?: () => void;
 }) {
   const t = useT();
+  const [busy, setBusy] = useState(false);
   const run = (format: "markdown" | "zip") => () =>
     void downloadMarkdown(pageId, title, format, rowId).catch((e) => onError((e as Error).message));
+  const word = () => {
+    setBusy(true);
+    void downloadExport(docxUrl(pageId, rowId), `${exportName(title)}.docx`)
+      .catch((e) => onError((e as Error).message))
+      .finally(() => setBusy(false));
+  };
   return (
     <Dropdown.Root>
       <Dropdown.Trigger asChild>
-        <button type="button" className="icon-button" aria-label={t("Weitere Aktionen", "More actions")} title={t("Weitere Aktionen", "More actions")}>
+        <button type="button" className="icon-button" aria-label={t("Weitere Aktionen", "More actions")} title={t("Weitere Aktionen", "More actions")} aria-busy={busy || undefined}>
           <DotsThree size={17} />
         </button>
       </Dropdown.Trigger>
@@ -98,6 +119,10 @@ export function RecordExportMenu({
           <Dropdown.Item className="dropdown-item" onSelect={run("zip")}>
             <FileZip />
             {t("Markdown mit Dateien (.zip)", "Markdown with files (.zip)")}
+          </Dropdown.Item>
+          <Dropdown.Item className="dropdown-item" disabled={busy} onSelect={word}>
+            <FileDoc />
+            {busy ? t("Word wird erstellt …", "Creating Word file …") : t("Als Word (DOCX)", "As Word (DOCX)")}
           </Dropdown.Item>
           <Dropdown.Item className="dropdown-item" onSelect={() => printPage(printRoot() || undefined)}>
             <Printer />
