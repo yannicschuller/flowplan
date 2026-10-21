@@ -56,7 +56,7 @@ test("quick search finds compound words and records, filters by kind and opens e
   const input = dialog.getByLabel("Suchen oder Befehl");
   // Part of a compound word, without umlaut and in other case.
   await input.fill(`UBERPRUFUNG im kellerraum ${tag}`);
-  const hit = dialog.getByRole("button", {
+  const hit = dialog.getByRole("option", {
     name: new RegExp(`Wartung ${tag}`),
   });
   await expect(hit).toBeVisible();
@@ -104,7 +104,7 @@ test("quick search finds compound words and records, filters by kind and opens e
   await page.keyboard.press("ControlOrMeta+k");
   await input.fill(`hausmeister ${tag}`);
   await dialog.getByRole("radio", { name: "Kommentare", exact: true }).click();
-  const commentHit = dialog.getByRole("button", { name: /Kommentar von/ });
+  const commentHit = dialog.getByRole("option", { name: /Kommentar von/ });
   await expect(commentHit).toBeVisible();
   await expect(commentHit).toContainText(`Kommentar in Suchziel ${tag}`);
   expect(errors).toEqual([]);

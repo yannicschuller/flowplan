@@ -14,7 +14,8 @@ export default function PushSettings() {
     [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(""),
     [supported, setSupported] = useState(true),
-    [installRequired, setInstallRequired] = useState(false);
+    [installRequired, setInstallRequired] = useState(false),
+    [ios, setIos] = useState(false);
   useEffect(() => {
     const ios =
       /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -22,6 +23,7 @@ export default function PushSettings() {
     const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       !!(navigator as Navigator & { standalone?: boolean }).standalone;
+    setIos(ios);
     setInstallRequired(ios && !standalone);
     const inApp = nativeApp();
     if (inApp) {
@@ -122,9 +124,19 @@ export default function PushSettings() {
       <p>
         {t("Erhalte Hinweise zu neuen Kommentaren und Erwähnungen, auch wenn Flowplan geschlossen ist. Auf dem Sperrbildschirm erscheint ein allgemeiner Hinweis ohne Dokumentinhalt.", "Get notified about new comments and mentions even when Flowplan is closed. The lock screen shows a general notice without document content.")}
       </p>
-      <p className="muted">
-        {t("Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.", "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.")}
-      </p>
+      {/* The iOS steps matter on iOS; elsewhere they stay behind a disclosure. */}
+      {ios ? (
+        <p className="muted">
+          {t("Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.", "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.")}
+        </p>
+      ) : (
+        <details className="push-ios-hint">
+          <summary>{t("Hinweis für iPhone und iPad", "Note for iPhone and iPad")}</summary>
+          <p className="muted">
+            {t("Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.", "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.")}
+          </p>
+        </details>
+      )}
       {app ? (
         <>
           <p>

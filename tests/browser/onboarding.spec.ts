@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 // The introduction: settings, pages to start with, a tour of the features
-// and notifications. New accounts see it once; Settings → General opens it
+// and notifications. New accounts see it once; Settings → Account opens it
 // again (used here, so any account of the test instance works).
 test("the introduction walks through settings, starter pages and the tour", async ({ page }, info) => {
   const errors: string[] = [];

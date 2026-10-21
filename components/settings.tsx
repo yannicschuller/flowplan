@@ -42,6 +42,9 @@ import {
   EnvelopeSimple,
   X,
   Sparkle,
+  UserCircle,
+  Keyboard,
+  ArrowRight,
 } from "@phosphor-icons/react";
 import { UserAiSettings } from "./ai-settings";
 import { api, Avatar, download, downloadBlob, Modal } from "./ui";
@@ -64,10 +67,16 @@ type SettingsData = {
 // i18n-table: 1 – [German, English] pairs
 const settingsTabs = [
   [
-    "general",
-    ["Allgemein", "General"],
+    "account",
+    ["Konto", "Account"],
+    UserCircle,
+    ["Dein Profil, Sprache, Erscheinungsbild, Sicherheit, angemeldete Geräte und deine Grenzen auf dieser Instanz.", "Your profile, language, appearance, security, signed-in devices and your limits on this instance."],
+  ],
+  [
+    "workspace",
+    ["Arbeitsbereich", "Workspace"],
     SlidersHorizontal,
-    ["Name, Symbol und Aussehen des Arbeitsbereichs, dein Profil und Tastenkürzel.", "Name, icon and appearance of the workspace, your profile and keyboard shortcuts."],
+    ["Name und Symbol des Arbeitsbereichs, Archivieren, Verlassen und Löschen.", "Name and icon of the workspace, archiving, leaving and deleting."],
   ],
   [
     "spaces",
@@ -130,7 +139,7 @@ export default function Settings({
   setTheme: (choice: ThemeChoice) => void;
 }) {
   const t = useT();
-  const [tab, setTab] = useState("general"),
+  const [tab, setTab] = useState("account"),
     [email, setEmail] = useState(""),
     [role, setRole] = useState("editor"),
     [inviteGuest, setInviteGuest] = useState(false),
@@ -281,7 +290,7 @@ export default function Settings({
               }}
             />
           )}
-          {tab === "general" && (
+          {tab === "account" && (
             <>
               <SettingGroup title={t("Dein Profil", "Your profile")}>
                 <div className="setting-row wide profile-row">
@@ -372,6 +381,28 @@ export default function Settings({
                   </SettingRow>
                 </SettingGroup>
               )}
+              <SettingGroup title={t("Einführung", "Introduction")}>
+                <SettingRow label={t("Einführung ansehen", "Show introduction")} description={t("Die kurze Tour durch Flowplan und die ersten Einstellungen, wie nach dem Anlegen des Kontos.", "The short tour of Flowplan and the first settings, as after creating your account.")}>
+                  <button type="button" className="button" onClick={() => window.dispatchEvent(new Event("flowplan:onboarding"))}>
+                    {t("Einführung starten", "Start introduction")}
+                  </button>
+                </SettingRow>
+              </SettingGroup>
+              <SettingGroup title={t("Tastenkürzel", "Keyboard shortcuts")}>
+                <SettingRow
+                  label={t("Alle Tastenkürzel", "All keyboard shortcuts")}
+                  description={t("Die Übersicht öffnet sich überall mit ? oder ⌘ / Ctrl + /.", "The overview opens anywhere with ? or ⌘ / Ctrl + /.")}
+                >
+                  <button type="button" className="button" onClick={() => window.dispatchEvent(new Event("flowplan:shortcuts"))}>
+                    <Keyboard size={16} aria-hidden="true" />
+                    {t("Tastenkürzel anzeigen", "Show keyboard shortcuts")}
+                  </button>
+                </SettingRow>
+              </SettingGroup>
+            </>
+          )}
+          {tab === "workspace" && (
+            <>
               <SettingGroup title={t("Arbeitsbereich", "Workspace")} description={owner ? undefined : t("Nur Eigentümer ändern Name und Symbol.", "Only owners change the name and icon.")}>
                 <form
                   className="setting-row"
@@ -402,29 +433,22 @@ export default function Settings({
                   )}
                 </form>
               </SettingGroup>
+              {/* The people, spaces, groups and integrations of the workspace
+                  have their own sections; this is the way there. */}
+              <SettingGroup title={t("Weitere Einstellungen des Arbeitsbereichs", "More workspace settings")}>
+                {settingsTabs
+                  .filter(([id]) => ["members", "spaces", "groups", "integrations"].includes(id))
+                  .map(([id, label, Icon, intro]) => (
+                    <SettingRow key={id} label={t(label[0], label[1])} description={t(intro[0], intro[1])}>
+                      <button type="button" className="button" onClick={() => setTab(id)}>
+                        <Icon size={16} aria-hidden="true" />
+                        {t("Öffnen", "Open")}
+                        <ArrowRight size={14} aria-hidden="true" />
+                      </button>
+                    </SettingRow>
+                  ))}
+              </SettingGroup>
               <WorkspaceLifecycle key={boot.workspace.id} boot={boot} onExit={onWorkspaceExit} />
-              <SettingGroup title={t("Einführung", "Introduction")}>
-                <SettingRow label={t("Einführung ansehen", "Show introduction")} description={t("Die kurze Tour durch Flowplan und die ersten Einstellungen, wie nach dem Anlegen des Kontos.", "The short tour of Flowplan and the first settings, as after creating your account.")}>
-                  <button type="button" className="button" onClick={() => window.dispatchEvent(new Event("flowplan:onboarding"))}>
-                    {t("Einführung starten", "Start introduction")}
-                  </button>
-                </SettingRow>
-              </SettingGroup>
-              <SettingGroup title={t("Tastenkürzel", "Keyboard shortcuts")}>
-                {(
-                  [
-                    [t("Seiten suchen", "Search pages"), "⌘ / Ctrl + K"],
-                    [t("Neue Seite", "New page"), "⌘ / Ctrl + N"],
-                    [t("Editor-Befehle", "Editor commands"), "/"],
-                    [t("Fett / Kursiv", "Bold / italic"), "⌘ / Ctrl + B / I"],
-                    ...(boot.ai?.features.write.ok ? [[t("KI-Schreibassistent", "AI writing assistant"), "⌘ / Ctrl + J"] as const] : []),
-                  ] as const
-                ).map(([label, keys]) => (
-                  <SettingRow key={label} label={label}>
-                    <kbd>{keys}</kbd>
-                  </SettingRow>
-                ))}
-              </SettingGroup>
             </>
           )}
           {tab === "members" && (

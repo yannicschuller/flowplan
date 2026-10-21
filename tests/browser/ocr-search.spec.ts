@@ -54,6 +54,6 @@ test("quick search finds text in scanned images", async ({
     .getByLabel("Suchen oder Befehl")
     .fill("Wartungsvertrag Heizung");
   await expect(
-    dialog.getByRole("button", { name: new RegExp(fileName) }),
+    dialog.getByRole("option", { name: new RegExp(fileName) }),
   ).toBeVisible();
 });

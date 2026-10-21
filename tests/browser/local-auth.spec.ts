@@ -58,7 +58,7 @@ test("create an account, sign out, sign in with the password and change it", asy
 
     // Settings: the profile offers name, password and passkeys.
     await page.goto("/#settings");
-    await page.getByRole("button", { name: /Allgemein/ }).first().click().catch(() => {});
+    await page.getByRole("button", { name: "Konto", exact: true }).first().click().catch(() => {});
     await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
     await page.getByLabel("Bisheriges Passwort").fill("ein-langes-passwort");
     await page.getByLabel("Neues Passwort", { exact: true }).fill("ganz-neues-passwort");

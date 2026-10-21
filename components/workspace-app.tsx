@@ -26,6 +26,7 @@ import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
+import { KeyboardShortcuts } from "./keyboard-shortcuts";
 import { PagePeople } from "./page-people";
 import { AiBlockToggle } from "./ai-settings";
 import { AskPanel } from "./ai-ask";
@@ -119,6 +120,8 @@ import {
   Sparkle,
   MarkdownLogo,
   WarningCircle,
+  Question,
+  Keyboard,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -253,6 +256,16 @@ type CommandAction = {
   icon: import("@phosphor-icons/react").Icon;
   run: () => void;
 };
+// One row of the command palette: a search hit, a recently viewed page or a
+// command. The id names the option for aria-activedescendant.
+type PaletteItem =
+  | { kind: "result"; id: string; result: SearchResult }
+  | { kind: "recent"; id: string; page: Page }
+  | { kind: "command"; id: string; action: CommandAction };
+// Typing there: "?" is a character, not the shortcut overlay.
+const isTyping = (el: EventTarget | null) =>
+  el instanceof HTMLElement &&
+  (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 const normalizeCommand = (value: string) =>
   value
     .toLocaleLowerCase("de")
@@ -308,6 +321,12 @@ export default function WorkspaceApp({
     [data, setData] = useState<PageData | null>(null),
     [mobile, setMobile] = useState(false),
     [search, setSearch] = useState(false),
+    // The keyboard shortcut overlay ("?", ⌘/, command, sidebar).
+    [shortcuts, setShortcuts] = useState(false),
+    // The highlighted row of the command palette (aria-activedescendant).
+    [paletteActive, setPaletteActive] = useState(0),
+    // The page that is the Tab stop of its space's tree (roving tabindex).
+    [treeFocus, setTreeFocus] = useState<string | null>(null),
     // "KI fragen": open with an optional first question.
     [ask, setAsk] = useState<{ question: string } | null>(null),
     [query, setQuery] = useState(""),
@@ -403,6 +422,21 @@ export default function WorkspaceApp({
   const [searchSpace, setSearchSpace] = useState("");
   const [inboxFilter, setInboxFilter] = useState<"all" | "unread">("all");
   const [searchName, setSearchName] = useState<string | null>(null);
+  // The element that opened the quick search gets the focus back when it
+  // closes (the search button, a tree item or the editor).
+  const searchOpener = useRef<HTMLElement | null>(null),
+    searchOpen = useRef(false),
+    mainRef = useRef<HTMLElement>(null);
+  searchOpen.current = search;
+  const openSearch = useCallback(() => {
+    if (!searchOpen.current) searchOpener.current = document.activeElement as HTMLElement | null;
+    setSearch(true);
+  }, []);
+  const closeSearch = () => {
+    setSearch(false);
+    setQuery("");
+    setSearchName(null);
+  };
   useEffect(() => {
     if (!search) return;
     const controller = new AbortController();
@@ -543,11 +577,16 @@ export default function WorkspaceApp({
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Settings → General opens the introduction again.
+  // Settings → Konto opens the introduction and the shortcut overlay again.
   useEffect(() => {
     const open = () => setOnboarding(true);
+    const keys = () => setShortcuts(true);
     window.addEventListener("flowplan:onboarding", open);
-    return () => window.removeEventListener("flowplan:onboarding", open);
+    window.addEventListener("flowplan:shortcuts", keys);
+    return () => {
+      window.removeEventListener("flowplan:onboarding", open);
+      window.removeEventListener("flowplan:shortcuts", keys);
+    };
   }, []);
   const mutate = useCallback(
     async (b: Record<string, unknown>) => {
@@ -766,7 +805,7 @@ export default function WorkspaceApp({
         if (fragment === "home") void refresh().catch(() => {});
       } else if (fragment === "search" || fragment === "new" || fragment === "capture") {
         // Quick actions of the mobile app and the home screen icon (long press).
-        if (fragment === "search") setSearch(true);
+        if (fragment === "search") openSearch();
         else if (fragment === "capture") setCapture(true);
         else setCreate(true);
         const back =
@@ -779,7 +818,16 @@ export default function WorkspaceApp({
     const key = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setSearch((s) => !s);
+        if (searchOpen.current) setSearch(false);
+        else openSearch();
+      }
+      // "?" outside of inputs and ⌘/: the keyboard shortcuts.
+      if (
+        ((e.metaKey || e.ctrlKey) && e.key === "/") ||
+        (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target))
+      ) {
+        e.preventDefault();
+        setShortcuts(true);
       }
       // ⌘⌥N: quick capture into the capture database; ⌘N: a new page.
       if ((e.metaKey || e.ctrlKey) && e.altKey && e.code === "KeyN") {
@@ -816,7 +864,7 @@ export default function WorkspaceApp({
       window.removeEventListener("offline", network);
       window.removeEventListener(SIGNED_OUT_EVENT, signedOut);
     };
-  }, [initial.pages, openPage, notify]);
+  }, [initial.pages, openPage, notify, openSearch]);
   const templateUsed = useRef(false);
   useEffect(() => {
     if (!useTemplate || templateUsed.current) return;
@@ -1149,21 +1197,85 @@ export default function WorkspaceApp({
     treeMove.current = null;
     flipList(root, items, (el) => (el as HTMLElement).dataset.pageId, move.at, { duration: 220 });
   });
+  // The pages of a level of the tree, in order.
+  const treeLevel = (parentId: string | null, sid: string) =>
+    activePages.filter(
+      (p) =>
+        p.space_id === sid &&
+        (parentId
+          ? p.parent_id === parentId
+          : !p.parent_id || !activePages.some((x) => x.id === p.parent_id)) &&
+        (!filterMatches || filterMatches.has(p.id)),
+    );
+  // Each space's tree has one Tab stop: the item focused last, else the open
+  // page, else the first page – as long as it is shown (parents unfolded).
+  function treeStop(sid: string): string | null {
+    const byId = new Map(activePages.map((p) => [p.id, p]));
+    const shown = (id: string | null) => {
+      const page = id ? byId.get(id) : undefined;
+      if (!page || page.space_id !== sid || (filterMatches && !filterMatches.has(page.id))) return false;
+      for (let parent = page.parent_id ? byId.get(page.parent_id) : undefined; parent; parent = parent.parent_id ? byId.get(parent.parent_id) : undefined)
+        if (!filterMatches && collapsed.has(parent.id)) return false;
+      return true;
+    };
+    if (shown(treeFocus)) return treeFocus;
+    if (screen === "page" && shown(pageId)) return pageId;
+    return treeLevel(null, sid)[0]?.id ?? null;
+  }
+  // Arrow keys in the tree (WAI-ARIA tree pattern): up and down move, right
+  // unfolds or enters, left folds or goes to the parent, Enter opens.
+  function treeKey(e: React.KeyboardEvent<HTMLDivElement>, p: Page, children: boolean, closed: boolean) {
+    const row = e.currentTarget,
+      items = [...(row.closest('[role="tree"]')?.querySelectorAll<HTMLElement>('[role="treeitem"]') || [])],
+      at = items.indexOf(row);
+    const focusItem = (el?: HTMLElement) => el?.focus();
+    const fold = (fold: boolean) =>
+      setCollapsed((s) => {
+        const n = new Set(s);
+        fold ? n.add(p.id) : n.delete(p.id);
+        return n;
+      });
+    switch (e.key) {
+      case "ArrowDown":
+        focusItem(items[at + 1]);
+        break;
+      case "ArrowUp":
+        focusItem(items[at - 1]);
+        break;
+      case "Home":
+        focusItem(items[0]);
+        break;
+      case "End":
+        focusItem(items[items.length - 1]);
+        break;
+      case "ArrowRight":
+        if (!children) return;
+        if (closed) fold(false);
+        else focusItem(items[at + 1]);
+        break;
+      case "ArrowLeft":
+        if (children && !closed) fold(true);
+        else focusItem(items.find((el) => el.dataset.pageId === p.parent_id));
+        break;
+      case "Enter":
+        // A button inside the row (title, chevron, +) handles its own Enter.
+        if (e.target !== row) return;
+        void openPage(p.id);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
   function tree(
     parentId: string | null,
     sid: string,
     level = 0,
+    stop: string | null = null,
   ): React.ReactNode {
     if (level > 20) return null;
-    return activePages
-      .filter(
-        (p) =>
-          p.space_id === sid &&
-          (parentId
-            ? p.parent_id === parentId
-            : !p.parent_id || !activePages.some((x) => x.id === p.parent_id)) &&
-          (!filterMatches || filterMatches.has(p.id)),
-      )
+    return treeLevel(parentId, sid)
       .map((p) => {
         const children = activePages.some(
             (x) => x.parent_id === p.id && (!filterMatches || filterMatches.has(x.id)),
@@ -1175,6 +1287,14 @@ export default function WorkspaceApp({
             <div
               className={`page-nav ${screen === "page" && pageId === p.id ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
               data-page-id={p.id}
+              role="treeitem"
+              aria-level={level + 1}
+              aria-selected={screen === "page" && pageId === p.id}
+              aria-expanded={children ? !closed : undefined}
+              aria-owns={children && !closed ? `tree-group-${p.id}` : undefined}
+              tabIndex={stop === p.id ? 0 : -1}
+              onFocus={() => setTreeFocus(p.id)}
+              onKeyDown={(e) => treeKey(e, p, children, closed)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setPageMenu({ page: p, x: e.clientX, y: e.clientY });
@@ -1251,29 +1371,31 @@ export default function WorkspaceApp({
               }}
               style={{ paddingLeft: 12 + level * 14 }}
             >
-              <button
-                className="tree-toggle"
-                aria-label={
-                  closed ? t("Unterseiten öffnen", "Expand sub-pages") : t("Unterseiten schließen", "Collapse sub-pages")
-                }
-                onClick={() =>
-                  setCollapsed((s) => {
-                    const n = new Set(s);
-                    n.has(p.id) ? n.delete(p.id) : n.add(p.id);
-                    return n;
-                  })
-                }
-              >
-                {children ? (
+              {children ? (
+                <button
+                  className="tree-toggle"
+                  tabIndex={-1}
+                  aria-label={
+                    closed ? t("Unterseiten öffnen", "Expand sub-pages") : t("Unterseiten schließen", "Collapse sub-pages")
+                  }
+                  onClick={() =>
+                    setCollapsed((s) => {
+                      const n = new Set(s);
+                      n.has(p.id) ? n.delete(p.id) : n.add(p.id);
+                      return n;
+                    })
+                  }
+                >
                   <CaretRight
                     size={12}
                     className="nav-caret"
                     style={{ transform: closed ? undefined : "rotate(90deg)" }}
                   />
-                ) : (
-                  <span />
-                )}
-              </button>
+                </button>
+              ) : (
+                // Keeps the indent of pages without sub-pages.
+                <span className="tree-toggle" aria-hidden="true" />
+              )}
               {selecting && (
                 <input
                   type="checkbox"
@@ -1285,6 +1407,7 @@ export default function WorkspaceApp({
               )}
               <button
                 className="page-nav-title"
+                tabIndex={-1}
                 aria-pressed={
                   selecting || selectedPages.length
                     ? selectedPages.includes(p.id)
@@ -1309,6 +1432,7 @@ export default function WorkspaceApp({
               {canCreate && (
                 <button
                   className="nav-drag"
+                  tabIndex={-1}
                   aria-label={t(`${p.title} ziehen`, `Drag ${p.title}`)}
                   onPointerDown={(e) => {
                     // No native drag of the row: the handle drives the gesture.
@@ -1350,7 +1474,9 @@ export default function WorkspaceApp({
               {canCreate && (
                 <button
                   className="nav-add"
+                  tabIndex={-1}
                   title={t("Unterseite hinzufügen", "Add sub-page")}
+                  aria-label={t(`Unterseite in ${p.title} hinzufügen`, `Add sub-page in ${p.title}`)}
                   onClick={() => addPage("document", p.id, p.space_id)}
                 >
                   <Plus size={14} />
@@ -1359,7 +1485,11 @@ export default function WorkspaceApp({
             </div>
             {/* Sub-pages unfold and fold instead of popping in and out. */}
             <Collapse open={children && !closed} className="nav-children">
-              {children && !closed ? tree(p.id, sid, level + 1) : null}
+              {children && !closed ? (
+                <div role="group" id={`tree-group-${p.id}`}>
+                  {tree(p.id, sid, level + 1, stop)}
+                </div>
+              ) : null}
             </Collapse>
           </div>
         );
@@ -1389,7 +1519,8 @@ export default function WorkspaceApp({
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
     { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
     { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
-    { label: t("Einstellungen", "Settings"), keywords: "settings konto mitglieder", icon: GearSix, run: () => go("settings") },
+    { label: t("Einstellungen", "Settings"), keywords: t("settings konto mitglieder profil sprache", "settings konto mitglieder preferences account members profile language"), icon: GearSix, run: () => go("settings") },
+    { label: t("Tastenkürzel", "Keyboard shortcuts"), keywords: t("shortcuts tasten hilfe tastatur", "shortcuts tasten hilfe keyboard keys help hotkeys"), icon: Keyboard, run: () => setShortcuts(true) },
     ...(boot.user.isAdmin
       ? [{ label: t("Administration", "Administration"), keywords: "admin instanz betrieb", icon: ShieldCheck, run: () => go("admin") }]
       : []),
@@ -1453,10 +1584,61 @@ export default function WorkspaceApp({
           .slice(0, query.startsWith(">") ? 20 : 4)
       : [];
   const runCommand = (action: CommandAction) => {
-    setSearch(false);
-    setQuery("");
+    closeSearch();
     action.run();
   };
+  // The rows of the palette in order: hits, recently viewed pages (while
+  // nothing is typed), then the commands – ">" shows commands only.
+  const commandsOnly = query.startsWith(">");
+  const recentPages: Page[] = commandsOnly || query.trim()
+    ? []
+    : (boot.recentVisits || [])
+        .flatMap((visit) => {
+          const page = activePages.find((p) => p.id === visit.pageId);
+          return page ? [page] : [];
+        })
+        .slice(0, 6);
+  const paletteResults = commandsOnly
+    ? []
+    : searchResults.filter((r) => !recentPages.some((p) => p.id === r.id && !r.rowId));
+  const paletteItems: PaletteItem[] = [
+    ...recentPages.map((page): PaletteItem => ({ kind: "recent", id: `recent-${page.id}`, page })),
+    ...paletteResults.map((result): PaletteItem => ({ kind: "result", id: `result-${result.kind}-${result.id}-${result.rowId || ""}`, result })),
+    ...shownActions.map((action, i): PaletteItem => ({ kind: "command", id: `command-${i}`, action })),
+  ];
+  const activeIndex = Math.min(paletteActive, Math.max(0, paletteItems.length - 1)),
+    activeItem = paletteItems[activeIndex];
+  // The highlight starts at the top whenever the rows change.
+  useEffect(() => {
+    setPaletteActive(0);
+  }, [query, searchResults, searchKind, searchSpace]);
+  useEffect(() => {
+    if (search && activeItem) document.getElementById(`palette-${activeItem.id}`)?.scrollIntoView({ block: "nearest" });
+  }, [search, activeItem]);
+  const runItem = (item: PaletteItem) => {
+    if (item.kind === "command") return runCommand(item.action);
+    closeSearch();
+    if (item.kind === "recent") return void openPage(item.page.id);
+    const p = item.result;
+    // The block with the hit flashes once the page is open.
+    const hit = p.kind === "comment" || p.kind === "file" ? "" : snippetHit(p.snippet);
+    if (hit) jumpTo({ pageId: p.id, rowId: p.rowId }, byText(hit));
+    void openPage(p.id, p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined);
+  };
+  const paletteOption = (item: PaletteItem, index: number, content: React.ReactNode) => (
+    <div
+      key={item.id}
+      id={`palette-${item.id}`}
+      role="option"
+      aria-selected={index === activeIndex}
+      className={`palette-option${index === activeIndex ? " active" : ""}`}
+      onClick={() => runItem(item)}
+      onMouseMove={() => index !== paletteActive && setPaletteActive(index)}
+    >
+      {content}
+      {index === activeIndex && <kbd aria-hidden="true">↵</kbd>}
+    </div>
+  );
   return (
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <div
@@ -1471,6 +1653,18 @@ export default function WorkspaceApp({
           onClose={() => setFocusMode(false)}
         />
       )}
+      {/* The first Tab stop jumps over the sidebar; no hash change, so the
+          router stays out of it. */}
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(e) => {
+          e.preventDefault();
+          mainRef.current?.focus();
+        }}
+      >
+        {t("Zum Inhalt", "Skip to content")}
+      </a>
       <button
         className="mobile-scrim"
         aria-label={t("Navigation schließen", "Close navigation")}
@@ -1548,7 +1742,7 @@ export default function WorkspaceApp({
         </Dropdown.Root>
         <div className="sidebar-scroll" ref={treeRoot}>
           <nav className="main-nav">
-            <button onClick={() => setSearch(true)}>
+            <button onClick={openSearch}>
               <MagnifyingGlass size={19} />
               {t("Suchen", "Search")}<span className="keycap">⌘ K</span>
             </button>
@@ -1694,47 +1888,52 @@ export default function WorkspaceApp({
                     {space.name}
                   </span>
                 </span>
-                {(boot.workspace.role === "owner" ||
-                  (canCreate && space.owner_id === boot.user.id)) && (
+                {/* The tools wrap under a long name instead of squeezing it. */}
+                <span className="nav-section-tools">
+                  {(boot.workspace.role === "owner" ||
+                    (canCreate && space.owner_id === boot.user.id)) && (
+                    <button
+                      className="icon-button"
+                      aria-label={t(`Bereich ${space.name} verwalten`, `Manage space ${space.name}`)}
+                      onClick={() => setSpaceManager({ space })}
+                    >
+                      <DotsThree size={16} />
+                    </button>
+                  )}
                   <button
                     className="icon-button"
-                    aria-label={t(`Bereich ${space.name} verwalten`, `Manage space ${space.name}`)}
-                    onClick={() => setSpaceManager({ space })}
+                    title={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
+                    aria-label={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
+                    onClick={() => setSpaceExport(space.id)}
                   >
-                    <DotsThree size={16} />
+                    <DownloadSimple size={14} />
                   </button>
-                )}
-                <button
-                  className="icon-button"
-                  title={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
-                  aria-label={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
-                  onClick={() => setSpaceExport(space.id)}
-                >
-                  <DownloadSimple size={14} />
-                </button>
-                {canCreate && (
-                  <button
-                    className={`icon-button ${selecting ? "active" : ""}`}
-                    title={t("Seiten auswählen", "Select pages")}
-                    aria-pressed={selecting}
-                    onClick={() =>
-                      selecting ? clearSelection() : setSelecting(true)
-                    }
-                  >
-                    <CheckSquare size={14} />
-                  </button>
-                )}
-                {canCreate && (
-                  <button
-                    className="icon-button"
-                    title={t(`Seite in ${space.name} hinzufügen`, `Add page in ${space.name}`)}
-                    onClick={() => addPage("document", null, space.id)}
-                  >
-                    <Plus size={14} />
-                  </button>
-                )}
+                  {canCreate && (
+                    <button
+                      className={`icon-button ${selecting ? "active" : ""}`}
+                      title={t("Seiten auswählen", "Select pages")}
+                      aria-pressed={selecting}
+                      onClick={() =>
+                        selecting ? clearSelection() : setSelecting(true)
+                      }
+                    >
+                      <CheckSquare size={14} />
+                    </button>
+                  )}
+                  {canCreate && (
+                    <button
+                      className="icon-button"
+                      title={t(`Seite in ${space.name} hinzufügen`, `Add page in ${space.name}`)}
+                      onClick={() => addPage("document", null, space.id)}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  )}
+                </span>
               </div>
-              {tree(null, space.id)}
+              <div role="tree" aria-label={t(`Seiten in ${space.name}`, `Pages in ${space.name}`)}>
+                {tree(null, space.id, 0, treeStop(space.id))}
+              </div>
               {!activePages.some((p) => p.space_id === space.id) && (
                 <span className="sidebar-empty">{t("Noch keine Seiten", "No pages yet")}</span>
               )}
@@ -1789,6 +1988,14 @@ export default function WorkspaceApp({
               onClick={() => go("settings")}
             >
               <GearSix size={18} />
+            </button>
+            <button
+              aria-label={t("Tastenkürzel", "Keyboard shortcuts")}
+              title={t("Tastenkürzel (?)", "Keyboard shortcuts (?)")}
+              className="sidebar-help"
+              onClick={() => setShortcuts(true)}
+            >
+              <Question size={18} />
             </button>
             {boot.user.isAdmin && (
               <button
@@ -1856,7 +2063,7 @@ export default function WorkspaceApp({
           </div>
         </div>
       </aside>
-      <main className="main">
+      <main className="main" id="main-content" tabIndex={-1} ref={mainRef}>
         {boot.user.demo && (
           <div className="demo-banner" role="note">
             <span>
@@ -2840,13 +3047,15 @@ export default function WorkspaceApp({
                     </button>
                   ))}
                 </div>
-                <button
-                  className="button compact"
-                  disabled={!boot.notifications.some((n) => !n.read_at)}
-                  onClick={() => void act({ action: "notification.read" })}
-                >
-                  {t("Alle als gelesen markieren", "Mark all as read")}
-                </button>
+                {/* Only while there is something to mark. */}
+                {boot.notifications.some((n) => !n.read_at) && (
+                  <button
+                    className="button compact"
+                    onClick={() => void act({ action: "notification.read" })}
+                  >
+                    {t("Alle als gelesen markieren", "Mark all as read")}
+                  </button>
+                )}
               </div>
               {boot.notifications
                 .filter((n) => inboxFilter === "all" || !n.read_at)
@@ -2962,6 +3171,7 @@ export default function WorkspaceApp({
           onClose={() => setOnboarding(false)}
         />
       )}
+      <KeyboardShortcuts open={shortcuts} onClose={() => setShortcuts(false)} ai={!!boot.ai?.features.write.ok} />
       {spaceExport && (
         <SpaceExportDialog spaces={boot.spaces} initial={spaceExport} onClose={() => setSpaceExport(null)} />
       )}
@@ -3059,33 +3269,40 @@ export default function WorkspaceApp({
       </Modal>
       <Modal
         open={search}
-        onClose={() => {
-          setSearch(false);
-          setQuery("");
-          setSearchName(null);
-        }}
+        onClose={closeSearch}
         title={t("Schnellsuche", "Quick search")}
+        className="command-palette"
+        onCloseAutoFocus={(e) => {
+          // Back to where the search was opened from, not to <body>.
+          e.preventDefault();
+          const opener = searchOpener.current;
+          if (opener && document.contains(opener)) opener.focus();
+        }}
       >
         <div className="command-search">
           <MagnifyingGlass size={22} />
           <input
             autoFocus
+            role="combobox"
             aria-label={t("Suchen oder Befehl", "Search or command")}
+            aria-expanded="true"
+            aria-controls="palette-list"
+            aria-autocomplete="list"
+            aria-activedescendant={activeItem ? `palette-${activeItem.id}` : undefined}
             placeholder={t("Suchen … oder > für Befehle", "Search … or > for commands")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-              e.preventDefault();
-              const first = searchResults[0];
-              if (shownActions.length && (query.startsWith(">") || !first))
-                runCommand(shownActions[0]);
-              else if (first) {
-                setSearch(false);
-                void openPage(
-                  first.id,
-                  first.rowId ? { pageId: first.id, rowId: first.rowId } : undefined,
-                );
+              if (e.nativeEvent.isComposing) return;
+              // The arrows move over the rows while the focus stays here;
+              // Tab reaches the filters as before.
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const count = paletteItems.length;
+                if (count) setPaletteActive((activeIndex + (e.key === "ArrowDown" ? 1 : count - 1)) % count);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                if (activeItem) runItem(activeItem);
               }
             }}
           />
@@ -3219,67 +3436,92 @@ export default function WorkspaceApp({
             ))}
           </div>
         )}
-        {shownActions.length > 0 && (
-          <div className="command-actions" aria-label={t("Aktionen", "Actions")}>
-            <small>{t("Aktionen", "Actions")}</small>
-            {shownActions.map((action, i) => (
-              <button
-                key={action.label}
-                type="button"
-                className={i === 0 && (query.startsWith(">") || !searchResults.length) ? "first" : ""}
-                onClick={() => runCommand(action)}
-              >
-                <action.icon size={17} />
-                <span>{action.label}</span>
-                {i === 0 && (query.startsWith(">") || !searchResults.length) && <kbd>↵</kbd>}
-              </button>
-            ))}
-          </div>
-        )}
-        {!query.startsWith(">") && (
-        <div className="search-results">
-          {searchResults.map((p) => (
-            <button
-              key={`${p.kind}:${p.id}:${p.rowId || ""}`}
-              onClick={() => {
-                setSearch(false);
-                // The block with the hit flashes once the page is open.
-                const hit = p.kind === "comment" || p.kind === "file" ? "" : snippetHit(p.snippet);
-                if (hit) jumpTo({ pageId: p.id, rowId: p.rowId }, byText(hit));
-                void openPage(
-                  p.id,
-                  p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined,
-                );
-              }}
-            >
-              <PageIcon name={p.icon} />
-              <span>
-                {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
-                {p.pageTitle && (
-                  <small className="search-context">
-                    {p.kind === "comment"
-                      ? t(`Kommentar in ${p.pageTitle}`, `Comment in ${p.pageTitle}`)
-                      : p.kind === "file"
-                        ? t(`Datei in ${p.pageTitle}`, `File in ${p.pageTitle}`)
-                        : t(`Eintrag in ${p.pageTitle}`, `Record in ${p.pageTitle}`)}
-                  </small>
-                )}
-                <small>
-                  {p.snippet ? (
-                    <SearchSnippet text={p.snippet} />
-                  ) : (
-                    boot.spaces.find((s) => s.id === p.space_id)?.name
-                  )}
-                </small>
-              </span>
-              <ArrowSquareOut size={17} />
-            </button>
-          ))}
-          {!searchResults.length && !shownActions.length && (
-            <div className="empty-state small">{t("Nichts gefunden.", "Nothing found.")}</div>
+        {/* One list for hits, recent pages and commands: the input keeps the
+            focus and names the highlighted row (aria-activedescendant). */}
+        <div
+          className="palette-list"
+          id="palette-list"
+          role="listbox"
+          aria-label={t("Ergebnisse und Befehle", "Results and commands")}
+        >
+          {recentPages.length > 0 && (
+            <div className="search-results palette-group" role="group" aria-labelledby="palette-recent-title">
+              <small className="palette-group-title" id="palette-recent-title">
+                {t("Zuletzt angesehen", "Recently viewed")}
+              </small>
+              {recentPages.map((page, i) =>
+                paletteOption(
+                  paletteItems[i],
+                  i,
+                  <>
+                    <PageIcon name={page.kind === "database" ? "table" : page.icon} />
+                    <span>
+                      {page.title || t("Ohne Titel", "Untitled")}
+                      <small>{boot.spaces.find((s) => s.id === page.space_id)?.name}</small>
+                    </span>
+                  </>,
+                ),
+              )}
+            </div>
+          )}
+          {paletteResults.length > 0 && (
+            <div className="search-results palette-group" role="group" aria-label={t("Treffer", "Hits")}>
+              {paletteResults.map((p, i) =>
+                paletteOption(
+                  paletteItems[recentPages.length + i],
+                  recentPages.length + i,
+                  <>
+                    <PageIcon name={p.icon} />
+                    <span>
+                      {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
+                      {p.pageTitle && (
+                        <small className="search-context">
+                          {p.kind === "comment"
+                            ? t(`Kommentar in ${p.pageTitle}`, `Comment in ${p.pageTitle}`)
+                            : p.kind === "file"
+                              ? t(`Datei in ${p.pageTitle}`, `File in ${p.pageTitle}`)
+                              : t(`Eintrag in ${p.pageTitle}`, `Record in ${p.pageTitle}`)}
+                        </small>
+                      )}
+                      <small>
+                        {p.snippet ? (
+                          <SearchSnippet text={p.snippet} />
+                        ) : (
+                          boot.spaces.find((s) => s.id === p.space_id)?.name
+                        )}
+                      </small>
+                    </span>
+                    <ArrowSquareOut size={17} />
+                  </>,
+                ),
+              )}
+            </div>
+          )}
+          {shownActions.length > 0 && (
+            <div className="command-actions palette-group" role="group" aria-labelledby="palette-actions-title">
+              <small className="palette-group-title" id="palette-actions-title">
+                {t("Aktionen", "Actions")}
+              </small>
+              {shownActions.map((action, i) =>
+                paletteOption(
+                  paletteItems[recentPages.length + paletteResults.length + i],
+                  recentPages.length + paletteResults.length + i,
+                  <>
+                    <action.icon size={17} />
+                    <span>{action.label}</span>
+                  </>,
+                ),
+              )}
+            </div>
+          )}
+          {!paletteItems.length && (
+            <div className="empty-state small">
+              {query.trim()
+                ? t("Nichts gefunden.", "Nothing found.")
+                : t("Suche nach Seiten, Einträgen, Kommentaren und Dateien – oder tippe > für Befehle.", "Search for pages, records, comments and files – or type > for commands.")}
+            </div>
           )}
         </div>
-        )}
       </Modal>
       {canAsk && (
         <AskPanel
