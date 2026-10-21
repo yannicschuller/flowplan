@@ -31,5 +31,8 @@ export async function register() {
     // AI properties (automatic updates, queued values) and the semantic index.
     const { startAiWorker } = await import("./lib/ai/database");
     startAiWorker();
+    // E-mail inbound capture over IMAP (INBOUND_IMAP_*), every two minutes.
+    const { startInboundMailWorker } = await import("./lib/inbound-mail");
+    startInboundMailWorker();
   }
 }

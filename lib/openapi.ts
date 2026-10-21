@@ -72,7 +72,7 @@ export const commandActionNames = [
   "template.save", "template.update", "template.delete", "template.restore", "template.apply",
   "capture.record", "capture.target", "bookmarks.import",
   "calendar.feed", "calendar.feed.revoke", "calendar.caldav", "calendar.caldav.revoke",
-  "webhook.delete",
+  "webhook.delete", "inbound.save", "inbound.rotate", "inbound.delete",
 ] as const;
 // Prefixes command() refuses for every API token.
 export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
@@ -338,6 +338,36 @@ export const commandActions: ActionDoc[] = [
     summary: "Remove a webhook",
     description: "Workspace owners only.",
     input: z.object({ action: z.literal("webhook.delete"), workspaceId: uuid, id: z.string() }),
+    result: okResult,
+  },
+  {
+    action: "inbound.save",
+    summary: "Create or change an inbound e-mail address",
+    description:
+      "Workspace owners only. Mail to the address becomes a page below `pageId` (a document) or a record in it (a database). Only the listed senders (addresses or domains) get in. Without `id` a new address with a fresh token is created (at most 50 per workspace). `secret` sets a signing key for the HMAC check of the webhook (\"\" removes it).",
+    input: z.object({
+      action: z.literal("inbound.save"),
+      workspaceId: uuid,
+      id: uuid.optional().describe("Change this address instead of creating one"),
+      pageId: uuid.describe("Target page (document) or database"),
+      label: z.string().max(100).optional(),
+      senders: z.array(z.string().max(254)).min(1).max(100).describe("Allowed senders: e-mail addresses or domains"),
+      secret: z.string().max(500).optional().describe("Signing key (X-Flowplan-Signature or Mailgun signature)"),
+    }),
+    result: idResult,
+  },
+  {
+    action: "inbound.rotate",
+    summary: "Give an inbound e-mail address a new token",
+    description: "Workspace owners only. The old webhook URL and address stop working at once.",
+    input: z.object({ action: z.literal("inbound.rotate"), workspaceId: uuid, id: uuid }),
+    result: z.object({ id: uuid, token: z.string() }),
+  },
+  {
+    action: "inbound.delete",
+    summary: "Remove an inbound e-mail address",
+    description: "Workspace owners only.",
+    input: z.object({ action: z.literal("inbound.delete"), workspaceId: uuid, id: uuid }),
     result: okResult,
   },
 ];
@@ -789,6 +819,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/tokens", method: "get", op: { id: "listTokens", tag: "Tokens and webhooks", summary: "Your API tokens", description: "Tokens cannot create or revoke tokens (the settings do).", ok: { schema: { type: "array", items: ref("ApiToken") }, description: "Tokens, newest first" }, errors: [401] } },
   { path: "/api/webhooks", method: "get", op: { id: "listWebhooks", tag: "Tokens and webhooks", summary: "Webhooks of a workspace", description: "Owners only.", params: [workspace], ok: { schema: { type: "object", properties: { webhooks: { type: "array", items: ref("Webhook") }, events: { type: "object", additionalProperties: { type: "string" }, description: "Event IDs with their German labels" } }, required: ["webhooks", "events"] }, description: "Webhooks" }, errors: [400, 401, 403] } },
   { path: "/api/webhooks", method: "post", op: { id: "createWebhook", tag: "Tokens and webhooks", summary: "Register a webhook", description: "Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command.", write: true, body: { content: "application/json", schema: ref("WebhookCreate"), required: true }, ok: { schema: ref("WebhookCreated"), description: "ID and secret" }, errors: [400, 401, 403, 409] } },
+  { path: "/api/inbound-mail", method: "get", op: { id: "listInboundMail", tag: "Tokens and webhooks", summary: "Inbound e-mail addresses of a workspace", description: "Owners only. Each address with its target, allowed senders, webhook URL, e-mail address (IMAP mode, when INBOUND_MAIL_DOMAIN is set) and the last delivery. Created, rotated and removed with `inbound.save`, `inbound.rotate` and `inbound.delete`.", params: [workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Addresses" }, errors: [400, 401, 403] } },
+  { path: "/api/inbound-mail/{token}", method: "post", op: { id: "receiveInboundMail", tag: "Tokens and webhooks", summary: "Receive an e-mail (for mail providers)", description: "External: the secret token of the address is the authorization; no bearer token. Accepts the generic JSON format (`from`, `to`, `subject`, `text`, `html`, `messageId`, `date`, `attachments[]` with base64 `content`, or `raw` for a whole message), multipart/form-data with the same fields, Mailgun, Postmark and SendGrid Inbound Parse posts, and raw `message/rfc822`. With a signing key the request needs `X-Flowplan-Signature: sha256=<HMAC of the body>` or Mailgun's signature fields. 60 mails per address and hour (429). Answers 200 for stored, duplicate (same Message-ID) and rejected (sender not allowed) mail.", security: "none", params: [p("token", "Token of the inbound address", { type: "string" })], body: { content: "application/json", schema: { type: "object", additionalProperties: true }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "Result: stored, duplicate or rejected" }, errors: [400, 401, 404, 409, 413, 415, 429] } },
   { path: "/api/calendar-feed", method: "get", op: { id: "calendarFeedStatus", tag: "Tokens and webhooks", summary: "Whether a calendar view has an iCalendar link or CalDAV access", params: [q("page", "Page ID of the database", { type: "string", format: "uuid" }, true), q("view", "View ID", { type: "string" }, true)], ok: { schema: { type: "object", properties: { active: { type: "boolean" }, caldav: { type: "boolean" } }, required: ["active", "caldav"] }, description: "Status" }, errors: [400, 401, 403, 404] } },
   { path: "/api/calendar/{token}.ics", method: "get", op: { id: "calendarFeed", tag: "Calendar", summary: "iCalendar feed of a calendar view", description: "External: the secret link (from `calendar.feed`) is the authorization; no bearer token. Subscribe to it in a calendar program.", security: "none", params: [p("token", "Feed token", { type: "string" })], ok: { content: "text/calendar", description: "The feed" }, errors: [404] } },
   // MCP

@@ -80,6 +80,7 @@ import { transaction } from "@/lib/db";
 import { BOARD_IMPORT_LIMITS } from "@/lib/whiteboard-import";
 import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
+import { listInboundAddresses } from "@/lib/inbound-mail";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
 import { pageToRecordPlan } from "@/lib/page-to-record";
 import { recordToPagePlan } from "@/lib/record-to-page";
@@ -305,6 +306,9 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    // E-mail inbound addresses of a workspace (owners, lib/inbound-mail.ts).
+    if (path.length === 1 && path[0] === "inbound-mail")
+      return NextResponse.json(listInboundAddresses(user, z.uuid().parse(url.searchParams.get("workspace"))), { headers: { "Cache-Control": "no-store" } });
     // Databases to capture into, and the person's default.
     if (path.length === 1 && path[0] === "capture") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));

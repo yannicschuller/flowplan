@@ -623,6 +623,14 @@ function migrate(d: DatabaseSync) {
   // Form answers saved to continue later, per signed-in person (lib/forms.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS form_drafts(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,cells TEXT NOT NULL,page INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL,PRIMARY KEY(page_id,user_id));
     CREATE INDEX IF NOT EXISTS form_drafts_user ON form_drafts(user_id);`);
+  // E-mail inbound capture (lib/inbound-mail.ts): addresses with their
+  // target and allowed senders, the Message-IDs already stored, and the
+  // deliveries of the last hour for the rate limit.
+  d.exec(`CREATE TABLE IF NOT EXISTS inbound_addresses(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,label TEXT NOT NULL DEFAULT '',token TEXT UNIQUE NOT NULL,secret TEXT NOT NULL DEFAULT '',senders TEXT NOT NULL DEFAULT '[]',created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL,last_received_at INTEGER,last_error TEXT,received INTEGER NOT NULL DEFAULT 0);
+    CREATE INDEX IF NOT EXISTS inbound_addresses_workspace ON inbound_addresses(workspace_id);
+    CREATE TABLE IF NOT EXISTS inbound_messages(address_id TEXT NOT NULL REFERENCES inbound_addresses(id) ON DELETE CASCADE,message_id TEXT NOT NULL,page_id TEXT,row_id TEXT,received_at INTEGER NOT NULL,PRIMARY KEY(address_id,message_id));
+    CREATE TABLE IF NOT EXISTS inbound_deliveries(address_id TEXT NOT NULL,at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS inbound_deliveries_address ON inbound_deliveries(address_id,at);`);
   globalDb.flowplanSchema = 44;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
