@@ -20,6 +20,7 @@ import { latestSlot } from "./automation-schedule";
 import { spawnNextRecord } from "./repeat-records";
 import { replaceRowDocument } from "./row-documents";
 import { emitWebhook } from "./webhooks";
+import { queueIssuePush } from "./issue-sync-queue";
 
 type Cells = Record<string, unknown>;
 type Event = "created" | "form" | "updated" | "overdue";
@@ -215,9 +216,12 @@ export function rowChanged(user: Identity | null | "system", page: Page, rowId: 
   const actor = user === "system" ? null : user;
   const next = spawnNextRecord(actor, page.id, rowId, props, settings, before, after);
   if (next) runAutomations({ page, rowId: next, actor, event: "created" });
+  // GitHub/GitLab issue sync (lib/issue-sync.ts) pushes the change.
+  queueIssuePush(page.id, rowId);
 }
 export function rowCreated(user: Identity | null, page: Page, rowId: string, viaForm = false) {
   runAutomations({ page, rowId, actor: user, event: viaForm ? "form" : "created" });
+  queueIssuePush(page.id, rowId);
 }
 
 /* ---------- Overdue ---------- */

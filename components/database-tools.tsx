@@ -4,6 +4,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { DotsThree, Lightning, FlowArrow, Copy, Timer, GitBranch } from "@phosphor-icons/react";
 import { TimeReport } from "./time-report";
 import { GitSettings } from "./git-settings";
+import { IssueSyncDialog, IssueSyncMenuItem } from "./issue-sync-database";
 import { useT } from "./i18n";
 import { Modal } from "./ui";
 import { DatabaseAutomations } from "./database-automations";
@@ -60,6 +61,7 @@ export function DatabaseTools({
             {item(<FlowArrow />, t("Workflow und Erledigt", "Workflow and done"), () => setPanel("workflow"), settings.workflow ? "✓" : undefined)}
             {database.fields.some((f) => f.type === "time") && item(<Timer />, t("Zeiten auswerten", "Time report"), () => setPanel("time"))}
             {editable && item(<GitBranch />, t("Git-Anbindung", "Git connection"), () => setPanel("git"), settings.git ? "✓" : undefined)}
+            <IssueSyncMenuItem pageId={page.id} />
           </Dropdown.Content>
         </Dropdown.Portal>
       </Dropdown.Root>
@@ -69,6 +71,7 @@ export function DatabaseTools({
       <Modal open={panel === "git"} onClose={() => setPanel(null)} title={t("Git-Anbindung", "Git connection")} wide>
         {panel === "git" && <GitSettings pageId={page.id} hasIds={database.fields.some((f) => f.type === "id")} editable={editable} act={act} />}
       </Modal>
+      <IssueSyncDialog page={page} database={database} editable={editable} />
       <Modal open={panel === "time"} onClose={() => setPanel(null)} title={t(`Zeiten · ${page.title}`, `Time · ${page.title}`)} wide>
         {panel === "time" && <TimeReport pageId={page.id} title={page.title} />}
       </Modal>

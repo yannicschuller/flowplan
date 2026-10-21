@@ -74,6 +74,7 @@ export const commandActionNames = [
   "capture.record", "capture.target", "bookmarks.import",
   "calendar.feed", "calendar.feed.revoke", "calendar.caldav", "calendar.caldav.revoke",
   "webhook.delete", "inbound.save", "inbound.rotate", "inbound.delete",
+  "issueSync.connect", "issueSync.disconnect", "issueSync.map", "issueSync.unmap",
 ] as const;
 // Prefixes command() refuses for every API token.
 export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
@@ -369,6 +370,51 @@ export const commandActions: ActionDoc[] = [
     summary: "Remove an inbound e-mail address",
     description: "Workspace owners only.",
     input: z.object({ action: z.literal("inbound.delete"), workspaceId: uuid, id: uuid }),
+    result: okResult,
+  },
+  {
+    action: "issueSync.connect",
+    summary: "Connect GitHub or GitLab for issue sync",
+    description:
+      "Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: \"test\" }`.",
+    input: z.object({
+      action: z.literal("issueSync.connect"),
+      workspaceId: uuid,
+      id: uuid.optional().describe("Existing connection to update"),
+      provider: z.enum(["github", "gitlab"]),
+      baseUrl: z.string().max(500).optional().describe("Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com"),
+      repo: z.string().max(300).optional().describe("Default repository: `owner/name` (GitHub) or `group/project` (GitLab)"),
+      token: z.string().max(1000).optional(),
+      people: z.array(z.object({ login: z.string().max(100), email: z.string().max(200) })).max(500).optional().describe("Login ↔ e-mail of a member, for assignees"),
+    }),
+    result: idResult,
+  },
+  {
+    action: "issueSync.disconnect",
+    summary: "Remove a GitHub or GitLab connection",
+    description: "Workspace owners and administrators. Ends the sync of every database using it; records stay.",
+    input: z.object({ action: z.literal("issueSync.disconnect"), workspaceId: uuid, id: uuid }),
+    result: okResult,
+  },
+  {
+    action: "issueSync.map",
+    summary: "Sync a database with the issues of a repository",
+    description:
+      "Workspace owners and administrators with edit rights on the database. The sync acts as the person who set up the connection. `config` maps properties: `title`, `body` (a text property or `@document`), `status` ({ field, map: [{ value, state: open|closed, label }] }), `labels` (multi-select), `assignee` (person), `milestone` (date ↔ milestone due date), `number` and `url` (read-only), `direction` (both, pull, push), `comments` ({ pull, push }), `importExisting`.",
+    input: z.object({
+      action: z.literal("issueSync.map"),
+      pageId: uuid,
+      connectionId: uuid,
+      repo: z.string().max(300).optional().describe("Default: the repository of the connection"),
+      config: z.object({}).passthrough(),
+    }),
+    result: okResult,
+  },
+  {
+    action: "issueSync.unmap",
+    summary: "Stop syncing a database with issues",
+    description: "Workspace owners and administrators. Records and issues stay; only the links end.",
+    input: z.object({ action: z.literal("issueSync.unmap"), pageId: uuid }),
     result: okResult,
   },
 ];
@@ -867,6 +913,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/webhooks", method: "post", op: { id: "createWebhook", tag: "Tokens and webhooks", summary: "Register a webhook", description: "Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command.", write: true, body: { content: "application/json", schema: ref("WebhookCreate"), required: true }, ok: { schema: ref("WebhookCreated"), description: "ID and secret" }, errors: [400, 401, 403, 409] } },
   { path: "/api/inbound-mail", method: "get", op: { id: "listInboundMail", tag: "Tokens and webhooks", summary: "Inbound e-mail addresses of a workspace", description: "Owners only. Each address with its target, allowed senders, webhook URL, e-mail address (IMAP mode, when INBOUND_MAIL_DOMAIN is set) and the last delivery. Created, rotated and removed with `inbound.save`, `inbound.rotate` and `inbound.delete`.", params: [workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Addresses" }, errors: [400, 401, 403] } },
   { path: "/api/inbound-mail/{token}", method: "post", op: { id: "receiveInboundMail", tag: "Tokens and webhooks", summary: "Receive an e-mail (for mail providers)", description: "External: the secret token of the address is the authorization; no bearer token. Accepts the generic JSON format (`from`, `to`, `subject`, `text`, `html`, `messageId`, `date`, `attachments[]` with base64 `content`, or `raw` for a whole message), multipart/form-data with the same fields, Mailgun, Postmark and SendGrid Inbound Parse posts, and raw `message/rfc822`. With a signing key the request needs `X-Flowplan-Signature: sha256=<HMAC of the body>` or Mailgun's signature fields. 60 mails per address and hour (429). Answers 200 for stored, duplicate (same Message-ID) and rejected (sender not allowed) mail.", security: "none", params: [p("token", "Token of the inbound address", { type: "string" })], body: { content: "application/json", schema: { type: "object", additionalProperties: true }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "Result: stored, duplicate or rejected" }, errors: [400, 401, 404, 409, 413, 415, 429] } },
+  { path: "/api/issue-sync", method: "get", op: { id: "issueSync", tag: "Records", summary: "GitHub/GitLab issue sync: connections, a database's mapping or a record's issue", description: "`workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null.", params: [q("workspace", "Workspace ID", { type: "string", format: "uuid" }), q("page", "Page ID of the database", { type: "string", format: "uuid" }), q("row", "Record ID", { type: "string", format: "uuid" })], ok: { schema: { type: "object", additionalProperties: true }, description: "Status" }, errors: [400, 401, 403, 404] } },
+  { path: "/api/issue-sync", method: "post", op: { id: "issueSyncAction", tag: "Records", summary: "Test a GitHub/GitLab connection or sync a database now", description: "`{ op: \"test\", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: \"run\", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`.", write: true, body: { content: "application/json", schema: { type: "object", properties: { op: { type: "string", enum: ["test", "run"] }, pageId: { type: "string", format: "uuid" }, workspaceId: { type: "string", format: "uuid" } }, required: ["op"], additionalProperties: true }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "The result" }, errors: [400, 401, 403, 404, 429] } },
   { path: "/api/webhooks/update", method: "post", op: { id: "updateWebhook", tag: "Tokens and webhooks", summary: "Change a webhook", description: "Owners with a write token: events, database, format, templates, settings, credentials and (checked again) the address. The secret stays.", write: true, body: { content: "application/json", schema: ref("WebhookUpdate"), required: true }, ok: { schema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] }, description: "Changed" }, errors: [400, 401, 403, 404] } },
   { path: "/api/webhooks/test", method: "post", op: { id: "testWebhook", tag: "Tokens and webhooks", summary: "Send a test message", description: "Owners with a write token. Sends a sample message (event `test`) right away, without retries, and answers with the result.", write: true, body: { content: "application/json", schema: { type: "object", properties: { workspaceId: { type: "string", format: "uuid" }, id: { type: "string" } }, required: ["workspaceId", "id"] }, required: true }, ok: { schema: ref("WebhookTestResult"), description: "Result of the delivery" }, errors: [400, 401, 403, 404] } },
   { path: "/api/calendar-feed", method: "get", op: { id: "calendarFeedStatus", tag: "Tokens and webhooks", summary: "Whether a calendar view has an iCalendar link or CalDAV access", params: [q("page", "Page ID of the database", { type: "string", format: "uuid" }, true), q("view", "View ID", { type: "string" }, true)], ok: { schema: { type: "object", properties: { active: { type: "boolean" }, caldav: { type: "boolean" } }, required: ["active", "caldav"] }, description: "Status" }, errors: [400, 401, 403, 404] } },
@@ -879,6 +927,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
 // they are not for API tokens. tests/openapi.test.ts checks that every
 // other route file has at least one path here.
 export const routesOutsideSpec: Record<string, string> = {
+  "app/api/issue-sync/hook/[token]/route.ts": "GitHub/GitLab issue webhooks, verified by their own token and signature",
   "app/api/admin/instance-backup/route.ts": "Administration only; tokens never administer",
   "app/api/ai/[...path]/route.ts": "AI features refuse API tokens",
   "app/api/auth/[action]/route.ts": "Browser sign-in and account settings",

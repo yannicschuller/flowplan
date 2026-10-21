@@ -15,6 +15,7 @@ import { RecordSubtasks } from "./record-subtasks";
 import { BoardWipSettings, WipCount } from "./board-wip";
 import { RecordTime } from "./record-time";
 import { RecordGit } from "./record-git";
+import { IssueSyncChip } from "./issue-sync-database";
 import { RecordMenu, TransferDialog } from "./record-transfer";
 import { ContextMenu } from "./context-menu";
 import { formatDuration } from "@/lib/durations";
@@ -5427,6 +5428,7 @@ export default function DatabaseView({
                     act={act}
                   />
                 )}
+                <IssueSyncChip key={`issue-${selected.id}`} pageId={page.id} rowId={selected.id} />
                 {data.database.settings?.git && <RecordGit key={`git-${selected.id}`} pageId={page.id} rowId={selected.id} />}
                 <TicketThread
                   key={`ticket-${selected.id}`}
