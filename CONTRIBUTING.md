@@ -32,6 +32,10 @@ Node.js 22.13 or newer. Without OIDC settings the development server offers a lo
 
 Every language beyond German and English is a JSON catalogue in `locales/`, keyed by the English text. To add one, run `npm run i18n -- --add it`, translate `locales/it.json` (by hand or with any tool that reads JSON key-value files, using `locales/en.json` as the source) and register the language in `lib/i18n.ts` and `lib/i18n-catalogs.ts`. Keep placeholders like `{0}` and HTML tags unchanged; `npm run i18n -- --check` reports progress and broken placeholders. Details: [Languages and translations](https://docs.flowplan.org/languages).
 
+## Shared facts
+
+The website and the documentation quote counts – "ten views", "23 property types", "19 question types", the languages – that must not drift from the code. `lib/facts.ts` counts them from the sources themselves (the view and property enums in `lib/database-schema.ts`, `surveyTypes` in `lib/survey.ts`, `LANGUAGES` in `lib/i18n.ts`, the callout kinds, the export formats, the template catalogue) and `npm run facts` writes them to `facts.json` in the repository root. Commit that file with the change that moved a number: `tests/facts.test.ts` fails when it is out of date. The two sites ([flowplan-website](https://github.com/yannicschuller/flowplan-website), [flowplan-docs](https://github.com/yannicschuller/flowplan-docs)) fetch the raw file from the main branch at build time (`https://raw.githubusercontent.com/yannicschuller/flowplan/main/facts.json`) and read the top-level numbers (`views`, `fieldTypes`, `questionTypes`, `languages`, …); `names` lists the members behind each count, for texts that enumerate them.
+
 By contributing you agree that your contributions are licensed under the [AGPL-3.0](LICENSE).
 
 ## Releases

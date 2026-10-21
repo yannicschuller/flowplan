@@ -75,6 +75,7 @@ test("document versions compare to the current text with word-level changes", ()
   assert.deepEqual(result.changes, [
     {
       type: "changed",
+      kind: "paragraph",
       parts: [
         { type: "same", text: "Der Hund " },
         { type: "removed", text: "bellt" },
@@ -82,9 +83,11 @@ test("document versions compare to the current text with word-level changes", ()
         { type: "same", text: " laut" },
       ],
     },
-    { type: "added", text: "Neu" },
-    { type: "same", text: "Ende" },
+    { type: "added", kind: "paragraph", text: "Neu" },
+    { type: "same", kind: "paragraph", text: "Ende" },
   ]);
+  if (result.kind === "document")
+    assert.deepEqual(result.words, { added: 2, removed: 1 });
   assert.throws(
     () => snapshotChanges(stranger, page, snapshot),
     /Berechtigung/,
@@ -212,6 +215,7 @@ test("two saved versions compare with each other, also for record documents", as
   assert.deepEqual(snapshotChanges(owner, page, first, second).changes, [
     {
       type: "changed",
+      kind: "paragraph",
       parts: [
         { type: "same", text: "eins" },
         { type: "added", text: " zwei" },

@@ -21,7 +21,8 @@
     "test:e2e": "playwright test",
     "check:standalone": "node scripts/check-standalone.mjs",
     "check:offline": "node scripts/check-offline.mjs",
-    "i18n": "node scripts/i18n.mjs"
+    "i18n": "node scripts/i18n.mjs",
+    "facts": "node --import tsx scripts/facts.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

@@ -1,0 +1,94 @@
+{
+  "views": 10,
+  "fieldTypes": 23,
+  "questionTypes": 19,
+  "languages": 3,
+  "calloutTypes": 5,
+  "exportFormats": 2,
+  "templates": 25,
+  "templateCategories": 6,
+  "names": {
+    "views": [
+      "table",
+      "board",
+      "calendar",
+      "gallery",
+      "list",
+      "timeline",
+      "form",
+      "chart",
+      "feed",
+      "sprint"
+    ],
+    "fieldTypes": [
+      "text",
+      "number",
+      "date",
+      "select",
+      "multiselect",
+      "checkbox",
+      "url",
+      "email",
+      "phone",
+      "checklist",
+      "person",
+      "relation",
+      "rollup",
+      "formula",
+      "created_at",
+      "updated_at",
+      "created_by",
+      "updated_by",
+      "files",
+      "id",
+      "progress",
+      "time",
+      "sprint"
+    ],
+    "questionTypes": [
+      "short",
+      "long",
+      "single",
+      "dropdown",
+      "multiple",
+      "yesno",
+      "rating",
+      "nps",
+      "scale",
+      "slider",
+      "number",
+      "email",
+      "phone",
+      "url",
+      "date",
+      "time",
+      "file",
+      "matrix",
+      "ranking"
+    ],
+    "languages": {
+      "de": "Deutsch",
+      "en": "English",
+      "fr": "Français"
+    },
+    "calloutTypes": [
+      "note",
+      "tip",
+      "important",
+      "warning",
+      "caution"
+    ],
+    "exportFormats": [
+      "markdown",
+      "zip"
+    ],
+    "templateCategories": [
+      "projects",
+      "meetings",
+      "knowledge",
+      "planning",
+      "personal",
+      "other"
+    ]
+  }
+}
