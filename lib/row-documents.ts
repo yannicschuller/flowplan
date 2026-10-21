@@ -8,6 +8,7 @@ import { cleanHtml, escaped, htmlState, stateHtml } from "./document-server";
 import type { Identity, Row, Field } from "./types";
 import { documentChanged } from "./document-live";
 import { recordDocumentAuthors } from "./document-authors";
+import { mentionWebhook } from "./webhooks";
 type StoredDocument = { state: Uint8Array; html: string; generation: string };
 export type RowTemplate = {
   id: string;
@@ -134,6 +135,7 @@ export function syncRowDocument(
             pageId,
             rowId,
           );
+          mentionWebhook(page.workspace_id, pageId, rowId, uid, user.name);
         } catch {}
       }
     }

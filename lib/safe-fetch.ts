@@ -90,16 +90,37 @@ export function pinnedLookup(allowPrivate: boolean) {
 // no redirects. Resolves with the status code. With allowPrivate (webhooks
 // to the own network) plain http and internal addresses are fine.
 export function safePost(raw: string, body: string, headers: Record<string, string>, allowPrivate = false, timeout = 10_000) {
-  return new Promise<number>((resolve, reject) => {
+  return safeSend(raw, body, headers, { allowPrivate, timeout }).then((r) => r.status);
+}
+// The same with another method (PUT for Matrix) and the start of the answer
+// (Slack's message ID), at most `maxBytes` of it.
+export function safeSend(
+  raw: string,
+  body: string,
+  headers: Record<string, string>,
+  { method = "POST", allowPrivate = false, timeout = 10_000, maxBytes = 0 }: { method?: "POST" | "PUT"; allowPrivate?: boolean; timeout?: number; maxBytes?: number } = {},
+) {
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
     const url = new URL(raw);
     if (url.protocol !== "https:" && !(allowPrivate && url.protocol === "http:")) return reject(new Error("Nur https-Adressen sind erlaubt."));
     const request = url.protocol === "http:" ? httpRequest : httpsRequest;
     const req = request(
       url,
-      { method: "POST", timeout, headers: { ...headers, "content-length": String(Buffer.byteLength(body)) }, lookup: pinnedLookup(allowPrivate) as never },
+      { method, timeout, headers: { ...headers, "content-length": String(Buffer.byteLength(body)) }, lookup: pinnedLookup(allowPrivate) as never },
       (res) => {
-        res.resume();
-        resolve(res.statusCode || 0);
+        const status = res.statusCode || 0;
+        if (!maxBytes) {
+          res.resume();
+          return resolve({ status, body: "" });
+        }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        res.on("data", (chunk: Buffer) => {
+          if (size < maxBytes) chunks.push(chunk.subarray(0, maxBytes - size));
+          size += chunk.length;
+        });
+        res.on("end", () => resolve({ status, body: Buffer.concat(chunks).toString("utf8") }));
+        res.on("error", reject);
       },
     );
     req.on("timeout", () => req.destroy(new Error("Zeitüberschreitung.")));

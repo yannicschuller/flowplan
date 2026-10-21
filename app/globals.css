@@ -12417,6 +12417,72 @@ label.task-due {
   color: var(--muted);
   font-size: 12px;
 }
+/* Webhook settings: chat formats, templates and the live preview. */
+.webhook-editing {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+}
+.webhook-digest {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+.webhook-template textarea {
+  width: 100%;
+  min-height: 72px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  resize: vertical;
+}
+.webhook-template-bar,
+.webhook-placeholders,
+.webhook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.webhook-actions {
+  flex-wrap: nowrap;
+}
+.webhook-preview-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--blue);
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.webhook-preview-card blockquote {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  color: var(--secondary);
+}
+.webhook-preview-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.webhook-preview-card dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+.webhook-preview-card dt {
+  font-weight: 600;
+}
+.webhook-preview-card dd {
+  margin: 0;
+}
+.webhook-preview pre {
+  max-height: 260px;
+  overflow: auto;
+}
 
 .share-target {
   max-width: 520px;

@@ -730,6 +730,13 @@ const exact: Record<string, string> = {
   "Das Ziel dieses E-Mail-Eingangs ist nicht mehr beschreibbar.": "The target of this inbound address can no longer be written to.",
   "E-Mail zu groß.": "E-mail too large.",
   "Die E-Mail konnte nicht verarbeitet werden.": "The e-mail could not be processed.",
+  // Chat notifications of webhooks (Slack, Matrix, Teams, Discord)
+  "Mit einem Bot-Token braucht Slack eine Kanal-ID.": "With a bot token, Slack needs a channel ID.",
+  "Mit einem Zugriffstoken braucht Matrix einen Raum (!id:server oder #alias:server).": "With an access token, Matrix needs a room (!id:server or #alias:server).",
+  "Antworten aus Slack brauchen einen Bot-Token.": "Replies from Slack need a bot token.",
+  "Unbekannter Webhook.": "Unknown webhook.",
+  "Ungültige Signatur.": "Invalid signature.",
+  "Webhook konnte nicht verarbeitet werden.": "The webhook could not be processed.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],

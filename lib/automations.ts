@@ -19,6 +19,7 @@ import type { Field, Identity, Page, Row, View } from "./types";
 import { latestSlot } from "./automation-schedule";
 import { spawnNextRecord } from "./repeat-records";
 import { replaceRowDocument } from "./row-documents";
+import { emitWebhook } from "./webhooks";
 
 type Cells = Record<string, unknown>;
 type Event = "created" | "form" | "updated" | "overdue";
@@ -205,6 +206,10 @@ export function rowChanged(user: Identity | null | "system", page: Page, rowId: 
   checkWipLimits(page, props, before, after);
   checkWorkflow(user, page, props, settings, before, after);
   recordStatusChange(page.id, rowId, props, settings, before, after);
+  // Webhooks: "record done" when it just became done.
+  const rule = doneRule(props, settings);
+  if (rule && isDone(rule, after) && !isDone(rule, before))
+    emitWebhook(page.workspace_id, "row.done", { pageId: page.id, rowId, cells: after }, user && user !== "system" ? user.name : null);
   runAutomations({ page, rowId, actor: user === "system" ? null : user, event: "updated", before });
   // A repeating record that became done gets its successor.
   const actor = user === "system" ? null : user;

@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 44) return;
+  if (globalDb.flowplanSchema === 45) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -631,7 +631,21 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS inbound_messages(address_id TEXT NOT NULL REFERENCES inbound_addresses(id) ON DELETE CASCADE,message_id TEXT NOT NULL,page_id TEXT,row_id TEXT,received_at INTEGER NOT NULL,PRIMARY KEY(address_id,message_id));
     CREATE TABLE IF NOT EXISTS inbound_deliveries(address_id TEXT NOT NULL,at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS inbound_deliveries_address ON inbound_deliveries(address_id,at);`);
-  globalDb.flowplanSchema = 44;
+  // Chat notifications of webhooks (lib/notification-templates.ts): the
+  // format, message templates per event, settings (language, digest time,
+  // Matrix room, Slack channel), sealed credentials (Matrix access token,
+  // Slack bot token and signing secret), the local day of the last digest,
+  // and Slack messages by ts so thread replies become record comments.
+  {
+    const columns = (d.prepare("PRAGMA table_info(webhooks)").all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes("format")) d.exec("ALTER TABLE webhooks ADD COLUMN format TEXT NOT NULL DEFAULT 'json'");
+    if (!columns.includes("templates")) d.exec("ALTER TABLE webhooks ADD COLUMN templates TEXT NOT NULL DEFAULT '{}'");
+    if (!columns.includes("config")) d.exec("ALTER TABLE webhooks ADD COLUMN config TEXT NOT NULL DEFAULT '{}'");
+    if (!columns.includes("credentials")) d.exec("ALTER TABLE webhooks ADD COLUMN credentials TEXT");
+    if (!columns.includes("digest_day")) d.exec("ALTER TABLE webhooks ADD COLUMN digest_day TEXT");
+    d.exec(`CREATE TABLE IF NOT EXISTS webhook_messages(webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,ts TEXT NOT NULL,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT,created_at INTEGER NOT NULL,PRIMARY KEY(webhook_id,ts));`);
+  }
+  globalDb.flowplanSchema = 45;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
