@@ -11,6 +11,7 @@ import {
   scheduleFields,
   schedulePatch,
   successorShifts,
+  type DependencyType,
 } from "./database-timeline";
 import { calendarChangeSchema, calendarPatch } from "./database-calendar";
 import type { Field, Identity, View } from "./types";
@@ -26,6 +27,15 @@ const changeSchema = z.discriminatedUnion("operation", [
     days: z.number().int().min(-366000).max(366000),
   }),
 ]);
+// Days the side of a predecessor that its successors are linked to moved:
+// the start for "ss" and "sf", the end for "fs" and "ff" (the default).
+export function linkedDelta(
+  type: DependencyType | undefined,
+  before: { start: number; end: number },
+  after: { start: number; end: number },
+) {
+  return type === "ss" || type === "sf" ? after.start - before.start : after.end - before.end;
+}
 // Executes inside the command transaction, including linked-view mutations.
 export function scheduleRow(
   user: Identity,
@@ -80,7 +90,8 @@ export function scheduleRow(
   const nextCells = JSON.stringify({ ...cells, ...patch });
   if (nextCells.length > 200000) throw new HttpError(413, "Datensatz zu groß.");
   // "Nachfolger mitverschieben": what waits for the record moves along by
-  // as many days as its end moved.
+  // as many days as the linked end of the record moved – its start for
+  // start-based links (ss, sf), its end for end-based ones (fs, ff).
   let moved = 0;
   if (view.type === "timeline" && view.timeline?.moveSuccessors) {
     const field = dependencyFields(db.fields, pageId).find(
@@ -89,7 +100,7 @@ export function scheduleRow(
     const { start, end } = scheduleFields(db.fields, view);
     const before = rowRange({ cells }, start, end),
       after = rowRange({ cells: JSON.parse(nextCells) }, start, end);
-    const days = before && after ? after.end - before.end : 0;
+    const days = before && after ? linkedDelta(view.timeline.dependencyType, before, after) : 0;
     if (field && days) {
       const rows = all<{ id: string; cells: string }>(
         "SELECT id,cells FROM rows WHERE page_id=?",

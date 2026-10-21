@@ -318,6 +318,22 @@ test("meaning finds passages without shared words – and still respects every r
   for (const page of FORBIDDEN_PAGES) assert.ok(!money.sources.some((s) => s.pageId === page), page);
 });
 
+test("a question takes one slot of the AI rate limit, not one more for its embedding", async () => {
+  const { limitAi } = await import("../lib/action-limits");
+  const asker = person("Lim");
+  run("INSERT INTO members VALUES(?,?,?)", wid, asker.id, "editor");
+  // 29 of the 30 requests per minute used up: the embedding of a question
+  // must not take the last one away from the answer.
+  for (let i = 0; i < 29; i++) limitAi(asker.id);
+  const prepared = await ask(asker, "Reise");
+  assert.equal(prepared.semantic, true);
+  assert.doesNotThrow(() => limitAi(asker.id), "the answer still gets its slot");
+  // A standalone semantic search is limited as before; preparing a question
+  // on its own is not (the answer's run is, in lib/ai/run.ts).
+  await assert.rejects(() => semanticCandidates(asker, wid, "Reise"), /Zu viele KI-Anfragen/);
+  assert.equal((await ask(asker, "Reise")).semantic, true);
+});
+
 test("people with their own provider do not use the instance's embeddings", () => {
   setAi({ userProviders: true });
   command(vic, { action: "ai.provider", provider: { kind: "openai", baseUrl: "https://api.example.com/v1", model: "x", embeddingModel: "" }, apiKey: "sk-vic-0123456789" });

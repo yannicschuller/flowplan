@@ -2,7 +2,9 @@
 // "Als Markdown bearbeiten": the page as Markdown in a plain text field.
 // "Übernehmen" puts the converted text in place of the editor's content as
 // one change (undo takes it back), after the server kept the page's current
-// state as a version. Blocks without a Markdown form stand in the text as
+// state as a version. Replacing the whole document re-anchors text comments
+// and resets the authorship to the applying person; the note says so.
+// Blocks without a Markdown form stand in the text as
 // <!-- flowplan:block N … --> and come back unchanged; a marker removed from
 // the text removes its block, after asking.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -155,6 +157,10 @@ export function MarkdownSourceView({
           {source.lossy.length > 0
             ? t(`Beim Übernehmen gehen verloren: ${source.lossy.join(", ")}. `, `Lost when applying: ${source.lossy.join(", ")}. `)
             : ""}
+          {t(
+            "Textkommentare können ihre Stelle verlieren, und die Autorenschaft (wer was geschrieben hat) geht auf dich über. ",
+            "Text comments may lose their place, and authorship (who wrote what) passes to you. ",
+          )}
           {t("Vor dem Übernehmen wird eine Version gespeichert; Rückgängig nimmt die Änderung zurück.", "A version is saved before applying; Undo takes the change back.")}
         </p>
       )}
