@@ -257,7 +257,7 @@ export function bulkRows(
           );
       const rid = mapping.get(row.id)!;
       run(
-        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence,access) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         rid,
         pageId,
         JSON.stringify(cells),
@@ -268,6 +268,7 @@ export function bulkRows(
         row.cover || "",
         row.recurrence || "",
         row.access || "inherit",
+        row.repeat || "",
       );
       // Copies keep the record permissions of their original.
       run(

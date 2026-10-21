@@ -3,7 +3,7 @@ import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import { hiddenRowIds, visibleRows } from "./row-access";
 import { hiddenFileIds } from "./row-files";
 import { lockedPageIds } from "./journal-extras";
-import { parseRecurrence } from "./recurrence";
+import { parseRecurrence, parseRepeat } from "./recurrence";
 import { quotaCheckpoint } from "./instance-ops";
 import { instanceSettings } from "./instance-settings";
 import { mapFileCell } from "./file-cells";
@@ -111,6 +111,12 @@ const rowSchema = z.object({
     .max(500)
     .default("")
     .refine((v) => !v || !!parseRecurrence(v), "Ungültige Wiederholung."),
+  // Repeating record (lib/repeat-records.ts).
+  repeat: z
+    .string()
+    .max(500)
+    .default("")
+    .refine((v) => !v || !!parseRepeat(v), "Ungültige Wiederholung."),
   created_at: str,
   updated_at: str,
   snapshots: z
@@ -199,6 +205,14 @@ export const archiveSchema = z.object({
         position: z.number().finite(),
         deleted_at: str.nullable(),
         updated_at: str,
+        // Review date and interval (lib/page-review.ts); owners are people
+        // of the old workspace and are not carried over.
+        review_at: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
+        review_every_days: z.number().int().min(1).max(3650).nullable().optional(),
         locked: z.number().int().min(0).max(1),
         full_width: z.number().int().min(0).max(1),
         font: z.enum(["sans", "serif", "mono"]),
@@ -352,6 +366,8 @@ function snapshotFor(user: Identity, wid: string) {
         position: p.position,
         deleted_at: p.deleted_at,
         updated_at: p.updated_at,
+        review_at: p.review_at ?? null,
+        review_every_days: p.review_every_days ?? null,
         locked: p.locked,
         full_width: p.full_width,
         font: p.font,
@@ -390,7 +406,7 @@ function snapshotFor(user: Identity, wid: string) {
                     access: string;
                     created_by: string;
                   }>(
-                    "SELECT id,cells,content,position,icon,cover,recurrence,created_at,updated_at,access,created_by FROM rows WHERE page_id=? ORDER BY position",
+                    "SELECT id,cells,content,position,icon,cover,recurrence,repeat,created_at,updated_at,access,created_by FROM rows WHERE page_id=? ORDER BY position",
                     p.id,
                   ),
                 ).map(
@@ -1076,6 +1092,8 @@ async function importEntries(
         );
       for (const p of data.pages) {
         const pid = pageMap.get(p.id)!;
+        if (p.review_at || p.review_every_days)
+          run("UPDATE pages SET review_at=?,review_every_days=? WHERE id=?", p.review_at ?? null, p.review_every_days ?? null, pid);
         if (p.form && p.kind === "database")
           run(
             "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,0,?,?,?)",
@@ -1106,7 +1124,7 @@ async function importEntries(
             const rid = rowMap.get(r.id)!,
               content = rewriteHtml(r.content);
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
               rid,
               pid,
               JSON.stringify(rewriteCells(r.cells, d.fields)),
@@ -1119,6 +1137,7 @@ async function importEntries(
               rewriteUrl(r.icon),
               rewriteUrl(r.cover),
               r.recurrence,
+              r.repeat,
             );
             run(
               "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",

@@ -5,7 +5,9 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import type { Automation, AutomationAction, DatabaseSettings } from "@/lib/database-settings-schema";
 import { doneRule } from "@/lib/database-settings-schema";
+import { browserZone } from "@/lib/date-values";
 import type { Field, User } from "@/lib/types";
+import { ScheduleFields, CreateActionFields, scheduleLabel, scheduledTrigger, createAction, type RowTemplateRef } from "./automation-schedule";
 
 type Props = {
   fields: Field[];
@@ -13,6 +15,8 @@ type Props = {
   members: Pick<User, "id" | "name">[];
   editable: boolean;
   save: (patch: Partial<DatabaseSettings> | Record<string, null>) => Promise<boolean>;
+  // Record templates of the database, for scheduled rules.
+  templates?: RowTemplateRef[];
 };
 type Condition = Automation["conditions"][number];
 const newId = () => crypto.randomUUID().slice(0, 12);
@@ -23,7 +27,7 @@ const settable = (f: Field) => !["formula", "rollup", "created_at", "updated_at"
 
 // Rules of a database: "When …, only if …, then …". Each rule can be
 // switched off; suggestions fill in the usual cases.
-export function DatabaseAutomations({ fields, settings, members, editable, save }: Props) {
+export function DatabaseAutomations({ fields, settings, members, editable, save, templates = [] }: Props) {
   const t = useT();
   const rules = settings.automations || [];
   const [draft, setDraft] = useState<Automation | null>(null);
@@ -78,6 +82,18 @@ export function DatabaseAutomations({ fields, settings, members, editable, save 
         actions: [{ type: "set", field: people[0].id, value: members[0]?.id || "@creator" }],
       }),
     });
+  // A record every Monday at 09:00, from the default (or first) template.
+  suggestions.push({
+    label: t("Jeden Montag 09:00 einen Datensatz anlegen", "Create a record every Monday at 09:00"),
+    rule: () => ({
+      id: newId(),
+      name: t("Wöchentlicher Eintrag", "Weekly record"),
+      enabled: true,
+      trigger: scheduledTrigger(browserZone()),
+      conditions: [],
+      actions: [createAction(templates, dates)],
+    }),
+  });
   const empty = (): Automation => ({ id: newId(), name: "", enabled: true, trigger: { type: "created" }, conditions: [], actions: [{ type: "notify", to: "@creator", message: "" }] });
 
   if (draft)
@@ -86,6 +102,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save 
         rule={draft}
         fields={fields}
         members={members}
+        templates={templates}
         busy={busy}
         onCancel={() => setDraft(null)}
         onSave={async (rule) => {
@@ -163,7 +180,9 @@ function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | 
   const name = (id: string) => fields.find((f) => f.id === id)?.name || "?";
   const tr = rule.trigger;
   const when =
-    tr.type === "created"
+    tr.type === "schedule"
+      ? scheduleLabel(tr, t)
+      : tr.type === "created"
       ? t("Neuer Eintrag", "New record")
       : tr.type === "form"
         ? t("Neuer Eintrag über ein Formular", "New record through a form")
@@ -174,7 +193,12 @@ function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | 
             : t(`${name(tr.field)} ändert sich`, `${name(tr.field)} changes`);
   const then = rule.actions
     .map((a) =>
-      a.type === "set"
+      a.type === "create"
+        ? t("Datensatz anlegen", "create a record") +
+          Object.entries(a.dates)
+            .map(([id, days]) => ` · ${name(id)} ${days >= 0 ? "+" : "−"}${Math.abs(days)} ${t("Tage", "days")}`)
+            .join("")
+        : a.type === "set"
         ? `${name(a.field)} = ${valueLabel(a.value, members, t)}`
         : t(`benachrichtigen: ${whoLabel(a.to, fields, members, t)}`, `notify: ${whoLabel(a.to, fields, members, t)}`),
     )
@@ -202,6 +226,7 @@ function AutomationEditor({
   rule,
   fields,
   members,
+  templates,
   busy,
   onSave,
   onCancel,
@@ -209,6 +234,7 @@ function AutomationEditor({
   rule: Automation;
   fields: Field[];
   members: Pick<User, "id" | "name">[];
+  templates: RowTemplateRef[];
   busy: boolean;
   onSave: (rule: Automation) => void;
   onCancel: () => void;
@@ -240,14 +266,25 @@ function AutomationEditor({
           onChange={(e) => {
             const type = e.target.value as Automation["trigger"]["type"];
             const firstDate = fields.find((f) => f.type === "date")?.id || fields[0].id;
+            // Scheduled rules create records; the other rules do not.
+            const actions =
+              type === "schedule"
+                ? [createAction(templates, fields.filter((f) => f.type === "date"))]
+                : trigger.type === "schedule"
+                  ? [{ type: "notify" as const, to: "@creator", message: "" }]
+                  : r.actions;
             setR({
               ...r,
+              actions,
+              conditions: type === "schedule" ? [] : r.conditions,
               trigger:
                 type === "changed"
                   ? { type, field: watchable[0]?.id || fields[0].id }
                   : type === "overdue"
                     ? { type, field: firstDate }
-                    : { type },
+                    : type === "schedule"
+                      ? scheduledTrigger(browserZone())
+                      : { type },
             });
           }}
         >
@@ -257,7 +294,9 @@ function AutomationEditor({
           <option value="overdue" disabled={!fields.some((f) => f.type === "date")}>
             {t("ein Datum überschritten ist", "a date has passed")}
           </option>
+          <option value="schedule">{t("es so weit ist (Zeitplan)", "it is time (schedule)")}</option>
         </Select>
+        {trigger.type === "schedule" && <ScheduleFields trigger={trigger} onChange={(next) => setR({ ...r, trigger: next })} />}
         {(trigger.type === "changed" || trigger.type === "overdue") && (
           <Select
             aria-label={t("Eigenschaft des Auslösers", "Trigger property")}
@@ -285,6 +324,7 @@ function AutomationEditor({
           <p className="muted">{t("Einmal je Eintrag und Datum, nur solange er nicht erledigt ist.", "Once per record and date, only while it is not done.")}</p>
         )}
       </fieldset>
+      {trigger.type !== "schedule" && (
       <fieldset>
         <legend>{t("Nur wenn (optional)", "Only if (optional)")}</legend>
         {r.conditions.map((c, i) => {
@@ -320,9 +360,20 @@ function AutomationEditor({
           </button>
         )}
       </fieldset>
+      )}
       <fieldset>
         <legend>{t("Dann", "Then")}</legend>
-        {r.actions.map((a, i) => (
+        {r.actions.map((a, i) =>
+          a.type === "create" ? (
+            <CreateActionFields
+              key={i}
+              action={a}
+              fields={fields}
+              templates={templates}
+              onChange={(next) => setAction(i, next)}
+              onRemove={r.actions.length > 1 ? () => setR({ ...r, actions: r.actions.filter((_, j) => j !== i) }) : undefined}
+            />
+          ) : (
           <div className="automation-row" key={i}>
             <Select
               aria-label={t("Aktion", "Action")}
@@ -383,9 +434,22 @@ function AutomationEditor({
               </button>
             )}
           </div>
-        ))}
+          ),
+        )}
         {r.actions.length < 10 && (
-          <button type="button" className="text-button" onClick={() => setR({ ...r, actions: [...r.actions, { type: "notify", to: "@creator", message: "" }] })}>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() =>
+              setR({
+                ...r,
+                actions: [
+                  ...r.actions,
+                  trigger.type === "schedule" ? createAction(templates, fields.filter((f) => f.type === "date")) : { type: "notify", to: "@creator", message: "" },
+                ],
+              })
+            }
+          >
             <Plus /> {t("Aktion", "Action")}
           </button>
         )}

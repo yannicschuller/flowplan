@@ -28,6 +28,7 @@ import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
 import { KeyboardShortcuts } from "./keyboard-shortcuts";
 import { PagePeople } from "./page-people";
+import { PageReview, openPageReview } from "./page-review";
 import { AiBlockToggle } from "./ai-settings";
 import { AskPanel } from "./ai-ask";
 import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
@@ -2341,6 +2342,10 @@ export default function WorkspaceApp({
                             : t("Als Markdown anzeigen", "View as Markdown")}
                       </Dropdown.Item>
                     )}
+                    <Dropdown.Item className="dropdown-item" onSelect={() => openPageReview(data.page.id)}>
+                      <UsersThree />
+                      {t("Besitzer und Prüfung …", "Owner and review …")}
+                    </Dropdown.Item>
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setHistory(true)}
@@ -2672,6 +2677,7 @@ export default function WorkspaceApp({
                       </div>
                     )}
                   </div>
+                  <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
                   {since?.pageId === data.page.id && since.value && (
                     <SinceVisitBanner
                       since={since.value}

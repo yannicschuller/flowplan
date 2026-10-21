@@ -19966,3 +19966,106 @@ tr:hover .row-open-mark,
     width: 110px;
   }
 }
+
+/* ---- Page owners and reviews, scheduled rules, repeating records ----
+   components/page-review.tsx, components/automation-schedule.tsx,
+   components/record-repeat.tsx */
+.page-review-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0 0 16px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--signal) 30%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--signal) 7%, var(--bg));
+  font-size: 13px;
+}
+.page-review-banner > svg {
+  flex: none;
+  color: var(--signal);
+}
+.page-review-banner > span {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.page-review-form {
+  display: grid;
+  gap: 12px;
+}
+.page-review-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.page-review-form label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--secondary);
+}
+.page-review-presets,
+.record-repeat-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.page-review-presets .chip[aria-pressed="true"],
+.record-repeat-days .chip[aria-pressed="true"] {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--accent-strong);
+}
+.automation-schedule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.automation-schedule label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.automation-schedule input[type="number"] {
+  width: 70px;
+}
+.automation-schedule p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+}
+.automation-create {
+  display: grid;
+  gap: 8px;
+}
+.automation-create label.automation-row > span {
+  flex: 0 1 160px;
+}
+.automation-create input[type="number"] {
+  max-width: 110px;
+}
+.automation-create p {
+  margin: 0;
+  font-size: 12px;
+}
+.record-repeat-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.record-repeat-choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.record-repeat-choice input[type="number"] {
+  width: 64px;
+}
+.record-repeat-choice small {
+  flex-basis: 100%;
+}

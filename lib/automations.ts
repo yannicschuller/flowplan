@@ -8,6 +8,7 @@ import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { hiddenRowIds } from "./row-access";
 import { cellText } from "./cell-text";
+import { Temporal } from "./date-values";
 import { computedCells } from "./database";
 import { matchesFilterGroup } from "./database-filters";
 import { databaseSettings } from "./database-settings";
@@ -15,6 +16,9 @@ import { doneRule, isDone, type Automation, type AutomationAction, type Database
 import { createsCycle, parentField } from "./subtasks";
 import { groupKey, groupingField } from "./database-groups";
 import type { Field, Identity, Page, Row, View } from "./types";
+import { latestSlot } from "./automation-schedule";
+import { spawnNextRecord } from "./repeat-records";
+import { replaceRowDocument } from "./row-documents";
 
 type Cells = Record<string, unknown>;
 type Event = "created" | "form" | "updated" | "overdue";
@@ -95,6 +99,7 @@ function triggered(a: Automation, event: Event, before: Cells | null, after: Cel
   if (t.type === "created") return event === "created" || event === "form";
   if (t.type === "form") return event === "form";
   if (t.type === "overdue") return event === "overdue";
+  if (t.type === "schedule") return false;
   if (event !== "updated" || !before) return false;
   const field = fields.find((f) => f.id === t.field);
   if (!field || text(before[field.id]) === text(after[field.id])) return false;
@@ -142,7 +147,7 @@ export function runAutomations(input: { page: Page; rowId: string; actor: Identi
       if (action.type === "set") {
         const field = fields.find((f) => f.id === action.field);
         if (field) patch[field.id] = actionValue(action, field, input.actor, row);
-      } else notify(action, a, input, row, { ...cells, ...patch }, fields);
+      } else if (action.type === "notify") notify(action, a, input, row, { ...cells, ...patch }, fields);
     }
   }
   if (Object.keys(patch).length) {
@@ -201,6 +206,10 @@ export function rowChanged(user: Identity | null | "system", page: Page, rowId: 
   checkWorkflow(user, page, props, settings, before, after);
   recordStatusChange(page.id, rowId, props, settings, before, after);
   runAutomations({ page, rowId, actor: user === "system" ? null : user, event: "updated", before });
+  // A repeating record that became done gets its successor.
+  const actor = user === "system" ? null : user;
+  const next = spawnNextRecord(actor, page.id, rowId, props, settings, before, after);
+  if (next) runAutomations({ page, rowId: next, actor, event: "created" });
 }
 export function rowCreated(user: Identity | null, page: Page, rowId: string, viaForm = false) {
   runAutomations({ page, rowId, actor: user, event: viaForm ? "form" : "created" });
@@ -243,12 +252,70 @@ export function processOverdueAutomations() {
   return fired;
 }
 
+/* ---------- Scheduled rules ---------- */
+
+// Creates the records of scheduled rules whose time has come, once per
+// rule and scheduled time (automation_runs). A rule acts for the person who
+// set it up and only while they may still edit the database.
+export function processScheduledAutomations(now = Date.now()) {
+  const databases = all<{ page_id: string }>(
+    "SELECT d.page_id FROM databases d JOIN pages p ON p.id=d.page_id WHERE p.deleted_at IS NULL AND d.settings LIKE '%\"schedule\"%'",
+  );
+  let created = 0;
+  for (const { page_id } of databases) {
+    const page = one<Page>("SELECT * FROM pages WHERE id=?", page_id)!;
+    const settings = databaseSettings(page_id);
+    for (const a of settings.automations || []) {
+      if (!a.enabled || a.trigger.type !== "schedule" || !a.createdBy || !a.since) continue;
+      const slot = latestSlot(a.trigger, a.since, now);
+      if (!slot) continue;
+      const member = one<Identity>("SELECT * FROM users WHERE id=? AND disabled=0", a.createdBy);
+      const who = member ? ({ ...member, groups: [], isAdmin: false } as Identity) : null;
+      const role = who && pageRole(who, page);
+      if (!who || !role || role === "viewer" || page.locked) continue;
+      const fresh = run(
+        "INSERT OR IGNORE INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?)",
+        a.id,
+        "@schedule",
+        slot.key,
+        now,
+      );
+      if (!fresh.changes) continue;
+      for (const action of a.actions) {
+        if (action.type !== "create") continue;
+        const template = action.template
+          ? one<{ cells: string; html: string }>("SELECT cells,html FROM row_templates WHERE id=? AND page_id=?", action.template, page_id)
+          : undefined;
+        const cells: Cells = { ...(template ? JSON.parse(template.cells) : {}), ...action.cells };
+        // Dates relative to the run: "due three days later".
+        for (const [fieldId, days] of Object.entries(action.dates))
+          cells[fieldId] = Temporal.PlainDate.from(slot.date).add({ days }).toString();
+        const rid = id();
+        run(
+          "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
+          rid,
+          page_id,
+          JSON.stringify(cells),
+          Date.now() + created,
+          who.id,
+          who.id,
+        );
+        if (template?.html) replaceRowDocument(rid, template.html, who.id);
+        runAutomations({ page, rowId: rid, actor: who, event: "created" });
+        created++;
+      }
+    }
+  }
+  return created;
+}
+
 const runtime = globalThis as typeof globalThis & { flowplanAutomationTimer?: ReturnType<typeof setInterval> };
 export function startAutomationWorker(onFired: () => void) {
   if (runtime.flowplanAutomationTimer) return;
   const tick = () => {
     try {
       if (transactionalOverdue()) onFired();
+      if (transaction(() => processScheduledAutomations())) onFired();
     } catch (error) {
       console.error("Automations failed", error);
     }

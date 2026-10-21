@@ -18,6 +18,7 @@ const { one, run, id } = await import("../lib/db");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap, rows, database } = await import("../lib/api");
 const { exportArchive, importArchive } = await import("../lib/archive");
+const recurrenceModule = await import("../lib/recurrence");
 
 test("occurrences follow the rule, skip ahead, clamp month ends and stop at limits", () => {
   const weekly = { freq: "weekly" as const, interval: 2 };
@@ -458,4 +459,92 @@ test("a series splits at an occurrence into two series", () => {
   const after = split(pair, "2026-01-06");
   assert.equal(rows(page).find((r) => r.id === pair)!.recurrence, "");
   assert.deepEqual(rule(after), { freq: "daily", interval: 1 });
+});
+
+test("next occurrence of a repeating record: intervals, weekdays, month ends, leap years", () => {
+  const { nextOccurrence } = recurrenceModule;
+  assert.equal(nextOccurrence("2026-01-30", { freq: "daily", interval: 3 }), "2026-02-02");
+  assert.equal(nextOccurrence("2026-12-30T09:30", { freq: "daily", interval: 2 }), "2027-01-01");
+  assert.equal(nextOccurrence("2026-10-19", { freq: "weekly", interval: 2 }), "2026-11-02");
+  // Mo/We/Fr: later in the same week, then Monday of the next (or n-th) week.
+  const mwf = { freq: "weekly" as const, interval: 1, weekdays: [5, 1, 3] };
+  assert.equal(nextOccurrence("2026-10-19", mwf), "2026-10-21");
+  assert.equal(nextOccurrence("2026-10-21", mwf), "2026-10-23");
+  assert.equal(nextOccurrence("2026-10-23", mwf), "2026-10-26");
+  assert.equal(nextOccurrence("2026-10-25", mwf), "2026-10-26");
+  assert.equal(nextOccurrence("2026-10-23", { ...mwf, interval: 2 }), "2026-11-02");
+  // Month ends are clamped but the day of the month is kept.
+  const monthly = { freq: "monthly" as const, interval: 1, day: 31 };
+  assert.equal(nextOccurrence("2026-01-31", monthly), "2026-02-28");
+  assert.equal(nextOccurrence("2026-02-28", monthly), "2026-03-31");
+  assert.equal(nextOccurrence("2026-03-31", monthly), "2026-04-30");
+  assert.equal(nextOccurrence("2024-01-31", monthly), "2024-02-29");
+  assert.equal(nextOccurrence("2026-01-31", { freq: "monthly", interval: 1 }), "2026-02-28");
+  assert.equal(nextOccurrence("2026-11-15", { freq: "monthly", interval: 3 }), "2027-02-15");
+  // 29 February: 28 February in common years, back to the 29th in leap years.
+  const yearly = { freq: "yearly" as const, interval: 1, day: 29 };
+  assert.equal(nextOccurrence("2024-02-29", yearly), "2025-02-28");
+  assert.equal(nextOccurrence("2027-02-28", yearly), "2028-02-29");
+  assert.equal(nextOccurrence("2024-02-29", { freq: "yearly", interval: 4 }), "2028-02-29");
+});
+
+test("a repeating record creates its successor once it is done", () => {
+  const owner = account("repeat-owner"),
+    viewer = account("repeat-viewer");
+  const wid = createWorkspace(owner.id, "Wiederkehrend");
+  run("INSERT INTO members VALUES(?,?,?)", wid, viewer.id, "viewer");
+  const page = (
+    command(owner, {
+      action: "page.create",
+      workspaceId: wid,
+      spaceId: bootstrap(owner, wid).spaces[0].id,
+      title: "Aufgaben",
+      kind: "database",
+      databaseKind: "empty",
+    }) as { id: string }
+  ).id;
+  command(owner, {
+    action: "database.update",
+    pageId: page,
+    version: database(page).version,
+    fields: [
+      { id: "title", name: "Name", type: "text" },
+      { id: "status", name: "Status", type: "select", options: ["Offen", "Erledigt"] },
+      { id: "due", name: "Fällig", type: "date" },
+      { id: "start", name: "Beginn", type: "date" },
+    ],
+    views: database(page).views,
+  });
+  const rid = (
+    command(owner, {
+      action: "row.create",
+      pageId: page,
+      cells: { title: "Miete", status: "Offen", due: "2026-01-31", start: "2026-01-29" },
+    }) as { id: string }
+  ).id;
+  const stored = (r: string) => one<{ version: number; cells: string; repeat: string }>("SELECT version,cells,repeat FROM rows WHERE id=?", r)!;
+  const setRepeat = (repeat: unknown, as = owner) =>
+    command(as, { action: "row.repeat", pageId: page, rowId: rid, version: stored(rid).version, repeat });
+  assert.throws(() => setRepeat({ freq: "monthly", interval: 1, field: "due" }, viewer), /Berechtigung/);
+  assert.throws(() => setRepeat({ freq: "monthly", interval: 1, field: "title" }), /Datumseigenschaft/);
+  setRepeat({ freq: "monthly", interval: 1, field: "due" });
+  // The day of the month is taken from the date.
+  assert.equal(recurrenceModule.parseRepeat(stored(rid).repeat)?.day, 31);
+  const count = () => one<{ n: number }>("SELECT COUNT(*) n FROM rows WHERE page_id=?", page)!.n;
+  const done = (r: string, status = "Erledigt") =>
+    command(owner, { action: "row.update", pageId: page, rowId: r, version: stored(r).version, cells: { status } });
+  done(rid);
+  assert.equal(count(), 2);
+  assert.equal(stored(rid).repeat, "");
+  const next = one<{ id: string }>("SELECT id FROM rows WHERE page_id=? AND id!=?", page, rid)!.id;
+  assert.deepEqual(JSON.parse(stored(next).cells), { title: "Miete", status: "Offen", due: "2026-02-28", start: "2026-02-26" });
+  assert.equal(recurrenceModule.parseRepeat(stored(next).repeat)?.freq, "monthly");
+  // Reopening and closing the old record again creates nothing more.
+  done(rid, "Offen");
+  done(rid);
+  assert.equal(count(), 2);
+  // The successor keeps the day: 28 Feb → 31 Mar.
+  done(next);
+  const third = one<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND id NOT IN (?,?)", page, rid, next)!;
+  assert.equal(JSON.parse(third.cells).due, "2026-03-31");
 });

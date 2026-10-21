@@ -9,6 +9,8 @@ import { z } from "zod";
 import { field, view } from "./database-schema";
 import { coverSchema, iconSizeSchema, pageIconSchema } from "./page-appearance";
 import { buildInfo } from "./build-info";
+import { repeatSchema } from "./recurrence";
+import { settingsSchema } from "./database-settings-schema";
 
 type Json = Record<string, unknown>;
 const uuid = z.uuid();
@@ -46,13 +48,13 @@ export const commandActionNames = [
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport",
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
   "pages.bulk", "page.follow", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
-  "page.toRecord", "record.toPage", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
+  "page.toRecord", "record.toPage", "page.owner", "page.review", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
   "database.update", "database.settings", "database.recordLayout",
   "row.create", "row.update", "row.delete", "row.move", "row.schedule", "row.access", "row.appearance",
-  "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore",
+  "row.recurrence", "row.repeat", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore",
   "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge",
   "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
   "citation.import", "citation.remove", "whiteboard.sync", "search.save", "search.delete",
@@ -135,6 +137,58 @@ export const commandActions: ActionDoc[] = [
       }),
     }),
     result: okResult,
+  },
+  {
+    action: "page.owner",
+    summary: "Set or remove the owner of a page",
+    description: "Needs editor rights. The owner must be a member (not a guest) of the workspace who can read the page; they get the review reminders.",
+    input: z.object({ action: z.literal("page.owner"), pageId: uuid, ownerId: z.string().max(60).nullable() }),
+    result: okResult,
+  },
+  {
+    action: "page.review",
+    summary: "Plan, change or complete the review of a page",
+    description:
+      "Needs editor rights. `reviewAt` is the next review date, `everyDays` repeats it; an interval without a date starts from today. `done: true` marks the page as reviewed: the date moves to today plus the interval, a one-off date is cleared. `null` removes a value.",
+    input: z.object({
+      action: z.literal("page.review"),
+      pageId: uuid,
+      reviewAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      everyDays: z.number().int().min(1).max(3650).nullable().optional(),
+      done: z.literal(true).optional(),
+    }),
+    result: z.object({ ok: z.literal(true), reviewAt: z.string().nullable(), everyDays: z.number().nullable() }),
+  },
+  {
+    action: "row.repeat",
+    summary: "Make a record repeat when it is done",
+    description:
+      "Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule.",
+    input: z.object({
+      action: z.literal("row.repeat"),
+      pageId: uuid,
+      rowId: uuid,
+      version: z.number().int().positive(),
+      repeat: repeatSchema.nullable(),
+    }),
+    result: okResult,
+  },
+  {
+    action: "database.settings",
+    summary: "Change the settings of a database (done rule, workflow, automations, sprints)",
+    description:
+      "Needs editor rights. Each key replaces that setting; `null` removes it. Automations with a `schedule` trigger only take `create` actions (a new record from a record template, with dates relative to the run); they run as the person who last saved them, at most once per scheduled time. `createdBy` and `since` are set by the server.",
+    input: z.object({
+      action: z.literal("database.settings"),
+      pageId: uuid,
+      settings: z.object({
+        done: settingsSchema.shape.done.nullable(),
+        workflow: settingsSchema.shape.workflow.nullable(),
+        automations: settingsSchema.shape.automations.nullable(),
+        sprints: settingsSchema.shape.sprints.nullable(),
+        pointsField: settingsSchema.shape.pointsField.nullable(),
+      }).partial(),
+    }),
   },
   {
     action: "page.move",

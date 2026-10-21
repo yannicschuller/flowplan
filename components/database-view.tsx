@@ -9,6 +9,7 @@ import { useT } from "./i18n";
 import { Select } from "./select";
 import { RowAccess, rowAccessSummary } from "./row-access";
 import TicketThread from "./ticket-thread";
+import { RecordRepeat } from "./record-repeat";
 import { DatabaseTools } from "./database-tools";
 import { RecordSubtasks } from "./record-subtasks";
 import { BoardWipSettings, WipCount } from "./board-wip";
@@ -2685,6 +2686,7 @@ export default function DatabaseView({
                 editable={editable}
                 act={act}
                 onTemplates={() => setManageTemplates(true)}
+                templates={data.rowTemplates}
               />
             </>
           )}
@@ -5325,6 +5327,9 @@ export default function DatabaseView({
                     {f.type === "date" &&
                       f.id === fields.find((x) => x.type === "date")?.id &&
                       recurrenceControl(selected)}
+                    {f.type === "date" && f.id === fields.find((x) => x.type === "date")?.id && (
+                      <RecordRepeat row={selected} fields={fields} editable={!!rowEditable(selected)} act={act} />
+                    )}
                   </Fragment>
                 ))}
                 {emptyHidden > 0 && (

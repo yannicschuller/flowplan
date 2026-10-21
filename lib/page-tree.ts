@@ -229,7 +229,7 @@ export function duplicatePages(
         );
         for (const r of sourceRows.get(p.id) || []) {
           run(
-            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             rowIds.get(r.id)!,
             target,
             rewriteCells(r.cells, fields),
@@ -241,6 +241,7 @@ export function duplicatePages(
             rewrite(r.cover || ""),
             r.recurrence || "",
             r.access || "inherit",
+            r.repeat || "",
           );
           if (workspaceId === p.workspace_id)
             run(

@@ -247,6 +247,8 @@ export function bootstrap(user: Identity, wid?: string) {
     workspaces,
     workspace,
     pages,
+    // Pages owned by me whose review date has passed (lib/page-review.ts).
+    reviewsDue: reviewsDue(user, pages),
     spaces: all<Space>(
       "SELECT * FROM spaces WHERE workspace_id=?",
       workspace.id,
@@ -1514,7 +1516,7 @@ export function command(
           run("DELETE FROM rows WHERE page_id=?", p.id);
           for (const r of data.rows)
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access) VALUES(?,?,?,?,COALESCE((SELECT id FROM users WHERE id=?),?),?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,icon,cover,recurrence,access,repeat) VALUES(?,?,?,?,COALESCE((SELECT id FROM users WHERE id=?),?),?,?,?,?,?,?,?)",
               r.id,
               p.id,
               JSON.stringify(r.cells),
@@ -1527,6 +1529,7 @@ export function command(
               restorableImage(p.id, r.cover, validateCover),
               typeof r.recurrence === "string" ? r.recurrence : "",
               ["readonly", "private"].includes(r.access) ? r.access : "inherit",
+              typeof r.repeat === "string" && parseRepeat(r.repeat) ? r.repeat : "",
             );
           for (const r of data.rows)
             for (const g of Array.isArray(r.grants) ? r.grants : [])
@@ -2054,6 +2057,15 @@ export function command(
         break;
       case "row.recurrence":
         result = setRowRecurrence(user, b);
+        break;
+      case "row.repeat":
+        result = setRowRepeat(user, b);
+        break;
+      case "page.owner":
+        result = setPageOwner(user, b);
+        break;
+      case "page.review":
+        result = setPageReview(user, b);
         break;
       case "row.detachOccurrence":
         result = detachOccurrence(user, b);
@@ -2745,6 +2757,7 @@ const editActions = new Set([
   "row.delete",
   "whiteboard.sync",
   "row.recurrence",
+  "row.repeat",
   "row.detachOccurrence",
   "row.appearance",
   "snapshot.restore",
@@ -2843,6 +2856,9 @@ import { dispatchMail, mailConfig, queueInviteMail } from "./mail";
 import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";
 import { listDateReminders, setDateReminder } from "./date-reminders";
 import { setRowAppearance, setRowRecurrence } from "./row-appearance";
+import { setRowRepeat } from "./repeat-records";
+import { parseRepeat } from "./recurrence";
+import { reviewsDue, setPageOwner, setPageReview } from "./page-review";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";

@@ -21,6 +21,7 @@ export function DatabaseTools({
   editable,
   act,
   onTemplates,
+  templates,
 }: {
   page: Page;
   database: Database;
@@ -28,6 +29,8 @@ export function DatabaseTools({
   editable: boolean;
   act: (b: Record<string, unknown>) => Promise<unknown>;
   onTemplates: () => void;
+  // Record templates, for scheduled automation rules.
+  templates?: { id: string; name: string; is_default?: number }[];
 }) {
   const t = useT();
   const [panel, setPanel] = useState<ToolPanel | null>(null);
@@ -61,7 +64,7 @@ export function DatabaseTools({
         </Dropdown.Portal>
       </Dropdown.Root>
       <Modal open={panel === "automations"} onClose={() => setPanel(null)} title={t(`Automationen · ${page.title}`, `Automations · ${page.title}`)} wide>
-        <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} />
+        <DatabaseAutomations fields={database.fields} settings={settings} members={members} editable={editable} save={save} templates={templates} />
       </Modal>
       <Modal open={panel === "git"} onClose={() => setPanel(null)} title={t("Git-Anbindung", "Git connection")} wide>
         {panel === "git" && <GitSettings pageId={page.id} hasIds={database.fields.some((f) => f.type === "id")} editable={editable} act={act} />}

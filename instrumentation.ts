@@ -11,6 +11,9 @@ export async function register() {
     startTaskWorker(() => void dispatchPush());
     const { startAutomationWorker } = await import("./lib/automations");
     startAutomationWorker(() => void dispatchPush());
+    // Page owners are reminded once a review date has passed.
+    const { startReviewWorker } = await import("./lib/page-review");
+    startReviewWorker(() => void dispatchPush());
     const { startSearchWorker } = await import("./lib/search-index");
     startSearchWorker();
     const { startFileTextWorker } = await import("./lib/file-text");

@@ -130,7 +130,7 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
   const r = payload.row;
   run(
     // The ticket number comes back too (unless another record took it).
-    "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access,number) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?)",
+    "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,access,number,repeat) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,?,?,?,?)",
     trashId,
     page.id,
     String(r.cells),
@@ -148,6 +148,7 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
     Number.isInteger(r.number) && !one("SELECT 1 FROM rows WHERE page_id=? AND number=?", page.id, r.number as number)
       ? (r.number as number)
       : null,
+    String(r.repeat || ""),
   );
   for (const g of payload.grants || [])
     run(

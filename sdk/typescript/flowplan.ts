@@ -505,7 +505,7 @@ export type CommandResult = Record<string, unknown>;
 
 /** Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source. */
 export type CommandOther = {
-  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.settings" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke";
+  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke";
   [key: string]: unknown;
 };
 
@@ -575,6 +575,131 @@ export type CommandPageUpdate = {
 
 export type CommandPageUpdateResult = {
   ok: true;
+};
+
+/** Set or remove the owner of a page. Needs editor rights. The owner must be a member (not a guest) of the workspace who can read the page; they get the review reminders. */
+export type CommandPageOwner = {
+  action: "page.owner";
+  pageId: string;
+  ownerId: string | null;
+};
+
+export type CommandPageOwnerResult = {
+  ok: true;
+};
+
+/** Plan, change or complete the review of a page. Needs editor rights. `reviewAt` is the next review date, `everyDays` repeats it; an interval without a date starts from today. `done: true` marks the page as reviewed: the date moves to today plus the interval, a one-off date is cleared. `null` removes a value. */
+export type CommandPageReview = {
+  action: "page.review";
+  pageId: string;
+  reviewAt?: string | null;
+  everyDays?: number | null;
+  done?: true;
+};
+
+export type CommandPageReviewResult = {
+  ok: true;
+  reviewAt: string | null;
+  everyDays: number | null;
+};
+
+/** Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule. */
+export type CommandRowRepeat = {
+  action: "row.repeat";
+  pageId: string;
+  rowId: string;
+  version: number;
+  repeat: {
+    freq: "daily" | "weekly" | "monthly" | "yearly";
+    interval?: number;
+    weekdays?: number[];
+    day?: number;
+    field: string;
+  } | null;
+};
+
+export type CommandRowRepeatResult = {
+  ok: true;
+};
+
+/** Change the settings of a database (done rule, workflow, automations, sprints). Needs editor rights. Each key replaces that setting; `null` removes it. Automations with a `schedule` trigger only take `create` actions (a new record from a record template, with dates relative to the run); they run as the person who last saved them, at most once per scheduled time. `createdBy` and `since` are set by the server. */
+export type CommandDatabaseSettings = {
+  action: "database.settings";
+  pageId: string;
+  settings: {
+    done?: {
+      field: string;
+      values: string[];
+    } | null;
+    workflow?: {
+      field: string;
+      transitions?: Record<string, string[]>;
+      required?: Record<string, string[]>;
+      ownersOnly?: string[];
+    } | null;
+    automations?: ({
+      id: string;
+      name?: string;
+      enabled?: boolean;
+      trigger: {
+        type: "created";
+      } | {
+        type: "form";
+      } | {
+        type: "changed";
+        field: string;
+        to?: string;
+      } | {
+        type: "overdue";
+        field: string;
+      } | {
+        type: "schedule";
+        freq: "daily" | "weekly" | "monthly";
+        interval?: number;
+        weekday?: number;
+        day?: number;
+        time?: string;
+        timeZone?: string;
+      };
+      conditions?: ({
+        field: string;
+        op: "contains" | "not_contains" | "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "starts_with" | "ends_with" | "before" | "after" | "on_or_before" | "on_or_after" | "empty" | "notempty" | "in_relative" | "not_in_relative" | "any_of" | "none_of" | "all_of" | "between" | "checked" | "unchecked" | "complete" | "incomplete";
+        value: string;
+        timeZone?: string;
+        days?: number;
+        values?: string[];
+        to?: string;
+      })[];
+      actions: ({
+        type: "set";
+        field: string;
+        value: unknown;
+      } | {
+        type: "notify";
+        to: string;
+        message?: string;
+      } | {
+        type: "create";
+        template?: string;
+        cells?: Record<string, unknown>;
+        dates?: Record<string, number>;
+      })[];
+      createdBy?: string;
+      since?: string;
+    })[] | null;
+    sprints?: ({
+      id: string;
+      name: string;
+      start: string;
+      end: string;
+      goal?: string;
+      state?: "planned" | "active" | "closed";
+      completed?: number;
+      committed?: number;
+      closedAt?: string;
+    })[] | null;
+    pointsField?: string | null;
+  };
 };
 
 /** Move a page */
@@ -940,10 +1065,10 @@ export type CommandWebhookDeleteResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandWebhookDelete | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandWebhookDelete | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : CommandResult;
 
 // ---- Client ----
 

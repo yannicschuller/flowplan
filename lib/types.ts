@@ -66,6 +66,11 @@ export type Page = {
   journal_date?: string | null;
   // 1 for the content of a synced block (not listed in the page tree).
   synced?: number;
+  // Who looks after the page and when it is due for a review (YYYY-MM-DD),
+  // repeating every N days (lib/page-review.ts).
+  owner_id?: string | null;
+  review_at?: string | null;
+  review_every_days?: number | null;
 };
 export type FieldType =
   | "text"
@@ -138,6 +143,8 @@ export type Row = {
   icon?: string;
   cover?: string;
   recurrence?: string;
+  // Repeating record: rule for the successor once it is done (JSON, lib/recurrence.ts).
+  repeat?: string;
   access?: import("./row-access-modes").RowAccessMode;
   // The viewer's role on this record (from the record permissions).
   role?: Role;

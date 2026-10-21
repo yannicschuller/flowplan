@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 42) return;
+  if (globalDb.flowplanSchema === 43) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -604,7 +604,21 @@ function migrate(d: DatabaseSync) {
   // Daily byte budgets of anonymous visitors (lib/anonymous-budget.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS anonymous_uploads(scope TEXT NOT NULL,bytes INTEGER NOT NULL,at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS anonymous_uploads_scope ON anonymous_uploads(scope,at);`);
-  globalDb.flowplanSchema = 42;
+  // Page owners and review dates (lib/page-review.ts): who looks after a
+  // page, when it is due for a review, how often, and which due date was
+  // already announced to the owner. Repeating records (lib/repeat-records.ts):
+  // the rule that creates the next record once this one is done.
+  {
+    const columns = (d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes("owner_id")) d.exec("ALTER TABLE pages ADD COLUMN owner_id TEXT");
+    if (!columns.includes("review_at")) d.exec("ALTER TABLE pages ADD COLUMN review_at TEXT");
+    if (!columns.includes("review_every_days")) d.exec("ALTER TABLE pages ADD COLUMN review_every_days INTEGER");
+    if (!columns.includes("review_notified")) d.exec("ALTER TABLE pages ADD COLUMN review_notified TEXT");
+    if (!(d.prepare("PRAGMA table_info(rows)").all() as { name: string }[]).some((c) => c.name === "repeat"))
+      d.exec("ALTER TABLE rows ADD COLUMN repeat TEXT NOT NULL DEFAULT ''");
+    d.exec("CREATE INDEX IF NOT EXISTS pages_review ON pages(review_at) WHERE review_at IS NOT NULL");
+  }
+  globalDb.flowplanSchema = 43;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

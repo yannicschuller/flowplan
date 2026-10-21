@@ -696,6 +696,13 @@ const exact: Record<string, string> = {
   "Anhänge überschreiten 100 MB.": "Attachments exceed 100 MB.",
   "E-Book überschreitet 100 MB.": "The e-book exceeds 100 MB.",
   "Tabelle zu groß (höchstens 200 Spalten und 5.000 Zeilen).": "Table too large (at most 200 columns and 5,000 rows).",
+  // Page owners and reviews, scheduled rules, repeating records
+  "Besitzer muss Mitglied des Arbeitsbereichs sein.": "The owner must be a member of the workspace.",
+  "Der Besitzer hat keinen Zugriff auf diese Seite.": "The owner has no access to this page.",
+  "Für diese Seite ist keine Prüfung geplant.": "No review is planned for this page.",
+  "Geplante Regeln haben keine Bedingungen.": "Scheduled rules have no conditions.",
+  "Geplante Regeln legen nur Datensätze an; Datensätze anlegen nur geplante Regeln.": "Scheduled rules only create records; only scheduled rules create records.",
+  "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
@@ -766,6 +773,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat „(.+)“ geändert$/, "$1 changed “$2”"],
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
+  [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],
 ];
 
 export function englishMessage(message: string) {

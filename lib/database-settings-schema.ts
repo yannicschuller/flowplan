@@ -28,11 +28,32 @@ export const automationTrigger = z.discriminatedUnion("type", [
   z.object({ type: z.literal("changed"), field: fid, to: z.string().max(500).optional() }),
   // A date property is in the past and the record is not done.
   z.object({ type: z.literal("overdue"), field: fid }),
+  // On a schedule, in the given time zone: every `interval` days, every
+  // `interval` weeks on `weekday` (ISO, 1 = Monday) or every `interval`
+  // months on `day` (clamped to the month's last day), at `time`.
+  z.object({
+    type: z.literal("schedule"),
+    freq: z.enum(["daily", "weekly", "monthly"]),
+    interval: z.number().int().min(1).max(365).default(1),
+    weekday: z.number().int().min(1).max(7).default(1),
+    day: z.number().int().min(1).max(31).default(1),
+    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).default("09:00"),
+    timeZone: z.string().min(1).max(100).default("UTC"),
+  }),
 ]);
 export const automationAction = z.discriminatedUnion("type", [
   // A fixed value; "@today" / "@now" for dates, "@actor" / "@creator" for people.
   z.object({ type: z.literal("set"), field: fid, value: z.unknown() }),
   z.object({ type: z.literal("notify"), to: z.string().max(600), message: z.string().trim().max(300).default("") }),
+  // Scheduled rules only: a new record from a record template (empty: none)
+  // plus fixed values; `dates` sets date properties to the run's day plus
+  // the given number of days ("Fällig: +3 Tage").
+  z.object({
+    type: z.literal("create"),
+    template: z.string().max(60).default(""),
+    cells: z.record(fid, z.unknown()).default({}),
+    dates: z.record(fid, z.number().int().min(-3650).max(3650)).default({}),
+  }),
 ]);
 export const automationSchema = z.object({
   id: z.string().min(1).max(60),
@@ -41,9 +62,14 @@ export const automationSchema = z.object({
   trigger: automationTrigger,
   conditions: z.array(filterSchema).max(10).default([]),
   actions: z.array(automationAction).min(1).max(10),
+  // Set by the server: who last set the rule up (scheduled rules create
+  // records as this person) and since when it applies (ISO time).
+  createdBy: z.string().max(60).optional(),
+  since: z.string().max(40).optional(),
 });
 export type Automation = z.infer<typeof automationSchema>;
 export type AutomationAction = z.infer<typeof automationAction>;
+export type ScheduleTrigger = Extract<Automation["trigger"], { type: "schedule" }>;
 
 export const sprintSchema = z.object({
   id: z.string().min(1).max(60),
