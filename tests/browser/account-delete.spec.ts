@@ -55,7 +55,7 @@ test("an admin deletes a disabled account after seeing what happens", async ({ b
   }
 });
 
-// People delete their own account from Settings → General → Your profile:
+// People delete their own account from Settings → Account → Your profile:
 // the plan first, a successor for a shared workspace, the e-mail address to
 // confirm (SSO) – then they land on the sign-in page.
 test("an SSO account deletes itself after choosing a successor", async ({ browser }, info) => {
@@ -90,7 +90,7 @@ test("an SSO account deletes itself after choosing a successor", async ({ browse
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(`${origin}/#settings`);
-    await page.getByRole("button", { name: /Allgemein/ }).first().click().catch(() => {});
+    await page.getByRole("button", { name: "Konto", exact: true }).first().click().catch(() => {});
     await page.getByRole("button", { name: "Konto löschen …" }).click();
     const dialog = page.getByRole("dialog", { name: "Dein Konto löschen?" });
     await expect(dialog).toContainText("nur dich als Mitglied");
@@ -144,7 +144,7 @@ test("an account with a password confirms with it; the last admin is refused", a
     const uid = (db.prepare("SELECT user_id FROM local_accounts WHERE email=?").get(email) as { user_id: string }).user_id;
     const open = async () => {
       await page.goto(`${origin}/#settings`);
-      await page.getByRole("button", { name: /Allgemein/ }).first().click().catch(() => {});
+      await page.getByRole("button", { name: "Konto", exact: true }).first().click().catch(() => {});
       await page.getByRole("button", { name: "Konto löschen …" }).click();
       return page.getByRole("dialog", { name: "Dein Konto löschen?" });
     };

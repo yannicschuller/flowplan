@@ -3,11 +3,13 @@
 // appearance, workspace name, e-mail summaries, push), pages to start with,
 // and a short tour of what Flowplan does. Shown once (users.onboarded_at);
 // Settings → General and the command palette open it again.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   BookOpen,
+  CheckCircle,
   CheckSquare,
+  Circle,
   CircleHalf,
   CloudArrowDown,
   FileText,
@@ -72,6 +74,12 @@ export function Onboarding({
   const docs = (slug: string) => `https://docs.flowplan.org/${locale === "de" ? "de" : "en"}/${slug}`;
   const steps = STEPS.filter((s) => s !== "start" || canCreate || owner);
   const current = steps[step];
+  // Each step starts at its heading, not at the Close button: screen readers
+  // hear what the step is about first.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus({ preventScroll: true });
+  }, [step]);
 
   const starterInfo: Record<Starter, { icon: Icon; title: string; text: string }> = {
     tasks: { icon: CheckSquare, title: t("Aufgaben", "Tasks"), text: t("Eine Datenbank mit Status, Fälligkeit und Board-Ansicht.", "A database with status, due date and a board view.") },
@@ -178,7 +186,17 @@ export function Onboarding({
 
   const shown = features[feature];
   return (
-    <Modal open wide className="onboarding" title={t("Willkommen bei Flowplan", "Welcome to Flowplan")} onClose={() => void finish()}>
+    <Modal
+      open
+      wide
+      className="onboarding"
+      title={t("Willkommen bei Flowplan", "Welcome to Flowplan")}
+      onClose={() => void finish()}
+      onOpenAutoFocus={(e) => {
+        e.preventDefault();
+        heading.current?.focus({ preventScroll: true });
+      }}
+    >
       <ol className="onboarding-steps" aria-label={t("Schritte", "Steps")}>
         {steps.map((s, index) => (
           <li key={s} aria-current={index === step ? "step" : undefined} data-done={index < step || undefined}>
@@ -190,7 +208,7 @@ export function Onboarding({
         {current === "welcome" && (
           <section aria-labelledby="onboarding-welcome">
             <Sparkle size={30} weight="duotone" className="onboarding-mark" aria-hidden />
-            <h2 id="onboarding-welcome">{t(`Hallo ${boot.user.name.split(" ")[0]}!`, `Hello ${boot.user.name.split(" ")[0]}!`)}</h2>
+            <h2 id="onboarding-welcome" tabIndex={-1} ref={heading}>{t(`Hallo ${boot.user.name.split(" ")[0]}!`, `Hello ${boot.user.name.split(" ")[0]}!`)}</h2>
             <p>
               {t(
                 "Flowplan ist dein Ort für Dokumente, Datenbanken, Whiteboards und ein Journal – in einem Seitenbaum, gemeinsam und live. In zwei Minuten richten wir das Wichtigste ein; alles lässt sich später in den Einstellungen ändern.",
@@ -242,7 +260,7 @@ export function Onboarding({
         )}
         {current === "start" && (
           <section aria-labelledby="onboarding-start">
-            <h2 id="onboarding-start">{t("Womit möchtest du starten?", "What would you like to start with?")}</h2>
+            <h2 id="onboarding-start" tabIndex={-1} ref={heading}>{t("Womit möchtest du starten?", "What would you like to start with?")}</h2>
             {owner && (
               <label className="onboarding-name">
                 {t("Name deines Arbeitsbereichs", "Name of your workspace")}
@@ -269,6 +287,11 @@ export function Onboarding({
                         <info.icon size={22} weight={on ? "fill" : "regular"} aria-hidden />
                         <strong>{info.title}</strong>
                         <small>{info.text}</small>
+                        {/* The cards are a multiple choice: the corner says so
+                            before the first click. */}
+                        <span className="onboarding-check" aria-hidden>
+                          {on ? <CheckCircle size={20} weight="fill" /> : <Circle size={20} />}
+                        </span>
                       </button>
                     );
                   })}
@@ -279,7 +302,7 @@ export function Onboarding({
         )}
         {current === "tour" && (
           <section aria-labelledby="onboarding-tour" className="onboarding-tour">
-            <h2 id="onboarding-tour">{t("Das kann Flowplan", "What Flowplan does")}</h2>
+            <h2 id="onboarding-tour" tabIndex={-1} ref={heading}>{t("Das kann Flowplan", "What Flowplan does")}</h2>
             <div className="onboarding-tour-grid">
               <div role="tablist" aria-label={t("Funktionen", "Features")} aria-orientation="vertical">
                 {features.map((f, index) => (
@@ -322,7 +345,7 @@ export function Onboarding({
         {current === "notify" && (
           <section aria-labelledby="onboarding-notify">
             <Bell size={28} weight="duotone" className="onboarding-mark" aria-hidden />
-            <h2 id="onboarding-notify">{t("Wie möchtest du benachrichtigt werden?", "How would you like to be notified?")}</h2>
+            <h2 id="onboarding-notify" tabIndex={-1} ref={heading}>{t("Wie möchtest du benachrichtigt werden?", "How would you like to be notified?")}</h2>
             <p className="muted">
               {t(
                 "Erwähnungen, Kommentare, Fälligkeiten und Einladungen landen immer im Posteingang. Je Art lässt sich das später unter Einstellungen → Benachrichtigungen genauer einstellen.",
@@ -346,7 +369,7 @@ export function Onboarding({
         {current === "done" && (
           <section aria-labelledby="onboarding-done">
             <Sparkle size={30} weight="duotone" className="onboarding-mark" aria-hidden />
-            <h2 id="onboarding-done">{t("Alles bereit!", "All set!")}</h2>
+            <h2 id="onboarding-done" tabIndex={-1} ref={heading}>{t("Alles bereit!", "All set!")}</h2>
             {created.length > 0 && (
               <p>
                 {t("Angelegt:", "Created:")}{" "}
@@ -379,7 +402,7 @@ export function Onboarding({
               </li>
             </ul>
             <p className="muted">
-              {t("Diese Einführung findest du wieder unter Einstellungen → Allgemein.", "You find this introduction again under Settings → General.")}
+              {t("Diese Einführung findest du wieder unter Einstellungen → Konto.", "You find this introduction again under Settings → Account.")}
             </p>
           </section>
         )}

@@ -49,7 +49,7 @@ test("quick search saves, reapplies and deletes personal searches", async ({
     dialog.getByRole("radio", { name: "Dokumente", exact: true }),
   ).toHaveAttribute("aria-checked", "true");
   await expect(
-    dialog.getByRole("button", { name: new RegExp(`Gespeichert ${tag}`) }),
+    dialog.getByRole("option", { name: new RegExp(`Gespeichert ${tag}`) }),
   ).toBeVisible();
   await page.screenshot({
     path: `test-results/saved-search-verification/${testInfo.project.name}.png`,

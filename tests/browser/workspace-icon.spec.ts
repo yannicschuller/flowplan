@@ -31,6 +31,8 @@ test("workspaces get an emoji or an image as their symbol", async ({
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
+  // Name and icon of the workspace: Settings → Arbeitsbereich.
+  await page.getByRole("button", { name: "Arbeitsbereich", exact: true }).click();
   await page.getByRole("button", { name: "Emoji oder Symbol" }).click();
   const picker = page.getByRole("dialog", {
     name: "Symbol für den Arbeitsbereich",

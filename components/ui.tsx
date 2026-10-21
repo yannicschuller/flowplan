@@ -105,6 +105,7 @@ export function Modal({
   children,
   wide = false,
   onCloseAutoFocus,
+  onOpenAutoFocus,
   className = "",
   actions,
 }: {
@@ -116,6 +117,8 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
   onCloseAutoFocus?: (event: Event) => void;
+  // Where focus goes on opening (default: the first focusable element).
+  onOpenAutoFocus?: (event: Event) => void;
 }) {
   const t = useT();
   return (
@@ -127,7 +130,9 @@ export function Modal({
           aria-describedby={undefined}
           aria-labelledby={undefined}
           aria-label={title}
+          aria-modal="true"
           onCloseAutoFocus={onCloseAutoFocus}
+          onOpenAutoFocus={onOpenAutoFocus}
         >
           <div className="modal-heading">
             <Dialog.Title>{title}</Dialog.Title>
