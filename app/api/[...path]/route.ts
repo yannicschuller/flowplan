@@ -38,7 +38,7 @@ import { requireRow, rowDocumentData } from "@/lib/row-documents";
 import { documentKey, publishPresence, watchDocument } from "@/lib/document-live";
 import { calendarFeed, hasCalendarFeed } from "@/lib/calendar-feed";
 import { listApiTokens } from "@/lib/api-tokens";
-import { createWebhook, listWebhooks, webhookEvents } from "@/lib/webhooks";
+import { createWebhook, listWebhooks, testWebhook, updateWebhook, webhookEvents } from "@/lib/webhooks";
 import { listSsoMappings, ssoSources } from "@/lib/sso-mappings";
 import { mailStatus, sendTestMail } from "@/lib/mail";
 import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
@@ -862,6 +862,11 @@ async function handlePOST(
     // Owners register webhooks, also with a write API token (n8n trigger).
     if (path.length === 1 && path[0] === "webhooks")
       return NextResponse.json(await createWebhook(user, await req.json()));
+    // Changing a webhook (format, templates, …) and its test message.
+    if (path.length === 2 && path[0] === "webhooks" && path[1] === "update")
+      return NextResponse.json(await updateWebhook(user, await req.json()));
+    if (path.length === 2 && path[0] === "webhooks" && path[1] === "test")
+      return NextResponse.json(await testWebhook(user, await req.json()));
     if (path.length === 2 && path[0] === "admin" && path[1] === "mail-test") {
       requireAdmin(user);
       const to = z.email().parse((await req.json()).to);

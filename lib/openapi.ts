@@ -12,6 +12,7 @@ import { coverSchema, iconSizeSchema, pageIconSchema } from "./page-appearance";
 import { buildInfo } from "./build-info";
 import { repeatSchema } from "./recurrence";
 import { settingsSchema } from "./database-settings-schema";
+import { chatFormats, hookConfigSchema, noticeEvents, templatesSchema } from "./notification-templates";
 
 type Json = Record<string, unknown>;
 const uuid = z.uuid();
@@ -347,12 +348,36 @@ export const commandSchemaName = (action: string) =>
 
 // ---- Request and response schemas ----
 
-const webhookEventSchema = z.enum(["row.created", "row.updated", "form.submitted", "page.created"]);
+const webhookEventSchema = z.enum(noticeEvents);
+const webhookFormatSchema = z
+  .enum(chatFormats)
+  .describe("json: the signed event envelope (WebhookDelivery); slack: Block Kit for an Incoming Webhook or chat.postMessage; matrix: a room webhook or the Matrix client API; teams: an Adaptive Card for an Incoming Webhook / Workflow; discord: embeds for a Discord webhook");
+const webhookTemplatesSchema = templatesSchema.describe(
+  "Message text per event for chat formats, with the placeholders {title}, {actor}, {page}, {changes}, {url}, {text}, {date}, {count} and Markdown (**bold**, _italic_, `code`, [text](url), - lists, > quotes); missing events use the default text",
+);
+const webhookConfigSchema = hookConfigSchema
+  .partial()
+  .describe("language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token");
+const webhookCredentialsSchema = z
+  .object({
+    token: z.string().min(8).max(500).optional().describe("Matrix access token (url is then the homeserver) or Slack bot token (xoxb-…, sent via chat.postMessage)"),
+    signingSecret: z.string().min(8).max(200).optional().describe("Slack signing secret: thread replies come back as comments (Event Subscriptions URL: repliesUrl)"),
+  })
+  .describe("Stored encrypted, never returned");
 export const webhookCreateSchema = z.object({
   workspaceId: uuid,
   url: z.string().max(2000).describe("Public HTTPS address (FLOWPLAN_WEBHOOK_ALLOW_PRIVATE=true allows internal ones)"),
   events: z.array(webhookEventSchema).min(1),
   pageId: uuid.nullable().optional().describe("Only events of this database"),
+  format: webhookFormatSchema.optional(),
+  templates: webhookTemplatesSchema.optional(),
+  config: webhookConfigSchema.optional(),
+  credentials: webhookCredentialsSchema.optional(),
+});
+export const webhookUpdateSchema = webhookCreateSchema.extend({
+  id: z.string().max(60),
+  url: z.string().max(2000).optional().describe("A new address (checked again); left out: unchanged"),
+  credentials: webhookCredentialsSchema.nullable().optional().describe("Left out: unchanged; null: removed; given: the parts replace the stored ones"),
 });
 export const markdownExportSchema = z
   .object({
@@ -576,7 +601,7 @@ const schemas: Record<string, Json> = {
     },
     required: ["id", "name", "scope", "prefix", "created_at"],
   },
-  WebhookEvent: { ...jsonSchema(webhookEventSchema), description: "row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); form.submitted; page.created." },
+  WebhookEvent: { ...jsonSchema(webhookEventSchema), description: "row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`." },
   Webhook: {
     type: "object",
     properties: {
@@ -585,15 +610,36 @@ const schemas: Record<string, Json> = {
       events: { type: "array", items: ref("WebhookEvent") },
       page_id: { type: ["string", "null"], format: "uuid" },
       created_at: { type: "integer" },
+      format: jsonSchema(webhookFormatSchema),
+      templates: jsonSchema(webhookTemplatesSchema),
+      config: jsonSchema(webhookConfigSchema),
+      credentials: {
+        type: "object",
+        description: "Which credentials are stored (never their values)",
+        properties: { token: { type: "boolean" }, signingSecret: { type: "boolean" } },
+        required: ["token", "signingSecret"],
+      },
+      repliesUrl: { type: ["string", "null"], description: "Slack Event Subscriptions Request URL, when a signing secret is stored" },
       last: {
         type: ["object", "null"],
         description: "The last delivery",
         properties: { status: { type: ["integer", "null"] }, error: { type: ["string", "null"] }, delivered_at: { type: ["integer", "null"] } },
       },
+      lastError: {
+        type: ["object", "null"],
+        description: "The last failed attempt",
+        properties: { error: { type: "string" }, at: { type: "integer" } },
+      },
     },
-    required: ["id", "url", "events", "page_id", "created_at", "last"],
+    required: ["id", "url", "events", "page_id", "created_at", "format", "templates", "config", "credentials", "repliesUrl", "last", "lastError"],
   },
   WebhookCreate: jsonSchema(webhookCreateSchema),
+  WebhookUpdate: jsonSchema(webhookUpdateSchema),
+  WebhookTestResult: {
+    type: "object",
+    properties: { ok: { type: "boolean" }, status: { type: ["integer", "null"] }, error: { type: ["string", "null"] } },
+    required: ["ok", "status", "error"],
+  },
   WebhookCreated: {
     type: "object",
     properties: { id: { type: "string" }, secret: { type: "string", description: "Signs deliveries (X-Flowplan-Signature: sha256=HMAC); shown only here" } },
@@ -601,7 +647,7 @@ const schemas: Record<string, Json> = {
   },
   WebhookDelivery: {
     type: "object",
-    description: "What a webhook receives (POST, JSON). The header `X-Flowplan-Signature: sha256=<hex>` is the HMAC-SHA256 of the body with the webhook's secret.",
+    description: "What a webhook of the format json receives (POST, JSON). The header `X-Flowplan-Signature: sha256=<hex>` is the HMAC-SHA256 of the body with the webhook's secret. Chat formats receive the platform's own message instead.",
     properties: {
       event: ref("WebhookEvent"),
       id: { type: "string" },
@@ -789,6 +835,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/tokens", method: "get", op: { id: "listTokens", tag: "Tokens and webhooks", summary: "Your API tokens", description: "Tokens cannot create or revoke tokens (the settings do).", ok: { schema: { type: "array", items: ref("ApiToken") }, description: "Tokens, newest first" }, errors: [401] } },
   { path: "/api/webhooks", method: "get", op: { id: "listWebhooks", tag: "Tokens and webhooks", summary: "Webhooks of a workspace", description: "Owners only.", params: [workspace], ok: { schema: { type: "object", properties: { webhooks: { type: "array", items: ref("Webhook") }, events: { type: "object", additionalProperties: { type: "string" }, description: "Event IDs with their German labels" } }, required: ["webhooks", "events"] }, description: "Webhooks" }, errors: [400, 401, 403] } },
   { path: "/api/webhooks", method: "post", op: { id: "createWebhook", tag: "Tokens and webhooks", summary: "Register a webhook", description: "Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command.", write: true, body: { content: "application/json", schema: ref("WebhookCreate"), required: true }, ok: { schema: ref("WebhookCreated"), description: "ID and secret" }, errors: [400, 401, 403, 409] } },
+  { path: "/api/webhooks/update", method: "post", op: { id: "updateWebhook", tag: "Tokens and webhooks", summary: "Change a webhook", description: "Owners with a write token: events, database, format, templates, settings, credentials and (checked again) the address. The secret stays.", write: true, body: { content: "application/json", schema: ref("WebhookUpdate"), required: true }, ok: { schema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] }, description: "Changed" }, errors: [400, 401, 403, 404] } },
+  { path: "/api/webhooks/test", method: "post", op: { id: "testWebhook", tag: "Tokens and webhooks", summary: "Send a test message", description: "Owners with a write token. Sends a sample message (event `test`) right away, without retries, and answers with the result.", write: true, body: { content: "application/json", schema: { type: "object", properties: { workspaceId: { type: "string", format: "uuid" }, id: { type: "string" } }, required: ["workspaceId", "id"] }, required: true }, ok: { schema: ref("WebhookTestResult"), description: "Result of the delivery" }, errors: [400, 401, 403, 404] } },
   { path: "/api/calendar-feed", method: "get", op: { id: "calendarFeedStatus", tag: "Tokens and webhooks", summary: "Whether a calendar view has an iCalendar link or CalDAV access", params: [q("page", "Page ID of the database", { type: "string", format: "uuid" }, true), q("view", "View ID", { type: "string" }, true)], ok: { schema: { type: "object", properties: { active: { type: "boolean" }, caldav: { type: "boolean" } }, required: ["active", "caldav"] }, description: "Status" }, errors: [400, 401, 403, 404] } },
   { path: "/api/calendar/{token}.ics", method: "get", op: { id: "calendarFeed", tag: "Calendar", summary: "iCalendar feed of a calendar view", description: "External: the secret link (from `calendar.feed`) is the authorization; no bearer token. Subscribe to it in a calendar program.", security: "none", params: [p("token", "Feed token", { type: "string" })], ok: { content: "text/calendar", description: "The feed" }, errors: [404] } },
   // MCP
@@ -814,6 +862,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/live/route.ts": "Share links with their own token",
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",
+  "app/api/webhooks/slack/[id]/route.ts": "Slack Event Subscriptions of a Slack webhook, signed with its signing secret",
 };
 
 const appBase = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");

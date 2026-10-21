@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Copy, Trash } from "@phosphor-icons/react";
 import { api } from "./ui";
 import { Select } from "./select";
+import { WebhookSettings } from "./webhook-settings";
 
 type Token = {
   id: string;
@@ -14,14 +15,6 @@ type Token = {
   created_at: number;
   last_used_at: number | null;
   expires_at: number | null;
-};
-type Hook = {
-  id: string;
-  url: string;
-  events: string[];
-  page_id: string | null;
-  created_at: number;
-  last: { status: number | null; error: string | null; delivered_at: number | null } | null;
 };
 type McpClient = "claude-code" | "claude-desktop" | "chatgpt" | "other";
 // How Claude, ChatGPT and other AI clients connect (lib/mcp.ts, app/api/mcp).
@@ -123,7 +116,7 @@ const when = (ms: number | null) =>
   ms ? new Date(ms).toLocaleString(LOCALE_TAG, { dateStyle: "short", timeStyle: "short" }) : tr("nie", "never");
 
 // Settings → API & Webhooks: personal tokens for everyone, webhooks for
-// workspace owners (lib/api-tokens.ts, lib/webhooks.ts).
+// workspace owners (lib/api-tokens.ts, components/webhook-settings.tsx).
 export function IntegrationSettings({
   workspaceId,
   owner,
@@ -139,26 +132,14 @@ export function IntegrationSettings({
   const [tokens, setTokens] = useState<Token[]>([]),
     [tokenName, setTokenName] = useState(""),
     [scope, setScope] = useState<"read" | "write">("read"),
-    [fresh, setFresh] = useState<{ label: string; value: string } | null>(null),
-    [hooks, setHooks] = useState<Hook[]>([]),
-    [events, setEvents] = useState<Record<string, string>>({}),
-    [hookUrl, setHookUrl] = useState(""),
-    [hookEvents, setHookEvents] = useState<string[]>(["row.created"]),
-    [hookPage, setHookPage] = useState("");
+    [fresh, setFresh] = useState<{ label: string; value: string } | null>(null);
   const load = useCallback(async () => {
     try {
       setTokens(await api<Token[]>("/api/tokens"));
-      if (owner) {
-        const r = await api<{ webhooks: Hook[]; events: Record<string, string> }>(
-          `/api/webhooks?workspace=${workspaceId}`,
-        );
-        setHooks(r.webhooks);
-        setEvents(r.events);
-      }
     } catch (e) {
       onError((e as Error).message);
     }
-  }, [owner, workspaceId, onError]);
+  }, [onError]);
   useEffect(() => void load(), [load]);
   const origin = typeof location === "undefined" ? "" : location.origin;
   return (
@@ -244,102 +225,12 @@ export function IntegrationSettings({
       </section>
       <McpSettings origin={origin} token={fresh?.value.startsWith("fp_") ? fresh.value : ""} />
       {owner && (
-        <section className="settings-section">
-          <h2>{t("Webhooks", "Webhooks")}</h2>
-          <p className="muted">
-            {t("Flowplan schickt bei den gewählten Ereignissen ein JSON per POST an die Adresse. Die Kopfzeile", "On the chosen events Flowplan sends a JSON POST to the address. The header")}{" "}<code>X-Flowplan-Signature</code> {t("enthält", "contains")}{" "}
-            <code>sha256=</code> {t("und die HMAC-Signatur des Inhalts mit dem geheimen Schlüssel des Webhooks. Fehlgeschlagene Zustellungen werden wiederholt.", "and the HMAC signature of the content with the webhook's secret key. Failed deliveries are retried.")}
-          </p>
-          <form
-            className="integration-form hooks"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                const r = await api<{ secret: string }>("/api/webhooks", {
-                  workspaceId,
-                  url: hookUrl,
-                  events: hookEvents,
-                  pageId: hookPage || null,
-                });
-                setFresh({ label: t("Geheimer Schlüssel des Webhooks", "Webhook secret key"), value: r.secret });
-                setHookUrl("");
-                await load();
-              } catch (error) {
-                onError((error as Error).message);
-              }
-            }}
-          >
-            <input
-              required
-              type="url"
-              value={hookUrl}
-              onChange={(e) => setHookUrl(e.target.value)}
-              placeholder="https://n8n.example.com/webhook/…"
-              aria-label={t("Adresse des Webhooks", "Webhook address")}
-            />
-            <Select value={hookPage} onChange={(e) => setHookPage(e.target.value)} aria-label={t("Nur für Datenbank", "Only for database")}>
-              <option value="">{t("Alle Seiten und Datenbanken", "All pages and databases")}</option>
-              {pages
-                .filter((p) => p.kind === "database")
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {t("Nur", "Only")}{" "}{p.title || t("Ohne Titel", "Untitled")}
-                  </option>
-                ))}
-            </Select>
-            <fieldset>
-              <legend>{t("Ereignisse", "Events")}</legend>
-              {Object.entries(events).map(([id, label]) => (
-                <label key={id} className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={hookEvents.includes(id)}
-                    onChange={(e) =>
-                      setHookEvents((current) =>
-                        e.target.checked ? [...current, id] : current.filter((x) => x !== id),
-                      )
-                    }
-                  />
-                  {label} <code>{id}</code>
-                </label>
-              ))}
-            </fieldset>
-            <button className="button primary" disabled={!hookEvents.length}>
-              {t("Webhook anlegen", "Create webhook")}
-            </button>
-          </form>
-          <ul className="integration-list">
-            {hooks.map((h) => (
-              <li key={h.id}>
-                <span>
-                  <strong>{h.url}</strong>
-                  <small>
-                    {h.events.join(", ")} ·{" "}
-                    {h.last
-                      ? h.last.delivered_at
-                        ? t(`zuletzt zugestellt ${when(h.last.delivered_at)}`, `last delivered ${when(h.last.delivered_at)}`)
-                        : t(`Fehler: ${h.last.error || h.last.status}`, `Error: ${h.last.error || h.last.status}`)
-                      : t("noch nichts gesendet", "nothing sent yet")}
-                  </small>
-                </span>
-                <button
-                  className="icon-button"
-                  aria-label={t(`Webhook ${h.url} löschen`, `Delete webhook ${h.url}`)}
-                  title={t("Löschen", "Delete")}
-                  onClick={async () => {
-                    await api("/api/command", { action: "webhook.delete", workspaceId, id: h.id }).catch((e) =>
-                      onError((e as Error).message),
-                    );
-                    await load();
-                  }}
-                >
-                  <Trash size={16} />
-                </button>
-              </li>
-            ))}
-            {!hooks.length && <li className="muted">{t("Noch keine Webhooks.", "No webhooks yet.")}</li>}
-          </ul>
-        </section>
+        <WebhookSettings
+          workspaceId={workspaceId}
+          pages={pages}
+          onError={onError}
+          onSecret={(value) => setFresh({ label: t("Geheimer Schlüssel des Webhooks", "Webhook secret key"), value })}
+        />
       )}
     </>
   );

@@ -705,6 +705,13 @@ const exact: Record<string, string> = {
   "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
   "Kein Dashboard.": "Not a dashboard.",
   "Kachel-IDs doppelt.": "Duplicate tile IDs.",
+  // Chat notifications of webhooks (Slack, Matrix, Teams, Discord)
+  "Mit einem Bot-Token braucht Slack eine Kanal-ID.": "With a bot token, Slack needs a channel ID.",
+  "Mit einem Zugriffstoken braucht Matrix einen Raum (!id:server oder #alias:server).": "With an access token, Matrix needs a room (!id:server or #alias:server).",
+  "Antworten aus Slack brauchen einen Bot-Token.": "Replies from Slack need a bot token.",
+  "Unbekannter Webhook.": "Unknown webhook.",
+  "Ungültige Signatur.": "Invalid signature.",
+  "Webhook konnte nicht verarbeitet werden.": "The webhook could not be processed.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],

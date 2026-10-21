@@ -246,8 +246,8 @@ ApiToken = TypedDict("ApiToken", {
     "expires_at": Optional[int],
 }, total=False)
 
-# row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); form.submitted; page.created.
-WebhookEvent = Literal["row.created", "row.updated", "form.submitted", "page.created"]
+# row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`.
+WebhookEvent = Literal["row.created", "row.updated", "row.done", "form.submitted", "page.created", "comment.created", "mention", "digest.due"]
 
 Webhook = TypedDict("Webhook", {
     "id": Required[str],
@@ -255,14 +255,42 @@ Webhook = TypedDict("Webhook", {
     "events": Required[list["WebhookEvent"]],
     "page_id": Required[Optional[str]],
     "created_at": Required[int],
+    "format": Required[Literal["json", "slack", "matrix", "teams", "discord"]],  # json: the signed event envelope (WebhookDelivery); slack: Block Kit for an Incoming Webhook or chat.postMessage; matrix: a room webhook or the Matrix client API; teams: an Adaptive Card for an Incoming Webhook / Workflow; discord: embeds for a Discord webhook
+    "templates": Required[dict[str, str]],  # Message text per event for chat formats, with the placeholders {title}, {actor}, {page}, {changes}, {url}, {text}, {date}, {count} and Markdown (**bold**, _italic_, `code`, [text](url), - lists, > quotes); missing events use the default text
+    "config": Required[dict[str, Any]],  # language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token
+    "credentials": Required[dict[str, Any]],  # Which credentials are stored (never their values)
+    "repliesUrl": Required[Optional[str]],  # Slack Event Subscriptions Request URL, when a signing secret is stored
     "last": Required[Optional[dict[str, Any]]],  # The last delivery
+    "lastError": Required[Optional[dict[str, Any]]],  # The last failed attempt
 }, total=False)
 
 WebhookCreate = TypedDict("WebhookCreate", {
     "workspaceId": Required[str],
     "url": Required[str],  # Public HTTPS address (FLOWPLAN_WEBHOOK_ALLOW_PRIVATE=true allows internal ones)
-    "events": Required[list[Literal["row.created", "row.updated", "form.submitted", "page.created"]]],
+    "events": Required[list[Literal["row.created", "row.updated", "row.done", "form.submitted", "page.created", "comment.created", "mention", "digest.due"]]],
     "pageId": Optional[str],  # Only events of this database
+    "format": Literal["json", "slack", "matrix", "teams", "discord"],  # json: the signed event envelope (WebhookDelivery); slack: Block Kit for an Incoming Webhook or chat.postMessage; matrix: a room webhook or the Matrix client API; teams: an Adaptive Card for an Incoming Webhook / Workflow; discord: embeds for a Discord webhook
+    "templates": dict[str, str],  # Message text per event for chat formats, with the placeholders {title}, {actor}, {page}, {changes}, {url}, {text}, {date}, {count} and Markdown (**bold**, _italic_, `code`, [text](url), - lists, > quotes); missing events use the default text
+    "config": dict[str, Any],  # language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token
+    "credentials": dict[str, Any],  # Stored encrypted, never returned
+}, total=False)
+
+WebhookUpdate = TypedDict("WebhookUpdate", {
+    "workspaceId": Required[str],
+    "url": str,  # A new address (checked again); left out: unchanged
+    "events": Required[list[Literal["row.created", "row.updated", "row.done", "form.submitted", "page.created", "comment.created", "mention", "digest.due"]]],
+    "pageId": Optional[str],  # Only events of this database
+    "format": Literal["json", "slack", "matrix", "teams", "discord"],  # json: the signed event envelope (WebhookDelivery); slack: Block Kit for an Incoming Webhook or chat.postMessage; matrix: a room webhook or the Matrix client API; teams: an Adaptive Card for an Incoming Webhook / Workflow; discord: embeds for a Discord webhook
+    "templates": dict[str, str],  # Message text per event for chat formats, with the placeholders {title}, {actor}, {page}, {changes}, {url}, {text}, {date}, {count} and Markdown (**bold**, _italic_, `code`, [text](url), - lists, > quotes); missing events use the default text
+    "config": dict[str, Any],  # language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token
+    "credentials": Optional[dict[str, Any]],  # Left out: unchanged; null: removed; given: the parts replace the stored ones
+    "id": Required[str],
+}, total=False)
+
+WebhookTestResult = TypedDict("WebhookTestResult", {
+    "ok": Required[bool],
+    "status": Required[Optional[int]],
+    "error": Required[Optional[str]],
 }, total=False)
 
 WebhookCreated = TypedDict("WebhookCreated", {
@@ -270,7 +298,7 @@ WebhookCreated = TypedDict("WebhookCreated", {
     "secret": Required[str],  # Signs deliveries (X-Flowplan-Signature: sha256=HMAC); shown only here
 }, total=False)
 
-# What a webhook receives (POST, JSON). The header `X-Flowplan-Signature: sha256=<hex>` is the HMAC-SHA256 of the body with the webhook's secret.
+# What a webhook of the format json receives (POST, JSON). The header `X-Flowplan-Signature: sha256=<hex>` is the HMAC-SHA256 of the body with the webhook's secret. Chat formats receive the platform's own message instead.
 WebhookDelivery = TypedDict("WebhookDelivery", {
     "event": Required["WebhookEvent"],
     "id": Required[str],
@@ -1200,6 +1228,14 @@ class FlowplanClient:
     def create_webhook(self, body: "WebhookCreate", headers: Optional[dict[str, str]] = None) -> "WebhookCreated":
         """Register a webhook — Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command. (POST /api/webhooks)"""
         return self._json("POST", "/api/webhooks", json_body=body, headers=headers)
+
+    def update_webhook(self, body: "WebhookUpdate", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Change a webhook — Owners with a write token: events, database, format, templates, settings, credentials and (checked again) the address. The secret stays. (POST /api/webhooks/update)"""
+        return self._json("POST", "/api/webhooks/update", json_body=body, headers=headers)
+
+    def test_webhook(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> "WebhookTestResult":
+        """Send a test message — Owners with a write token. Sends a sample message (event `test`) right away, without retries, and answers with the result. (POST /api/webhooks/test)"""
+        return self._json("POST", "/api/webhooks/test", json_body=body, headers=headers)
 
     def calendar_feed_status(self, query: "CalendarFeedStatusQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Whether a calendar view has an iCalendar link or CalDAV access (GET /api/calendar-feed)"""

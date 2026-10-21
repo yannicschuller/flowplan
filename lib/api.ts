@@ -1369,7 +1369,7 @@ export function command(
               !assigned.has(uid) &&
               !existing?.html.includes('data-mention="' + uid + '"') &&
               pageRole({ ...user, id: uid }, p)
-            )
+            ) {
               run(
                 "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'mention')",
                 id(),
@@ -1377,6 +1377,8 @@ export function command(
                 `${user.name} hat dich in „${p.title}“ erwähnt`,
                 p.id,
               );
+              mentionWebhook(p.workspace_id, p.id, null, uid, user.name);
+            }
           }
           run(
             "UPDATE documents SET state=?,html=?,updated_at=CURRENT_TIMESTAMP WHERE page_id=?",
@@ -2035,6 +2037,7 @@ export function command(
           user.id,
           body,
         );
+        emitWebhook(p.workspace_id, "comment.created", { pageId: p.id, rowId: b.rowId ? uuid.parse(b.rowId) : null, text: body }, user.name);
         for (const m of all<{ user_id: string }>(
           "SELECT user_id FROM members WHERE workspace_id=? AND user_id!=?",
           p.workspace_id,
@@ -2726,7 +2729,7 @@ export function command(
   if (GIT_EXPORT_ENDS.has(action)) afterCommit.push(sweepSpaceGitCopies);
   const result = withinTransaction ? checked() : transaction(checked, user);
   try {
-    commandWebhooks(action, b, result);
+    commandWebhooks(action, b, result, user.name);
   } catch (error) {
     console.error("Webhook-Ereignis fehlgeschlagen", error);
   }
@@ -2784,12 +2787,12 @@ const editActions = new Set([
   "page.update",
 ]);
 // Webhooks for records and pages changed through commands.
-function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown) {
+function commandWebhooks(action: string, b: Record<string, unknown>, result: unknown, actor?: string) {
   const created = (result as { id?: unknown } | null)?.id;
   // Shared or captured as a record (or bookmark): a new record, not a page.
   const capturedRow = (result as { rowId?: unknown } | null)?.rowId;
   if ((action === "page.fromShare" || action === "capture.record") && typeof capturedRow === "string")
-    return commandWebhooks("row.create", b, { id: capturedRow });
+    return commandWebhooks("row.create", b, { id: capturedRow }, actor);
   if ((action === "page.create" || action === "page.fromShare") && typeof created === "string") {
     const page = one<{ workspace_id: string; title: string; kind: string; parent_id: string | null }>(
       "SELECT workspace_id,title,kind,parent_id FROM pages WHERE id=?",
@@ -2801,7 +2804,7 @@ function commandWebhooks(action: string, b: Record<string, unknown>, result: unk
         title: page.title,
         kind: page.kind,
         parentId: page.parent_id,
-      });
+      }, actor);
     return;
   }
   const rowId = action === "row.create" ? created : action === "row.update" ? b.rowId : null;
@@ -2816,7 +2819,7 @@ function commandWebhooks(action: string, b: Record<string, unknown>, result: unk
     rowId,
     cells: JSON.parse(row.cells),
     ...(action === "row.update" ? { changed: Object.keys((b.cells as object) || {}) } : {}),
-  });
+  }, actor);
 }
 // Live editing: clients send their state vector, so the answer only holds
 // what they are missing instead of the whole document.
@@ -2869,7 +2872,7 @@ import {
 import { ensureRowDocument } from "./row-documents";
 import { createCalendarFeed, revokeCalendarFeed } from "./calendar-feed";
 import { createApiToken, revokeApiToken } from "./api-tokens";
-import { deleteWebhook, emitWebhook } from "./webhooks";
+import { deleteWebhook, emitWebhook, mentionWebhook } from "./webhooks";
 import { addSsoMapping, deleteSsoMapping } from "./sso-mappings";
 import { dispatchMail, mailConfig, queueInviteMail } from "./mail";
 import { documentChanged, documentKey, publishDocumentUpdate } from "./document-live";

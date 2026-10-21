@@ -384,8 +384,8 @@ export type ApiToken = {
   expires_at?: number | null;
 };
 
-/** row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); form.submitted; page.created. */
-export type WebhookEvent = "row.created" | "row.updated" | "form.submitted" | "page.created";
+/** row.created: new record (also from a form); row.updated: record changed (`changed` names the properties); row.done: a record became done; form.submitted; page.created; comment.created (`text`); mention (`userId`, `text` = the name); digest.due: once a day at `config.digestTime`, the open records due today or overdue (`items`). Test messages carry the event `test`. */
+export type WebhookEvent = "row.created" | "row.updated" | "row.done" | "form.submitted" | "page.created" | "comment.created" | "mention" | "digest.due";
 
 export type Webhook = {
   id: string;
@@ -393,11 +393,35 @@ export type Webhook = {
   events: WebhookEvent[];
   page_id: string | null;
   created_at: number;
+  /** json: the signed event envelope (WebhookDelivery); slack: Block Kit for an Incoming Webhook or chat.postMessage; matrix: a room webhook or the Matrix client API; teams: an Adaptive Card for an Incoming Webhook / Workflow; discord: embeds for a Discord webhook */
+  format: "json" | "slack" | "matrix" | "teams" | "discord";
+  /** Message text per event for chat formats, with the placeholders {title}, {actor}, {page}, {changes}, {url}, {text}, {date}, {count} and Markdown (**bold**, _italic_, `code`, [text](url), - lists, > quotes); missing events use the default text */
+  templates: Record<string, string>;
+  /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
+  config: {
+    language?: "de" | "en" | "fr";
+    digestTime?: string;
+    timeZone?: string;
+    matrixRoom?: string;
+    slackChannel?: string;
+  };
+  /** Which credentials are stored (never their values) */
+  credentials: {
+    token: boolean;
+    signingSecret: boolean;
+  };
+  /** Slack Event Subscriptions Request URL, when a signing secret is stored */
+  repliesUrl: string | null;
   /** The last delivery */
   last: {
     status?: number | null;
     error?: string | null;
     delivered_at?: number | null;
+  } | null;
+  /** The last failed attempt */
+  lastError: {
+    error?: string;
+    at?: number;
   } | null;
 };
 
@@ -405,9 +429,63 @@ export type WebhookCreate = {
   workspaceId: string;
   /** Public HTTPS address (FLOWPLAN_WEBHOOK_ALLOW_PRIVATE=true allows internal ones) */
   url: string;
-  events: ("row.created" | "row.updated" | "form.submitted" | "page.created")[];
+  events: ("row.created" | "row.updated" | "row.done" | "form.submitted" | "page.created" | "comment.created" | "mention" | "digest.due")[];
   /** Only events of this database */
   pageId?: string | null;
+  /** json: the signed event envelope (WebhookDelivery); slack: Block Kit for an Incoming Webhook or chat.postMessage; matrix: a room webhook or the Matrix client API; teams: an Adaptive Card for an Incoming Webhook / Workflow; discord: embeds for a Discord webhook */
+  format?: "json" | "slack" | "matrix" | "teams" | "discord";
+  /** Message text per event for chat formats, with the placeholders {title}, {actor}, {page}, {changes}, {url}, {text}, {date}, {count} and Markdown (**bold**, _italic_, `code`, [text](url), - lists, > quotes); missing events use the default text */
+  templates?: Record<string, string>;
+  /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
+  config?: {
+    language?: "de" | "en" | "fr";
+    digestTime?: string;
+    timeZone?: string;
+    matrixRoom?: string;
+    slackChannel?: string;
+  };
+  /** Stored encrypted, never returned */
+  credentials?: {
+    /** Matrix access token (url is then the homeserver) or Slack bot token (xoxb-…, sent via chat.postMessage) */
+    token?: string;
+    /** Slack signing secret: thread replies come back as comments (Event Subscriptions URL: repliesUrl) */
+    signingSecret?: string;
+  };
+};
+
+export type WebhookUpdate = {
+  workspaceId: string;
+  /** A new address (checked again); left out: unchanged */
+  url?: string;
+  events: ("row.created" | "row.updated" | "row.done" | "form.submitted" | "page.created" | "comment.created" | "mention" | "digest.due")[];
+  /** Only events of this database */
+  pageId?: string | null;
+  /** json: the signed event envelope (WebhookDelivery); slack: Block Kit for an Incoming Webhook or chat.postMessage; matrix: a room webhook or the Matrix client API; teams: an Adaptive Card for an Incoming Webhook / Workflow; discord: embeds for a Discord webhook */
+  format?: "json" | "slack" | "matrix" | "teams" | "discord";
+  /** Message text per event for chat formats, with the placeholders {title}, {actor}, {page}, {changes}, {url}, {text}, {date}, {count} and Markdown (**bold**, _italic_, `code`, [text](url), - lists, > quotes); missing events use the default text */
+  templates?: Record<string, string>;
+  /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
+  config?: {
+    language?: "de" | "en" | "fr";
+    digestTime?: string;
+    timeZone?: string;
+    matrixRoom?: string;
+    slackChannel?: string;
+  };
+  /** Left out: unchanged; null: removed; given: the parts replace the stored ones */
+  credentials?: {
+    /** Matrix access token (url is then the homeserver) or Slack bot token (xoxb-…, sent via chat.postMessage) */
+    token?: string;
+    /** Slack signing secret: thread replies come back as comments (Event Subscriptions URL: repliesUrl) */
+    signingSecret?: string;
+  } | null;
+  id: string;
+};
+
+export type WebhookTestResult = {
+  ok: boolean;
+  status: number | null;
+  error: string | null;
 };
 
 export type WebhookCreated = {
@@ -416,7 +494,7 @@ export type WebhookCreated = {
   secret: string;
 };
 
-/** What a webhook receives (POST, JSON). The header `X-Flowplan-Signature: sha256=<hex>` is the HMAC-SHA256 of the body with the webhook's secret. */
+/** What a webhook of the format json receives (POST, JSON). The header `X-Flowplan-Signature: sha256=<hex>` is the HMAC-SHA256 of the body with the webhook's secret. Chat formats receive the platform's own message instead. */
 export type WebhookDelivery = {
   event: WebhookEvent;
   id: string;
@@ -1553,6 +1631,23 @@ export class FlowplanClient {
   /** Register a webhook — Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command. (POST /api/webhooks) */
   async createWebhook(body: WebhookCreate, options?: RequestOptions): Promise<WebhookCreated> {
     return this.json<WebhookCreated>("POST", `/api/webhooks`, { json: body }, options);
+  }
+
+  /** Change a webhook — Owners with a write token: events, database, format, templates, settings, credentials and (checked again) the address. The secret stays. (POST /api/webhooks/update) */
+  async updateWebhook(body: WebhookUpdate, options?: RequestOptions): Promise<{
+    ok: boolean;
+  }> {
+    return this.json<{
+    ok: boolean;
+  }>("POST", `/api/webhooks/update`, { json: body }, options);
+  }
+
+  /** Send a test message — Owners with a write token. Sends a sample message (event `test`) right away, without retries, and answers with the result. (POST /api/webhooks/test) */
+  async testWebhook(body: {
+    workspaceId: string;
+    id: string;
+  }, options?: RequestOptions): Promise<WebhookTestResult> {
+    return this.json<WebhookTestResult>("POST", `/api/webhooks/test`, { json: body }, options);
   }
 
   /** Whether a calendar view has an iCalendar link or CalDAV access (GET /api/calendar-feed) */
