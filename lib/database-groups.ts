@@ -8,11 +8,14 @@ export type DatabaseGroup = {
   value: unknown;
   rows: Row[];
 };
+// Group labels are in the page's language in the browser and German on the
+// server; components may pass their own t.
 export function databaseGroups(
   rows: Row[],
   field: Field | undefined,
   related: Record<string, Row[]>,
   members: Pick<User, "id" | "name">[] = [],
+  t: (de: string, en: string) => string = tr,
 ) {
   const groups = new Map<string, DatabaseGroup>();
   function add(value: unknown, row?: Row) {
@@ -20,18 +23,18 @@ export function databaseGroups(
     const key = groupKey(value);
     if (!groups.has(key)) {
       const label = empty
-        ? tr("Ohne Gruppe", "No group")
+        ? t("Ohne Gruppe", "No group")
         : field?.type === "relation"
           ? cellText(
               related[field.relationPage || ""]?.find((r) => r.id === value)
                 ?.cells.title,
-            ) || tr("Nicht verfügbar", "Not available")
+            ) || t("Nicht verfügbar", "Not available")
           : field && ["person", "created_by", "updated_by"].includes(field.type)
-            ? members.find((m) => m.id === value)?.name || tr("Unbekannte Person", "Unknown person")
+            ? members.find((m) => m.id === value)?.name || t("Unbekannte Person", "Unknown person")
             : field?.type === "checkbox"
               ? value
-                ? tr("Abgehakt", "Checked")
-                : tr("Nicht abgehakt", "Not checked")
+                ? t("Abgehakt", "Checked")
+                : t("Nicht abgehakt", "Not checked")
               : cellText(value);
       groups.set(key, { key, label, value: empty ? null : value, rows: [] });
     }

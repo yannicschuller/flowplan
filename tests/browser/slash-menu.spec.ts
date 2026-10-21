@@ -37,13 +37,22 @@ test("typing / opens a small menu at the caret; /h2 and Enter make a heading", a
   await expect(editor.locator("h2")).toHaveText("Ziele");
   await expect(editor).not.toContainText("/h2");
 
-  // Arrow keys move through the list; Escape keeps the typed text.
+  // The menu is a listbox in sections; the recently used heading comes
+  // first with the heading just used, then the groups. Arrow keys move
+  // across the sections; Escape keeps the typed text.
   await page.keyboard.press("Enter");
   await page.keyboard.type("/");
-  await expect(menu.locator('button[data-active="true"]')).toContainText("Text");
+  const list = menu.getByRole("listbox");
+  await expect(list).toBeVisible();
+  await expect(menu.locator(".slash-menu-heading").first()).toHaveText("Zuletzt verwendet");
+  await expect(menu.locator(".slash-menu-heading").nth(1)).toHaveText("Text");
+  await expect(menu.getByRole("option", { selected: true })).toContainText("Überschrift 2");
   await page.keyboard.press("ArrowDown");
-  await expect(menu.locator('button[data-active="true"]')).toContainText("Überschrift 1");
+  await expect(menu.getByRole("option", { selected: true })).toContainText("Text");
   await page.keyboard.press("ArrowUp");
+  await expect(menu.locator('button[data-active="true"]')).toContainText("Überschrift 2");
+  // The active option is announced through aria-activedescendant.
+  expect(await list.getAttribute("aria-activedescendant")).toBe(await menu.locator('button[data-active="true"]').getAttribute("id"));
   await page.keyboard.type("todo");
   await page.keyboard.press("Enter");
   await expect(editor.locator('ul[data-type="taskList"]')).toHaveCount(1);
@@ -58,6 +67,22 @@ test("typing / opens a small menu at the caret; /h2 and Enter make a heading", a
   await page.keyboard.type(" /xyz");
   await expect(menu).toHaveCount(0);
   await page.keyboard.press("Escape");
+
+  // The callout entry opens its kinds as a second level; Left goes back.
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/callout");
+  await expect(menu.getByRole("option", { selected: true })).toContainText("Callout");
+  await page.keyboard.press("ArrowRight");
+  await expect(menu.getByRole("listbox", { name: "Callout" })).toBeVisible();
+  await expect(menu.getByRole("option")).toHaveCount(5);
+  await page.keyboard.press("ArrowLeft");
+  await expect(menu.getByRole("option", { selected: true })).toContainText("Callout");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(editor.locator("aside[data-callout]")).toHaveAttribute("data-callout", "tip");
+  await expect(editor).not.toContainText("/callout");
+  await page.keyboard.type("Tipp-Text");
 
   // The toolbar button opens the same menu with a search field.
   await page.getByRole("button", { name: "Block hinzufügen", exact: true }).click();

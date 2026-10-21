@@ -19264,3 +19264,103 @@ td.ai-filled {
     background: none;
   }
 }
+
+/* "/" block menu rebuilt as a listbox in sections (components/slash-menu.tsx):
+   section headings, "Recently used" first, a second level for the callout
+   kinds. Overrides the earlier .slash-menu rules above. */
+.slash-menu {
+  max-height: 360px;
+}
+.slash-menu-list {
+  display: block;
+  padding: 4px 6px 6px;
+}
+.slash-menu-group + .slash-menu-group {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+}
+.slash-menu-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.slash-menu-list > .slash-menu-group > button {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  text-align: left;
+}
+.slash-menu-list > .slash-menu-group > button > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--secondary);
+}
+.slash-menu-list > .slash-menu-group > button[data-active="true"] {
+  background: var(--hover);
+}
+.slash-menu-list > .slash-menu-group > button[data-active="true"] > span {
+  color: var(--blue);
+}
+.slash-menu-list > .slash-menu-group > button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.slash-menu-list > .slash-menu-group > button > div {
+  min-width: 0;
+}
+.slash-menu-more {
+  color: var(--muted);
+}
+/* The second level: the entry that opened it with a way back. */
+.slash-menu-parent {
+  display: grid;
+  grid-template-columns: auto 24px 1fr;
+  align-items: center;
+  column-gap: 8px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.slash-menu-parent > span {
+  display: grid;
+  place-items: center;
+  color: var(--secondary);
+}
+.slash-menu-parent strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.slash-menu-parent small {
+  grid-column: 3;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.slash-menu-back {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--secondary);
+}
+.slash-menu-back:hover,
+.slash-menu-back:focus-visible {
+  background: var(--hover);
+  color: var(--text);
+}

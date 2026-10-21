@@ -7,6 +7,7 @@ import { Clock, Plus, SquaresFour } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
 import { VersionChanges } from "./version-changes";
 import type { Page, User } from "@/lib/types";
+import type { SaveStatus } from "@/lib/save-status";
 const DocumentEditor = dynamic(() => import("./editor"), { ssr: false });
 type RowDocumentData = {
   html: string;
@@ -35,9 +36,9 @@ export default function RowDocument({
 }) {
   const t = useT();
   const statusLabel = useStatusLabel();
-  // Saving states are German words, translated where shown (components/i18n.tsx).
+  // Saving state as a key (lib/save-status.ts), put into words where shown.
   const [data, setData] = useState<RowDocumentData | null>(null),
-    [status, setStatus] = useState("Laden …"),
+    [status, setStatus] = useState<SaveStatus>("loading"),
     [history, setHistory] = useState(false),
     [changes, setChanges] = useState<string | null>(null),
     [saveTemplate, setSaveTemplate] = useState(false),
@@ -214,11 +215,11 @@ export default function RowDocument({
           </p>
           <button
             className="button primary"
-            disabled={status !== "Gespeichert"}
+            disabled={status !== "saved"}
           >
             {t("Vorlage speichern", "Save template")}
           </button>
-          {status !== "Gespeichert" && (
+          {status !== "saved" && (
             <p className="muted">
               {t("Bitte warten, bis der Dokumentinhalt gespeichert ist.", "Please wait until the document content is saved.")}
             </p>

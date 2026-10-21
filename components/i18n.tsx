@@ -7,6 +7,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, LOCALE_COOKIE, isLocale, translate, type Locale } from "@/lib/i18n";
 import { translateLabel } from "@/lib/i18n-labels";
+import { saveStatusLabel, saveStatusOf, type SaveStatus } from "@/lib/save-status";
 
 const LocaleContext = createContext<Locale>("de");
 
@@ -73,25 +74,15 @@ export function LanguageSwitch({ className }: { className?: string }) {
   );
 }
 
-// Saving states travel through the app as German words (and are compared as
-// such); they are translated only where they are shown.
-const statusWords: Record<string, string> = {
-  Gespeichert: "Saved",
-  "Speichern …": "Saving …",
-  "Synchronisieren …": "Syncing …",
-  "Änderungen …": "Unsaved changes",
-  "Offline gespeichert": "Saved offline",
-  Offline: "Offline",
-  "Speichern fehlgeschlagen": "Saving failed",
-  "Verbindung unterbrochen – wird wiederholt …": "Connection lost – retrying …",
-  "Neue Dokumentversion wird geladen …": "Loading the new document version …",
-  "Sprachnotiz wird in Text umgewandelt …": "Turning the voice note into text …",
-  "Bild wird hochgeladen …": "Uploading image …",
-  "Änderungen gespeichert": "Changes saved",
-  "Laden …": "Loading …",
-};
+// Saving states travel through the app as keys (lib/save-status.ts) and are
+// put into words only where they are shown. Callers that still report the
+// German words get the same labels; anything else is shown as it is.
 export function useStatusLabel() {
   const locale = useLocale();
-  return (status: string) => translate(locale)(status, statusWords[status] || status);
+  const pick = translate(locale);
+  return (status: SaveStatus | string) => {
+    const known = saveStatusOf(status);
+    return known ? saveStatusLabel(known, pick) : status;
+  };
 }
 

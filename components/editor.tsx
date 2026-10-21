@@ -79,7 +79,8 @@ import Collaboration from "@tiptap/extension-collaboration";
 import { Extension, Node, mergeAttributes } from "@tiptap/core";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { SlashMenu, type SlashItem } from "./slash-menu";
-import { rankCommands } from "@/lib/slash-commands";
+import { readSlashRecents, rememberSlashCommand, slashSections, type SlashSection } from "@/lib/slash-commands";
+import type { SaveStatus } from "@/lib/save-status";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { IndexeddbPersistence } from "y-indexeddb";
@@ -206,7 +207,8 @@ export default function DocumentEditor({
   html: string;
   generation: string;
   editable: boolean;
-  onStatus: (v: string) => void;
+  // Saving state as a key (lib/save-status.ts), put into words where shown.
+  onStatus: (v: SaveStatus) => void;
   onError: (v: string) => void;
   onHtml: (v: string) => void;
 }) {
@@ -231,13 +233,17 @@ export default function DocumentEditor({
     initial = useRef({ state, html }),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // "/" menu: typed in the text (inline) or opened from the toolbar (button,
-  // with its own search field). `from` is where the "/" sits.
+  // with its own search field). `from` is where the "/" sits; `sub` is the
+  // entry whose second level (the callout kinds) is open.
   const [slash, setSlash] = useState<{
       from: number;
       mode: "inline" | "button";
       query: string;
+      sub?: string | null;
     } | null>(null),
     [slashActive, setSlashActive] = useState(0),
+    // Recently used blocks of this browser, shown first in the menu.
+    [slashRecents, setSlashRecents] = useState<string[]>([]),
     [link, setLink] = useState(false),
     [linkUrl, setLinkUrl] = useState(""),
     [diagram, setDiagram] = useState<DiagramTarget | null>(null),
@@ -346,6 +352,7 @@ export default function DocumentEditor({
   const slashItems = useRef<SlashItem[]>([]);
   const uploadFile = useRef(async (_file: File) => {});
   const slashPick = useRef((_index: number) => {});
+  const slashBack = useRef(() => {});
   // Keeps the typed query in step with the text; leaving the "/…" word,
   // a line break or a query without any match closes the menu.
   const slashFollow = useRef((current: TiptapEditor) => {
@@ -363,7 +370,8 @@ export default function DocumentEditor({
     // "/ " is a plain slash: a space right after it closes the menu.
     if (/^\s/.test(query)) return close();
     if (query !== menu.query) {
-      setSlash({ ...menu, query });
+      // Typing on leaves a second level: the matches cover every entry.
+      setSlash({ ...menu, query, sub: null });
       setSlashActive(0);
     }
   });
@@ -556,6 +564,16 @@ export default function DocumentEditor({
               slashPick.current(slashActiveRef.current);
               return true;
             }
+            // Right opens an entry's second level, Left returns from it.
+            if (event.key === "ArrowRight" && !menu.sub && slashItems.current[slashActiveRef.current]?.children) {
+              slashPick.current(slashActiveRef.current);
+              return true;
+            }
+            if (event.key === "ArrowLeft" && menu.sub) {
+              slashBack.current();
+              return true;
+            }
+            // Escape closes the menu; the caret and the typed text stay.
             if (event.key === "Escape") {
               setSlash(null);
               return true;
@@ -565,6 +583,7 @@ export default function DocumentEditor({
           if (event.key === "/" && editable && _view.state.selection.empty) {
             setSlash({ from: _view.state.selection.from, mode: "inline", query: "" });
             setSlashActive(0);
+            setSlashRecents(readSlashRecents());
           }
           return false;
         },
@@ -581,7 +600,7 @@ export default function DocumentEditor({
           !transaction.getMeta("y-sync$")?.isChangeOrigin
         ) {
           dirty.current = true;
-          onStatus(navigator.onLine ? "Änderungen …" : "Offline gespeichert");
+          onStatus(navigator.onLine ? "unsaved" : "saved-offline");
         }
         slashFollow.current(editor);
       },
@@ -680,7 +699,7 @@ export default function DocumentEditor({
             ? Y.mergeUpdates(pending.current)
             : null;
         if (update) {
-          onStatus("Speichern …");
+          onStatus("saving");
           const result = await api<{ state: string }>("/api/command", {
             action: rowId ? "row.document.sync" : "document.sync",
             rowId,
@@ -695,7 +714,7 @@ export default function DocumentEditor({
           if (all) sendAll.current = false;
           applyRemote(result.state);
         }
-        onStatus(dirty.current ? "Änderungen …" : "Gespeichert");
+        onStatus(dirty.current ? "unsaved" : "saved");
       } else {
         // With the live channel open, changes arrive by push; the full
         // check (new document version, missed updates) runs less often.
@@ -707,7 +726,7 @@ export default function DocumentEditor({
         // A restored or guest-edited document has a new CRDT identity. The parent
         // remounts this editor with that generation; merging it into this one duplicates content.
         if (result.generation !== generation) {
-          onStatus("Neue Dokumentversion wird geladen …");
+          onStatus("reloading");
           return;
         }
         if (result.state) applyRemote(result.state);
@@ -718,13 +737,7 @@ export default function DocumentEditor({
       // Server briefly away (e.g. restarting): the changes stay here and
       // go out with the next try, without an error message.
       const away = !navigator.onLine || isTransient(e);
-      onStatus(
-        !navigator.onLine
-          ? "Offline gespeichert"
-          : away
-            ? "Verbindung unterbrochen – wird wiederholt …"
-            : "Speichern fehlgeschlagen",
-      );
+      onStatus(!navigator.onLine ? "saved-offline" : away ? "retrying" : "failed");
       if (!away) onError((e as Error).message);
     } finally {
       inflight.current = false;
@@ -845,13 +858,7 @@ export default function DocumentEditor({
       onHtml(lastHtml.current);
       ready.current = true;
       dirty.current = editable;
-      onStatus(
-        navigator.onLine
-          ? editable
-            ? "Synchronisieren …"
-            : "Gespeichert"
-          : "Offline gespeichert",
-      );
+      onStatus(navigator.onLine ? (editable ? "syncing" : "saved") : "saved-offline");
     });
     const update = (change: Uint8Array, origin: unknown) => {
       if (origin === "remote" || origin === persistence || !editable) return;
@@ -907,7 +914,7 @@ export default function DocumentEditor({
     const host = pages.find((p) => p.id === pageId);
     if (!host) return;
     try {
-      onStatus(t("Zeichnung wird importiert …", "Importing drawing …"));
+      onStatus("importing");
       const form = new FormData();
       form.set("workspaceId", host.workspace_id);
       form.set("spaceId", host.space_id);
@@ -1017,10 +1024,15 @@ export default function DocumentEditor({
   }
   const calloutLabel = calloutLabels(t),
     calloutDescription = calloutDescriptions(t);
+  // Every block of the "/" menu, with a stable id (remembered as recently
+  // used) and its section. Second levels (the callout kinds) are reached
+  // by choosing the entry or found directly when typing.
   const commands: SlashItem[] = [
     ...(aiWrite !== "hidden" && !embedded
       ? [
           {
+            id: "ai",
+            group: "ai" as const,
             name: t("KI-Assistent", "AI assistant"),
             keywords: ["ki", "ai", "assistent", "assistant", "schreiben", "write", "gpt"],
             description: aiWrite === "blocked" ? aiBlockedHint : t("Text von der KI schreiben lassen (⌘J)", "Let the AI write text (⌘J)"),
@@ -1031,6 +1043,8 @@ export default function DocumentEditor({
         ]
       : []),
     {
+      id: "text",
+      group: "text",
       name: t("Text", "Text"),
       keywords: ["text", "p", "absatz", "paragraph"],
       description: t("Einfach losschreiben", "Just start writing"),
@@ -1038,6 +1052,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().setParagraph().run(),
     },
     {
+      id: "h1",
+      group: "text",
       name: t("Überschrift 1", "Heading 1"),
       keywords: ["h1", "#", "titel", "heading1"],
       description: t("Große Überschrift", "Large heading"),
@@ -1045,6 +1061,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
     },
     {
+      id: "h2",
+      group: "text",
       name: t("Überschrift 2", "Heading 2"),
       keywords: ["h2", "##", "heading2"],
       description: t("Mittlere Überschrift", "Medium heading"),
@@ -1052,6 +1070,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
     },
     {
+      id: "h3",
+      group: "text",
       name: t("Überschrift 3", "Heading 3"),
       keywords: ["h3", "###", "heading3"],
       description: t("Kleine Überschrift", "Small heading"),
@@ -1059,6 +1079,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
     },
     {
+      id: "todo",
+      group: "lists",
       name: t("Aufgabenliste", "Task list"),
       keywords: ["todo", "aufgabe", "task", "checkbox", "[]"],
       description: t("Schritt für Schritt abhaken", "Tick off step by step"),
@@ -1066,6 +1088,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().toggleTaskList().run(),
     },
     {
+      id: "bullets",
+      group: "lists",
       name: t("Aufzählung", "Bulleted list"),
       keywords: ["ul", "liste", "bullet", "punkte", "-"],
       description: t("Eine Liste mit Punkten", "A list with bullets"),
@@ -1073,6 +1097,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().toggleBulletList().run(),
     },
     {
+      id: "numbered",
+      group: "lists",
       name: t("Nummerierte Liste", "Numbered list"),
       keywords: ["ol", "1.", "nummer", "numbered"],
       description: t("Eine geordnete Liste", "An ordered list"),
@@ -1081,6 +1107,8 @@ export default function DocumentEditor({
     },
     // Before the quote block, so "/zitat" finds the citation first.
     {
+      id: "citation",
+      group: "blocks",
       name: t("Literaturzitat", "Citation"),
       keywords: ["zitat", "cite", "citation", "doi", "bibtex", "zotero", "literatur", "quelle", "source", "reference"],
       description: t("Quelle zitieren: DOI, BibTeX oder Zotero", "Cite a source: DOI, BibTeX or Zotero"),
@@ -1088,6 +1116,8 @@ export default function DocumentEditor({
       run: () => setCiteOpen(true),
     },
     {
+      id: "bibliography",
+      group: "blocks",
       name: t("Literaturverzeichnis", "Bibliography"),
       keywords: ["bibliography", "literatur", "references", "quellen", "bibliographie", "literaturliste"],
       description: t("Alle zitierten Werke als Liste", "All cited works as a list"),
@@ -1100,36 +1130,51 @@ export default function DocumentEditor({
           .run(),
     },
     {
+      id: "quote",
+      group: "text",
       name: t("Zitat", "Quote"),
       keywords: ["quote", ">"],
       description: t("Einen Gedanken hervorheben", "Highlight a thought"),
       icon: Quotes,
       run: () => editor?.chain().focus().toggleBlockquote().run(),
     },
-    // Callouts in the five kinds of GitHub alerts; inside a callout the
-    // command changes its kind.
-    ...CALLOUT_TYPES.map((type) => ({
-      name: calloutLabel[type],
-      keywords: {
-        note: ["callout", "info", "note", "hinweis"],
-        tip: ["callout", "tip", "tipp", "hint"],
-        important: ["callout", "important", "wichtig"],
-        warning: ["callout", "warning", "warnung"],
-        caution: ["callout", "caution", "danger", "achtung", "gefahr"],
-      }[type],
-      description: calloutDescription[type],
-      icon: { note: Info, tip: Lightbulb, important: ChatCenteredText, warning: Warning, caution: WarningOctagon }[type],
-      run: () => {
-        if (editor?.isActive("callout")) return void editor.chain().focus().updateAttributes("callout", { type }).run();
-        // An empty paragraph (the placeholder invites typing), never sample text.
-        editor
-          ?.chain()
-          .focus()
-          .insertContent({ type: "callout", attrs: { type }, content: [{ type: "paragraph" }] })
-          .run();
-      },
-    })),
+    // One callout entry; its kinds (the five GitHub alerts) are the second
+    // level. Inside a callout a kind changes the callout instead.
     {
+      id: "callout",
+      group: "blocks",
+      name: t("Callout", "Callout"),
+      keywords: ["callout", "hinweis", "note", "info", "alert", "admonition", "box"],
+      description: t("Hervorgehobener Kasten: Hinweis, Tipp, Wichtig, Warnung oder Achtung", "Highlighted box: note, tip, important, warning or caution"),
+      icon: Info,
+      run: () => {},
+      children: CALLOUT_TYPES.map((type) => ({
+        id: `callout-${type}`,
+        group: "blocks" as const,
+        name: calloutLabel[type],
+        keywords: {
+          note: ["info", "note", "hinweis"],
+          tip: ["tip", "tipp", "hint"],
+          important: ["important", "wichtig"],
+          warning: ["warning", "warnung"],
+          caution: ["caution", "danger", "achtung", "gefahr"],
+        }[type],
+        description: calloutDescription[type],
+        icon: { note: Info, tip: Lightbulb, important: ChatCenteredText, warning: Warning, caution: WarningOctagon }[type],
+        run: () => {
+          if (editor?.isActive("callout")) return void editor.chain().focus().updateAttributes("callout", { type }).run();
+          // An empty paragraph (the placeholder invites typing), never sample text.
+          editor
+            ?.chain()
+            .focus()
+            .insertContent({ type: "callout", attrs: { type }, content: [{ type: "paragraph" }] })
+            .run();
+        },
+      })),
+    },
+    {
+      id: "toggle",
+      group: "blocks",
       name: t("Aufklappbarer Block", "Toggle"),
       keywords: ["toggle", "details", "aufklappen"],
       description: t("Details ein- und ausblenden", "Show and hide details"),
@@ -1137,6 +1182,8 @@ export default function DocumentEditor({
       run: () => setToggle(true),
     },
     {
+      id: "code",
+      group: "blocks",
       name: "Code",
       keywords: ["codeblock", "```"],
       description: t("Codeblock einfügen", "Insert a code block"),
@@ -1144,6 +1191,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().toggleCodeBlock().run(),
     },
     {
+      id: "table",
+      group: "blocks",
       name: t("Tabelle", "Table"),
       keywords: ["table"],
       description: t("Zeilen und Spalten", "Rows and columns"),
@@ -1156,6 +1205,8 @@ export default function DocumentEditor({
           .run(),
     },
     {
+      id: "file",
+      group: "media",
       name: t("Bild oder Datei", "Image or file"),
       keywords: ["bild", "image", "img", "datei", "file", "upload", "foto"],
       description: t("Datei vom Gerät hochladen", "Upload a file from your device"),
@@ -1163,6 +1214,8 @@ export default function DocumentEditor({
       run: () => uploadRef.current?.click(),
     },
     {
+      id: "mermaid",
+      group: "media",
       name: t("Mermaid-Diagramm", "Mermaid diagram"),
       keywords: ["mermaid", "diagramm", "flowchart", "chart"],
       description: t("Abläufe, Sequenzen und Beziehungen", "Flows, sequences and relationships"),
@@ -1170,6 +1223,8 @@ export default function DocumentEditor({
       run: () => setDiagram({ source: DEFAULT_DIAGRAM }),
     },
     {
+      id: "math",
+      group: "math",
       name: t("Formel", "Formula"),
       keywords: ["math", "latex", "katex", "tex"],
       description: t("Mathematischer Ausdruck", "Mathematical expression"),
@@ -1177,6 +1232,8 @@ export default function DocumentEditor({
       run: () => setMath({ type: "mathBlock", expression: "" }),
     },
     {
+      id: "inline-math",
+      group: "math",
       name: t("Inline-Formel", "Inline formula"),
       keywords: ["inlinemath"],
       description: t("Mathematik direkt im Satz", "Math right inside a sentence"),
@@ -1184,6 +1241,8 @@ export default function DocumentEditor({
       run: () => openInlineMath(),
     },
     {
+      id: "plot",
+      group: "math",
       name: t("Funktionsgraph", "Function graph"),
       keywords: ["graph", "plot", "funktion", "function", "kurve", "diagramm"],
       description: t("Funktionen von x zeichnen, live bearbeitbar", "Draw functions of x, editable live"),
@@ -1196,6 +1255,8 @@ export default function DocumentEditor({
           .run(),
     },
     {
+      id: "metric",
+      group: "database",
       name: t("Kennzahl", "Metric"),
       keywords: ["metric", "kpi", "zahl", "anzahl", "summe", "dashboard"],
       description: t("Eine Zahl aus einer Datenbank, aktuell gehalten", "A number from a database, kept up to date"),
@@ -1203,6 +1264,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().insertContent({ type: "metricBlock" }).run(),
     },
     {
+      id: "dashboard",
+      group: "database",
       name: t("Dashboard", "Dashboard"),
       keywords: ["dashboard", "kennzahlen", "metrics", "kpi", "übersicht", "overview"],
       description: t("Drei Kennzahlen nebeneinander, darunter Diagramme einbinden", "Three metrics side by side, embed charts below"),
@@ -1232,6 +1295,8 @@ export default function DocumentEditor({
           .run(),
     },
     {
+      id: "fraction",
+      group: "math",
       name: t("Bruch", "Fraction"),
       keywords: ["fraction", "bruch", "frac", "geteilt"],
       description: t("Zähler über Nenner, im Satz", "Numerator over denominator, inside a sentence"),
@@ -1239,6 +1304,8 @@ export default function DocumentEditor({
       run: () => setMath({ type: "mathInline", expression: "\\frac{}{}" }),
     },
     {
+      id: "footnote",
+      group: "blocks",
       name: t("Fußnote", "Footnote"),
       keywords: ["fussnote", "footnote", "fn", "anmerkung", "quelle", "note"],
       description: t("Nummerierte Anmerkung am Seitenende", "Numbered note at the end of the page"),
@@ -1246,6 +1313,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().openFootnote().run(),
     },
     {
+      id: "mention",
+      group: "database",
       name: t("Seite, Eintrag oder Person erwähnen", "Mention a page, record or person"),
       keywords: ["mention", "link", "@", "seite", "person", "eintrag", "record"],
       description: t("Mit @ Wissen verknüpfen", "Connect knowledge with @"),
@@ -1253,6 +1322,8 @@ export default function DocumentEditor({
       run: () => setReferences(true),
     },
     {
+      id: "whiteboard",
+      group: "media",
       name: t("Whiteboard", "Whiteboard"),
       keywords: ["board", "canvas"],
       description: t("Board anzeigen oder neu anlegen", "Show or create a board"),
@@ -1263,6 +1334,8 @@ export default function DocumentEditor({
       },
     },
     {
+      id: "voice",
+      group: "media",
       name: t("Sprachnotiz", "Voice note"),
       keywords: ["audio", "aufnahme", "mikrofon", "diktat", "voice", "sprache"],
       description: transcription ? t("Aufnehmen und als Text einfügen", "Record and insert as text") : t("Aufnehmen und als Audio einfügen", "Record and insert as audio"),
@@ -1270,6 +1343,8 @@ export default function DocumentEditor({
       run: () => setVoice(true),
     },
     {
+      id: "synced",
+      group: "advanced",
       name: t("Synchronisierter Block", "Synced block"),
       keywords: ["sync", "synced", "synchron", "wiederverwenden"],
       description: t("Inhalt, der auf mehreren Seiten gleich bleibt", "Content that stays the same on several pages"),
@@ -1287,6 +1362,8 @@ export default function DocumentEditor({
       },
     },
     {
+      id: "synced-insert",
+      group: "advanced",
       name: t("Synchronisierten Block einfügen", "Insert synced block"),
       keywords: ["sync", "synced", "einfuegen", "kopie"],
       description: t("Einen bestehenden synchronisierten Block zeigen", "Show an existing synced block"),
@@ -1304,6 +1381,8 @@ export default function DocumentEditor({
       },
     },
     {
+      id: "linked-database",
+      group: "database",
       name: t("Verknüpfte Datenbank", "Linked database"),
       keywords: ["datenbank", "db", "database", "linked"],
       description: t("Bestehende Einträge mit eigener Ansicht", "Existing records with a view of their own"),
@@ -1314,6 +1393,8 @@ export default function DocumentEditor({
       },
     },
     {
+      id: "columns",
+      group: "blocks",
       name: t("Zwei Spalten", "Two columns"),
       keywords: ["spalten", "columns", "cols"],
       description: t("Inhalte nebeneinander", "Content side by side"),
@@ -1341,6 +1422,8 @@ export default function DocumentEditor({
       },
     },
     {
+      id: "embed",
+      group: "media",
       name: t("Einbetten", "Embed"),
       keywords: ["embed", "youtube", "video", "figma", "loom"],
       description: t("YouTube, Vimeo, Loom, Spotify, Figma oder CodePen", "YouTube, Vimeo, Loom, Spotify, Figma or CodePen"),
@@ -1348,6 +1431,8 @@ export default function DocumentEditor({
       run: () => setEmbed(true),
     },
     {
+      id: "spoiler",
+      group: "text",
       name: t("Spoiler", "Spoiler"),
       keywords: ["verdecken", "versteckt", "hide", "geheim"],
       description: t("Text verdecken, bis jemand darauf klickt", "Hide text until someone clicks it"),
@@ -1355,6 +1440,8 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().toggleMark("spoiler").run(),
     },
     {
+      id: "divider",
+      group: "text",
       name: t("Trennlinie", "Divider"),
       keywords: ["hr", "divider", "linie", "---"],
       description: t("Inhalte voneinander trennen", "Separate content"),
@@ -1362,21 +1449,46 @@ export default function DocumentEditor({
       run: () => editor?.chain().focus().setHorizontalRule().run(),
     },
   ];
-  const slashMatches = slash ? rankCommands(commands, slash.query) : [];
+  // The sections shown: a second level alone, or recents and groups
+  // (filtered by the typed query). Arrow keys move over the flat list.
+  const slashParent = slash?.sub ? commands.find((command) => command.id === slash.sub) || null : null;
+  const slashSectionList: SlashSection<SlashItem>[] = !slash
+    ? []
+    : slashParent
+      ? [{ group: slashParent.group || "blocks", items: slashParent.children || [] }]
+      : slashSections(commands, slash.query, slashRecents);
+  const slashMatches = slashSectionList.flatMap((section) => section.items);
   slashItems.current = slashMatches;
-  // Runs a block command; typed "/…" text is removed first.
+  // Runs a block command; typed "/…" text is removed first. An entry with a
+  // second level opens it instead.
   slashPick.current = (index: number) => {
     const list = slashItems.current,
       item = list[Math.min(index, list.length - 1)],
       menu = slashState.current;
     if (!item || !menu || item.disabled) return;
+    if (item.children) {
+      setSlash({ ...menu, sub: item.id });
+      setSlashActive(0);
+      return;
+    }
     setSlash(null);
+    setSlashRecents(rememberSlashCommand(item.id));
     if (menu.mode === "inline" && editor) {
       const to = editor.state.selection.from;
       if (to > menu.from)
         editor.chain().focus().deleteRange({ from: menu.from, to }).run();
     } else editor?.commands.focus();
     item.run();
+  };
+  // Back from a second level to the entry that opened it.
+  slashBack.current = () => {
+    const menu = slashState.current;
+    if (!menu?.sub) return;
+    const parentIndex = slashSections(commands, menu.query, slashRecents)
+      .flatMap((section) => section.items)
+      .findIndex((item) => item.id === menu.sub);
+    setSlash({ ...menu, sub: null });
+    setSlashActive(Math.max(0, parentIndex));
   };
   // A typed query that matches nothing closes the menu ("und/oder").
   useEffect(() => {
@@ -1916,12 +2028,14 @@ export default function DocumentEditor({
       />
       {slash && slashAnchor && (
         <SlashMenu
-          items={slashMatches}
+          sections={slashSectionList}
           active={Math.min(slashActive, Math.max(0, slashMatches.length - 1))}
           anchor={slashAnchor}
           search={slash.mode === "button" ? slash.query : undefined}
+          parent={slashParent}
+          onBack={() => slashBack.current()}
           onSearch={(query) => {
-            setSlash({ ...slash, query });
+            setSlash({ ...slash, query, sub: null });
             setSlashActive(0);
           }}
           onKey={(event) => {
@@ -1932,9 +2046,15 @@ export default function DocumentEditor({
                 setSlashActive(
                   (i) => (i + (event.key === "ArrowDown" ? 1 : -1) + count) % count,
                 );
-            } else if (event.key === "Enter" && count) {
+            } else if ((event.key === "Enter" || event.key === "Tab") && count) {
               event.preventDefault();
               slashPick.current(slashActive);
+            } else if (event.key === "ArrowRight" && !slash.sub && slashMatches[slashActive]?.children) {
+              event.preventDefault();
+              slashPick.current(slashActive);
+            } else if (event.key === "ArrowLeft" && slash.sub) {
+              event.preventDefault();
+              slashBack.current();
             } else if (event.key === "Escape") {
               event.preventDefault();
               setSlash(null);
@@ -1983,7 +2103,7 @@ export default function DocumentEditor({
           setVoice(false);
           await upload(file);
           if (!toText) return;
-          onStatus("Sprachnotiz wird in Text umgewandelt …");
+          onStatus("transcribing");
           try {
             const form = new FormData();
             form.set("pageId", pageId);
@@ -2010,7 +2130,7 @@ export default function DocumentEditor({
           } catch (error) {
             onError((error as Error).message);
           } finally {
-            onStatus("Gespeichert");
+            onStatus("saved");
           }
         }}
       />
