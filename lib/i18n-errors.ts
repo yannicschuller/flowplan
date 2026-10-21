@@ -705,6 +705,26 @@ const exact: Record<string, string> = {
   "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
   "Kein Dashboard.": "Not a dashboard.",
   "Kachel-IDs doppelt.": "Duplicate tile IDs.",
+  // GitHub/GitLab issue sync
+  "Dieser Git-Server ist für die Issue-Synchronisierung nicht freigegeben (ISSUE_SYNC_ALLOWED_HOSTS).": "This Git server is not allowed for the issue sync (ISSUE_SYNC_ALLOWED_HOSTS).",
+  "Repository bitte als „besitzer/name“ angeben.": "Please give the repository as “owner/name”.",
+  "Projekt bitte als „gruppe/projekt“ oder Projekt-ID angeben.": "Please give the project as “group/project” or a project ID.",
+  "Der Git-Anbieter begrenzt gerade die Anfragen – die Synchronisierung macht später weiter.": "The Git provider is limiting requests right now – the sync continues later.",
+  "Der Git-Anbieter lehnt das Token ab.": "The Git provider rejects the token.",
+  "Dem Token fehlt die Berechtigung für dieses Repository.": "The token lacks permission for this repository.",
+  "Repository oder Issue nicht gefunden – oder das Token hat keinen Zugriff.": "Repository or issue not found – or the token has no access.",
+  "Nur Eigentümer des Arbeitsbereichs und Administratoren verbinden GitHub oder GitLab.": "Only workspace owners and administrators connect GitHub or GitLab.",
+  "Verbindung nicht gefunden.": "Connection not found.",
+  "Für einen anderen Server bitte das Token erneut eingeben.": "For another server, please enter the token again.",
+  "Bitte ein Zugangstoken eingeben.": "Please enter an access token.",
+  "Höchstens 20 Verbindungen je Arbeitsbereich.": "At most 20 connections per workspace.",
+  "Die Zuordnung passt nicht zu den Eigenschaften der Datenbank.": "The mapping does not fit the database's properties.",
+  "Jede Eigenschaft nur einmal zuordnen.": "Map each property only once.",
+  "Dieses Repository ist schon mit einer anderen Datenbank verbunden.": "This repository is already connected to another database.",
+  "Die Person, die die Verbindung eingerichtet hat, ist nicht mehr Eigentümer des Arbeitsbereichs – bitte neu verbinden.":
+    "The person who set up the connection is no longer an owner of the workspace – please connect again.",
+  "Die verbindende Person darf diese Datenbank nicht bearbeiten.": "The connecting person may not edit this database.",
+  "Diese Datenbank ist mit keinem Repository verbunden.": "This database is not connected to a repository.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
@@ -776,6 +796,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
   [/^„(.+)“ wartet auf deine Prüfung$/, "“$1” is waiting for your review"],
+  [/^Der Git-Anbieter antwortet mit HTTP (\d+)\.$/, "The Git provider answers with HTTP $1."],
 ];
 
 export function englishMessage(message: string) {

@@ -1083,11 +1083,71 @@ export type CommandWebhookDeleteResult = {
   ok: true;
 };
 
+/** Connect GitHub or GitLab for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: "test" }`. */
+export type CommandIssueSyncConnect = {
+  action: "issueSync.connect";
+  workspaceId: string;
+  /** Existing connection to update */
+  id?: string;
+  provider: "github" | "gitlab";
+  /** Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com */
+  baseUrl?: string;
+  /** Default repository: `owner/name` (GitHub) or `group/project` (GitLab) */
+  repo?: string;
+  token?: string;
+  /** Login ↔ e-mail of a member, for assignees */
+  people?: {
+    login: string;
+    email: string;
+  }[];
+};
+
+export type CommandIssueSyncConnectResult = {
+  id: string;
+};
+
+/** Remove a GitHub or GitLab connection. Workspace owners and administrators. Ends the sync of every database using it; records stay. */
+export type CommandIssueSyncDisconnect = {
+  action: "issueSync.disconnect";
+  workspaceId: string;
+  id: string;
+};
+
+export type CommandIssueSyncDisconnectResult = {
+  ok: true;
+};
+
+/** Sync a database with the issues of a repository. Workspace owners and administrators with edit rights on the database. The sync acts as the person who set up the connection. `config` maps properties: `title`, `body` (a text property or `@document`), `status` ({ field, map: [{ value, state: open|closed, label }] }), `labels` (multi-select), `assignee` (person), `milestone` (date ↔ milestone due date), `number` and `url` (read-only), `direction` (both, pull, push), `comments` ({ pull, push }), `importExisting`. */
+export type CommandIssueSyncMap = {
+  action: "issueSync.map";
+  pageId: string;
+  connectionId: string;
+  /** Default: the repository of the connection */
+  repo?: string;
+  config: {
+    [key: string]: unknown;
+  };
+};
+
+export type CommandIssueSyncMapResult = {
+  ok: true;
+};
+
+/** Stop syncing a database with issues. Workspace owners and administrators. Records and issues stay; only the links end. */
+export type CommandIssueSyncUnmap = {
+  action: "issueSync.unmap";
+  pageId: string;
+};
+
+export type CommandIssueSyncUnmapResult = {
+  ok: true;
+};
+
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : CommandResult;
 
 // ---- Client ----
 
@@ -1407,6 +1467,21 @@ export class FlowplanClient {
   /** Git integration of a database (GET /api/git-config) */
   async gitConfig(query: { page: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/git-config`, { query }, options);
+  }
+
+  /** GitHub/GitLab issue sync: connections, a database's mapping or a record's issue — `workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null. (GET /api/issue-sync) */
+  async issueSync(query?: { workspace?: string; page?: string; row?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/issue-sync`, { query }, options);
+  }
+
+  /** Test a GitHub/GitLab connection or sync a database now — `{ op: "test", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: "run", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`. (POST /api/issue-sync) */
+  async issueSyncAction(body: {
+    op: "test" | "run";
+    pageId?: string;
+    workspaceId?: string;
+    [key: string]: unknown;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/issue-sync`, { json: body }, options);
   }
 
   /** Branches and pull requests linked to a record (GET /api/git-links) */

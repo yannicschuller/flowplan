@@ -73,6 +73,7 @@ export const commandActionNames = [
   "capture.record", "capture.target", "bookmarks.import",
   "calendar.feed", "calendar.feed.revoke", "calendar.caldav", "calendar.caldav.revoke",
   "webhook.delete",
+  "issueSync.connect", "issueSync.disconnect", "issueSync.map", "issueSync.unmap",
 ] as const;
 // Prefixes command() refuses for every API token.
 export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
@@ -338,6 +339,51 @@ export const commandActions: ActionDoc[] = [
     summary: "Remove a webhook",
     description: "Workspace owners only.",
     input: z.object({ action: z.literal("webhook.delete"), workspaceId: uuid, id: z.string() }),
+    result: okResult,
+  },
+  {
+    action: "issueSync.connect",
+    summary: "Connect GitHub or GitLab for issue sync",
+    description:
+      "Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: \"test\" }`.",
+    input: z.object({
+      action: z.literal("issueSync.connect"),
+      workspaceId: uuid,
+      id: uuid.optional().describe("Existing connection to update"),
+      provider: z.enum(["github", "gitlab"]),
+      baseUrl: z.string().max(500).optional().describe("Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com"),
+      repo: z.string().max(300).optional().describe("Default repository: `owner/name` (GitHub) or `group/project` (GitLab)"),
+      token: z.string().max(1000).optional(),
+      people: z.array(z.object({ login: z.string().max(100), email: z.string().max(200) })).max(500).optional().describe("Login ↔ e-mail of a member, for assignees"),
+    }),
+    result: idResult,
+  },
+  {
+    action: "issueSync.disconnect",
+    summary: "Remove a GitHub or GitLab connection",
+    description: "Workspace owners and administrators. Ends the sync of every database using it; records stay.",
+    input: z.object({ action: z.literal("issueSync.disconnect"), workspaceId: uuid, id: uuid }),
+    result: okResult,
+  },
+  {
+    action: "issueSync.map",
+    summary: "Sync a database with the issues of a repository",
+    description:
+      "Workspace owners and administrators with edit rights on the database. The sync acts as the person who set up the connection. `config` maps properties: `title`, `body` (a text property or `@document`), `status` ({ field, map: [{ value, state: open|closed, label }] }), `labels` (multi-select), `assignee` (person), `milestone` (date ↔ milestone due date), `number` and `url` (read-only), `direction` (both, pull, push), `comments` ({ pull, push }), `importExisting`.",
+    input: z.object({
+      action: z.literal("issueSync.map"),
+      pageId: uuid,
+      connectionId: uuid,
+      repo: z.string().max(300).optional().describe("Default: the repository of the connection"),
+      config: z.object({}).passthrough(),
+    }),
+    result: okResult,
+  },
+  {
+    action: "issueSync.unmap",
+    summary: "Stop syncing a database with issues",
+    description: "Workspace owners and administrators. Records and issues stay; only the links end.",
+    input: z.object({ action: z.literal("issueSync.unmap"), pageId: uuid }),
     result: okResult,
   },
 ];
@@ -761,6 +807,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/dashboard-metric", method: "get", op: { id: "dashboardMetric", tag: "Records", summary: "One number from a database", params: [q("source", "Page ID of the database", { type: "string", format: "uuid" }, true), q("view", "View ID (its filters)"), q("aggregate", "How to combine", { type: "string", enum: ["count", "sum", "average", "min", "max"], default: "count" }), q("field", "Property ID for sum, average, min, max")], ok: { schema: { type: "object", additionalProperties: true }, description: "The value" }, errors: [400, 401, 403, 404] } },
   { path: "/api/dashboard-sources", method: "get", op: { id: "dashboardSources", tag: "Records", summary: "Databases a dashboard may count", params: [q("page", "Page ID of the dashboard", { type: "string", format: "uuid" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Sources" }, errors: [400, 401, 403, 404] } },
   { path: "/api/git-config", method: "get", op: { id: "gitConfig", tag: "Records", summary: "Git integration of a database", params: [q("page", "Page ID", { type: "string", format: "uuid" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Settings" }, errors: [400, 401, 403, 404] } },
+  { path: "/api/issue-sync", method: "get", op: { id: "issueSync", tag: "Records", summary: "GitHub/GitLab issue sync: connections, a database's mapping or a record's issue", description: "`workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null.", params: [q("workspace", "Workspace ID", { type: "string", format: "uuid" }), q("page", "Page ID of the database", { type: "string", format: "uuid" }), q("row", "Record ID", { type: "string", format: "uuid" })], ok: { schema: { type: "object", additionalProperties: true }, description: "Status" }, errors: [400, 401, 403, 404] } },
+  { path: "/api/issue-sync", method: "post", op: { id: "issueSyncAction", tag: "Records", summary: "Test a GitHub/GitLab connection or sync a database now", description: "`{ op: \"test\", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: \"run\", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`.", write: true, body: { content: "application/json", schema: { type: "object", properties: { op: { type: "string", enum: ["test", "run"] }, pageId: { type: "string", format: "uuid" }, workspaceId: { type: "string", format: "uuid" } }, required: ["op"], additionalProperties: true }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "The result" }, errors: [400, 401, 403, 404, 429] } },
   { path: "/api/git-links", method: "get", op: { id: "gitLinks", tag: "Records", summary: "Branches and pull requests linked to a record", params: [q("page", "Page ID", { type: "string", format: "uuid" }, true), q("row", "Record ID", { type: "string", format: "uuid" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Links" }, errors: [400, 401, 403, 404] } },
   { path: "/api/whiteboards/{pageId}/cards", method: "get", op: { id: "whiteboardCards", tag: "Pages", summary: "Live data of records shown as cards on a whiteboard", params: [p("pageId", "Page ID of the whiteboard"), q("rows", "Comma-separated `pageId:rowId` pairs, at most 200", { type: "string" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Cards" }, errors: [400, 401, 403, 404] } },
   // Journal
@@ -804,6 +852,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/auth/[action]/route.ts": "Browser sign-in and account settings",
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",
   "app/api/git/[token]/route.ts": "Git integration callbacks with their own token",
+  "app/api/issue-sync/hook/[token]/route.ts": "GitHub/GitLab issue webhooks, verified by their own token and signature",
   "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token)",
   "app/api/print/[token]/route.ts": "Print views of the browser app",
   "app/api/print/route.ts": "Print views of the browser app",

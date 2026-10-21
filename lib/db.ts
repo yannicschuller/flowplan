@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 43) return;
+  if (globalDb.flowplanSchema === 44) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -620,7 +620,19 @@ function migrate(d: DatabaseSync) {
   }
   // Dashboard pages: their tiles as JSON (lib/dashboard-schema.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS dashboards(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,tiles TEXT NOT NULL DEFAULT '[]',updated_at TEXT DEFAULT CURRENT_TIMESTAMP);`);
-  globalDb.flowplanSchema = 43;
+  // GitHub/GitLab issue sync (lib/issue-sync.ts): connections of a
+  // workspace (token and webhook secret sealed with lib/secret-box.ts), the
+  // database ↔ repository mapping, one link per record and issue, pulled or
+  // pushed comments and records waiting for a push.
+  d.exec(`CREATE TABLE IF NOT EXISTS issue_connections(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider IN ('github','gitlab')),base_url TEXT NOT NULL DEFAULT '',repo TEXT NOT NULL DEFAULT '',token TEXT NOT NULL,hook_token TEXT NOT NULL UNIQUE,hook_secret TEXT NOT NULL,people TEXT NOT NULL DEFAULT '[]',state TEXT NOT NULL DEFAULT '{}',created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS issue_connections_workspace ON issue_connections(workspace_id);
+    CREATE TABLE IF NOT EXISTS issue_sync_maps(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,connection_id TEXT NOT NULL REFERENCES issue_connections(id) ON DELETE CASCADE,repo TEXT NOT NULL,config TEXT NOT NULL,state TEXT NOT NULL DEFAULT '{}',created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS issue_sync_maps_connection ON issue_sync_maps(connection_id);
+    CREATE TABLE IF NOT EXISTS issue_links(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,row_id TEXT NOT NULL UNIQUE,provider TEXT NOT NULL,repo TEXT NOT NULL,issue_id TEXT NOT NULL,number INTEGER NOT NULL,url TEXT NOT NULL,remote TEXT NOT NULL DEFAULT '{}',local_hash TEXT NOT NULL DEFAULT '',remote_updated INTEGER NOT NULL DEFAULT 0,synced_at INTEGER NOT NULL,UNIQUE(provider,repo,issue_id));
+    CREATE INDEX IF NOT EXISTS issue_links_page ON issue_links(page_id);
+    CREATE TABLE IF NOT EXISTS issue_comment_links(comment_id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,provider TEXT NOT NULL,repo TEXT NOT NULL,remote_id TEXT NOT NULL,UNIQUE(provider,repo,remote_id));
+    CREATE TABLE IF NOT EXISTS issue_sync_queue(row_id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,at INTEGER NOT NULL);`);
+  globalDb.flowplanSchema = 44;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

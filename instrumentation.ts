@@ -24,6 +24,9 @@ export async function register() {
     startMailWorker();
     const { startWebhookWorker } = await import("./lib/webhooks");
     startWebhookWorker();
+    // GitHub/GitLab issue sync: the 10-minute poll and quick pushes.
+    const { startIssueSyncWorker } = await import("./lib/issue-sync");
+    startIssueSyncWorker();
     const { startBackupWorker } = await import("./lib/scheduled-backup");
     startBackupWorker();
     const { startInactiveWorker } = await import("./lib/inactive-accounts");

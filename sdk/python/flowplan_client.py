@@ -634,8 +634,58 @@ CommandWebhookDeleteResult = TypedDict("CommandWebhookDeleteResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Connect GitHub or GitLab for issue sync. Workspace owners and administrators. Without `id` a new connection (token required); with `id` an update (the token stays unless given). The token is stored encrypted. Self-hosted servers only when listed in ISSUE_SYNC_ALLOWED_HOSTS. Check the token first with POST /api/issue-sync `{ op: "test" }`.
+CommandIssueSyncConnect = TypedDict("CommandIssueSyncConnect", {
+    "action": Required[Literal["issueSync.connect"]],
+    "workspaceId": Required[str],
+    "id": str,  # Existing connection to update
+    "provider": Required[Literal["github", "gitlab"]],
+    "baseUrl": str,  # Self-hosted server, e.g. https://gitlab.example.org; empty for github.com or gitlab.com
+    "repo": str,  # Default repository: `owner/name` (GitHub) or `group/project` (GitLab)
+    "token": str,
+    "people": list[dict[str, Any]],  # Login ↔ e-mail of a member, for assignees
+}, total=False)
+
+CommandIssueSyncConnectResult = TypedDict("CommandIssueSyncConnectResult", {
+    "id": Required[str],
+}, total=False)
+
+# Remove a GitHub or GitLab connection. Workspace owners and administrators. Ends the sync of every database using it; records stay.
+CommandIssueSyncDisconnect = TypedDict("CommandIssueSyncDisconnect", {
+    "action": Required[Literal["issueSync.disconnect"]],
+    "workspaceId": Required[str],
+    "id": Required[str],
+}, total=False)
+
+CommandIssueSyncDisconnectResult = TypedDict("CommandIssueSyncDisconnectResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Sync a database with the issues of a repository. Workspace owners and administrators with edit rights on the database. The sync acts as the person who set up the connection. `config` maps properties: `title`, `body` (a text property or `@document`), `status` ({ field, map: [{ value, state: open|closed, label }] }), `labels` (multi-select), `assignee` (person), `milestone` (date ↔ milestone due date), `number` and `url` (read-only), `direction` (both, pull, push), `comments` ({ pull, push }), `importExisting`.
+CommandIssueSyncMap = TypedDict("CommandIssueSyncMap", {
+    "action": Required[Literal["issueSync.map"]],
+    "pageId": Required[str],
+    "connectionId": Required[str],
+    "repo": str,  # Default: the repository of the connection
+    "config": Required[dict[str, Any]],
+}, total=False)
+
+CommandIssueSyncMapResult = TypedDict("CommandIssueSyncMapResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Stop syncing a database with issues. Workspace owners and administrators. Records and issues stay; only the links end.
+CommandIssueSyncUnmap = TypedDict("CommandIssueSyncUnmap", {
+    "action": Required[Literal["issueSync.unmap"]],
+    "pageId": Required[str],
+}, total=False)
+
+CommandIssueSyncUnmapResult = TypedDict("CommandIssueSyncUnmapResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -772,6 +822,12 @@ DashboardSourcesQuery = TypedDict("DashboardSourcesQuery", {
 
 GitConfigQuery = TypedDict("GitConfigQuery", {
     "page": Required[str],  # Page ID
+}, total=False)
+
+IssueSyncQuery = TypedDict("IssueSyncQuery", {
+    "workspace": str,  # Workspace ID
+    "page": str,  # Page ID of the database
+    "row": str,  # Record ID
 }, total=False)
 
 GitLinksQuery = TypedDict("GitLinksQuery", {
@@ -1104,6 +1160,14 @@ class FlowplanClient:
     def git_config(self, query: "GitConfigQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Git integration of a database (GET /api/git-config)"""
         return self._json("GET", "/api/git-config", query=dict(query) if query else None, headers=headers)
+
+    def issue_sync(self, query: Optional["IssueSyncQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """GitHub/GitLab issue sync: connections, a database's mapping or a record's issue — `workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null. (GET /api/issue-sync)"""
+        return self._json("GET", "/api/issue-sync", query=dict(query) if query else None, headers=headers)
+
+    def issue_sync_action(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Test a GitHub/GitLab connection or sync a database now — `{ op: "test", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: "run", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`. (POST /api/issue-sync)"""
+        return self._json("POST", "/api/issue-sync", json_body=body, headers=headers)
 
     def git_links(self, query: "GitLinksQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Branches and pull requests linked to a record (GET /api/git-links)"""

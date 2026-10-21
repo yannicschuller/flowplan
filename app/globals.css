@@ -20298,3 +20298,59 @@ tr:hover .row-open-mark,
     transition: none;
   }
 }
+
+/* ---------- GitHub/GitLab issue sync (components/issue-sync-*.tsx) ---------- */
+.issue-sync-settings .issue-sync-connection {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.issue-sync-connection h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.issue-sync-dialog > p svg {
+  vertical-align: -2px;
+}
+.issue-sync-databases {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.issue-sync-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 14px;
+}
+.issue-sync-status {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.issue-sync-status th,
+.issue-sync-status td {
+  padding: 4px 6px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.issue-sync-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--secondary);
+  font-size: 12px;
+  text-decoration: none;
+}
+.issue-sync-chip:hover {
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
+}

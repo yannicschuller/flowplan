@@ -65,13 +65,21 @@ export function privateAddress(ip: string) {
     (g[0] === 0x2001 && g[1] === 0) // Teredo
   );
 }
-type Fetched = { url: string; status: number; type: string; body: string; data: Buffer };
+type Fetched = { url: string; status: number; type: string; body: string; data: Buffer; headers: Record<string, string> };
 type Options = {
   maxBytes?: number;
   timeout?: number;
   accept?: string;
   allowPrivate?: boolean;
+  // API calls (issue sync): another method, extra headers and a body.
+  // Requests with own headers (credentials) or another method than GET
+  // follow no redirects; the 3xx answer is returned as it is.
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
 };
+const flatHeaders = (headers: Record<string, string | string[] | undefined>) =>
+  Object.fromEntries(Object.entries(headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : String(value ?? "")]));
 // DNS lookup that refuses internal addresses and hands the request the very
 // address it checked (no second lookup that could point elsewhere).
 export function pinnedLookup(allowPrivate: boolean) {
@@ -107,24 +115,27 @@ export function safePost(raw: string, body: string, headers: Record<string, stri
     req.end(body);
   });
 }
-function once(url: URL, maxBytes: number, timeout: number, accept: string, allowPrivate: boolean) {
+function once(url: URL, maxBytes: number, timeout: number, accept: string, allowPrivate: boolean, extra: Pick<Options, "method" | "headers" | "body"> = {}) {
   return new Promise<Fetched & { location?: string }>((resolve, reject) => {
     const request = url.protocol === "http:" ? httpRequest : httpsRequest;
+    const method = extra.method || "GET";
     const req = request(
       url,
       {
-        method: "GET",
+        method,
         timeout,
         headers: {
           "user-agent": "Flowplan-LinkPreview/1.0",
           accept,
+          ...extra.headers,
+          ...(extra.body !== undefined ? { "content-length": String(Buffer.byteLength(extra.body)) } : {}),
         },
         // Resolve, check and pin the address that is used.
         lookup: pinnedLookup(allowPrivate),
       },
       (res) => {
         const status = res.statusCode || 0;
-        if (status >= 300 && status < 400 && res.headers.location) {
+        if (status >= 300 && status < 400 && res.headers.location && method === "GET" && !extra.headers) {
           res.resume();
           return resolve({
             url: url.href,
@@ -132,6 +143,7 @@ function once(url: URL, maxBytes: number, timeout: number, accept: string, allow
             type: "",
             body: "",
             data: Buffer.alloc(0),
+            headers: flatHeaders(res.headers),
             location: res.headers.location,
           });
         }
@@ -153,6 +165,7 @@ function once(url: URL, maxBytes: number, timeout: number, accept: string, allow
             type: String(res.headers["content-type"] || ""),
             body: data.toString("utf8"),
             data,
+            headers: flatHeaders(res.headers),
           });
         });
         res.on("error", reject);
@@ -160,7 +173,7 @@ function once(url: URL, maxBytes: number, timeout: number, accept: string, allow
     );
     req.on("timeout", () => req.destroy(new Error("Zeitüberschreitung.")));
     req.on("error", reject);
-    req.end();
+    req.end(extra.body);
   });
 }
 export async function safeFetch(
@@ -170,6 +183,9 @@ export async function safeFetch(
     timeout = 5000,
     accept = "application/json, text/html;q=0.9",
     allowPrivate = false,
+    method,
+    headers,
+    body,
   }: Options = {},
 ): Promise<Fetched> {
   let url: URL;
@@ -193,7 +209,7 @@ export async function safeFetch(
       throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
     let result;
     try {
-      result = await once(url, maxBytes, timeout, accept, allowPrivate);
+      result = await once(url, maxBytes, timeout, accept, allowPrivate, { method, headers, body });
     } catch (error) {
       throw new HttpError(
         502,

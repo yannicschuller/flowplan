@@ -14,6 +14,8 @@ import { prepareSubtaskFields } from "./subtasks-server";
 import { timeCommand } from "./time-tracking";
 import { sprintCommand } from "./sprints";
 import { gitSetup } from "./git-integration";
+import { issueSyncCommand } from "./issue-sync";
+import { queueIssuePush } from "./issue-sync-queue";
 import { deleteRecordView, saveRecordView } from "./cross-records";
 import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
 import { restoreBlock } from "./restore-block";
@@ -2035,6 +2037,7 @@ export function command(
           user.id,
           body,
         );
+        if (b.rowId) queueIssuePush(p.id, uuid.parse(b.rowId));
         for (const m of all<{ user_id: string }>(
           "SELECT user_id FROM members WHERE workspace_id=? AND user_id!=?",
           p.workspace_id,
@@ -2202,6 +2205,13 @@ export function command(
       case "git.setup":
       case "git.disable":
         result = gitSetup(write(), action);
+        break;
+      // GitHub/GitLab issue sync: connections and database mappings.
+      case "issueSync.connect":
+      case "issueSync.disconnect":
+      case "issueSync.map":
+      case "issueSync.unmap":
+        result = issueSyncCommand(user, action, b);
         break;
       case "time.start":
       case "time.stop":

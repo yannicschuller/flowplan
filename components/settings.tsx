@@ -15,6 +15,7 @@ import { WorkspaceLifecycle } from "./workspace-lifecycle";
 import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { IntegrationSettings } from "./integration-settings";
+import { IssueSyncSettings } from "./issue-sync-settings";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
 import { AccountSecurity } from "./account-security";
@@ -224,6 +225,7 @@ export default function Settings({
               onError={onError}
             />
           )}
+          {tab === "integrations" && <IssueSyncSettings workspaceId={boot.workspace.id} onError={onError} />}
           {tab === "notifications" && (
             <>
               {boot.notificationPrefs && (
