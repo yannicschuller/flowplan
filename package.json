@@ -22,7 +22,8 @@
     "check:standalone": "node scripts/check-standalone.mjs",
     "check:offline": "node scripts/check-offline.mjs",
     "i18n": "node scripts/i18n.mjs",
-    "facts": "node --import tsx scripts/facts.mjs"
+    "facts": "node --import tsx scripts/facts.mjs",
+    "sdk": "node --import tsx scripts/generate-sdk.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

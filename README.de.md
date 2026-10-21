@@ -166,6 +166,7 @@ Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommenta
 <summary><b>Integrationen</b></summary>
 
 - REST-API mit Lese- oder Schreib-Tokens, signierte Webhooks
+- **OpenAPI**-Beschreibung jeder Instanz (`/api/openapi.json`, lesbar unter `/api/docs`) mit generierten [TypeScript- und Python-Clients](sdk/)
 - **n8n-Community-Knoten** (`n8n-nodes-flowplan`)
 - [MCP-Server](https://docs.flowplan.org/de/mcp) für Claude, ChatGPT und andere Assistenten – nur mit den Rechten der jeweiligen Person
 - Kalender-Abos und CalDAV in beide Richtungen, Git-Anbindung, Web-Clipper

@@ -166,6 +166,7 @@ Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, rea
 <summary><b>Integrations</b></summary>
 
 - REST API with read or write tokens, signed webhooks
+- **OpenAPI** description of every instance (`/api/openapi.json`, readable at `/api/docs`) with generated [TypeScript and Python clients](sdk/)
 - **n8n community node** (`n8n-nodes-flowplan`)
 - [MCP server](https://docs.flowplan.org/mcp) for Claude, ChatGPT and other assistants – with the person's own permissions only
 - Calendar subscriptions and two-way CalDAV, Git connection, web clipper

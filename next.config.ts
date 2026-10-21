@@ -70,6 +70,11 @@ const config: NextConfig = {
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {
+        // The API description is public and the same for everyone (lib/openapi.ts).
+        source: "/api/openapi.json",
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
+      },
+      {
         source: "/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
