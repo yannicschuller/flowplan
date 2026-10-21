@@ -24,6 +24,7 @@ import { ct } from "./content-locale";
 import { dashboardSummary } from "./dashboard";
 import { commentText } from "./comment-content";
 import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
+import { aliasList, pageAliases } from "./aliases";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { whiteboardSvg } from "./whiteboard-svg";
 import type { Identity, Page, Row, Field, Space } from "./types";
@@ -470,6 +471,12 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       if (field.type === "checkbox") out = !!value;
       else if (field.type === "number") out = typeof value === "number" && Number.isFinite(value) ? value : null;
       else if (field.type === "multiselect") out = list.map(String);
+      else if (field.type === "aliases") {
+        // Obsidian's key, so a round trip keeps them.
+        const aliases = aliasList(value);
+        if (aliases.length && !("aliases" in result)) result.aliases = aliases;
+        continue;
+      }
       else if (field.type === "checklist")
         out = (list as { text?: string; done?: boolean }[]).map((item) => `[${item?.done ? "x" : " "}] ${item?.text || ""}`);
       else if (field.type === "relation") {
@@ -495,7 +502,9 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   for (const page of selected) {
     const path = paths.get(page.id)!,
       ctx = context(path);
-    let markdown = `# ${markdownText(page.title)}\n\n`;
+    // Pages have frontmatter only for their aliases (as Obsidian reads them).
+    const aliases = pageAliases(page);
+    let markdown = (aliases.length ? toFrontmatter({ aliases }) + "\n" : "") + `# ${markdownText(page.title)}\n\n`;
     if (page.cover.startsWith("/api/files/")) {
       const cover = ctx.url(page.cover);
       if (cover) markdown += `![Cover](<${markdownUrl(cover)}>)\n\n`;

@@ -71,6 +71,8 @@ export type Page = {
   owner_id?: string | null;
   review_at?: string | null;
   review_every_days?: number | null;
+  // Other names of the page as a JSON array (lib/aliases.ts).
+  aliases?: string | null;
 };
 export type FieldType =
   | "text"
@@ -95,7 +97,10 @@ export type FieldType =
   | "id"
   | "progress"
   | "time"
-  | "sprint";
+  | "sprint"
+  // Other names of the record (at most one per database): found by @
+  // mentions, search and unlinked mentions like the title (lib/aliases.ts).
+  | "aliases";
 export type Field = {
   id: string;
   name: string;

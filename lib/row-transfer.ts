@@ -6,6 +6,7 @@
 // records with their content and files; a move keeps the record itself –
 // content, comments, versions, time and Git links travel with it – and
 // gives it a number in the new database.
+import { aliasList } from "./aliases";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -41,7 +42,8 @@ function match(source: Field, target: Field[], isTitle: boolean) {
 }
 function compatible(from: Field["type"], to: Field["type"]) {
   if (from === to) return true;
-  if (to === "text") return TEXTLIKE.has(from) || ["number", "select", "multiselect", "date", "checkbox"].includes(from);
+  if (to === "text") return TEXTLIKE.has(from) || ["number", "select", "multiselect", "date", "checkbox", "aliases"].includes(from);
+  if (to === "aliases") return from === "text" || from === "multiselect";
   if (TEXTLIKE.has(from) && TEXTLIKE.has(to)) return false;
   if ((from === "select" && to === "multiselect") || (from === "multiselect" && to === "select")) return true;
   if (from === "text" && to === "number") return true;
@@ -63,6 +65,8 @@ function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o
       options(list);
       return list;
     }
+    case "aliases":
+      return aliasList(value);
     case "text":
       return from.type === "checkbox" ? (value ? "✓" : "") : cellText(value);
     case "number": {

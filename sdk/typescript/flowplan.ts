@@ -67,7 +67,7 @@ export type Page = {
 export type Field = {
   id: string;
   name: string;
-  type: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "url" | "email" | "phone" | "checklist" | "person" | "relation" | "rollup" | "formula" | "created_at" | "updated_at" | "created_by" | "updated_by" | "files" | "id" | "progress" | "time" | "sprint";
+  type: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "url" | "email" | "phone" | "checklist" | "person" | "relation" | "rollup" | "formula" | "created_at" | "updated_at" | "created_by" | "updated_by" | "files" | "id" | "progress" | "time" | "sprint" | "aliases";
   options?: string[];
   formula?: string;
   relationPage?: string;
@@ -603,6 +603,18 @@ export type CommandPageReviewResult = {
   everyDays: number | null;
 };
 
+/** Set the aliases of a page. Needs editor rights. Other names of the page (at most 10, each at most 100 characters; trimmed, duplicates ignoring case removed). @ mentions, the search and unlinked mentions find the page by them like by its title. An empty list removes them. Records keep their aliases in a property of type `aliases`. */
+export type CommandPageAliases = {
+  action: "page.aliases";
+  pageId: string;
+  aliases: string[];
+};
+
+export type CommandPageAliasesResult = {
+  ok: true;
+  aliases: string[];
+};
+
 /** Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule. */
 export type CommandRowRepeat = {
   action: "row.repeat";
@@ -776,7 +788,7 @@ export type CommandDatabaseUpdate = {
   fields: ({
     id: string;
     name: string;
-    type: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "url" | "email" | "phone" | "checklist" | "person" | "relation" | "rollup" | "formula" | "created_at" | "updated_at" | "created_by" | "updated_by" | "files" | "id" | "progress" | "time" | "sprint";
+    type: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "url" | "email" | "phone" | "checklist" | "person" | "relation" | "rollup" | "formula" | "created_at" | "updated_at" | "created_by" | "updated_by" | "files" | "id" | "progress" | "time" | "sprint" | "aliases";
     options?: string[];
     formula?: string;
     relationPage?: string;
@@ -1084,10 +1096,10 @@ export type CommandWebhookDeleteResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : CommandResult;
 
 // ---- Client ----
 

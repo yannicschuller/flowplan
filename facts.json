@@ -1,6 +1,6 @@
 {
   "views": 10,
-  "fieldTypes": 23,
+  "fieldTypes": 24,
   "questionTypes": 19,
   "languages": 3,
   "calloutTypes": 5,
@@ -43,7 +43,8 @@
       "id",
       "progress",
       "time",
-      "sprint"
+      "sprint",
+      "aliases"
     ],
     "questionTypes": [
       "short",

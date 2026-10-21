@@ -28,6 +28,7 @@ import { htmlState } from "./document-server";
 import { documentChanged } from "./document-live";
 import { markdownToHtml } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
+import { frontmatterAliases, pageAliases, storedAliases } from "./aliases";
 import { importMarkdownRecords } from "./markdown-records";
 import type { Identity } from "./types";
 
@@ -159,8 +160,12 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
   if (page.kind !== "document" || page.locked) return false;
   // Journal days behind a PIN stay untouched.
   requireUnlocked(user, page);
-  const body = splitFrontmatter(markdown)
-    .body.replace(/^\s*#\s+[^\n]*\n+/, "")
+  const { data, body: text } = splitFrontmatter(markdown);
+  // Aliases come back from the frontmatter (the export writes them there).
+  const aliases = frontmatterAliases(data);
+  const aliasesChanged = JSON.stringify(aliases) !== JSON.stringify(pageAliases(page));
+  if (aliasesChanged) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), page.id);
+  const body = text.replace(/^\s*#\s+[^\n]*\n+/, "")
     .replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "");
   const html = markdownToHtml(
     body.replace(/^!\[Cover\]\([^)]*\)\n+/, ""),
@@ -169,7 +174,7 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
     { whiteboard: (id) => one<{ workspace_id: string; kind: string }>("SELECT workspace_id,kind FROM pages WHERE id=? AND deleted_at IS NULL", id)?.workspace_id === page.workspace_id && readableBoard(user, id) },
   );
   const current = one<{ html: string; state: Uint8Array | null }>("SELECT html,state FROM documents WHERE page_id=?", page.id);
-  if (!current || current.html === html) return false;
+  if (!current || current.html === html) return aliasesChanged;
   run(
     "INSERT INTO snapshots(id,page_id,state,html,title,created_by,kind) VALUES(?,?,?,?,?,?,'manual')",
     id(),

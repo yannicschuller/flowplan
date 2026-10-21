@@ -13,6 +13,7 @@ import { assertRowAccess, rowRoleResolver } from "./row-access";
 import { requireRow } from "./row-documents";
 import { cellText } from "./cell-text";
 import { HttpError } from "./auth";
+import { aliasIndex, MIN_ALIAS_MENTION, pageAliases, recordAliases } from "./aliases";
 import type { Field, Identity, Page } from "./types";
 
 // A link to a page, a record (#page=…&row=…) or an embedded board, database
@@ -116,73 +117,96 @@ function usableTitle(title: string) {
   return t.length >= 4 && t.length <= 120 && t !== "Ohne Titel" ? t : "";
 }
 type Target = { page: Page; rowId?: string };
-type Mention = { id: string; rowId?: string; pageTitle?: string; title: string; icon: string; snippet: string };
-function recordTitle(page: Page, rowId: string) {
+// The matched alias is set when the text names the item by an alias.
+type Mention = { id: string; rowId?: string; pageTitle?: string; title: string; icon: string; snippet: string; alias?: string };
+function recordInfo(page: Page, rowId: string) {
   const row = one<{ cells: string }>("SELECT cells FROM rows WHERE id=? AND page_id=?", rowId, page.id);
-  if (!row) return "";
+  if (!row) return { title: "", aliases: [] as string[] };
   const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)?.fields || "[]") as Field[];
-  return cellText((JSON.parse(row.cells) as Record<string, unknown>)[fields[0]?.id || "title"]);
+  const cells = JSON.parse(row.cells) as Record<string, unknown>;
+  return { title: cellText(cells[fields[0]?.id || "title"]), aliases: recordAliases(fields, cells) };
 }
-const titleOf = (target: Target) => (target.rowId ? recordTitle(target.page, target.rowId) : target.page.title);
-function snippetOf(html: string, title: string) {
-  const needle = lower(title);
-  const paragraph = htmlParagraphs(html).find((p) => lower(p).includes(needle));
+const recordTitle = (page: Page, rowId: string) => recordInfo(page, rowId).title;
+// The names an item is mentioned by: its title (found anywhere in a word,
+// from four characters) and its aliases (as whole words, from two).
+type Name = { text: string; alias: boolean };
+function namesOf(target: Target): Name[] {
+  const info = target.rowId ? recordInfo(target.page, target.rowId) : { title: target.page.title, aliases: pageAliases(target.page) };
+  const title = usableTitle(info.title);
+  return [
+    ...(title ? [{ text: title, alias: false }] : []),
+    ...info.aliases
+      .filter((alias) => [...alias].length >= MIN_ALIAS_MENTION && lower(alias) !== lower(title))
+      .map((text) => ({ text, alias: true })),
+  ];
+}
+const nameIndex = (text: string, name: Name) => (name.alias ? aliasIndex(text, name.text) : lower(text).indexOf(lower(name.text)));
+function snippetOf(html: string, name: Name) {
+  const paragraph = htmlParagraphs(html).find((p) => nameIndex(p, name) >= 0);
   if (!paragraph) return null;
-  const at = lower(paragraph).indexOf(needle);
+  const at = nameIndex(paragraph, name),
+    length = name.text.length;
   const start = Math.max(0, at - 50);
-  return `${start ? "…" : ""}${paragraph.slice(start, at + title.length + 60)}${at + title.length + 60 < paragraph.length ? "…" : ""}`;
+  return `${start ? "…" : ""}${paragraph.slice(start, at + length + 60)}${at + length + 60 < paragraph.length ? "…" : ""}`;
 }
-// Documents and record texts that contain the title of a page or record as
-// text but do not link to it.
+// Documents and record texts that contain the title or an alias of a page
+// or record as text but do not link to it.
 export function unlinkedMentions(user: Identity, page: Page, rowId?: string) {
-  const title = usableTitle(titleOf({ page, rowId }));
-  if (!title) return [];
+  const names = namesOf({ page, rowId });
   const targetId = rowId || page.id;
   const found: Mention[] = [];
-  for (const doc of all<Page & { html: string }>(
-    `SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id
-     WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.id!=? AND p.kind='document'
-     AND instr(lower(d.html), lower(?))>0 AND instr(d.html, ?)=0 LIMIT 200`,
-    page.workspace_id,
-    page.id,
-    title,
-    targetId,
-  )) {
-    if (!pageRole(user, doc) || journalLocked(user, doc)) continue;
-    const snippet = snippetOf(doc.html, title);
-    if (!snippet) continue;
-    const host = doc.synced && doc.parent_id ? one<Page>("SELECT * FROM pages WHERE id=?", doc.parent_id) : null;
-    found.push({
-      id: doc.id,
-      title: host ? `${host.title} (synchronisierter Block)` : doc.title,
-      icon: host?.icon || doc.icon,
-      snippet,
-    });
-    if (found.length >= 20) return found;
-  }
-  // Record texts, as far as the person may read the record.
+  const seen = new Set<string>();
   const resolvers = new Map<string, ReturnType<typeof rowRoleResolver> | null>();
-  for (const row of all<RecordSource & { db_title: string; db_icon: string }>(
-    `SELECT r.id,r.page_id,r.cells,r.access,r.created_by,d.html,p.title db_title,p.icon db_icon
-     FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
-     WHERE p.workspace_id=? AND p.deleted_at IS NULL AND r.id!=?
-     AND instr(lower(d.html), lower(?))>0 AND instr(d.html, ?)=0 LIMIT 200`,
-    page.workspace_id,
-    targetId,
-    title,
-    targetId,
-  )) {
-    if (!resolvers.has(row.page_id)) {
-      const database = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id)!;
-      resolvers.set(row.page_id, pageRole(user, database) && !journalLocked(user, database) ? rowRoleResolver(user, database) : null);
+  for (const name of names) {
+    const alias = name.alias ? { alias: name.text } : {};
+    for (const doc of all<Page & { html: string }>(
+      `SELECT p.*,d.html FROM pages p JOIN documents d ON d.page_id=p.id
+       WHERE p.workspace_id=? AND p.deleted_at IS NULL AND p.id!=? AND p.kind='document'
+       AND instr(lower(d.html), lower(?))>0 AND instr(d.html, ?)=0 LIMIT 200`,
+      page.workspace_id,
+      page.id,
+      name.text,
+      targetId,
+    )) {
+      if (seen.has(doc.id) || !pageRole(user, doc) || journalLocked(user, doc)) continue;
+      const snippet = snippetOf(doc.html, name);
+      if (!snippet) continue;
+      seen.add(doc.id);
+      const host = doc.synced && doc.parent_id ? one<Page>("SELECT * FROM pages WHERE id=?", doc.parent_id) : null;
+      found.push({
+        id: doc.id,
+        title: host ? `${host.title} (synchronisierter Block)` : doc.title,
+        icon: host?.icon || doc.icon,
+        snippet,
+        ...alias,
+      });
+      if (found.length >= 20) return found;
     }
-    const visible = resolvers.get(row.page_id);
-    if (!visible || !visible(row)) continue;
-    const snippet = snippetOf(row.html, title);
-    if (!snippet) continue;
-    const source = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id)!;
-    found.push({ id: row.page_id, rowId: row.id, pageTitle: row.db_title, title: recordTitle(source, row.id) || "Ohne Titel", icon: row.db_icon, snippet });
-    if (found.length >= 20) break;
+    // Record texts, as far as the person may read the record.
+    for (const row of all<RecordSource & { db_title: string; db_icon: string }>(
+      `SELECT r.id,r.page_id,r.cells,r.access,r.created_by,d.html,p.title db_title,p.icon db_icon
+       FROM row_documents d JOIN rows r ON r.id=d.row_id JOIN pages p ON p.id=r.page_id
+       WHERE p.workspace_id=? AND p.deleted_at IS NULL AND r.id!=?
+       AND instr(lower(d.html), lower(?))>0 AND instr(d.html, ?)=0 LIMIT 200`,
+      page.workspace_id,
+      targetId,
+      name.text,
+      targetId,
+    )) {
+      if (seen.has(row.id)) continue;
+      if (!resolvers.has(row.page_id)) {
+        const database = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id)!;
+        resolvers.set(row.page_id, pageRole(user, database) && !journalLocked(user, database) ? rowRoleResolver(user, database) : null);
+      }
+      const visible = resolvers.get(row.page_id);
+      if (!visible || !visible(row)) continue;
+      const snippet = snippetOf(row.html, name);
+      if (!snippet) continue;
+      seen.add(row.id);
+      const source = one<Page>("SELECT * FROM pages WHERE id=?", row.page_id)!;
+      found.push({ id: row.page_id, rowId: row.id, pageTitle: row.db_title, title: recordTitle(source, row.id) || "Ohne Titel", icon: row.db_icon, snippet, ...alias });
+      if (found.length >= 20) return found;
+    }
   }
   return found;
 }
@@ -207,20 +231,24 @@ export function linkMention(
     if (!row) throw new HttpError(404, "Datensatz fehlt.");
     assertRowAccess(user, sourcePage, row, true);
   } else if (sourcePage.kind !== "document") throw new HttpError(400, "Kein Dokument.");
-  const title = usableTitle(titleOf({ page: targetPage, rowId: target.rowId }));
-  if (!title) throw new HttpError(400, "Der Titel ist zu kurz zum Verlinken.");
-  const needle = lower(title);
+  const names = namesOf({ page: targetPage, rowId: target.rowId });
+  if (!names.length) throw new HttpError(400, "Der Titel ist zu kurz zum Verlinken.");
   const href = target.rowId ? `/#page=${targetPage.id}&row=${target.rowId}` : `/#page=${targetPage.id}`;
+  // The first mention by the title, else by an alias; the text stays as
+  // written ("PAC" links to "Chauffage" and still reads "PAC").
   const result = rewriteDocument(sourcePage.id, source.rowId ?? null, user.id, (doc) => {
     let range: { from: number; to: number } | null = null;
-    doc.descendants((node: PMNode, pos: number) => {
-      if (range) return false;
-      if (!node.isText || !node.text) return true;
-      if (node.marks.some((mark) => mark.type.name === "link" || mark.type.name === "code")) return false;
-      const at = lower(node.text).indexOf(needle);
-      if (at >= 0) range = { from: pos + at, to: pos + at + title.length };
-      return false;
-    });
+    for (const name of names) {
+      doc.descendants((node: PMNode, pos: number) => {
+        if (range) return false;
+        if (!node.isText || !node.text) return true;
+        if (node.marks.some((mark) => mark.type.name === "link" || mark.type.name === "code")) return false;
+        const at = nameIndex(node.text, name);
+        if (at >= 0) range = { from: pos + at, to: pos + at + name.text.length };
+        return false;
+      });
+      if (range) break;
+    }
     if (!range) return null;
     const { from, to } = range as { from: number; to: number };
     const link = doc.type.schema.marks.link.create({ href });

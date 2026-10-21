@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 43) return;
+  if (globalDb.flowplanSchema === 44) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -620,7 +620,14 @@ function migrate(d: DatabaseSync) {
   }
   // Dashboard pages: their tiles as JSON (lib/dashboard-schema.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS dashboards(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,tiles TEXT NOT NULL DEFAULT '[]',updated_at TEXT DEFAULT CURRENT_TIMESTAMP);`);
-  globalDb.flowplanSchema = 43;
+  // Aliases of pages (lib/aliases.ts): a JSON array of other names, kept in
+  // the search index next to the title.
+  if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "aliases"))
+    d.exec("ALTER TABLE pages ADD COLUMN aliases TEXT");
+  d.exec(
+    "CREATE TRIGGER IF NOT EXISTS search_page_aliases AFTER UPDATE OF aliases ON pages BEGIN INSERT INTO search_dirty SELECT NEW.id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.id AND row_id=''); END;",
+  );
+  globalDb.flowplanSchema = 44;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

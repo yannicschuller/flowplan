@@ -79,7 +79,7 @@ Page = TypedDict("Page", {
 Field = TypedDict("Field", {
     "id": Required[str],
     "name": Required[str],
-    "type": Required[Literal["text", "number", "date", "select", "multiselect", "checkbox", "url", "email", "phone", "checklist", "person", "relation", "rollup", "formula", "created_at", "updated_at", "created_by", "updated_by", "files", "id", "progress", "time", "sprint"]],
+    "type": Required[Literal["text", "number", "date", "select", "multiselect", "checkbox", "url", "email", "phone", "checklist", "person", "relation", "rollup", "formula", "created_at", "updated_at", "created_by", "updated_by", "files", "id", "progress", "time", "sprint", "aliases"]],
     "options": list[str],
     "formula": str,
     "relationPage": str,
@@ -419,6 +419,18 @@ CommandPageReviewResult = TypedDict("CommandPageReviewResult", {
     "everyDays": Required[Optional[float]],
 }, total=False)
 
+# Set the aliases of a page. Needs editor rights. Other names of the page (at most 10, each at most 100 characters; trimmed, duplicates ignoring case removed). @ mentions, the search and unlinked mentions find the page by them like by its title. An empty list removes them. Records keep their aliases in a property of type `aliases`.
+CommandPageAliases = TypedDict("CommandPageAliases", {
+    "action": Required[Literal["page.aliases"]],
+    "pageId": Required[str],
+    "aliases": Required[list[str]],
+}, total=False)
+
+CommandPageAliasesResult = TypedDict("CommandPageAliasesResult", {
+    "ok": Required[Literal[True]],
+    "aliases": Required[list[str]],
+}, total=False)
+
 # Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule.
 CommandRowRepeat = TypedDict("CommandRowRepeat", {
     "action": Required[Literal["row.repeat"]],
@@ -635,7 +647,7 @@ CommandWebhookDeleteResult = TypedDict("CommandWebhookDeleteResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

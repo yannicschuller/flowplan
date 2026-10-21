@@ -8,6 +8,8 @@ import { readZip } from "./archive";
 import { createPage } from "./seed";
 import { htmlState } from "./document-server";
 import { markdownToHtml } from "./markdown-import";
+import { splitFrontmatter } from "./frontmatter";
+import { frontmatterAliases, storedAliases } from "./aliases";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
 import { boardState, storeBoardImages } from "./whiteboard-import-server";
@@ -299,8 +301,14 @@ export async function importZip(
         continue;
       }
       if (node.kind === "document") {
+        // Obsidian aliases in the frontmatter become the page's aliases; a
+        // frontmatter with nothing else (as Flowplan exports it) is dropped.
+        const { data, body: rest } = splitFrontmatter(text(node.path));
+        const aliases = frontmatterAliases(data);
+        if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pid);
+        const onlyAliases = aliases.length && Object.keys(data).every((key) => ["aliases", "alias"].includes(key.trim().toLowerCase()));
         // The first heading repeats the page title.
-        const body = text(node.path).replace(/^#\s+[^\n]*\n?/, "");
+        const body = (onlyAliases ? rest.replace(/^\s*\n/, "") : text(node.path)).replace(/^#\s+[^\n]*\n?/, "");
         const html = markdownToHtml(body, resolver(node.path, pid));
         run(
           "UPDATE documents SET html=?,state=? WHERE page_id=?",

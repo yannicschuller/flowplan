@@ -112,7 +112,7 @@ function actionValue(action: Extract<AutomationAction, { type: "set" }>, field: 
   if (v === "@now") return new Date().toISOString().slice(0, 16) + "Z";
   if (v === "@actor") return actor?.id ?? null;
   if (v === "@creator") return row.created_by || null;
-  if (v === "@clear") return field.type === "checkbox" ? false : field.type === "multiselect" ? [] : "";
+  if (v === "@clear") return field.type === "checkbox" ? false : field.type === "multiselect" || field.type === "aliases" ? [] : "";
   return v;
 }
 

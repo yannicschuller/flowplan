@@ -1,4 +1,5 @@
 import { copyDashboard, dashboardTiles } from "./dashboard";
+import { aliasList, pageAliases, storedAliases } from "./aliases";
 import { MAX_TILES, parseTiles } from "./dashboard-schema";
 import { whiteboardData, writeWhiteboard } from "./whiteboard";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
@@ -215,6 +216,8 @@ export const archiveSchema = z.object({
           .nullable()
           .optional(),
         review_every_days: z.number().int().min(1).max(3650).nullable().optional(),
+        // Other names of the page (lib/aliases.ts).
+        aliases: z.array(z.string().max(1000)).max(100).optional(),
         locked: z.number().int().min(0).max(1),
         full_width: z.number().int().min(0).max(1),
         font: z.enum(["sans", "serif", "mono"]),
@@ -372,6 +375,7 @@ function snapshotFor(user: Identity, wid: string) {
         updated_at: p.updated_at,
         review_at: p.review_at ?? null,
         review_every_days: p.review_every_days ?? null,
+        ...(pageAliases(p).length ? { aliases: pageAliases(p) } : {}),
         locked: p.locked,
         full_width: p.full_width,
         font: p.font,
@@ -1099,6 +1103,7 @@ async function importEntries(
         const pid = pageMap.get(p.id)!;
         if (p.review_at || p.review_every_days)
           run("UPDATE pages SET review_at=?,review_every_days=? WHERE id=?", p.review_at ?? null, p.review_every_days ?? null, pid);
+        if (p.aliases?.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliasList(p.aliases)), pid);
         if (p.form && p.kind === "database")
           run(
             "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,0,?,?,?)",

@@ -1,3 +1,4 @@
+import { parseAliases } from "./page-aliases";
 import {
   applyHtml,
   liveKey,
@@ -303,7 +304,8 @@ function validatedCells(
       if (values.some((v) => !f.options?.includes(v)))
         throw new HttpError(400, "Ungültige Auswahl.");
       cells[key] = values;
-    } else if (f.type === "checklist")
+    } else if (f.type === "aliases") cells[key] = parseAliases(value);
+    else if (f.type === "checklist")
       cells[key] = z
         .array(z.object({ text: z.string().max(500), done: z.boolean() }))
         .max(100)

@@ -7,6 +7,7 @@ import { SealCheck, UserCircle } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { Modal } from "./ui";
+import { PageAliases } from "./page-aliases";
 import type { Page, User } from "@/lib/types";
 
 type Member = Pick<User, "id" | "name"> & { guest?: number; disabled?: number };
@@ -51,6 +52,7 @@ export function PageReview({ page, members, editable, act }: { page: Page; membe
         </div>
       )}
       {open && <PageReviewDialog page={page} members={members} editable={editable} act={act} onClose={() => setOpen(false)} />}
+      <PageAliases page={page} editable={editable} act={act} />
     </>
   );
 }

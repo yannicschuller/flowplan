@@ -1,4 +1,5 @@
 "use client";
+import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutlineOpen } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -1596,9 +1597,13 @@ export default function DocumentEditor({
   });
   // The mention dialog: what matches the typed text.
   const referenceTerm = referenceQuery.trim().toLowerCase();
-  const referencePages = pages.filter(
-    (p) => p.id !== pageId && (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)),
-  );
+  // Pages match by title or by an alias ("Chauffage · PAC").
+  const referencePages = pages.flatMap((p): { page: Page; alias?: string }[] => {
+    if (p.id === pageId) return [];
+    if (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)) return [{ page: p, alias: undefined }];
+    const alias = matchedAlias(p.title, pageAliases(p), referenceTerm);
+    return alias ? [{ page: p, alias }] : [];
+  });
   const referenceMembers = members.filter((u) => !referenceTerm || u.name.toLowerCase().includes(referenceTerm));
   return (
     <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
@@ -2405,7 +2410,7 @@ export default function DocumentEditor({
             aria-label={t("Seiten, Einträge und Personen suchen", "Search pages, records and people")}
           />
           {referencePages.length > 0 && <h3>{t("Seiten", "Pages")}</h3>}
-          {referencePages.map((p) => (
+          {referencePages.map(({ page: p, alias }) => (
               <button
                 key={p.id}
                 onClick={() => {
@@ -2414,7 +2419,8 @@ export default function DocumentEditor({
                     .focus()
                     .insertContent({
                       type: "text",
-                      text: p.title,
+                      // Found by an alias: the alias is the link text.
+                      text: alias || p.title,
                       marks: [
                         { type: "link", attrs: { href: `/#page=${p.id}` } },
                       ],
@@ -2425,6 +2431,7 @@ export default function DocumentEditor({
               >
                 <LinkIcon />
                 {p.title}
+                {alias && <span className="alias-hit"> · {alias}</span>}
               </button>
             ))}
           <RecordReferences
@@ -2437,7 +2444,7 @@ export default function DocumentEditor({
                 .focus()
                 .insertContent({
                   type: "text",
-                  text: record.title,
+                  text: record.alias || record.title,
                   marks: [
                     {
                       type: "link",
@@ -2645,7 +2652,7 @@ function from64(value: string) {
   return Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
 }
 
-type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string };
+type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string; alias?: string };
 // Records for the mention dialog: the workspace search (kind "row") finds
 // them and leaves out what the person may not read.
 function RecordReferences({
@@ -2699,6 +2706,7 @@ function RecordReferences({
           <Rows />
           <span>
             {hit.title || t("Ohne Titel", "Untitled")}
+            {hit.alias && <span className="alias-hit"> · {hit.alias}</span>}
             {hit.pageTitle && <small className="muted"> · {hit.pageTitle}</small>}
           </span>
         </button>

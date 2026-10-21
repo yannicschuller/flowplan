@@ -15,6 +15,7 @@ import { rowGrants, rowRoleResolver } from "./row-access";
 import { HttpError } from "./auth";
 import { replaceRowDocument } from "./row-documents";
 import { relationPairs } from "./relation-sync";
+import { parseAliases } from "./page-aliases";
 import type { Identity, Field, Page, Row } from "./types";
 const computed = [
   "formula",
@@ -53,7 +54,8 @@ export function validateCellPatch(
       if (values.some((v) => !f.options?.includes(v)))
         throw new HttpError(400, "Unbekannte Auswahl.");
       result[key] = [...new Set(values)];
-    } else if (f.type === "checklist")
+    } else if (f.type === "aliases") result[key] = parseAliases(value);
+    else if (f.type === "checklist")
       result[key] = z
         .array(z.object({ text: z.string().max(500), done: z.boolean() }))
         .max(100)

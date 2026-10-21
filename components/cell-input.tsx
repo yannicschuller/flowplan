@@ -14,6 +14,7 @@ import {
 } from "@/lib/file-cells";
 import type { Field, Row, User } from "@/lib/types";
 import { useSprints } from "./sprint-context";
+import { aliasList } from "@/lib/aliases";
 export type CellFile = { url: string; name: string; mime: string };
 export function CellInput({
   field: f,
@@ -169,6 +170,22 @@ export function CellInput({
           </label>
         ))}
       </div>
+    );
+  // Aliases: other names, separated by commas.
+  if (f.type === "aliases")
+    return (
+      <input
+        aria-label={f.name}
+        disabled={disabled}
+        value={draft}
+        placeholder={placeholder ?? t("z. B. PAC, Pompe à chaleur", "e.g. PAC, heat pump")}
+        title={t("Andere Namen, durch Kommas getrennt – @-Erwähnungen und die Suche finden den Eintrag auch darüber.", "Other names, separated by commas – @ mentions and search find the record by them too.")}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (commit === "change") onChange(aliasList(e.target.value));
+        }}
+        onBlur={() => commit === "blur" && onChange(aliasList(draft))}
+      />
     );
   if (f.type === "checklist") {
     const items = Array.isArray(value)

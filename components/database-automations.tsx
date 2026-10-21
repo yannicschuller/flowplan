@@ -23,7 +23,7 @@ const newId = () => crypto.randomUUID().slice(0, 12);
 // The natural first value of a "set" action for a property.
 const startValue = (f: Field | undefined): unknown =>
   !f ? "" : f.type === "date" ? "@today" : f.type === "person" ? "@actor" : f.type === "checkbox" ? true : f.type === "select" ? f.options?.[0] || "" : "";
-const settable = (f: Field) => !["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "files", "relation", "checklist"].includes(f.type);
+const settable = (f: Field) => !["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "files", "relation", "checklist", "aliases"].includes(f.type);
 
 // Rules of a database: "When …, only if …, then …". Each rule can be
 // switched off; suggestions fill in the usual cases.

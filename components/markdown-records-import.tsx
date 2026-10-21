@@ -64,6 +64,7 @@ export function MarkdownRecordsImport({
     select: t("Auswahl", "Select"),
     multiselect: t("Mehrfachauswahl", "Multi-select"),
     url: "URL",
+    aliases: t("Aliasse", "Aliases"),
   };
   return (
     <Modal open onClose={onClose} title={t("Markdown importieren", "Import Markdown")}>
