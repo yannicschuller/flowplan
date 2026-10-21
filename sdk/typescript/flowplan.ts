@@ -235,6 +235,7 @@ export type View = {
   groupRowOrder?: Record<string, string[]>;
   columnWidths?: Record<string, number>;
   calculations?: unknown[][];
+  recordOpen?: "center" | "side" | "full";
 };
 
 export type Database = {
@@ -816,6 +817,7 @@ export type CommandDatabaseUpdate = {
     groupRowOrder?: Record<string, string[]>;
     columnWidths?: Record<string, number>;
     calculations?: unknown[][];
+    recordOpen?: "center" | "side" | "full";
   })[];
 };
 
@@ -1300,6 +1302,21 @@ export class FlowplanClient {
   /** Profile picture of a person you share a workspace with (GET /api/avatars/{userId}) */
   async avatar(userId: string, options?: RequestOptions): Promise<Response> {
     return this.request("GET", `/api/avatars/${encodeURIComponent(userId)}`, {}, options);
+  }
+
+  /** A page or record as a Word file — Reads only, so read tokens may use it. `row` picks one record of the database `page`. (GET /api/export/docx) */
+  async exportDocx(query: { page: string; row?: string }, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/export/docx`, { query }, options);
+  }
+
+  /** A page with sub-pages or a whole space as one print view — Reads only. Either `page` (with `children=1` its sub-pages) or `space`. Answers with an HTML print view (cover, table of contents, one chapter per page) that a browser turns into a PDF; at most 200 pages. (GET /api/export/pdf) */
+  async exportPrintView(query?: { page?: string; children?: "0" | "1"; space?: string }, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/export/pdf`, { query }, options);
+  }
+
+  /** A page tree or a whole space as an e-book — Reads only. Either `page` (with `children=1` its sub-pages) or `space`; EPUB 3 with one chapter per page, at most 200 pages. (GET /api/export/epub) */
+  async exportEpub(query?: { page?: string; children?: "0" | "1"; space?: string }, options?: RequestOptions): Promise<Response> {
+    return this.request("GET", `/api/export/epub`, { query }, options);
   }
 
   /** Export a page, record or space as Markdown — Reads only, so read tokens may use it. `markdown` answers with one file, `zip` with an archive (files, sub-pages, history). (POST /api/markdown-export) */

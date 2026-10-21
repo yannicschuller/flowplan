@@ -213,9 +213,9 @@ test("board and table groups reorder, collapse and reset with persistence", asyn
   await expect
     .poll(tableLabels)
     .toEqual(["Gruppe Doing", "Gruppe Open", "Gruppe Done"]);
-  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  await page.getByRole("button", { name: /^Gruppieren/ }).click();
   const settings = page.getByRole("dialog", {
-    name: "Ansicht konfigurieren",
+    name: "Gruppierung",
     exact: true,
   });
   await expect(
@@ -230,9 +230,8 @@ test("board and table groups reorder, collapse and reset with persistence", asyn
   await expect
     .poll(async () => (await read()).database.views[1].groupSettings?.order)
     .toEqual([]);
-  await settings
-    .getByRole("button", { name: "Schließen", exact: true })
-    .click();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
   await expect
     .poll(tableLabels)
     .toEqual(["Gruppe Open", "Gruppe Doing", "Gruppe Done"]);

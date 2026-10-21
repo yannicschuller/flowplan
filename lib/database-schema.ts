@@ -141,6 +141,7 @@ export const view = z
       .record(z.string(), z.number().int().min(80).max(800))
       .optional(),
     calculations: calculationsSchema.optional(),
+    recordOpen: z.enum(["center", "side", "full"]).optional(),
   })
   .superRefine((v, ctx) => {
     if (v.filterGroup && v.filters.length)

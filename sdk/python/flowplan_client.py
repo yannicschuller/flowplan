@@ -128,6 +128,7 @@ View = TypedDict("View", {
     "groupRowOrder": dict[str, list[str]],
     "columnWidths": dict[str, int],
     "calculations": list[list[Any]],
+    "recordOpen": Literal["center", "side", "full"],
 }, total=False)
 
 Database = TypedDict("Database", {
@@ -740,6 +741,23 @@ UploadFileForm = TypedDict("UploadFileForm", {
     "purpose": Literal["cover"],
 }, total=False)
 
+ExportDocxQuery = TypedDict("ExportDocxQuery", {
+    "page": Required[str],  # Page ID
+    "row": str,  # Record ID (one record of the database)
+}, total=False)
+
+ExportPrintViewQuery = TypedDict("ExportPrintViewQuery", {
+    "page": str,  # Page ID
+    "children": Literal["0", "1"],  # `1` includes the sub-pages
+    "space": str,  # Space ID
+}, total=False)
+
+ExportEpubQuery = TypedDict("ExportEpubQuery", {
+    "page": str,  # Page ID
+    "children": Literal["0", "1"],  # `1` includes the sub-pages
+    "space": str,  # Space ID
+}, total=False)
+
 ExportBackupQuery = TypedDict("ExportBackupQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
@@ -1057,6 +1075,18 @@ class FlowplanClient:
     def avatar(self, user_id: str, headers: Optional[dict[str, str]] = None) -> bytes:
         """Profile picture of a person you share a workspace with (GET /api/avatars/{userId})"""
         return self._bytes("GET", "/api/avatars/" + _p(user_id), headers=headers)
+
+    def export_docx(self, query: "ExportDocxQuery", headers: Optional[dict[str, str]] = None) -> bytes:
+        """A page or record as a Word file — Reads only, so read tokens may use it. `row` picks one record of the database `page`. (GET /api/export/docx)"""
+        return self._bytes("GET", "/api/export/docx", query=dict(query) if query else None, headers=headers)
+
+    def export_print_view(self, query: Optional["ExportPrintViewQuery"] = None, headers: Optional[dict[str, str]] = None) -> bytes:
+        """A page with sub-pages or a whole space as one print view — Reads only. Either `page` (with `children=1` its sub-pages) or `space`. Answers with an HTML print view (cover, table of contents, one chapter per page) that a browser turns into a PDF; at most 200 pages. (GET /api/export/pdf)"""
+        return self._bytes("GET", "/api/export/pdf", query=dict(query) if query else None, headers=headers)
+
+    def export_epub(self, query: Optional["ExportEpubQuery"] = None, headers: Optional[dict[str, str]] = None) -> bytes:
+        """A page tree or a whole space as an e-book — Reads only. Either `page` (with `children=1` its sub-pages) or `space`; EPUB 3 with one chapter per page, at most 200 pages. (GET /api/export/epub)"""
+        return self._bytes("GET", "/api/export/epub", query=dict(query) if query else None, headers=headers)
 
     def markdown_export(self, body: "MarkdownExportOptions", headers: Optional[dict[str, str]] = None) -> bytes:
         """Export a page, record or space as Markdown — Reads only, so read tokens may use it. `markdown` answers with one file, `zip` with an archive (files, sub-pages, history). (POST /api/markdown-export)"""

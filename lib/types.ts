@@ -207,6 +207,9 @@ export type View = {
   groupRowOrder?: Record<string, string[]>;
   columnWidths?: Record<string, number>;
   calculations?: Record<string, import("./database-summary").CalculationChoice>;
+  // How this view opens its records; unset means the database default
+  // (recordLayout.open).
+  recordOpen?: import("./record-layout").RecordOpenMode;
 };
 export type Database = {
   page_id: string;

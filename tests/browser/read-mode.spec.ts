@@ -49,7 +49,7 @@ test("records switch to reading and open across the full width", async ({ page }
   await page.keyboard.press("ControlOrMeta+Alt+KeyE");
   await expect(record.getByLabel("Dokumentinhalt", { exact: true })).toHaveAttribute("contenteditable", "true");
   // As a full page, across the whole width.
-  await record.getByRole("button", { name: /Als ganze Seite öffnen/ }).click();
+  await record.getByRole("button", { name: "Als Seite öffnen", exact: true }).click();
   const narrow = (await record.boundingBox())!.width;
   await record.getByRole("button", { name: "Volle Breite" }).click();
   await expect.poll(async () => (await record.boundingBox())!.width).toBeGreaterThan(narrow + 100);

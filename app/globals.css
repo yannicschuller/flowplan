@@ -19676,3 +19676,293 @@ td.ai-filled {
   background: var(--hover);
   color: var(--text);
 }
+/* ---------------------------------------------------------------------------
+   Database toolbar chips and popovers, "more views" tab, pinned first column,
+   row keyboard navigation and the title link of table rows
+   (components/database-toolbar.tsx, chip-popover.tsx, database-view.tsx). */
+.toolbar-chips {
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.chip-popover-anchor {
+  position: relative;
+  display: inline-flex;
+}
+.toolbar-chip {
+  height: 28px;
+  padding: 0 10px;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.toolbar-chip > svg {
+  flex: none;
+}
+.toolbar-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toolbar-chip-caret {
+  color: var(--muted);
+  margin-right: -3px;
+}
+.toolbar-chip:hover,
+.toolbar-chip.open {
+  background: var(--hover);
+  color: var(--text);
+}
+.toolbar-chip.active {
+  color: var(--blue);
+  background: var(--blue-light);
+  border-color: transparent;
+}
+.toolbar-chip.active .toolbar-chip-caret {
+  color: inherit;
+}
+.toolbar-chip-icon {
+  width: 28px;
+  padding: 0;
+}
+.toolbar-chip-search {
+  padding-right: 3px;
+  cursor: text;
+}
+.toolbar-chip-search:hover {
+  background: var(--bg);
+}
+.toolbar-chip-search:focus-within {
+  border-color: var(--blue);
+}
+.toolbar-chip-search input {
+  width: 150px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text);
+}
+.toolbar-chip-search input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.toolbar-chip-clear {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--muted);
+}
+.chip-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 70;
+  min-width: 300px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 16px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  text-align: left;
+  transform-origin: top left;
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+.chip-popover:focus {
+  outline: none;
+}
+.chip-popover-filter {
+  width: min(640px, calc(100vw - 16px));
+}
+.chip-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.chip-panel > label {
+  margin: 0;
+  gap: 5px;
+  font-size: 12px;
+}
+.chip-panel > .checkbox-label {
+  font-size: 13px;
+}
+.chip-panel > p {
+  margin: 0;
+  font-size: 12.5px;
+}
+.chip-panel .fp-select,
+.chip-panel input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+}
+.chip-condition {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 30px;
+  gap: 6px;
+  align-items: center;
+}
+.chip-condition .filter-field {
+  min-width: 0;
+  display: block;
+}
+.chip-condition .filter-values {
+  max-height: 120px;
+  padding: 4px 0;
+}
+.chip-condition .icon-button {
+  color: var(--muted);
+}
+.chip-condition .relative-filter-options {
+  grid-column: 1 / -1;
+}
+.chip-condition .relative-filter-options label {
+  margin: 0;
+  font-size: 12px;
+}
+.chip-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+.chip-panel-actions .text-button {
+  padding: 4px 0;
+  font-size: 12px;
+}
+.chip-panel-actions .text-button:hover {
+  background: none;
+  color: var(--text);
+}
+.chip-panel-status {
+  margin: 0;
+  font-size: 12px;
+}
+.chip-panel-alert {
+  margin: 0;
+  font-size: 12px;
+  color: var(--red);
+}
+.chip-property-list {
+  display: grid;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 2px;
+}
+.chip-property-list .checkbox-label {
+  margin: 0;
+  font-size: 13px;
+}
+/* The tabs beyond the fifth fold into a menu. */
+.database-tabs > .view-tab-more {
+  gap: 4px;
+  color: var(--muted);
+}
+.view-type-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 12px;
+  font-size: 12px;
+}
+.modal .settings-heading {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+/* Pinned first column: the selection cell and the title stay while the
+   table scrolls sideways; a shadow marks the edge once it has scrolled. */
+.configurable-table .sticky-col {
+  position: sticky;
+  z-index: 2;
+  background: var(--bg);
+}
+.configurable-table thead .sticky-col {
+  z-index: 3;
+  background: var(--surface);
+}
+.data-table tr:hover td.sticky-col {
+  background: var(--surface);
+}
+.configurable-table .row-selected td.sticky-col {
+  background: var(--blue-light);
+}
+.data-table-scroll.scrolled-x .sticky-col-end {
+  box-shadow:
+    inset -1px 0 0 var(--border),
+    8px 0 12px -8px #00000040;
+}
+/* Rows take the keyboard: arrows move, Enter opens. */
+.configurable-table tbody tr:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.configurable-table tbody tr:focus-visible td {
+  background: var(--surface);
+}
+.row-title-link {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  font: inherit;
+  font-weight: 500;
+  color: inherit;
+  text-align: left;
+  border-radius: 4px;
+}
+.row-title-link:hover {
+  background: none;
+  color: var(--blue);
+}
+.row-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-open-mark {
+  flex: none;
+  opacity: 0;
+  color: var(--muted);
+}
+tr:hover .row-open-mark,
+.row-title-link:focus-visible .row-open-mark {
+  opacity: 1;
+}
+.title-cell {
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .chip-popover {
+    min-width: min(300px, calc(100vw - 16px));
+  }
+  /* Phones: property and operator on one line, the value (with the remove
+     button) on the next; sort rows keep their three cells on one line. */
+  .chip-condition {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px;
+  }
+  .chip-condition .filter-field:nth-child(3) {
+    grid-column: 1 / 3;
+  }
+  .toolbar-chip-search input {
+    width: 110px;
+  }
+}
