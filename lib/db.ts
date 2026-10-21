@@ -618,6 +618,8 @@ function migrate(d: DatabaseSync) {
       d.exec("ALTER TABLE rows ADD COLUMN repeat TEXT NOT NULL DEFAULT ''");
     d.exec("CREATE INDEX IF NOT EXISTS pages_review ON pages(review_at) WHERE review_at IS NOT NULL");
   }
+  // Dashboard pages: their tiles as JSON (lib/dashboard-schema.ts).
+  d.exec(`CREATE TABLE IF NOT EXISTS dashboards(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,tiles TEXT NOT NULL DEFAULT '[]',updated_at TEXT DEFAULT CURRENT_TIMESTAMP);`);
   globalDb.flowplanSchema = 43;
 }
 function cleanDeletedFiles(d: DatabaseSync) {

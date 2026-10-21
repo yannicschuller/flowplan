@@ -1,3 +1,5 @@
+import { copyDashboard, dashboardTiles } from "./dashboard";
+import { MAX_TILES, parseTiles } from "./dashboard-schema";
 import { whiteboardData, writeWhiteboard } from "./whiteboard";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import { hiddenRowIds, visibleRows } from "./row-access";
@@ -196,7 +198,7 @@ export const archiveSchema = z.object({
         icon: pageIconSchema,
         cover: coverSchema,
         cover_position: z.number().finite().min(0).max(100).default(50),
-        kind: z.enum(["document", "database", "whiteboard", "journal"]),
+        kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard"]),
         journal_date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -224,6 +226,8 @@ export const archiveSchema = z.object({
           .regex(/^[A-Za-z0-9+/]*={0,2}$/)
           .optional(),
         database: databaseSchema.optional(),
+        // Dashboards: their tiles (checked again on import).
+        dashboard: z.array(z.unknown()).max(MAX_TILES).optional(),
         form: z
           .object({
             internal: z.number().int().min(0).max(1),
@@ -442,6 +446,7 @@ function snapshotFor(user: Identity, wid: string) {
               ...(p.kind === "whiteboard"
                 ? { whiteboard: whiteboardData(p).state }
                 : {}),
+              ...(p.kind === "dashboard" ? { dashboard: dashboardTiles(p.id) } : {}),
             }),
         // Versions of a database hold all its records: only for those who
         // see every record anyway.
@@ -808,7 +813,7 @@ function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
       throw new HttpError(400, "Bereich fehlt im Archiv.");
     if (
       (p.kind === "database") !== !!p.database ||
-      ((p.kind === "document" || p.kind === "journal") &&
+      ((p.kind === "document" || p.kind === "journal" || p.kind === "dashboard") &&
         p.html === undefined) ||
       (p.kind === "whiteboard" && p.whiteboard === undefined)
     )
@@ -1187,6 +1192,8 @@ async function importEntries(
             html,
             id(),
           );
+          if (p.kind === "dashboard")
+            copyDashboard(parseTiles(JSON.stringify(p.dashboard || [])), pid, pageMap);
         }
         importInlineComments(pid, p.inlineThreads, rowMap, user.id);
         for (const c of p.comments)
@@ -1202,7 +1209,7 @@ async function importEntries(
           );
         // Database snapshots use JSON payloads; remap their rows separately from current records.
         // Board versions hold only a text summary in archives.
-        for (const snap of p.kind === "whiteboard" ? [] : p.snapshots) {
+        for (const snap of p.kind === "whiteboard" || p.kind === "dashboard" ? [] : p.snapshots) {
           let html = snap.html,
             state: Uint8Array | null = null;
           if (p.kind === "document" || p.kind === "journal") {

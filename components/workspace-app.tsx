@@ -94,6 +94,7 @@ import {
   Table,
   Tray,
   PresentationChart,
+  Gauge,
   Notebook,
   Lock,
   Copy,
@@ -208,12 +209,14 @@ const DocumentEditor = dynamic(() => import("./editor"), {
   ssr: false,
   loading: () => <Loading what="document" />,
 });
+const DashboardView = dynamic(() => import("./dashboard-view"), { ssr: false });
 const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
 });
 type PageData = DatabaseData & {
   whiteboard?: { state: string; generation: string };
+  dashboard?: import("./dashboard-view").DashboardPayload;
   journal?: { days: JournalDay[]; settings?: JournalSettings };
   journalDay?: {
     journalId: string;
@@ -1512,6 +1515,7 @@ export default function WorkspaceApp({
     { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
     { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
     { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal") },
+    { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard") },
     { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Sparkle, run: () => setOnboarding(true) },
     { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
     { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
@@ -2746,6 +2750,8 @@ export default function WorkspaceApp({
                       onChanged={refresh}
                       onError={notifyError}
                     />
+                  ) : data.page.kind === "dashboard" && data.dashboard ? (
+                    <DashboardView key={data.page.id} pageId={data.page.id} dashboard={data.dashboard} editable={editable} userId={boot.user.id} members={boot.members} pages={activePages} onRefresh={refresh} onError={notifyError} />
                   ) : data.page.kind === "whiteboard" && data.whiteboard ? (
                     <Whiteboard
                       key={`${data.page.id}-${data.whiteboard.generation}`}
@@ -3630,6 +3636,11 @@ export default function WorkspaceApp({
               <Notebook size={26} />
               <strong>{t("Journal", "Journal")}</strong>
               <small>{t("Jeden Tag eine Seite, offene Aufgaben wandern mit", "A page every day, open tasks move along")}</small>
+            </button>
+            <button type="button" className={newKind === "dashboard" ? "chosen" : ""} onClick={() => { setNewKind("dashboard"); setStarterTemplate(null); }}>
+              <Gauge size={26} />
+              <strong>{t("Dashboard", "Dashboard")}</strong>
+              <small>{t("Kennzahlen, Diagramme und Aufgaben auf einen Blick", "Metrics, charts and tasks at a glance")}</small>
             </button>
           </div>
           {newKind === "database" && !starterTemplate && aiUsable(boot.ai, "database") && (

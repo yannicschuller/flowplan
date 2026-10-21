@@ -5,6 +5,7 @@
 // described by hand from the route handlers in app/api. Served at
 // /api/openapi.json, readable at /api/docs; tests/openapi.test.ts keeps the
 // routes, the command actions and the SDKs in step with it.
+import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { z } from "zod";
 import { field, view } from "./database-schema";
 import { coverSchema, iconSizeSchema, pageIconSchema } from "./page-appearance";
@@ -57,7 +58,7 @@ export const commandActionNames = [
   "row.recurrence", "row.repeat", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore",
   "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge",
   "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
-  "citation.import", "citation.remove", "whiteboard.sync", "search.save", "search.delete",
+  "citation.import", "citation.remove", "whiteboard.sync", "dashboard.save", "search.save", "search.delete",
   "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react",
   "comment.create", "comment.resolve", "comment.react", "reminder.set",
   "notification.prefs", "notification.read", "notification.mark", "notification.delete",
@@ -111,7 +112,7 @@ export const commandActions: ActionDoc[] = [
       workspaceId: uuid,
       spaceId: uuid,
       title: str,
-      kind: z.enum(["document", "database", "whiteboard", "journal"]).optional().describe("Default: document"),
+      kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard"]).optional().describe("Default: document"),
       parentId: uuid.optional().describe("Parent page in the same space"),
       databaseKind: z.enum(["tasks", "documents", "empty"]).optional(),
       templateId: z.string().max(100).optional().describe("A saved page template of the workspace"),
@@ -322,6 +323,17 @@ export const commandActions: ActionDoc[] = [
     result: okResult,
   },
   {
+    action: "dashboard.save",
+    summary: "Replace the tiles of a dashboard page",
+    description: "Needs editor rights on the page. Each tile has an `id`, a `type` (view, number, chart, journal, tasks, recent, text), a `size` (small, medium, large, full) and the settings of its type; the order of the list is the order on the page.",
+    input: z.object({
+      action: z.literal("dashboard.save"),
+      pageId: uuid,
+      tiles: z.array(z.object({ id: z.string().max(40), type: z.enum(tileTypes), size: z.enum(tileSizes).optional() }).passthrough()).max(MAX_TILES),
+    }),
+    result: z.object({ tiles: z.array(z.object({ id: z.string() }).passthrough()) }),
+  },
+  {
     action: "webhook.delete",
     summary: "Remove a webhook",
     description: "Workspace owners only.",
@@ -404,7 +416,7 @@ const schemas: Record<string, Json> = {
       icon: { type: "string" },
       cover: { type: "string" },
       cover_position: { type: "number" },
-      kind: { type: "string", enum: ["document", "database", "whiteboard", "journal"] },
+      kind: { type: "string", enum: ["document", "database", "whiteboard", "journal", "dashboard"] },
       position: { type: "number" },
       deleted_at: { type: ["string", "null"] },
       created_by: { type: "string", format: "uuid" },

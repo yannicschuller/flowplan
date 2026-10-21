@@ -703,6 +703,8 @@ const exact: Record<string, string> = {
   "Geplante Regeln haben keine Bedingungen.": "Scheduled rules have no conditions.",
   "Geplante Regeln legen nur Datensätze an; Datensätze anlegen nur geplante Regeln.": "Scheduled rules only create records; only scheduled rules create records.",
   "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
+  "Kein Dashboard.": "Not a dashboard.",
+  "Kachel-IDs doppelt.": "Duplicate tile IDs.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],

@@ -102,7 +102,7 @@ export function createPage(
     kind,
     user,
     Date.now(),
-    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : "file",
+    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : "file",
   );
   if (kind === "database") {
     const setup = databaseSetup(databaseKind);
@@ -116,6 +116,7 @@ export function createPage(
       run("UPDATE databases SET record_layout=? WHERE page_id=?", JSON.stringify(setup.recordLayout), pid);
   }
   else run("INSERT INTO documents(page_id) VALUES(?)", pid);
+  if (kind === "dashboard") run("INSERT INTO dashboards(page_id) VALUES(?)", pid);
   return pid;
 }
 export function createWorkspace(user: string, name: string, examples = false) {
