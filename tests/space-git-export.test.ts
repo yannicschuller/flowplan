@@ -324,6 +324,29 @@ test("a new owner, the trash, leaving, becoming a guest or deleting the account 
   gone(danSpace);
 });
 
+test("a deactivated owner pauses the export instead of ending it", async () => {
+  const fay = person("Fay");
+  run("INSERT INTO members VALUES(?,?,?)", wid, fay.id, "editor");
+  const faySpace = String(as(fay)({ action: "space.create", name: "Fay" }).id);
+  configured(fay, faySpace);
+  run("UPDATE users SET disabled=1 WHERE id=?", fay.id);
+  assert.deepEqual(await runDueSpaceGitExports(), []);
+  // Settings, sealed token and working copy stay; the status says why.
+  const row = one<{ token: string; last_run: string }>("SELECT token,last_run FROM space_git_exports WHERE space_id=?", faySpace);
+  assert.ok(row?.token);
+  assert.ok(existsSync(copyOf(faySpace)), "working copy kept");
+  const last = JSON.parse(row!.last_run) as { error: string; pushed: boolean };
+  assert.match(last.error, /deaktiviert/);
+  assert.equal(last.pushed, false);
+  assert.ok(spaceGitOverview().failing.some((f) => f.owner === "Fay" && /deaktiviert/.test(f.error)));
+  // Enabled again: the export is still set up for the owner.
+  run("UPDATE users SET disabled=0 WHERE id=?", fay.id);
+  const status = spaceGitStatus(fay, faySpace);
+  assert.equal(status.available && status.configured, true);
+  as(fay)({ action: "space.gitExport", spaceId: faySpace, enabled: false });
+  gone(faySpace);
+});
+
 test("an export whose owner lost the space ends at the next run", async () => {
   const eve = person("Eve");
   run("INSERT INTO members VALUES(?,?,?)", wid, eve.id, "editor");

@@ -225,17 +225,19 @@ export type SemanticHit = { pageId: string; rowId: string; chunk: number; score:
 const MAX_SCANNED = 200_000;
 
 // The chunks closest in meaning to the question (unfiltered – the caller
-// MUST pass them through aiFilter before using them).
+// MUST pass them through aiFilter before using them). The embedding call
+// counts against the AI rate limit unless `limited` says the request it
+// belongs to (an Ask whose answer takes the slot) is counted already.
 export async function semanticCandidates(
   user: Identity,
   workspaceId: string,
   question: string,
-  options: { pages?: Set<string> | null; limit?: number; signal?: AbortSignal } = {},
+  options: { pages?: Set<string> | null; limit?: number; signal?: AbortSignal; limited?: boolean } = {},
 ): Promise<SemanticHit[]> {
   const config = semanticFor(user, workspaceId);
   if (!config) return [];
   if (!one("SELECT 1 FROM ai_embeddings WHERE workspace_id=? AND model=? LIMIT 1", workspaceId, config.embeddingModel)) return [];
-  limitAi(user.id);
+  if (!options.limited) limitAi(user.id);
   const [values] = (await embed(config, [question.slice(0, 2000)], options.signal)) || [];
   if (!values?.length) return [];
   const query = fromVector(toVector(values));

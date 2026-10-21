@@ -888,17 +888,36 @@ test("dragging a bar onto another links them; successors can move along", async 
   ]);
   assert.equal(schedule(b, -1).moved, 1);
   assert.deepEqual([period(b), period(c)], [["2026-03-07", "2026-03-08"], ["2026-03-09", "2026-03-11"]]);
-  // Extending the end pushes successors; moving the start alone does not.
-  command(owner, {
-    action: "row.schedule",
-    pageId: pid,
-    viewId: "t",
-    version: database(pid).version,
-    rowId: b,
-    rowVersion: rows(pid).find((x) => x.id === b)!.version,
-    change: { operation: "resize-start", days: -1 },
-  });
-  assert.deepEqual(period(c), ["2026-03-09", "2026-03-11"]);
+  // Links on the end (fs): the end pushes successors, the start alone does not.
+  const resize = (rid: string, operation: "resize-start" | "resize-end", days: number) =>
+    command(owner, {
+      action: "row.schedule",
+      pageId: pid,
+      viewId: "t",
+      version: database(pid).version,
+      rowId: rid,
+      rowVersion: rows(pid).find((x) => x.id === rid)!.version,
+      change: { operation, days },
+    }) as { moved: number };
+  assert.equal(resize(b, "resize-start", -1).moved, 0);
+  assert.deepEqual([period(b), period(c)], [["2026-03-06", "2026-03-08"], ["2026-03-09", "2026-03-11"]]);
+  assert.equal(resize(b, "resize-end", 1).moved, 1);
+  assert.deepEqual([period(b), period(c)], [["2026-03-06", "2026-03-09"], ["2026-03-10", "2026-03-12"]]);
+  // Links on the start (ss, sf): the start moves successors, the end does not.
+  timeline({ moveSuccessors: true, dependencyType: "ss" });
+  assert.equal(resize(b, "resize-end", 1).moved, 0);
+  assert.deepEqual([period(b), period(c)], [["2026-03-06", "2026-03-10"], ["2026-03-10", "2026-03-12"]]);
+  assert.equal(resize(b, "resize-start", 2).moved, 1);
+  assert.deepEqual([period(b), period(c)], [["2026-03-08", "2026-03-10"], ["2026-03-12", "2026-03-14"]]);
+  timeline({ moveSuccessors: true, dependencyType: "sf" });
+  assert.equal(resize(b, "resize-start", -1).moved, 1);
+  assert.deepEqual([period(b), period(c)], [["2026-03-07", "2026-03-10"], ["2026-03-11", "2026-03-13"]]);
+  // Links on the end again (ff): whole moves shift either way.
+  timeline({ moveSuccessors: true, dependencyType: "ff" });
+  assert.equal(resize(b, "resize-start", 1).moved, 0);
+  assert.equal(schedule(b, 1).moved, 1);
+  assert.deepEqual([period(b), period(c)], [["2026-03-09", "2026-03-11"], ["2026-03-12", "2026-03-14"]]);
+  timeline({ moveSuccessors: true });
   // Circular data (written elsewhere) is refused instead of moved forever.
   run("UPDATE rows SET cells=json_set(cells,'$.after',json_array(?)) WHERE id=?", c, a);
   assert.throws(() => schedule(a, 1), /Zyklische/);

@@ -159,12 +159,14 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   });
   let semantic = false;
   try {
-    const hits = await semanticCandidates(user, input.workspaceId, input.question, { pages: scope.pages, signal });
+    // One question takes one slot of the AI rate limit: the answer's
+    // (lib/ai/run.ts), so the embedding of the question is not counted.
+    const hits = await semanticCandidates(user, input.workspaceId, input.question, { pages: scope.pages, signal, limited: true });
     if (scope.spaceId) hits.splice(0, hits.length, ...hits.filter((h) => scope.pages?.has(h.pageId)));
     hits.forEach((h, rank) => add(h.pageId, h.rowId, rank, h.chunk));
     semantic = hits.length > 0;
   } catch (error) {
-    // The rate limit counts; a failing embedding model only loses meaning search.
+    // A failing embedding model only loses meaning search.
     if (error instanceof HttpError && error.status === 429) throw error;
     console.error("Semantische Suche fehlgeschlagen:", (error as Error)?.message);
   }

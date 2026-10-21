@@ -66,15 +66,41 @@ test("deleting an account: only after deactivating; own workspaces go, shared on
   const own = (command(identity(leaving), { action: "workspace.create", name: "Nur meins" }) as { id: string }).id;
   const shared = (command(identity(leaving), { action: "workspace.create", name: "Gemeinsam" }) as { id: string }).id;
   run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor')", shared, staying);
+  // A workspace shared only with deactivated accounts is kept for them:
+  // they may be enabled again and must find it.
+  const paused = (await register({ name: "Pause", email: "pause@example.test", password: "a-long-password" }, "de")).user.id;
+  const resting = (command(identity(leaving), { action: "workspace.create", name: "Mit Pausierten" }) as { id: string }).id;
+  run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor'),(?,?,'viewer')", resting, paused, resting, staying);
+  run("UPDATE users SET disabled=1 WHERE id IN (?,?)", paused, staying);
   const plan = deletionPlan(leaving);
   assert.deepEqual(plan.removed.map((w) => w.name).sort(), ["Nur meins"]);
-  assert.deepEqual(plan.handedOver, [{ id: shared, name: "Gemeinsam", to: "Bleibt" }]);
+  assert.deepEqual(plan.handedOver, []);
+  const byName = <T extends { name: string }>(list: T[]) => [...list].sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(byName(plan.kept), [
+    { id: shared, name: "Gemeinsam", disabled: 1 },
+    { id: resting, name: "Mit Pausierten", disabled: 2 },
+  ]);
+  // One active member suffices: then the workspace is handed over as usual.
+  run("UPDATE users SET disabled=0 WHERE id=?", staying);
+  const active = deletionPlan(leaving);
+  assert.deepEqual(byName(active.handedOver), [
+    { id: shared, name: "Gemeinsam", to: "Bleibt" },
+    { id: resting, name: "Mit Pausierten", to: "Bleibt" },
+  ]);
+  assert.deepEqual(active.kept, []);
+  run("UPDATE users SET disabled=1 WHERE id=?", staying);
   assert.throws(() => command(identity(admin, true), { action: "admin.deleteUser", userId: leaving }), /zuerst deaktivieren/);
   assert.throws(() => command(identity(leaving), { action: "admin.deleteUser", userId: leaving }));
   run("UPDATE users SET disabled=1 WHERE id=?", leaving);
   command(identity(admin, true), { action: "admin.deleteUser", userId: leaving });
   assert.equal(one("SELECT 1 FROM workspaces WHERE id=?", own), undefined);
+  // Kept, with the longest-standing deactivated editor as owner.
+  assert.ok(one("SELECT 1 FROM workspaces WHERE id=?", resting));
+  assert.equal(one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", resting, paused)?.role, "owner");
+  assert.equal(one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", resting, staying)?.role, "viewer");
+  assert.ok(one("SELECT 1 FROM workspaces WHERE id=?", shared));
   assert.equal(one<{ role: string }>("SELECT role FROM members WHERE workspace_id=? AND user_id=?", shared, staying)?.role, "owner");
+  run("UPDATE users SET disabled=0 WHERE id IN (?,?)", paused, staying);
   assert.equal(one("SELECT 1 FROM local_accounts WHERE user_id=?", leaving), undefined);
   const rest = one<{ name: string; email: string }>("SELECT name,email FROM users WHERE id=?", leaving);
   // Gone, or an empty shell where it is still named as author.
@@ -136,6 +162,7 @@ test("own deletion is refused for the last admin, demos and workspaces nobody ca
   run("UPDATE users SET disabled=1 WHERE id=?", gone);
   const plan = ownDeletionPlan(identity(stuck));
   assert.deepEqual(plan.removed, []);
+  assert.deepEqual(plan.kept.map((w) => w.name), ["Mit Inaktiven"]);
   assert.deepEqual(plan.blocked.map((w) => w.name), ["Mit Inaktiven"]);
   assert.match(plan.refusal || "", /„Mit Inaktiven“ hat außer dir nur deaktivierte Mitglieder/);
   assert.throws(() => deleteOwnAccount(identity(stuck), { confirm: "fest@example.test" }, true), /deaktivierte Mitglieder/);

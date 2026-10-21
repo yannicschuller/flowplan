@@ -658,7 +658,12 @@ function UserRow({
   const [limits, setLimits] = useState(usage?.limits || {});
   const [busy, setBusy] = useState(false);
   // Deleting: what would happen, shown before it happens.
-  const [plan, setPlan] = useState<{ removed: { name: string }[]; handedOver: { name: string; to: string }[]; privateSpaces: number } | null>(null);
+  const [plan, setPlan] = useState<{
+    removed: { name: string }[];
+    handedOver: { name: string; to: string }[];
+    kept: { name: string; disabled: number }[];
+    privateSpaces: number;
+  } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const clean = (l: object) => JSON.stringify(Object.entries(l).filter(([, v]) => v !== null && v !== undefined).sort());
   const changed = clean(limits) !== clean(usage?.limits || {});
@@ -825,6 +830,13 @@ function UserRow({
                   )}
                   {plan.handedOver.map((w) => (
                     <li key={w.name}>{t(`„${w.name}“ bekommt ${w.to} als Eigentümer.`, `“${w.name}” gets ${w.to} as owner.`)}</li>
+                  ))}
+                  {plan.kept.map((w) => (
+                    <li key={w.name}>
+                      {w.disabled === 1
+                        ? t(`„${w.name}“ bleibt erhalten – 1 deaktiviertes Mitglied.`, `“${w.name}” is kept – 1 deactivated member.`)
+                        : t(`„${w.name}“ bleibt erhalten – ${w.disabled} deaktivierte Mitglieder.`, `“${w.name}” is kept – ${w.disabled} deactivated members.`)}
+                    </li>
                   ))}
                   {plan.privateSpaces > 0 && <li>{t(`${plan.privateSpaces} private Bereiche werden gelöscht.`, `${plan.privateSpaces} private spaces are deleted.`)}</li>}
                   <li>{t("Beiträge in gemeinsamen Arbeitsbereichen (Seiten, Einträge, Kommentare, Dateien) bleiben und erscheinen als „Gelöschtes Konto“.", "Contributions to shared workspaces (pages, records, comments, files) stay and appear as “Deleted account”.")}</li>

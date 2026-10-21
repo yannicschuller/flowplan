@@ -688,6 +688,8 @@ const exact: Record<string, string> = {
   "Zu viele Weiterleitungen.": "Too many redirects.",
   // notifications
   "Push-Testbenachrichtigung": "Push test notification",
+  // Git export of spaces: a deactivated owner pauses it
+  "Das Konto des Besitzers ist deaktiviert – der Export pausiert.": "The owner's account is disabled – the export is paused.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],

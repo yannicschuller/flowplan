@@ -9,7 +9,8 @@
 // a new owner, the space in the trash, the owner leaving the workspace,
 // becoming a guest or deleting their account remove the settings with the
 // sealed token (triggers in lib/db.ts) and the working copy in
-// <data>/git-export/spaces/<spaceId>/.
+// <data>/git-export/spaces/<spaceId>/. A deactivated owner only pauses it:
+// the settings stay and the runs resume once the account is enabled again.
 //
 // The administrator only switches it on (environment):
 //   SPACE_GIT_EXPORT=true                        off by default
@@ -273,15 +274,19 @@ export function sweepSpaceGitCopies() {
 }
 
 // The owner as they would be signed in, without SSO groups: reading pages
-// depends on memberships and grants, not on groups.
-function exporter(row: Row): { owner: Identity; space: Space } | null {
-  const user = one<User>("SELECT * FROM users WHERE id=? AND disabled=0", row.user_id);
+// depends on memberships and grants, not on groups. Null when they no
+// longer own the space (the export ends), "disabled" while their account
+// is deactivated (the export waits).
+function exporter(row: Row): { owner: Identity; space: Space } | "disabled" | null {
+  const user = one<User>("SELECT * FROM users WHERE id=?", row.user_id);
   const space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", row.space_id);
   if (!user || !space || space.owner_id !== user.id) return null;
   const owner: Identity = { ...user, groups: [], isAdmin: false };
   if (!memberRole(owner, space.workspace_id) || isGuest(owner, space.workspace_id)) return null;
+  if (user.disabled) return "disabled";
   return { owner, space };
 }
+const OWNER_DISABLED = "Das Konto des Besitzers ist deaktiviert – der Export pausiert.";
 // Messages from Git servers may name addresses; the token never shows.
 const cleanError = (message: string, token: string) =>
   (token ? message.split(token).join("…") : message).replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, "…").slice(0, 300);
@@ -311,6 +316,14 @@ async function exportSpace(row: Row, now: number): Promise<SpaceGitRun | null> {
     // The owner no longer owns the space: the export ends.
     run("DELETE FROM space_git_exports WHERE space_id=? AND user_id=?", row.space_id, row.user_id);
     sweepSpaceGitCopies();
+    return null;
+  }
+  if (found === "disabled") {
+    // Deactivated, maybe only for a while: settings, token and working copy
+    // stay; the status says why nothing is pushed, and the hourly retry of
+    // a failed run picks it up again once the account is enabled.
+    const paused: SpaceGitRun = { at: now, commit: lastRun(row)?.commit ?? null, files: 0, pushed: false, error: OWNER_DISABLED };
+    run("UPDATE space_git_exports SET last_run=? WHERE space_id=? AND user_id=?", JSON.stringify(paused), row.space_id, row.user_id);
     return null;
   }
   if (running.has(row.space_id)) throw new HttpError(409, "Der Git-Export dieses Bereichs läuft gerade.");

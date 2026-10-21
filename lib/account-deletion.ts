@@ -15,6 +15,9 @@ type Plan = {
   name: string;
   removed: { id: string; name: string }[];
   handedOver: { id: string; name: string; to: string }[];
+  // Shared only with deactivated accounts: those may be enabled again, so
+  // the workspace stays (ownership passes to one of them when needed).
+  kept: { id: string; name: string; disabled: number }[];
   privateSpaces: number;
 };
 
@@ -65,21 +68,26 @@ export function deletionPlan(userId: string): Plan {
   const user = one<{ name: string }>("SELECT name FROM users WHERE id=?", userId);
   if (!user) throw new HttpError(404, "Benutzer nicht gefunden.");
   const removed: Plan["removed"] = [],
-    handedOver: Plan["handedOver"] = [];
+    handedOver: Plan["handedOver"] = [],
+    kept: Plan["kept"] = [];
   for (const w of all<{ id: string; name: string; role: string }>(
     "SELECT w.id,w.name,m.role FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=?",
     userId,
   )) {
-    const others = all<{ user_id: string; role: string; name: string }>(
-      "SELECT m.user_id,m.role,u.name FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? AND u.disabled=0 ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, u.created_at",
+    // Active members first, so the longest-standing active owner/editor
+    // takes over; deactivated ones only count as members who come back.
+    const others = all<{ user_id: string; role: string; name: string; disabled: number }>(
+      "SELECT m.user_id,m.role,u.name,u.disabled FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? ORDER BY u.disabled, CASE m.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, u.created_at",
       w.id,
       userId,
     );
+    const active = others.filter((o) => !o.disabled);
     if (!others.length) removed.push({ id: w.id, name: w.name });
-    else if (w.role === "owner" && !others.some((o) => o.role === "owner")) handedOver.push({ id: w.id, name: w.name, to: others[0].name });
+    else if (!active.length) kept.push({ id: w.id, name: w.name, disabled: others.length });
+    else if (w.role === "owner" && !active.some((o) => o.role === "owner")) handedOver.push({ id: w.id, name: w.name, to: active[0].name });
   }
   const privateSpaces = Number(one<{ n: number }>("SELECT count(*) n FROM spaces WHERE owner_id=? AND visibility='private'", userId)?.n || 0);
-  return { name: user.name, removed, handedOver, privateSpaces };
+  return { name: user.name, removed, handedOver, kept, privateSpaces };
 }
 
 // Inside the command's transaction.
@@ -102,9 +110,10 @@ function lastAdmin(userId: string) {
   );
 }
 
-// What deleting one's own account would do. Unlike an admin deletion, a
-// workspace is only removed when nobody else is a member at all; one shared
-// with deactivated accounts only has no successor and stops the deletion.
+// What deleting one's own account would do. A workspace is only removed
+// when nobody else is a member at all; one shared with deactivated accounts
+// only has no successor and stops the deletion (an admin deletion keeps it
+// for them instead).
 type OwnPlan = Omit<Plan, "handedOver"> & {
   handedOver: (Plan["handedOver"][number] & { toId: string; candidates: { id: string; name: string }[] })[];
   blocked: { id: string; name: string }[];
@@ -115,12 +124,7 @@ type OwnPlan = Omit<Plan, "handedOver"> & {
 };
 export function ownDeletionPlan(user: Identity): OwnPlan {
   const plan = deletionPlan(user.id);
-  const blocked: OwnPlan["blocked"] = [];
-  const removed = plan.removed.filter((w) => {
-    if (!one("SELECT 1 FROM members WHERE workspace_id=? AND user_id<>?", w.id, user.id)) return true;
-    blocked.push(w);
-    return false;
-  });
+  const blocked: OwnPlan["blocked"] = plan.kept.map((w) => ({ id: w.id, name: w.name }));
   const handedOver = plan.handedOver.map((w) => {
     const candidates = all<{ id: string; name: string }>(
       "SELECT u.id,u.name FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? AND u.disabled=0 ORDER BY CASE m.role WHEN 'editor' THEN 0 ELSE 1 END, u.created_at",
@@ -141,7 +145,6 @@ export function ownDeletionPlan(user: Identity): OwnPlan {
           : undefined;
   return {
     ...plan,
-    removed,
     handedOver,
     blocked,
     confirm: { kind: local ? "password" : "text", text: local ? "" : row?.email || plan.name },
@@ -181,7 +184,8 @@ export function deleteOwnAccount(user: Identity, input: unknown, passwordChecked
 }
 
 // Removes the account; successors name the new owner per workspace, the
-// others get the longest-standing editor (or member).
+// others get the longest-standing active editor (or member) – a workspace
+// kept for deactivated accounts only passes to one of them.
 function removeAccount(userId: string, removed: { id: string }[], successors: Record<string, string>) {
   for (const w of removed) purgeWorkspace(w.id);
   for (const w of all<{ id: string }>("SELECT workspace_id id FROM members WHERE user_id=? AND role='owner'", userId)) {
@@ -189,7 +193,7 @@ function removeAccount(userId: string, removed: { id: string }[], successors: Re
     const next =
       successors[w.id] ||
       one<{ user_id: string }>(
-        "SELECT m.user_id FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? AND u.disabled=0 ORDER BY CASE m.role WHEN 'editor' THEN 0 ELSE 1 END, u.created_at LIMIT 1",
+        "SELECT m.user_id FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=? AND m.user_id<>? ORDER BY u.disabled, CASE m.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, u.created_at LIMIT 1",
         w.id,
         userId,
       )?.user_id;
