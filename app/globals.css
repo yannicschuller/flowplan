@@ -3552,7 +3552,54 @@ tr:hover .row-open,
 .version-diff del {
   background: color-mix(in srgb, #cf4850 16%, transparent);
   color: inherit;
+  text-decoration: line-through;
   border-radius: 2px;
+}
+/* Blocks keep the structure they came from (lib/text-diff.ts). */
+.version-diff .diff-kind-heading {
+  font-weight: 600;
+  font-size: 15px;
+  margin-top: 6px;
+}
+.version-diff :is(.diff-kind-item, .diff-kind-cell) {
+  position: relative;
+  padding-left: 18px;
+}
+.version-diff .diff-kind-item::before {
+  content: "•";
+  position: absolute;
+  left: 6px;
+}
+.version-diff .diff-kind-cell::before {
+  content: "▦";
+  position: absolute;
+  left: 2px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.version-diff .diff-kind-quote {
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+}
+.version-diff .diff-kind-code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.version-diff p:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.diff-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.diff-nav .diff-summary {
+  font-weight: 600;
+  margin-right: 4px;
 }
 .version-diff.database h3 {
   font-size: 13px;

@@ -66,13 +66,29 @@ function backtrack<T>(trace: Int32Array[], a: T[], b: T[], depth: number) {
   return ops.reverse();
 }
 
+export type TextPart = { type: "same" | "added" | "removed"; text: string };
 export type TextChange =
   | { type: "same" | "added" | "removed"; text: string }
-  | {
-      type: "changed";
-      parts: { type: "same" | "added" | "removed"; text: string }[];
-    };
-const words = (text: string) => text.match(/\s+|[^\s]+/g) || [];
+  | { type: "changed"; parts: TextPart[] };
+
+// Words and the whitespace between them, so joining the tokens gives the
+// text back unchanged.
+export const wordTokens = (text: string) => text.match(/\s+|[^\s]+/g) || [];
+export const countWords = (text: string) => (text.match(/\S+/g) || []).length;
+
+// Word-level comparison of two texts; null when they differ too much.
+function inlineChange(before: string, after: string): TextPart[] | null {
+  const inline = diff(wordTokens(before), wordTokens(after));
+  if (!inline) return null;
+  const parts: TextPart[] = [];
+  for (const part of inline) {
+    const last = parts.at(-1);
+    if (last?.type === part.type) last.text += part.value;
+    else parts.push({ type: part.type, text: part.value });
+  }
+  return parts;
+}
+
 // Paragraph-level comparison; a removed paragraph directly followed by an
 // added one is shown as an inline word-level change.
 export function compareParagraphs(
@@ -86,15 +102,8 @@ export function compareParagraphs(
     const op = ops[i],
       next = ops[i + 1];
     if (op.type === "removed" && next?.type === "added") {
-      const inline = diff(words(op.value), words(next.value));
-      if (inline) {
-        const parts: { type: "same" | "added" | "removed"; text: string }[] =
-          [];
-        for (const part of inline) {
-          const last = parts.at(-1);
-          if (last?.type === part.type) last.text += part.value;
-          else parts.push({ type: part.type, text: part.value });
-        }
+      const parts = inlineChange(op.value, next.value);
+      if (parts) {
         changes.push({ type: "changed", parts });
         i++;
         continue;
@@ -104,3 +113,169 @@ export function compareParagraphs(
   }
   return changes;
 }
+
+// ---- Structured documents ------------------------------------------------
+
+// A block of text with the structure it came from, so a comparison can keep
+// headings, list items and table cells apart.
+export type BlockKind =
+  | "heading"
+  | "paragraph"
+  | "item"
+  | "cell"
+  | "quote"
+  | "code";
+export type TextBlock = { kind: BlockKind; text: string };
+export type BlockChange = TextChange & { kind: BlockKind };
+export type DocumentDiff = {
+  changes: BlockChange[];
+  // Words that came in and went out, for the summary line.
+  words: { added: number; removed: number };
+};
+// Documents with more words than this (both sides together) are not
+// compared; the version can still be previewed and restored.
+export const MAX_DIFF_WORDS = 60_000;
+export type DiffLimit = "size" | "edits";
+
+const BLOCK_TAGS: Record<string, BlockKind | "flush"> = {
+  h1: "heading",
+  h2: "heading",
+  h3: "heading",
+  h4: "heading",
+  h5: "heading",
+  h6: "heading",
+  li: "item",
+  td: "cell",
+  th: "cell",
+  blockquote: "quote",
+  pre: "code",
+  p: "paragraph",
+  div: "paragraph",
+  figcaption: "paragraph",
+  summary: "paragraph",
+  dt: "paragraph",
+  dd: "paragraph",
+  // Containers without text of their own: they only end the block before.
+  tr: "flush",
+  table: "flush",
+  ul: "flush",
+  ol: "flush",
+  details: "flush",
+  aside: "flush",
+  section: "flush",
+  article: "flush",
+  hr: "flush",
+};
+const ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  amp: "&",
+};
+export function decodeEntities(text: string) {
+  return text.replace(
+    /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
+    (match, code: string) => {
+      if (code[0] === "#") {
+        const point =
+          code[1] === "x" || code[1] === "X"
+            ? parseInt(code.slice(2), 16)
+            : parseInt(code.slice(1), 10);
+        return Number.isFinite(point) && point > 0 && point <= 0x10ffff
+          ? String.fromCodePoint(point)
+          : match;
+      }
+      return ENTITIES[code.toLowerCase()] ?? match;
+    },
+  );
+}
+
+// Text blocks of stored (sanitised) document HTML with their kind. Text in
+// a paragraph inside a list item or table cell belongs to that item or
+// cell; a line break starts a new block of the same kind.
+export function htmlBlocks(html: string): TextBlock[] {
+  const blocks: TextBlock[] = [];
+  const stack: BlockKind[] = [];
+  let text = "";
+  const kind = (): BlockKind => {
+    for (let i = stack.length - 1; i >= 0; i--)
+      if (stack[i] !== "paragraph") return stack[i];
+    return "paragraph";
+  };
+  const flush = () => {
+    const clean = decodeEntities(text).replace(/\s+/g, " ").trim();
+    if (clean) blocks.push({ kind: kind(), text: clean });
+    text = "";
+  };
+  const source = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "");
+  const tag = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g;
+  let last = 0;
+  for (let match = tag.exec(source); match; match = tag.exec(source)) {
+    text += source.slice(last, match.index);
+    last = match.index + match[0].length;
+    const closing = match[1] === "/",
+      name = match[2].toLowerCase();
+    if (name === "br") {
+      flush();
+      continue;
+    }
+    const block = BLOCK_TAGS[name];
+    if (!block) continue;
+    flush();
+    if (block === "flush") continue;
+    if (!closing) stack.push(block);
+    else {
+      const index = stack.lastIndexOf(block);
+      if (index >= 0) stack.splice(index);
+    }
+  }
+  text += source.slice(last);
+  flush();
+  return blocks;
+}
+
+// Block-level comparison that keeps the structure: a block only matches a
+// block of the same kind. A removed block directly followed by an added one
+// of the same kind is shown as an inline word-level change.
+export function compareBlocks(
+  before: TextBlock[],
+  after: TextBlock[],
+): DocumentDiff | DiffLimit {
+  const total = (blocks: TextBlock[]) =>
+    blocks.reduce((sum, b) => sum + countWords(b.text), 0);
+  if (total(before) + total(after) > MAX_DIFF_WORDS) return "size";
+  const ops = diff(before, after, (x, y) => x.kind === y.kind && x.text === y.text);
+  if (!ops) return "edits";
+  const changes: BlockChange[] = [];
+  const words = { added: 0, removed: 0 };
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i],
+      next = ops[i + 1];
+    if (
+      op.type === "removed" &&
+      next?.type === "added" &&
+      op.value.kind === next.value.kind
+    ) {
+      const parts = inlineChange(op.value.text, next.value.text);
+      if (parts) {
+        for (const part of parts) {
+          if (part.type === "added") words.added += countWords(part.text);
+          if (part.type === "removed") words.removed += countWords(part.text);
+        }
+        changes.push({ type: "changed", kind: next.value.kind, parts });
+        i++;
+        continue;
+      }
+    }
+    if (op.type === "added") words.added += countWords(op.value.text);
+    if (op.type === "removed") words.removed += countWords(op.value.text);
+    changes.push({ type: op.type, kind: op.value.kind, text: op.value.text });
+  }
+  return { changes, words };
+}
+
+// Two versions of a document as stored HTML.
+export const compareDocuments = (before: string, after: string) =>
+  compareBlocks(htmlBlocks(before), htmlBlocks(after));

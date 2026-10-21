@@ -1,16 +1,15 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Modal, api } from "./ui";
-import type { TextChange } from "@/lib/text-diff";
-import type { DatabaseChanges } from "@/lib/version-history";
+import type { BlockKind, TextChange } from "@/lib/text-diff";
+import type { DatabaseChanges, DocumentChanges } from "@/lib/version-history";
 
-type Result =
-  | { kind: "document"; changes: TextChange[] | null }
-  | { kind: "database"; changes: DatabaseChanges };
+type Result = DocumentChanges | { kind: "database"; changes: DatabaseChanges };
 
-// Shows what changed between a saved version and the current page.
+// Shows what changed between a saved version and the current page, or
+// between two saved versions: block by block, with word-level changes.
 export function VersionChanges({
   pageId,
   rowId,
@@ -90,7 +89,9 @@ export function VersionChanges({
       {result?.kind === "document" &&
         (result.changes === null ? (
           <p role="status">
-            {t("Zu viele Änderungen für eine Gegenüberstellung. Die Version lässt sich trotzdem wiederherstellen.", "Too many changes to compare. The version can still be restored.")}
+            {result.limit === "size"
+              ? t("Zu groß zum Vergleichen. Die Version lässt sich trotzdem wiederherstellen.", "Too large to compare. The version can still be restored.")
+              : t("Zu viele Änderungen für eine Gegenüberstellung. Die Version lässt sich trotzdem wiederherstellen.", "Too many changes to compare. The version can still be restored.")}
           </p>
         ) : !result.changes.some((c) => c.type !== "same") ? (
           <p role="status">{t("Keine Textänderungen.", "No text changes.")}</p>
@@ -101,7 +102,7 @@ export function VersionChanges({
                 {t("Einzelne Absätze lassen sich mit „Wiederherstellen“ zurückholen – der Rest bleibt, wie er ist.", "Single paragraphs can be brought back with “Restore” – the rest stays as it is.")}
               </p>
             )}
-            <TextChanges changes={result.changes} onRestore={editable && !against ? restore : undefined} />
+            <TextChanges changes={result.changes} words={result.words} onRestore={editable && !against ? restore : undefined} />
           </>
         ))}
       {result?.kind === "database" && (
@@ -149,15 +150,34 @@ function DatabaseSummary({ changes }: { changes: DatabaseChanges }) {
   );
 }
 
-// Paragraph and word changes, as in the version history.
+// Paragraph and word changes, as in the version history. Blocks carry the
+// structure they came from (heading, list item, table cell …) when known;
+// the word summary and the previous/next buttons appear when given changes.
 export function TextChanges({
   changes,
+  words,
   onRestore,
 }: {
-  changes: TextChange[];
+  changes: (TextChange & { kind?: BlockKind })[];
+  words?: { added: number; removed: number } | null;
   onRestore?: (text: string, after: string | null, replace: string | null) => void;
 }) {
   const t = useT();
+  const blocks = useRef(new Map<number, HTMLParagraphElement>());
+  const [current, setCurrent] = useState(-1);
+  // Positions of the changed blocks, for the previous/next buttons.
+  const changed = changes.flatMap((c, i) => (c.type === "same" ? [] : [i]));
+  const go = (step: number) => {
+    if (!changed.length) return;
+    const next = ((current < 0 ? (step > 0 ? -1 : 0) : current) + step + changed.length) % changed.length;
+    setCurrent(next);
+    const element = blocks.current.get(changed[next]);
+    if (element) {
+      element.focus({ preventScroll: true });
+      element.scrollIntoView({ block: "center" });
+    }
+  };
+  const count = (n: number) => (n === 1 ? t("1 Wort", "1 word") : t(`${n} Wörter`, `${n} words`));
   // Old and new text of each change, and the old paragraph before it.
   const oldText = (c: TextChange) =>
     c.type === "changed" ? c.parts.filter((p) => p.type !== "added").map((p) => p.text).join("") : c.type === "added" ? null : c.text;
@@ -175,40 +195,100 @@ export function TextChanges({
         {t("Wiederherstellen", "Restore")}
       </button>
     ) : null;
+  const kindLabel = (kind?: BlockKind) =>
+    kind === "heading"
+      ? t("Überschrift", "Heading")
+      : kind === "item"
+        ? t("Listenpunkt", "List item")
+        : kind === "cell"
+          ? t("Tabellenzelle", "Table cell")
+          : kind === "quote"
+            ? t("Zitat", "Quote")
+            : kind === "code"
+              ? t("Code", "Code")
+              : t("Absatz", "Paragraph");
+  const changeLabel = (type: TextChange["type"], kind?: BlockKind) =>
+    type === "added"
+      ? t(`Hinzugefügt: ${kindLabel(kind)}`, `Added: ${kindLabel(kind)}`)
+      : type === "removed"
+        ? t(`Entfernt: ${kindLabel(kind)}`, `Removed: ${kindLabel(kind)}`)
+        : t(`Geändert: ${kindLabel(kind)}`, `Changed: ${kindLabel(kind)}`);
+  const block = (change: TextChange & { kind?: BlockKind }, i: number, children: ReactNode) => (
+    <p
+      key={i}
+      className={`diff-${change.type} diff-kind-${change.kind || "paragraph"}`}
+      tabIndex={change.type === "same" ? undefined : -1}
+      aria-label={change.type === "same" ? undefined : changeLabel(change.type, change.kind)}
+      ref={(element) => {
+        if (element) blocks.current.set(i, element);
+        else blocks.current.delete(i);
+      }}
+    >
+      {children}
+    </p>
+  );
   return (
-          <div className="version-diff" aria-label={t("Textänderungen", "Text changes")}>
-            <p className="muted">
-              <del>{t("Entfernt", "Removed")}</del> · <ins>{t("Hinzugefügt", "Added")}</ins> {t("· unveränderte Absätze sind abgeblendet.", "· unchanged paragraphs are dimmed.")}
-            </p>
-            {changes.map((change, i) =>
-              change.type === "changed" ? (
-                <p key={i} className="diff-changed">
-                  {restoreButton(i)}
-                  {change.parts.map((part, j) =>
-                    part.type === "added" ? (
-                      <ins key={j}>{part.text}</ins>
-                    ) : part.type === "removed" ? (
-                      <del key={j}>{part.text}</del>
-                    ) : (
-                      <span key={j}>{part.text}</span>
-                    ),
-                  )}
-                </p>
-              ) : change.type === "added" ? (
-                <p key={i} className="diff-added">
-                  <ins>{change.text}</ins>
-                </p>
-              ) : change.type === "removed" ? (
-                <p key={i} className="diff-removed">
-                  {restoreButton(i)}
-                  <del>{change.text}</del>
-                </p>
-              ) : (
-                <p key={i} className="diff-same">
-                  {change.text}
-                </p>
-              ),
-            )}
-          </div>
+    <div className="version-diff" aria-label={t("Textänderungen", "Text changes")}>
+      <p className="muted">
+        <del>{t("Entfernt", "Removed")}</del> · <ins>{t("Hinzugefügt", "Added")}</ins> {t("· unveränderte Absätze sind abgeblendet.", "· unchanged paragraphs are dimmed.")}
+      </p>
+      {(words || changed.length > 0) && (
+        <div className="diff-nav">
+          {words && (
+            <span className="diff-summary" role="status">
+              <ins>+{count(words.added)}</ins> · <del>−{count(words.removed)}</del>
+            </span>
+          )}
+          {changed.length > 0 && (
+            <>
+              <button type="button" className="button compact" onClick={() => go(-1)} aria-label={t("Vorherige Änderung", "Previous change")}>
+                ↑
+              </button>
+              <button type="button" className="button compact" onClick={() => go(1)} aria-label={t("Nächste Änderung", "Next change")}>
+                ↓
+              </button>
+              <span className="muted small">
+                {current < 0
+                  ? changed.length === 1
+                    ? t("1 Änderung", "1 change")
+                    : t(`${changed.length} Änderungen`, `${changed.length} changes`)
+                  : t(`Änderung ${current + 1} von ${changed.length}`, `Change ${current + 1} of ${changed.length}`)}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      {changes.map((change, i) =>
+        change.type === "changed"
+          ? block(
+              change,
+              i,
+              <>
+                {restoreButton(i)}
+                {change.parts.map((part, j) =>
+                  part.type === "added" ? (
+                    <ins key={j}>{part.text}</ins>
+                  ) : part.type === "removed" ? (
+                    <del key={j}>{part.text}</del>
+                  ) : (
+                    <span key={j}>{part.text}</span>
+                  ),
+                )}
+              </>,
+            )
+          : change.type === "added"
+            ? block(change, i, <ins>{change.text}</ins>)
+            : change.type === "removed"
+              ? block(
+                  change,
+                  i,
+                  <>
+                    {restoreButton(i)}
+                    <del>{change.text}</del>
+                  </>,
+                )
+              : block(change, i, change.text),
+      )}
+    </div>
   );
 }

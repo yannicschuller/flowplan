@@ -6,28 +6,34 @@ import { requirePage } from "./permissions";
 import { requireUnlocked } from "./journal-extras";
 import { ensureRowDocument, requireRow } from "./row-documents";
 import { expireRowTrash } from "./row-trash";
-import { compareParagraphs, type TextChange } from "./text-diff";
+import {
+  compareDocuments,
+  htmlBlocks,
+  type BlockChange,
+  type DiffLimit,
+} from "./text-diff";
 import { cellText } from "./cell-text";
 import type { Field, Identity } from "./types";
 
 // Text blocks of stored document HTML, one entry per paragraph-like element.
-export function htmlParagraphs(html: string) {
-  return html
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "")
-    .replace(
-      /<\/(p|h[1-6]|li|blockquote|pre|div|tr|figcaption)>|<br\s*\/?>/gi,
-      "\n",
-    )
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
+export const htmlParagraphs = (html: string) =>
+  htmlBlocks(html).map((block) => block.text);
+
+// The comparison of two document versions, block by block with word-level
+// changes and the number of words that came and went. `changes` is null
+// when the documents are too large (`limit` "size") or differ in too many
+// places ("edits") to compare.
+export type DocumentChanges = {
+  kind: "document";
+  changes: BlockChange[] | null;
+  words: { added: number; removed: number } | null;
+  limit?: DiffLimit;
+};
+function documentChanges(before: string, after: string): DocumentChanges {
+  const result = compareDocuments(before, after);
+  return typeof result === "string"
+    ? { kind: "document", changes: null, words: null, limit: result }
+    : { kind: "document", changes: result.changes, words: result.words };
 }
 
 type DatabaseState = {
@@ -93,9 +99,7 @@ export function snapshotChanges(
   pageId: string,
   snapshotId: string,
   against?: string,
-):
-  | { kind: "document"; changes: TextChange[] | null }
-  | { kind: "database"; changes: DatabaseChanges } {
+): DocumentChanges | { kind: "database"; changes: DatabaseChanges } {
   const page = requirePage(user, pageId);
   requireUnlocked(user, page);
   const load = (sid: string) => {
@@ -153,10 +157,7 @@ export function snapshotChanges(
         "SELECT html FROM documents WHERE page_id=?",
         page.id,
       )?.html || "";
-  return {
-    kind: "document",
-    changes: compareParagraphs(htmlParagraphs(before), htmlParagraphs(after)),
-  };
+  return documentChanges(before, after);
 }
 // Same comparison for record documents.
 export function rowSnapshotChanges(
@@ -165,7 +166,7 @@ export function rowSnapshotChanges(
   rowId: string,
   snapshotId: string,
   against?: string,
-): { kind: "document"; changes: TextChange[] | null } {
+): DocumentChanges {
   const { row } = requireRow(user, pageId, rowId);
   const load = (sid: string) => {
     const found = one<{ html: string }>(
@@ -177,13 +178,7 @@ export function rowSnapshotChanges(
     return found.html;
   };
   const after = against ? load(against) : ensureRowDocument(row).html;
-  return {
-    kind: "document",
-    changes: compareParagraphs(
-      htmlParagraphs(load(snapshotId)),
-      htmlParagraphs(after),
-    ),
-  };
+  return documentChanges(load(snapshotId), after);
 }
 
 // Retention: manual versions stay. Automatic versions are thinned to one per
