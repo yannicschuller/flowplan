@@ -346,7 +346,9 @@ async function handlePOST(
           "Die Flowplan-App übernimmt die Anmeldung. Falls dein Browser fragt, erlaube das Öffnen der App.",
           "The Flowplan app takes over the sign-in. If your browser asks, allow it to open the app.",
         ),
-        body: `<a class="button" href="${escapeHtml(link)}">${say("Flowplan-App öffnen", "Open the Flowplan app")}</a><small>${say("Danach kannst du dieses Fenster schließen. Der Link gilt eine Minute.", "You can close this window afterwards. The link is valid for one minute.")}</small>`,
+        // The code is also shown as text: on Linux without a flowplan://
+        // handler (bare AppImage) the app offers a field to paste it into.
+        body: `<a class="button" href="${escapeHtml(link)}">${say("Flowplan-App öffnen", "Open the Flowplan app")}</a><small>${say("Danach kannst du dieses Fenster schließen. Der Link gilt eine Minute.", "You can close this window afterwards. The link is valid for one minute.")}</small><p class="code-hint"><small>${say("Öffnet sich die App nicht, kopiere diesen Code in das Feld „Code einfügen“ der App:", "If the app does not open, copy this code into the app's “Paste code” field:")}</small><br><code>${escapeHtml(code)}</code></p>`,
         refresh: link,
       });
     }
