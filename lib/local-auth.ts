@@ -25,6 +25,7 @@ import { instanceSettings } from "./instance-settings";
 import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
 import { allow } from "./action-limits";
+import { addressKey } from "./client-address";
 import { translate, type Locale } from "./i18n";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, length: number, options: object) => Promise<Buffer>;
@@ -180,7 +181,9 @@ function noteExistingAccount(email: string, locale: Locale) {
 
 const WINDOW = 15 * 60_000;
 // Whether one of the keys had too many failures in the last 15 minutes:
-// 30 per address ("ip:…"), 8 for everything else (an account, a code).
+// 30 per address ("ip:…"), 8 for everything else (an account, a code). An
+// unknown address (lib/client-address.ts) has no key, so that everyone
+// does not share one bucket.
 export function limited(keys: string[]) {
   const since = Date.now() - WINDOW;
   run("DELETE FROM login_failures WHERE at<?", since);
@@ -192,6 +195,10 @@ export function limited(keys: string[]) {
 export function failed(keys: string[]) {
   for (const key of keys) run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, Date.now());
 }
+// Failures within `windowMs` under `key` (for limits with their own windows).
+export function failuresSince(key: string, windowMs: number, now = Date.now()) {
+  return Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, now - windowMs)?.n || 0);
+}
 
 export async function passwordLogin(input: unknown, address: string, locale: Locale) {
   const t = tr(locale);
@@ -199,7 +206,7 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
   const { email, password } = z
     .object({ email: z.string().trim().max(200), password: z.string().max(200) })
     .parse(input);
-  const keys = [`ip:${address}`, `email:${email.toLowerCase()}`];
+  const keys = [...addressKey("ip", address), `email:${email.toLowerCase()}`];
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   const account = accountByEmail(email);
   // The same work and the same answer whether the account exists or not.
@@ -220,7 +227,7 @@ export async function passwordLogin(input: unknown, address: string, locale: Loc
       ),
     );
   }
-  run("DELETE FROM login_failures WHERE key=?", keys[1]);
+  run("DELETE FROM login_failures WHERE key=?", `email:${email.toLowerCase()}`);
   return { userId: account.user_id, groups: account.is_admin ? [adminGroup()] : [] };
 }
 
@@ -450,7 +457,7 @@ export async function passkeyLoginOptions() {
 }
 export async function passkeyLogin(token: string | undefined, input: unknown, address: string, locale: Locale) {
   const t = tr(locale);
-  const keys = [`ip:${address}`];
+  const keys = addressKey("ip", address);
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   const response = z.object({ id: z.string().max(1000) }).passthrough().parse(input) as unknown as AuthenticationResponseJSON;
   const challenge = takeChallenge(token, "login");

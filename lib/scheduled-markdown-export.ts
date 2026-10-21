@@ -42,7 +42,12 @@ function store(key: string, value: unknown) {
 export function setMarkdownExport(admin: Identity, input: unknown) {
   if (!admin.isAdmin) throw new HttpError(403, "Administrator-Gruppe erforderlich.");
   if (admin.apiScope) throw new HttpError(403, "Mit einem API-Token nicht möglich.");
-  const pageIds = [...new Set(z.array(z.uuid()).max(50).parse(input))];
+  // Pages that were deleted since the choice was made drop out silently
+  // (a page restored later has to be chosen again); the rest still has to
+  // be readable by the administrator.
+  const pageIds = [...new Set(z.array(z.uuid()).max(50).parse(input))].filter((pageId) =>
+    one("SELECT 1 FROM pages WHERE id=? AND deleted_at IS NULL", pageId),
+  );
   for (const pageId of pageIds) requirePage(admin, pageId);
   if (pageIds.length) store("markdownExport", { userId: admin.id, pageIds } satisfies Config);
   else run("DELETE FROM instance_state WHERE key='markdownExport'");

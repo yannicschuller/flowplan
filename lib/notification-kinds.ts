@@ -7,6 +7,7 @@ export const notificationKinds = {
   guest: "Gastkommentare und Gasteinträge",
   change: "Änderungen an Seiten, denen du folgst",
   automation: "Automationen in Datenbanken",
+  security: "Sicherheitshinweise zu deinem Konto und deinen Seiten",
 } as const;
 export type NotificationKind = keyof typeof notificationKinds;
 // What applies until a person changes it: what concerns them directly
@@ -20,6 +21,7 @@ export const notificationDefaults: Record<NotificationKind, { inbox: boolean; pu
   guest: { inbox: true, push: true, email: false },
   change: { inbox: true, push: false, email: false },
   automation: { inbox: true, push: false, email: false },
+  security: { inbox: true, push: true, email: true },
 };
 // SQL for "this channel is on for this person and kind": their own setting,
 // else the default (table notification_defaults, filled from the map above).

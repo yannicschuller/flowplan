@@ -18,6 +18,7 @@ const kindHints: Record<NotificationKind, [string, string]> = {
   guest: ["Kommentare und Einträge über Freigabelinks und Formulare.", "Comments and records through share links and forms."],
   change: ["Jemand bearbeitet eine Seite, der du folgst – auch eigene Seiten, denen du beim Anlegen folgst.", "Someone edits a page you follow – also your own pages, which you follow when creating them."],
   automation: ["Benachrichtigungen aus Automationen in Datenbanken.", "Notifications from automations in databases."],
+  security: ["Jemand gibt mehrmals eine falsche PIN für dein Journal ein.", "Someone enters a wrong PIN for your journal several times."],
 };
 
 export function NotificationSettings({

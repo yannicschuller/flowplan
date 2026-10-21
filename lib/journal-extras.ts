@@ -6,8 +6,9 @@ import { Node as PMNode } from "@tiptap/pm/model";
 import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { all, one, run } from "./db";
+import { all, id, one, run } from "./db";
 import { documentSchema } from "./document-schema";
+import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
@@ -422,11 +423,19 @@ export function journalReview(journal: Page, from: string, to: string) {
 // ---- PIN lock ----
 
 const UNLOCK_MS = 15 * 60_000;
-const attempts = new Map<string, number[]>();
+// Wrong PINs are counted in the database (lib/local-auth.ts login_failures),
+// so a restart does not hand out fresh attempts: 5 per 5 minutes and 20 per
+// day for each person and journal. A million six-digit PINs at 20 a day are
+// out of reach; the owner hears about it after the fifth wrong attempt.
+const PIN_BURST = 5,
+  PIN_BURST_MS = 5 * 60_000,
+  PIN_PER_DAY = 20,
+  DAY_MS = 86_400_000;
 function pinHash(pin: string, salt = randomBytes(16).toString("hex")) {
   return `${salt}:${scryptSync(pin, salt, 32).toString("hex")}`;
 }
-export const pinSchema = z.string().regex(/^\d{4,8}$/, "Die PIN hat 4 bis 8 Ziffern.");
+// New PINs have six to eight digits; shorter ones set earlier keep working.
+export const pinSchema = z.string().regex(/^\d{6,8}$/, "Die PIN hat 6 bis 8 Ziffern.");
 export function setJournalLock(user: Identity, journal: Page, pin: string | null, current?: string) {
   ensureSettings(journal.id);
   const row = settingsRow(journal.id);
@@ -455,19 +464,35 @@ function unlockUntil(user: Identity, journal: Page) {
     Date.now() + UNLOCK_MS,
   );
 }
-export function unlockJournal(user: Identity, journal: Page, pin: string) {
+export function unlockJournal(user: Identity, journal: Page, pin: string, now = Date.now()) {
   const row = settingsRow(journal.id);
   if (!row?.lock_hash) return;
-  const key = `${user.id}:${journal.id}`;
-  const recent = (attempts.get(key) || []).filter((t) => t > Date.now() - 5 * 60_000);
-  if (recent.length >= 5)
+  const key = `pin:${user.id}:${journal.id}`;
+  run("DELETE FROM login_failures WHERE key=? AND at<?", key, now - DAY_MS);
+  if (failuresSince(key, DAY_MS, now) >= PIN_PER_DAY)
+    throw new HttpError(429, "Zu viele Versuche für heute. Bitte morgen erneut versuchen.");
+  if (failuresSince(key, PIN_BURST_MS, now) >= PIN_BURST)
     throw new HttpError(429, "Zu viele Versuche. Warte ein paar Minuten.");
   if (!checkPin(row.lock_hash, pin)) {
-    attempts.set(key, [...recent, Date.now()]);
+    run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, now);
+    if (failuresSince(key, PIN_BURST_MS, now) === PIN_BURST) notifyOwnerOfPinAttempts(user, journal);
     throw new HttpError(403, "Die PIN stimmt nicht.");
   }
-  attempts.delete(key);
+  run("DELETE FROM login_failures WHERE key=?", key);
   unlockUntil(user, journal);
+}
+// The person who created the journal learns when somebody else keeps
+// guessing its PIN (once per burst; their own typos stay quiet).
+function notifyOwnerOfPinAttempts(user: Identity, journal: Page) {
+  if (!journal.created_by || journal.created_by === user.id) return;
+  if (!one("SELECT 1 FROM users WHERE id=? AND disabled=0", journal.created_by)) return;
+  run(
+    "INSERT INTO notifications(id,user_id,body,page_id,kind) VALUES(?,?,?,?,'security')",
+    id(),
+    journal.created_by,
+    `${user.name} hat mehrmals eine falsche PIN für „${journal.title || "Ohne Titel"}“ eingegeben`,
+    journal.id,
+  );
 }
 export function lockJournalNow(user: Identity, journal: Page) {
   run("DELETE FROM journal_unlocks WHERE user_id=? AND page_id=?", user.id, journal.id);

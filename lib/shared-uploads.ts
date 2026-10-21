@@ -1,10 +1,11 @@
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { sanitizeFileName, stripLocation } from "./upload-safety";
 import { resolve } from "node:path";
-import { all, id, onTransactionRollback, run, transaction, audit } from "./db";
+import { all, id, one, onTransactionRollback, run, transaction, audit } from "./db";
 import { HttpError } from "./auth";
 import { publicPage } from "./publication";
 import { enforceQuota } from "./instance-ops";
+import { takeAnonymousBudget } from "./anonymous-budget";
 import { limitShareRequests } from "./shared-content";
 
 export const MAX_GUEST_UPLOAD = 10 * 1024 * 1024;
@@ -33,6 +34,16 @@ const signatures: [string, (b: Buffer) => boolean][] = [
   ["application/pdf", (b) => b.subarray(0, 5).toString("latin1") === "%PDF-"],
 ];
 const DAY = 86400000;
+// Files per link in ten minutes: enough for a guest who drops a folder of
+// pictures, far from a script that fills the disk.
+export const GUEST_UPLOADS_PER_10_MIN = 20;
+function limitGuestUploads(token: string, now = Date.now()) {
+  const recent = Number(
+    one<{ n: number }>("SELECT COUNT(*) n FROM share_uploads WHERE token=? AND created_at>?", token, now - 10 * 60_000)?.n || 0,
+  );
+  if (recent >= GUEST_UPLOADS_PER_10_MIN)
+    throw new HttpError(429, "Zu viele Uploads in kurzer Zeit. Bitte in ein paar Minuten erneut versuchen.");
+}
 
 // Uploads through an editing link belong to the shared page. Until the guest
 // saves content that references them, only this link can read them; unused
@@ -60,8 +71,11 @@ export async function guestUpload(token: string, pageId: string, file: File) {
       throw new HttpError(403, "Dieser Link erlaubt keine Uploads.");
     if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
     limitShareRequests(token);
+    limitGuestUploads(token);
     purgeUnusedGuestUploads();
     enforceQuota(page.workspace_id, data.length);
+    // Independent of the workspace quota, which is unlimited by default.
+    takeAnonymousBudget(`share:${token}`, data.length);
     const fid = id(),
       path = resolve(dir, fid);
     mkdirSync(dir, { recursive: true });

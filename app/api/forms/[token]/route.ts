@@ -12,6 +12,7 @@ import {
 } from "@/lib/form-settings";
 import { one, run, id, transaction, onTransactionRollback } from "@/lib/db";
 import { enforceQuota } from "@/lib/instance-ops";
+import { takeAnonymousBudget } from "@/lib/anonymous-budget";
 import { clientAddress } from "@/lib/client-address";
 import { withRequestLocale } from "@/lib/content-locale";
 import { createTicket } from "@/lib/service-desk";
@@ -26,6 +27,7 @@ async function handlePOST(
     const { token } = await params;
     const user = await activeUser(),
       form = getForm(token, user);
+    const FORM_ANSWERS_PER_HOUR = 1000;
     const fileFields = form.fields.filter((f) => f.type === "files");
     let raw: string;
     const uploads = new Map<string, File[]>();
@@ -72,9 +74,13 @@ async function handlePOST(
           })),
         ),
       );
-    const fingerprint = hash(
-      `${token}|${user?.id || clientAddress(req.headers)}`,
-    );
+    // Visitors are told apart by their address. Without one (no proxy
+    // header) they all look alike, so the per-person checks below are
+    // skipped rather than counted against everyone; the per-form caps and
+    // the daily upload budget still hold.
+    const address = user ? "" : clientAddress(req.headers);
+    const known = !!user || !!address;
+    const fingerprint = hash(`${token}|${user?.id || address || "?"}`);
     // Assigned inside the transaction.
     let ticket = null as { token: string; mailed: boolean } | null;
     transaction(() => {
@@ -84,21 +90,33 @@ async function handlePOST(
         const total = one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=?", token)?.n || 0;
         const closed = surveyClosed(survey, total);
         if (closed) throw new HttpError(410, closed === "full" ? "Diese Umfrage hat genug Antworten." : "Diese Umfrage ist geschlossen.");
-        if (survey.onePerPerson && one("SELECT 1 FROM form_submissions WHERE form_token=? AND fingerprint=?", token, fingerprint))
+        if (survey.onePerPerson && known && one("SELECT 1 FROM form_submissions WHERE form_token=? AND fingerprint=?", token, fingerprint))
           throw new HttpError(409, "Du hast an dieser Umfrage schon teilgenommen.");
       }
-      const count =
-        one<{ n: number }>(
-          "SELECT count(*) n FROM form_submissions WHERE form_token=? AND fingerprint=? AND created_at>?",
-          token,
-          fingerprint,
-          Date.now() - 3600000,
-        )?.n || 0;
+      const count = known
+        ? one<{ n: number }>(
+            "SELECT count(*) n FROM form_submissions WHERE form_token=? AND fingerprint=? AND created_at>?",
+            token,
+            fingerprint,
+            Date.now() - 3600000,
+          )?.n || 0
+        : 0;
       if (count >= 30)
         throw new HttpError(
           429,
           "Zu viele Antworten. Bitte später erneut versuchen.",
         );
+      // The form as a whole: a cap no crowd of real people reaches, which
+      // stops scripts that rotate addresses.
+      const perForm =
+        one<{ n: number }>("SELECT count(*) n FROM form_submissions WHERE form_token=? AND created_at>?", token, Date.now() - 3600000)?.n || 0;
+      if (perForm >= FORM_ANSWERS_PER_HOUR)
+        throw new HttpError(429, "Dieses Formular hat gerade viele Antworten erhalten. Bitte später erneut versuchen.");
+      // Files from anonymous answers draw on the form's daily budget, since
+      // nobody's personal storage limit applies to them.
+      let bytes = 0;
+      for (const files of buffers.values()) for (const { data } of files) bytes += data.length;
+      if (bytes && !user) takeAnonymousBudget(`form:${token}`, bytes);
       const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       if (buffers.size) mkdirSync(dir, { recursive: true });
       for (const [fieldId, files] of buffers) {

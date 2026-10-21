@@ -14,6 +14,7 @@ import { createHash, randomInt } from "node:crypto";
 import { z } from "zod";
 import { one, run } from "./db";
 import { HttpError, appUrl } from "./auth";
+import { addressKey } from "./client-address";
 import { failed, limited, localGroups, verifyPassword } from "./local-auth";
 import { openSecret, sealSecret, signValue, validSignature } from "./secret-box";
 import { matchTotp, newTotpSecret, otpauthUri } from "./totp";
@@ -144,7 +145,7 @@ export function useSecondFactor(userId: string, code: string, now = Date.now()) 
 }
 // With the limits for failed attempts (per account and per address).
 function checkSecondFactor(userId: string, code: string, address: string, t: Tr, now = Date.now()) {
-  const keys = [`ip:${address}`, `totp:${userId}`];
+  const keys = [...addressKey("ip", address), `totp:${userId}`];
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   if (!useSecondFactor(userId, code, now)) {
     failed(keys);
@@ -156,7 +157,7 @@ async function confirmWithPasswordOrCode(userId: string, input: unknown, address
   const { password, code } = z.object({ password: z.string().max(200).optional(), code: z.string().max(20).optional() }).parse(input);
   const local = requireLocal(userId, t);
   if (code) return checkSecondFactor(userId, code, address, t);
-  const keys = [`ip:${address}`, `totp:${userId}`];
+  const keys = [...addressKey("ip", address), `totp:${userId}`];
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
   if (!password || !(await verifyPassword(password, local.password_hash))) {
     failed(keys);

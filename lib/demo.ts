@@ -85,7 +85,9 @@ export function startDemo(address: string) {
   const now = Date.now();
   const key = createHash("sha256").update(`demo:${address}`).digest("hex");
   run("DELETE FROM demo_starts WHERE at<?", now - 3600_000);
-  const recent = Number(one<{ n: number }>("SELECT COUNT(*) n FROM demo_starts WHERE address=?", key)?.n || 0);
+  // An unknown address (no proxy header) is not counted against everyone;
+  // the cap on running demos below still holds.
+  const recent = address ? Number(one<{ n: number }>("SELECT COUNT(*) n FROM demo_starts WHERE address=?", key)?.n || 0) : 0;
   if (recent >= MAX_PER_ADDRESS_PER_HOUR)
     throw new HttpError(429, "Zu viele Demos von dieser Adresse. Bitte später erneut versuchen.");
   const active = Number(

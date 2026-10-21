@@ -25,6 +25,7 @@ import {
 } from "./file-cells";
 import { documentChanged } from "./document-live";
 import { rowChanged, rowCreated } from "./automations";
+import { GUEST_LIVE_MB, takeAnonymousBudget } from "./anonymous-budget";
 
 export const publicField = (f: Field) =>
   ![
@@ -396,6 +397,10 @@ export function limitShareRequests(token: string) {
     throw new HttpError(429, "Zu viele Anfragen. Bitte warte eine Minute.");
   run("INSERT INTO share_requests VALUES(?,?)", token, Date.now());
 }
+// What a guest may make of a document through a link: 3 MB of canonical
+// HTML, and a stored projection of at most 8 MB before it is rebuilt.
+export const MAX_GUEST_DOCUMENT = 3_000_000;
+const MAX_LIVE_STATE = 8_000_000;
 // Live edits have their own, larger budget (a change every half second).
 function limitLiveChanges(token: string) {
   run("DELETE FROM share_live_requests WHERE created_at<?", Date.now() - 60000);
@@ -637,7 +642,9 @@ function liveSync(
   const stored = loadLive(key);
   const projected = () => publishedHtml(member.html, token, s.pages, new Map());
   let doc: Y.Doc, pgen: string;
-  if (!stored || stored.generation !== member.generation) {
+  // A projection that has grown fat with the history of guest edits (Yjs
+  // keeps what was deleted) starts afresh; guests simply resynchronise.
+  if (!stored || stored.generation !== member.generation || stored.state.byteLength > MAX_LIVE_STATE) {
     ({ doc, pgen } = newProjection(projected()));
   } else {
     doc = new Y.Doc();
@@ -654,6 +661,11 @@ function liveSync(
       const after = stateHtml(doc);
       if (after !== before) {
         limitLiveChanges(token);
+        // A link may grow a document only so far; what members wrote may
+        // stay larger (the check is on growth, not on size).
+        if (after.length > MAX_GUEST_DOCUMENT && after.length > before.length)
+          throw new HttpError(413, "Das Dokument ist für die Bearbeitung über einen Link zu groß geworden.");
+        takeAnonymousBudget(`live:${token}`, Math.ceil((b.update.length * 3) / 4), GUEST_LIVE_MB);
         const safe = writableHtml(after, token, pages, member.html);
         const real = new Y.Doc();
         try {

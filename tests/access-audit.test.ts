@@ -124,7 +124,7 @@ const today = new Date().toISOString().slice(0, 10);
 const day = (command(owner, { action: "journal.roll", pageId: journal, date: today }) as { dayId: string }).dayId;
 const diary = "<p>DIARY-SECRET text</p>";
 run("UPDATE documents SET html=?,state=? WHERE page_id=?", diary, htmlState(diary), day);
-command(owner, { action: "journal.lock", pageId: journal, pin: "1234" });
+command(owner, { action: "journal.lock", pageId: journal, pin: "123456" });
 const thread = id();
 run("INSERT INTO inline_threads(id,page_id,row_id,author_id,anchor) VALUES(?,?,?,?,?)", thread, day, null, owner.id, JSON.stringify({ quote: "DIARY-SECRET text", from: 1, to: 18 }));
 run("INSERT INTO inline_messages(id,thread_id,author_id,author_name,body) VALUES(?,?,?,?,?)", id(), thread, owner.id, "owner", "note to self");

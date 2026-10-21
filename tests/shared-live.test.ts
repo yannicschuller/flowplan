@@ -172,6 +172,50 @@ test("live guest edits keep hidden links and mentions and refuse unshared refere
   assert.equal(memberHtml(pid), html);
 });
 
+test("a link may not grow a document without bound: size cap, daily byte budget, fat projections start afresh", async () => {
+  const { MAX_GUEST_DOCUMENT } = await import("../lib/shared-content");
+  const { pid, token } = setup("<p>Start</p>");
+  const g = guest(token, pid);
+  g.sync();
+  const type = (text: string) => {
+    const frag = g.doc.getXmlFragment("default");
+    const para = new Y.XmlElement("paragraph");
+    para.insert(0, [new Y.XmlText(text)]);
+    frag.insert(frag.length, [para]);
+  };
+  // A paste that would push the canonical HTML past the cap is refused …
+  type("x".repeat(MAX_GUEST_DOCUMENT + 10));
+  fails(() => g.sync(), 413);
+  // … while members' larger documents stay editable (the check is on growth).
+  const reset = guest(token, pid);
+  reset.sync();
+  assert.equal(reset.html(), "<p>Start</p>");
+  // The bytes of every accepted change count against the link's daily budget.
+  const { anonymousBytesToday } = await import("../lib/anonymous-budget");
+  const before = anonymousBytesToday(`live:${token}`);
+  const g2 = guest(token, pid);
+  g2.sync();
+  const frag = g2.doc.getXmlFragment("default");
+  const para = new Y.XmlElement("paragraph");
+  para.insert(0, [new Y.XmlText("Mehr")]);
+  frag.insert(frag.length, [para]);
+  g2.sync();
+  assert.ok(anonymousBytesToday(`live:${token}`) > before);
+  run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", `live:${token}`, 100 * 1024 * 1024, Date.now());
+  const p2 = new Y.XmlElement("paragraph");
+  p2.insert(0, [new Y.XmlText("Noch mehr")]);
+  frag.insert(frag.length, [p2]);
+  fails(() => g2.sync(), 413);
+  run("DELETE FROM anonymous_uploads WHERE scope=?", `live:${token}`);
+  // A stored projection past 8 MB is rebuilt: guests get a reset.
+  const key = (await import("../lib/shared-live")).liveKey(token, pid);
+  run("UPDATE share_live SET state=? WHERE key=?", Buffer.alloc(8_000_001), key);
+  const g3 = guest(token, pid);
+  g3.sync();
+  assert.match(g3.html(), /Mehr/);
+  assert.ok((one<{ n: number }>("SELECT length(state) n FROM share_live WHERE key=?", key)?.n || 0) < 1_000_000);
+});
+
 test("readers cannot edit live and a restored version resets guest projections", () => {
   const { pid, token } = setup("<p>Text</p>");
   const reader = (

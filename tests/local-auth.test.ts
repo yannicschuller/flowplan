@@ -47,6 +47,12 @@ test("signing in with e-mail and password; failed attempts are limited", async (
   for (let i = 0; i < 8; i++)
     await auth.passwordLogin({ email: "ziel@example.test", password: `versuch-${i}` }, `10.0.1.${i}`, "de").catch(() => {});
   await assert.rejects(auth.passwordLogin({ email: "ziel@example.test", password: "noch-einer" }, "10.0.2.1", "de"), /Zu viele Versuche/);
+  // Without a proxy address (""), failures count per account only: 30 wrong
+  // passwords for one address do not lock everyone else out.
+  for (let i = 0; i < 31; i++)
+    await auth.passwordLogin({ email: `fremd${i}@example.test`, password: "falsch-falsch" }, "", "de").catch(() => {});
+  assert.ok(await auth.passwordLogin({ email: "ana@example.test", password: "ein-langes-passwort" }, "", "de"));
+  assert.equal(one("SELECT 1 FROM login_failures WHERE key='ip:'"), undefined, "no bucket for the unknown address");
   // A disabled account cannot sign in.
   const uid = one<{ user_id: string }>("SELECT user_id FROM local_accounts WHERE email='ana@example.test'")!.user_id;
   run("UPDATE users SET disabled=1 WHERE id=?", uid);

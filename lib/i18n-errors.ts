@@ -674,6 +674,13 @@ const exact: Record<string, string> = {
   // journal, calendars, push, fetching addresses
   "Unbekannter Tracker.": "Unknown tracker.",
   "Zu viele Versuche. Warte ein paar Minuten.": "Too many attempts. Wait a few minutes.",
+  "Zu viele Versuche für heute. Bitte morgen erneut versuchen.": "Too many attempts for today. Please try again tomorrow.",
+  "Die PIN hat 6 bis 8 Ziffern.": "The PIN has 6 to 8 digits.",
+  "Das Tageslimit für diesen Link ist erreicht. Bitte morgen erneut versuchen.": "The daily limit for this link is reached. Please try again tomorrow.",
+  "Diese Instanz nimmt heute keine weiteren anonymen Uploads an.": "This instance accepts no further anonymous uploads today.",
+  "Dieses Formular hat gerade viele Antworten erhalten. Bitte später erneut versuchen.": "This form has just received many answers. Please try again later.",
+  "Zu viele Uploads in kurzer Zeit. Bitte in ein paar Minuten erneut versuchen.": "Too many uploads in a short time. Please try again in a few minutes.",
+  "Das Dokument ist für die Bearbeitung über einen Link zu groß geworden.": "The document has grown too large for editing through a link.",
   "Die Adresse liefert keinen Kalender.": "The address does not return a calendar.",
   "Unbekannter Kalender.": "Unknown calendar.",
   "Unbekannter Push-Dienst.": "Unknown push service.",
@@ -747,6 +754,7 @@ const patterns: [RegExp, string][] = [
   [/^(.+) antwortet auf einen Kommentar in „(.+)“$/, "$1 replied to a comment in “$2”"],
   [/^(.+) kommentiert „(.+)“$/, "$1 commented on “$2”"],
   [/^(.+) hat „(.+)“ geändert$/, "$1 changed “$2”"],
+  [/^(.+) hat mehrmals eine falsche PIN für „(.+)“ eingegeben$/, "$1 entered a wrong PIN for “$2” several times"],
   [/^Erinnerung: „(.+)“ – (.+): (.+)$/, "Reminder: “$1” – $2: $3"],
 ];
 

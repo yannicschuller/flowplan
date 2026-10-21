@@ -378,6 +378,23 @@ test("guest uploads are checked, readable only through their link until used, an
     new RegExp(`/api/files/${fid}`),
   );
   assert.equal(publicFile(reader, fid).id, fid);
+  // Uploads draw on the link's daily budget, whatever the workspace quota.
+  const { anonymousBytesToday } = await import("../lib/anonymous-budget");
+  assert.ok(anonymousBytesToday(`share:${editor}`) > 0);
+  run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", `share:${editor}`, 200 * 1024 * 1024, Date.now());
+  await rejects(guestUpload(editor, pid, png), 413);
+  run("DELETE FROM anonymous_uploads WHERE scope=?", `share:${editor}`);
+  // And on a count per ten minutes.
+  const { GUEST_UPLOADS_PER_10_MIN } = await import("../lib/shared-uploads");
+  const fillers: string[] = [];
+  for (let i = 0; i < GUEST_UPLOADS_PER_10_MIN; i++) {
+    const filler = id();
+    fillers.push(filler);
+    run("INSERT INTO files(id,page_id,name,mime,size) VALUES(?,?,?,?,?)", filler, pid, "f.png", "image/png", 1);
+    run("INSERT INTO share_uploads(file_id,token,created_at) VALUES(?,?,?)", filler, editor, Date.now());
+  }
+  await rejects(guestUpload(editor, pid, png), 429);
+  for (const filler of fillers) run("DELETE FROM files WHERE id=?", filler);
   // After a day: used uploads stay, unused ones are removed.
   const unused = await guestUpload(editor, pid, png);
   const unusedId = unused.url.split("/").pop()!;

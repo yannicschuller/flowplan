@@ -65,6 +65,24 @@ test("the scheduled export writes ZIPs next to the backups and keeps as many", a
   assert.equal(markdownExportStatus().runs[0].error, null);
 });
 
+test("a chosen page that went to the trash drops out of the choice instead of blocking it (#38)", () => {
+  const second = act({ action: "page.create", spaceId: space, title: "Garten" }).id as string;
+  setMarkdownExport(admin, [house, second]);
+  act({ action: "page.delete", pageId: second });
+  // The status still lists it, without a title.
+  assert.deepEqual(
+    markdownExportStatus().pages.map((p) => [p.id, p.title]),
+    [[house, "Haus"], [second, null]],
+  );
+  // Saving the old choice again works and keeps only the page that exists.
+  setMarkdownExport(admin, [house, second]);
+  assert.deepEqual(markdownExportStatus().pages.map((p) => p.id), [house]);
+  // An empty choice is possible too.
+  setMarkdownExport(admin, [second]);
+  assert.deepEqual(markdownExportStatus().pages, []);
+  setMarkdownExport(admin, [house]);
+});
+
 // A Git server for the test, in a process of its own (needs git's
 // http-backend, which comes with git on Linux).
 const backend = "/usr/lib/git-core/git-http-backend";

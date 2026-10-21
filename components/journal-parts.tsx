@@ -408,7 +408,7 @@ export function JournalSettingsDialog({
             {current.locked ? t("Das Journal ist mit einer PIN geschützt.", "The journal is protected with a PIN.") : t("Das Journal ist nicht gesperrt.", "The journal is not locked.")}
           </p>
           <p className="js-intro">
-            {t("Mit PIN zeigt das Journal seine Tage erst nach Eingabe – für alle, die es öffnen dürfen. Nach 15 Minuten sperrt es sich wieder. Das schützt vor Blicken, ist aber keine Verschlüsselung.", "With a PIN the journal shows its days only after entering it – for everyone allowed to open it. After 15 minutes it locks again. This protects against prying eyes but is not encryption.")}
+            {t("Mit PIN zeigt das Journal seine Tage erst nach Eingabe – für alle, die es öffnen dürfen. Nach 15 Minuten sperrt es sich wieder. Nach fünf falschen Versuchen folgt eine Pause, und du bekommst eine Benachrichtigung, wenn jemand anderes rät. Das schützt vor Blicken, ist aber keine Verschlüsselung.", "With a PIN the journal shows its days only after entering it – for everyone allowed to open it. After 15 minutes it locks again. Five wrong attempts cause a pause, and you get a notification when someone else keeps guessing. This protects against prying eyes but is not encryption.")}
           </p>
           <div className="js-pin">
             {current.locked && (
@@ -426,7 +426,7 @@ export function JournalSettingsDialog({
               type="password"
               inputMode="numeric"
               autoComplete="new-password"
-              placeholder={current.locked ? t("Neue PIN", "New PIN") : "PIN (4–8 Ziffern)"}
+              placeholder={current.locked ? t("Neue PIN", "New PIN") : t("PIN (6–8 Ziffern)", "PIN (6–8 digits)")}
               aria-label={t("Neue PIN", "New PIN")}
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
@@ -435,8 +435,8 @@ export function JournalSettingsDialog({
               type="password"
               inputMode="numeric"
               autoComplete="new-password"
-              placeholder="PIN wiederholen"
-              aria-label="PIN wiederholen"
+              placeholder={t("PIN wiederholen", "Repeat PIN")}
+              aria-label={t("PIN wiederholen", "Repeat PIN")}
               value={pinAgain}
               onChange={(e) => setPinAgain(e.target.value.replace(/\D/g, "").slice(0, 8))}
             />
@@ -450,7 +450,7 @@ export function JournalSettingsDialog({
             <button
               type="button"
               className="button primary"
-              disabled={busy || pin.length < 4 || (current.locked && oldPin.length < 4)}
+              disabled={busy || pin.length < 6 || (current.locked && oldPin.length < 4)}
               onClick={() => void lock(pin)}
             >
               {current.locked ? t("PIN ändern", "Change PIN") : t("Sperren", "Lock")}

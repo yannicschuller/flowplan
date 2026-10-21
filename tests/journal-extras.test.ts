@@ -135,7 +135,9 @@ test("a review sums up done tasks, words, trackers and places", () => {
 
 test("a PIN hides the journal from pages, search and previews until entered", () => {
   const day = one<Page>("SELECT * FROM pages WHERE journal_date='2026-10-01' AND parent_id=?", journalId)!;
-  command(user, { action: "journal.lock", pageId: journalId, pin: "4711" });
+  // New PINs have six to eight digits.
+  assert.throws(() => command(user, { action: "journal.lock", pageId: journalId, pin: "4711" }), /6 bis 8 Ziffern/);
+  command(user, { action: "journal.lock", pageId: journalId, pin: "471108" });
   // Setting the PIN unlocks for the person who set it; lock again.
   command(user, { action: "journal.relock", pageId: journalId });
   const locked = pageData(user, day.id) as { locked?: unknown; html: string };
@@ -149,14 +151,47 @@ test("a PIN hides the journal from pages, search and previews until entered", ()
     () => command(user, { action: "journal.entry", pageId: day.id, entry: { place: "x" } }),
     /gesperrt/,
   );
-  assert.throws(() => command(user, { action: "journal.unlock", pageId: journalId, pin: "0000" }), /stimmt nicht/);
-  command(user, { action: "journal.unlock", pageId: journalId, pin: "4711" });
+  assert.throws(() => command(user, { action: "journal.unlock", pageId: journalId, pin: "000000" }), /stimmt nicht/);
+  command(user, { action: "journal.unlock", pageId: journalId, pin: "471108" });
   assert.match((pageData(user, day.id) as { html: string }).html, /Meer/);
   // Changing or removing needs the old PIN.
   assert.throws(() => command(user, { action: "journal.lock", pageId: journalId, pin: null, current: "1" }), /bisherige PIN/);
-  command(user, { action: "journal.lock", pageId: journalId, pin: null, current: "4711" });
+  command(user, { action: "journal.lock", pageId: journalId, pin: null, current: "471108" });
   command(user, { action: "journal.relock", pageId: journalId });
   assert.equal((pageData(user, day.id) as { locked?: unknown }).locked, undefined);
+});
+
+test("wrong PINs are limited in the database, per day as well, and the owner hears about another person's attempts", async () => {
+  const { unlockJournal } = await import("../lib/journal-extras");
+  const otherId = id();
+  run("INSERT INTO users(id,subject,name,email) VALUES(?,?,?,?)", otherId, otherId, "Ben", "ben@example.test");
+  run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,'editor')", wid, otherId);
+  const other = { ...user, id: otherId, name: "Ben", email: "ben@example.test" } as Identity;
+  command(user, { action: "journal.lock", pageId: journalId, pin: "246810" });
+  const now = Date.now();
+  // Five wrong guesses, then a pause – counted in login_failures, so a
+  // restart (a fresh module) would not reset them.
+  for (let i = 0; i < 5; i++) assert.throws(() => unlockJournal(other, journal(), "111111", now + i), /stimmt nicht/);
+  assert.throws(() => unlockJournal(other, journal(), "246810", now + 10), /Zu viele Versuche\. Warte/);
+  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=?", `pin:${otherId}:${journalId}`)?.n, 5);
+  // The owner is told once per burst, in their inbox.
+  const notices = () =>
+    one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND page_id=? AND kind='security'", user.id, journalId)?.n || 0;
+  assert.equal(notices(), 1);
+  // After each pause: five more, then the next pause; twenty in a day end it.
+  for (let round = 1; round < 4; round++) {
+    const at = now + round * 6 * 60_000;
+    for (let i = 0; i < 5; i++) assert.throws(() => unlockJournal(other, journal(), "111111", at + i), /stimmt nicht/);
+  }
+  assert.throws(() => unlockJournal(other, journal(), "246810", now + 4 * 6 * 60_000), /für heute/);
+  assert.equal(notices(), 4);
+  // The day after, the right PIN works again and clears the count.
+  unlockJournal(other, journal(), "246810", now + 86_400_000 + 20 * 60_000);
+  assert.equal(one("SELECT 1 FROM login_failures WHERE key=?", `pin:${otherId}:${journalId}`), undefined);
+  // The owner's own typos stay quiet.
+  assert.throws(() => unlockJournal(user, journal(), "000000", now), /stimmt nicht/);
+  assert.equal(notices(), 4);
+  command(user, { action: "journal.lock", pageId: journalId, pin: null, current: "246810" });
 });
 
 test("appointments of the day come from databases and ICS calendars", () => {

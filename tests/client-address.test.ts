@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clientAddress } from "../lib/client-address";
+import { addressKey, clientAddress } from "../lib/client-address";
 
 const h = (xff?: string, real?: string) => {
   const headers = new Headers();
@@ -22,5 +22,17 @@ test("the client address comes from the trusted proxy, not from what the client 
   assert.equal(clientAddress(h("1.1.1.1, 203.0.113.9")), "203.0.113.9");
   delete process.env.FLOWPLAN_TRUSTED_PROXIES;
   assert.equal(clientAddress(h(undefined, "198.51.100.7")), "198.51.100.7");
-  assert.equal(clientAddress(h()), "local");
+});
+
+test("without a forwarded address nobody shares a bucket, and 0 trusts no header", () => {
+  delete process.env.FLOWPLAN_TRUSTED_PROXIES;
+  // No header at all: unknown, not a constant that everyone would share.
+  assert.equal(clientAddress(h()), "");
+  assert.deepEqual(addressKey("ip", ""), []);
+  assert.deepEqual(addressKey("ip", "203.0.113.9"), ["ip:203.0.113.9"]);
+  // Exposed without a proxy: the header is the client's to make up, so it
+  // is ignored altogether.
+  process.env.FLOWPLAN_TRUSTED_PROXIES = "0";
+  assert.equal(clientAddress(h("203.0.113.9", "198.51.100.7")), "");
+  delete process.env.FLOWPLAN_TRUSTED_PROXIES;
 });

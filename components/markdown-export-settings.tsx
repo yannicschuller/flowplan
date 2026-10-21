@@ -44,10 +44,12 @@ export function MarkdownExportSettings({
 }) {
   const t = useT();
   const [choices, setChoices] = useState<Choice[] | null>(null);
-  const [chosen, setChosen] = useState<string[]>(status.pages.map((p) => p.id));
+  // Only pages that still exist can be ticked, so "Save N" matches the list.
+  const existing = (pages: typeof status.pages) => pages.filter((p) => p.title !== null && p.title !== undefined).map((p) => p.id);
+  const [chosen, setChosen] = useState<string[]>(existing(status.pages));
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => setChosen(status.pages.map((p) => p.id)), [status.pages]);
+  useEffect(() => setChosen(existing(status.pages)), [status.pages]);
   const open = () =>
     api<{ pages: Choice[] }>("/api/admin/export-pages")
       .then((r) => setChoices(r.pages))
