@@ -1403,14 +1403,12 @@ test("rollup property picker, progress display and relation board groups work on
   ).toHaveAttribute("aria-valuenow", "4");
   await record.getByRole("button", { name: "Schließen", exact: true }).click();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
-  const config = page.getByRole("dialog", {
-    name: "Ansicht konfigurieren",
-    exact: true,
-  });
-  await config.getByLabel("Gruppieren nach").selectOption("tasks");
-  await expect(config.locator("fieldset")).toBeEnabled();
-  await config.getByRole("button", { name: "Schließen", exact: true }).click();
+  await page.getByRole("button", { name: /^Gruppieren/ }).click();
+  const grouping = page.getByRole("dialog", { name: "Gruppierung", exact: true });
+  await grouping.getByLabel("Gruppieren nach").selectOption("tasks");
+  await expect(grouping.locator("fieldset")).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(grouping).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "Gruppe Analyse", exact: true }),
   ).toContainText("Website");
@@ -1891,6 +1889,7 @@ test("nested filters preview and persist AND/OR groups and retain drafts on conc
     await command({ action: "row.create", pageId: p.id, cells });
   await page.goto(`/#page=${p.id}`);
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   const dialog = page.getByRole("dialog", {
       name: "Filter bearbeiten",
       exact: true,
@@ -1957,6 +1956,7 @@ test("nested filters preview and persist AND/OR groups and retain drafts on conc
   await expect(page.locator(".record-card")).toHaveCount(4);
   await page.getByRole("button", { name: "Tabelle", exact: true }).click();
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   await root
     .getByLabel("Alle Filter: Verknüpfung", { exact: true })
     .selectOption("or");
@@ -1964,6 +1964,7 @@ test("nested filters preview and persist AND/OR groups and retain drafts on conc
   await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
   await expect(page.locator("tbody .title-cell")).toHaveText(["Alpha", "Beta"]);
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   await nested
     .locator(":scope > .filter-group-actions")
     .getByRole("button", { name: "Gruppe hinzufügen", exact: true })
@@ -1988,6 +1989,7 @@ test("nested filters preview and persist AND/OR groups and retain drafts on conc
   );
   await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   await priority.getByLabel("Filterwert", { exact: true }).fill("4");
   const current = await read();
   await command({
@@ -2559,6 +2561,7 @@ test("relative date filters persist zones and update across midnight without rel
       "*, *::before, *::after { animation: none !important; transition: none !important; }",
   });
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Filter bearbeiten",
     exact: true,
@@ -2597,6 +2600,7 @@ test("relative date filters persist zones and update across midnight without rel
   await expect(page.locator("tbody .title-cell")).toHaveText(["Sonntag"]);
   expect((await read()).database.views[0].filterGroup).toEqual(stored);
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   await expect(dialog.getByText(/29.03.2026 – 29.03.2026/)).toBeVisible();
   await dialog
     .getByLabel("Filter-Zeitzone", { exact: true })
@@ -2604,6 +2608,7 @@ test("relative date filters persist zones and update across midnight without rel
   await dialog.getByRole("button", { name: "Anwenden", exact: true }).click();
   await expect(page.locator("tbody .title-cell")).toHaveText(["Samstag"]);
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   await dialog
     .getByLabel("Filter-Zeitzone", { exact: true })
     .selectOption("Europe/Berlin");
@@ -2631,6 +2636,7 @@ test("relative date filters persist zones and update across midnight without rel
     "Sonntag",
   ]);
   await page.getByRole("button", { name: /^Filtern/ }).click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).click();
   await expect(
     dialog.getByLabel("Filter-Zeitzone", { exact: true }),
   ).toHaveValue("Europe/Berlin");
@@ -2710,9 +2716,9 @@ test("grouped tables and lists collapse independently, select visible rows and m
   ])
     ids.push((await command({ action: "row.create", pageId: p.id, cells })).id);
   await page.goto(`/#page=${p.id}`);
-  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  await page.getByRole("button", { name: /^Gruppieren/ }).click();
   const settings = page.getByRole("dialog", {
-    name: "Ansicht konfigurieren",
+    name: "Gruppierung",
     exact: true,
   });
   await settings
@@ -2721,9 +2727,8 @@ test("grouped tables and lists collapse independently, select visible rows and m
   await expect
     .poll(async () => (await read()).database.views[0].groupBy)
     .toBe("status");
-  await settings
-    .getByRole("button", { name: "Schließen", exact: true })
-    .click();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
   const open = page.getByRole("rowgroup", { name: "Gruppe Open", exact: true }),
     done = page.getByRole("rowgroup", { name: "Gruppe Done", exact: true });
   await expect(open.locator(".title-cell")).toHaveText(["Alpha", "Beta"]);
@@ -2751,7 +2756,7 @@ test("grouped tables and lists collapse independently, select visible rows and m
   await expect(
     open.getByRole("button", { name: "Gruppe Open ausklappen", exact: true }),
   ).toHaveAttribute("aria-expanded", "false");
-  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  await page.getByRole("button", { name: /^Gruppieren/ }).click();
   await settings
     .getByRole("checkbox", { name: "Leere Gruppen ausblenden", exact: true })
     .click();
@@ -2764,9 +2769,8 @@ test("grouped tables and lists collapse independently, select visible rows and m
   await expect
     .poll(async () => (await read()).database.views[0].groupSettings.sort)
     .toBe("asc");
-  await settings
-    .getByRole("button", { name: "Schließen", exact: true })
-    .click();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
   await expect(page.locator(".data-table tbody")).toHaveCount(4);
   await expect
     .poll(() =>

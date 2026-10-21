@@ -104,6 +104,7 @@ test("linked databases insert, filter independently, edit source records, add vi
   const first = embeds.first(),
     second = embeds.nth(1);
   await first.getByRole("button", { name: /^Filtern/ }).click();
+  await first.getByRole("button", { name: "Erweitert …", exact: true }).click();
   const filter = page.getByRole("dialog", {
     name: "Filter bearbeiten",
     exact: true,
@@ -238,6 +239,7 @@ test("linked configuration conflicts retain drafts, source locks enforce rights 
   const embed = page.locator(".linked-database");
   await expect(embed.locator(".title-cell")).toHaveCount(3);
   await embed.getByRole("button", { name: /^Filtern/ }).click();
+  await embed.getByRole("button", { name: "Erweitert …", exact: true }).click();
   const filter = page.getByRole("dialog", {
     name: "Filter bearbeiten",
     exact: true,

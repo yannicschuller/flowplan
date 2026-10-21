@@ -27,6 +27,9 @@ import {
   recordOpenModes,
   type RecordOpenMode,
 } from "@/lib/record-layout";
+import { visibleViewTabs, viewRecordOpenMode } from "@/lib/view-toolbar";
+import { DatabaseToolbarChips } from "./database-toolbar";
+import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
@@ -127,9 +130,6 @@ import DatabaseForm from "./database-form";
 import type { FormConfig } from "@/lib/form-settings";
 import {
   Plus,
-  MagnifyingGlass,
-  Funnel,
-  SortAscending,
   DotsThree,
   Sparkle,
   ArrowSquareOut,
@@ -147,8 +147,8 @@ import {
   CaretUp,
   CaretDown,
   Star,
-  AppWindow,
-  SquareHalf,
+  Funnel,
+  ArrowsIn,
   ArrowsOut,
   LockSimple,
   LockSimpleOpen,
@@ -392,6 +392,7 @@ export default function DatabaseView({
   const lastOpened = useRef<string | null>(null);
   function setRowId(id: string | null, occurrence?: string) {
     if (id) lastOpened.current = id;
+    else setOpenAsPage(false);
     setOccurrence(id && occurrence ? { rowId: id, date: occurrence } : null);
     setLocalRowId(id);
     if (routeNavigation) {
@@ -497,28 +498,13 @@ export default function DatabaseView({
   const [sortMove, setSortMove] = useState<RowMove | null>(null);
   const [groupDrop, setGroupDrop] = useState<string | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
-  // Record pages open as the database layout says, unless this browser
-  // chose its own presentation.
+  // Record pages open as the view says (else as the database layout says);
+  // "Als Seite öffnen" widens the open record to a page until it closes.
   const recordLayout = data.database.recordLayout || defaultRecordLayout;
-  const [recordModeChoice, setRecordModeChoice] = useState<RecordOpenMode | "">(
-    "",
-  );
+  const [openAsPage, setOpenAsPage] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false),
     [layoutOpen, setLayoutOpen] = useState(false),
     [accessOpen, setAccessOpen] = useState(false);
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("flowplan-record-mode") || "";
-      setRecordModeChoice(
-        (recordOpenModes as readonly string[]).includes(stored)
-          ? (stored as RecordOpenMode)
-          : localStorage.getItem("flowplan-record-full") === "1"
-            ? "full"
-            : "",
-      );
-    } catch {}
-  }, []);
-  const recordMode = recordModeChoice || recordLayout.open;
   // Records opened for reading on this device (same list as pages, by record
   // id) and records as full pages across the whole width (issue #25).
   const [readRows, setReadRows] = useState<string[]>([]),
@@ -539,16 +525,6 @@ export default function DatabaseView({
       } catch {}
       return !wide;
     });
-  // A personal choice equal to the database default is no choice.
-  const chooseRecordMode = (mode: RecordOpenMode) => {
-    const choice = mode === recordLayout.open ? "" : mode;
-    setRecordModeChoice(choice);
-    try {
-      if (choice) localStorage.setItem("flowplan-record-mode", choice);
-      else localStorage.removeItem("flowplan-record-mode");
-      localStorage.removeItem("flowplan-record-full");
-    } catch {}
-  };
   const [rowIconPicker, setRowIconPicker] = useState(false),
     [rowIconTab, setRowIconTab] = useState<"emoji" | "image">("emoji"),
     [rowCoverPicker, setRowCoverPicker] = useState(false);
@@ -580,6 +556,15 @@ export default function DatabaseView({
     visibleFields = orderedFields.filter(
       (f) => !view.hiddenFields?.includes(f.id),
     );
+  const viewRecordMode = viewRecordOpenMode(view, recordLayout);
+  const recordMode: RecordOpenMode = openAsPage ? "full" : viewRecordMode;
+  // The first column (and the selection cell before it) stays in place while
+  // the table scrolls sideways.
+  const stickyOffset = editable ? 76 : 0;
+  const stickyCell = (field: Field, index: number) =>
+    index === 0
+      ? { className: "sticky-col sticky-col-end", style: { left: stickyOffset } }
+      : { className: "", style: undefined };
   const formulaFields = fields.some((f) => f.id === fieldDraft.id)
     ? fields.map((f) => (f.id === fieldDraft.id ? fieldDraft : f))
     : [...fields, fieldDraft];
@@ -708,39 +693,27 @@ export default function DatabaseView({
   }
   const canManageAccess = (row: Row) =>
     editable && (data.role === "owner" || row.created_by === userId);
-  const recordModeIcons = { center: AppWindow, side: SquareHalf, full: ArrowsOut };
-  const recordModeLabels = {
-    center: t("Als Dialog öffnen", "Open as dialog"),
-    side: t("In der Seitenleiste öffnen", "Open in side panel"),
-    full: t("Als ganze Seite öffnen", "Open as full page"),
-  };
-  // The record's header: how it opens, favorite, permissions, layout.
+  // The record's header: open as a page, favorite, permissions, layout.
   const recordActions = (row: Row) => {
     const starred = favoriteRows.some((f) => f.rowId === row.id);
     const access = row.access || "inherit";
     const AccessIcon =
       access === "inherit" ? UsersThree : access === "private" ? LockSimple : LockSimpleOpen;
+    const backLabel = t(`Zurück zur Ansicht „${t(recordOpenLabels[viewRecordMode])}“`, `Back to “${t(recordOpenLabels[viewRecordMode])}”`);
     return (
       <>
-        <div className="record-open-modes" role="group" aria-label={t("Eintrag öffnen als", "Open record as")}>
-          {recordOpenModes.map((mode) => {
-            const Icon = recordModeIcons[mode];
-            const label = `${recordModeLabels[mode]}${mode === recordLayout.open ? t(" (Standard)", " (default)") : ""}`;
-            return (
-              <button
-                key={mode}
-                type="button"
-                className="icon-button"
-                aria-pressed={recordMode === mode}
-                aria-label={label}
-                title={label}
-                onClick={() => chooseRecordMode(mode)}
-              >
-                <Icon size={17} />
-              </button>
-            );
-          })}
-        </div>
+        {viewRecordMode !== "full" && (
+          <button
+            type="button"
+            className={`icon-button record-page-toggle${openAsPage ? " active" : ""}`}
+            aria-pressed={openAsPage}
+            aria-label={openAsPage ? backLabel : t("Als Seite öffnen", "Open as page")}
+            title={openAsPage ? backLabel : t("Als Seite öffnen", "Open as page")}
+            onClick={() => setOpenAsPage((v) => !v)}
+          >
+            {openAsPage ? <ArrowsIn size={17} /> : <ArrowsOut size={17} />}
+          </button>
+        )}
         {recordMode === "full" && (
           <button
             type="button"
@@ -1063,6 +1036,7 @@ export default function DatabaseView({
     }
   }
   const views = data.database.views;
+  const viewTabs = visibleViewTabs(views, view.id);
   function renameView(id: string, name: string) {
     return updateSchema(fields, views.map((v) => (v.id === id ? { ...v, name } : v)));
   }
@@ -1477,7 +1451,7 @@ export default function DatabaseView({
           }
         }}
       >
-        <DotsSixVertical size={17} />
+        <DotsSixVertical size={17} aria-hidden="true" />
       </button>
     );
   }
@@ -2330,22 +2304,42 @@ export default function DatabaseView({
       </div>
     );
   }
+  // Arrow up/down move between rows, Enter opens the focused row. Typing in
+  // a cell editor is left alone.
+  function rowKeyDown(e: React.KeyboardEvent<HTMLTableRowElement>, r: Row) {
+    const target = e.target as HTMLElement;
+    if (target.closest("input, textarea, select, [contenteditable=true], .inline-cell")) return;
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.altKey) {
+      const rows = [...(boardRef.current?.querySelectorAll<HTMLElement>("tr[data-row-id]") || [])];
+      const next = rows[rows.indexOf(e.currentTarget) + (e.key === "ArrowDown" ? 1 : -1)];
+      if (!next) return;
+      e.preventDefault();
+      (next.querySelector<HTMLElement>(".row-title-link") || next).focus();
+    } else if (e.key === "Enter" && target === e.currentTarget) {
+      e.preventDefault();
+      setRowId(r.id);
+    }
+  }
   function tableRow(r: Row, groupKey?: string, tree?: { depth: number; children: number }) {
+    const title = cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled");
     return (
       <tr
         key={r.id}
+        role="row"
+        tabIndex={-1}
         className={`${selection.has(r.id) ? "row-selected" : ""} ${dropClass(r, groupKey)}`}
         data-row-id={r.id}
+        onKeyDown={(e) => rowKeyDown(e, r)}
         onDragOver={(e) => dragOver(e, r, groupKey)}
         onDrop={(e) => dragMove(e, r, groupKey)}
       >
         {editable && (
-          <td className="selection-cell">
+          <td role="gridcell" className="selection-cell sticky-col" style={{ left: 0 }}>
             <div className="row-selection-controls">
               {orderHandle(r, groupKey)}
               <input
                 type="checkbox"
-                aria-label={t(`${cellText(r.cells[fields[0].id]) || "Ohne Titel"} auswählen`, `Select ${cellText(r.cells[fields[0].id]) || "Untitled"}`)}
+                aria-label={t(`${title} auswählen`, `Select ${title}`)}
                 disabled={bulkBusy}
                 checked={selection.has(r.id)}
                 onChange={(e) => selectRow(r, e.target.checked)}
@@ -2356,7 +2350,9 @@ export default function DatabaseView({
         {visibleFields.map((f, i) => (
           <td
             key={f.id}
-            className={aiStatus.fresh.has(`${r.id}:${f.id}`) ? "ai-filled" : undefined}
+            role="gridcell"
+            className={`${stickyCell(f, i).className}${aiStatus.fresh.has(`${r.id}:${f.id}`) ? " ai-filled" : ""}`.trim() || undefined}
+            style={stickyCell(f, i).style}
             onClick={() => {
               if (
                 !rowEditable(r) ||
@@ -2415,28 +2411,30 @@ export default function DatabaseView({
                     <CaretRight size={12} />
                   </button>
                 )}
-                {f.id === fields[0].id && r.icon && (
-                  <PageIcon name={r.icon} size={15} className="row-icon" />
-                )}
-                {display(r, f)}
-                {f.id === fields[0].id && (
+                {f.id === fields[0].id ? (
+                  // The title opens the record: a real button, so Enter and
+                  // Space work and the dialog can hand the focus back here.
                   <button
                     type="button"
-                    className="row-open"
-                    aria-label={t(`Eintrag öffnen: ${cellText(r.cells[fields[0].id]) || "Ohne Titel"}`, `Open record: ${cellText(r.cells[fields[0].id]) || "Untitled"}`)}
+                    className="row-title-link"
+                    aria-label={t(`Eintrag öffnen: ${title}`, `Open record: ${title}`)}
                     onClick={(e) => {
                       e.stopPropagation();
                       setRowId(r.id);
                     }}
                   >
-                    <ArrowSquareOut size={14} />
+                    {r.icon && <PageIcon name={r.icon} size={15} className="row-icon" />}
+                    <span className="row-title-text">{display(r, f)}</span>
+                    <ArrowSquareOut size={14} className="row-open-mark" aria-hidden="true" />
                   </button>
+                ) : (
+                  display(r, f)
                 )}
               </span>
             )}
           </td>
         ))}
-        {editable && <td />}
+        {editable && <td role="gridcell" />}
       </tr>
     );
   }
@@ -2484,7 +2482,7 @@ export default function DatabaseView({
       }}
     >
       <ScrollFade className="database-tabs" role="group" aria-label={t("Ansichten", "Views")}>
-        {data.database.views.map((v) => {
+        {viewTabs.shown.map((v) => {
           const Icon = viewIcons[v.type];
           if (renamingView === v.id)
             return (
@@ -2562,6 +2560,40 @@ export default function DatabaseView({
             </button>
           );
         })}
+        {viewTabs.more.length > 0 && (
+          <Dropdown.Root>
+            <Dropdown.Trigger asChild>
+              <button
+                className="view-tab-more"
+                aria-label={t(`Weitere Ansichten (${viewTabs.more.length})`, `More views (${viewTabs.more.length})`)}
+              >
+                {t(`Weitere (${viewTabs.more.length})`, `More (${viewTabs.more.length})`)}
+                <CaretDown size={12} aria-hidden="true" />
+              </button>
+            </Dropdown.Trigger>
+            <Dropdown.Portal>
+              <Dropdown.Content className="dropdown" align="start" sideOffset={4}>
+                {viewTabs.more.map((v) => {
+                  const Icon = viewIcons[v.type];
+                  return (
+                    <Dropdown.Item
+                      key={v.id}
+                      className="dropdown-item"
+                      onSelect={() => {
+                        if (prefersReducedMotion()) setViewId(v.id);
+                        else startTransition(() => setViewId(v.id));
+                      }}
+                    >
+                      <Icon />
+                      <span>{v.name}</span>
+                      {v.default && <Star className="view-default-mark" size={11} weight="fill" aria-hidden />}
+                    </Dropdown.Item>
+                  );
+                })}
+              </Dropdown.Content>
+            </Dropdown.Portal>
+          </Dropdown.Root>
+        )}
         {viewEditable && (
           <button
             className="icon-button"
@@ -2576,38 +2608,26 @@ export default function DatabaseView({
         )}
       </ScrollFade>
       <div className="database-toolbar">
-        <div className="toolbar-left">
-          <button
-            className={activeFilterCount ? "active" : ""}
-            onClick={() => setFilterOpen(true)}
-          >
-            <Funnel size={16} />
-            {t("Filtern", "Filter")}
-            {activeFilterCount > 0 && (
-              <span className="count">{activeFilterCount}</span>
-            )}
-          </button>
-          <button onClick={() => setConfig(true)}>
-            <SortAscending size={17} />
-            {t("Sortieren", "Sort")}
-          </button>
-          <button
-            title={t("Ansicht und Eigenschaften", "View and properties")}
-            onClick={() => setConfig(true)}
-          >
-            <SlidersHorizontal size={17} />
-          </button>
+        <div className="toolbar-left toolbar-chips">
+          <DatabaseToolbarChips
+            key={view.id}
+            view={view}
+            fields={fields}
+            rows={data.rows}
+            related={related}
+            relatedSchemas={data.relatedSchemas}
+            members={members}
+            editable={viewEditable}
+            groupSettings={groupSettings}
+            updateView={updateView}
+            saveFilters={(filterGroup) => updateView({ filters: [], filterGroup })}
+            onAdvancedFilters={() => setFilterOpen(true)}
+            onConfigure={() => setConfig(true)}
+            query={query}
+            onQuery={setQuery}
+          />
         </div>
         <div className="toolbar-right">
-          <div className="table-search">
-            <MagnifyingGlass size={16} />
-            <input
-              aria-label={t("Datenbank durchsuchen", "Search database")}
-              placeholder={t("Suchen …", "Search …")}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
           {aiSummarize !== "hidden" && (
             <button
               aria-disabled={aiSummarize === "blocked" || undefined}
@@ -2774,8 +2794,17 @@ export default function DatabaseView({
       <ViewTransition key={view.id} enter="db-view-in" exit="db-view-out" default="none">
       <>
       {view.type === "table" && (
-        <ScrollFade className="data-table-scroll">
+        <ScrollFade
+          className="data-table-scroll"
+          onScroll={(e) => {
+            // Scrolled sideways: the pinned first column casts a shadow.
+            const el = e.currentTarget;
+            el.classList.toggle("scrolled-x", el.scrollLeft > 0);
+          }}
+        >
           <table
+            role="grid"
+            aria-label={t(`${view.name} – Tabelle`, `${view.name} – table`)}
             className="data-table configurable-table"
             style={{
               width: visibleFields.reduce(
@@ -2794,7 +2823,7 @@ export default function DatabaseView({
             <thead>
               <tr>
                 {editable && (
-                  <th className="selection-cell">
+                  <th className="selection-cell sticky-col" style={{ left: 0 }}>
                     <input
                       type="checkbox"
                       aria-label={t("Alle sichtbaren Einträge auswählen", "Select all visible records")}
@@ -2815,10 +2844,12 @@ export default function DatabaseView({
                     />
                   </th>
                 )}
-                {visibleFields.map((f) => (
+                {visibleFields.map((f, index) => (
                   <th
                     key={f.id}
                     data-field-id={f.id}
+                    className={stickyCell(f, index).className || undefined}
+                    style={stickyCell(f, index).style}
                     draggable={viewEditable}
                     onDragStart={(e) =>
                       e.dataTransfer.setData(
@@ -3718,6 +3749,38 @@ export default function DatabaseView({
               }
             />
           </label>
+          <p className="muted view-type-line">
+            {(() => {
+              const Icon = viewIcons[view.type];
+              return <Icon size={15} aria-hidden="true" />;
+            })()}
+            {t(...viewTypeNames[view.type])} · {t(...viewTypeHints[view.type])}
+          </p>
+          <p className="muted">
+            {t("Filter, Sortierung, Gruppierung und sichtbare Eigenschaften stellst du über die Leiste oberhalb der Ansicht ein.", "Filters, sorting, grouping and visible properties are set from the bar above the view.")}
+          </p>
+          <label>
+            {t("Einträge öffnen als", "Open records as")}
+            <Select
+              aria-label={t("Einträge öffnen als", "Open records as")}
+              disabled={!viewEditable}
+              value={view.recordOpen || ""}
+              onChange={(e) =>
+                updateView({
+                  recordOpen: (e.target.value || undefined) as RecordOpenMode | undefined,
+                })
+              }
+            >
+              <option value="">
+                {t(`Wie die Datenbank (${t(recordOpenLabels[recordLayout.open])})`, `Like the database (${t(recordOpenLabels[recordLayout.open])})`)}
+              </option>
+              {recordOpenModes.map((mode) => (
+                <option key={mode} value={mode}>
+                  {t(recordOpenLabels[mode])}
+                </option>
+              ))}
+            </Select>
+          </label>
           {view.type === "feed" && (
             <div className="settings-section">
               <h3>{t("Feed-Darstellung", "Feed layout")}</h3>
@@ -3768,89 +3831,6 @@ export default function DatabaseView({
               ))}
             </div>
           )}
-          <div className="settings-section">
-            <h3>{t("Filter", "Filters")}</h3>
-            <p className="muted">
-              {activeFilterCount
-                ? t(`${activeFilterCount} Bedingungen aktiv`, `${activeFilterCount} conditions active`)
-                : t("Keine Filter aktiv", "No filters active")}
-            </p>
-            <button
-              className="button compact"
-              onClick={() => {
-                setConfig(false);
-                setFilterOpen(true);
-              }}
-            >
-              {t("Filter bearbeiten", "Edit filters")}
-            </button>
-          </div>
-          <div className="settings-section">
-            <h3>{t("Sortierung", "Sorting")}</h3>
-            {view.sorts.map((s, i) => (
-              <div className="filter-line" key={i}>
-                <Select
-                  value={s.field}
-                  aria-label={t("Sortier-Eigenschaft", "Sort property")}
-                  onChange={(e) =>
-                    updateView({
-                      sorts: view.sorts.map((x, j) =>
-                        j === i ? { ...x, field: e.target.value } : x,
-                      ),
-                    })
-                  }
-                >
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={s.direction}
-                  aria-label={t("Sortierrichtung", "Sort direction")}
-                  onChange={(e) =>
-                    updateView({
-                      sorts: view.sorts.map((x, j) =>
-                        j === i
-                          ? {
-                              ...x,
-                              direction: e.target.value as "asc" | "desc",
-                            }
-                          : x,
-                      ),
-                    })
-                  }
-                >
-                  <option value="asc">{t("Aufsteigend", "Ascending")}</option>
-                  <option value="desc">{t("Absteigend", "Descending")}</option>
-                </Select>
-                <button
-                  className="icon-button"
-                  aria-label={t("Sortierung entfernen", "Remove sorting")}
-                  onClick={() =>
-                    updateView({ sorts: view.sorts.filter((_, j) => i !== j) })
-                  }
-                >
-                  <Trash />
-                </button>
-              </div>
-            ))}
-            <button
-              className="button compact"
-              onClick={() =>
-                updateView({
-                  sorts: [
-                    ...view.sorts,
-                    { field: fields[0].id, direction: "asc" },
-                  ],
-                })
-              }
-            >
-              <Plus />
-              {t("Sortierung hinzufügen", "Add sorting")}
-            </button>
-          </div>
           {view.type === "gallery" && (
             <fieldset
               disabled={!viewEditable || schemaBusy}
@@ -3959,76 +3939,8 @@ export default function DatabaseView({
               {t("Unteraufgaben als Baum zeigen", "Show subtasks as a tree")}
             </label>
           )}
-          <label>
-            {t("Gruppieren nach", "Group by")}
-            <Select
-              aria-label={t("Gruppieren nach", "Group by")}
-              disabled={!viewEditable}
-              value={view.groupBy || ""}
-              onChange={(e) =>
-                updateView({
-                  groupBy: e.target.value,
-                  ...(view.subGroupBy === e.target.value || !e.target.value
-                    ? { subGroupBy: undefined, groupLevels: undefined }
-                    : {}),
-                  groupSettings: {
-                    ...groupSettings,
-                    collapsed: [],
-                    order: [],
-                  },
-                })
-              }
-            >
-              <option value="">
-                {view.type === "board" ? t("Automatisch", "Automatic") : t("Keine Gruppierung", "No grouping")}
-              </option>
-              {fields.filter(canGroupField).map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </Select>
-          </label>
-          {groupField && ["table", "list", "board"].includes(view.type) && (
-            <label>
-              {view.type === "board" ? t("Swimlanes nach", "Swimlanes by") : t("Untergruppen nach", "Sub-groups by")}
-              <Select
-                aria-label={
-                  view.type === "board" ? t("Swimlanes nach", "Swimlanes by") : t("Untergruppen nach", "Sub-groups by")
-                }
-                disabled={!viewEditable}
-                value={subField?.id || ""}
-                onChange={(e) =>
-                  updateView({
-                    subGroupBy: e.target.value || undefined,
-                    ...(!e.target.value ||
-                    view.groupLevels?.includes(e.target.value)
-                      ? { groupLevels: undefined }
-                      : {}),
-                    groupSettings: {
-                      ...groupSettings,
-                      // Subgroup collapse keys are only meaningful per field.
-                      collapsed: groupSettings.collapsed.filter(
-                        (key) => !key.startsWith('["sub"'),
-                      ),
-                    },
-                  })
-                }
-              >
-                <option value="">
-                  {view.type === "board"
-                    ? t("Keine Swimlanes", "No swimlanes")
-                    : t("Keine Untergruppen", "No sub-groups")}
-                </option>
-                {fields
-                  .filter((f) => canGroupField(f) && f.id !== groupField!.id)
-                  .map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-              </Select>
-            </label>
+          {subField && ["table", "list", "board"].includes(view.type) && (
+            <h3 className="settings-heading">{t("Weitere Gruppenebenen", "Further group levels")}</h3>
           )}
           {subField &&
             ["table", "list", "board"].includes(view.type) &&
@@ -4088,63 +4000,6 @@ export default function DatabaseView({
                 );
               },
             )}
-          {groupField && ["table", "list", "board"].includes(view.type) && (
-            <div className="settings-section">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  disabled={!viewEditable}
-                  checked={groupSettings.hideEmpty}
-                  onChange={(e) =>
-                    updateView({
-                      groupSettings: {
-                        ...groupSettings,
-                        hideEmpty: e.target.checked,
-                      },
-                    })
-                  }
-                />
-                {t("Leere Gruppen ausblenden", "Hide empty groups")}
-              </label>
-              <label>
-                {t("Gruppen sortieren", "Sort groups")}
-                <Select
-                  aria-label={t("Gruppen sortieren", "Sort groups")}
-                  disabled={!viewEditable}
-                  value={groupSettings.sort}
-                  onChange={(e) =>
-                    updateView({
-                      groupSettings: {
-                        ...groupSettings,
-                        sort: e.target.value as "manual" | "asc" | "desc",
-                      },
-                    })
-                  }
-                >
-                  <option value="manual">
-                    {groupSettings.order?.length
-                      ? t("Eigene Reihenfolge", "Custom order")
-                      : t("Eigenschaftsreihenfolge", "Property order")}
-                  </option>
-                  <option value="asc">{t("Bezeichnung aufsteigend", "Label ascending")}</option>
-                  <option value="desc">{t("Bezeichnung absteigend", "Label descending")}</option>
-                </Select>
-              </label>
-              {!!groupSettings.order?.length && (
-                <button
-                  className="button compact"
-                  disabled={!viewEditable || schemaBusy}
-                  onClick={() =>
-                    updateView({
-                      groupSettings: { ...groupSettings, order: [] },
-                    })
-                  }
-                >
-                  {t("Gruppenreihenfolge zurücksetzen", "Reset group order")}
-                </button>
-              )}
-            </div>
-          )}
           <label>
             {t("Datumsfeld", "Date field")}
             <Select
@@ -5258,8 +5113,8 @@ export default function DatabaseView({
         onClose={() => setRowId(null)}
         // Back to the record's row or card, so the keyboard stays in the view.
         onCloseAutoFocus={(event) => {
-          const row = lastOpened.current && boardRef.current?.querySelector(`[data-row-id="${CSS.escape(lastOpened.current)}"]`);
-          const opener = row && (row.querySelector<HTMLElement>(".row-open") || row.querySelector<HTMLElement>("button"));
+          const row = lastOpened.current && boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"]`);
+          const opener = row && (row.querySelector<HTMLElement>(".row-title-link, .row-open") || row.querySelector<HTMLElement>("button"));
           if (!opener) return;
           event.preventDefault();
           opener.focus();

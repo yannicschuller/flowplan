@@ -101,18 +101,21 @@ test("record pages get their own permissions and layout options", async ({
       hideEmpty: true,
       hidden: ["intern"],
     });
-  // A personal choice overrides the database default.
-  const modes = entry.getByRole("group", { name: "Eintrag öffnen als" });
-  await modes.getByRole("button", { name: /Als Dialog öffnen/ }).click();
-  await expect(modes.getByRole("button", { name: /Als Dialog öffnen/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(entry).not.toHaveClass(/modal-side/);
-  await page.reload();
+  // "Als Seite öffnen" widens this record until it closes.
+  await entry.getByRole("button", { name: "Als Seite öffnen", exact: true }).click();
+  await expect(entry).toHaveClass(/modal-full/);
+  await entry.getByRole("button", { name: "Zurück zur Ansicht „Seitenleiste“", exact: true }).click();
+  await expect(entry).toHaveClass(/modal-side/);
+  // A view may open its records differently from the database default.
+  await entry.getByRole("button", { name: "Schließen", exact: true }).click();
+  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  const viewSettings = page.getByRole("dialog", { name: "Ansicht konfigurieren", exact: true });
+  await viewSettings.getByLabel("Einträge öffnen als", { exact: true }).selectOption("center");
+  await expect.poll(async () => (await read()).database.views[0].recordOpen).toBe("center");
+  await viewSettings.getByRole("button", { name: "Schließen", exact: true }).click();
+  await page.goto(`/#page=${p.id}&row=${row.id}`);
   await expect(entry).toBeVisible();
   await expect(entry).not.toHaveClass(/modal-side/);
-  // Choosing the default again drops the personal choice.
-  await modes.getByRole("button", { name: "In der Seitenleiste öffnen (Standard)" }).click();
-  await expect(entry).toHaveClass(/modal-side/);
-  expect(await page.evaluate(() => localStorage.getItem("flowplan-record-mode"))).toBeNull();
   await expect(entry.locator(".row-properties")).not.toContainText("Intern");
   // Page width stays within the viewport.
   expect(

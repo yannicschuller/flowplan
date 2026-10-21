@@ -77,9 +77,9 @@ test("tables and lists nest subgroups that collapse, create and move entries on 
     (await read()).rows.find((r: { id: string }) => r.id === id);
 
   await page.goto(`/#page=${p.id}`);
-  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  await page.getByRole("button", { name: /^Gruppieren/ }).click();
   const settings = page.getByRole("dialog", {
-    name: "Ansicht konfigurieren",
+    name: "Gruppierung",
     exact: true,
   });
   const subSelect = settings.getByLabel("Untergruppen nach", { exact: true });
@@ -94,9 +94,8 @@ test("tables and lists nest subgroups that collapse, create and move entries on 
   await expect
     .poll(async () => (await read()).database.views[0].subGroupBy)
     .toBe("prio");
-  await settings
-    .getByRole("button", { name: "Schließen", exact: true })
-    .click();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
 
   const open = page.getByRole("rowgroup", { name: "Gruppe Open", exact: true });
   const openHigh = page.getByRole("group", {
@@ -206,7 +205,7 @@ test("tables and lists nest subgroups that collapse, create and move entries on 
   });
 
   // Removing the primary grouping clears the subgroup setting.
-  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  await page.getByRole("button", { name: /^Gruppieren/ }).click();
   await settings
     .getByLabel("Gruppieren nach", { exact: true })
     .selectOption("");
@@ -278,9 +277,9 @@ test("board swimlanes group cards by a second property and move them across both
   await page.goto(`/#page=${p.id}`);
   await expect(page.locator(".board")).toBeVisible();
   await expect(page.locator(".board-lane")).toHaveCount(0);
-  await page.getByTitle("Ansicht und Eigenschaften", { exact: true }).click();
+  await page.getByRole("button", { name: /^Gruppieren/ }).click();
   const settings = page.getByRole("dialog", {
-    name: "Ansicht konfigurieren",
+    name: "Gruppierung",
     exact: true,
   });
   await settings
@@ -289,9 +288,8 @@ test("board swimlanes group cards by a second property and move them across both
   await expect
     .poll(async () => (await read()).database.views[0].subGroupBy)
     .toBe("team");
-  await settings
-    .getByRole("button", { name: "Schließen", exact: true })
-    .click();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
   const web = page.getByRole("region", { name: "Swimlane Web", exact: true }),
     app = page.getByRole("region", { name: "Swimlane App", exact: true });
   await expect(web).toBeVisible();

@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   isRelativeOperator,
   relativeDateNames,
@@ -33,6 +33,305 @@ import type {
   User,
   View,
 } from "@/lib/types";
+// A fresh condition on the first property, with its first operator.
+export function newFilterCondition(fields: Field[]): Filter & { kind: "condition" } {
+  return {
+    kind: "condition",
+    field: fields[0].id,
+    op: operatorsFor(fields[0])[0],
+    value: "",
+  };
+}
+// Time zones for relative conditions: the browser's and UTC first.
+export function useTimeZones() {
+  return useMemo(
+    () =>
+      [
+        ...new Set([
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+          "UTC",
+          ...Intl.supportedValuesOf("timeZone"),
+        ]),
+      ].sort(),
+    [],
+  );
+}
+// The controls of one condition: property, operator, value (and the second
+// value of "between", the options of relative dates). Shared by the full
+// filter editor and the toolbar's filter popover (`compact`: no captions,
+// the controls carry their own labels).
+export function FilterConditionFields({
+  node,
+  fields,
+  related,
+  members,
+  zones,
+  filterNow,
+  patch,
+  remove,
+  compact = false,
+}: {
+  node: Filter;
+  fields: Field[];
+  related: Record<string, Row[]>;
+  members: Pick<User, "id" | "name">[];
+  zones: string[];
+  filterNow: number;
+  patch: (values: Partial<Filter>) => void;
+  remove?: ReactNode;
+  compact?: boolean;
+}) {
+  const t = useT();
+  const field = fields.find((f) => f.id === node.field),
+    isEmpty = valuelessOperators.has(node.op),
+    multi = multiValueOperators.has(node.op),
+    operators = operatorsFor(field);
+  const choices =
+    field?.type === "relation"
+      ? (related[field.relationPage || ""] || []).map((r) => ({
+          value: r.id,
+          name: cellText(r.cells.title) || t("Ohne Titel", "Untitled"),
+        }))
+      : field && ["select", "multiselect"].includes(field.type)
+        ? (field.options || []).map((value) => ({ value, name: value }))
+        : field && ["person", "created_by", "updated_by"].includes(field.type)
+          ? members.map((m) => ({ value: m.id, name: m.name }))
+          : field?.type === "checkbox"
+            ? [
+                { value: "true", name: t("Abgehakt", "Checked") },
+                { value: "false", name: t("Nicht abgehakt", "Not checked") },
+              ]
+            : null;
+  // Captions only in the full editor; the popover shows bare controls.
+  const caption = (text: string, children: ReactNode) =>
+    compact ? (
+      <span className="filter-field">{children}</span>
+    ) : (
+      <label>
+        {text}
+        {children}
+      </label>
+    );
+  return (
+    <>
+      {caption(
+        t("Eigenschaft", "Property"),
+        <Select
+          aria-label={t("Filter-Eigenschaft", "Filter property")}
+          value={node.field}
+          onChange={(e) => {
+            const f = fields.find((f) => f.id === e.target.value);
+            patch({
+              field: e.target.value,
+              op: operatorsFor(f)[0],
+              value: "",
+              timeZone: undefined,
+              days: undefined,
+              values: undefined,
+              to: undefined,
+            });
+          }}
+        >
+          {!field && (
+            <option value={node.field}>{t("Gelöschte Eigenschaft", "Deleted property")}</option>
+          )}
+          {fields.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </Select>
+      )}
+      {caption(
+        t("Bedingung", "Condition"),
+        <Select
+          aria-label={t("Filterbedingung", "Filter condition")}
+          value={node.op}
+          onChange={(e) => {
+            const op = e.target.value as Filter["op"];
+            patch({
+              op,
+              values: multiValueOperators.has(op)
+                ? node.values || (node.value ? [node.value] : [])
+                : undefined,
+              to: op === "between" ? node.to || "" : undefined,
+              ...(isRelativeOperator(op)
+                ? {
+                    value: isRelativeOperator(node.op) ? node.value : "today",
+                    timeZone:
+                      node.timeZone ||
+                      Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  }
+                : isRelativeOperator(node.op)
+                  ? { value: "", timeZone: undefined, days: undefined }
+                  : {}),
+            });
+          }}
+        >
+          {!operators.includes(node.op) && (
+            <option value={node.op}>{t(operatorNames[node.op])}</option>
+          )}
+          {operators.map((op) => (
+            <option key={op} value={op}>
+              {t(operatorNames[op])}
+            </option>
+          ))}
+        </Select>
+      )}
+      {caption(
+        t("Wert", "Value"),
+        isRelativeOperator(node.op) ? (
+          <Select
+            aria-label={t("Relativer Zeitraum", "Relative period")}
+            value={node.value}
+            onChange={(e) =>
+              patch({
+                value: e.target.value,
+                days: ["past_days", "next_days"].includes(e.target.value)
+                  ? node.days || 30
+                  : undefined,
+              })
+            }
+          >
+            {Object.entries(relativeDateNames).map(([value, name]) => (
+              <option key={value} value={value}>
+                {t(name)}
+              </option>
+            ))}
+          </Select>
+        ) : multi && choices ? (
+          <span
+            className="filter-values"
+            role="group"
+            aria-label={t("Filterwerte", "Filter values")}
+          >
+            {choices.map((c) => (
+              <label className="checkbox-label" key={c.value}>
+                <input
+                  type="checkbox"
+                  checked={!!node.values?.includes(c.value)}
+                  onChange={(e) =>
+                    patch({
+                      values: e.target.checked
+                        ? [...(node.values || []), c.value]
+                        : (node.values || []).filter((v) => v !== c.value),
+                    })
+                  }
+                />
+                {c.name}
+              </label>
+            ))}
+            {!choices.length && <span className="muted">{t("Keine Werte", "No values")}</span>}
+          </span>
+        ) : choices ? (
+          <Select
+            aria-label={t("Filterwert", "Filter value")}
+            value={node.value}
+            disabled={isEmpty}
+            onChange={(e) => patch({ value: e.target.value })}
+          >
+            <option value="">{t("Auswählen …", "Select …")}</option>
+            {node.value && !choices.some((c) => c.value === node.value) && (
+              <option value={node.value}>{t("Nicht verfügbar", "Not available")}</option>
+            )}
+            {choices.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <input
+            aria-label={t("Filterwert", "Filter value")}
+            type={
+              (field &&
+                ["date", "created_at", "updated_at"].includes(field.type)) ||
+              ["before", "after", "on_or_before", "on_or_after"].includes(
+                node.op,
+              )
+                ? "date"
+                : field?.type === "number"
+                  ? "number"
+                  : "text"
+            }
+            step="any"
+            maxLength={500}
+            value={node.value}
+            disabled={isEmpty}
+            onChange={(e) => patch({ value: e.target.value })}
+          />
+        ),
+      )}
+      {node.op === "between" &&
+        caption(
+          t("Bis", "To"),
+          <input
+            aria-label={t("Filterwert bis", "Filter value to")}
+            type={
+              field &&
+              ["date", "created_at", "updated_at"].includes(field.type)
+                ? "date"
+                : "number"
+            }
+            step="any"
+            value={node.to || ""}
+            onChange={(e) => patch({ to: e.target.value })}
+          />,
+        )}
+      {remove}
+      {isRelativeOperator(node.op) && (
+        <div className="relative-filter-options">
+          {["past_days", "next_days"].includes(node.value) && (
+            <label>
+              {t("Anzahl Tage", "Number of days")}
+              <input
+                aria-label={t("Anzahl Tage", "Number of days")}
+                type="number"
+                min={1}
+                max={36600}
+                step={1}
+                value={node.days ?? ""}
+                onChange={(e) =>
+                  patch({
+                    days: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+              />
+            </label>
+          )}
+          <label>
+            {t("Zeitzone", "Time zone")}
+            <Select
+              aria-label={t("Filter-Zeitzone", "Filter time zone")}
+              value={node.timeZone || "UTC"}
+              onChange={(e) => patch({ timeZone: e.target.value })}
+            >
+              {[
+                ...new Set([
+                  ...(node.timeZone ? [node.timeZone] : []),
+                  ...zones,
+                ]),
+              ].map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <p className="muted">
+            {relativeWindowLabel(
+              node.value,
+              node.timeZone || "UTC",
+              node.days,
+              new Date(filterNow),
+            )}
+            {t(". Wochen beginnen montags. Datumswerte ohne Uhrzeit bleiben Kalendertage; Zeitstempel werden in der gewählten Zeitzone ausgewertet.", ". Weeks start on Monday. Dates without a time stay calendar days; timestamps are evaluated in the chosen time zone.")}
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
 export default function DatabaseFilterEditor({
   view,
   version,
@@ -76,17 +375,7 @@ export default function DatabaseFilterEditor({
   const filterNow = useFilterClock(
     hasRelativeFilters(draft) || hasClockFormulas(fields, relatedSchemas),
   );
-  const zones = useMemo(
-    () =>
-      [
-        ...new Set([
-          Intl.DateTimeFormat().resolvedOptions().timeZone,
-          "UTC",
-          ...Intl.supportedValuesOf("timeZone"),
-        ]),
-      ].sort(),
-    [],
-  );
+  const zones = useTimeZones();
   const preview = useMemo(
     () =>
       queryRows(
@@ -124,27 +413,7 @@ export default function DatabaseFilterEditor({
     update(path, (node) => ({ ...node, ...values }));
   }
   function condition(node: Filter & { kind: "condition" }, path: number[]) {
-    const field = fields.find((f) => f.id === node.field),
-      isEmpty = valuelessOperators.has(node.op),
-      multi = multiValueOperators.has(node.op),
-      operators = operatorsFor(field);
     const label = t(`Bedingung ${path.map((i) => i + 1).join(".")}`, `Condition ${path.map((i) => i + 1).join(".")}`);
-    const choices =
-      field?.type === "relation"
-        ? (related[field.relationPage || ""] || []).map((r) => ({
-            value: r.id,
-            name: cellText(r.cells.title) || t("Ohne Titel", "Untitled"),
-          }))
-        : field && ["select", "multiselect"].includes(field.type)
-          ? (field.options || []).map((value) => ({ value, name: value }))
-          : field && ["person", "created_by", "updated_by"].includes(field.type)
-            ? members.map((m) => ({ value: m.id, name: m.name }))
-            : field?.type === "checkbox"
-              ? [
-                  { value: "true", name: t("Abgehakt", "Checked") },
-                  { value: "false", name: t("Nicht abgehakt", "Not checked") },
-                ]
-              : null;
     return (
       <div
         key={path.join(".")}
@@ -152,233 +421,29 @@ export default function DatabaseFilterEditor({
         aria-label={label}
         className="advanced-filter-condition"
       >
-        <label>
-          {t("Eigenschaft", "Property")}
-          <Select
-            aria-label={t("Filter-Eigenschaft", "Filter property")}
-            value={node.field}
-            onChange={(e) => {
-              const f = fields.find((f) => f.id === e.target.value);
-              patch(path, {
-                field: e.target.value,
-                op: operatorsFor(f)[0],
-                value: "",
-                timeZone: undefined,
-                days: undefined,
-                values: undefined,
-                to: undefined,
-              });
-            }}
-          >
-            {!field && (
-              <option value={node.field}>{t("Gelöschte Eigenschaft", "Deleted property")}</option>
-            )}
-            {fields.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label>
-          {t("Bedingung", "Condition")}
-          <Select
-            aria-label={t("Filterbedingung", "Filter condition")}
-            value={node.op}
-            onChange={(e) => {
-              const op = e.target.value as Filter["op"];
-              patch(path, {
-                op,
-                values: multiValueOperators.has(op)
-                  ? node.values || (node.value ? [node.value] : [])
-                  : undefined,
-                to: op === "between" ? node.to || "" : undefined,
-                ...(isRelativeOperator(op)
-                  ? {
-                      value: isRelativeOperator(node.op) ? node.value : "today",
-                      timeZone:
-                        node.timeZone ||
-                        Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    }
-                  : isRelativeOperator(node.op)
-                    ? { value: "", timeZone: undefined, days: undefined }
-                    : {}),
-              });
-            }}
-          >
-            {!operators.includes(node.op) && (
-              <option value={node.op}>{t(operatorNames[node.op])}</option>
-            )}
-            {operators.map((op) => (
-              <option key={op} value={op}>
-                {t(operatorNames[op])}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label>
-          {t("Wert", "Value")}
-          {isRelativeOperator(node.op) ? (
-            <Select
-              aria-label={t("Relativer Zeitraum", "Relative period")}
-              value={node.value}
-              onChange={(e) =>
-                patch(path, {
-                  value: e.target.value,
-                  days: ["past_days", "next_days"].includes(e.target.value)
-                    ? node.days || 30
-                    : undefined,
-                })
-              }
+        <FilterConditionFields
+          node={node}
+          fields={fields}
+          related={related}
+          members={members}
+          zones={zones}
+          filterNow={filterNow}
+          patch={(values) => patch(path, values)}
+          remove={
+            <button
+              className="icon-button"
+              type="button"
+              aria-label={t(`${label} entfernen`, `Remove ${label}`)}
+              onClick={() => update(path, () => null)}
             >
-              {Object.entries(relativeDateNames).map(([value, name]) => (
-                <option key={value} value={value}>
-                  {t(name)}
-                </option>
-              ))}
-            </Select>
-          ) : multi && choices ? (
-            <span
-              className="filter-values"
-              role="group"
-              aria-label={t("Filterwerte", "Filter values")}
-            >
-              {choices.map((c) => (
-                <label className="checkbox-label" key={c.value}>
-                  <input
-                    type="checkbox"
-                    checked={!!node.values?.includes(c.value)}
-                    onChange={(e) =>
-                      patch(path, {
-                        values: e.target.checked
-                          ? [...(node.values || []), c.value]
-                          : (node.values || []).filter((v) => v !== c.value),
-                      })
-                    }
-                  />
-                  {c.name}
-                </label>
-              ))}
-              {!choices.length && <span className="muted">{t("Keine Werte", "No values")}</span>}
-            </span>
-          ) : choices ? (
-            <Select
-              aria-label={t("Filterwert", "Filter value")}
-              value={node.value}
-              disabled={isEmpty}
-              onChange={(e) => patch(path, { value: e.target.value })}
-            >
-              <option value="">{t("Auswählen …", "Select …")}</option>
-              {node.value && !choices.some((c) => c.value === node.value) && (
-                <option value={node.value}>{t("Nicht verfügbar", "Not available")}</option>
-              )}
-              {choices.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <input
-              aria-label={t("Filterwert", "Filter value")}
-              type={
-                (field &&
-                  ["date", "created_at", "updated_at"].includes(field.type)) ||
-                ["before", "after", "on_or_before", "on_or_after"].includes(
-                  node.op,
-                )
-                  ? "date"
-                  : field?.type === "number"
-                    ? "number"
-                    : "text"
-              }
-              step="any"
-              maxLength={500}
-              value={node.value}
-              disabled={isEmpty}
-              onChange={(e) => patch(path, { value: e.target.value })}
-            />
-          )}
-        </label>
-        {node.op === "between" && (
-          <label>
-            {t("Bis", "To")}
-            <input
-              aria-label={t("Filterwert bis", "Filter value to")}
-              type={
-                field &&
-                ["date", "created_at", "updated_at"].includes(field.type)
-                  ? "date"
-                  : "number"
-              }
-              step="any"
-              value={node.to || ""}
-              onChange={(e) => patch(path, { to: e.target.value })}
-            />
-          </label>
-        )}
-        <button
-          className="icon-button"
-          type="button"
-          aria-label={t(`${label} entfernen`, `Remove ${label}`)}
-          onClick={() => update(path, () => null)}
-        >
-          <Trash size={17} />
-        </button>
-        {isRelativeOperator(node.op) && (
-          <div className="relative-filter-options">
-            {["past_days", "next_days"].includes(node.value) && (
-              <label>
-                {t("Anzahl Tage", "Number of days")}
-                <input
-                  aria-label={t("Anzahl Tage", "Number of days")}
-                  type="number"
-                  min={1}
-                  max={36600}
-                  step={1}
-                  value={node.days ?? ""}
-                  onChange={(e) =>
-                    patch(path, {
-                      days: e.target.value ? Number(e.target.value) : undefined,
-                    })
-                  }
-                />
-              </label>
-            )}
-            <label>
-              {t("Zeitzone", "Time zone")}
-              <Select
-                aria-label={t("Filter-Zeitzone", "Filter time zone")}
-                value={node.timeZone || "UTC"}
-                onChange={(e) => patch(path, { timeZone: e.target.value })}
-              >
-                {[
-                  ...new Set([
-                    ...(node.timeZone ? [node.timeZone] : []),
-                    ...zones,
-                  ]),
-                ].map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <p className="muted">
-              {relativeWindowLabel(
-                node.value,
-                node.timeZone || "UTC",
-                node.days,
-                new Date(filterNow),
-              )}
-              {t(". Wochen beginnen montags. Datumswerte ohne Uhrzeit bleiben Kalendertage; Zeitstempel werden in der gewählten Zeitzone ausgewertet.", ". Weeks start on Monday. Dates without a time stay calendar days; timestamps are evaluated in the chosen time zone.")}
-            </p>
-          </div>
-        )}
+              <Trash size={17} />
+            </button>
+          }
+        />
       </div>
     );
   }
-  function group(node: FilterGroup, path: number[] = []): React.ReactNode {
+  function group(node: FilterGroup, path: number[] = []): ReactNode {
     const depth = path.length + 1,
       label = path.length
         ? t(`Filtergruppe ${path.map((i) => i + 1).join(".")}`, `Filter group ${path.map((i) => i + 1).join(".")}`)
@@ -440,12 +505,7 @@ export default function DatabaseFilterEditor({
                       ...n,
                       rules: [
                         ...n.rules,
-                        {
-                          kind: "condition",
-                          field: fields[0].id,
-                          op: operatorsFor(fields[0])[0],
-                          value: "",
-                        },
+                        newFilterCondition(fields),
                       ],
                     }
                   : n,
@@ -469,14 +529,7 @@ export default function DatabaseFilterEditor({
                         {
                           kind: "group",
                           join: node.join === "and" ? "or" : "and",
-                          rules: [
-                            {
-                              kind: "condition",
-                              field: fields[0].id,
-                              op: operatorsFor(fields[0])[0],
-                              value: "",
-                            },
-                          ],
+                          rules: [newFilterCondition(fields)],
                         },
                       ],
                     }

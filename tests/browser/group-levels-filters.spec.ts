@@ -148,6 +148,7 @@ test("tables and boards nest a third group level and filters match several value
     .getByRole("button", { name: /^Filtern/ })
     .first()
     .click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).first().click();
   const filter = page.getByRole("dialog", {
     name: "Filter bearbeiten",
     exact: true,
@@ -176,6 +177,7 @@ test("tables and boards nest a third group level and filters match several value
     .getByRole("button", { name: /^Filtern/ })
     .first()
     .click();
+  await page.getByRole("button", { name: "Erweitert …", exact: true }).first().click();
   await filter
     .getByRole("button", { name: "Bedingung hinzufügen", exact: true })
     .click();
