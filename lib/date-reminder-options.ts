@@ -22,22 +22,23 @@ export type DateReminder = {
   timeZone: string;
 };
 
-// In the reader's language in the browser; German on the server.
-export function reminderLabel(offset: number, timed: boolean) {
+// In the reader's language in the browser; German on the server. Components
+// may pass their own t to render another language.
+export function reminderLabel(offset: number, timed: boolean, t: (de: string, en: string) => string = tr) {
   if (!timed) {
     const suffix = ` (${String(ALL_DAY_HOUR).padStart(2, "0")}:00)`;
-    if (offset === 0) return tr(`Am Tag des Termins${suffix}`, `On the day of the event${suffix}`);
-    if (offset === 10080) return tr(`1 Woche vorher${suffix}`, `1 week before${suffix}`);
-    if (offset === 1440) return tr(`1 Tag vorher${suffix}`, `1 day before${suffix}`);
-    return tr(`${offset / 1440} Tage vorher${suffix}`, `${offset / 1440} days before${suffix}`);
+    if (offset === 0) return t(`Am Tag des Termins${suffix}`, `On the day of the event${suffix}`);
+    if (offset === 10080) return t(`1 Woche vorher${suffix}`, `1 week before${suffix}`);
+    if (offset === 1440) return t(`1 Tag vorher${suffix}`, `1 day before${suffix}`);
+    return t(`${offset / 1440} Tage vorher${suffix}`, `${offset / 1440} days before${suffix}`);
   }
-  if (offset === 0) return tr("Zum Zeitpunkt des Termins", "At the time of the event");
-  if (offset < 60) return tr(`${offset} Minuten vorher`, `${offset} minutes before`);
-  if (offset === 60) return tr("1 Stunde vorher", "1 hour before");
-  if (offset < 1440) return tr(`${offset / 60} Stunden vorher`, `${offset / 60} hours before`);
-  if (offset === 10080) return tr("1 Woche vorher", "1 week before");
-  if (offset === 1440) return tr("1 Tag vorher", "1 day before");
-  return tr(`${offset / 1440} Tage vorher`, `${offset / 1440} days before`);
+  if (offset === 0) return t("Zum Zeitpunkt des Termins", "At the time of the event");
+  if (offset < 60) return t(`${offset} Minuten vorher`, `${offset} minutes before`);
+  if (offset === 60) return t("1 Stunde vorher", "1 hour before");
+  if (offset < 1440) return t(`${offset / 60} Stunden vorher`, `${offset / 60} hours before`);
+  if (offset === 10080) return t("1 Woche vorher", "1 week before");
+  if (offset === 1440) return t("1 Tag vorher", "1 day before");
+  return t(`${offset / 1440} Tage vorher`, `${offset / 1440} days before`);
 }
 
 export function reminderOffsets(value: unknown) {

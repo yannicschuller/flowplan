@@ -34,7 +34,7 @@ test("embeds from several providers are inserted, stored and published", async (
     await page
       .getByRole("button", { name: "Block hinzufügen", exact: true })
       .click();
-    await page.locator(".slash-menu").getByRole("button", { name: /^Einbetten / }).click();
+    await page.locator(".slash-menu").getByRole("option", { name: /^Einbetten / }).click();
     const dialog = page.getByRole("dialog", { name: "Inhalt einbetten" });
     await dialog.getByLabel(/^Link/).fill(url);
     await dialog
@@ -57,7 +57,7 @@ test("embeds from several providers are inserted, stored and published", async (
   await page
     .getByRole("button", { name: "Block hinzufügen", exact: true })
     .click();
-  await page.locator(".slash-menu").getByRole("button", { name: /^Einbetten / }).click();
+  await page.locator(".slash-menu").getByRole("option", { name: /^Einbetten / }).click();
   const dialog = page.getByRole("dialog", { name: "Inhalt einbetten" });
   await dialog.getByLabel(/^Link/).fill("http://example.com/video/1");
   await dialog.getByRole("button", { name: "Einbetten", exact: true }).click();

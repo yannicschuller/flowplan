@@ -73,7 +73,7 @@ test("calculate in a document: hint after =, selection and fractions", async ({ 
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
   await page.keyboard.type("/Bruch");
-  await page.locator(".slash-menu").getByRole("button", { name: /^Bruch/ }).click();
+  await page.locator(".slash-menu").getByRole("option", { name: /^Bruch/ }).click();
   const dialog = page.getByRole("dialog", { name: "Inline-Formel" });
   const latex = dialog.getByLabel("LaTeX-Formel");
   await expect(latex).toHaveValue("\\frac{}{}");

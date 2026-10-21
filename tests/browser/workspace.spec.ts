@@ -2987,7 +2987,7 @@ test("inline math edits in sentences, validates, supports undo and renders on sh
   await page.getByTitle("Block hinzufügen", { exact: true }).click();
   await page
     .getByRole("dialog", { name: "Block hinzufügen", exact: true })
-    .getByRole("button", {
+    .getByRole("option", {
       name: "Formel Mathematischer Ausdruck",
       exact: true,
     })

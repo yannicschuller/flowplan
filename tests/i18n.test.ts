@@ -91,6 +91,44 @@ test("the English texts carry no German words", async () => {
   assert.deepEqual(leaked, []);
 });
 
+test("label helpers rendered in English carry no German words", async () => {
+  const en = translate("en");
+  const german = /[äöüß]|\b(Uhrzeit|Gespeichert|Speichern|Ohne|offen|ziehen|vorher|Laden|Hinweis|Tipp|Wichtig|Warnung|Achtung|Zuletzt)\b/;
+  const { SAVE_STATUSES, saveStatusLabel, saveStatusOf } = await import("../lib/save-status");
+  const { reminderLabel, TIMED_OFFSETS, ALL_DAY_OFFSETS } = await import("../lib/date-reminder-options");
+  const { databaseGroups } = await import("../lib/database-groups");
+  const { templateCategoryLabels, templateCategoryIds } = await import("../lib/template-categories");
+  const { calloutLabels, calloutDescriptions } = await import("../lib/callout-types");
+  const rendered: string[] = [
+    ...SAVE_STATUSES.map((status) => saveStatusLabel(status, en)),
+    // Older callers still report German words; the label is English all the same.
+    saveStatusLabel(saveStatusOf("Gespeichert")!, en),
+    saveStatusLabel(saveStatusOf("Änderungen …")!, en),
+    ...TIMED_OFFSETS.map((offset) => reminderLabel(offset, true, en)),
+    ...ALL_DAY_OFFSETS.map((offset) => reminderLabel(offset, false, en)),
+    ...Object.values(templateCategoryLabels(en)),
+    ...Object.values(calloutLabels(en)),
+    ...Object.values(calloutDescriptions(en)),
+  ];
+  const select = { id: "f", name: "Status", type: "select" as const, options: ["Open"] };
+  const checkbox = { id: "c", name: "Done", type: "checkbox" as const };
+  const person = { id: "p", name: "Owner", type: "person" as const };
+  const relation = { id: "r", name: "Project", type: "relation" as const, relationPage: "x" };
+  const row = (cells: Record<string, unknown>) =>
+    ({ id: "1", page_id: "p", cells, position: 0, created_at: "", updated_at: "" }) as unknown as import("../lib/types").Row;
+  for (const field of [select, checkbox, person, relation])
+    for (const group of databaseGroups([row({ p: "ghost", r: "missing" })], field as import("../lib/types").Field, {}, [], en))
+      rendered.push(group.label);
+  assert.deepEqual(rendered.filter((text) => german.test(text)), []);
+  assert.equal(saveStatusLabel("unsaved", en), "Unsaved changes");
+  assert.equal(reminderLabel(60, true, en), "1 hour before");
+  assert.equal(templateCategoryLabels(en).knowledge, "Knowledge & documentation");
+  assert.ok(templateCategoryIds.includes("knowledge"));
+  // The German defaults stay for the server.
+  assert.equal(saveStatusLabel("saved", translate("de")), "Gespeichert");
+  assert.equal(reminderLabel(60, true), "1 Stunde vorher");
+});
+
 test("short patterns do not rewrite whole sentences", () => {
   const t = translate("fr");
   assert.equal(t("3 von 5", "3 of 5"), "3 sur 5");
