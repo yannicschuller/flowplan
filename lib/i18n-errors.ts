@@ -690,9 +690,17 @@ const exact: Record<string, string> = {
   "Push-Testbenachrichtigung": "Push test notification",
   // Git export of spaces: a deactivated owner pauses it
   "Das Konto des Besitzers ist deaktiviert – der Export pausiert.": "The owner's account is disabled – the export is paused.",
+  // Document exports: Word, the combined print view (PDF), e-books
+  "Ungültige Exportoptionen.": "Invalid export options.",
+  "Export konnte nicht erstellt werden.": "The export could not be created.",
+  "Anhänge überschreiten 100 MB.": "Attachments exceed 100 MB.",
+  "E-Book überschreitet 100 MB.": "The e-book exceeds 100 MB.",
+  "Tabelle zu groß (höchstens 200 Spalten und 5.000 Zeilen).": "Table too large (at most 200 columns and 5,000 rows).",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
+  [/^Bitte höchstens (\d+) Seiten je (.+)-Export auswählen\.$/, "Please select at most $1 pages per $2 export."],
+  [/^Bitte höchstens (.+) Datensätze je (.+)-Export auswählen\.$/, "Please select at most $1 records per $2 export."],
   [/^Diese Eigenschaft kann im KI-Prompt nicht verwendet werden: (.+)$/, "This property cannot be used in the AI prompt: $1"],
   [/^Ein automatischer KI-Wert kann nicht auf (.+) verweisen: Der Wert ändert sich mit jedem Schreiben der KI\.$/, "An automatic AI value cannot refer to $1: the value changes with every write of the AI."],
   [/^Der KI-Anbieter meldet einen Fehler \(HTTP (\d+)\)\.$/, "The AI provider reports an error (HTTP $1)."],

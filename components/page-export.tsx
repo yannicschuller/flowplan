@@ -6,6 +6,7 @@ import { useState } from "react";
 import { downloadBlob, Modal } from "./ui";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { exportName } from "@/lib/export-name";
+import { docxUrl, downloadExport, epubUrl, pdfUrl, printExport } from "./export-download";
 export function PageExportDialog({
   page,
   onClose,
@@ -18,9 +19,11 @@ export function PageExportDialog({
   const t = useT();
   const [format, setFormat] = useState("markdown"),
     [children, setChildren] = useState(false),
+    [treeChildren, setTreeChildren] = useState(true),
     [history, setHistory] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const tree = format === "pdf" || format === "epub";
   async function download() {
     setBusy(true);
     setError("");
@@ -28,6 +31,22 @@ export function PageExportDialog({
       await flushOpenDocuments();
       if (format === "legacy") {
         onLegacy();
+        onClose();
+        return;
+      }
+      if (format === "docx") {
+        await downloadExport(docxUrl(page.id), `${exportName(page.title)}.docx`);
+        onClose();
+        return;
+      }
+      if (format === "epub") {
+        await downloadExport(epubUrl({ pageId: page.id, children: treeChildren }), `${exportName(page.title)}.epub`);
+        onClose();
+        return;
+      }
+      if (format === "pdf") {
+        // The print dialog takes over from here.
+        await printExport(pdfUrl({ pageId: page.id, children: treeChildren }));
         onClose();
         return;
       }
@@ -79,6 +98,9 @@ export function PageExportDialog({
           >
             <option value="markdown">Markdown (.md)</option>
             <option value="zip">{t("Markdown mit Dateien (.zip)", "Markdown with files (.zip)")}</option>
+            <option value="docx">{t("Als Word (DOCX)", "As Word (DOCX)")}</option>
+            <option value="pdf">{t("Als PDF (mit Unterseiten)", "As PDF (with sub-pages)")}</option>
+            <option value="epub">{t("Als E-Book (EPUB)", "As e-book (EPUB)")}</option>
             <option value="legacy">
               {page.kind === "document"
                 ? "HTML (.html)"
@@ -97,6 +119,12 @@ export function PageExportDialog({
             {t("Zugängliche Unterseiten einschließen", "Include accessible sub-pages")}
           </label>
         )}
+        {tree && (
+          <label className="export-children">
+            <input type="checkbox" checked={treeChildren} disabled={busy} onChange={(event) => setTreeChildren(event.target.checked)} />
+            {t("Zugängliche Unterseiten einschließen", "Include accessible sub-pages")}
+          </label>
+        )}
         {format === "zip" && (
           <label className="export-children">
             <input type="checkbox" checked={history} disabled={busy} onChange={(event) => setHistory(event.target.checked)} />
@@ -108,7 +136,22 @@ export function PageExportDialog({
             ? t("Eine Markdown-Datei. Datei- und Seitenlinks verweisen weiterhin auf Flowplan.", "One Markdown file. File and page links keep pointing to Flowplan.")
             : format === "zip"
               ? t("Lokale Anhänge und relative Links sind enthalten. Externe Medien bleiben Links.", "Local attachments and relative links are included. External media stay links.")
-              : t("Das vorhandene Exportformat dieser Seite.", "This page's existing export format.")}
+              : format === "docx"
+                ? t(
+                    "Ein Word-Dokument mit Überschriften, Listen, Aufgaben, Tabellen, Bildern, Hinweisen, Code und Fußnoten. Whiteboards und eingebettete Medien bleiben Links.",
+                    "A Word document with headings, lists, tasks, tables, pictures, callouts, code and footnotes. Whiteboards and embedded media stay links.",
+                  )
+                : format === "pdf"
+                  ? t(
+                      "Eine Druckansicht mit Deckblatt, Inhaltsverzeichnis und jeder Seite als Kapitel, die der Druckdialog als PDF sichert. Höchstens 200 Seiten.",
+                      "A print view with a cover, a table of contents and every page as a chapter, which the print dialog saves as PDF. At most 200 pages.",
+                    )
+                  : format === "epub"
+                    ? t(
+                        "Ein E-Book mit jeder Seite als Kapitel, Bildern und Inhaltsverzeichnis – für Lesegeräte und E-Book-Apps. Höchstens 200 Seiten.",
+                        "An e-book with every page as a chapter, pictures and a table of contents – for e-readers and e-book apps. At most 200 pages.",
+                      )
+                    : t("Das vorhandene Exportformat dieser Seite.", "This page's existing export format.")}
         </p>
         {page.kind === "database" && format !== "legacy" && (
           <p className="muted">
@@ -133,7 +176,13 @@ export function PageExportDialog({
             {t("Abbrechen", "Cancel")}
           </button>
           <button className="button primary" disabled={busy}>
-            {busy ? t("Export wird erstellt …", "Creating export …") : t("Herunterladen", "Download")}
+            {busy
+              ? format === "pdf"
+                ? t("Druckansicht wird vorbereitet …", "Preparing the print view …")
+                : t("Export wird erstellt …", "Creating export …")
+              : format === "pdf"
+                ? t("Drucken / PDF", "Print / PDF")
+                : t("Herunterladen", "Download")}
           </button>
         </div>
       </form>
