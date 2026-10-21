@@ -9,6 +9,7 @@ import { z } from "zod";
 import { validDateValue } from "./date-values";
 import type { Field, FieldType } from "./types";
 import { translate, type Locale } from "./i18n";
+import { conditionSchema, evaluateLogic, logicPages, type LogicItem } from "./form-logic";
 
 export const surveyTypes = [
   "short",
@@ -58,12 +59,8 @@ export const storageType: Record<SurveyType, FieldType> = {
 export const choiceTypes = new Set<SurveyType>(["single", "dropdown", "multiple", "ranking"]);
 
 const fid = z.string().min(1).max(500);
-export const conditionSchema = z.object({
-  field: fid,
-  op: z.enum(["is", "isNot", "includes", "answered", "notAnswered", "gte", "lte"]),
-  value: z.string().max(300).default(""),
-});
-export type Condition = z.infer<typeof conditionSchema>;
+// Conditions are shared with ordinary forms (lib/form-logic.ts).
+export { conditionSchema, conditionMet, type Condition } from "./form-logic";
 
 const questionSchema = z.object({
   kind: z.literal("question"),
@@ -103,6 +100,8 @@ const pageSchema = z.object({
   kind: z.literal("page"),
   id: z.string().min(1).max(60),
   title: z.string().max(300).default(""),
+  // A hidden page break hides its whole page.
+  showIf: conditionSchema.optional(),
 });
 export const surveyItemSchema = z.discriminatedUnion("kind", [questionSchema, textSchema, pageSchema]);
 export type SurveyItem = z.infer<typeof surveyItemSchema>;
@@ -136,31 +135,24 @@ export function range(q: SurveyQuestion) {
 
 const empty = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
 
-// Is a condition met by the answers so far?
-export function conditionMet(c: Condition | undefined, values: Record<string, unknown>) {
-  if (!c) return true;
-  const v = values[c.field];
-  const list = Array.isArray(v) ? v.map(String) : empty(v) ? [] : [String(v)];
-  switch (c.op) {
-    case "answered":
-      return list.length > 0;
-    case "notAnswered":
-      return list.length === 0;
-    case "is":
-      return list.length === 1 && list[0] === c.value;
-    case "isNot":
-      return !(list.length === 1 && list[0] === c.value);
-    case "includes":
-      return list.includes(c.value);
-    case "gte":
-      return list.length > 0 && Number(list[0]) >= Number(c.value);
-    case "lte":
-      return list.length > 0 && Number(list[0]) <= Number(c.value);
-  }
-}
+// The survey's items for the shared evaluator.
+export const surveyLogicItems = (survey: Survey): LogicItem[] =>
+  survey.items.map((item) => ({ id: item.id, kind: item.kind, fields: isQuestion(item) ? questionFields(item) : [], showIf: item.showIf }));
+// Which items are shown for these answers (hidden questions are not
+// required and their answers are dropped).
+export const surveyLogic = (survey: Survey, values: Record<string, unknown>) => evaluateLogic(surveyLogicItems(survey), values);
 
 // Pages: groups of items between page breaks (the first page has no break).
-export function surveyPages(survey: Survey) {
+// With answers, pages whose break is hidden or that show nothing are left
+// out, and `items` holds the shown items only.
+export function surveyPages(survey: Survey, values?: Record<string, unknown>) {
+  if (values) {
+    const byId = new Map(survey.items.map((i) => [i.id, i]));
+    return logicPages(surveyLogicItems(survey), surveyLogic(survey, values)).map((p) => ({
+      title: p.brk ? (byId.get(p.brk.id) as { title: string }).title : "",
+      items: p.shown.map((i) => byId.get(i.id)!),
+    }));
+  }
   const pages: { title: string; items: SurveyItem[] }[] = [{ title: "", items: [] }];
   for (const item of survey.items) {
     if (item.kind === "page") pages.push({ title: item.title, items: [] });
@@ -168,7 +160,6 @@ export function surveyPages(survey: Survey) {
   }
   return pages.filter((p, i) => i === 0 || p.items.length || p.title);
 }
-export const visible = (item: SurveyItem, values: Record<string, unknown>) => item.kind === "page" || conditionMet(item.showIf, values);
 
 // Is the survey open right now?
 export function surveyClosed(survey: Survey, responses: number, now = new Date()) {
@@ -186,8 +177,9 @@ export function validateSurvey(survey: Survey, fields: Field[], values: Record<s
   const cells: Record<string, unknown> = {},
     errors: Record<string, string> = {};
   const say = translate(locale);
+  const logic = surveyLogic(survey, values);
   for (const item of survey.items) {
-    if (!isQuestion(item) || !visible(item, values)) continue;
+    if (!isQuestion(item) || !logic.shown.has(item.id)) continue;
     const q = item;
     const name = (id: string) => fields.find((f) => f.id === id)?.name || say("Frage", "Question");
     if (q.type === "matrix") {

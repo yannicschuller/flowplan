@@ -2,11 +2,10 @@
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useState } from "react";
-import { Check } from "@phosphor-icons/react";
 import { api } from "./ui";
-import FormQuestions from "./form-questions";
 import { SurveyRunner } from "./survey-runner";
-import { localizedFormTexts, validateFormValues, type FormConfig } from "@/lib/form-settings";
+import { FormFlow, FormThanks, useFormDraft } from "./form-flow";
+import { formRedirect, localizedFormTexts, type FormConfig } from "@/lib/form-settings";
 import type { Field } from "@/lib/types";
 export default function FormClient({
   token,
@@ -32,13 +31,13 @@ export default function FormClient({
 }) {
   const t = useT();
   const texts = localizedFormTexts(config, t);
-  const [values, setValues] = useState<Record<string, unknown>>({}),
-    [done, setDone] = useState(false),
+  // The answers sent (for the thank-you placeholders); null before sending.
+  const [done, setDone] = useState<Record<string, unknown> | null>(null),
     // Customer portal: the private link to the request.
-    [ticket, setTicket] = useState<{ url: string; mailed: boolean } | null>(null),
-    [error, setError] = useState(""),
-    [errors, setErrors] = useState<Record<string, string>>({}),
-    [busy, setBusy] = useState(false);
+    [ticket, setTicket] = useState<{ url: string; mailed: boolean } | null>(null);
+  // Signed-in people (forms that are not anonymous) can continue later.
+  const draft = useFormDraft(token, !anonymous && !closed);
+  const redirect = formRedirect(config);
   // Sends the answers (with files as multipart) and returns the reply.
   const send = async (answers: Record<string, unknown>) => {
     const files = Object.entries(answers).filter(([, v]) => Array.isArray(v) && v.some((x) => x instanceof File));
@@ -51,8 +50,25 @@ export default function FormClient({
     if (!response.ok) throw new Error(serverMessage(data.error) || t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."));
     return data as { ticket?: string; mailed?: boolean };
   };
+  const submit = async (answers: Record<string, unknown>) => {
+    const result = await send(answers);
+    if (!result) throw new Error(t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."));
+    if (result.ticket) setTicket({ url: `/ticket/${result.ticket}`, mailed: !!result.mailed });
+    setDone(answers);
+  };
   const ticketLink = ticket && (
     <div className="ticket-link">
+      <p>
+        {ticket.mailed
+          ? t(
+              "Unter diesem Link siehst du den Stand deiner Anfrage und kannst antworten. Wir haben ihn dir auch per E-Mail geschickt.",
+              "At this link you can see the status of your request and reply. We also sent it to you by e-mail.",
+            )
+          : t(
+              "Unter diesem Link siehst du den Stand deiner Anfrage und kannst antworten. Speichere ihn dir.",
+              "At this link you can see the status of your request and reply. Save it.",
+            )}
+      </p>
       <a className="button primary" href={ticket.url}>
         {t("Anfrage ansehen", "View request")}
       </a>
@@ -79,16 +95,23 @@ export default function FormClient({
                   {config.description && <p>{config.description}</p>}
                 </div>
               )}
-              <SurveyRunner
-                survey={config.survey}
-                fields={fields}
-                texts={{ title, description: config.description, ...texts }}
-                after={ticketLink}
-                onSubmit={async (answers) => {
-                  const result = await send(answers);
-                  if (result.ticket) setTicket({ url: `/ticket/${result.ticket}`, mailed: !!result.mailed });
-                }}
-              />
+              {draft.loaded ? (
+                <SurveyRunner
+                  survey={config.survey}
+                  fields={fields}
+                  texts={{ title, description: config.description, ...texts }}
+                  after={ticketLink}
+                  redirect={redirect}
+                  initial={draft.draft}
+                  draft={draft.enabled ? draft : undefined}
+                  onSubmit={async (answers) => {
+                    const result = await send(answers);
+                    if (result?.ticket) setTicket({ url: `/ticket/${result.ticket}`, mailed: !!result.mailed });
+                  }}
+                />
+              ) : (
+                <p className="muted">{t("Wird geladen …", "Loading …")}</p>
+              )}
               <p className="muted small survey-privacy">
                 {anonymous
                   ? t("Diese Umfrage erfasst keine Benutzeridentität.", "This survey does not record who you are.")
@@ -115,111 +138,23 @@ export default function FormClient({
           </p>
         </div>
         {done ? (
-          <div className="success">
-            <Check />
-            <h2>{texts.successTitle}</h2>
-            <p>{texts.successMessage}</p>
-            {ticket && (
-              <div className="ticket-link">
-                <p>
-                  {ticket.mailed
-                    ? t(
-                        "Unter diesem Link siehst du den Stand deiner Anfrage und kannst antworten. Wir haben ihn dir auch per E-Mail geschickt.",
-                        "At this link you can see the status of your request and reply. We also sent it to you by e-mail.",
-                      )
-                    : t(
-                        "Unter diesem Link siehst du den Stand deiner Anfrage und kannst antworten. Speichere ihn dir.",
-                        "At this link you can see the status of your request and reply. Save it.",
-                      )}
-                </p>
-                <a className="button primary" href={ticket.url}>
-                  {t("Anfrage ansehen", "View request")}
-                </a>
-              </div>
-            )}
-          </div>
+          <FormThanks title={texts.successTitle} message={texts.successMessage} fields={fields} values={done} redirect={redirect}>
+            {ticketLink}
+          </FormThanks>
+        ) : draft.loaded ? (
+          <FormFlow
+            fields={fields}
+            config={config}
+            internal={internal}
+            members={members}
+            related={related}
+            submitLabel={texts.submitLabel}
+            initial={draft.draft}
+            draft={draft.enabled ? draft : undefined}
+            onSubmit={submit}
+          />
         ) : (
-          <form
-            noValidate
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setError("");
-              if (!e.currentTarget.reportValidity()) return;
-              const result = validateFormValues(
-                fields,
-                config,
-                values,
-                internal,
-              );
-              setErrors(result.errors);
-              if (Object.keys(result.errors).length) return;
-              setBusy(true);
-              try {
-                const files = Object.entries(values).filter(
-                  ([, v]) =>
-                    Array.isArray(v) && v.some((x) => x instanceof File),
-                );
-                let result: { ticket?: string; mailed?: boolean } = {};
-                if (!files.length)
-                  result = await api(`/api/forms/${token}`, { cells: values });
-                else {
-                  const body = new FormData();
-                  body.set(
-                    "payload",
-                    JSON.stringify({
-                      cells: Object.fromEntries(
-                        Object.entries(values).filter(
-                          ([key]) => !files.some(([id]) => id === key),
-                        ),
-                      ),
-                    }),
-                  );
-                  for (const [key, list] of files)
-                    for (const file of list as File[])
-                      body.append(`file:${key}`, file);
-                  const response = await fetch(`/api/forms/${token}`, {
-                    method: "POST",
-                    body,
-                  });
-                  const data = await response.json().catch(() => ({}));
-                  if (!response.ok)
-                    throw new Error(
-                      serverMessage(data.error) ||
-                        t("Antwort konnte nicht gespeichert werden.", "The answer could not be saved."),
-                    );
-                  result = data;
-                }
-                if (result.ticket) setTicket({ url: `/ticket/${result.ticket}`, mailed: !!result.mailed });
-                setDone(true);
-              } catch (e) {
-                setError((e as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <FormQuestions
-              fields={fields}
-              config={config}
-              values={values}
-              errors={errors}
-              disabled={busy}
-              internal={internal}
-              members={members}
-              related={related}
-              onChange={(id, value) =>
-                setValues((previous) => ({ ...previous, [id]: value }))
-              }
-            />
-            {error && (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            )}
-            <button className="button primary" disabled={busy}>
-              {busy ? t("Wird gesendet …", "Sending …") : texts.submitLabel}
-            </button>
-          </form>
+          <p className="muted">{t("Wird geladen …", "Loading …")}</p>
         )}
       </div>
     </main>

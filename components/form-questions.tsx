@@ -24,7 +24,10 @@ export default function FormQuestions({
   members = [],
   related = {},
   upload,
+  only,
 }: {
+  // Just this question (forms with text blocks and pages render one by one).
+  only?: string;
   internal?: boolean;
   members?: { id: string; name: string }[];
   related?: Record<string, { id: string; cells: { title: string } }[]>;
@@ -40,7 +43,7 @@ export default function FormQuestions({
   const t = useT();
   return (
     <>
-      {orderedFormFields(fields, config, internal).map((f) => (
+      {orderedFormFields(fields, config, internal).filter((f) => !only || f.id === only).map((f) => (
         <fieldset className="form-question" key={f.id}>
           <legend>
             {f.name}

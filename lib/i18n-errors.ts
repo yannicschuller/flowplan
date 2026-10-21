@@ -696,6 +696,12 @@ const exact: Record<string, string> = {
   "Anhänge überschreiten 100 MB.": "Attachments exceed 100 MB.",
   "E-Book überschreitet 100 MB.": "The e-book exceeds 100 MB.",
   "Tabelle zu groß (höchstens 200 Spalten und 5.000 Zeilen).": "Table too large (at most 200 columns and 5,000 rows).",
+  "Bitte melde dich an, um einen Entwurf zu speichern.": "Please sign in to save a draft.",
+  "Anonyme Formulare speichern keine Entwürfe.": "Anonymous forms do not save drafts.",
+  "Zu viele Entwürfe in kurzer Zeit. Bitte später erneut versuchen.": "Too many drafts in a short time. Please try again later.",
+  "Entwurf zu groß.": "Draft too large.",
+  "Entwurf konnte nicht gespeichert werden.": "The draft could not be saved.",
+  "Bitte eine Adresse mit https:// angeben.": "Please enter an address starting with https://.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
@@ -736,6 +742,7 @@ const patterns: [RegExp, string][] = [
   [/^Neuer Gasteintrag in „(.+)“$/, "New guest record in “$1”"],
   [/^Neuer Gastkommentar auf „(.+)“$/, "New guest comment on “$1”"],
   [/^Neue Kundenantwort zu „(.+)“$/, "New customer reply on “$1”"],
+  [/^Neue Antwort über „(.+)“$/, "New answer through “$1”"],
   [/^„(.+)“: Eine Matrix braucht Zeilen und mindestens zwei Spalten\.$/, "“$1”: a matrix needs rows and at least two columns."],
   [/^„(.+)“: Bitte mindestens eine Antwort angeben\.$/, "“$1”: please give at least one answer."],
   [/^Maximal (\d+) Vorgänge je Import\.$/, "At most $1 issues per import."],

@@ -39,7 +39,8 @@ function display(field: Field, value: unknown, locale: Locale) {
 }
 
 // After a form answer was saved (inside the same transaction).
-export function createTicket(input: { pageId: string; rowId: string; title: string; fields: Field[]; cells: Record<string, unknown> }) {
+// `mail: false` when the form's confirmation e-mail carries the link.
+export function createTicket(input: { pageId: string; rowId: string; title: string; fields: Field[]; cells: Record<string, unknown>; mail?: boolean }) {
   const token = randomBytes(24).toString("base64url");
   const locale = contentLocale();
   // The first e-mail question answered is where the link goes.
@@ -57,29 +58,27 @@ export function createTicket(input: { pageId: string; rowId: string; title: stri
     locale,
     Date.now(),
   );
-  let mailed = false;
-  if (email) {
-    const t = translate(locale);
-    mailed = queueCustomerMail({
-      to: email,
-      locale,
-      subject: t(`Deine Anfrage: ${input.title}`, `Your request: ${input.title}`),
-      title: t("Deine Anfrage ist angekommen", "Your request has arrived"),
-      lines: [
-        t(
-          `Danke, deine Anfrage über „${input.title}“ ist gespeichert.`,
-          `Thank you, your request through “${input.title}” has been saved.`,
-        ),
-        t(
-          "Unter diesem Link siehst du jederzeit den Stand und kannst dem Team antworten. Behalte den Link für dich – wer ihn hat, kann die Anfrage sehen.",
-          "At this link you can see its status at any time and reply to the team. Keep the link to yourself – anyone who has it can see the request.",
-        ),
-      ],
-      label: t("Anfrage ansehen", "View request"),
-      url: ticketUrl(token),
-    });
-  }
-  return { token, mailed };
+  const mailed = !!email && input.mail !== false && mailTicketLink({ token, email, title: input.title, locale });
+  return { token, mailed, email, url: ticketUrl(token) };
+}
+// The e-mail with the private link of a new request.
+export function mailTicketLink(input: { token: string; email: string; title: string; locale: Locale }) {
+  const t = translate(input.locale);
+  return queueCustomerMail({
+    to: input.email,
+    locale: input.locale,
+    subject: t(`Deine Anfrage: ${input.title}`, `Your request: ${input.title}`),
+    title: t("Deine Anfrage ist angekommen", "Your request has arrived"),
+    lines: [
+      t(`Danke, deine Anfrage über „${input.title}“ ist gespeichert.`, `Thank you, your request through “${input.title}” has been saved.`),
+      t(
+        "Unter diesem Link siehst du jederzeit den Stand und kannst dem Team antworten. Behalte den Link für dich – wer ihn hat, kann die Anfrage sehen.",
+        "At this link you can see its status at any time and reply to the team. Keep the link to yourself – anyone who has it can see the request.",
+      ),
+    ],
+    label: t("Anfrage ansehen", "View request"),
+    url: ticketUrl(input.token),
+  });
 }
 
 function ticketRecord(token: string) {

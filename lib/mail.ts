@@ -137,6 +137,35 @@ export function queueCustomerMail(input: {
   return queueMail(input.to, input.subject, text, html);
 }
 
+// A copy of a form answer for the person who sent it: the form's text,
+// the answers as a list and, with the customer portal, the private link.
+export function queueFormConfirmationMail(input: {
+  to: string;
+  subject: string;
+  title: string;
+  lines: string[];
+  answers: { question: string; answer: string }[];
+  heading: string;
+  action?: { label: string; url: string };
+  locale: Locale;
+}) {
+  const list = input.answers.map((a) => `${a.question}: ${a.answer}`);
+  const text = [
+    ...input.lines,
+    ...(list.length ? [`${input.heading}\n${list.map((l) => `- ${l}`).join("\n")}`] : []),
+    ...(input.action ? [input.action.url] : []),
+  ].join("\n\n");
+  const items = input.answers
+    .map((a) => `<li style="margin:0 0 6px"><strong>${escape(a.question)}</strong><br>${escape(a.answer).replace(/\n/g, "<br>")}</li>`)
+    .join("");
+  const paragraphs = [
+    ...input.lines.map(escape),
+    ...(items ? [`<strong>${escape(input.heading)}</strong></p><ul style="margin:0 0 14px;padding-left:18px">${items}</ul><p style="margin:0">`] : []),
+  ];
+  const html = layout(input.title, paragraphs, input.action, input.locale, true);
+  return queueMail(input.to, input.subject, `${text}\n`, html);
+}
+
 export function queueInviteMail(input: {
   email: string;
   inviter: string;

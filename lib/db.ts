@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 42) return;
+  if (globalDb.flowplanSchema === 43) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -604,7 +604,10 @@ function migrate(d: DatabaseSync) {
   // Daily byte budgets of anonymous visitors (lib/anonymous-budget.ts).
   d.exec(`CREATE TABLE IF NOT EXISTS anonymous_uploads(scope TEXT NOT NULL,bytes INTEGER NOT NULL,at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS anonymous_uploads_scope ON anonymous_uploads(scope,at);`);
-  globalDb.flowplanSchema = 42;
+  // Form answers saved to continue later, per signed-in person (lib/forms.ts).
+  d.exec(`CREATE TABLE IF NOT EXISTS form_drafts(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,cells TEXT NOT NULL,page INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL,PRIMARY KEY(page_id,user_id));
+    CREATE INDEX IF NOT EXISTS form_drafts_user ON form_drafts(user_id);`);
+  globalDb.flowplanSchema = 43;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { Identity } from "../lib/types";
 
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(join(tmpdir(), "flowplan-survey-"));
-const { id, run, one } = await import("../lib/db");
+const { id, run, one, all: rowsOf } = await import("../lib/db");
 const { command, database, bootstrap, rows } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { newQuestion, surveySchema, validateSurvey, conditionMet, surveyPages, surveyClosed } = await import("../lib/survey");
@@ -108,4 +108,127 @@ test("submissions become records; results summarise them", () => {
   assert.deepEqual(text.kind === "text" && text.answers, ["Zu teuer"]);
   void getForm;
   void one;
+});
+
+test("a hidden page break hides its page; tampered answers do not unlock it", () => {
+  const gate = q("yesno"),
+    detail = q("short"),
+    follow = q("short");
+  const survey = surveySchema.parse({
+    enabled: true,
+    items: [
+      { ...gate.question, field: "gate" },
+      { kind: "page", id: "pg", title: "Details", showIf: { field: "gate", op: "is", value: "Ja" } },
+      { ...detail.question, field: "detail", required: true },
+      { ...follow.question, field: "follow", required: true, showIf: { field: "detail", op: "contains", value: "x" } },
+    ],
+  });
+  const fields = [
+    { id: "gate", name: "Gate", type: "select" as const, options: ["Ja", "Nein"] },
+    { id: "detail", name: "Detail", type: "text" as const },
+    { id: "follow", name: "Follow", type: "text" as const },
+  ];
+  // "Nein": the second page and everything on it is skipped and dropped.
+  let r = validateSurvey(survey, fields, { gate: "Nein", detail: "x", follow: "y" });
+  assert.deepEqual(r.errors, {});
+  assert.deepEqual(r.cells, { gate: "Nein" });
+  assert.equal(surveyPages(survey, { gate: "Nein" }).length, 1);
+  r = validateSurvey(survey, fields, { gate: "Ja", detail: "xy" });
+  assert.deepEqual(Object.keys(r.errors), ["follow"]);
+  assert.equal(surveyPages(survey, { gate: "Ja" }).length, 2);
+});
+
+test("form follow-ups: confirmation e-mail, team notification, hidden answers dropped, drafts", async () => {
+  process.env.SMTP_HOST = "smtp.test.invalid";
+  const { formDraft, saveFormDraft, confirmFormAnswer } = await import("../lib/forms");
+  try {
+    const member = user("member"),
+      stranger = user("stranger");
+    run("INSERT INTO members VALUES(?,?,?)", wid, member.id, "editor");
+    const page = act({ action: "page.create", workspaceId: wid, spaceId: boot.spaces[0].id, kind: "database", title: "Anfragen" }).id as string;
+    const fields = [
+      { id: "title", name: "Name", type: "text" },
+      { id: "mail", name: "E-Mail", type: "email" },
+      { id: "kind", name: "Art", type: "select", options: ["Fehler", "Lob"] },
+      { id: "steps", name: "Schritte", type: "text" },
+      { id: "notes", name: "Interne Notiz", type: "text" },
+    ];
+    act({ action: "database.update", pageId: page, version: database(page).version, fields, views: database(page).views });
+    act({
+      action: "form.update",
+      pageId: page,
+      enabled: true,
+      internal: false,
+      anonymous: true,
+      config: {
+        hiddenFields: ["notes"],
+        requiredFields: ["steps"],
+        logic: { steps: { field: "kind", op: "is", value: "Fehler" } },
+        confirmation: { enabled: true, subject: "Danke, {Name}", message: "Hallo {Name},\n\nwir melden uns." },
+        notifyMembers: [member.id, stranger.id],
+      },
+    });
+    const mails = () => rowsOf<{ recipient: string; subject: string; text: string }>("SELECT recipient,subject,text FROM mail_queue ORDER BY rowid");
+    const before = mails().length;
+    // "Lob": the required "Schritte" is hidden, so not required, and its
+    // answer is dropped; internal fields never reach the record or the mail.
+    const saved = saveFormSubmission(page, null, { title: "Kim", mail: "kim@example.com", kind: "Lob", steps: "secret", notes: "x" });
+    const cells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", saved.id)!.cells);
+    assert.equal(cells.steps, undefined);
+    assert.equal(cells.notes, undefined);
+    assert.equal(saved.confirmed, true);
+    const mail = mails().slice(before).find((m) => m.recipient === "kim@example.com")!;
+    assert.equal(mail.subject, "Danke, Kim");
+    assert.match(mail.text, /^Hallo Kim,\n\nwir melden uns\./);
+    assert.match(mail.text, /- Art: Lob/);
+    assert.doesNotMatch(mail.text, /secret|Interne Notiz|Schritte/);
+    // Only the member hears about it; a stranger is not in the workspace.
+    const notes = rowsOf<{ user_id: string; body: string }>("SELECT user_id,body FROM notifications WHERE row_id=?", saved.id);
+    assert.deepEqual(notes.map((n) => [n.user_id, n.body]), [[member.id, "Neue Antwort über „Anfragen“"]]);
+    // Anonymous: no typed address, no mail – even for a signed-in person.
+    const count = mails().length;
+    saveFormSubmission(page, owner, { title: "Ohne", kind: "Lob" });
+    assert.equal(mails().length, count);
+    // With the customer portal the link goes into the confirmation.
+    assert.equal(confirmFormAnswer(page, null, { title: "Lee", mail: "lee@example.com" }, { ticketUrl: "https://flowplan.test/ticket/abc" }), true);
+    assert.match(mails().at(-1)!.text, /https:\/\/flowplan\.test\/ticket\/abc/);
+    // Per recipient: at most five an hour.
+    for (let i = 0; i < 6; i++) confirmFormAnswer(page, null, { mail: "flood@example.com" });
+    assert.equal(mails().filter((m) => m.recipient === "flood@example.com").length, 5);
+
+    // Not anonymous: the account's address; drafts for signed-in people.
+    act({ action: "form.update", pageId: page, anonymous: false });
+    const { token } = formSettings(page)!;
+    saveFormSubmission(page, owner, { title: "Olli", kind: "Lob" });
+    assert.equal(mails().at(-1)!.recipient, owner.email);
+    saveFormDraft(token, owner, { cells: { title: "Halb", steps: "1", unknown: "x" }, page: 1 });
+    const draft = formDraft(token, owner)!;
+    assert.deepEqual({ cells: draft.cells, page: draft.page }, { cells: { title: "Halb", steps: "1" }, page: 1 });
+    assert.throws(() => saveFormDraft(token, null, { cells: {} }), /melde dich an/);
+    // Sending replaces the draft.
+    saveFormSubmission(page, owner, { title: "Fertig", kind: "Lob" });
+    assert.equal(formDraft(token, owner), null);
+    act({ action: "form.update", pageId: page, anonymous: true });
+    assert.throws(() => formDraft(token, owner), /Anonyme Formulare/);
+  } finally {
+    delete process.env.SMTP_HOST;
+  }
+});
+
+test("survey.save keeps follow-up settings it was not sent", () => {
+  const config = formSettings(pageId)!.config;
+  act({ action: "form.update", pageId, config: { ...config, notifyMembers: [owner.id], redirectUrl: "https://example.com/{x}" } });
+  const fields = database(pageId).fields;
+  act({
+    action: "survey.save",
+    pageId,
+    version: database(pageId).version,
+    survey: config.survey,
+    questions: Object.fromEntries(
+      config.survey!.items.flatMap((i) => (i.kind === "question" ? [[i.id, { title: i.title || "Frage", options: fields.find((f) => f.id === i.field)?.options }]] : [])),
+    ),
+    form: { submitLabel: "Senden" },
+  });
+  assert.deepEqual(formSettings(pageId)!.config.notifyMembers, [owner.id]);
+  assert.equal(formSettings(pageId)!.config.redirectUrl, "https://example.com/{x}");
 });

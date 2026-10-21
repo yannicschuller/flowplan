@@ -34,7 +34,9 @@ import { Select } from "./select";
 import { SurveyRunner } from "./survey-runner";
 import { SurveyResults } from "./survey-results";
 import { choiceTypes, isQuestion, newQuestion, surveySchema, type Condition, type Survey, type SurveyItem, type SurveyQuestion, type SurveyType } from "@/lib/survey";
-import type { FormConfig } from "@/lib/form-settings";
+import { formRedirect, type FormConfig } from "@/lib/form-settings";
+import { validRedirect } from "@/lib/form-logic";
+import { FormConditionEditor, FormFollowUpSettings, type ConditionTarget } from "./form-logic-editor";
 import type { Field, Row } from "@/lib/types";
 
 type Texts = Record<string, { title: string; options?: string[] }>;
@@ -117,6 +119,7 @@ export function SurveyBuilder({
   rows,
   editable,
   act,
+  members = [],
 }: {
   pageTitle: string;
   fields: Field[];
@@ -125,6 +128,8 @@ export function SurveyBuilder({
   rows: Row[];
   editable: boolean;
   act: (b: Record<string, unknown>) => Promise<unknown>;
+  // Workspace members who can be told about new answers.
+  members?: { id: string; name: string }[];
 }) {
   const t = useT();
   const de = useLocale();
@@ -138,7 +143,13 @@ export function SurveyBuilder({
     submitLabel: config?.submitLabel || t("Absenden", "Submit"),
     successTitle: config?.successTitle || t("Vielen Dank!", "Thank you!"),
     successMessage: config?.successMessage || "",
+    // Shared with ordinary forms; an older survey's own redirect moves here.
+    redirectUrl: config ? formRedirect(config)?.url || "" : "",
+    redirectDelay: config?.redirectUrl ? config.redirectDelay : 3,
+    confirmation: config?.confirmation || { enabled: false, subject: "", message: "" },
+    notifyMembers: config?.notifyMembers || [],
   });
+  const followUpValid = validRedirect(formTexts.redirectUrl);
   const [selected, setSelected] = useState<string | null>(initial.survey.items[0]?.id ?? null);
   const [tab, setTab] = useState<"questions" | "preview" | "settings" | "share" | "results">("questions");
   const [picker, setPicker] = useState(!initial.survey.items.length);
@@ -202,7 +213,7 @@ export function SurveyBuilder({
     const q = items.find((x) => x.id === id);
     // Conditions that depended on the question are dropped.
     const fieldsOf = q && isQuestion(q) ? (q.type === "matrix" ? q.rows.map((r) => r.field) : [q.field]) : [];
-    change(items.filter((x) => x.id !== id).map((x) => (x.kind !== "page" && x.showIf && fieldsOf.includes(x.showIf.field) ? { ...x, showIf: undefined } : x)));
+    change(items.filter((x) => x.id !== id).map((x) => (x.showIf && fieldsOf.includes(x.showIf.field) ? { ...x, showIf: undefined } : x)));
     setSelected(null);
   };
   // What keeps the draft from being saved (checked here, so typing does not
@@ -221,15 +232,16 @@ export function SurveyBuilder({
         return t(`„${name}“: Jede Zeile und Spalte braucht einen Text.`, `“${name}”: every row and column needs a text.`);
       if (q.type === "scale" && (q.min ?? 1) >= (q.max ?? 5)) return t(`„${name}“: „Bis“ muss größer sein als „Von“.`, `“${name}”: “To” must be larger than “From”.`);
     }
+    if (!followUpValid) return t("Die Weiterleitung braucht eine Adresse mit https://.", "The redirect needs an address starting with https://.");
     return "";
-  }, [items, texts, t]);
+  }, [items, texts, t, followUpValid]);
   const save = async () => {
     if (saving.current || !editable) return;
     saving.current = true;
     const at = revision.current;
     setStatus("saving");
     const questions = Object.fromEntries(items.filter(isQuestion).map((q) => [q.id, texts[q.id]]));
-    const result = (await act({ action: "survey.save", version: knownVersion.current, survey, questions, form: formTexts })) as { fields: Record<string, string> } | null;
+    const result = (await act({ action: "survey.save", version: knownVersion.current, survey: { ...survey, redirect: undefined }, questions, form: formTexts })) as { fields: Record<string, string> } | null;
     saving.current = false;
     if (!result) {
       failedRevision.current = at;
@@ -242,14 +254,13 @@ export function SurveyBuilder({
     const id = (ref: string) => result.fields[ref] || ref;
     setSurvey((now) => ({
       ...now,
-      items: now.items.map((i) =>
-        i.kind === "page"
-          ? i
-          : {
-              ...i,
-              ...(i.showIf ? { showIf: { ...i.showIf, field: id(i.showIf.field) } } : {}),
-              ...(isQuestion(i) ? { field: id(i.field), rows: i.rows.map((r) => ({ ...r, field: id(r.field) })) } : {}),
-            },
+      items: now.items.map(
+        (i) =>
+          ({
+            ...i,
+            ...(i.showIf ? { showIf: { ...i.showIf, field: id(i.showIf.field) } } : {}),
+            ...(isQuestion(i) ? { field: id(i.field), rows: i.rows.map((r) => ({ ...r, field: id(r.field) })) } : {}),
+          }) as SurveyItem,
       ),
     }));
     if (revision.current === at) setDirtyState(false);
@@ -346,7 +357,7 @@ export function SurveyBuilder({
                           *
                         </span>
                       )}
-                      {i.kind !== "page" && i.showIf && <span className="survey-if">{t("wenn", "if")}</span>}
+                      {i.showIf && <span className="survey-if">{t("wenn", "if")}</span>}
                     </button>
                     {editable && (
                       <span className="survey-outline-actions">
@@ -422,6 +433,7 @@ export function SurveyBuilder({
                   {t("Titel der neuen Seite (optional)", "Title of the new page (optional)")}
                   <input disabled={!editable} value={item.title} maxLength={300} onChange={(e) => update(item.id, { title: e.target.value })} />
                 </label>
+                <ConditionEditor page condition={item.showIf} before={questionsBefore(item.id)} texts={texts} fields={previewFields} disabled={!editable} onChange={(c) => update(item.id, { showIf: c })} />
               </div>
             ) : item.kind === "text" ? (
               <div className="survey-card">
@@ -470,6 +482,7 @@ export function SurveyBuilder({
             survey={previewSurvey}
             fields={previewFields}
             texts={{ ...formTexts, title: formTexts.title || pageTitle }}
+            redirect={formTexts.redirectUrl ? { url: formTexts.redirectUrl, delay: formTexts.redirectDelay } : undefined}
             preview
             onSubmit={async () => {}}
           />
@@ -499,11 +512,14 @@ export function SurveyBuilder({
               {t("Dankeschön-Text", "Thank-you text")}
               <textarea rows={2} value={formTexts.successMessage} maxLength={3000} onChange={(e) => (setFormTexts({ ...formTexts, successMessage: e.target.value }), setDirty(true))} />
             </label>
-            <label>
-              {t("Danach weiterleiten zu (optional)", "Then redirect to (optional)")}
-              <input type="url" placeholder="https://" value={survey.redirect || ""} maxLength={500} onChange={(e) => (setSurvey({ ...survey, redirect: e.target.value || undefined }), setDirty(true))} />
-            </label>
           </fieldset>
+          <FormFollowUpSettings
+            value={formTexts}
+            members={members}
+            anonymous={share.anonymous}
+            disabled={!editable}
+            onChange={(patch) => (setFormTexts({ ...formTexts, ...patch }), setDirty(true))}
+          />
           <fieldset disabled={!editable}>
             <legend>{t("Ablauf", "Flow")}</legend>
             <label className="checkbox-label">
@@ -850,6 +866,7 @@ function ConditionEditor({
   fields,
   disabled,
   onChange,
+  page = false,
 }: {
   condition?: Condition;
   before: SurveyQuestion[];
@@ -857,59 +874,20 @@ function ConditionEditor({
   fields: Field[];
   disabled: boolean;
   onChange: (c: Condition | undefined) => void;
+  page?: boolean;
 }) {
   const t = useT();
-  const targets = before.flatMap((q) =>
-    q.type === "matrix" ? q.rows.map((r) => ({ field: r.field, label: `${texts[q.id]?.title} – ${r.label}`, options: q.columns, q })) : q.type === "file" ? [] : [{ field: q.field, label: texts[q.id]?.title || "", options: texts[q.id]?.options || [], q }],
+  const kind = (q: SurveyQuestion): ConditionTarget["kind"] =>
+    ["multiple", "ranking"].includes(q.type) ? "multi" : ["single", "dropdown", "yesno", "matrix"].includes(q.type) ? "choice" : ["rating", "nps", "scale", "slider", "number"].includes(q.type) ? "number" : "text";
+  const targets: ConditionTarget[] = before.flatMap((q) =>
+    q.type === "matrix"
+      ? q.rows.map((r) => ({ field: r.field, label: `${texts[q.id]?.title} – ${r.label}`, options: q.columns, kind: "choice" as const }))
+      : q.type === "file"
+        ? []
+        : [{ field: q.field, label: texts[q.id]?.title || "", options: ["single", "dropdown", "yesno", "multiple", "ranking"].includes(q.type) ? texts[q.id]?.options || [] : [], kind: kind(q) }],
   );
-  if (!targets.length && !condition) return null;
-  const target = targets.find((x) => x.field === condition?.field);
-  const numeric = target && ["rating", "nps", "scale", "slider", "number"].includes(target.q.type);
   void fields;
-  return (
-    <fieldset className="question-condition">
-      <legend>{t("Bedingung", "Condition")}</legend>
-      <label className="checkbox-label">
-        <input type="checkbox" disabled={disabled || !targets.length} checked={!!condition} onChange={(e) => onChange(e.target.checked ? { field: targets[0].field, op: "is", value: targets[0].options[0] || "" } : undefined)} />
-        {t("Nur zeigen, wenn …", "Only show if …")}
-      </label>
-      {condition && (
-        <div className="question-editor-row">
-          <Select aria-label={t("Frage der Bedingung", "Condition question")} disabled={disabled} value={condition.field} onChange={(e) => {
-            const next = targets.find((x) => x.field === e.target.value)!;
-            onChange({ field: next.field, op: "is", value: next.options[0] || "" });
-          }}>
-            {targets.map((x) => (
-              <option key={x.field} value={x.field}>
-                {x.label}
-              </option>
-            ))}
-          </Select>
-          <Select aria-label={t("Vergleich", "Comparison")} disabled={disabled} value={condition.op} onChange={(e) => onChange({ ...condition, op: e.target.value as Condition["op"] })}>
-            <option value="is">{t("ist", "is")}</option>
-            <option value="isNot">{t("ist nicht", "is not")}</option>
-            {target?.q.type === "multiple" && <option value="includes">{t("enthält", "includes")}</option>}
-            {numeric && <option value="gte">{t("ist mindestens", "is at least")}</option>}
-            {numeric && <option value="lte">{t("ist höchstens", "is at most")}</option>}
-            <option value="answered">{t("ist beantwortet", "is answered")}</option>
-            <option value="notAnswered">{t("ist nicht beantwortet", "is not answered")}</option>
-          </Select>
-          {!["answered", "notAnswered"].includes(condition.op) &&
-            (target?.options.length ? (
-              <Select aria-label={t("Wert der Bedingung", "Condition value")} disabled={disabled} value={condition.value} onChange={(e) => onChange({ ...condition, value: e.target.value })}>
-                {target.options.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <input aria-label={t("Wert der Bedingung", "Condition value")} disabled={disabled} value={condition.value} maxLength={300} onChange={(e) => onChange({ ...condition, value: e.target.value })} />
-            ))}
-        </div>
-      )}
-    </fieldset>
-  );
+  return <FormConditionEditor condition={condition} targets={targets} disabled={disabled} label={page ? t("Seite nur zeigen, wenn …", "Only show this page if …") : undefined} onChange={onChange} />;
 }
 
 // Changing between these keeps the same property (same stored type).
