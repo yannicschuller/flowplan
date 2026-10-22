@@ -11,6 +11,7 @@ import {
   exportArchiveStream,
   importArchive,
 } from "@/lib/archive";
+import { trackJob, trackStream } from "@/lib/background-jobs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
         .string()
         .uuid()
         .parse(new URL(req.url).searchParams.get("workspace"));
-    const stream = exportArchiveStream(user, wid);
+    const stream = trackStream(user, "archive", "Flowplan", exportArchiveStream(user, wid));
     return new Response(Readable.toWeb(stream) as ReadableStream, {
       headers: {
         "Content-Type": "application/zip",
@@ -81,7 +82,7 @@ export async function POST(req: Request) {
       Readable.fromWeb(req.body.pipeThrough(limit) as never),
       createWriteStream(file, { flags: "wx" }),
     );
-    return Response.json(await importArchive(user, wid, file));
+    return Response.json(await trackJob(user, "archive", "Flowplan", () => importArchive(user, wid, file)));
   } catch (e) {
     return error(e);
   } finally {

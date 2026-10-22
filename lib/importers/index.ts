@@ -5,6 +5,7 @@
 import { posix } from "node:path";
 import { readZip } from "../archive";
 import { HttpError } from "../auth";
+import { jobProgress } from "../background-jobs";
 import { parseConfluence, isConfluence } from "./confluence";
 import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
@@ -85,6 +86,8 @@ export async function importFromSource(
   // Rights first: reading a large archive costs time.
   requireSpace(user, workspaceId, spaceId);
   const tree = await parseImport(file.name, file.bytes, options.source);
+  // Reading is about half of the work (Live Activity, lib/background-jobs.ts).
+  jobProgress(0.5);
   return options.dryRun
     ? previewImport(user, workspaceId, spaceId, tree, options.mode)
     : writeImport(user, workspaceId, spaceId, tree, options.mode);

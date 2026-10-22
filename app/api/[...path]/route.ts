@@ -91,6 +91,7 @@ import { endMySessions, mySessions } from "@/lib/my-sessions";
 import { pageToRecordPlan } from "@/lib/page-to-record";
 import { recordToPagePlan } from "@/lib/record-to-page";
 import { importTracker } from "@/lib/tracker-import";
+import { trackJob } from "@/lib/background-jobs";
 import { recordBacklinks } from "@/lib/relation-backlinks";
 import { hiddenFileIds } from "@/lib/row-files";
 import { pagePreview } from "@/lib/page-preview";
@@ -989,7 +990,7 @@ async function handlePOST(
     }
     // "Run now" in the Git export settings of a space.
     if (path.length === 4 && path[0] === "spaces" && path[2] === "git-export" && path[3] === "run")
-      return NextResponse.json(await runSpaceGitExport(user, z.uuid().parse(path[1])));
+      return NextResponse.json(await trackJob(user, "git", "Git", () => runSpaceGitExport(user, z.uuid().parse(path[1]))));
     if (path.length === 2 && path[0] === "admin" && path[1] === "backup-run") {
       requireAdmin(user);
       const backup = await runScheduledBackup();
@@ -1157,7 +1158,9 @@ async function handlePOST(
       const text = await file.text();
       const kind = /\.json$/i.test(file.name) || text.trimStart().startsWith("{") ? "trello" : "jira";
       return NextResponse.json(
-        importTracker(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), kind, text, file.name),
+        await trackJob(user, "import", file.name, () =>
+          importTracker(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), kind, text, file.name),
+        ),
       );
     }
     // Markdown files (one, several or a ZIP) as records of a database.
@@ -1171,13 +1174,13 @@ async function handlePOST(
       for (const file of files)
         for (const [name, bytes] of await markdownEntries(file.name, Buffer.from(await file.arrayBuffer())))
           entries.set(entries.has(name) ? `${entries.size}-${name}` : name, bytes);
-      return NextResponse.json(
+      const records = () =>
         importMarkdownRecords(user, z.uuid().parse(path[1]), entries, {
           dryRun: data.get("dryRun") === "1",
           createMissing: data.get("createMissing") === "1",
           updateExisting: data.get("updateExisting") === "1",
-        }),
-      );
+        });
+      return NextResponse.json(data.get("dryRun") === "1" ? records() : await trackJob(user, "import", files[0].name, records));
     }
     // Confluence, Evernote, Google Docs and Obsidian (lib/importers):
     // dryRun=1 answers with a preview (counts and warnings) only.
@@ -1187,19 +1190,21 @@ async function handlePOST(
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > ARCHIVE_LIMIT) throw new HttpError(413, "Die Datei darf maximal 100 MB groß sein.");
       const { importFromSource } = await import("@/lib/importers");
-      return NextResponse.json(
-        await importFromSource(
+      const dryRun = data.get("dryRun") === "1";
+      const bytes = Buffer.from(await file.arrayBuffer());
+      const imported = () =>
+        importFromSource(
           user,
           z.uuid().parse(data.get("workspaceId")),
           z.uuid().parse(data.get("spaceId")),
-          { name: file.name, bytes: Buffer.from(await file.arrayBuffer()) },
+          { name: file.name, bytes },
           {
             source: z.enum(["auto", "confluence", "evernote", "gdocs", "obsidian"]).catch("auto").parse(data.get("source") || "auto"),
             mode: data.get("mode") === "database" ? "database" : "pages",
-            dryRun: data.get("dryRun") === "1",
+            dryRun,
           },
-        ),
-      );
+        );
+      return NextResponse.json(dryRun ? await imported() : await trackJob(user, "import", file.name, imported));
     }
     if (path[0] === "import" && path[1] === "zip") {
       const data = await req.formData();
@@ -1208,12 +1213,10 @@ async function handlePOST(
       if (file.size > ARCHIVE_LIMIT)
         throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
       requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
+      const bytes = Buffer.from(await file.arrayBuffer());
       return NextResponse.json(
-        await importZip(
-          user,
-          z.uuid().parse(data.get("workspaceId")),
-          z.uuid().parse(data.get("spaceId")),
-          Buffer.from(await file.arrayBuffer()),
+        await trackJob(user, "import", file.name, () =>
+          importZip(user, z.uuid().parse(data.get("workspaceId")), z.uuid().parse(data.get("spaceId")), bytes),
         ),
       );
     }

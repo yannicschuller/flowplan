@@ -14,6 +14,7 @@ import { repeatSchema } from "./recurrence";
 import { settingsSchema } from "./database-settings-schema";
 import { chatFormats, hookConfigSchema, noticeEvents, templatesSchema } from "./notification-templates";
 import { MAX_COMBOS, SHORTCUT_ACTIONS } from "./keymap";
+import { actionSchemas, dataRequestSchema, MAX_ITEMS, MAX_WIDGET_BYTES, MAX_WIDGETS, widgetActions, widgetConfigs, widgetKinds } from "./mobile-widget-schema";
 
 type Json = Record<string, unknown>;
 const uuid = z.uuid();
@@ -577,7 +578,50 @@ const mcpRequest = z.object({
   params: z.record(z.string(), z.unknown()).optional(),
 });
 
+// The mobile widget API: one configuration schema per kind, one body per action.
+const widgetName = (name: string) => name.replace(/(^|[.-])(\w)/g, (_, __, c: string) => c.toUpperCase());
+const widgetSchemas: Record<string, Json> = {
+  ...Object.fromEntries(widgetKinds.map((kind) => [`WidgetConfig${widgetName(kind)}`, { ...jsonSchema(widgetConfigs[kind]), description: `Configuration of a \`${kind}\` widget.` }])),
+  ...Object.fromEntries(
+    widgetActions.map((action) => {
+      const schema = jsonSchema(actionSchemas[action]);
+      const properties = { action: { type: "string", const: action }, ...((schema.properties as Json) || {}) };
+      return [`WidgetAction${widgetName(action)}`, { ...schema, properties, required: ["action", ...((schema.required as string[]) || [])] }];
+    }),
+  ),
+  WidgetDataRequest: {
+    ...jsonSchema(dataRequestSchema),
+    description: `Up to ${MAX_WIDGETS} widgets in one request. \`config\` follows the WidgetConfig schema of its \`kind\` (e.g. WidgetConfigTasks); \`today\` and \`zone\` are the phone's day and IANA time zone, \`lang\` de, en or fr.`,
+  },
+  WidgetDataResponse: {
+    type: "object",
+    properties: {
+      at: { type: "integer", description: "Server time (ms)" },
+      today: { type: "string", format: "date" },
+      zone: { type: "string" },
+      widgets: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: ["string", "null"], description: "The `id` sent with the widget" },
+            kind: { type: "string", enum: [...widgetKinds] },
+            ok: { type: "boolean" },
+            data: { type: "object", additionalProperties: true, description: `The widget's data: at most ${MAX_ITEMS} items and about ${MAX_WIDGET_BYTES} bytes (\`truncated: true\` when shortened). Pages behind a journal PIN answer \`locked: true\`, end-to-end encrypted ones \`encrypted: true\`, without content.` },
+            status: { type: "integer", description: "HTTP status of a widget that failed (403, 404 …)" },
+            error: { type: "string" },
+          },
+          required: ["id", "kind", "ok"],
+        },
+      },
+    },
+    required: ["at", "today", "zone", "widgets"],
+  },
+  WidgetAction: { oneOf: widgetActions.map((action) => ref(`WidgetAction${widgetName(action)}`)), discriminator: { propertyName: "action" } },
+};
+
 const schemas: Record<string, Json> = {
+  ...widgetSchemas,
   ErrorResponse: {
     type: "object",
     description: "Every error answer. `error` is a sentence in the reader's language (German by default, English with Accept-Language).",
@@ -924,7 +968,7 @@ type Op = {
   body?: { content: string; schema: Json; description?: string; required?: boolean };
   ok?: { status?: number; content?: string; schema?: Json; description: string };
   errors?: number[];
-  security?: "token" | "none" | "metrics";
+  security?: "token" | "none" | "metrics" | "device";
   write?: boolean;
 };
 const errorText: Record<number, string> = {
@@ -1046,6 +1090,10 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/domains", method: "get", op: { id: "publicationDomain", tag: "Extensions", summary: "Custom domain and look of a publication", description: "The domain with its verification record (TXT `_flowplan-verify.<host>`) and file, and the publication's theme. Set with `domain.add`, `domain.remove` and `publication.theme` via POST /api/command.", params: [q("page", "Page ID of the publication", { type: "string", format: "uuid" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Domain and theme" }, errors: [400, 401, 403, 404] } },
   { path: "/api/domains/verify", method: "post", op: { id: "verifyPublicationDomain", tag: "Extensions", summary: "Verify a publication's custom domain", description: "Checks the TXT record `_flowplan-verify.<host>`, then `https://<host>/.well-known/flowplan-verify.txt`. Needs edit rights on the page.", write: true, body: { content: "application/json", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" } }, required: ["pageId"] }, required: true }, ok: { schema: { type: "object", additionalProperties: true }, description: "Domain status and the method that matched (or null)" }, errors: [400, 401, 403, 404] } },
   { path: "/api/domains/allowed", method: "get", op: { id: "customDomainAllowed", tag: "Extensions", summary: "Whether a host is a verified custom domain", description: "For the `ask` endpoint of Caddy's on-demand TLS: 200 for verified domains of active publications, 404 otherwise. No authentication.", security: "none", params: [q("domain", "Host name", { type: "string" }, true)], ok: { content: "text/plain", description: "Verified" }, errors: [404] } },
+  // Mobile widgets (lib/mobile-widgets.ts)
+  { path: "/api/mobile/widgets/options", method: "get", op: { id: "widgetOptions", tag: "Mobile widgets", security: "device", summary: "What a widget instance can be configured to", description: `The choices for the configuration screen of one widget kind (targets, databases, views, calendars, journals, forms …), only what the person may see; with \`pageId\` also the views and properties of that database. 60 requests per person and minute. ${noStore}`, params: [q("kind", "Widget kind", { type: "string", enum: [...widgetKinds] }, true), q("pageId", "A database for its views and properties", { type: "string", format: "uuid" }), q("lang", "Language of the titles (de, en, fr); the profile's language wins", { type: "string" })], ok: { schema: { type: "object", properties: { kind: { type: "string" } }, required: ["kind"], additionalProperties: true }, description: "Options" }, errors: [400, 401, 404, 429] } },
+  { path: "/api/mobile/widgets/data", method: "post", op: { id: "widgetData", tag: "Mobile widgets", security: "device", summary: "The data of all configured widgets in one request", description: `Each widget answers on its own (\`ok\`, \`data\` or \`status\` and \`error\`), so one widget whose page is gone does not fail the others. Counters keep one value per configuration and day for their 14-day history. 60 requests per person and minute. ${noStore}`, body: { content: "application/json", schema: ref("WidgetDataRequest"), required: true }, ok: { schema: ref("WidgetDataResponse"), description: "The widgets" }, errors: [400, 401, 413, 429] } },
+  { path: "/api/mobile/widgets/action", method: "post", op: { id: "widgetAction", tag: "Mobile widgets", security: "device", summary: "What a widget, Live Activity or Shortcut does", description: "Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour.", write: true, body: { content: "application/json", schema: ref("WidgetAction"), required: true }, ok: { schema: { type: "object", properties: { ok: { type: "boolean" }, action: { type: "string" } }, required: ["ok", "action"], additionalProperties: true }, description: "The result" }, errors: [400, 401, 403, 404, 409, 413, 429] } },
   // MCP
   { path: "/api/mcp", method: "post", op: { id: "mcp", tag: "MCP", summary: "MCP server (Streamable HTTP, JSON answers)", description: "For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record.", body: { content: "application/json", schema: ref("McpRequest"), required: true }, ok: { schema: ref("McpResponse"), description: "The JSON-RPC answer (202 without a body for notifications)" }, errors: [400, 401, 403, 413, 429] } },
 ];
@@ -1099,7 +1147,7 @@ function operation(o: Op): Json {
     ...(o.params?.length ? { parameters: o.params.map((prm) => ({ name: prm.name, in: prm.in, required: !!prm.required, ...(prm.description ? { description: prm.description } : {}), schema: prm.schema })) } : {}),
     ...(o.body ? { requestBody: { required: o.body.required !== false, ...(o.body.description ? { description: o.body.description } : {}), content: { [o.body.content]: { schema: o.body.schema } } } } : {}),
     responses,
-    security: o.security === "none" ? [] : o.security === "metrics" ? [{ metricsToken: [] }] : [{ bearerAuth: [] }],
+    security: o.security === "none" ? [] : o.security === "metrics" ? [{ metricsToken: [] }] : o.security === "device" ? [{ deviceToken: [] }] : [{ bearerAuth: [] }],
     ...(o.write ? { "x-write-token": true } : {}),
   };
 }
@@ -1120,6 +1168,7 @@ export function openApiDocument(): Json {
     { name: "Calendar", description: "iCalendar feeds. CalDAV (`/api/caldav/…`, PROPFIND and REPORT, basic auth with the access created by `calendar.caldav`) is served outside this document." },
     { name: "MCP", description: "The Model Context Protocol server for AI assistants." },
     { name: "Extensions", description: "Block extensions (plugins rendered in sandboxed frames) and custom domains for publications." },
+    { name: "Mobile widgets", description: "Widgets, Live Activities and Shortcuts of the mobile apps: configurable per widget instance, signed in with the app's device token (`fpd_…`), never with a personal API token." },
   ];
   return {
     openapi: "3.1.0",
@@ -1147,6 +1196,7 @@ export function openApiDocument(): Json {
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "fp_…", description: "A personal API token with read, write or clipper scope." },
         metricsToken: { type: "http", scheme: "bearer", description: "`FLOWPLAN_METRICS_TOKEN` of the instance (Prometheus only)." },
+        deviceToken: { type: "http", scheme: "bearer", bearerFormat: "fpd_…", description: "The device token of a mobile app installation (POST /api/mobile/register from the signed-in app). Lives as long as the session it was registered with." },
       },
       schemas,
     },
