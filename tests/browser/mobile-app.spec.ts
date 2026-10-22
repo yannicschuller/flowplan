@@ -77,8 +77,7 @@ test("the app registers for the session, reads its summary and leaves again", as
 
 test("in the app, push settings point to the app settings", async ({ page }) => {
   await asApp(page);
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: /Benachrichtigungen/ }).first().click();
+  await page.goto("/#settings/notifications");
   await expect(page.getByText("Die Flowplan-App erhält keine Benachrichtigungen")).toBeVisible();
   await page.getByRole("button", { name: "App-Einstellungen öffnen" }).click();
   expect((await app(page)).settings).toBe(1);

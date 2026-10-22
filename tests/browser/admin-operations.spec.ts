@@ -61,21 +61,22 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
     await expect(
       admin.getByRole("heading", { name: "Administration" }),
     ).toBeVisible();
+    // The landing page: a tile per section with its state.
+    await expect(admin.getByRole("link", { name: /Überwachung/ })).toBeVisible();
+    await admin.goto(`${origin}/#admin/general`);
     // The running version and commit (the test server runs from a checkout).
     const build = admin.getByLabel("Laufende Version");
     await expect(build).toContainText(/^v\d+\.\d+\.\d+/);
     await expect(build.getByRole("link")).toHaveAttribute("href", /github\.com\/yannicschuller\/flowplan\/commit\/[0-9a-f]{40}$/);
     await admin.screenshot({ path: `test-results/admin-verification/${testInfo.project.name}-version.png` });
-    await admin.getByRole("button", { name: "Betrieb", exact: true }).click();
+    await admin.goto(`${origin}/#admin/monitoring`);
     const metrics = admin.getByLabel("Betriebsmetriken");
     await expect(metrics).toContainText("Datenbank");
     await expect(metrics).toContainText("Suchindex");
     await admin.screenshot({
       path: `test-results/admin-verification/${testInfo.project.name}-metrics.png`,
     });
-    await admin
-      .getByRole("button", { name: "Arbeitsbereiche", exact: true })
-      .click();
+    await admin.goto(`${origin}/#admin/workspaces`);
     const quota = admin.getByLabel(`Kontingent ${boot.workspace.name}`).first();
     await quota.fill("1");
     await quota.blur();

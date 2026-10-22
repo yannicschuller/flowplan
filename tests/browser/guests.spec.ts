@@ -72,8 +72,7 @@ test("owners turn members into guests who only see shared pages", async ({
     userId: uid,
     role: "editor",
   });
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: "Mitglieder", exact: true }).click();
+  await page.goto("/#settings/members");
   await page
     .getByRole("button", { name: `Gast ${tag} zum Gast machen` })
     .click();

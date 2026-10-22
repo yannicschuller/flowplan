@@ -37,7 +37,7 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
   const adminSession = session(["flowplan-admins"], "Admin Grenzen");
   const admin = await open(adminSession.token);
   try {
-    await admin.page.goto(`${origin}/#admin`);
+    await admin.page.goto(`${origin}/#admin/users`);
     const row = admin.page.locator(".user-row", { hasText: name });
     await row.getByRole("button", { name: "Verwalten" }).click();
     await row.getByLabel(`Speicher für ${name}`).fill("200");
@@ -48,7 +48,7 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-user-limits.png`, fullPage: true });
 
     // The person sees what applies to them.
-    await me.page.goto(`${origin}/#settings`);
+    await me.page.goto(`${origin}/#settings/account`);
     await me.page.reload();
     const limits = me.page.locator(".setting-group", { hasText: "Deine Grenzen" });
     await expect(limits).toContainText("0 MB / 200 MB");
@@ -57,8 +57,9 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
     await me.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-my-limits.png`, fullPage: true });
 
     // Fixed language: English everywhere from now on.
+    await me.page.goto(`${origin}/#settings/appearance`);
     await me.page.getByRole("combobox", { name: "Sprache" }).selectOption("en");
-    await expect(me.page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 20_000 });
+    await expect(me.page.getByRole("heading", { name: "Appearance & language" })).toBeVisible({ timeout: 20_000 });
     expect((db.prepare("SELECT language FROM users WHERE id=?").get(person.uid) as { language: string }).language).toBe("en");
     // Another device with a German browser switches to English as well.
     const other = await open(person.token);
@@ -66,7 +67,7 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
     await expect(other.page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 20_000 });
     await other.context.close();
     await me.page.getByRole("combobox", { name: "Language" }).selectOption("");
-    await expect(me.page.getByRole("heading", { name: "Einstellungen" })).toBeVisible({ timeout: 20_000 });
+    await expect(me.page.getByRole("heading", { name: "Darstellung & Sprache" })).toBeVisible({ timeout: 20_000 });
     expect(errors).toEqual([]);
   } finally {
     await me.context.close();

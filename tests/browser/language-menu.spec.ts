@@ -38,7 +38,7 @@ test("the language menu on the sign-in page switches the language", async ({ pag
 test("the language list in the settings shows flags and the automatic choice", async ({ page }, info) => {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
-  await page.goto("/#settings");
+  await page.goto("/#settings/appearance");
   const select = page.getByRole("combobox", { name: "Sprache" });
   await expect(select).toBeAttached({ timeout: 60_000 });
   await expect(select.locator("option")).toHaveText(["🌐 Automatisch (folgt dem Browser)", "🇩🇪 Deutsch", "🇬🇧 English", "🇫🇷 Français"]);

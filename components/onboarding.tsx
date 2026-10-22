@@ -141,7 +141,7 @@ export function Onboarding({
       icon: CloudArrowDown,
       title: t("Offline und Apps", "Offline and apps"),
       text: t("Als App installierbar, Desktop-Apps für macOS, Windows und Linux, auf Wunsch offline nutzbar.", "Installable as an app, desktop apps for macOS, Windows and Linux, usable offline on request."),
-      tip: t("Offline schaltest du je Gerät unter Einstellungen → Daten ein.", "Turn offline on per device under Settings → Data."),
+      tip: t("Offline schaltest du je Gerät unter Einstellungen → Offline & Geräte ein.", "Turn offline on per device under Settings → Offline & devices."),
       slug: "offline-and-apps",
     },
   ];
@@ -402,7 +402,7 @@ export function Onboarding({
               </li>
             </ul>
             <p className="muted">
-              {t("Diese Einführung findest du wieder unter Einstellungen → Konto.", "You find this introduction again under Settings → Account.")}
+              {t("Diese Einführung findest du wieder unter Einstellungen → Darstellung & Sprache.", "You find this introduction again under Settings → Appearance & language.")}
             </p>
           </section>
         )}

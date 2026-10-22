@@ -9,10 +9,7 @@ test("notification kinds are switched per channel in the settings", async ({
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const prefs = async () =>
     (await (await page.request.get("/api/bootstrap")).json()).notificationPrefs;
-  await page.goto("/#settings");
-  await page
-    .getByRole("button", { name: "Benachrichtigungen", exact: true })
-    .click();
+  await page.goto("/#settings/notifications");
   const inbox = page.getByLabel("Datums-Erinnerungen im Posteingang");
   const push = page.getByLabel("Datums-Erinnerungen als Push");
   await inbox.check();
@@ -26,10 +23,8 @@ test("notification kinds are switched per channel in the settings", async ({
   await expect
     .poll(async () => (await prefs()).reminder)
     .toEqual({ inbox: false, push: false, email: false });
+  // A reload keeps the section (#settings/notifications).
   await page.reload();
-  await page
-    .getByRole("button", { name: "Benachrichtigungen", exact: true })
-    .click();
   await expect(
     page.getByLabel("Datums-Erinnerungen im Posteingang"),
   ).not.toBeChecked();

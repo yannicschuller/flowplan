@@ -28,8 +28,9 @@ test("the administration announces a newer release", async ({ browser }, testInf
   const admin = await context.newPage();
   try {
     const { update, build } = await (await admin.request.get(`${origin}/api/admin`)).json();
-    await admin.goto(`${origin}/#admin`);
-    await expect(admin.getByRole("heading", { name: "Administration" })).toBeVisible();
+    // The notice is on Administration → Instanz; the tile names the version.
+    await admin.goto(`${origin}/#admin/general`);
+    await expect(admin.getByRole("heading", { name: "Instanz", level: 1 })).toBeVisible();
     const notice = admin.locator(".admin-update");
     if (!update) {
       await expect(notice).toHaveCount(0);

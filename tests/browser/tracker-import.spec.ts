@@ -13,8 +13,7 @@ test("import a Trello board from the settings", async ({ page }) => {
     lists: [{ id: "l1", name: "Ideen" }],
     cards: [{ id: "c1", name: "Erste Karte", idList: "l1", labels: [] }],
   };
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: "Daten" }).or(page.getByRole("tab", { name: "Daten" })).first().click();
+  await page.goto("/#settings/data");
   await page.getByLabel("Jira- oder Trello-Export importieren").setInputFiles({ name: "board.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(board)) });
   await expect(page.getByText(name).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("Erste Karte").first()).toBeVisible();

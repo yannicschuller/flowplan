@@ -51,8 +51,7 @@ test("admins set the instance name and an announcement for everyone", async ({
   const admin = await adminContext.newPage();
   const tag = Date.now();
   try {
-    await admin.goto(`${origin}/#admin`);
-    await admin.getByRole("button", { name: "Instanz", exact: true }).click();
+    await admin.goto(`${origin}/#admin/general`);
     const form = admin.getByRole("form", { name: "Instanzeinstellungen" });
     await form.getByLabel("Name der Instanz").fill(`Muster ${tag}`);
     await form.getByLabel("Hinweis für alle Personen").fill(`Wartung ${tag}`);

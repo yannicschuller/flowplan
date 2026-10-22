@@ -1307,7 +1307,7 @@ export type CommandIssueSyncUnmapResult = {
   ok: true;
 };
 
-/** Sync a database view with a Google or Microsoft 365 calendar. Needs editor rights on the database and a calendar connection of the caller (set up in the browser under Settings → Account → Connect calendar). The view needs a date property. One calendar per view and person; changing the calendar starts the sync anew. The sync runs every ten minutes. */
+/** Sync a database view with a Google or Microsoft 365 calendar. Needs editor rights on the database and a calendar connection of the caller (set up in the browser under Settings → Calendars & issues). The view needs a date property. One calendar per view and person; changing the calendar starts the sync anew. The sync runs every ten minutes. */
 export type CommandCalendarSyncMap = {
   action: "calendarSync.map";
   connectionId: string;

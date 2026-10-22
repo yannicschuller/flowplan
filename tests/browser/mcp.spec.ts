@@ -12,8 +12,7 @@ test("MCP endpoint answers tokens with the person's rights only", async ({ page,
   await page.request.post("/api/auth/demo", { headers: { origin } });
   const boot = await (await page.request.get("/api/bootstrap")).json();
 
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: "API & Webhooks" }).click();
+  await page.goto("/#settings/api");
   await expect(page.getByRole("heading", { name: "KI-Assistenten (MCP)" })).toBeVisible();
   await expect(page.getByLabel("MCP-Adresse")).toHaveText(`${origin}/api/mcp`);
   await page.getByRole("tab", { name: "Claude Code" }).click();

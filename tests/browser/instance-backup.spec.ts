@@ -46,8 +46,7 @@ test("admins download an instance backup and stage or cancel a restore", async (
   ]);
   const admin = await context.newPage();
   try {
-    await admin.goto(`${origin}/#admin`);
-    await admin.getByRole("button", { name: "Instanz", exact: true }).click();
+    await admin.goto(`${origin}/#admin/storage`);
     const section = admin.getByRole("region", { name: "Instanzsicherung" });
     const downloading = admin.waitForEvent("download");
     await section
