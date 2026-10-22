@@ -2,6 +2,47 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.6.0 – 2026-10-22
+
+- Quality budgets and visual regression tests; visible labels in accessible names ([c6494c4](https://github.com/yannicschuller/flowplan/commit/c6494c46a07881cf5c6f618ca4581cf63867f8fe))
+- Browser extension and imports from Confluence, Evernote, Google Docs and Obsidian ([becd1cd](https://github.com/yannicschuller/flowplan/commit/becd1cd166715d60d0a6bd2658f660c5fc9d0f4f))
+- End-to-end encrypted spaces for journals, passwords and sensitive notes ([f717479](https://github.com/yannicschuller/flowplan/commit/f717479705f8f39ebb143b27f7cf8e81e32f9eea))
+- Webhook template tests wait for the automatic dispatch instead of a fixed pause ([1f8d418](https://github.com/yannicschuller/flowplan/commit/1f8d418d88f4dacd8dfafead3a4515e2e0bd0fa3))
+- Block extensions (plugins) and custom domains for publications ([70c7618](https://github.com/yannicschuller/flowplan/commit/70c7618c69ba477b9442d56e1db8556068eff2da))
+- Test: the global stylesheet stays balanced and free of merge markers ([b9aae03](https://github.com/yannicschuller/flowplan/commit/b9aae0339909a3015c861747c600fed562a5e693))
+- Presentation mode, split view and custom keyboard shortcuts ([2becd79](https://github.com/yannicschuller/flowplan/commit/2becd79e784351065055ca23ceeed6f8edcfc4ba))
+- Time reports with billing and an operations dashboard for admins ([0c9ce94](https://github.com/yannicschuller/flowplan/commit/0c9ce94b9b72f72f5b4401baa53d0f9da7091020))
+- Offline copy keeps itself up to date (#40) ([7166c97](https://github.com/yannicschuller/flowplan/commit/7166c97b6e28965113dea43bd200e6ee547829aa))
+- LDAP tests: allow 15 s per operation against the fake server ([cea4450](https://github.com/yannicschuller/flowplan/commit/cea4450745cbfe67e1878a9170fe3cdd6ce9c7dc))
+- AI actions, cross-workspace Ask, weekly digest, related pages, meeting transcription ([43283b1](https://github.com/yannicschuller/flowplan/commit/43283b1401d0d70b2392183928e38e4f7b7abfaf))
+- Calendar sync with Google and Microsoft 365, meeting notes from appointments ([bf64f68](https://github.com/yannicschuller/flowplan/commit/bf64f6840e8c17995af193ae5a927dc5a29d981b))
+- Add SCIM 2.0 provisioning and LDAP sign-in with hourly group sync ([6d56bfc](https://github.com/yannicschuller/flowplan/commit/6d56bfca0208058ce907a5a9b3579e5c1e13a9e3))
+- Remove a leftover merge marker from the stylesheet ([1f86405](https://github.com/yannicschuller/flowplan/commit/1f864053a6829d4d62c159ce8dc4c5f1136ae888))
+- Add aliases for pages and records (#39) ([380e51c](https://github.com/yannicschuller/flowplan/commit/380e51c94924bd4b5c58e5d18109fc6a8005f200))
+- Sync databases with GitHub and GitLab issues, both ways ([a879cde](https://github.com/yannicschuller/flowplan/commit/a879cdef51caa69b4db884d4f272fc5a7f095ce4))
+- Webhooks: chat notifications for Slack, Matrix, Teams and Discord ([d28a332](https://github.com/yannicschuller/flowplan/commit/d28a332a90c31dd019b6725e27ffa5fc091490ec))
+- Add e-mail inbound capture (mail-to-inbox) ([62d6063](https://github.com/yannicschuller/flowplan/commit/62d6063cb0d0104484052cbba6ae4cb4c169f543))
+- Unified error presentation and a mobile bottom bar ([ca150f5](https://github.com/yannicschuller/flowplan/commit/ca150f57b1f9551b394be523a38e58e0051ce1be))
+- Forms: conditional logic for all forms, pages, confirmation e-mail, team notification, drafts ([7ebd112](https://github.com/yannicschuller/flowplan/commit/7ebd11206985e1c112b1dc5f89935e921595ecf7))
+- Add field-level permissions for database properties ([2081c32](https://github.com/yannicschuller/flowplan/commit/2081c3277678e487779fc1fe064a205f4f8fec9b))
+- Add dashboard pages: a grid of configurable tiles ([e98adc6](https://github.com/yannicschuller/flowplan/commit/e98adc6c9b8d868eb66a4dc3d9d180abc100d7b2))
+- Add page owners with review dates, scheduled record automations and repeating tasks ([ead02d4](https://github.com/yannicschuller/flowplan/commit/ead02d43d9f24a0915aeaa0a3df690a6d3d0edde))
+- Database toolbar as chip popovers, pinned first column, keyboard rows, per-view record opening ([c174d3a](https://github.com/yannicschuller/flowplan/commit/c174d3a67774fad5c6bf7a6d3fa277df3c352f00))
+- OpenAPI description of the API with generated TypeScript and Python clients ([5fde7b9](https://github.com/yannicschuller/flowplan/commit/5fde7b944f84c01c6ab2a4d843a923a7d7203b68))
+- i18n: French for the sign-in code hint ([390044d](https://github.com/yannicschuller/flowplan/commit/390044def41adc1b2ffecbdfa4686e984e28df0f))
+- Version comparison block by block with a word summary; shared facts file ([1b069b4](https://github.com/yannicschuller/flowplan/commit/1b069b45970ff2a86aad38050189730a4442b4eb))
+- Export as Word, batch PDF with a table of contents, and EPUB ([8520859](https://github.com/yannicschuller/flowplan/commit/8520859828c1a37415f41787b72e221e6d651863))
+- Workspace shell: command palette, shortcut overlay, settings split, tree a11y ([9f40afb](https://github.com/yannicschuller/flowplan/commit/9f40afb1b486243af19d01e35ed536f9c92c2540))
+- Slash menu as a grouped listbox with recents; saving states and lib labels translated ([b80f451](https://github.com/yannicschuller/flowplan/commit/b80f451aa7fc9cdcb90fedf016c11d557c163295))
+- App sign-in page shows the one-time code as text for the paste-code fallback ([d646c79](https://github.com/yannicschuller/flowplan/commit/d646c79ec4427b0ac6166dd0dbf53f8145b4fb95))
+- i18n: French for the security notification kind ([ac51dad](https://github.com/yannicschuller/flowplan/commit/ac51dadf49d9f82f756410a11fd7f40dc3aa5155))
+- Harden anonymous paths: upload budgets, unknown client address, journal PIN, guest links ([d75ebac](https://github.com/yannicschuller/flowplan/commit/d75ebace1d9962646ec1ba1795378db680d92948))
+- Fix review findings: kept workspaces, paused Git export, Markdown notice, Ask rate limit, successor shifts ([979d716](https://github.com/yannicschuller/flowplan/commit/979d7169b08c4e9c860371bf92e2582d8d8684ba))
+- Fix record-to-page file transfer, timeline arrow draw-in, reduced-motion check ([6e7c5da](https://github.com/yannicschuller/flowplan/commit/6e7c5dad4c760b45c2db8a044cc12478dc969cc6))
+- Fix UI/UX review findings: English leaks, editor focus, database views, contrast, errors ([669900b](https://github.com/yannicschuller/flowplan/commit/669900bf279b1e21406fc51ac5502dea128284de))
+- Fix review findings: AI block on page transfer, auto AI loop, leaving ghosts, i18n ([9c574ed](https://github.com/yannicschuller/flowplan/commit/9c574ed4df2f1d1c29d1b02a137bc81c5c8c7942))
+- Editor: Backspace in an empty list item keeps the list whole ([ec78f93](https://github.com/yannicschuller/flowplan/commit/ec78f931dc224f841983947b7abc7dcdf524bdd3))
+
 ## v0.5.0 – 2026-10-20
 
 - Release workflow: push with a deploy key through the rulesets, release an untagged version as it is ([7af5d69](https://github.com/yannicschuller/flowplan/commit/7af5d6967ac04540529c6a4880a9315f2f8138f0))
