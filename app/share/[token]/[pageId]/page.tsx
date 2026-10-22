@@ -1,10 +1,11 @@
 import { PublishedPage } from "@/components/public-page";
 import { PublicLegalFooter } from "@/components/legal-footer-server";
+import { publicationMetadata, requestCustomHost } from "@/lib/publication-meta";
 export const dynamic = "force-dynamic";
-export const metadata = {
-  robots: { index: false, follow: false },
-  referrer: "no-referrer" as const,
-};
+export async function generateMetadata({ params }: { params: Promise<{ token: string; pageId: string }> }) {
+  const { token, pageId } = await params;
+  return publicationMetadata(token, pageId);
+}
 export default async function Page({
   params,
   searchParams,
@@ -17,12 +18,13 @@ export default async function Page({
   return (
     <>
       <PublishedPage
-      token={token}
-      pageId={pageId}
-      rowId={row}
-      viewId={view}
-      month={month}
-    />
+        token={token}
+        customHost={await requestCustomHost(token)}
+        pageId={pageId}
+        rowId={row}
+        viewId={view}
+        month={month}
+      />
       <PublicLegalFooter />
     </>
   );

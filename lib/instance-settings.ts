@@ -28,6 +28,11 @@ export const instanceSettingsSchema = z.object({
   // Two-factor sign-in for accounts with e-mail and password: not required,
   // required for administrators, or for everyone (lib/two-factor-policy.ts).
   twoFactor: z.enum(["off", "admins", "all"]).default("off"),
+  // Block extensions from any HTTPS address, not only the origins listed in
+  // PLUGIN_ALLOWED_ORIGINS (lib/plugins.ts).
+  pluginsAnyOrigin: z.boolean().default(false),
+  // Owners may serve publications under their own domain (lib/custom-domains.ts).
+  customDomains: z.boolean().default(false),
 });
 export type InstanceSettings = z.infer<typeof instanceSettingsSchema>;
 const defaults: InstanceSettings = {
@@ -46,6 +51,8 @@ const defaults: InstanceSettings = {
   defaultUserStorageMb: null,
   defaultUserWorkspaces: null,
   twoFactor: "off",
+  pluginsAnyOrigin: false,
+  customDomains: false,
 };
 // Read on every use: route handlers and pages run as separate module
 // instances, so an in-memory cache would go stale.

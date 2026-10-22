@@ -258,6 +258,20 @@ function collect(user: Identity, options: MarkdownExportOptions) {
           ? { title: page.title, url: pageUrl(page.id, from) }
           : null;
       },
+      plugin(pluginId) {
+        // Only the exporting person's own workspaces name their plugins.
+        const row = one<{ url: string; manifest: string; workspace_id: string }>(
+          "SELECT p.url,p.manifest,p.workspace_id FROM plugins p JOIN members m ON m.workspace_id=p.workspace_id AND m.user_id=? WHERE p.id=?",
+          user.id,
+          pluginId,
+        );
+        if (!row) return null;
+        try {
+          return { name: String(JSON.parse(row.manifest).name || ""), url: row.url.replace(/flowplan-plugin\.json$/, "") };
+        } catch {
+          return null;
+        }
+      },
       whiteboard(pageId) {
         const page = readable(pageId);
         if (!page || page.kind !== "whiteboard" || locked.has(page.id)) return null;

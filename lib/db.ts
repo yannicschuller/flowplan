@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 53) return;
+  if (globalDb.flowplanSchema === 54) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -743,7 +743,15 @@ function migrate(d: DatabaseSync) {
   // Own keyboard shortcuts per person (lib/user-shortcuts.ts): the actions
   // that differ from the defaults, as JSON.
   d.exec(`CREATE TABLE IF NOT EXISTS user_shortcuts(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,bindings TEXT NOT NULL DEFAULT '{}',updated_at INTEGER NOT NULL);`);
-  globalDb.flowplanSchema = 53;
+  // Block extensions (lib/plugins.ts): registered per workspace with their
+  // manifest, the permissions an owner granted and whether published pages
+  // may show them. Custom domains for publications (lib/custom-domains.ts)
+  // with their verification token, and the look of a publication.
+  d.exec(`CREATE TABLE IF NOT EXISTS plugins(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,url TEXT NOT NULL,origin TEXT NOT NULL,manifest TEXT NOT NULL,permissions TEXT NOT NULL DEFAULT '[]',settings TEXT NOT NULL DEFAULT '{}',enabled INTEGER NOT NULL DEFAULT 1,public INTEGER NOT NULL DEFAULT 0,created_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,UNIQUE(workspace_id,url));
+    CREATE INDEX IF NOT EXISTS plugins_origin ON plugins(origin);
+    CREATE TABLE IF NOT EXISTS custom_domains(host TEXT PRIMARY KEY,page_id TEXT NOT NULL UNIQUE REFERENCES pages(id) ON DELETE CASCADE,token TEXT NOT NULL,verified_at INTEGER,checked_at INTEGER,last_error TEXT,created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS publication_themes(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,theme TEXT NOT NULL DEFAULT '{}',updated_at INTEGER NOT NULL);`);
+  globalDb.flowplanSchema = 54;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

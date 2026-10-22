@@ -44,6 +44,8 @@ const BLOCKED = new Set([
   "space.gitExport",
   // Would e-mail people outside the demo.
   "ticket.reply",
+  // Would serve content under a domain outside the instance.
+  "domain.add",
 ]);
 export function demoAllows(action: string, input: Record<string, unknown>) {
   // AI settings (and AI itself) are not part of the demo.

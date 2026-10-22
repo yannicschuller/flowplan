@@ -11,6 +11,8 @@ export type MarkdownContext = {
   linked: (source: string) => { title: string; url: string } | null;
   // Embedded whiteboards: an image (SVG in the ZIP export) and the link.
   whiteboard?: (pageId: string) => { title: string; image: string | null; url: string } | null;
+  // Blocks of block extensions: the plugin's name and address.
+  plugin?: (pluginId: string) => { name: string; url: string } | null;
 };
 export function markdownText(text: string) {
   return text
@@ -128,6 +130,7 @@ const blockLabels: Record<string, () => string> = {
   linkCard: () => tr("Linkvorschau", "Link preview"),
   functionPlot: () => tr("Funktionsgraph", "Function graph"),
   metricBlock: () => tr("Kennzahl", "Metric"),
+  pluginBlock: () => tr("Erweiterung", "Extension"),
   columns: () => tr("Spalten", "Columns"),
   table: () => tr("Tabelle", "Table"),
   image: () => tr("Bild", "Image"),
@@ -382,6 +385,14 @@ export function htmlToMarkdown(
         // The marker lets a re-import (Git, lib/git-export.ts) restore the embed.
         const marker = `<!-- flowplan:whiteboard ${String(node.attrs.pageId)} ${Math.round(Number(node.attrs.height) || 380)} -->\n`;
         return marker + (board.image ? `![${markdownText(board.title || "Whiteboard")}](<${markdownUrl(board.image)}>)\n\n${link}` : link);
+      }
+      case "pluginBlock": {
+        // A placeholder link: the frame cannot live in Markdown; its text can.
+        const plugin = context.plugin?.(String(node.attrs.pluginId || ""));
+        const label = `${ct("Erweiterung", "Extension")}: ${String(node.attrs.label || plugin?.name || node.attrs.blockType || "")}`.trim();
+        const text = String(node.attrs.text || "").trim();
+        const head = plugin ? markdownLink(label, plugin.url) : `*${markdownText(label)}*`;
+        return text ? `${head}\n\n${markdownText(text)}` : head;
       }
       case "linkedDatabase": {
         const linked = context.linked(String(node.attrs.source || ""));

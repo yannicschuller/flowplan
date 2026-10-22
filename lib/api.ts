@@ -1,4 +1,6 @@
 import { teamReply } from "./service-desk";
+import { deletePlugin, updatePlugin } from "./plugins";
+import { addDomain, removeDomain, savePublicationTheme } from "./custom-domains";
 import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
 import { setAiBlock, setAiRule } from "./ai/access";
 import { aiStatus } from "./ai/resolve";
@@ -2244,6 +2246,23 @@ export function command(
       }
       case "publication.copy":
         result = copyPublication(user, b);
+        break;
+      // The look of a publication and its own domain (lib/custom-domains.ts).
+      case "publication.theme":
+        result = savePublicationTheme(user, b);
+        break;
+      case "domain.add":
+        result = addDomain(user, b);
+        break;
+      case "domain.remove":
+        result = removeDomain(user, b);
+        break;
+      // Block extensions (lib/plugins.ts); registering is POST /api/plugins.
+      case "plugin.update":
+        result = updatePlugin(user, b);
+        break;
+      case "plugin.delete":
+        result = deletePlugin(user, b);
         break;
       case "form.update": {
         write();

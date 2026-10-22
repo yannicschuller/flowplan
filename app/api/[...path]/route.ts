@@ -1,4 +1,6 @@
 import { withRequestLocale } from "@/lib/content-locale";
+import { listPlugins, pluginsForPage, publicPlugin, queryPluginDatabase, registerPlugin } from "@/lib/plugins";
+import { domainAllowed, domainRobots, domainSettings, domainSitemap, verifyDomain } from "@/lib/custom-domains";
 import { aiAllowedUsers, instanceAiSettings } from "@/lib/ai/settings";
 import { teamThread } from "@/lib/service-desk";
 import { readablePrefixes, resolveTicket } from "@/lib/ticket-refs";
@@ -147,6 +149,34 @@ async function handleGET(
   try {
     const { path } = await params;
     const url = new URL(req.url);
+    // Block extensions on published pages (lib/plugins.ts): only those the
+    // owners allowed there.
+    if (path.length === 4 && path[0] === "share" && path[2] === "plugins")
+      return NextResponse.json(withShareRequest(req, () => publicPlugin(path[1], z.uuid().parse(path[3]))), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    // Custom domains (lib/custom-domains.ts): Caddy's on-demand TLS asks
+    // whether a certificate may be requested – 200 only for verified domains.
+    if (path.length === 2 && path[0] === "domains" && path[1] === "allowed") {
+      const allowed = domainAllowed(url.searchParams.get("domain") || "");
+      return new Response(allowed ? "ok" : "unknown", {
+        status: allowed ? 200 : 404,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
+    // robots.txt and sitemap.xml of a custom domain (the proxy rewrites them
+    // here); the Host decides, other hosts get nothing.
+    if (path.length === 2 && path[0] === "domains" && (path[1] === "sitemap" || path[1] === "robots")) {
+      const host = req.headers.get("host") || "";
+      const body = path[1] === "sitemap" ? domainSitemap(host) : domainRobots(host);
+      if (body === null) throw new HttpError(404, "Nicht gefunden.");
+      return new Response(body, {
+        headers: {
+          "Content-Type": path[1] === "sitemap" ? "application/xml; charset=utf-8" : "text/plain; charset=utf-8",
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
+    }
     // Keep public asset authorization identical when the catch-all handles the URL.
     if (path.length === 4 && path[0] === "share" && path[2] === "files")
       return await fileResponse(req, withShareRequest(req, () => publicFile(path[1], path[3])));
@@ -162,6 +192,30 @@ async function handleGET(
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(listApiTokens(user));
+    // Block extensions of a workspace (settings) or of a page's workspace (editor).
+    if (path.length === 1 && path[0] === "plugins")
+      return NextResponse.json(
+        url.searchParams.get("page")
+          ? pluginsForPage(user, z.uuid().parse(url.searchParams.get("page")))
+          : listPlugins(user, z.uuid().parse(url.searchParams.get("workspace"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // A frame's database query: the reader's own rights, granted databases only.
+    if (path.length === 3 && path[0] === "plugins" && path[2] === "query")
+      return NextResponse.json(
+        queryPluginDatabase(user, {
+          pluginId: path[1],
+          pageId: url.searchParams.get("page"),
+          databaseId: url.searchParams.get("database"),
+          limit: url.searchParams.get("limit") || undefined,
+        }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    // The custom domain and look of a publication.
+    if (path.length === 1 && path[0] === "domains")
+      return NextResponse.json(domainSettings(user, z.uuid().parse(url.searchParams.get("page"))), {
+        headers: { "Cache-Control": "no-store" },
+      });
     if (path.length === 1 && path[0] === "webhooks")
       return NextResponse.json({
         webhooks: listWebhooks(user, z.uuid().parse(url.searchParams.get("workspace"))),
@@ -879,6 +933,12 @@ async function handlePOST(
     // Every POST here changes something; read tokens only read (the
     // Markdown export has a route of its own).
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+    // Block extensions: the manifest is fetched and checked (lib/plugins.ts).
+    if (path.length === 1 && path[0] === "plugins")
+      return NextResponse.json(await registerPlugin(user, await req.json()));
+    // Custom domains: checks the TXT record or the verification file.
+    if (path.length === 2 && path[0] === "domains" && path[1] === "verify")
+      return NextResponse.json(await verifyDomain(user, await req.json()));
     // Owners register webhooks, also with a write API token (n8n trigger).
     if (path.length === 1 && path[0] === "webhooks")
       return NextResponse.json(await createWebhook(user, await req.json()));

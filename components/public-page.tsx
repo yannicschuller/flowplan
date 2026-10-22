@@ -13,6 +13,9 @@ import { SharePasswordForm } from "./share-password-form";
 import { one } from "@/lib/db";
 import { database, publicRows as rows } from "@/lib/api";
 import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
+import { renderedTheme } from "@/lib/custom-domains";
+import { publicPluginIds } from "@/lib/plugins";
+import { cleanHtml } from "@/lib/document-server";
 import { withPublicEmbeds } from "@/lib/public-embeds";
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import { documentPreview } from "@/lib/document-preview";
@@ -42,6 +45,9 @@ import {
 
 type PublishedPageProps = {
   token: string;
+  // The verified custom domain the page is served under (lib/custom-domains.ts):
+  // short addresses, no copying into a workspace.
+  customHost?: string | null;
   pageId?: string;
   rowId?: string;
   viewId?: string;
@@ -84,6 +90,7 @@ export async function PublishedPage(props: PublishedPageProps) {
 }
 async function renderPublishedPage({
   token,
+  customHost,
   pageId,
   rowId,
   viewId,
@@ -185,13 +192,41 @@ async function renderPublishedPage({
         })
       : "";
   const href = (id: string) =>
-    `/share/${token}${id === root.id ? "" : "/" + id}`;
+    customHost ? `/${id === root.id ? "" : id}` : `/share/${token}${id === root.id ? "" : "/" + id}`;
+  // The look an owner chose for the publication (logo, accent, footer).
+  const theme = publication ? renderedTheme(token, root.id) : null;
+  // Blocks of block extensions their owners did not allow on published
+  // pages keep only their text.
+  const shownPlugins = publicPluginIds(root.workspace_id);
+  const withPlugins = (value: string) =>
+    value.includes("data-plugin")
+      ? cleanHtml(value, (tagName, attribs) => {
+          if (!attribs["data-plugin"] || shownPlugins.has(attribs["data-plugin"])) return { tagName, attribs };
+          const attrs = { ...attribs };
+          for (const key of ["data-plugin", "data-plugin-type", "data-plugin-data"]) delete attrs[key];
+          return { tagName, attribs: attrs };
+        })
+      : value;
+  // Links inside the documents use the short addresses on a custom domain.
+  const shortLinks = (value: string) =>
+    customHost ? value.replaceAll(`"/share/${token}/`, '"/').replaceAll(`"/share/${token}"`, '"/"') : value;
   const children = pages.filter((p) => p.parent_id === page.id);
   return (
-    <main className={`public-page ${page.full_width ? "public-wide" : ""}`}>
-      <a href="/" className="public-brand">
-        flowplan <span className="muted">/ {t("Geteilte Seite", "Shared page")}</span>
-      </a>
+    <main
+      className={`public-page ${page.full_width ? "public-wide" : ""} ${theme?.accent ? "public-themed" : ""}`}
+      style={theme?.accent ? ({ "--blue": theme.accent, "--accent-strong": theme.accent } as React.CSSProperties) : undefined}
+    >
+      {theme?.logo ? (
+        <a href={href(root.id)} className="public-brand public-logo">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={theme.logo} alt={root.title} />
+        </a>
+      ) : (
+        <a href="/" className="public-brand">
+          {customHost ? root.title : "flowplan"}{" "}
+          {!customHost && <span className="muted">/ {t("Geteilte Seite", "Shared page")}</span>}
+        </a>
+      )}
       {publication && (
         <div className="publication-meta">
           <span className="muted">
@@ -199,7 +234,7 @@ async function renderPublishedPage({
               t(`Veröffentlicht am ${date(publication.published_at)} · `, `Published on ${date(publication.published_at)} · `)}
             {t("Zuletzt geändert am", "Last changed on")}{" "}{date(page.updated_at)}
           </span>
-          {!!publication.allow_copy && <PublicationCopy token={token} />}
+          {!!publication.allow_copy && !customHost && <PublicationCopy token={token} />}
         </div>
       )}
       {(page.id !== root.id || record) && (
@@ -456,11 +491,17 @@ async function renderPublishedPage({
           )}
           <ReadOnlyDocument
             className={`font-${page.font}`}
-            html={withPublicEmbeds(
-              publishedHtml(html, token, pages),
-              html,
-              token,
-              pages,
+            shareToken={token}
+            title={page.title}
+            html={shortLinks(
+              withPlugins(
+                withPublicEmbeds(
+                  publishedHtml(html, token, pages),
+                  html,
+                  token,
+                  pages,
+                ),
+              ),
             )}
           />
         </>
@@ -481,7 +522,10 @@ async function renderPublishedPage({
         token={token}
         initial={sharedContent(token, page.id, rowId)}
       />
-      <footer className="home-footnote">{t("Mit Flowplan veröffentlicht", "Published with Flowplan")}</footer>
+      {theme?.footer && <footer className="public-theme-footer">{theme.footer}</footer>}
+      {!theme?.hideBranding && (
+        <footer className="home-footnote">{t("Mit Flowplan veröffentlicht", "Published with Flowplan")}</footer>
+      )}
     </main>
   );
 }

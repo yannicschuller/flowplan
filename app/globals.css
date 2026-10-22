@@ -21714,3 +21714,158 @@ html.split-resizing * {
   margin-top: 10px;
 }
 /* ===== End of presentation, split view and shortcuts. ===== */
+
+/* Block extensions (components/plugin-block.ts, components/plugin-settings.tsx)
+   and the look and custom domain of publications
+   (components/publication-domain.tsx, components/public-page.tsx). */
+.plugin-block {
+  margin: 8px 0;
+}
+.plugin-block-body {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+.plugin-block-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+.plugin-block-caption {
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.plugin-block-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 14px;
+}
+.plugin-block-note strong {
+  color: var(--text);
+}
+.plugin-slash-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.plugin-settings h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plugin-register,
+.domain-add,
+.domain-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.plugin-register input,
+.domain-add input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.plugin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.plugin-list > li {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.plugin-list > li.plugin-off {
+  opacity: 0.65;
+}
+.plugin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.plugin-head code {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.plugin-head .icon-button {
+  margin-left: auto;
+}
+.plugin-blocks,
+.plugin-permissions {
+  margin: 6px 0;
+  font-size: 14px;
+}
+.plugin-options,
+.plugin-databases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0;
+}
+.plugin-databases {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+.plugin-config {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.plugin-config-field,
+.publication-theme-field {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.publication-domain {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.publication-domain h4 {
+  margin: 4px 0 0;
+}
+.domain-record {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.domain-record code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.domain-verified {
+  color: #1a7f37;
+}
+.public-logo img {
+  display: block;
+  max-height: 40px;
+  max-width: 220px;
+  object-fit: contain;
+}
+.public-theme-footer {
+  margin-top: 32px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}

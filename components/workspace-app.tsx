@@ -163,6 +163,7 @@ import DatabaseView, { type DatabaseData } from "./database-view";
 import Settings from "./settings";
 import Admin from "./admin";
 import { ShareLinks } from "./share-links";
+import { PublicationDomain } from "./publication-domain";
 import { LinkProtection, ProtectionChips } from "./link-protection";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
@@ -4176,6 +4177,12 @@ export default function WorkspaceApp({
                       {t("Auswahl um neue Unterseiten ergänzen", "Add new sub-pages to the selection")}
                     </button>
                   )}
+                  <PublicationDomain
+                    pageId={data.page.id}
+                    editable={editable}
+                    password={!!data.publication?.password}
+                    onError={notifyError}
+                  />
                 </div>
               )}
               {data.page.public_token && (

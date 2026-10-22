@@ -963,6 +963,24 @@ function InstanceSettingsForm({
           checked={!!draft.publicDemo}
           onChange={(publicDemo) => set({ publicDemo })}
         />
+        <SwitchRow
+          label={t("Eigene Domains für Veröffentlichungen", "Custom domains for publications")}
+          description={t(
+            "Eigentümer können veröffentlichte Seiten unter einer eigenen Domain zeigen, nachdem sie sie per DNS-TXT-Eintrag bestätigt haben. Das Zertifikat besorgt der Reverse Proxy (etwa Caddy mit On-Demand-TLS).",
+            "Owners can show published pages under their own domain after confirming it with a DNS TXT record. The reverse proxy obtains the certificate (e.g. Caddy with on-demand TLS).",
+          )}
+          checked={!!draft.customDomains}
+          onChange={(customDomains) => set({ customDomains })}
+        />
+        <SwitchRow
+          label={t("Block-Erweiterungen von jeder HTTPS-Adresse", "Block extensions from any HTTPS address")}
+          description={t(
+            "Ausgeschaltet registrieren Eigentümer nur Erweiterungen von den Adressen in PLUGIN_ALLOWED_ORIGINS. Erweiterungen laufen immer abgeschottet in einem Rahmen.",
+            "When off, owners only register extensions from the addresses in PLUGIN_ALLOWED_ORIGINS. Extensions always run isolated in a frame.",
+          )}
+          checked={!!draft.pluginsAnyOrigin}
+          onChange={(pluginsAnyOrigin) => set({ pluginsAnyOrigin })}
+        />
         <SettingRow label={t("Inaktive Konten sperren", "Block inactive accounts")} description={t("Nach so vielen Tagen ohne Anmeldung (mindestens 30). Leer = nie.", "After this many days without signing in (at least 30). Empty = never.")}>
           <NumberField label={t("Inaktive Konten sperren nach Tagen", "Block inactive accounts after days")} value={draft.inactiveDays} min={30} max={3650} unit={t("Tage", "days")} placeholder={t("nie", "never")} onChange={(inactiveDays) => set({ inactiveDays })} />
         </SettingRow>

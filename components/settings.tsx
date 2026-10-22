@@ -16,6 +16,7 @@ import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { IntegrationSettings } from "./integration-settings";
 import { IssueSyncSettings } from "./issue-sync-settings";
+import { PluginSettings } from "./plugin-settings";
 import { TimeReport } from "./time-report";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
@@ -238,6 +239,14 @@ export default function Settings({
             />
           )}
           {tab === "integrations" && <IssueSyncSettings workspaceId={boot.workspace.id} onError={onError} />}
+          {tab === "integrations" && (
+            <PluginSettings
+              workspaceId={boot.workspace.id}
+              owner={owner}
+              pages={boot.pages.filter((p) => !p.deleted_at)}
+              onError={onError}
+            />
+          )}
           {tab === "time" && <TimeReport workspaceId={boot.workspace.id} title={boot.workspace.name} />}
           {tab === "notifications" && (
             <>

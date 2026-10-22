@@ -137,7 +137,9 @@ import {
   UsersThree,
   Note,
   Sparkle,
+  PuzzlePiece,
 } from "@phosphor-icons/react";
+import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
 import { api, isTransient, Modal } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
@@ -173,6 +175,17 @@ import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/f
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import { ListTidy } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
+// The symbol a plugin's manifest names for a block type, as a menu icon.
+function emojiIcon(symbol: string) {
+  function Icon({ size = 18 }: { size?: number }) {
+    return (
+      <span className="plugin-slash-icon" style={{ fontSize: Math.round(size * 0.9) }} aria-hidden="true">
+        {symbol}
+      </span>
+    );
+  }
+  return Icon;
+}
 export default function DocumentEditor({
   pageId,
   rowId,
@@ -358,6 +371,27 @@ export default function DocumentEditor({
   const slashActiveRef = useRef(slashActive);
   slashActiveRef.current = slashActive;
   const slashItems = useRef<SlashItem[]>([]);
+  // Block extensions of the workspace (lib/plugins.ts) for the block menu.
+  const [plugins, setPlugins] = useState<PluginInfo[]>([]);
+  useEffect(() => {
+    if (!editable || !pageId) return;
+    let live = true;
+    void pagePlugins(pageId).then((list) => live && setPlugins(list));
+    return () => {
+      live = false;
+    };
+  }, [pageId, editable]);
+  const pluginCommands = useMemo(
+    () =>
+      plugins.flatMap((plugin) =>
+        plugin.blocks.map((block) => ({
+          plugin,
+          block,
+          icon: block.icon && !/[a-z0-9]/i.test(block.icon) ? emojiIcon(block.icon) : PuzzlePiece,
+        })),
+      ),
+    [plugins],
+  );
   const uploadFile = useRef(async (_file: File) => {});
   const slashPick = useRef((_index: number) => {});
   const slashBack = useRef(() => {});
@@ -456,6 +490,7 @@ export default function DocumentEditor({
         mermaidNodeView(setDiagram),
         FunctionPlotView,
         MetricView.configure({ pageId }),
+        PluginBlockView.configure({ pageId, title: () => linkedContext.current?.pages.find((p) => p.id === pageId)?.title || "" }),
         Mention,
         Columns,
         Column,
@@ -1456,6 +1491,23 @@ export default function DocumentEditor({
       icon: Minus,
       run: () => editor?.chain().focus().setHorizontalRule().run(),
     },
+    ...pluginCommands.map(({ plugin, block, icon }): SlashItem => ({
+      id: `plugin-${plugin.id}-${block.type}`,
+      group: "extensions",
+      name: block.label,
+      keywords: [plugin.name, block.type, "plugin", "erweiterung", "extension"],
+      description: block.description || `${plugin.name} ${plugin.version}`,
+      icon,
+      run: () =>
+        editor
+          ?.chain()
+          .focus()
+          .insertContent({
+            type: "pluginBlock",
+            attrs: { pluginId: plugin.id, blockType: block.type, label: block.label, data: "null", text: "" },
+          })
+          .run(),
+    })),
   ];
   // The sections shown: a second level alone, or recents and groups
   // (filtered by the typed query). Arrow keys move over the flat list.

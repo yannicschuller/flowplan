@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Serve this policy as a header as well; the frame runs scripts from its own origin only. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'"
+    />
+    <title>Hello Flowplan</title>
+    <link rel="stylesheet" href="hello.css" />
+  </head>
+  <body>
+    <main id="app" aria-live="polite">Loading …</main>
+    <script src="hello.js"></script>
+  </body>
+</html>

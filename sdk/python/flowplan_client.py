@@ -367,7 +367,7 @@ CommandResult = dict[str, Any]
 
 # Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source.
 CommandOther = TypedDict("CommandOther", {
-    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "search.save", "search.delete", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke"]],
+    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "search.save", "search.delete", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke"]],
 }, total=False)
 
 # Create a workspace
@@ -1098,6 +1098,25 @@ CalendarFeedStatusQuery = TypedDict("CalendarFeedStatusQuery", {
     "view": Required[str],  # View ID
 }, total=False)
 
+ListPluginsQuery = TypedDict("ListPluginsQuery", {
+    "workspace": str,  # Workspace ID
+    "page": str,  # Page ID
+}, total=False)
+
+QueryPluginDatabaseQuery = TypedDict("QueryPluginDatabaseQuery", {
+    "page": Required[str],  # Page with the plugin block
+    "database": Required[str],  # Page ID of the granted database
+    "limit": int,  # Number of records
+}, total=False)
+
+PublicationDomainQuery = TypedDict("PublicationDomainQuery", {
+    "page": Required[str],  # Page ID of the publication
+}, total=False)
+
+CustomDomainAllowedQuery = TypedDict("CustomDomainAllowedQuery", {
+    "domain": Required[str],  # Host name
+}, total=False)
+
 # ---- Client ----
 
 
@@ -1492,6 +1511,30 @@ class FlowplanClient:
     def calendar_feed(self, token: str, headers: Optional[dict[str, str]] = None) -> bytes:
         """iCalendar feed of a calendar view — External: the secret link (from `calendar.feed`) is the authorization; no bearer token. Subscribe to it in a calendar program. (GET /api/calendar/{token}.ics)"""
         return self._bytes("GET", "/api/calendar/" + _p(token) + ".ics", headers=headers)
+
+    def list_plugins(self, query: Optional["ListPluginsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Block extensions of a workspace or of a page's workspace — With `workspace`: every member sees the enabled plugins, owners also switched-off ones. With `page`: the enabled plugins of that page's workspace. Each plugin with its blocks (absolute frame addresses), granted and requested permissions, frame size and settings. Changed with `plugin.update` and removed with `plugin.delete` via POST /api/command. (GET /api/plugins)"""
+        return self._json("GET", "/api/plugins", query=dict(query) if query else None, headers=headers)
+
+    def register_plugin(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Register a block extension by its manifest address — Workspace owners, in the browser (API tokens are refused). The server fetches `flowplan-plugin.json` (HTTPS, an origin on PLUGIN_ALLOWED_ORIGINS unless the administration allows any), validates it and grants the permissions it requests; `databases` picks the databases for a bare `read:database`. Registering the same address again refreshes the manifest. (POST /api/plugins)"""
+        return self._json("POST", "/api/plugins", json_body=body, headers=headers)
+
+    def query_plugin_database(self, plugin_id: str, query: "QueryPluginDatabaseQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Records of a database a plugin was granted — What a plugin frame's `query` message returns: at most `limit` (default 50, max 200) records with the caller's own rights – hidden records and properties stay hidden. (GET /api/plugins/{pluginId}/query)"""
+        return self._json("GET", "/api/plugins/" + _p(plugin_id) + "/query", query=dict(query) if query else None, headers=headers)
+
+    def publication_domain(self, query: "PublicationDomainQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Custom domain and look of a publication — The domain with its verification record (TXT `_flowplan-verify.<host>`) and file, and the publication's theme. Set with `domain.add`, `domain.remove` and `publication.theme` via POST /api/command. (GET /api/domains)"""
+        return self._json("GET", "/api/domains", query=dict(query) if query else None, headers=headers)
+
+    def verify_publication_domain(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Verify a publication's custom domain — Checks the TXT record `_flowplan-verify.<host>`, then `https://<host>/.well-known/flowplan-verify.txt`. Needs edit rights on the page. (POST /api/domains/verify)"""
+        return self._json("POST", "/api/domains/verify", json_body=body, headers=headers)
+
+    def custom_domain_allowed(self, query: "CustomDomainAllowedQuery", headers: Optional[dict[str, str]] = None) -> bytes:
+        """Whether a host is a verified custom domain — For the `ask` endpoint of Caddy's on-demand TLS: 200 for verified domains of active publications, 404 otherwise. No authentication. (GET /api/domains/allowed)"""
+        return self._bytes("GET", "/api/domains/allowed", query=dict(query) if query else None, headers=headers)
 
     def mcp(self, body: "McpRequest", headers: Optional[dict[str, str]] = None) -> "McpResponse":
         """MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp)"""

@@ -21,6 +21,7 @@ import { Subscript, Superscript, TextColor } from "./text-marks";
 import { MermaidBlock } from "./mermaid-node";
 import { FunctionPlot } from "./function-plot-node";
 import { MetricBlock } from "./metric-node";
+import { PluginBlock } from "./plugin-node";
 import { FlowCodeBlock } from "./code-block";
 import { Bibliography, Citation } from "./citation-nodes";
 import { Footnote } from "./footnotes";
@@ -503,6 +504,7 @@ export const documentExtensions = [
   MermaidBlock,
   FunctionPlot,
   MetricBlock,
+  PluginBlock,
   TaskList,
   FlowTaskItem.configure({ nested: true }),
   ListTidy,

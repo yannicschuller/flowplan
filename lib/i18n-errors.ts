@@ -805,6 +805,35 @@ const exact: Record<string, string> = {
   "Zuerst eine Webhook-Adresse speichern.": "Save a webhook address first.",
   "Das Ende der Wartung muss nach dem Beginn liegen.": "The end of the maintenance must be after its start.",
   "Das Ende der Wartung liegt in der Vergangenheit.": "The end of the maintenance is in the past.",
+  // block extensions (lib/plugins.ts, lib/plugin-protocol.ts)
+  "Block-Erweiterungen werden nur über HTTPS geladen.": "Block extensions are only loaded over HTTPS.",
+  "Diese Adresse ist für Block-Erweiterungen nicht freigegeben.": "This address is not allowed for block extensions.",
+  "Das Manifest leitet auf eine andere Adresse um.": "The manifest redirects to another address.",
+  "Das Manifest konnte nicht geladen werden.": "The manifest could not be loaded.",
+  "Das Manifest ist kein gültiges JSON.": "The manifest is not valid JSON.",
+  "Block-Erweiterung nicht gefunden.": "Block extension not found.",
+  "Die Datenbank gehört nicht zu diesem Arbeitsbereich.": "The database does not belong to this workspace.",
+  "Diese Erweiterung hat keinen Zugriff auf Datenbanken angefragt.": "This extension did not request access to databases.",
+  "Höchstens 50 Block-Erweiterungen je Arbeitsbereich.": "At most 50 block extensions per workspace.",
+  "Diese Erweiterung darf die Datenbank nicht lesen.": "This extension may not read the database.",
+  "Unbekannte Berechtigung.": "Unknown permission.",
+  "Der Einstieg muss ein relativer Pfad sein.": "The entry must be a relative path.",
+  "Version im Format 1.2.3 angeben.": "Give the version as 1.2.3.",
+  "Blocktypen bestehen aus Kleinbuchstaben, Ziffern und Bindestrichen.": "Block types consist of lowercase letters, digits and hyphens.",
+  "Blocktypen müssen eindeutig sein.": "Block types must be unique.",
+  "Höchstens 20 Einstellungen.": "At most 20 settings.",
+  "Die Blockdaten sind kein JSON.": "The block data is not JSON.",
+  "Die Blockdaten sind größer als 64 KB.": "The block data is larger than 64 KB.",
+  // custom domains (lib/custom-domains.ts)
+  "Ungültiger Domainname.": "Invalid domain name.",
+  "Diese Domain gehört zur Instanz selbst.": "This domain belongs to the instance itself.",
+  "Eigene Domains sind auf dieser Instanz nicht freigeschaltet.": "Custom domains are not enabled on this instance.",
+  "Veröffentlichungen mit Passwort lassen sich nicht unter einer eigenen Domain zeigen.": "Publications with a password cannot be shown under a custom domain.",
+  "Bild als HTTPS-Adresse oder hochgeladene Datei angeben.": "Give the image as an HTTPS address or an uploaded file.",
+  "Farbe als #rrggbb angeben.": "Give the colour as #rrggbb.",
+  "Diese Domain wird bereits verwendet.": "This domain is already in use.",
+  "Für diese Veröffentlichung ist keine Domain eingetragen.": "No domain is set for this publication.",
+  "Weder TXT-Eintrag noch Prüfdatei gefunden.": "Found neither the TXT record nor the verification file.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
@@ -880,6 +909,7 @@ const patterns: [RegExp, string][] = [
   [/^„(.+)“ ist nur für bestimmte Personen bearbeitbar\.$/, "“$1” can only be edited by certain people."],
   [/^Absender abgelehnt: (.+)$/, "Sender rejected: $1"],
   [/^Der Git-Anbieter antwortet mit HTTP (\d+)\.$/, "The Git provider answers with HTTP $1."],
+  [/^Das Manifest ist ungültig: (.+)$/, "The manifest is invalid: $1"],
 ];
 
 export function englishMessage(message: string) {

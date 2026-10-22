@@ -25,6 +25,7 @@ export const slashGroupLabels = (t: T): Record<SlashGroup, string> => ({
   media: t("Medien", "Media"),
   math: t("Mathematik", "Math"),
   database: t("Datenbank & Einbettungen", "Database & embeds"),
+  extensions: t("Erweiterungen", "Extensions"),
   advanced: t("Weitere", "More"),
 });
 

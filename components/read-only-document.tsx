@@ -11,13 +11,22 @@ import { citedWorks, parseItemAttribute, referenceText } from "@/lib/citations";
 import { tr } from "@/lib/locale-tag";
 import { emptyBibliography, renderReferences } from "./citation-views";
 import { finishDocumentHtml } from "@/lib/document-html";
+import { mountPluginBlock } from "./plugin-block";
 // Callers provide server-sanitized HTML. Generated math is never stored as document content.
 export function ReadOnlyDocument({
   html,
   className = "",
+  shareToken,
+  pageId,
+  title = "",
 }: {
   html: string;
   className?: string;
+  // Published pages: block extensions are asked for through the link.
+  shareToken?: string;
+  // In the app: the page, for the workspace's block extensions.
+  pageId?: string;
+  title?: string;
 }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
@@ -163,14 +172,28 @@ export function ReadOnlyDocument({
       );
       return [board];
     });
+    // Blocks of block extensions, read-only (components/plugin-block.ts).
+    const pluginHandles = Array.from(root.querySelectorAll<HTMLElement>("[data-plugin]")).map((element) =>
+      mountPluginBlock(element, {
+        pluginId: element.dataset.plugin || "",
+        blockType: element.dataset.pluginType || "",
+        label: element.dataset.pluginLabel || "",
+        data: element.dataset.pluginData || "null",
+        editable: false,
+        shareToken,
+        pageId,
+        title: () => title,
+      }),
+    );
     return () => {
+      pluginHandles.forEach((handle) => handle.destroy());
       diagrams.forEach((cancel) => cancel());
       unmounted = true;
       metricHandles.forEach((handle) => handle.destroy());
       // Unmount after React finishes this commit.
       setTimeout(() => boards.forEach((board) => board.unmount()));
     };
-  }, [html]);
+  }, [html, shareToken, pageId, title]);
   return (
     <div
       ref={ref}

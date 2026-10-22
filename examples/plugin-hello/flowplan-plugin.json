@@ -1,0 +1,15 @@
+{
+  "name": "Hello Flowplan",
+  "version": "1.0.0",
+  "description": "A counter and a small poll – the example block extension.",
+  "entry": "index.html",
+  "blocks": [
+    { "type": "counter", "label": "Zähler", "icon": "🔢", "description": "A number everyone can count up" },
+    { "type": "poll", "label": "Umfrage", "icon": "📊", "description": "A question with answers to vote for" }
+  ],
+  "permissions": ["read:page", "write:block"],
+  "size": { "height": 160, "maxHeight": 600 },
+  "settings": {
+    "step": { "type": "number", "label": "Counter step", "default": 1 }
+  }
+}

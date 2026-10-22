@@ -10,9 +10,11 @@ export type SlashGroup =
   | "media"
   | "math"
   | "database"
+  | "extensions"
   | "advanced";
 // The order of the sections when nothing is typed.
-export const SLASH_GROUPS: SlashGroup[] = ["ai", "text", "lists", "blocks", "media", "math", "database", "advanced"];
+// "extensions": block types of the workspace's block extensions (lib/plugins.ts).
+export const SLASH_GROUPS: SlashGroup[] = ["ai", "text", "lists", "blocks", "media", "math", "database", "extensions", "advanced"];
 
 export type SlashCommand = {
   // Stable identifier, remembered as recently used ("h2", "callout-tip" …).
