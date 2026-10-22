@@ -50,7 +50,8 @@ export function LanguageSwitch({ className }: { className?: string }) {
   const t = useT();
   return (
     <Dropdown.Root modal={false}>
-      <Dropdown.Trigger className={className} aria-label={`${t("Sprache", "Language")}: ${LANGUAGES[locale].name}`}>
+      {/* The name contains the visible code (WCAG 2.5.3): "Sprache: Deutsch – DE". */}
+      <Dropdown.Trigger className={className} aria-label={`${t("Sprache", "Language")}: ${LANGUAGES[locale].name} – ${locale.toUpperCase()}`}>
         <span aria-hidden>{LANGUAGES[locale].flag}</span>
         {locale.toUpperCase()}
         <CaretDown size={11} aria-hidden />

@@ -1,0 +1,46 @@
+# Visual regression tests (tests/visual): screenshots of key screens
+# compared with the committed baselines. Screens differ a little between
+# machines, so the baselines are made on the owner's own runner and the job
+# runs only there – on demand (Actions → Visual regression → Run workflow)
+# or for the owner's pushes to main. It downloads no browser: without an
+# installed Chromium it ends with a notice.
+name: Visual regression
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # No token left in .git on the runner.
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Chromium on this runner
+        id: browser
+        run: |
+          if node scripts/chromium.mjs --check; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::No Chromium on this runner – visual tests skipped. Install one or set QUALITY_CHROMIUM."; fi
+      - run: npm run build
+        if: steps.browser.outputs.ok == 'true'
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - run: npm run test:visual
+        if: steps.browser.outputs.ok == 'true'

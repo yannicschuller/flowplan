@@ -1,5 +1,6 @@
-# Every push and pull request: typecheck, tests, production build and a
-# check of the standalone server (health, security defaults, persistence).
+# Every push and pull request: typecheck, tests, production build, a check
+# of the standalone server (health, security defaults, persistence) and the
+# accessibility and performance budgets.
 name: CI
 
 on:
@@ -39,3 +40,14 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
       - run: npm run check:standalone
+      # Accessibility and performance budgets on the production build
+      # (scripts/quality-check.mjs). GitHub's runners download Chromium; the
+      # own runner downloads nothing – it uses a Chromium that is installed
+      # there or skips the check with a notice.
+      - name: Install Chromium
+        if: runner.environment == 'github-hosted'
+        run: npx playwright install --with-deps chromium
+      - name: Quality budgets
+        run: npm run quality
+        env:
+          QUALITY_OPTIONAL: ${{ runner.environment == 'github-hosted' && '0' || '1' }}

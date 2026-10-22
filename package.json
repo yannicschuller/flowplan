@@ -24,7 +24,10 @@
     "i18n": "node scripts/i18n.mjs",
     "facts": "node --import tsx scripts/facts.mjs",
     "sdk": "node --import tsx scripts/generate-sdk.mjs",
-    "extension:zip": "node scripts/extension-zip.mjs"
+    "extension:zip": "node scripts/extension-zip.mjs",
+    "quality": "node scripts/quality-check.mjs",
+    "test:visual": "playwright test --config playwright.visual.config.ts",
+    "test:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -94,6 +97,7 @@
     "@types/web-push": "^3.6.4",
     "@types/yauzl": "^3.4.0",
     "@types/yazl": "^3.3.1",
+    "axe-core": "^4.14.0",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"

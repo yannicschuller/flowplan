@@ -1100,7 +1100,10 @@ kbd,
 .document-editor blockquote {
   border-left: 3px solid #b9ccec;
   margin: 22px 0;
-  padding: 4px 0 4px 18px;
+  /* Border and padding of 25 px: the handle of the paragraph inside then
+     sits next to the quote's own handle, not partly on it (each a 24 px
+     target, WCAG 2.5.8). */
+  padding: 4px 0 4px 22px;
   color: var(--secondary);
 }
 .document-editor blockquote p {
@@ -7816,7 +7819,9 @@ tr.order-drop-after > td {
   position: absolute;
   pointer-events: auto;
   touch-action: none;
-  width: 23px;
+  /* At least 24 × 24 px: a target of its own next to the handle above
+     (WCAG 2.5.8). */
+  width: 24px;
   height: 28px;
   padding: 0;
   font-size: 19px;
@@ -18729,7 +18734,7 @@ h3 .block-reactions {
 .document-editor [dir="rtl"] blockquote:not([dir="ltr"]) {
   border-left: 0;
   border-right: 3px solid #b9ccec;
-  padding: 4px 18px 4px 0;
+  padding: 4px 22px 4px 0;
 }
 :is(.editor-callout, aside[data-callout]):is([dir="rtl"], [dir="rtl"] :not([dir="ltr"])) {
   border-left: 0;

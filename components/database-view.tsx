@@ -3101,7 +3101,6 @@ export default function DatabaseView({
                     <td key={f.id}>
                       <button
                         className="column-calculation"
-                        aria-label={t(`Berechnung für ${f.name}`, `Calculation for ${f.name}`)}
                         disabled={schemaBusy}
                         onClick={() =>
                           setCalculationEdit({
@@ -3118,7 +3117,12 @@ export default function DatabaseView({
                             <strong>{summaryText(summary, f, t)}</strong>
                           </>
                         ) : (
-                          <span>{t("Berechnen", "Calculate")}</span>
+                          // The name says which column: "Status: Berechnen"
+                          // – it contains the visible text (WCAG 2.5.3).
+                          <>
+                            <span className="sr-only">{f.name}: </span>
+                            <span>{t("Berechnen", "Calculate")}</span>
+                          </>
                         )}
                       </button>
                     </td>
