@@ -14,8 +14,7 @@ test("the scheduled Markdown export is set up in the administration", async ({ p
     headers: { origin },
     data: { action: "page.create", workspaceId: boot.workspace.id, spaceId: boot.spaces[0].id, title, kind: "document" },
   });
-  await page.goto("/#admin");
-  await page.getByRole("tab", { name: "Instanz" }).or(page.getByRole("button", { name: "Instanz" })).first().click();
+  await page.goto("/#admin/export");
   const section = page.locator(".markdown-export-settings");
   await section.getByRole("button", { name: /Seiten wählen|Auswahl ändern/ }).click();
   await section.getByLabel("Seite suchen").fill(title);
@@ -23,7 +22,11 @@ test("the scheduled Markdown export is set up in the administration", async ({ p
   await section.getByRole("button", { name: /speichern/ }).click();
   await expect(section.locator(".markdown-export-pages")).toContainText(title);
   await expect(section).toContainText("Nicht eingerichtet. Mit EXPORT_GIT_URL");
+  // The export runs with every backup (Speicher & Sicherung → Jetzt sichern).
+  await page.goto("/#admin/storage");
   await page.getByRole("button", { name: "Jetzt sichern" }).click();
+  await expect(page.getByText("Sicherung erstellt.")).toBeVisible({ timeout: 30_000 });
+  await page.goto("/#admin/export");
   await expect(section.locator(".markdown-export-pages li").filter({ hasText: title })).toContainText(/\.zip \(/, { timeout: 30_000 });
   await section.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "test-results/markdown-export-admin.png" });

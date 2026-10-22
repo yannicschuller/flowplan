@@ -59,7 +59,7 @@ test("two people edit an encrypted page live; the server stores ciphertext only"
   for (const p of [alice.page, bob.page]) p.on("pageerror", (e) => errors.push(e.message));
 
   // Bob sets up his keys in the settings.
-  await bob.page.goto(`${origin}/#settings`);
+  await bob.page.goto(`${origin}/#settings/account`);
   await bob.page.getByRole("button", { name: "Verschlüsselung einrichten" }).click();
   await setUpKeys(bob.page, "bob sein langer satz");
 
@@ -193,7 +193,7 @@ test("two people edit an encrypted page live; the server stores ciphertext only"
   expect(titled.title_cipher.includes(MARKER)).toBe(false);
 
   // Locking forgets the keys in this tab.
-  await bob.page.goto(`${origin}/#settings`);
+  await bob.page.goto(`${origin}/#settings/account`);
   await bob.page.getByRole("button", { name: "Jetzt sperren" }).click();
   await bob.page.goto(`${origin}/#page=${pageId}`);
   await expect(bob.page.getByRole("button", { name: "Entsperren" })).toBeVisible();

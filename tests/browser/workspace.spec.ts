@@ -453,7 +453,8 @@ test("content archives download and restore through settings with files intact",
   await page
     .getByRole("button", { name: "Einstellungen", exact: true })
     .click();
-  await page.getByRole("button", { name: "Daten", exact: true }).click();
+  // The landing page of the settings: the tile leads to the section.
+  await page.getByRole("link", { name: /^Import & Export/ }).click();
   const downloadPromise = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "ZIP mit Dateien exportieren", exact: true })
@@ -1053,10 +1054,7 @@ test("iOS web app metadata and push settings are available without prompting on 
     };
   });
   await page.request.post("/api/auth/demo", { headers: { origin } });
-  await page.goto("/#settings");
-  await page
-    .getByRole("button", { name: "Benachrichtigungen", exact: true })
-    .click();
+  await page.goto("/#settings/notifications");
   await expect(
     page.getByRole("heading", { name: "Push-Benachrichtigungen", exact: true }),
   ).toBeVisible();

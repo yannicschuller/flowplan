@@ -35,7 +35,7 @@ test("an admin deletes a disabled account after seeing what happens", async ({ b
   try {
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(`${origin}/#admin`);
+    await page.goto(`${origin}/#admin/users`);
     const row = page.locator(".user-row", { hasText: name });
     await row.getByRole("button", { name: "Verwalten" }).click();
     await expect(row.getByRole("button", { name: "Konto löschen …" })).toHaveCount(0);
@@ -89,8 +89,7 @@ test("an SSO account deletes itself after choosing a successor", async ({ browse
   try {
     const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto(`${origin}/#settings`);
-    await page.getByRole("button", { name: "Konto", exact: true }).first().click().catch(() => {});
+    await page.goto(`${origin}/#settings/account`);
     await page.getByRole("button", { name: "Konto löschen …" }).click();
     const dialog = page.getByRole("dialog", { name: "Dein Konto löschen?" });
     await expect(dialog).toContainText("nur dich als Mitglied");
@@ -143,8 +142,7 @@ test("an account with a password confirms with it; the last admin is refused", a
     await expect(intro).toBeHidden();
     const uid = (db.prepare("SELECT user_id FROM local_accounts WHERE email=?").get(email) as { user_id: string }).user_id;
     const open = async () => {
-      await page.goto(`${origin}/#settings`);
-      await page.getByRole("button", { name: "Konto", exact: true }).first().click().catch(() => {});
+      await page.goto(`${origin}/#settings/account`);
       await page.getByRole("button", { name: "Konto löschen …" }).click();
       return page.getByRole("dialog", { name: "Dein Konto löschen?" });
     };

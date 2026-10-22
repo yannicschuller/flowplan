@@ -610,7 +610,7 @@ function serviceProviderConfig() {
       {
         type: "oauthbearertoken",
         name: "Bearer token",
-        description: "A SCIM token from Administration → Users → User provisioning.",
+        description: "A SCIM token from Administration → Sign-in & SSO.",
         primary: true,
       },
     ],

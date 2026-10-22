@@ -12,7 +12,7 @@ test("the introduction walks through settings, starter pages and the tour", asyn
   else await page.request.post("/api/auth/demo", { headers: { origin } });
   // A new account would see the introduction first.
   await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
-  await page.goto("/#settings");
+  await page.goto("/#settings/appearance");
   await page.getByRole("button", { name: "Einführung starten" }).click();
   const dialog = page.getByRole("dialog", { name: "Willkommen bei Flowplan" });
   await expect(dialog.getByRole("heading", { name: /^Hallo / })).toBeVisible();

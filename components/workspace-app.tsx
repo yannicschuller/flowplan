@@ -1,6 +1,7 @@
 "use client";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
+import { parseSettingsHash } from "@/lib/settings-sections";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
@@ -931,10 +932,14 @@ export default function WorkspaceApp({
       } else if (
         ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin"].includes(
           fragment,
-        )
+        ) ||
+        // A section of the settings or the administration: #settings/account
+        // (components/settings/shell.tsx reads the rest).
+        parseSettingsHash(fragment)
       ) {
-        setScreen(fragment as Screen);
-        screenRef.current = fragment as Screen;
+        const base = fragment.split("/")[0] as Screen;
+        setScreen(base);
+        screenRef.current = base;
         setMobile(false);
         // The start page shows recently opened and edited pages: current.
         if (fragment === "home") void refresh().catch(() => {});

@@ -17,8 +17,7 @@ test("clip a link as a bookmark and import browser bookmarks", async ({ page }, 
   await expect(page.locator(".data-table")).toContainText(`Artikel ${stamp}`);
   await expect(page.locator(".data-table")).toContainText("example.com");
 
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: "Daten", exact: true }).or(page.getByRole("tab", { name: "Daten" })).first().click();
+  await page.goto("/#settings/clipper");
   const section = page.locator(".clipper-settings");
   await expect(section.getByRole("link", { name: "In Flowplan speichern" })).toHaveAttribute("href", /^javascript:/);
   await section.locator('input[type="file"]').setInputFiles({

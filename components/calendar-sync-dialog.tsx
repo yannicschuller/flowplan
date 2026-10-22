@@ -87,11 +87,11 @@ function CalendarSyncDialog({ pageId, fields, views }: { pageId: string; fields:
       <div className="calendar-subscribe">
         <p className="muted">
           {t(
-            "Verbinde zuerst dein Google- oder Microsoft-Konto unter Einstellungen → Konto → Kalender verbinden.",
-            "First connect your Google or Microsoft account under Settings → Account → Connect calendar.",
+            "Verbinde zuerst dein Google- oder Microsoft-Konto unter Einstellungen → Kalender & Issues.",
+            "First connect your Google or Microsoft account under Settings → Calendars & issues.",
           )}
         </p>
-        <a className="button" href="/#settings">
+        <a className="button" href="/#settings/connections">
           {t("Zu den Einstellungen", "Go to settings")}
         </a>
       </div>

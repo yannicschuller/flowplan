@@ -20,7 +20,8 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // ---------------------------------------------------------------- settings
 // Measured 2026-10-22 (gzip): sign-in and sign-up 375.3 KB, a document
 // 2017.5 KB, a database 1534.9 KB – the workspace loads the editor and the
-// database views with its first page. LCP on localhost: sign-in 140–280 ms,
+// database views with its first page. Settings and administration (landing
+// pages and a section, 2026-10-22): 1573.9 KB. LCP on localhost: sign-in 140–280 ms,
 // database 250–500 ms, document 1.0–1.7 s. The JS budgets are about 10 %
 // above the measured values.
 const PAGES = [
@@ -28,6 +29,11 @@ const PAGES = [
   { path: "/register", jsKb: 410 },
   { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2220 },
   { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1690 },
+  // The landing pages of the settings and the administration (tiles), and a
+  // settings section on a phone (components/settings/shell.tsx).
+  { path: "/#settings", name: "settings", signedIn: true, jsKb: 1730, ready: ".settings-tile" },
+  { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1730, ready: ".settings-detail .setting-group" },
+  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1730, ready: ".settings-status .status-badge" },
 ];
 const BUDGET = { jsKb: 410, lcpMs: 2500 };
 const LOCALE = "de-DE";
@@ -179,7 +185,12 @@ async function main() {
       const options = {
         storageState: entry.signedIn ? storageState : undefined,
         // The workspace renders on the client: wait for the page tree.
-        ready: entry.signedIn ? (page) => page.locator(".sidebar").first().waitFor({ state: "attached", timeout: 30000 }) : undefined,
+        ready: entry.signedIn
+          ? async (page) => {
+              await page.locator(".sidebar").first().waitFor({ state: "attached", timeout: 30000 });
+              if (entry.ready) await page.locator(entry.ready).first().waitFor({ state: "visible", timeout: 30000 });
+            }
+          : undefined,
       };
       for (const vp of VIEWPORTS) {
         // A first visit warms the server (rendering, file cache); the

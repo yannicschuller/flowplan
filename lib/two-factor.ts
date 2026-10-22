@@ -279,8 +279,8 @@ export function adminResetTwoFactor(userId: string) {
         `Hello ${user.name}, an administrator turned off sign-in with an authenticator app for your account.`,
       ),
       t(
-        "Richte sie nach der nächsten Anmeldung unter Einstellungen → Allgemein wieder ein. Warst du das nicht, wende dich bitte an die Administration.",
-        "Set it up again after your next sign-in under Settings → General. If you did not ask for this, please contact the administrators.",
+        "Richte sie nach der nächsten Anmeldung unter Einstellungen → Konto & Sicherheit wieder ein. Warst du das nicht, wende dich bitte an die Administration.",
+        "Set it up again after your next sign-in under Settings → Account & security. If you did not ask for this, please contact the administrators.",
       ),
     ],
     label: t("Anmelden", "Sign in"),

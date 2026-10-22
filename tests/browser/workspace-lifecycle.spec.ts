@@ -213,7 +213,7 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
       404,
     );
     await nav(page, "Einstellungen", mobile);
-    await page.getByRole("button", { name: "Bereiche", exact: true }).click();
+    await page.getByRole("link", { name: /^Bereiche/ }).click();
     await page
       .locator(".utility-row")
       .filter({ hasText: name })
@@ -286,8 +286,8 @@ test("workspace owners delete a confirmed workspace with uploads and revoke its 
   await page.goto("/");
   await switchWorkspace(page, name, mobile);
   await nav(page, "Einstellungen", mobile);
-  // Leaving and deleting live in Settings → Arbeitsbereich.
-  await page.getByRole("button", { name: "Arbeitsbereich", exact: true }).click();
+  // Leaving and deleting live in Settings → Arbeitsbereich → Allgemein.
+  await page.getByRole("link", { name: /^Allgemein/ }).click();
   await expect(
     page.getByRole("button", { name: "Arbeitsbereich verlassen", exact: true }),
   ).toBeDisabled();
@@ -405,7 +405,7 @@ test("leaving a workspace transfers private areas and removes the leaving member
     const tab = await member.newPage();
     await tab.goto(f.origin + "/");
     await nav(tab, "Einstellungen", mobile);
-    await tab.getByRole("button", { name: "Arbeitsbereich", exact: true }).click();
+    await tab.getByRole("link", { name: /^Allgemein/ }).click();
     await expect(
       tab.getByRole("button", { name: "Arbeitsbereich löschen", exact: true }),
     ).toHaveCount(0);

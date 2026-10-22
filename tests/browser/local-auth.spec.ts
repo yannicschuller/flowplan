@@ -57,8 +57,7 @@ test("create an account, sign out, sign in with the password and change it", asy
     await register(page, email, "ein-langes-passwort");
 
     // Settings: the profile offers name, password and passkeys.
-    await page.goto("/#settings");
-    await page.getByRole("button", { name: "Konto", exact: true }).first().click().catch(() => {});
+    await page.goto("/#settings/account");
     await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
     await page.getByLabel("Bisheriges Passwort").fill("ein-langes-passwort");
     await page.getByLabel("Neues Passwort", { exact: true }).fill("ganz-neues-passwort");
@@ -100,7 +99,7 @@ test("add a passkey and sign in with it", async ({ browser }, info) => {
   try {
     setSignup(true);
     await register(page, email, "ein-langes-passwort");
-    await page.goto("/#settings");
+    await page.goto("/#settings/account");
     await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
     await page.getByRole("button", { name: "Passkey hinzufügen" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Passkey angelegt" })).toBeVisible();

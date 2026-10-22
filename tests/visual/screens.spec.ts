@@ -42,17 +42,23 @@ test.describe("before any page is opened", () => {
     await shot(page, "command-palette");
   });
 
-  test("settings: account", async ({ page }) => {
+  test("settings: landing page", async ({ page }) => {
     await openApp(page, "#settings");
-    await page.getByRole("button", { name: "Konto", exact: true }).first().click();
-    await expect(page.getByRole("radiogroup", { name: "Erscheinungsbild" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Konto & Sicherheit/ })).toBeVisible();
+    await settle(page);
+    await shot(page, "settings-home");
+  });
+
+  test("settings: account", async ({ page }) => {
+    await openApp(page, "#settings/account");
+    await expect(page.getByRole("heading", { name: "Konto & Sicherheit", level: 1 })).toBeVisible();
     await settle(page);
     await shot(page, "settings-account");
   });
 
   test("settings: workspace", async ({ page }) => {
-    await openApp(page, "#settings");
-    await page.getByRole("button", { name: "Arbeitsbereich", exact: true }).first().click();
+    await openApp(page, "#settings/workspace");
+    await expect(page.getByRole("heading", { name: "Allgemein", level: 1 })).toBeVisible();
     await settle(page);
     await shot(page, "settings-workspace");
   });
@@ -64,6 +70,13 @@ test.describe("before any page is opened", () => {
       await openApp(page, "#home");
       await expect(page.locator(".mobile-tab-bar")).toBeVisible();
       await shot(page, "phone-home");
+    });
+
+    test("settings: landing page as a list", async ({ page }) => {
+      await openApp(page, "#settings");
+      await expect(page.getByRole("link", { name: /^Konto & Sicherheit/ })).toBeVisible();
+      await settle(page);
+      await shot(page, "phone-settings-home");
     });
 
     test("navigation drawer, dark", async ({ page }) => {

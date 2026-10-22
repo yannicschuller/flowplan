@@ -35,8 +35,7 @@ test("offline use is opt-in per device and its copies are removable", async ({
           )
         : [],
     );
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: "Daten", exact: true }).click();
+  await page.goto("/#settings/devices");
   // Nothing private is stored before opting in.
   expect(await cached()).toEqual([]);
   await page
@@ -61,9 +60,8 @@ test("offline use is opt-in per device and its copies are removable", async ({
   expect(await shell()).not.toContain('data-signed-out=""');
   expect(await shell()).not.toBe("");
   await page.request.post("/api/auth/demo", { headers: { origin } });
-  await page.goto("/#settings");
+  await page.goto("/#settings/devices");
   await page.reload();
-  await page.getByRole("button", { name: "Daten", exact: true }).click();
   await page.getByRole("button", { name: "Offline-Kopien entfernen" }).click();
   await expect(
     page.getByText("Offline-Kopien auf diesem Gerät wurden entfernt."),

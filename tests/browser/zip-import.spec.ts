@@ -34,8 +34,7 @@ test("settings import a Notion-style Markdown/CSV ZIP into a chosen area", async
       ],
     ]),
   );
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: "Daten", exact: true }).click();
+  await page.goto("/#settings/data");
   await page.getByLabel("Export-ZIP importieren").setInputFiles({
     name: "notion.zip",
     mimeType: "application/zip",

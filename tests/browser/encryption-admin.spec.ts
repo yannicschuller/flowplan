@@ -14,16 +14,21 @@ test("the encryption status is shown in the administration", async ({ page }, in
   // A new account would see the introduction first.
   await page.request.post("/api/command", { headers: { origin }, data: { action: "profile.onboarded" } });
   const admin = await (await page.request.get("/api/admin")).json();
-  await page.goto("/#admin");
-  await page.getByRole("tab", { name: "Instanz" }).or(page.getByRole("button", { name: "Instanz" })).first().click();
+  await page.goto("/#admin/security");
   const section = page.locator(".encryption-settings");
   if (admin.encryption.enabled) {
     await expect(section).toContainText(`Verschlüsselung an · Schlüssel-ID ${admin.encryption.keyId}`);
     if (admin.encryption.litestream && !admin.encryption.litestreamSseC) await expect(section.locator(".callout.warning")).toContainText("unverschlüsselt");
-    await expect(page.locator(".settings-section").filter({ has: page.getByRole("heading", { name: "Geplante Sicherung", exact: true }) })).toContainText("verschlüsselt");
   } else await expect(section).toContainText("Aus. Mit FLOWPLAN_ENCRYPTION_KEY");
-  await expect(page.getByRole("switch", { name: "Stündlich statt täglich" })).toBeVisible();
   await section.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "test-results/encryption-admin.png" });
+  // The scheduled backup says whether it is encrypted (Speicher & Sicherung);
+  // hourly backups are an instance setting (Instanz).
+  if (admin.encryption.enabled) {
+    await page.goto("/#admin/storage");
+    await expect(page.locator(".settings-section").filter({ has: page.getByRole("heading", { name: "Geplante Sicherung", exact: true }) })).toContainText("verschlüsselt");
+  }
+  await page.goto("/#admin/general");
+  await expect(page.getByRole("switch", { name: "Stündlich statt täglich" })).toBeVisible();
   expect(errors).toEqual([]);
 });

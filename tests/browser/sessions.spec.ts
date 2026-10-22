@@ -12,7 +12,7 @@ test("signed-in devices are listed and signed out one by one", async ({ page, br
   await other.request.post(`${origin}/api/auth/demo`, { headers: { origin } });
   await page.request.post("/api/auth/demo", { headers: { origin } });
 
-  await page.goto("/#settings");
+  await page.goto("/#settings/account");
   const devices = page.locator(".my-sessions");
   await expect(devices.locator("li").filter({ hasText: "dieses Gerät" })).toHaveCount(1);
   const phone = devices.locator("li").filter({ hasText: "Safari auf iPhone" }).first();

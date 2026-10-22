@@ -7,8 +7,7 @@ test("tokens, calendar subscriptions, e-mail channel and admin backup work from 
   const boot = await (await page.request.get("/api/bootstrap")).json();
 
   // Personal API token: created once, then usable without the cookie.
-  await page.goto("/#settings");
-  await page.getByRole("button", { name: "API & Webhooks" }).click();
+  await page.goto("/#settings/api");
   const name = `Skript ${Date.now()}`;
   await page.getByRole("textbox", { name: "Name des Tokens" }).fill(name);
   await page.getByRole("button", { name: "Token erstellen" }).click();
@@ -27,7 +26,7 @@ test("tokens, calendar subscriptions, e-mail channel and admin backup work from 
   expect((await bare.get("/api/bootstrap", { headers: { Authorization: "Bearer fp_wrongwrongwrongwrongwrong" } })).status()).toBe(401);
 
   // E-mail channel per notification kind.
-  await page.getByRole("button", { name: "Benachrichtigungen" }).click();
+  await page.goto("/#settings/notifications");
   const mention = page.getByRole("checkbox", { name: "Erwähnungen per E-Mail" });
   await expect(mention).toBeChecked();
   await mention.uncheck();
@@ -57,12 +56,13 @@ test("tokens, calendar subscriptions, e-mail channel and admin backup work from 
   await bare.dispose();
 
   // Administration: backup now, audit export, e-mail status.
-  await page.goto("/#admin");
-  await page.getByRole("button", { name: "Instanz" }).click();
+  await page.goto("/#admin/mail");
   await expect(page.getByRole("heading", { name: "E-Mail-Versand" })).toBeVisible();
+  await page.goto("/#admin/storage");
   await page.getByRole("button", { name: "Jetzt sichern" }).click();
   await expect(page.getByText("Sicherung erstellt.")).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Aktivitätsprotokoll" }).click();
+  await page.goto("/#admin/audit");
+  await expect(page.getByRole("heading", { name: "Aktivitätsprotokoll", level: 1 })).toBeVisible();
   const csv = await page.request.get("/api/admin/audit.csv");
   expect(csv.headers()["content-type"]).toContain("text/csv");
   expect(await csv.text()).toContain("\"Zeitpunkt\";\"Person\"");

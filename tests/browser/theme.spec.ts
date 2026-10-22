@@ -18,7 +18,7 @@ test("the appearance follows the device unless light or dark is chosen", async (
   await expect.poll(theme).toBe("dark");
 
   await page.request.post("/api/auth/demo", { headers: { origin } });
-  await page.goto("/#settings");
+  await page.goto("/#settings/appearance");
   const appearance = page.getByRole("radiogroup", { name: "Erscheinungsbild" });
   await expect(appearance.getByRole("radio", { name: "Automatisch" })).toBeChecked();
   expect(await theme()).toBe("dark");
