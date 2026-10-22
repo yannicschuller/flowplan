@@ -264,6 +264,7 @@ export type Bootstrap = {
   // Open tasks given to the person that are due today or overdue.
   dueTasks?: number;
   notificationPrefs?: import("./notification-kinds").NotificationPrefs;
+  weeklyDigest?: import("./weekly-digest").WeeklyDigestPrefs;
   myLimits?: { storageMb: number; workspaces: number; uploadMb: number; usedBytes: number; ownedWorkspaces: number } | null;
   // The language chosen in the profile (null = from the browser).
   language?: Locale | null;

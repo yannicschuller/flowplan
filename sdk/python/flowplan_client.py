@@ -810,8 +810,22 @@ CommandMeetingNoteResult = TypedDict("CommandMeetingNoteResult", {
     "existing": Required[bool],
 }, total=False)
 
+# Weekly digest e-mail on or off. Every Monday at 07:00 in `timeZone`: changes in followed pages, open and overdue tasks. `aiSummary` adds a short AI summary only while AI is usable for you; otherwise the plain list is sent. Needs SMTP on the instance.
+CommandNotificationWeekly = TypedDict("CommandNotificationWeekly", {
+    "action": Required[Literal["notification.weekly"]],
+    "enabled": Required[bool],
+    "aiSummary": bool,
+    "timeZone": str,  # IANA time zone, e.g. Europe/Berlin
+}, total=False)
+
+CommandNotificationWeeklyResult = TypedDict("CommandNotificationWeeklyResult", {
+    "enabled": Required[bool],
+    "aiSummary": Required[bool],
+    "timeZone": Required[str],
+}, total=False)
+
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -842,6 +856,16 @@ ExportWorkspaceQuery = TypedDict("ExportWorkspaceQuery", {
 
 GraphQuery = TypedDict("GraphQuery", {
     "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+RelatedQuery = TypedDict("RelatedQuery", {
+    "page": str,  # Page or database ID
+    "row": str,  # Record ID
+    "workspace": str,  # Workspace ID (with title)
+    "title": str,  # Title to compare
+    "database": str,  # Only records of this database (with title)
+    "exclude": str,  # Page to leave out (with title)
+    "excludeRow": str,  # Record to leave out (with title)
 }, total=False)
 
 TemplatesQuery = TypedDict("TemplatesQuery", {
@@ -1166,6 +1190,10 @@ class FlowplanClient:
     def graph(self, query: "GraphQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Links between pages as a graph (GET /api/graph)"""
         return self._json("GET", "/api/graph", query=dict(query) if query else None, headers=headers)
+
+    def related(self, query: Optional["RelatedQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Related pages, or pages with a similar title — With `page` (and `row`): related pages and records (`items` with their `reasons`) – by meaning when semantic search is on for you, else by links, backlinks, shared links, tags and title. With `workspace` and `title`: existing pages, or records of `database`, with a similar title (duplicate hint). Only what you may read. Answered with `Cache-Control: no-store`. (GET /api/related)"""
+        return self._json("GET", "/api/related", query=dict(query) if query else None, headers=headers)
 
     def templates(self, query: "TemplatesQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
         """Saved page templates of a workspace (GET /api/templates)"""

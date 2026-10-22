@@ -175,6 +175,7 @@ import {
   type DatabaseChoice,
 } from "./database-kind-picker";
 import { UnlinkedMentions } from "./unlinked-mentions";
+import { DuplicateHint, RelatedPages } from "./related-pages";
 import {
   FollowButton,
   ReadersButton,
@@ -2846,6 +2847,7 @@ export default function WorkspaceApp({
                     </>
                   )}
                   <div className="backlinks">
+                    {!data.locked && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
                     {!data.locked && (
                       <UnlinkedMentions
                         key={data.page.id}
@@ -3624,6 +3626,7 @@ export default function WorkspaceApp({
               placeholder={t("Wie heißt deine Seite?", "What is your page called?")}
             />
           </label>
+          <DuplicateHint workspaceId={boot.workspace.id} title={newTitle} onOpen={(id, rowId) => { setCreate(false); void openPage(id, rowId ? { pageId: id, rowId } : undefined); }} />
           <div className="type-picker">
             <button
               type="button"

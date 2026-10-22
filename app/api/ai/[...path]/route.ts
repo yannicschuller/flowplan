@@ -22,6 +22,7 @@ import { aiDatabaseStatus, proposeDatabase, queueAiCells, runAiCell } from "@/li
 import { ct } from "@/lib/content-locale";
 import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
 import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
+import { ACTION_LIMITS, proposeActions, runActions, type ProposeInput } from "@/lib/ai/actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -161,6 +162,13 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       response.headers.set("X-Flowplan-Sources", sources);
       if (prepared.semantic) response.headers.set("X-Flowplan-Semantic", "1");
       return response;
+    }
+    // AI actions: a checked preview of what the model proposes, then the
+    // confirmed actions run as the person (lib/ai/actions.ts).
+    if (path.length === 2 && path[0] === "actions") {
+      if (path[1] === "propose")
+        return NextResponse.json(await proposeActions(user, (await body(req, ACTION_LIMITS.context * 4 + 100_000)) as ProposeInput, req.signal), noStore);
+      if (path[1] === "run") return NextResponse.json(runActions(user, await body(req, 2_000_000)), noStore);
     }
     // AI in databases.
     if (path.length === 2 && path[0] === "database") {

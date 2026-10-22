@@ -21,7 +21,10 @@ import { syncedBlockNode, type SyncedContext } from "./synced-block";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
 import { AiWriter, blocksFromHtml, type AiWriterRequest } from "./ai-writer";
-import { useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
+import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
+import { transcribeRecording } from "@/lib/transcribe-client";
+import { transcriptHtml, transcriptText } from "@/lib/transcript";
 import { aiTargetPlugin } from "@/lib/ai/target";
 import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml } from "@/lib/ai/insert";
 import { registerAiInserter } from "@/lib/ai/editor-bridge";
@@ -278,6 +281,10 @@ export default function DocumentEditor({
   const [aiRequest, setAiRequest] = useState<AiWriterRequest | null>(null);
   const aiWrite = useAiAvailability("write", pageId);
   const aiSummarize = useAiAvailability("summarize", pageId);
+  // Tasks and summary from a meeting transcript (components/ai-actions.tsx).
+  const aiActions = useAiAvailability("actions", pageId);
+  const aiWorkspace = useAi().workspaceId;
+  const [transcriptActions, setTranscriptActions] = useState<AiActionsRequest | null>(null);
   const aiBlockedHint = useAiBlockedHint();
   const aiWriteRef = useRef(aiWrite);
   aiWriteRef.current = aiWrite;
@@ -2103,19 +2110,28 @@ export default function DocumentEditor({
         transcription={transcription}
         summarize={embedded ? "hidden" : aiSummarize}
         summarizeHint={aiBlockedHint}
+        actions={embedded || rowId ? "hidden" : aiActions}
         onClose={() => setVoice(false)}
-        onInsert={async (file, toText, summarize) => {
+        onInsert={async (file, toText, summarize, actions) => {
           setVoice(false);
           await upload(file);
           if (!toText) return;
           onStatus("transcribing");
           try {
-            const form = new FormData();
-            form.set("pageId", pageId);
-            form.set("file", file);
-            const response = await fetch("/api/transcribe", { method: "POST", body: form });
-            const data = await response.json();
-            if (!response.ok) throw new Error(serverMessage(data.error));
+            // Long recordings go up in chunks (lib/transcribe-client.ts).
+            const data = await transcribeRecording(file, pageId);
+            const speaker = (n: number) => t(`Sprecher ${n}`, `Speaker ${n}`);
+            // With segments: a toggle with timestamps (and speakers, when the
+            // service separated them) instead of plain paragraphs.
+            const block = transcriptHtml(data, { title: t("Transkript", "Transcript"), speaker });
+            if (block && editor && !editor.isDestroyed) {
+              editor.chain().focus().insertContent(block).run();
+              const at = editor.state.selection.from;
+              if (summarize) setAiRequest({ kind: "transcript", from: at, to: at, text: transcriptText(data, speaker) });
+              if (actions && aiWorkspace)
+                setTranscriptActions({ instruction: t("Aufgaben und Zusammenfassung erzeugen", "Generate tasks and summary"), context: transcriptText(data, speaker), pageId, mode: "transcript" });
+              return;
+            }
             const paragraphs = String(data.text || "")
               .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÄÖÜ])/)
               .map((p) => p.trim())
@@ -2131,6 +2147,8 @@ export default function DocumentEditor({
                 const at = editor.state.selection.from;
                 setAiRequest({ kind: "transcript", from: at, to: at, text: paragraphs.join("\n\n") });
               }
+              if (actions && aiWorkspace)
+                setTranscriptActions({ instruction: t("Aufgaben und Zusammenfassung erzeugen", "Generate tasks and summary"), context: paragraphs.join("\n\n"), pageId, mode: "transcript" });
             } else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
           } catch (error) {
             onError((error as Error).message);
@@ -2139,6 +2157,7 @@ export default function DocumentEditor({
           }
         }}
       />
+      {aiWorkspace && <AiActionsPanel workspaceId={aiWorkspace} request={transcriptActions} onClose={() => setTranscriptActions(null)} />}
       <Modal
         open={!!syncedPicker}
         title={t("Synchronisierten Block einfügen", "Insert synced block")}

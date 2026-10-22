@@ -10,6 +10,11 @@
 // them as [1], [2] … and the browser turns those into links – only to the
 // sources listed here, never to anything the model writes.
 //
+// Across workspaces ("Alle Arbeitsbereiche", scope "all"): every workspace
+// the person belongs to where "ask" resolves for them (guest switch per
+// workspace) is searched; the personal rules per workspace apply through
+// aiFilter as everywhere, and sources name their workspace.
+//
 // Conversations live in the browser (session storage); the server keeps
 // nothing but the usual rate-limit counters.
 import { z } from "zod";
@@ -23,7 +28,8 @@ import { aiFilter } from "./access";
 import { ftsQuery, questionTerms, rankPassages, selectPassages, type Passage } from "./chunks";
 import type { ChatMessage } from "./providers";
 import { requireAi } from "./run";
-import { semanticCandidates } from "./semantic";
+import { resolveAi } from "./resolve";
+import { semanticCandidates, semanticQueryVector } from "./semantic";
 import { nameLookup, pageSubtree, sourceText } from "./sources";
 
 export const ASK_LIMITS = {
@@ -50,6 +56,8 @@ export const askInput = z.object({
       z.object({ kind: z.literal("workspace") }),
       z.object({ kind: z.literal("page"), pageId: z.uuid() }),
       z.object({ kind: z.literal("space"), spaceId: z.uuid() }),
+      // Every workspace the person belongs to (where "ask" is usable).
+      z.object({ kind: z.literal("all") }),
     ])
     .default({ kind: "workspace" }),
 });
@@ -63,7 +71,12 @@ export type AskSource = {
   // Records: their database.
   pageTitle?: string;
   kind: string;
+  // Across workspaces: where the source lives.
+  workspaceId?: string;
+  workspaceName?: string;
 };
+// At most this many workspaces are searched across.
+export const ASK_MAX_WORKSPACES = 20;
 
 export const NOTHING_FOUND = ["Dazu habe ich nichts gefunden.", "I found nothing about that."] as const;
 
@@ -92,6 +105,18 @@ function scopePages(user: Identity, workspaceId: string, scope: z.infer<typeof a
     return { pages: new Set(all<{ id: string }>("SELECT id FROM pages WHERE space_id=? AND deleted_at IS NULL", space.id).map((r) => r.id)), spaceId: space.id };
   }
   return { pages: null };
+}
+
+// The workspaces a question across workspaces looks at: the current one
+// first, then every other one where "ask" resolves for the person.
+export function askWorkspaces(user: Identity, current: string): { id: string; name: string }[] {
+  const list = all<{ id: string; name: string }>(
+    "SELECT w.id,w.name FROM workspaces w JOIN members m ON m.workspace_id=w.id WHERE m.user_id=? ORDER BY w.name COLLATE NOCASE",
+    user.id,
+  );
+  return [...list.filter((w) => w.id === current), ...list.filter((w) => w.id !== current)]
+    .filter((w) => resolveAi(user, "ask", { workspaceId: w.id }).ok)
+    .slice(0, ASK_MAX_WORKSPACES);
 }
 
 // Full-text candidates: pages and records (not comments or files) that
@@ -132,7 +157,11 @@ export type PreparedAsk = { sources: AskSource[]; system: string; messages: Chat
 export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSignal): Promise<PreparedAsk> {
   const input = askInput.parse(raw);
   requireAi(user, "ask", { workspaceId: input.workspaceId });
-  const scope = scopePages(user, input.workspaceId, input.scope);
+  const across = input.scope.kind === "all";
+  const workspaces = across ? askWorkspaces(user, input.workspaceId) : [{ id: input.workspaceId, name: "" }];
+  const workspaceNames = new Map(workspaces.map((w) => [w.id, w.name]));
+  const scope: { pages: Set<string> | null; spaceId?: string } =
+    input.scope.kind === "all" ? { pages: null } : scopePages(user, input.workspaceId, input.scope);
   const previous = history(input.history);
   let terms = questionTerms(input.question);
   // A short follow-up ("und wann?") borrows the terms of the last question.
@@ -150,21 +179,35 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
     if (chunk !== undefined && !entry.chunks.has(chunk)) entry.chunks.set(chunk, rank);
     candidates.set(k, entry);
   };
-  const seen = new Set<string>();
-  textCandidates(input.workspaceId, terms, scope).forEach((r) => {
-    const k = key(r.page_id, r.row_id);
-    if (seen.has(k)) return;
-    add(r.page_id, r.row_id, seen.size);
-    seen.add(k);
-  });
+  // Each workspace ranks on its own; the fusion merges the lists.
+  for (const workspace of workspaces) {
+    const seen = new Set<string>();
+    textCandidates(workspace.id, terms, scope).forEach((r) => {
+      const k = key(r.page_id, r.row_id);
+      if (seen.has(k)) return;
+      add(r.page_id, r.row_id, seen.size);
+      seen.add(k);
+    });
+  }
   let semantic = false;
   try {
     // One question takes one slot of the AI rate limit: the answer's
     // (lib/ai/run.ts), so the embedding of the question is not counted.
-    const hits = await semanticCandidates(user, input.workspaceId, input.question, { pages: scope.pages, signal, limited: true });
-    if (scope.spaceId) hits.splice(0, hits.length, ...hits.filter((h) => scope.pages?.has(h.pageId)));
-    hits.forEach((h, rank) => add(h.pageId, h.rowId, rank, h.chunk));
-    semantic = hits.length > 0;
+    // Across workspaces the question is embedded once: the instance's
+    // embedding model is the same for all of them.
+    let vector: Float32Array | null = null;
+    if (across)
+      for (const workspace of workspaces) {
+        vector = await semanticQueryVector(user, workspace.id, input.question, { signal, limited: true });
+        if (vector) break;
+      }
+    for (const workspace of across ? workspaces : workspaces.slice(0, 1)) {
+      if (across && !vector) break;
+      const hits = await semanticCandidates(user, workspace.id, input.question, { pages: scope.pages, signal, limited: true, vector });
+      if (scope.spaceId) hits.splice(0, hits.length, ...hits.filter((h) => scope.pages?.has(h.pageId)));
+      hits.forEach((h, rank) => add(h.pageId, h.rowId, rank, h.chunk));
+      if (hits.length) semantic = true;
+    }
   } catch (error) {
     // A failing embedding model only loses meaning search.
     if (error instanceof HttpError && error.status === 429) throw error;
@@ -197,7 +240,15 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
         title = origin.title;
       }
     }
-    meta.set(k, { pageId: linkPage, ...(c.rowId ? { rowId: c.rowId } : {}), title: title || ct("Ohne Titel", "Untitled"), ...(source.pageTitle ? { pageTitle: source.pageTitle } : {}), kind: source.kind });
+    const workspaceId = across ? one<{ workspace_id: string }>("SELECT workspace_id FROM pages WHERE id=?", linkPage)?.workspace_id : undefined;
+    meta.set(k, {
+      pageId: linkPage,
+      ...(c.rowId ? { rowId: c.rowId } : {}),
+      title: title || ct("Ohne Titel", "Untitled"),
+      ...(source.pageTitle ? { pageTitle: source.pageTitle } : {}),
+      kind: source.kind,
+      ...(workspaceId ? { workspaceId, workspaceName: workspaceNames.get(workspaceId) || "" } : {}),
+    });
     const chunks = source.chunks.length ? source.chunks : [title];
     chunks.forEach((text, index) =>
       passages.push({ key: k, text, title, index, sourceRank: rank, boost: c.chunks.has(index) ? 3 / (1 + c.chunks.get(index)!) : 0 }),
@@ -220,7 +271,8 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
       .filter((p) => p.key === k)
       .sort((a, b) => (a.index || 0) - (b.index || 0))
       .map((p) => p.text);
-    const label = s.pageTitle ? `${s.title} (Eintrag in „${s.pageTitle}“)` : s.title;
+    const base = s.pageTitle ? `${s.title} (Eintrag in „${s.pageTitle}“)` : s.title;
+    const label = s.workspaceName ? `${base} – Arbeitsbereich „${s.workspaceName}“` : base;
     return `<quelle nr="${s.n}" titel="${escapeAttr(label)}">\n${parts.join("\n…\n")}\n</quelle>`;
   });
   const prompt = `Quellen:\n${blocks.join("\n\n")}\n\nFrage: ${input.question}`;

@@ -3,25 +3,27 @@
 // (lib/ai/ask.ts). The conversation is kept in this browser tab only
 // (sessionStorage) – the server stores none of it.
 import { Fragment, useEffect, useRef, useState } from "react";
-import { ArrowSquareOut, PaperPlaneRight, Sparkle, Stop, Trash } from "@phosphor-icons/react";
+import { ArrowSquareOut, Lightning, PaperPlaneRight, Sparkle, Stop, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon } from "./ui";
 import { Select } from "./select";
-import { askAi, aiProviderLabel, citationParts, type AskScope, type AskSource } from "@/lib/ai/client";
+import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
+import { askAi, aiProviderLabel, aiUsable, citationParts, type AskScope, type AskSource } from "@/lib/ai/client";
 import type { AiStatus } from "@/lib/ai/features";
 import type { Space } from "@/lib/types";
 
 type Message = { role: "user" | "assistant"; content: string; sources?: AskSource[]; error?: boolean; streaming?: boolean };
-type Stored = { messages: Message[]; scope: string };
+type Stored = { messages: Message[]; scope: string; across?: boolean };
 const storageKey = (workspaceId: string) => `flowplan-ask:${workspaceId}`;
 const MAX_TURNS = 20;
 
 function load(workspaceId: string): Stored {
   try {
     const raw = JSON.parse(sessionStorage.getItem(storageKey(workspaceId)) || "null");
-    if (raw && Array.isArray(raw.messages)) return { messages: raw.messages.filter((m: Message) => !m.streaming), scope: String(raw.scope || "workspace") };
+    if (raw && Array.isArray(raw.messages))
+      return { messages: raw.messages.filter((m: Message) => !m.streaming), scope: String(raw.scope || "workspace"), across: !!raw.across };
   } catch {}
-  return { messages: [], scope: "workspace" };
+  return { messages: [], scope: "workspace", across: false };
 }
 function save(workspaceId: string, stored: Stored) {
   try {
@@ -53,24 +55,30 @@ export function AskPanel({
   const [scope, setScope] = useState("workspace");
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
+  // "Alle Arbeitsbereiche": the question goes to every workspace of the person.
+  const [across, setAcross] = useState(false);
+  const [actions, setActions] = useState<AiActionsRequest | null>(null);
   const controller = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return;
     const stored = load(workspaceId);
     setMessages(stored.messages);
+    setAcross(!!stored.across);
     // A page scope only makes sense while that page is open.
     setScope(stored.scope.startsWith("page:") && stored.scope !== `page:${currentPage?.id}` ? "workspace" : stored.scope);
     if (initialQuestion) setQuestion(initialQuestion);
   }, [open, workspaceId]);
   useEffect(() => {
-    if (open) save(workspaceId, { messages: messages.filter((m) => !m.streaming), scope });
+    if (open) save(workspaceId, { messages: messages.filter((m) => !m.streaming), scope, across });
     end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [messages, scope]);
+  }, [messages, scope, across]);
   useEffect(() => () => controller.current?.abort(), []);
 
   const scopeValue = (): AskScope =>
-    scope.startsWith("page:") ? { kind: "page", pageId: scope.slice(5) } : scope.startsWith("space:") ? { kind: "space", spaceId: scope.slice(6) } : { kind: "workspace" };
+    across
+      ? { kind: "all" }
+      : scope.startsWith("page:") ? { kind: "page", pageId: scope.slice(5) } : scope.startsWith("space:") ? { kind: "space", spaceId: scope.slice(6) } : { kind: "workspace" };
 
   async function send() {
     const text = question.trim();
@@ -111,7 +119,7 @@ export function AskPanel({
   return (
     <Modal open={open} onClose={onClose} title={t("KI fragen", "Ask AI")} wide className="ai-ask">
       <div className="ai-ask-bar">
-        <Select aria-label={t("Wo soll gesucht werden?", "Where to look?")} value={scope} onChange={(e) => setScope(e.target.value)} disabled={busy}>
+        <Select aria-label={t("Wo soll gesucht werden?", "Where to look?")} value={scope} onChange={(e) => setScope(e.target.value)} disabled={busy || across}>
           <option value="workspace">{t("Ganzer Arbeitsbereich", "Whole workspace")}</option>
           {currentPage && <option value={`page:${currentPage.id}`}>{t(`„${currentPage.title}“ und Unterseiten`, `“${currentPage.title}” and sub-pages`)}</option>}
           {spaces.map((s) => (
@@ -120,6 +128,10 @@ export function AskPanel({
             </option>
           ))}
         </Select>
+        <label className="ai-ask-across" title={t("Sucht in allen Arbeitsbereichen, in denen du Mitglied bist – mit den KI-Regeln jedes Arbeitsbereichs.", "Searches every workspace you belong to – with the AI rules of each workspace.")}>
+          <input type="checkbox" checked={across} disabled={busy} onChange={(e) => setAcross(e.target.checked)} />
+          {t("Alle Arbeitsbereiche", "All workspaces")}
+        </label>
         <span className={`ai-provider-chip${provider?.local ? " local" : ""}`} title={provider?.local ? t("Texte bleiben auf diesem Server.", "Text stays on this server.") : t("Texte gehen an diesen Anbieter.", "Text goes to this provider.")}>
           <Sparkle size={13} /> {aiProviderLabel(provider ?? null, t)}
         </span>
@@ -163,11 +175,28 @@ export function AskPanel({
                         <PageIcon name={s.kind === "row" ? "file" : s.kind === "database" ? "table" : "file"} />
                         <span className="ai-source-title">{s.title}</span>
                         {s.pageTitle && <small>{s.pageTitle}</small>}
+                        {s.workspaceName && s.workspaceId !== workspaceId && <small className="ai-source-workspace">{s.workspaceName}</small>}
                         <ArrowSquareOut size={13} />
                       </button>
                     </li>
                   ))}
                 </ol>
+              )}
+              {!m.streaming && !m.error && m.content && aiUsable(ai, "actions") && (
+                <button
+                  type="button"
+                  className="button compact ai-ask-actions"
+                  onClick={() =>
+                    setActions({
+                      instruction: messages[i - 1]?.content || t("Was lässt sich aus dieser Antwort anlegen?", "What can be created from this answer?"),
+                      context: m.content,
+                      pageId: currentPage?.id || null,
+                      sources: (m.sources || []).filter((s) => !s.workspaceId || s.workspaceId === workspaceId).map((s) => ({ pageId: s.pageId, rowId: s.rowId || null })),
+                    })
+                  }
+                >
+                  <Lightning size={14} /> {t("Aktionen vorschlagen", "Propose actions")}
+                </button>
               )}
             </div>
           ),
@@ -212,6 +241,15 @@ export function AskPanel({
           "The AI only reads what you may read and what is open to the AI. The conversation stays in this browser tab only and is not stored on the server.",
         )}
       </p>
+      <AiActionsPanel
+        workspaceId={workspaceId}
+        request={actions}
+        onClose={() => setActions(null)}
+        onOpen={(pageId, rowId) => {
+          setActions(null);
+          onOpenSource(pageId, rowId);
+        }}
+      />
     </Modal>
   );
 }
