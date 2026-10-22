@@ -13,6 +13,11 @@
 // next sign-in (or mapping change) of that person. Memberships no mapping
 // matches and that never came from SSO stay untouched. The last owner of a
 // workspace always stays.
+//
+// Directory groups count like SSO groups: groups provisioned over SCIM
+// (lib/scim.ts, by their display name) and the LDAP groups of an account
+// (lib/ldap-auth.ts) are added to the groups of every sign-in and of every
+// re-application, so one set of mappings serves OIDC, SCIM and LDAP.
 import { z } from "zod";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
@@ -111,14 +116,27 @@ function applyWorkspace(userId: string, workspaceId: string, matched: SsoMapping
     }
 }
 
+// The groups a directory gives this person: SCIM groups they are a member
+// of and the groups of their LDAP account.
+export function directoryGroups(userId: string) {
+  const groups = all<{ name: string }>(
+    "SELECT g.display_name name FROM scim_group_members m JOIN scim_groups g ON g.id=m.group_id WHERE m.user_id=?",
+    userId,
+  ).map((g) => g.name);
+  const ldap = one<{ groups_json: string }>("SELECT groups_json FROM ldap_accounts WHERE user_id=?", userId);
+  if (ldap) groups.push(...sessionGroups(ldap.groups_json));
+  return groups;
+}
+
 // Applies the mappings for one person and their current SSO groups (inside
-// a transaction of the caller). Accounts with e-mail and password are never
-// touched. With a workspace, only that one.
+// a transaction of the caller), together with their directory groups.
+// Accounts with e-mail and password are never touched. With a workspace,
+// only that one.
 export function applySsoGroups(userId: string, ssoGroups: string[], workspaceId?: string) {
   if (isLocal(userId)) return;
   const user = one<{ demo_until: number | null; disabled: number }>("SELECT demo_until,disabled FROM users WHERE id=?", userId);
   if (!user || user.demo_until) return;
-  const groups = new Set(ssoGroups);
+  const groups = new Set([...ssoGroups, ...directoryGroups(userId)]);
   const mappings = workspaceId
     ? all<SsoMapping>("SELECT * FROM sso_mappings WHERE workspace_id=?", workspaceId)
     : all<SsoMapping>("SELECT * FROM sso_mappings");
@@ -138,8 +156,33 @@ export function syncSsoMemberships(userId: string, ssoGroups: string[]) {
   transaction(() => applySsoGroups(userId, ssoGroups));
 }
 
+// A list of group names stored as JSON (sessions, LDAP accounts).
+function sessionGroups(json: string) {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((g): g is string => typeof g === "string") : [];
+  } catch {
+    return [];
+  }
+}
+// The SSO groups of a person's latest live SSO session (none without one).
+export function latestSsoGroups(userId: string) {
+  const s = one<{ groups_json: string }>(
+    "SELECT groups_json FROM sessions WHERE user_id=? AND sso=1 AND expires>? ORDER BY created_at DESC LIMIT 1",
+    userId,
+    Date.now(),
+  );
+  return s ? sessionGroups(s.groups_json) : [];
+}
+// After the directory groups of one person changed (SCIM, LDAP sync): the
+// mappings again, with the groups of their latest SSO session.
+export function reapplySsoUser(userId: string) {
+  applySsoGroups(userId, latestSsoGroups(userId));
+}
+
 // After a mapping changed: applied right away to everyone signed in through
-// SSO, with the groups of their latest session. Others follow at sign-in.
+// SSO, with the groups of their latest session, and to everyone with
+// directory groups. Others follow at sign-in.
 export function reapplySsoMappings(workspaceId: string) {
   const sessions = all<{ user_id: string; groups_json: string }>(
     `SELECT s.user_id,s.groups_json FROM sessions s
@@ -151,15 +194,15 @@ export function reapplySsoMappings(workspaceId: string) {
   for (const s of sessions) {
     if (seen.has(s.user_id)) continue;
     seen.add(s.user_id);
-    let groups: string[] = [];
-    try {
-      const parsed = JSON.parse(s.groups_json);
-      if (Array.isArray(parsed)) groups = parsed.filter((g): g is string => typeof g === "string");
-    } catch {
-      groups = [];
-    }
-    applySsoGroups(s.user_id, groups, workspaceId);
+    applySsoGroups(s.user_id, sessionGroups(s.groups_json), workspaceId);
   }
+  for (const u of all<{ user_id: string }>(
+    "SELECT DISTINCT user_id FROM scim_group_members UNION SELECT user_id FROM ldap_accounts WHERE groups_json<>'[]'",
+  ))
+    if (!seen.has(u.user_id)) {
+      seen.add(u.user_id);
+      applySsoGroups(u.user_id, [], workspaceId);
+    }
 }
 
 export function listSsoMappings(workspaceId?: string) {

@@ -249,6 +249,8 @@ export type Reaction = { emoji: string; count: number; mine: boolean; names: str
 export type Bootstrap = {
   user: Identity;
   localAccount?: boolean;
+  // Signs in with the LDAP password (two-factor settings apply).
+  ldapAccount?: boolean;
   workspaces: Workspace[];
   workspace: Workspace;
   spaces: Space[];

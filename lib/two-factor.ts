@@ -1,5 +1,6 @@
 // Two-factor sign-in with an authenticator app (TOTP) for accounts with
-// e-mail and password.
+// e-mail and password, and for LDAP accounts (lib/ldap-auth.ts), whose
+// directory password counts like a password here.
 //
 // - Setting up: a new secret (sealed with lib/secret-box.ts, bound to the
 //   account) is shown as QR code and as text; a code from the app confirms
@@ -16,6 +17,7 @@ import { one, run } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { addressKey } from "./client-address";
 import { failed, limited, localGroups, verifyPassword } from "./local-auth";
+import { ldapGroups, verifyLdapPassword } from "./ldap-auth";
 import { openSecret, sealSecret, signValue, validSignature } from "./secret-box";
 import { matchTotp, newTotpSecret, otpauthUri } from "./totp";
 import { qrModules, qrPath } from "./qr";
@@ -31,8 +33,21 @@ const PENDING_SECONDS = 300;
 type Tr = (de: string, en: string) => string;
 const tr = (locale: Locale): Tr => translate(locale);
 
+// Accounts with a password: e-mail and password, or an LDAP account (its
+// DN stands in for the password hash in the pending sign-in token).
 function account(userId: string) {
-  return one<{ email: string; password_hash: string }>("SELECT email,password_hash FROM local_accounts WHERE user_id=?", userId);
+  return (
+    one<{ email: string; password_hash: string; ldap?: number }>("SELECT email,password_hash FROM local_accounts WHERE user_id=?", userId) ||
+    one<{ email: string; password_hash: string; ldap?: number }>(
+      "SELECT u.email,'ldap:'||l.dn password_hash,1 ldap FROM ldap_accounts l JOIN users u ON u.id=l.user_id WHERE l.user_id=?",
+      userId,
+    )
+  );
+}
+// The groups a sign-in after the second step carries.
+const signInGroups = (userId: string) => (account(userId)?.ldap ? ldapGroups(userId) : localGroups(userId));
+async function passwordMatches(userId: string, password: string, local: { password_hash: string; ldap?: number }) {
+  return local.ldap ? verifyLdapPassword(userId, password) : verifyPassword(password, local.password_hash);
 }
 function requireLocal(userId: string, t: Tr) {
   const local = account(userId);
@@ -159,7 +174,7 @@ async function confirmWithPasswordOrCode(userId: string, input: unknown, address
   if (code) return checkSecondFactor(userId, code, address, t);
   const keys = [...addressKey("ip", address), `totp:${userId}`];
   if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  if (!password || !(await verifyPassword(password, local.password_hash))) {
+  if (!password || !(await passwordMatches(userId, password, local))) {
     failed(keys);
     throw new HttpError(401, t("Bitte das aktuelle Passwort oder einen Code aus der App eingeben.", "Please enter the current password or a code from the app."));
   }
@@ -241,7 +256,7 @@ export function completeSignIn(token: string | undefined, input: unknown, addres
   if (!user || user.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
   checkSecondFactor(pending.userId, code, address, t, now);
   run("DELETE FROM login_failures WHERE key=?", `totp:${pending.userId}`);
-  return { userId: pending.userId, groups: localGroups(pending.userId), remember: pending.remember };
+  return { userId: pending.userId, groups: signInGroups(pending.userId), remember: pending.remember };
 }
 
 // ---- Administration ----

@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
 import { InboundMailSettings } from "./inbound-mail-settings";
 import { AccountSecurity } from "./account-security";
+import { TwoFactorSettings } from "./two-factor";
 import { DeleteOwnAccount } from "./delete-own-account";
 import { MySessions } from "./my-sessions";
 import { SsoMappings, type SsoMappingRow } from "./sso-mappings";
@@ -303,13 +304,15 @@ export default function Settings({
                       {boot.user.name}
                       <small>{boot.user.email}</small>
                     </span>
-                    <span className="tag tag-blue">{boot.localAccount ? "E-Mail" : "SSO"}</span>
+                    <span className="tag tag-blue">{boot.localAccount ? "E-Mail" : boot.ldapAccount ? "LDAP" : "SSO"}</span>
                   </div>
                   {boot.localAccount ? (
                     <AccountSecurity name={boot.user.name} onRenamed={onRefresh} />
                   ) : (
                     <p className="muted small">{t("Name und E-Mail werden von deinem Identitätsanbieter übernommen.", "Your name and e-mail come from your identity provider.")}</p>
                   )}
+                  {/* LDAP accounts sign in with a password: the authenticator app applies to them too. */}
+                  {!boot.localAccount && boot.ldapAccount && <TwoFactorSettings />}
                   {!boot.user.demo && <MySessions onError={onError} />}
                 </div>
                 <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>

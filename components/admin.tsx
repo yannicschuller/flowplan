@@ -24,6 +24,7 @@ import { AdminAi, AiUserSwitch } from "./ai-settings";
 import { api, Avatar, Modal } from "./ui";
 import { Select } from "./select";
 import { AdminStorage } from "./admin-storage";
+import { AdminDirectory } from "./admin-directory";
 import { SsoMappings, type SsoMappingRow } from "./sso-mappings";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
@@ -361,6 +362,7 @@ export default function Admin({
               </div>
             </section>
           )}
+          {tab === "users" && <AdminDirectory onError={onError} />}
           {tab === "workspaces" && (
             <section className="settings-section">
               <div className="settings-list-head">

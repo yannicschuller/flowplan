@@ -45,6 +45,7 @@ export default function Login({
   firstAccount = false,
   mail = false,
   remember: rememberAvailable = false,
+  ldap = false,
   error,
   notice: initialNotice,
   instanceName = "",
@@ -52,6 +53,8 @@ export default function Login({
   legal,
 }: Props) {
   const t = useT();
+  // The password form: accounts with e-mail and password, or the LDAP directory.
+  const passwordForm = localLogin || ldap;
   const [mode, setMode] = useState<Mode>(initialMode || (firstAccount ? "register" : "signin"));
   const [busy, setBusy] = useState(""),
     [message, setMessage] = useState(error || ""),
@@ -272,7 +275,7 @@ export default function Login({
             {notice}
           </div>
         )}
-        {localLogin && mode === "totp" && (
+        {passwordForm && mode === "totp" && (
           <form className="login-form" onSubmit={submit}>
             <label>
               {recovery ? t("Wiederherstellungscode", "Recovery code") : t("Code aus der App", "Code from the app")}
@@ -302,7 +305,7 @@ export default function Login({
             </div>
           </form>
         )}
-        {localLogin && mode !== "confirm" && mode !== "totp" && (
+        {passwordForm && mode !== "confirm" && mode !== "totp" && (
           <form className="login-form" onSubmit={submit}>
             {mode === "register" && (
               <label>
@@ -311,10 +314,10 @@ export default function Login({
               </label>
             )}
             <label>
-              {t("E-Mail-Adresse", "E-mail address")}
+              {ldap && mode === "signin" ? t("E-Mail-Adresse oder Benutzername", "E-mail address or user name") : t("E-Mail-Adresse", "E-mail address")}
               <input
                 name="email"
-                type="email"
+                type={ldap && mode === "signin" ? "text" : "email"}
                 autoComplete={mode === "signin" ? "username webauthn" : "email"}
                 required
                 maxLength={200}
@@ -337,7 +340,7 @@ export default function Login({
             {mode === "signin" && (rememberBox || mail) && (
               <div className="login-options">
                 {rememberBox}
-                {mail && (
+                {mail && localLogin && (
                   <button type="button" className="text-button login-forgot" onClick={() => switchTo("forgot")}>
                     {t("Passwort vergessen?", "Forgot password?")}
                   </button>
@@ -369,10 +372,10 @@ export default function Login({
         )}
         {configured && mode === "signin" && (
           <>
-            {localLogin && <div className="login-or">{t("oder", "or")}</div>}
-            {!localLogin && rememberBox && <div className="login-options">{rememberBox}</div>}
+            {passwordForm && <div className="login-or">{t("oder", "or")}</div>}
+            {!passwordForm && rememberBox && <div className="login-options">{rememberBox}</div>}
             <a
-              className={`button wide${localLogin ? "" : " primary"}`}
+              className={`button wide${passwordForm ? "" : " primary"}`}
               href={desktopApp ? "/api/auth/desktop?via=sso" : stay ? `${loginUrl}&remember=1` : loginUrl}
               title={desktopApp ? t("Öffnet die Anmeldung im Browser", "Opens the sign-in in your browser") : undefined}
             >
@@ -382,7 +385,7 @@ export default function Login({
             </a>
           </>
         )}
-        {!configured && !localLogin && (
+        {!configured && !passwordForm && (
           <div className="callout">
             {t(
               "Die Anmeldung wird über deinen OIDC-Anbieter eingerichtet. Wie das geht, steht in der Dokumentation unter „Anmeldung mit OIDC“.",

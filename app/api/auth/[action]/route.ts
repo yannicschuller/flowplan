@@ -28,6 +28,8 @@ import { syncSsoMemberships } from "@/lib/sso-mappings";
 import { command } from "@/lib/api";
 import { confirmsWithPassword, deleteOwnAccount } from "@/lib/account-deletion";
 import { sweepSpaceGitCopies } from "@/lib/space-git-export";
+import { directoryPasswordLogin } from "@/lib/ldap-auth";
+import { claimProvisionedAccount } from "@/lib/scim";
 export const runtime = "nodejs";
 import { oidcConfig as config } from "@/lib/oidc";
 import {
@@ -257,6 +259,8 @@ async function handleGET(
         !groups.includes(process.env.OIDC_ALLOWED_GROUP)
       )
         throw new HttpError(403, "Zugriff für diese Gruppe nicht erlaubt.");
+      // An account provisioned over SCIM before the first sign-in.
+      claimProvisionedAccount(`${claims.iss}|${claims.sub}`, claims.sub, String(profile.email || ""), profile.email_verified === true);
       const user = upsertUser(
         `${claims.iss}|${claims.sub}`,
         String(profile.name || profile.preferred_username || "Mitglied"),
@@ -389,7 +393,8 @@ async function handlePOST(
     }
     if (action === "password") {
       const input = await body();
-      const { userId, groups } = await passwordLogin(input, clientAddress(req.headers), locale);
+      // Accounts with e-mail and password, or the LDAP directory (LDAP_URL).
+      const { userId, groups } = await directoryPasswordLogin(input, clientAddress(req.headers), locale);
       // With an authenticator app, a code follows (action "totp-login").
       const next = afterPassword(userId, wantsRemember(input), locale);
       if ("pending" in next) {

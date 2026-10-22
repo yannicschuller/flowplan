@@ -941,6 +941,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
 export const routesOutsideSpec: Record<string, string> = {
   "app/api/issue-sync/hook/[token]/route.ts": "GitHub/GitLab issue webhooks, verified by their own token and signature",
   "app/api/admin/instance-backup/route.ts": "Administration only; tokens never administer",
+  "app/api/admin/directory/route.ts": "Administration only; tokens never administer",
+  "app/api/scim/v2/[...path]/route.ts": "SCIM 2.0 (RFC 7643/7644) is its own standard with its own bearer tokens; discovery at /api/scim/v2/ServiceProviderConfig",
   "app/api/ai/[...path]/route.ts": "AI features refuse API tokens",
   "app/api/auth/[action]/route.ts": "Browser sign-in and account settings",
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",

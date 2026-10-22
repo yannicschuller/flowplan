@@ -62,7 +62,19 @@ const PERSONAL = [
   "saved_searches",
   "group_members",
   "comment_reactions",
+  // Directory links: SCIM provisioning and LDAP sign-in.
+  "scim_users",
+  "scim_group_members",
+  "ldap_accounts",
 ];
+
+// Disabling an account (Administration → Users, SCIM "active": false, the
+// LDAP sync): it loses every session at once; API tokens stop working
+// because they check the flag. Enabling only clears the flag.
+export function setUserDisabled(userId: string, disabled: boolean) {
+  run("UPDATE users SET disabled=? WHERE id=?", disabled ? 1 : 0, userId);
+  if (disabled) run("DELETE FROM sessions WHERE user_id=?", userId);
+}
 
 export function deletionPlan(userId: string): Plan {
   const user = one<{ name: string }>("SELECT name FROM users WHERE id=?", userId);
@@ -103,7 +115,8 @@ export function deleteAccount(admin: Identity, userId: string) {
   return plan;
 }
 
-function lastAdmin(userId: string) {
+// The last enabled administrator with e-mail and password.
+export function lastAdmin(userId: string) {
   return (
     !!one("SELECT 1 FROM local_accounts WHERE user_id=? AND is_admin=1", userId) &&
     !one("SELECT 1 FROM local_accounts a JOIN users u ON u.id=a.user_id WHERE a.is_admin=1 AND a.user_id<>? AND u.disabled=0", userId)

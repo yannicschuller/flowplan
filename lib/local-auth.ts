@@ -27,6 +27,7 @@ import type { User } from "./types";
 import { allow } from "./action-limits";
 import { addressKey } from "./client-address";
 import { translate, type Locale } from "./i18n";
+import { ldapConfigured } from "./ldap";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, length: number, options: object) => Promise<Buffer>;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
@@ -502,6 +503,8 @@ export function loginOptions() {
     demo: process.env.NODE_ENV !== "production",
     // "Stay signed in on this device" (SESSION_REMEMBER=true).
     remember: !!rememberPolicy(),
+    // The password form also signs in with the LDAP directory (LDAP_URL).
+    ldap: ldapConfigured(),
   };
 }
 export type LoginOptions = ReturnType<typeof loginOptions>;

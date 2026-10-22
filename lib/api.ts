@@ -5,7 +5,7 @@ import { aiStatus } from "./ai/resolve";
 import { markdownSource } from "./markdown";
 import { markdownToHtml } from "./markdown-import";
 import { legalLinks } from "./legal-links";
-import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan } from "./account-deletion";
+import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUserDisabled } from "./account-deletion";
 import { confirmAddress } from "./local-auth";
 import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
@@ -63,6 +63,7 @@ import {
 import { transferPages } from "./page-transfer";
 import { demoAllows } from "./demo";
 import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
+import { isLdapAccount } from "./ldap-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
 import {
@@ -262,6 +263,7 @@ export function bootstrap(user: Identity, wid?: string) {
     user,
     // Signs in with e-mail and password (and passkeys) rather than SSO.
     localAccount: isLocalAccount(user.id),
+    ldapAccount: isLdapAccount(user.id),
     workspaces,
     workspace,
     pages,
@@ -2747,8 +2749,7 @@ export function command(
             400,
             "Eigenes Konto kann nicht deaktiviert werden.",
           );
-        run("UPDATE users SET disabled=? WHERE id=?", b.disabled ? 1 : 0, uid);
-        if (b.disabled) run("DELETE FROM sessions WHERE user_id=?", uid);
+        setUserDisabled(uid, !!b.disabled);
         break;
       }
       case "admin.quota": {
