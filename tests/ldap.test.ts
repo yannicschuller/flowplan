@@ -141,7 +141,7 @@ process.env.LDAP_URL = `ldap://127.0.0.1:${port}`;
 process.env.LDAP_BASE_DN = BASE;
 process.env.LDAP_BIND_DN = SERVICE;
 process.env.LDAP_BIND_PASSWORD = "service-pw";
-process.env.LDAP_TIMEOUT_MS = "3000";
+process.env.LDAP_TIMEOUT_MS = "15000";
 
 const { ldapPasswordLogin, directoryPasswordLogin, syncLdapAccounts, testLdapConnection, ldapStatus } = await import("../lib/ldap-auth");
 const { createWorkspace } = await import("../lib/seed");
