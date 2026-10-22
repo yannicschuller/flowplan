@@ -51,6 +51,7 @@ const PERSONAL = [
   "push_subscriptions",
   "notifications",
   "notification_prefs",
+  "user_shortcuts",
   "page_follows",
   "page_visits",
   "presence",

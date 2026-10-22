@@ -29,6 +29,15 @@ export function revealSpoiler(event: MouseEvent | React.MouseEvent) {
   spoiler.toggleAttribute("data-revealed");
   return true;
 }
+// Ctrl/⌘-click on a page link: the split view next to the open page, when
+// the window is wide enough (components/workspace-app.tsx answers the
+// event). False when nobody took it – then a new tab as before.
+export function openInSplit(href: string) {
+  const hash = href.indexOf("#page=");
+  const target = hash >= 0 ? parsePageLocation(href.slice(hash)) : null;
+  if (!target || target.rowId) return false;
+  return !window.dispatchEvent(new CustomEvent("flowplan:open-split", { detail: target.pageId, cancelable: true }));
+}
 export function openReference(href: string, event?: MouseEvent) {
   if (!href) return;
   const hash = href.indexOf("#page=");
@@ -36,6 +45,7 @@ export function openReference(href: string, event?: MouseEvent) {
     location.hash = href.slice(hash);
     return;
   }
+  if (hash >= 0 && !event?.shiftKey && openInSplit(href)) return;
   if (href.startsWith("/") && !href.startsWith("//") && !event?.metaKey) {
     location.assign(href);
     return;
@@ -143,9 +153,21 @@ export function LinkPreview({
         show(target);
         return;
       }
+      // Read-only text (reading mode, split view): Ctrl/⌘-click as well.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        target.matches('a[href*="#page="]') &&
+        !target.closest('[contenteditable="true"]') &&
+        openInSplit(target.getAttribute("href") || "")
+      ) {
+        event.preventDefault();
+        return;
+      }
       if (!target.closest('[contenteditable="true"]')) return;
       const selection = window.getSelection();
-      if (selection && !selection.isCollapsed) return;
+      // Ctrl/⌘-click makes the editor select the clicked node: still a link click.
+      if (selection && !selection.isCollapsed && !(event.metaKey || event.ctrlKey)) return;
       event.preventDefault();
       openReference(target.getAttribute("href") || "", event);
     };

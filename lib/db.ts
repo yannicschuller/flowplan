@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 52) return;
+  if (globalDb.flowplanSchema === 53) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -740,7 +740,10 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS offline_comment_insert AFTER INSERT ON comments BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
     CREATE TRIGGER IF NOT EXISTS offline_comment_update AFTER UPDATE ON comments BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
     CREATE TRIGGER IF NOT EXISTS offline_comment_delete AFTER DELETE ON comments BEGIN DELETE FROM offline_changes WHERE page_id=OLD.page_id AND row_id=''; INSERT INTO offline_changes VALUES(OLD.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;`);
-  globalDb.flowplanSchema = 52;
+  // Own keyboard shortcuts per person (lib/user-shortcuts.ts): the actions
+  // that differ from the defaults, as JSON.
+  d.exec(`CREATE TABLE IF NOT EXISTS user_shortcuts(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,bindings TEXT NOT NULL DEFAULT '{}',updated_at INTEGER NOT NULL);`);
+  globalDb.flowplanSchema = 53;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

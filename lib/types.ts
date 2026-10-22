@@ -265,6 +265,8 @@ export type Bootstrap = {
   dueTasks?: number;
   notificationPrefs?: import("./notification-kinds").NotificationPrefs;
   weeklyDigest?: import("./weekly-digest").WeeklyDigestPrefs;
+  // Own keyboard shortcuts, only those that differ from the defaults.
+  shortcuts?: import("./keymap").KeymapOverrides;
   myLimits?: { storageMb: number; workspaces: number; uploadMb: number; usedBytes: number; ownedWorkspaces: number } | null;
   // The language chosen in the profile (null = from the browser).
   language?: Locale | null;

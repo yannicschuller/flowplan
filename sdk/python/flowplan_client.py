@@ -824,8 +824,18 @@ CommandNotificationWeeklyResult = TypedDict("CommandNotificationWeeklyResult", {
     "timeZone": Required[str],
 }, total=False)
 
+# Save your own keyboard shortcuts. Replaces the whole set. Keys are actions (search, newPage, capture, shortcuts, readMode, sidebar, focusMode, comments, theme, splitView, present), values up to 3 combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything.
+CommandShortcutsSave = TypedDict("CommandShortcutsSave", {
+    "action": Required[Literal["shortcuts.save"]],
+    "bindings": Required[dict[str, list[str]]],
+}, total=False)
+
+CommandShortcutsSaveResult = TypedDict("CommandShortcutsSaveResult", {
+    "bindings": Required[dict[str, list[str]]],
+}, total=False)
+
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

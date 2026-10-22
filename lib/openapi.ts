@@ -13,6 +13,7 @@ import { buildInfo } from "./build-info";
 import { repeatSchema } from "./recurrence";
 import { settingsSchema } from "./database-settings-schema";
 import { chatFormats, hookConfigSchema, noticeEvents, templatesSchema } from "./notification-templates";
+import { MAX_COMBOS, SHORTCUT_ACTIONS } from "./keymap";
 
 type Json = Record<string, unknown>;
 const uuid = z.uuid();
@@ -45,7 +46,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 // API tokens and therefore not listed.
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
-  "profile.onboarded", "profile.language", "notification.reset", "notification.email", "notification.weekly",
+  "profile.onboarded", "profile.language", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport",
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
@@ -492,6 +493,17 @@ export const commandActions: ActionDoc[] = [
       timeZone: z.string().max(100).optional().describe("IANA time zone, e.g. Europe/Berlin"),
     }),
     result: z.object({ enabled: z.boolean(), aiSummary: z.boolean(), timeZone: z.string() }),
+  },
+  {
+    action: "shortcuts.save",
+    summary: "Save your own keyboard shortcuts",
+    description:
+      "Replaces the whole set. Keys are actions (" + SHORTCUT_ACTIONS.join(", ") + "), values up to " + MAX_COMBOS + " combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything.",
+    input: z.object({
+      action: z.literal("shortcuts.save"),
+      bindings: z.partialRecord(z.enum(SHORTCUT_ACTIONS), z.array(z.string().max(40)).max(MAX_COMBOS)),
+    }),
+    result: z.object({ bindings: z.record(z.string(), z.array(z.string())) }),
   },
 ];
 const otherActions = commandActionNames.filter((name) => !commandActions.some((a) => a.action === name));

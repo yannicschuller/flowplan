@@ -134,6 +134,7 @@ import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
 import { notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { setWeeklyDigest, weeklyDigestPrefs } from "./weekly-digest";
+import { saveShortcuts, userShortcuts } from "./user-shortcuts";
 import { sharePage, updatePageShare } from "./page-share";
 import { limitInviter, mailAllowed } from "./action-limits";
 import { templateCategoryIds } from "./template-categories";
@@ -293,6 +294,8 @@ export function bootstrap(user: Identity, wid?: string) {
     dueTasks: dueTaskCount(user, workspace.id),
     notificationPrefs: notificationPrefs(user),
     weeklyDigest: weeklyDigestPrefs(user),
+    // Own keyboard shortcuts (lib/keymap.ts), only those that differ.
+    shortcuts: userShortcuts(user),
     instance: {
       name: instanceSettings().name,
       announcement: instanceSettings().announcement,
@@ -639,6 +642,10 @@ export function command(
       // The weekly digest e-mail (lib/weekly-digest.ts).
       case "notification.weekly":
         result = setWeeklyDigest(user, b);
+        break;
+      // Own keyboard shortcuts (lib/user-shortcuts.ts).
+      case "shortcuts.save":
+        result = saveShortcuts(user, b);
         break;
       case "profile.language":
         result = { language: setFixedLanguage(user.id, b.language) };

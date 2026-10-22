@@ -27,6 +27,9 @@ import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
 import { KeyboardShortcuts } from "./keyboard-shortcuts";
+import { Presentation } from "./presentation";
+import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
+import { activeKeymap, isMacPlatform, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
 import { openPageAliases, AliasIcon } from "./page-aliases";
@@ -56,7 +59,7 @@ import {
 } from "./offline";
 import { useOfflineRefresh } from "./offline-refresh";
 import SavedTemplates from "./saved-templates";
-import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { anyOf, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, CrossFade, useLeaving } from "./motion";
@@ -126,6 +129,8 @@ import {
   WarningCircle,
   Question,
   Keyboard,
+  Presentation as PresentIcon,
+  SquareSplitHorizontal,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -303,6 +308,8 @@ export default function WorkspaceApp({
   inviteResult?: "accepted" | "invalid";
 }) {
   const toggleReadingRef = useRef(() => {});
+  // What a global shortcut does (set each render, see runShortcut).
+  const shortcutRef = useRef((_action: ShortcutAction) => {});
   const t = useT();
   const statusLabel = useStatusLabel();
   const locale = useLocale();
@@ -408,6 +415,64 @@ export default function WorkspaceApp({
   // Profile pictures for every Avatar below, from the current member list.
   setAvatarDirectory([...boot.members, boot.user]);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  // Presentation mode of the open document (components/presentation.tsx).
+  const [presenting, setPresenting] = useState<{ html: string; title: string } | null>(null);
+  // Split view (components/split-pane.tsx): the page shown next to the open
+  // one, kept in the address as ?split=<id> so a reload keeps it.
+  const [split, setSplit] = useState<string | null>(() => {
+      if (typeof location === "undefined") return null;
+      const id = new URLSearchParams(location.search).get("split");
+      return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+    }),
+    // The share of the width the open page takes, in percent (kept per
+    // device; only shown once the window is known to be wide, after the
+    // first render).
+    [splitRatio, setSplitRatio] = useState(() => {
+      try {
+        const stored = Number(localStorage.getItem("flowplan-split-ratio"));
+        return stored ? clampSplit(stored) : 50;
+      } catch {
+        return 50;
+      }
+    }),
+    // Wider than 1024 px: split view is possible.
+    [wide, setWide] = useState(false),
+    // The quick search opens the chosen page in the split view.
+    [paletteSplit, setPaletteSplit] = useState(false),
+    // A page from the tree is being dragged: the drop zone at the right edge shows.
+    [pageDrag, setPageDrag] = useState(false),
+    [splitDropOver, setSplitDropOver] = useState(false),
+    // Apple keyboard (⌘) – for the shortcut hints, after the first render.
+    [mac, setMac] = useState(false);
+  const splitRow = useRef<HTMLDivElement>(null),
+    wideRef = useRef(false),
+    presentingRef = useRef(false);
+  wideRef.current = wide;
+  presentingRef.current = !!presenting;
+  useEffect(() => {
+    setMac(isMacPlatform());
+    const media = matchMedia("(min-width: 1025px)");
+    const update = () => setWide(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("flowplan-split-ratio", String(splitRatio));
+    } catch {}
+  }, [splitRatio]);
+  // The address follows the split page (the hash stays the main page's).
+  useEffect(() => {
+    const url = new URL(location.href);
+    if ((url.searchParams.get("split") || null) === split) return;
+    if (split) url.searchParams.set("split", split);
+    else url.searchParams.delete("split");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [split]);
+  // The own keyboard shortcuts (lib/keymap.ts) for every global handler.
+  useEffect(() => setKeymapOverrides(boot.shortcuts), [boot.shortcuts]);
+  useSyncExternalStore(subscribeKeymap, activeKeymap, activeKeymap);
   // Sidebar multi-selection (Ctrl/⌘/Shift-click or selection mode on touch).
   const [selectedPages, setSelectedPages] = useState<string[]>([]),
     [selecting, setSelecting] = useState(false),
@@ -448,6 +513,7 @@ export default function WorkspaceApp({
   }, []);
   const closeSearch = () => {
     setSearch(false);
+    setPaletteSplit(false);
     setQuery("");
     setSearchName(null);
   };
@@ -802,6 +868,29 @@ export default function WorkspaceApp({
     [notifyError],
   );
   openPageRef.current = openPage;
+  // A second page next to the open one; on narrow screens it opens normally.
+  const openSplit = useCallback(
+    (id: string) => {
+      if (!wideRef.current) return void openPage(id);
+      if (screenRef.current === "page" && currentId.current === id) {
+        notify(t("Diese Seite ist bereits geöffnet.", "This page is already open."));
+        return;
+      }
+      setSplit(id);
+    },
+    [openPage, notify, t],
+  );
+  // Ctrl/⌘-click on a page link (components/link-preview.tsx).
+  useEffect(() => {
+    const open = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (!wideRef.current || typeof id !== "string") return;
+      e.preventDefault();
+      openSplit(id);
+    };
+    window.addEventListener("flowplan:open-split", open);
+    return () => window.removeEventListener("flowplan:open-split", open);
+  }, [openSplit]);
   function go(s: Screen) {
     setScreen(s);
     screenRef.current = s;
@@ -849,35 +938,17 @@ export default function WorkspaceApp({
     };
     navigate();
     window.addEventListener("hashchange", navigate);
+    // The global shortcuts, as the keymap says (lib/keymap.ts; own
+    // combinations in the shortcut overlay). Combinations without Ctrl, ⌘ or
+    // Alt ("?") do not count while typing.
     const key = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        if (searchOpen.current) setSearch(false);
-        else openSearch();
-      }
-      // "?" outside of inputs and ⌘/: the keyboard shortcuts.
-      if (
-        ((e.metaKey || e.ctrlKey) && e.key === "/") ||
-        (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target))
-      ) {
-        e.preventDefault();
-        setShortcuts(true);
-      }
-      // ⌘⌥N: quick capture into the capture database; ⌘N: a new page.
-      if ((e.metaKey || e.ctrlKey) && e.altKey && e.code === "KeyN") {
-        e.preventDefault();
-        setCapture(true);
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "n") {
-        e.preventDefault();
-        setCreate(true);
-      }
-      // ⌘⌥E: between reading and editing the open document (⌘⇧E centres text).
-      if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.code === "KeyE") {
-        e.preventDefault();
-        toggleReadingRef.current();
-      }
       // The navigation drawer on small screens closes like a dialog.
       if (e.key === "Escape") setMobile(false);
+      if (e.isComposing || presentingRef.current) return;
+      const action = matchAction(e, isTyping(e.target));
+      if (!action) return;
+      e.preventDefault();
+      shortcutRef.current(action);
     };
     const network = () => setOnline(navigator.onLine);
     network();
@@ -977,6 +1048,79 @@ export default function WorkspaceApp({
     setReadPages(toggleReadMode(data.page.id));
   };
   toggleReadingRef.current = toggleReading;
+  // The open document as slides (components/presentation.tsx).
+  const startPresentation = () => {
+    const d = dataRef.current;
+    if (!d || screenRef.current !== "page" || d.page.kind !== "document" || d.locked) {
+      notify(t("Präsentieren geht mit einem geöffneten Dokument.", "Presenting works with an open document."));
+      return;
+    }
+    setSearch(false);
+    setShortcuts(false);
+    setPresenting({ html: readHtml(), title: d.page.title || t("Ohne Titel", "Untitled") });
+  };
+  const splitShown = !!split && wide;
+  // The quick search in split mode: the chosen page opens next to this one.
+  const openSplitSearch = () => {
+    if (!wideRef.current) {
+      notify(t("Die geteilte Ansicht braucht ein Fenster breiter als 1024 Pixel.", "Split view needs a window wider than 1024 pixels."));
+      return;
+    }
+    setPaletteSplit(true);
+    openSearch();
+  };
+  const runShortcut = (action: ShortcutAction) => {
+    switch (action) {
+      case "search":
+        if (searchOpen.current) setSearch(false);
+        else {
+          setPaletteSplit(false);
+          openSearch();
+        }
+        break;
+      case "newPage":
+        setCreate(true);
+        break;
+      case "capture":
+        setCapture(true);
+        break;
+      case "shortcuts":
+        setShortcuts(true);
+        break;
+      case "readMode":
+        toggleReadingRef.current();
+        break;
+      case "sidebar":
+        setDesktopCollapsed((v) => !v);
+        break;
+      case "focusMode":
+        if (screenRef.current === "page" && dataRef.current) setFocusMode((v) => !v);
+        break;
+      case "comments":
+        if (screenRef.current === "page" && dataRef.current) setComments((v) => !v);
+        break;
+      case "theme":
+        toggleTheme();
+        break;
+      case "splitView":
+        if (splitShown) setSplit(null);
+        else openSplitSearch();
+        break;
+      case "present":
+        startPresentation();
+        break;
+    }
+  };
+  shortcutRef.current = runShortcut;
+  // Hints in titles follow the own shortcuts ("Lesemodus (⌘ ⌥ E)").
+  const hint = (action: ShortcutAction) => {
+    const keys = shortcutHint(action, mac);
+    return keys ? ` (${keys})` : "";
+  };
+  // The open page shows in the split view too: the split closes.
+  useEffect(() => {
+    if (split && screen === "page" && pageId === split) setSplit(null);
+  }, [split, screen, pageId]);
   // Phones: the bottom bar steps aside while the keyboard is open.
   const keyboardOpen = useSoftKeyboard();
   const activePages = boot.pages.filter((p) => !p.deleted_at),
@@ -1345,9 +1489,20 @@ export default function WorkspaceApp({
                   return;
                 }
                 e.dataTransfer.setData("application/x-flowplan-page", p.id);
-                e.dataTransfer.effectAllowed = "move";
+                // Dropped into a document: a link to the page.
+                const href = `/${pageLocationHash({ pageId: p.id })}`;
+                const title = (p.title || t("Ohne Titel", "Untitled")).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+                e.dataTransfer.setData("text/html", `<a href="${href}">${title}</a>`);
+                e.dataTransfer.setData("text/uri-list", `${location.origin}${href}`);
+                e.dataTransfer.effectAllowed = "copyMove";
+                // After the drag has begun: changing the page during
+                // dragstart can cancel it.
+                setTimeout(() => setPageDrag(true));
               }}
-              onDragEnd={() => setTreeDrop(null)}
+              onDragEnd={() => {
+                setTreeDrop(null);
+                setPageDrag(false);
+              }}
               onDragOver={(e) => {
                 // A record dragged from a database onto another database.
                 if (p.kind === "database" && e.dataTransfer.types.includes("application/x-flowplan-row-order")) {
@@ -1452,6 +1607,13 @@ export default function WorkspaceApp({
                     : undefined
                 }
                 onClick={(e) => {
+                  // Ctrl/⌘-click opens the page in the split view – unless
+                  // pages are being selected (Shift-click starts a selection).
+                  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && wide && !selecting && !selectedPages.length) {
+                    e.preventDefault();
+                    openSplit(p.id);
+                    return;
+                  }
                   if (selecting || e.metaKey || e.ctrlKey || e.shiftKey) {
                     e.preventDefault();
                     toggleSelected(p.id, e.shiftKey);
@@ -1565,6 +1727,13 @@ export default function WorkspaceApp({
       : []),
     { label: dark ? t("Helles Design", "Light theme") : t("Dunkles Design", "Dark theme"), keywords: "theme dark light nacht farbe", icon: dark ? Sun : Moon, run: toggleTheme },
     { label: t("Seitenleiste ein- oder ausblenden", "Show or hide sidebar"), keywords: "sidebar navigation", icon: SidebarSimple, run: () => setDesktopCollapsed((v) => !v) },
+    ...(wide
+      ? [
+          splitShown
+            ? { label: t("Geteilte Ansicht schließen", "Close split view"), keywords: t("split nebeneinander zwei seiten", "split nebeneinander zwei seiten side by side two pages"), icon: SquareSplitHorizontal, run: () => setSplit(null) }
+            : { label: t("Seite daneben öffnen …", "Open a page beside it …"), keywords: t("split geteilte ansicht nebeneinander zwei seiten", "split geteilte ansicht nebeneinander zwei seiten view side by side two pages"), icon: SquareSplitHorizontal, run: () => setTimeout(openSplitSearch) },
+        ]
+      : []),
     ...(openPageData
       ? [
           { label: t("Fokusmodus", "Focus mode"), keywords: "schreiben ablenkungsfrei zen wortziel", icon: TextAa, run: () => setFocusMode(true) },
@@ -1591,6 +1760,9 @@ export default function WorkspaceApp({
           { label: t("Kommentare öffnen", "Open comments"), keywords: "comments diskussion", icon: ChatCircle, run: () => setComments(true) },
           { label: t("Seite exportieren", "Export page"), keywords: "markdown html zip download export", icon: DownloadSimple, run: () => setPageExport(true) },
           { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: printPage },
+          ...(openPageData.page.kind === "document" && !openPageData.locked
+            ? [{ label: t("Präsentieren", "Present"), keywords: t("präsentation folien vortrag beamer", "präsentation folien vortrag beamer presentation slides talk slideshow"), icon: PresentIcon, run: startPresentation }]
+            : []),
           ...(openPageData.page.kind === "document"
             ? [
                 {
@@ -1656,7 +1828,10 @@ export default function WorkspaceApp({
   }, [search, activeItem]);
   const runItem = (item: PaletteItem) => {
     if (item.kind === "command") return runCommand(item.action);
+    const intoSplit = paletteSplit;
     closeSearch();
+    // Chosen for the split view: the page opens next to the open one.
+    if (intoSplit) return openSplit(item.kind === "recent" ? item.page.id : item.result.id);
     if (item.kind === "recent") return void openPage(item.page.id);
     const p = item.result;
     // The block with the hit flashes once the page is open.
@@ -1682,7 +1857,7 @@ export default function WorkspaceApp({
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <div
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}`}
-      inert={switching}
+      inert={switching || !!presenting}
       aria-busy={switching}
     >
       {focusMode && screen === "page" && data && (
@@ -1783,7 +1958,8 @@ export default function WorkspaceApp({
           <nav className="main-nav">
             <button onClick={openSearch}>
               <MagnifyingGlass size={19} />
-              {t("Suchen", "Search")}<span className="keycap">⌘ K</span>
+              {t("Suchen", "Search")}
+              {shortcutHint("search", mac) && <span className="keycap">{shortcutHint("search", mac)}</span>}
             </button>
             {canAsk && (
               <button onClick={() => setAsk({ question: "" })}>
@@ -1847,7 +2023,7 @@ export default function WorkspaceApp({
                 <button
                   className={`favorite-nav ${pageId === p.id && screen === "page" ? "selected" : ""}`}
                   key={p.id}
-                  onClick={() => openPage(p.id)}
+                  onClick={(e) => ((e.metaKey || e.ctrlKey) && wide ? openSplit(p.id) : void openPage(p.id))}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setPageMenu({ page: p, x: e.clientX, y: e.clientY });
@@ -2030,7 +2206,7 @@ export default function WorkspaceApp({
             </button>
             <button
               aria-label={t("Tastenkürzel", "Keyboard shortcuts")}
-              title={t("Tastenkürzel (?)", "Keyboard shortcuts (?)")}
+              title={t("Tastenkürzel", "Keyboard shortcuts") + hint("shortcuts")}
               className="sidebar-help"
               onClick={() => setShortcuts(true)}
             >
@@ -2197,7 +2373,7 @@ export default function WorkspaceApp({
               {canRead && (
                 <button
                   className={`icon-button read-mode-toggle${reading ? " active" : ""}`}
-                  title={reading ? t("Bearbeiten (⌘⌥E)", "Edit (⌘⌥E)") : t("Lesemodus (⌘⌥E)", "Reading mode (⌘⌥E)")}
+                  title={(reading ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")) + hint("readMode")}
                   aria-label={reading ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")}
                   aria-pressed={reading}
                   onClick={toggleReading}
@@ -2369,6 +2545,18 @@ export default function WorkspaceApp({
                       {t("Drucken / PDF", "Print / PDF")}
                     </Dropdown.Item>
                     {data.page.kind === "document" && !data.locked && (
+                      <Dropdown.Item className="dropdown-item" onSelect={startPresentation}>
+                        <PresentIcon />
+                        {t("Präsentieren", "Present")}
+                      </Dropdown.Item>
+                    )}
+                    {wide && (
+                      <Dropdown.Item className="dropdown-item" onSelect={openSplitSearch}>
+                        <SquareSplitHorizontal />
+                        {splitShown ? t("Andere Seite daneben öffnen …", "Open another page beside it …") : t("Seite daneben öffnen …", "Open a page beside it …")}
+                      </Dropdown.Item>
+                    )}
+                    {data.page.kind === "document" && !data.locked && (
                       <Dropdown.Item
                         className="dropdown-item"
                         onSelect={() => setSourcePage(sourceOpen ? null : data.page.id)}
@@ -2446,6 +2634,36 @@ export default function WorkspaceApp({
             </span>
           )}
         </header>
+        {/* Split view: the open page (left) and a second one (right). */}
+        <div
+          className={`split-row${splitShown ? " split-active" : ""}`}
+          ref={splitRow}
+          style={splitShown ? ({ "--split": `${splitRatio}%` } as React.CSSProperties) : undefined}
+        >
+          <div className="split-primary">
+        {splitShown && split && (
+          <div className="split-primary-bar">
+            <span>
+              {screen === "page" && data ? (
+                <>
+                  <PageIcon name={data.page.kind === "database" ? "table" : data.page.icon} size={15} />
+                  {data.page.title || t("Ohne Titel", "Untitled")}
+                </>
+              ) : (
+                t("Hauptansicht", "Main view")
+              )}
+            </span>
+            <button
+              type="button"
+              className="icon-button"
+              title={t("Diese Seite schließen – die rechte bleibt offen", "Close this page – the right one stays open")}
+              aria-label={t("Linke Seite schließen", "Close the left page")}
+              onClick={() => void openPage(split)}
+            >
+              <X size={15} />
+            </button>
+          </div>
+        )}
         <div className="main-scroll">
           {screen === "home" && (
             <div className="home-content">
@@ -3212,6 +3430,49 @@ export default function WorkspaceApp({
             <Admin mutate={mutate} onError={notifyError} />
           )}
         </div>
+          </div>
+          {splitShown && split && (
+            <>
+              <SplitDivider value={splitRatio} onChange={setSplitRatio} container={() => splitRow.current} />
+              <SplitPane
+                key={split}
+                pageId={split}
+                userId={boot.user.id}
+                userName={boot.user.name}
+                demo={!!boot.user.demo}
+                pages={activePages}
+                members={boot.members}
+                ai={boot.ai}
+                transcription={!!boot.instance?.transcription}
+                onClose={() => setSplit(null)}
+                onOpenMain={(id) => void openPage(id)}
+                onOpenPage={(id) => void openPage(id)}
+              />
+            </>
+          )}
+          {pageDrag && wide && (
+            <div
+              className={`split-dropzone${splitDropOver ? " over" : ""}`}
+              onDragOver={(e) => {
+                if (!e.dataTransfer.types.includes("application/x-flowplan-page")) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+                setSplitDropOver(true);
+              }}
+              onDragLeave={() => setSplitDropOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                const id = e.dataTransfer.getData("application/x-flowplan-page");
+                setSplitDropOver(false);
+                setPageDrag(false);
+                if (id) openSplit(id);
+              }}
+            >
+              <SquareSplitHorizontal size={24} aria-hidden="true" />
+              <span>{t("Hier ablegen, um die Seite daneben zu öffnen", "Drop here to open the page beside it")}</span>
+            </div>
+          )}
+        </div>
       </main>
       {onboarding && (
         <Onboarding
@@ -3223,7 +3484,17 @@ export default function WorkspaceApp({
           onClose={() => setOnboarding(false)}
         />
       )}
-      <KeyboardShortcuts open={shortcuts} onClose={() => setShortcuts(false)} ai={!!boot.ai?.features.write.ok} />
+      <KeyboardShortcuts
+        open={shortcuts}
+        onClose={() => setShortcuts(false)}
+        ai={!!boot.ai?.features.write.ok}
+        overrides={boot.shortcuts || {}}
+        onSave={async (bindings: KeymapOverrides) => {
+          const result = await api<{ bindings: KeymapOverrides }>("/api/command", { action: "shortcuts.save", bindings });
+          setBoot((b) => ({ ...b, shortcuts: result.bindings }));
+          setKeymapOverrides(result.bindings);
+        }}
+      />
       {spaceExport && (
         <SpaceExportDialog spaces={boot.spaces} initial={spaceExport} onClose={() => setSpaceExport(null)} />
       )}
@@ -3341,7 +3612,11 @@ export default function WorkspaceApp({
             aria-controls="palette-list"
             aria-autocomplete="list"
             aria-activedescendant={activeItem ? `palette-${activeItem.id}` : undefined}
-            placeholder={t("Suchen … oder > für Befehle", "Search … or > for commands")}
+            placeholder={
+              paletteSplit
+                ? t("Seite für die geteilte Ansicht suchen …", "Find a page for the split view …")
+                : t("Suchen … oder > für Befehle", "Search … or > for commands")
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -3360,6 +3635,12 @@ export default function WorkspaceApp({
           />
           <kbd>esc</kbd>
         </div>
+        {paletteSplit && (
+          <p className="palette-split-hint" role="note">
+            <SquareSplitHorizontal size={15} aria-hidden="true" />
+            {t("Die gewählte Seite öffnet sich in der geteilten Ansicht rechts.", "The chosen page opens in the split view on the right.")}
+          </p>
+        )}
         <div className="search-filters">
           <div role="radiogroup" aria-label={t("Suchergebnisse filtern", "Filter search results")}>
             {(
@@ -4348,6 +4629,12 @@ export default function WorkspaceApp({
                       <ArrowSquareOut />
                       {t("In neuem Tab öffnen", "Open in new tab")}
                     </Dropdown.Item>
+                    {wide && !(screen === "page" && pageId === target.id) && (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => openSplit(target.id)}>
+                        <SquareSplitHorizontal />
+                        {t("In geteilter Ansicht öffnen", "Open in split view")}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={async () => {
@@ -4570,6 +4857,17 @@ export default function WorkspaceApp({
         </div>
       )}
     </div>
+    {presenting && (
+      <Presentation
+        html={presenting.html}
+        title={presenting.title}
+        onClose={() => {
+          setPresenting(null);
+          // Back to the document the presentation came from.
+          setTimeout(() => mainRef.current?.focus({ preventScroll: true }));
+        }}
+      />
+    )}
     </AiProvider>
   );
 }
