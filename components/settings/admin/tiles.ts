@@ -4,6 +4,7 @@
 import type { AdminSummary } from "@/lib/admin-summary";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { TileSummary } from "../shell";
+import { compact, num, percent } from "./monitoring-format";
 
 type T = (de: string, en: string) => string;
 const size = (bytes: number) =>
@@ -20,6 +21,7 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
   const workers = s.monitoring.failingWorkers.length;
   const alerts = s.monitoring.alerts.length;
   const u = s.users;
+  const c = s.charts;
   return {
     users: {
       line: join(
@@ -29,6 +31,10 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       ),
       tone: u.localLogin && u.allowSignup ? "info" : undefined,
       badge: u.localLogin && u.allowSignup ? t("Registrierung offen", "Sign-up open") : undefined,
+      value: num(u.activeNow),
+      valueLabel: t("gerade aktiv", "active now"),
+      spark: c.active24h,
+      sparkLabel: t("Aktive Personen je Stunde, letzte 24 Stunden", "Active people per hour, last 24 hours"),
     },
     signin: {
       line: join(s.signin.oidc ? t("SSO an", "SSO on") : t("SSO aus", "SSO off"), s.signin.scimTokens ? t("SCIM an", "SCIM on") : t("SCIM aus", "SCIM off"), s.signin.ldap ? t("LDAP an", "LDAP on") : t("LDAP aus", "LDAP off")),
@@ -42,6 +48,14 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       ),
       tone: s.workspaces.nearlyFull ? "warn" : undefined,
       badge: s.workspaces.nearlyFull ? t(`${s.workspaces.nearlyFull} fast voll`, `${s.workspaces.nearlyFull} nearly full`) : undefined,
+      ...(s.workspaces.fullest
+        ? {
+            value: percent(s.workspaces.fullest.share),
+            valueLabel: s.workspaces.fullest.name,
+            meter: s.workspaces.fullest.share,
+            meterLabel: t(`Kontingent von ${s.workspaces.fullest.name}`, `Quota of ${s.workspaces.fullest.name}`),
+          }
+        : {}),
     },
     storage: {
       line: join(
@@ -57,6 +71,40 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       ),
       tone: s.storage.backup.failed || s.storage.s3?.failing ? "error" : !s.storage.backup.enabled || s.storage.restorePending ? "warn" : undefined,
       badge: s.storage.backup.failed ? t("Sicherung fehlgeschlagen", "Backup failed") : s.storage.s3?.failing ? t("S3 meldet Fehler", "S3 reports errors") : undefined,
+      value: size(s.storage.bytes),
+      valueLabel: t("Datenbank und Dateien", "Database and files"),
+      spark: c.storage30d,
+      sparkLabel: t("Speicher je Tag, letzte 30 Tage", "Storage per day, last 30 days"),
+    },
+    limits: {
+      line: join(
+        t(`Upload ${s.limits.uploadMb} MB`, `Upload ${s.limits.uploadMb} MB`),
+        s.limits.retentionDays ? t(`Versionen ${s.limits.retentionDays} Tage`, `Versions ${s.limits.retentionDays} days`) : t("Versionen für immer", "Versions forever"),
+        s.limits.quotaMb ? t(`Kontingent ${size(s.limits.quotaMb * 1024 * 1024)}`, `Quota ${size(s.limits.quotaMb * 1024 * 1024)}`) : t("kein Kontingent", "no quota"),
+        s.limits.exceptions > 0 && (s.limits.exceptions === 1 ? t("1 Ausnahme", "1 exception") : t(`${s.limits.exceptions} Ausnahmen`, `${s.limits.exceptions} exceptions`)),
+      ),
+    },
+    extensions: {
+      line: join(
+        s.extensions.plugins === 1 ? t("1 Block-Erweiterung", "1 block extension") : t(`${s.extensions.plugins} Block-Erweiterungen`, `${s.extensions.plugins} block extensions`),
+        s.extensions.domains === 1 ? t("1 Domain", "1 domain") : t(`${s.extensions.domains} Domains`, `${s.extensions.domains} domains`),
+      ),
+      tone: s.extensions.domainsFailing ? "warn" : undefined,
+      badge: s.extensions.domainsFailing
+        ? t(`DNS bei ${s.extensions.domainsFailing} Domain${s.extensions.domainsFailing === 1 ? "" : "s"} nicht bestätigt`, `DNS of ${s.extensions.domainsFailing} domain${s.extensions.domainsFailing === 1 ? "" : "s"} not confirmed`)
+        : undefined,
+    },
+    maintenance: {
+      line:
+        s.maintenance.state === "active" && s.maintenance.end
+          ? t(`Wartung bis ${time(s.maintenance.end)}`, `Maintenance until ${time(s.maintenance.end)}`)
+          : s.maintenance.state === "scheduled" && s.maintenance.start
+            ? t(`Wartung geplant ab ${time(s.maintenance.start)}`, `Maintenance planned from ${time(s.maintenance.start)}`)
+            : s.maintenance.announcement
+              ? t("Hinweis für alle wird angezeigt", "Notice for everyone is shown")
+              : t("Kein Hinweis aktiv", "No notice active"),
+      tone: s.maintenance.state ? "info" : undefined,
+      badge: s.maintenance.state === "active" ? t("Wartung läuft", "Maintenance running") : s.maintenance.state === "scheduled" ? t("Wartung geplant", "Maintenance planned") : undefined,
     },
     export: {
       line: s.export.pages ? t(`${s.export.pages} Seiten bei jeder Sicherung`, `${s.export.pages} pages with every backup`) : t("Aus", "Off"),
@@ -69,6 +117,14 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       badge: s.mail.failed ? t(`${s.mail.failed} aufgegeben`, `${s.mail.failed} given up`) : undefined,
     },
     ai: {
+      ...(s.ai.enabled
+        ? {
+            value: compact(s.ai.tokensToday),
+            valueLabel: t("Tokens heute", "Tokens today"),
+            spark: c.aiTokens14d,
+            sparkLabel: t("KI-Tokens je Tag, letzte 14 Tage", "AI tokens per day, last 14 days"),
+          }
+        : {}),
       line: s.ai.enabled ? join(s.ai.provider || t("Kein Anbieter der Instanz", "No instance provider"), s.ai.access === "selected" ? t("ausgewählte Personen", "selected people") : t("alle Personen", "everyone")) : t("Ausgeschaltet", "Switched off"),
     },
     security: {
@@ -76,7 +132,13 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       tone: s.security.problem ? "error" : undefined,
       badge: s.security.problem ? t("Schlüssel nicht lesbar", "Key not readable") : undefined,
     },
-    audit: { line: s.audit.day === 1 ? t("1 Änderung in 24 Stunden", "1 change in 24 hours") : t(`${s.audit.day} Änderungen in 24 Stunden`, `${s.audit.day} changes in 24 hours`) },
+    audit: {
+      line: s.audit.day === 1 ? t("1 Änderung in 24 Stunden", "1 change in 24 hours") : t(`${s.audit.day} Änderungen in 24 Stunden`, `${s.audit.day} changes in 24 hours`),
+      value: num(s.audit.day),
+      valueLabel: t("in 24 Std.", "in 24 h"),
+      spark: c.audit14d,
+      sparkLabel: t("Änderungen je Tag, letzte 14 Tage", "Changes per day, last 14 days"),
+    },
     monitoring: {
       line:
         workers || alerts
@@ -84,6 +146,10 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
           : t(`Alles in Ordnung · ${s.monitoring.loginFailures} fehlgeschlagene Anmeldungen (24 Std.)`, `All fine · ${s.monitoring.loginFailures} failed sign-ins (24 h)`),
       tone: workers || alerts ? "error" : undefined,
       badge: workers ? s.monitoring.failingWorkers.join(", ") : alerts ? t("Warnung", "Alert") : undefined,
+      // Errors per hour when there were any, else the requests.
+      ...(c.errors24h.some((v) => (v || 0) > 0)
+        ? { spark: c.errors24h, sparkTone: 2 as const, sparkLabel: t("Fehler (5xx) je Stunde, letzte 24 Stunden", "Errors (5xx) per hour, last 24 hours") }
+        : { spark: c.requests24h, sparkLabel: t("Anfragen je Stunde, letzte 24 Stunden", "Requests per hour, last 24 hours") }),
     },
     general: {
       line: join(`v${s.general.version}`, s.general.name),

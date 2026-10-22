@@ -5,6 +5,7 @@ import type { Identity, User } from "./types";
 import { identityFromApiToken } from "./api-tokens";
 import { needsTwoFactorSetup } from "./two-factor-policy";
 import { recordOpsEvent } from "./ops-events";
+import { noteActive } from "./metrics";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -68,6 +69,8 @@ export function identityFromToken(token: string): Identity | null {
     if (next - s.expires > 5 * 60_000) run("UPDATE sessions SET expires=?,last_seen=? WHERE token=?", next, now, hash(token));
   } else if (!s.demo_until && now - (s.last_seen || 0) > 5 * 60_000)
     run("UPDATE sessions SET last_seen=? WHERE token=?", now, hash(token));
+  // Active people per hour (lib/metrics.ts): counted in memory, never stored.
+  if (!s.demo_until) noteActive(s.id, now);
   // Demo sessions live on while used: 45 minutes after the last request,
   // never beyond the end of the demo.
   if (s.demo_until) {
@@ -125,7 +128,11 @@ export async function issueSession(
 ) {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
-  if (!demo) run("UPDATE users SET last_login_at=? WHERE id=?", now, userId);
+  if (!demo) {
+    run("UPDATE users SET last_login_at=? WHERE id=?", now, userId);
+    // Counted for the sign-in chart of the monitoring (lib/admin-ops.ts).
+    recordOpsEvent("login_success", now);
+  }
   const hours = sessionHours();
   const policy = !demo && options.remember ? rememberPolicy() : null;
   const expires = demo

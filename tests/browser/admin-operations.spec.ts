@@ -70,9 +70,13 @@ test("admins see operations metrics and quotas block uploads beyond the limit", 
     await expect(build.getByRole("link")).toHaveAttribute("href", /github\.com\/yannicschuller\/flowplan\/commit\/[0-9a-f]{40}$/);
     await admin.screenshot({ path: `test-results/admin-verification/${testInfo.project.name}-version.png` });
     await admin.goto(`${origin}/#admin/monitoring`);
-    const metrics = admin.getByLabel("Betriebsmetriken");
-    await expect(metrics).toContainText("Datenbank");
-    await expect(metrics).toContainText("Suchindex");
+    // The live dashboard: health of each part, charts, queues.
+    const health = admin.getByRole("region", { name: "Zustand" });
+    await expect(health).toContainText("Datenbank");
+    await expect(health).toContainText("Hintergrunddienste");
+    await expect(admin.getByRole("region", { name: "Warteschlangen" })).toContainText("Suchindex");
+    await expect(admin.getByRole("region", { name: "Anfragen & Fehler" })).toBeVisible();
+    await expect(admin.locator(".live-badge.live")).toBeVisible();
     await admin.screenshot({
       path: `test-results/admin-verification/${testInfo.project.name}-metrics.png`,
     });

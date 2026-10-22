@@ -33,7 +33,9 @@ const PAGES = [
   // settings section on a phone (components/settings/shell.tsx).
   { path: "/#settings", name: "settings", signedIn: true, jsKb: 1730, ready: ".settings-tile" },
   { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1730, ready: ".settings-detail .setting-group" },
-  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1730, ready: ".settings-status .status-badge" },
+  { path: "/#admin", name: "administration", signedIn: true, jsKb: 1730, ready: ".live-strip .kpi-grid:not(.placeholder)" },
+  // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
+  { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1730, ready: ".mon-health" },
 ];
 const BUDGET = { jsKb: 410, lcpMs: 2500 };
 const LOCALE = "de-DE";

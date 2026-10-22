@@ -59,7 +59,7 @@ export function opsEventSummary(now = Date.now(), days = 14) {
   for (let i = 0; i < days; i++) {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
-    series.set(localDay(d.getTime()), { login_failure: 0, rate_limited: 0, anonymous_refused: 0 });
+    series.set(localDay(d.getTime()), { login_failure: 0, rate_limited: 0, anonymous_refused: 0, login_success: 0 });
   }
   for (const e of all<{ kind: OpsEventKind; at: number }>("SELECT kind,at FROM ops_events WHERE at>=?", start.getTime())) {
     const day = series.get(localDay(e.at));

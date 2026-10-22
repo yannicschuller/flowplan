@@ -55,6 +55,7 @@ const exact: Record<string, string> = {
   "Entschlüsseln fehlgeschlagen: falscher Schlüssel oder beschädigte Datei.": "Decryption failed: wrong key or damaged file.",
   "EXPORT_GIT_URL muss eine https-Adresse ohne Zugangsdaten sein.": "EXPORT_GIT_URL must be an https address without credentials.",
   "Mit einem API-Token nicht möglich.": "Not possible with an API token.",
+  "Die Statistik ist mit FLOWPLAN_METRICS=off ausgeschaltet.": "Statistics are switched off with FLOWPLAN_METRICS=off.",
   "Nur ein Eintrag einer Datenbank.": "Only one record of a database.",
   "In diese Datenbank kann nicht erfasst werden.": "You cannot capture into this database.",
   "In diese Datenbank kann nicht verschoben werden.": "You cannot move into this database.",
