@@ -1513,6 +1513,23 @@ export class FlowplanClient {
     return this.json<WorkspaceExport>("GET", `/api/export`, { query }, options);
   }
 
+  /** What changed for an offline copy — Every page you may read now (outside the trash, no journal behind a PIN) and, since `since`, the pages and visible records whose content changed. Without `since` (or one older than the change log) `full` is true and every page counts as changed. Pass `now` as the next `since`. (GET /api/offline/changes) */
+  async offlineChanges(query: { workspace: string; since?: string }, options?: RequestOptions): Promise<{
+    now: string;
+    full: boolean;
+    pages: string[];
+    changed: string[];
+    rows: Record<string, string[]>;
+  }> {
+    return this.json<{
+    now: string;
+    full: boolean;
+    pages: string[];
+    changed: string[];
+    rows: Record<string, string[]>;
+  }>("GET", `/api/offline/changes`, { query }, options);
+  }
+
   /** Links between pages as a graph (GET /api/graph) */
   async graph(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/graph`, { query }, options);

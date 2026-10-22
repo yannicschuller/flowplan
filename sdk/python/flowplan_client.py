@@ -854,6 +854,11 @@ ExportWorkspaceQuery = TypedDict("ExportWorkspaceQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
 
+OfflineChangesQuery = TypedDict("OfflineChangesQuery", {
+    "workspace": Required[str],  # Workspace ID
+    "since": str,  # Server time of the previous answer (ISO 8601 or milliseconds)
+}, total=False)
+
 GraphQuery = TypedDict("GraphQuery", {
     "workspace": Required[str],  # Workspace ID
 }, total=False)
@@ -1186,6 +1191,10 @@ class FlowplanClient:
     def export_workspace(self, query: "ExportWorkspaceQuery", headers: Optional[dict[str, str]] = None) -> "WorkspaceExport":
         """Whole workspace as JSON — Every readable page outside the trash with its content; records only as far as you may see them. (GET /api/export)"""
         return self._json("GET", "/api/export", query=dict(query) if query else None, headers=headers)
+
+    def offline_changes(self, query: "OfflineChangesQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """What changed for an offline copy — Every page you may read now (outside the trash, no journal behind a PIN) and, since `since`, the pages and visible records whose content changed. Without `since` (or one older than the change log) `full` is true and every page counts as changed. Pass `now` as the next `since`. (GET /api/offline/changes)"""
+        return self._json("GET", "/api/offline/changes", query=dict(query) if query else None, headers=headers)
 
     def graph(self, query: "GraphQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Links between pages as a graph (GET /api/graph)"""

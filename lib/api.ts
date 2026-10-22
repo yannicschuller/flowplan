@@ -347,7 +347,7 @@ export function bootstrap(user: Identity, wid?: string) {
     ai: aiStatus(user, workspace.id, pages),
   };
 }
-export function pageData(user: Identity, pid: string) {
+export function pageData(user: Identity, pid: string, options: { presence?: boolean } = {}) {
   const p = requirePage(user, pid);
   const role = pageRole(user, p);
   // Behind a journal PIN: only what the lock screen needs.
@@ -386,12 +386,13 @@ export function pageData(user: Identity, pid: string) {
     pid,
     Date.now() - 45000,
   );
-  run(
-    "INSERT INTO presence VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET seen=excluded.seen",
-    pid,
-    user.id,
-    Date.now(),
-  );
+  if (options.presence !== false)
+    run(
+      "INSERT INTO presence VALUES(?,?,?) ON CONFLICT(page_id,user_id) DO UPDATE SET seen=excluded.seen",
+      pid,
+      user.id,
+      Date.now(),
+    );
   if (p.kind === "database") {
     const data = database(pid);
     const relations = relatedData(user, p);

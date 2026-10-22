@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 50) return;
+  if (globalDb.flowplanSchema === 51) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -696,7 +696,32 @@ function migrate(d: DatabaseSync) {
     const columns = (d.prepare("PRAGMA table_info(calendar_sync_items)").all() as { name: string }[]).map((c) => c.name);
     if (!columns.includes("attendees")) d.exec("ALTER TABLE calendar_sync_items ADD COLUMN attendees TEXT NOT NULL DEFAULT '[]'");
   }
-  globalDb.flowplanSchema = 50;
+  // Offline copies (lib/offline-changes.ts): when a page's content, a
+  // record or its document last changed, so devices refresh only those.
+  // Row '' stands for the page itself; offline_log notes when the log began.
+  d.exec(`CREATE TABLE IF NOT EXISTS offline_changes(page_id TEXT NOT NULL,row_id TEXT NOT NULL DEFAULT '',at INTEGER NOT NULL,PRIMARY KEY(page_id,row_id));
+    CREATE INDEX IF NOT EXISTS offline_changes_at ON offline_changes(at);
+    CREATE TABLE IF NOT EXISTS offline_log(id INTEGER PRIMARY KEY CHECK(id=1),started INTEGER NOT NULL);
+    INSERT OR IGNORE INTO offline_log VALUES(1,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER));
+    CREATE TRIGGER IF NOT EXISTS offline_page_insert AFTER INSERT ON pages BEGIN DELETE FROM offline_changes WHERE page_id=NEW.id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_page_update AFTER UPDATE ON pages BEGIN DELETE FROM offline_changes WHERE page_id=NEW.id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_page_delete AFTER DELETE ON pages BEGIN DELETE FROM offline_changes WHERE page_id=OLD.id; END;
+    CREATE TRIGGER IF NOT EXISTS offline_document_insert AFTER INSERT ON documents BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_document_update AFTER UPDATE OF state,html ON documents BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_database_update AFTER UPDATE ON databases BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_dashboard_update AFTER UPDATE ON dashboards BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_row_insert AFTER INSERT ON rows BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=NEW.id; INSERT INTO offline_changes VALUES(NEW.page_id,NEW.id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_row_update AFTER UPDATE ON rows BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=NEW.id; INSERT INTO offline_changes VALUES(NEW.page_id,NEW.id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_row_move AFTER UPDATE OF page_id ON rows WHEN OLD.page_id IS NOT NEW.page_id BEGIN DELETE FROM offline_changes WHERE page_id=OLD.page_id AND row_id=OLD.id; DELETE FROM offline_changes WHERE page_id=OLD.page_id AND row_id=''; INSERT INTO offline_changes VALUES(OLD.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_row_delete AFTER DELETE ON rows BEGIN DELETE FROM offline_changes WHERE page_id=OLD.page_id AND row_id=OLD.id; DELETE FROM offline_changes WHERE page_id=OLD.page_id AND row_id=''; INSERT INTO offline_changes VALUES(OLD.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_row_document_insert AFTER INSERT ON row_documents BEGIN DELETE FROM offline_changes WHERE page_id=(SELECT page_id FROM rows WHERE id=NEW.row_id) AND row_id=NEW.row_id; INSERT INTO offline_changes SELECT r.page_id,r.id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) FROM rows r WHERE r.id=NEW.row_id; END;
+    CREATE TRIGGER IF NOT EXISTS offline_row_document_update AFTER UPDATE OF state,html ON row_documents BEGIN DELETE FROM offline_changes WHERE page_id=(SELECT page_id FROM rows WHERE id=NEW.row_id) AND row_id=NEW.row_id; INSERT INTO offline_changes SELECT r.page_id,r.id,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) FROM rows r WHERE r.id=NEW.row_id; END;
+    CREATE TRIGGER IF NOT EXISTS offline_file_insert AFTER INSERT ON files WHEN NEW.page_id IS NOT NULL BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_file_delete AFTER DELETE ON files WHEN OLD.page_id IS NOT NULL BEGIN DELETE FROM offline_changes WHERE page_id=OLD.page_id AND row_id=''; INSERT INTO offline_changes VALUES(OLD.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_comment_insert AFTER INSERT ON comments BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_comment_update AFTER UPDATE ON comments BEGIN DELETE FROM offline_changes WHERE page_id=NEW.page_id AND row_id=''; INSERT INTO offline_changes VALUES(NEW.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;
+    CREATE TRIGGER IF NOT EXISTS offline_comment_delete AFTER DELETE ON comments BEGIN DELETE FROM offline_changes WHERE page_id=OLD.page_id AND row_id=''; INSERT INTO offline_changes VALUES(OLD.page_id,'',CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)); END;`);
+  globalDb.flowplanSchema = 51;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

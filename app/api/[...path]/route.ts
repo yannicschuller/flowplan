@@ -13,6 +13,7 @@ import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metr
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { storageOverview } from "@/lib/storage-overview";
+import { offlineChanges, parseSince } from "@/lib/offline-changes";
 import { avatarFor } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
@@ -236,6 +237,14 @@ async function handleGET(
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
       );
+    // Offline copies on a device: readable pages and what changed since.
+    if (path.length === 2 && path[0] === "offline" && path[1] === "changes") {
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      return NextResponse.json(
+        offlineChanges(user, wid, parseSince(url.searchParams.get("since"))),
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     // Openly licensed images (Openverse) for boards and documents.
     if (path.length === 2 && path[0] === "images" && path[1] === "search") {
       if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
@@ -430,7 +439,12 @@ async function handleGET(
     // receipts and changes since then. Reloads and embeds do not.
     if (path[0] === "pages" && path[1])
       return NextResponse.json(
-        withActivity(user, pageData(user, path[1]), req.headers.get("x-flowplan-visit") === "1"),
+        withActivity(
+          user,
+          // Offline refreshes (X-Flowplan-Offline) do not count as presence.
+          pageData(user, path[1], { presence: req.headers.get("x-flowplan-offline") !== "1" }),
+          req.headers.get("x-flowplan-visit") === "1",
+        ),
       );
     if (path[0] === "settings") {
       const wid = url.searchParams.get("workspace") || "";

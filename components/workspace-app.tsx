@@ -54,6 +54,7 @@ import {
   disableOffline,
   registerServiceWorker,
 } from "./offline";
+import { useOfflineRefresh } from "./offline-refresh";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
 import { anyOf, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
@@ -945,6 +946,8 @@ export default function WorkspaceApp({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useTemplate]);
+  // The offline copy follows the workspace while the app is open.
+  const offlineNotice = useOfflineRefresh(boot.user.id, online, !signedOut);
   // The service worker serves offline copies once enabled in the settings.
   useEffect(() => {
     void registerServiceWorker()
@@ -2130,6 +2133,7 @@ export default function WorkspaceApp({
             {t("Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen werden später abgeglichen.", "Offline – you see the last saved state. Text changes are synced later.")}
           </div>
         )}
+        {offlineNotice}
         {signedOut && (
           <div className="offline-banner signed-out-banner" role="alert">
             {t("Du wurdest abgemeldet – melde dich erneut an, um deine Änderungen zu behalten.", "You were signed out – sign in again to keep your changes.")}{" "}

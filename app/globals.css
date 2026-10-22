@@ -3785,6 +3785,26 @@ tr:hover .row-open,
   color: #f3dc9a;
   border-color: #56461c;
 }
+/* Offline copy: its date while offline, a quiet note while it refreshes. */
+.offline-copy-age {
+  padding: 4px 16px;
+  color: var(--muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.offline-refresh-status {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 30;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
 .signed-out-banner a {
   color: inherit;
   font-weight: 600;
@@ -13274,6 +13294,8 @@ h3 .block-reactions {
   .readers-button,
   .follow-button,
   .offline-banner,
+  .offline-copy-age,
+  .offline-refresh-status,
   .demo-banner,
   button.new-record,
   .board-add-group,

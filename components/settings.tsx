@@ -803,9 +803,6 @@ export default function Settings({
               <OfflineSettings
                 userId={boot.user.id}
                 workspaceId={boot.workspace.id}
-                pageIds={boot.pages
-                  .filter((p) => !p.deleted_at)
-                  .map((p) => p.id)}
               />
               <section className="settings-section">
                 <h2>{t("Arbeitsbereich exportieren", "Export workspace")}</h2>
