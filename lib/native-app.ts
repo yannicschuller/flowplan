@@ -14,6 +14,9 @@ type FlowplanApp = {
   haptic?: (kind: "light" | "success" | "warning" | "error") => void;
   // The app's own settings (server, notifications, app lock).
   openSettings?: () => void;
+  // Whether "back" (window.FlowplanNavigation, lib/app-back.ts) would do
+  // something: the app offers its back gesture only then.
+  backState?: (canGoBack: boolean) => void;
 };
 
 export function nativeApp(): FlowplanApp | undefined {

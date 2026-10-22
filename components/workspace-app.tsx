@@ -2,6 +2,8 @@
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { parseSettingsHash } from "@/lib/settings-sections";
+import { addBackCloser, installAppBack } from "@/lib/app-back";
+import { nativeApp } from "@/lib/native-app";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
@@ -686,6 +688,11 @@ export default function WorkspaceApp({
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // "Back" in the apps (swipe from the edge, Android's back): closes what is
+  // open, then goes up and to the place before (lib/app-back.ts).
+  useEffect(() => (nativeApp() ? installAppBack() : undefined), []);
+  // The navigation drawer on phones closes on back like a dialog.
+  useEffect(() => (mobile ? addBackCloser(() => setMobile(false)) : undefined), [mobile]);
   // Settings → Konto opens the introduction and the shortcut overlay again.
   useEffect(() => {
     const open = () => setOnboarding(true);
