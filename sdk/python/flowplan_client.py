@@ -863,6 +863,10 @@ SearchQuery = TypedDict("SearchQuery", {
     "space": str,  # Only in this space
 }, total=False)
 
+NotificationsQuery = TypedDict("NotificationsQuery", {
+    "since": str,  # Server time (ISO 8601 or milliseconds)
+}, total=False)
+
 TasksQuery = TypedDict("TasksQuery", {
     "workspace": Required[str],  # Workspace ID
     "done": Literal["0", "1"],  # `1` for completed tasks
@@ -1249,6 +1253,10 @@ class FlowplanClient:
     def search(self, query: "SearchQuery", headers: Optional[dict[str, str]] = None) -> list["SearchResult"]:
         """Full-text search — Pages, records, comments and file contents of a workspace. Answered with `Cache-Control: no-store`. (GET /api/search)"""
         return self._json("GET", "/api/search", query=dict(query) if query else None, headers=headers)
+
+    def notifications(self, query: Optional["NotificationsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """My newest notifications — What the inbox shows, in short: the line in the reader's language (`Accept-Language` or the language cookie), the record title as `detail`, where it leads and whether push is switched on for its kind (`push`, false for a page that is gone or no longer readable). Without `since` the latest 20; with `since` (server time, e.g. a previous `createdAt`) up to 50 from that second on, newest first. `unread` counts every unread notification. The desktop app polls this instead of Web Push. Marked read with `notification.mark` or `notification.read` via POST /api/command. (GET /api/notifications)"""
+        return self._json("GET", "/api/notifications", query=dict(query) if query else None, headers=headers)
 
     def tasks(self, query: "TasksQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """My tasks — Tasks in documents assigned to you (`tasks`) and the ones you wrote for others (`others`). (GET /api/tasks)"""

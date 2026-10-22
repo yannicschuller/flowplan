@@ -1518,6 +1518,39 @@ export class FlowplanClient {
     return this.json<SearchResult[]>("GET", `/api/search`, { query }, options);
   }
 
+  /** My newest notifications — What the inbox shows, in short: the line in the reader's language (`Accept-Language` or the language cookie), the record title as `detail`, where it leads and whether push is switched on for its kind (`push`, false for a page that is gone or no longer readable). Without `since` the latest 20; with `since` (server time, e.g. a previous `createdAt`) up to 50 from that second on, newest first. `unread` counts every unread notification. The desktop app polls this instead of Web Push. Marked read with `notification.mark` or `notification.read` via POST /api/command. (GET /api/notifications) */
+  async notifications(query?: { since?: string }, options?: RequestOptions): Promise<{
+    now: string;
+    unread: number;
+    notifications: ({
+      id: string;
+      kind: string | null;
+      text: string;
+      detail: string;
+      /** Path on this instance, e.g. `/#page=…` */
+      url: string;
+      createdAt: string;
+      read: boolean;
+      push: boolean;
+    })[];
+  }> {
+    return this.json<{
+    now: string;
+    unread: number;
+    notifications: ({
+      id: string;
+      kind: string | null;
+      text: string;
+      detail: string;
+      /** Path on this instance, e.g. `/#page=…` */
+      url: string;
+      createdAt: string;
+      read: boolean;
+      push: boolean;
+    })[];
+  }>("GET", `/api/notifications`, { query }, options);
+  }
+
   /** My tasks — Tasks in documents assigned to you (`tasks`) and the ones you wrote for others (`others`). (GET /api/tasks) */
   async tasks(query: { workspace: string; done?: "0" | "1" }, options?: RequestOptions): Promise<{
     tasks: Task[];

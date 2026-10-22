@@ -16,6 +16,7 @@ import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { storageOverview } from "@/lib/storage-overview";
 import { offlineChanges, parseSince } from "@/lib/offline-changes";
+import { notificationFeed } from "@/lib/notification-feed";
 import { avatarFor } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
 import { resolveEmbed } from "@/lib/oembed";
@@ -288,6 +289,12 @@ async function handleGET(
       requireMember(user, wid);
       return NextResponse.json(listRowTrash(user, wid));
     }
+    // The newest notifications in short, for the desktop app (no push in
+    // Electron, lib/notification-feed.ts).
+    if (path.length === 1 && path[0] === "notifications")
+      return NextResponse.json(notificationFeed(user, parseSince(url.searchParams.get("since"))), {
+        headers: { "Cache-Control": "no-store" },
+      });
     if (path[0] === "bootstrap")
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),

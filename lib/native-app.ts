@@ -21,15 +21,40 @@ export function nativeApp(): FlowplanApp | undefined {
   return (window as unknown as { FlowplanApp?: FlowplanApp }).FlowplanApp;
 }
 
+// The desktop app (flowplan-desktop) puts `window.FlowplanDesktop` into the
+// pages of its own instance. Electron has no Web Push, so the desktop app
+// fetches new notifications itself (GET /api/notifications) and shows them as
+// system notifications with the badge on its icon. Older versions of the app
+// have no bridge; they still name themselves in the user agent.
+type FlowplanDesktop = {
+  platform: "desktop";
+  version: string;
+  notifications?: {
+    enabled: () => Promise<boolean>;
+    setEnabled: (on: boolean) => Promise<boolean>;
+    // Asks again at once (the badge after reading notifications).
+    refresh?: () => void;
+  };
+};
+export function desktopApp(): FlowplanDesktop | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { FlowplanDesktop?: FlowplanDesktop }).FlowplanDesktop;
+}
+export const inDesktopApp = () => typeof navigator !== "undefined" && /FlowplanDesktop\//.test(navigator.userAgent);
+
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 // Several changes in a row lead to one refresh.
 export function nativeRefresh() {
-  const app = nativeApp();
-  if (!app?.refresh) return;
+  const app = nativeApp(),
+    desktop = desktopApp()?.notifications;
+  if (!app?.refresh && !desktop?.refresh) return;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
     try {
-      app.refresh?.();
+      app?.refresh?.();
+    } catch {}
+    try {
+      desktop?.refresh?.();
     } catch {}
   }, 800);
 }

@@ -2,11 +2,15 @@
 import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import { api } from "./ui";
-import { nativeApp } from "@/lib/native-app";
+import { desktopApp, inDesktopApp, nativeApp } from "@/lib/native-app";
 export default function PushSettings() {
   const t = useT();
   // In the Flowplan app the app delivers push itself (flowplan-app).
   const [app, setApp] = useState<ReturnType<typeof nativeApp>>(undefined);
+  // In the desktop app the app shows system notifications itself: Electron
+  // has no Web Push. "old" is a desktop app from before it could.
+  const [desktop, setDesktop] = useState<ReturnType<typeof desktopApp> | "old">(undefined);
+  const [desktopOn, setDesktopOn] = useState(false);
   const [registration, setRegistration] =
     useState<ServiceWorkerRegistration | null>(null);
   const [key, setKey] = useState(""),
@@ -25,6 +29,22 @@ export default function PushSettings() {
       !!(navigator as Navigator & { standalone?: boolean }).standalone;
     setIos(ios);
     setInstallRequired(ios && !standalone);
+    const inDesktop = desktopApp();
+    if (inDesktop?.notifications) {
+      setDesktop(inDesktop);
+      let active = true;
+      inDesktop.notifications
+        .enabled()
+        .then((on) => active && setDesktopOn(on))
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }
+    if (inDesktopApp()) {
+      setDesktop("old");
+      return;
+    }
     const inApp = nativeApp();
     if (inApp) {
       setApp(inApp);
@@ -121,11 +141,13 @@ export default function PushSettings() {
   return (
     <section className="settings-section push-settings">
       <h2>{t("Push-Benachrichtigungen", "Push notifications")}</h2>
+      {!desktop && (
       <p>
         {t("Erhalte Hinweise zu neuen Kommentaren und Erwähnungen, auch wenn Flowplan geschlossen ist. Auf dem Sperrbildschirm erscheint ein allgemeiner Hinweis ohne Dokumentinhalt.", "Get notified about new comments and mentions even when Flowplan is closed. The lock screen shows a general notice without document content.")}
       </p>
+      )}
       {/* The iOS steps matter on iOS; elsewhere they stay behind a disclosure. */}
-      {ios ? (
+      {desktop ? null : ios ? (
         <p className="muted">
           {t("Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.", "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.")}
         </p>
@@ -137,7 +159,43 @@ export default function PushSettings() {
           </p>
         </details>
       )}
-      {app ? (
+      {desktop === "old" ? (
+        <p role="status">
+          {t("Aktualisiere die Flowplan-Desktop-App, damit sie Benachrichtigungen anzeigt.", "Update the Flowplan desktop app so it shows notifications.")}
+        </p>
+      ) : desktop?.notifications ? (
+        <>
+          <p>
+            {t("Benachrichtigungen übernimmt die Desktop-App: Sie fragt, solange sie läuft, nach neuen Benachrichtigungen und zeigt sie als Mitteilungen des Systems mit der Zahl am App-Symbol. „Nicht stören“ und „Alle Profile“ findest du im Menü der App.", "Notifications are handled by the desktop app: while it runs, it asks for new notifications and shows them as system notifications with the count on the app icon. Find “Do Not Disturb” and “All Profiles” in the app's menu.")}
+          </p>
+          <p>
+            {t("Status:", "Status:")}{" "}
+            <strong>
+              {desktopOn
+                ? t("Die Desktop-App zeigt Mitteilungen an", "The desktop app shows notifications")
+                : t("Die Desktop-App zeigt keine Mitteilungen an", "The desktop app does not show notifications")}
+            </strong>
+          </p>
+          <div className="modal-actions">
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  setDesktopOn(await desktop.notifications!.setEnabled(!desktopOn));
+                } catch (e) {
+                  setMessage((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {desktopOn ? t("Mitteilungen ausschalten", "Turn off notifications") : t("Mitteilungen einschalten", "Turn on notifications")}
+            </button>
+          </div>
+        </>
+      ) : app ? (
         <>
           <p>
             {t("Status:", "Status:")}{" "}
@@ -225,9 +283,11 @@ export default function PushSettings() {
         </>
       )}
       {message && <p role="status">{message}</p>}
-      <p className="muted">
-        {t("Die Aktivierung gilt für die aktuelle Anmeldung auf diesem Gerät. Nach Abmeldung oder Ablauf der Sitzung ist eine erneute Aktivierung nötig.", "Enabling applies to the current sign-in on this device. After signing out or when the session expires, enable it again.")}
-      </p>
+      {!desktop && (
+        <p className="muted">
+          {t("Die Aktivierung gilt für die aktuelle Anmeldung auf diesem Gerät. Nach Abmeldung oder Ablauf der Sitzung ist eine erneute Aktivierung nötig.", "Enabling applies to the current sign-in on this device. After signing out or when the session expires, enable it again.")}
+        </p>
+      )}
     </section>
   );
 }
