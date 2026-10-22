@@ -119,7 +119,14 @@ export function OutlineToggle({ open, count, onToggle }: { open: boolean; count:
       className={`outline-toggle${open ? " active" : ""}`}
       aria-pressed={open}
       title={t("Inhaltsverzeichnis", "Table of contents")}
-      aria-label={t("Inhaltsverzeichnis", "Table of contents")}
+      // The visible count is part of the name (WCAG 2.5.3).
+      aria-label={
+        count === 0
+          ? t("Inhaltsverzeichnis", "Table of contents")
+          : count === 1
+            ? t("Inhaltsverzeichnis: 1 Überschrift", "Table of contents: 1 heading")
+            : t(`Inhaltsverzeichnis: ${count} Überschriften`, `Table of contents: ${count} headings`)
+      }
       onClick={onToggle}
     >
       <ListBullets size={16} aria-hidden />

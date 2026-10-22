@@ -124,7 +124,7 @@ async function fixture(page: Page, kind: string) {
   await expect(footer).toBeVisible();
   const open = async (name: string) => {
     await footer
-      .getByRole("button", { name: `Berechnung für ${name}`, exact: true })
+      .getByRole("button", { name: new RegExp(`^${name}: `) })
       .click();
     return page.getByRole("dialog", {
       name: `Berechnung: ${name}`,
@@ -242,8 +242,8 @@ test("column counts, percentages, dates and formula failures show accurate previ
   await f.configure("Kehrwert", "average", "Ø 3,75 (2 fehlerhaft)");
   await f.configure("Kehrwert", "none", "Keine Berechnung");
   await expect(
-    f.footer.getByRole("button", { name: "Berechnung für Kehrwert" }),
-  ).toHaveText("Berechnen");
+    f.footer.getByRole("button", { name: "Kehrwert: Berechnen", exact: true }),
+  ).toHaveText("Kehrwert: Berechnen");
   await page
     .getByPlaceholder("Suchen …", { exact: true })
     .fill("No matching entry");
