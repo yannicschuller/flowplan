@@ -20942,3 +20942,227 @@ tr:hover .row-open-mark,
   color: var(--secondary);
   font-weight: 400;
 }
+
+/* ---------- Time reports (components/time-report.tsx) and the operations
+   dashboard with the maintenance banner (components/admin-operations.tsx,
+   components/maintenance-banner.tsx) ---------- */
+.time-report .time-report-bar {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.time-report-bar input[type="date"] {
+  min-height: 32px;
+}
+.time-report-print-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+.time-report-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.time-report-totals > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.time-report-totals span,
+.time-report-totals small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.time-report-totals strong {
+  font-size: 18px;
+}
+.time-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.time-report-chart,
+.ops-chart {
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+.time-report-chart svg,
+.ops-chart svg {
+  max-width: 100%;
+  height: auto;
+}
+.time-report-table tfoot th,
+.time-report-table tfoot td {
+  border-top: 2px solid var(--border);
+  border-bottom: none;
+}
+.time-report-entries,
+.time-report-rates {
+  margin-top: 14px;
+}
+.time-report-entries summary,
+.time-report-rates summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.time-report-entries td:nth-child(3) {
+  white-space: normal;
+  text-align: left;
+  min-width: 160px;
+}
+.time-report-entries td:nth-child(2),
+.time-report-entries td:nth-child(4) {
+  text-align: left;
+}
+.time-report-note {
+  display: block;
+  color: var(--muted);
+}
+.time-billing {
+  font-size: 12px;
+  color: var(--muted);
+}
+.time-billing.billed {
+  color: var(--blue);
+}
+.time-report-print-only {
+  display: none;
+}
+.print-view .time-report-print-only {
+  display: inline;
+}
+.print-view .time-report select,
+.print-view .print-hidden {
+  display: none;
+}
+.time-report-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.time-report-rate-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.time-report-rate-list fieldset {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.time-report-rate-list label {
+  display: grid;
+  grid-template-columns: 1fr 90px auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.time-report-rate-list small {
+  color: var(--muted);
+}
+.ops-metrics small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ops-workers tr.ops-failing td:nth-child(2) {
+  color: var(--danger, #b42318);
+  font-weight: 600;
+}
+.ops-workers small {
+  white-space: normal;
+}
+.ops-storage {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0;
+}
+.ops-webhook-failures,
+.ops-alerts-sent {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.ops-webhook-failures small {
+  color: var(--muted);
+}
+.ops-form {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0;
+}
+.ops-form > label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.ops-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ops-events {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ops-events legend {
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.ops-audit-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.maintenance-banner {
+  position: fixed;
+  z-index: 60;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(680px, calc(100vw - 32px));
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--blue-light);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.maintenance-banner button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.maintenance-banner button:hover {
+  background: var(--hover);
+}
+@media print {
+  .maintenance-banner {
+    display: none;
+  }
+}

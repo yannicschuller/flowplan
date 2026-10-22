@@ -43,5 +43,8 @@ export async function register() {
     // Google / Microsoft 365 calendar sync (lib/calendar-sync.ts), every ten minutes.
     const { startCalendarSyncWorker } = await import("./lib/calendar-sync");
     startCalendarSyncWorker();
+    // Operations dashboard: refusal counters, daily sweep and health alerts.
+    const { startOpsWorker } = await import("./lib/admin-ops");
+    startOpsWorker();
   }
 }

@@ -16,6 +16,7 @@ import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { IntegrationSettings } from "./integration-settings";
 import { IssueSyncSettings } from "./issue-sync-settings";
+import { TimeReport } from "./time-report";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
 import { InboundMailSettings } from "./inbound-mail-settings";
@@ -43,6 +44,7 @@ import {
   Database,
   BellSimple,
   PlugsConnected,
+  Timer,
   EnvelopeSimple,
   X,
   Sparkle,
@@ -124,6 +126,12 @@ const settingsTabs = [
     ["API & Webhooks", "API & webhooks"],
     PlugsConnected,
     ["Persönliche API-Tokens für Skripte und Automationen, Webhooks des Arbeitsbereichs.", "Personal API tokens for scripts and automations, the workspace's webhooks."],
+  ],
+  [
+    "time",
+    ["Zeiten", "Time"],
+    Timer,
+    ["Erfasste Zeiten aller Datenbanken auswerten, abrechnen und exportieren.", "Report, bill and export the time tracked in all databases."],
   ],
 ] as const;
 export default function Settings({
@@ -230,6 +238,7 @@ export default function Settings({
             />
           )}
           {tab === "integrations" && <IssueSyncSettings workspaceId={boot.workspace.id} onError={onError} />}
+          {tab === "time" && <TimeReport workspaceId={boot.workspace.id} title={boot.workspace.name} />}
           {tab === "notifications" && (
             <>
               {boot.notificationPrefs && (

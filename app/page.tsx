@@ -8,6 +8,8 @@ import { withContentLocale } from "@/lib/content-locale";
 import { rememberLocale } from "@/lib/user-locale";
 import { requestLocale } from "@/lib/i18n-server";
 import WorkspaceApp from "@/components/workspace-app";
+import { MaintenanceBanner } from "@/components/maintenance-banner";
+import { maintenanceNotice } from "@/lib/admin-ops";
 import { instanceSettings } from "@/lib/instance-settings";
 import Login from "@/components/login";
 import { TwoFactorRequired } from "@/components/two-factor";
@@ -40,14 +42,18 @@ export default async function Home({
   // app opens in that workspace.
   const invited = invite ? acceptInviteToken(one<User>("SELECT * FROM users WHERE id=?", user.id)!, invite) : null;
   return (
-    <WorkspaceApp
-      initial={bootstrap(user, invited || undefined) as never}
-      inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
-      useTemplate={
-        useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))
-          ? useTemplate
-          : undefined
-      }
-    />
+    <>
+      {/* A scheduled maintenance announced in Administration → Operations. */}
+      <MaintenanceBanner initial={maintenanceNotice()} />
+      <WorkspaceApp
+        initial={bootstrap(user, invited || undefined) as never}
+        inviteResult={invite ? (invited ? "accepted" : "invalid") : undefined}
+        useTemplate={
+          useTemplate && (/^[0-9a-f-]{36}$/i.test(useTemplate) || /^starter:[A-Za-z]{1,40}$/.test(useTemplate))
+            ? useTemplate
+            : undefined
+        }
+      />
+    </>
   );
 }

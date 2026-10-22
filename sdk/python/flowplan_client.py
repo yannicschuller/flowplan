@@ -941,6 +941,21 @@ TimeReportQuery = TypedDict("TimeReportQuery", {
     "weeks": int,  # 1 to 26, default 8
 }, total=False)
 
+TimeReportsQuery = TypedDict("TimeReportsQuery", {
+    "page": str,  # Page ID of a database (or `workspace`)
+    "workspace": str,  # Workspace ID (or `page`)
+    "period": Literal["this-week", "this-month", "last-month", "custom"],  # Period
+    "from": str,  # First day for `custom` (YYYY-MM-DD)
+    "to": str,  # Last day for `custom` (YYYY-MM-DD)
+    "person": str,  # Only this person
+    "database": str,  # Only this database
+    "project": str,  # Only this related record, or `none`
+    "status": Literal["open", "billed", "unbillable"],  # Billing status
+    "billable": Literal["yes", "no"],  # Billable (`yes`: open or billed) or not
+    "group": Literal["person", "project", "record", "database", "day", "week"],  # Grouping
+    "format": Literal["json", "csv", "excel"],  # Answer format
+}, total=False)
+
 SprintChartsQuery = TypedDict("SprintChartsQuery", {
     "page": Required[str],  # Page ID
     "sprint": Required[str],  # Sprint ID
@@ -1295,6 +1310,18 @@ class FlowplanClient:
     def time_report(self, query: "TimeReportQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Time report of a database (GET /api/time-report)"""
         return self._json("GET", "/api/time-report", query=dict(query) if query else None, headers=headers)
+
+    def time_reports(self, query: Optional["TimeReportsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Time report of a database or a workspace — Your own entries and those of records you may read (field permissions apply). Periods use the server's time zone, weeks start on Monday. `format=csv` returns comma-separated values, `format=excel` semicolons, decimal commas and a byte order mark. Amounts only for workspace members with edit rights. Answered with `Cache-Control: no-store`. (GET /api/time-reports)"""
+        return self._json("GET", "/api/time-reports", query=dict(query) if query else None, headers=headers)
+
+    def time_report_action(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Billing status of time entries, hourly rates and currency — `{ action: "billing", status: open|billed|unbillable, ids, workspace }` or with `filter` (the GET parameters) for the whole filtered set – marking it billed leaves entries that are not billable as they are. Needs edit rights on the record and its time property; audit-logged. `{ action: "rate", workspace, kind: person|project, targetId, rate | null }` and `{ action: "currency", workspace, currency }` are for workspace owners. (POST /api/time-reports)"""
+        return self._json("POST", "/api/time-reports", json_body=body, headers=headers)
+
+    def maintenance_notice(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Scheduled maintenance announced by the administration — `notice` is null when none is announced or it has ended. Answered with `Cache-Control: no-store`. (GET /api/maintenance)"""
+        return self._json("GET", "/api/maintenance", headers=headers)
 
     def sprint_charts(self, query: "SprintChartsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Burndown of a sprint (GET /api/sprint-charts)"""

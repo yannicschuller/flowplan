@@ -25,6 +25,7 @@ import { api, Avatar, Modal } from "./ui";
 import { Select } from "./select";
 import { AdminStorage } from "./admin-storage";
 import { AdminDirectory } from "./admin-directory";
+import { AdminOperations, AuditExport } from "./admin-operations";
 import { SsoMappings, type SsoMappingRow } from "./sso-mappings";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
@@ -138,7 +139,7 @@ const adminTabs = [
     "operations",
     ["Betrieb", "Operations"],
     Gauge,
-    ["Zustand der Instanz: Speicher, Warteschlangen, Suchindex und Laufzeit.", "State of the instance: storage, queues, search index and uptime."],
+    ["Zustand der Instanz: Speicher, Warteschlangen, abgewiesene Anfragen, Hintergrunddienste, Warnungen und Wartungshinweise.", "State of the instance: storage, queues, refused requests, background workers, alerts and maintenance notices."],
   ],
   [
     "instance",
@@ -541,15 +542,14 @@ export default function Admin({
               </div>
             </section>
           )}
+          {tab === "operations" && <AdminOperations onError={onError} />}
           {tab === "operations" && <AdminStorage onError={onError} />}
           {tab === "ai" && <AdminAi onError={onError} onChange={load} />}
           {tab === "audit" && (
             <section className="settings-section">
               <div className="settings-list-head">
                 <h2>{t("Aktivitätsprotokoll", "Activity log")}</h2>
-                <a className="button compact" href="/api/admin/audit.csv" download>
-                  {t("Als CSV exportieren", "Export as CSV")}
-                </a>
+                <AuditExport />
                 <input
                   type="search"
                   aria-label={t("Protokoll durchsuchen", "Search the log")}

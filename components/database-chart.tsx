@@ -78,14 +78,17 @@ function AxisTitles({
     </>
   );
 }
-function ChartGraphic({
+// Also used outside databases (time reports) with `describe` for the labels.
+export function ChartGraphic({
   points,
   config,
   onSelect,
+  describe,
 }: {
   points: ChartPoint[];
   config: ChartConfig;
   onSelect: (key: string) => void;
+  describe?: (p: ChartPoint) => string;
 }) {
   const t = useT();
   const colors = paletteOf(config);
@@ -93,6 +96,7 @@ function ChartGraphic({
     values = available.map((p) => p.value ?? 0);
   const { lo, span, magnitude, scale } = chartDomain(values, config);
   const label = (p: ChartPoint) =>
+    describe?.(p) ??
     t(`${p.label}: ${format(p.value)} · ${p.rows.length} Einträge`, `${p.label}: ${format(p.value)} · ${p.rows.length} records`);
   const interaction = (p: ChartPoint) => ({
     role: "button",

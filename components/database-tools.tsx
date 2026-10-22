@@ -75,7 +75,7 @@ export function DatabaseTools({
       </Modal>
       <IssueSyncDialog page={page} database={database} editable={editable} />
       <Modal open={panel === "time"} onClose={() => setPanel(null)} title={t(`Zeiten · ${page.title}`, `Time · ${page.title}`)} wide>
-        {panel === "time" && <TimeReport pageId={page.id} title={page.title} />}
+        {panel === "time" && <TimeReport pageId={page.id} workspaceId={page.workspace_id} title={page.title} />}
       </Modal>
       <Modal open={panel === "workflow"} onClose={() => setPanel(null)} title={t("Workflow und Erledigt", "Workflow and done")} wide>
         <DatabaseWorkflow

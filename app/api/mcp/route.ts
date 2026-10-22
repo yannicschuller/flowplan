@@ -4,6 +4,7 @@
 import { after } from "next/server";
 import { appUrl, HttpError } from "@/lib/auth";
 import { identityFromApiToken } from "@/lib/api-tokens";
+import { recordOpsEvent } from "@/lib/ops-events";
 import { withRequestLocale } from "@/lib/content-locale";
 import { dispatchPush } from "@/lib/push";
 import { handleMcpMessage } from "@/lib/mcp";
@@ -65,7 +66,10 @@ async function handlePOST(req: Request) {
     return rpcError(401, -32001, "A personal Flowplan API token is required (Authorization: Bearer fp_…).", {
       "WWW-Authenticate": 'Bearer realm="flowplan"',
     });
-  if (limited(user.id)) return rpcError(429, -32000, "Too many requests. Please wait a minute.", { "Retry-After": "60" });
+  if (limited(user.id)) {
+    recordOpsEvent("rate_limited");
+    return rpcError(429, -32000, "Too many requests. Please wait a minute.", { "Retry-After": "60" });
+  }
   let input: unknown;
   try {
     input = JSON.parse(await readBody(req));

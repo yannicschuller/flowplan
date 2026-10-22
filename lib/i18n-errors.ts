@@ -789,6 +789,22 @@ const exact: Record<string, string> = {
   "Ungültige Antwort des Kalenderanbieters.": "Invalid answer from the calendar provider.",
   "Die Verbindung wurde beim Kalenderanbieter beendet. Bitte neu verbinden.": "The connection was ended at the calendar provider. Please connect again.",
   "Die Synchronisierung ist fehlgeschlagen.": "The sync failed.",
+  // time reports (lib/time-reports.ts)
+  "Bitte Start- und Enddatum angeben.": "Please enter a start and an end date.",
+  "Das Startdatum liegt nach dem Enddatum.": "The start date is after the end date.",
+  "Der Zeitraum darf höchstens drei Jahre umfassen.": "The period may span at most three years.",
+  "Arbeitsbereich oder Datenbank fehlt.": "Workspace or database missing.",
+  "Arbeitsbereich fehlt.": "Workspace missing.",
+  "Filter oder Einträge fehlen.": "Filter or entries missing.",
+  "Nur Personen mit Bearbeitungsrechten ändern den Abrechnungsstatus.": "Only people with edit rights change the billing status.",
+  "Nur Eigentümer des Arbeitsbereichs legen Stundensätze fest.": "Only owners of the workspace set hourly rates.",
+  "Person nicht gefunden.": "Person not found.",
+  // operations dashboard (lib/admin-ops.ts)
+  "Ungültige Webhook-Adresse.": "Invalid webhook address.",
+  "Die Webhook-Adresse muss mit https:// beginnen.": "The webhook address must start with https://.",
+  "Zuerst eine Webhook-Adresse speichern.": "Save a webhook address first.",
+  "Das Ende der Wartung muss nach dem Beginn liegen.": "The end of the maintenance must be after its start.",
+  "Das Ende der Wartung liegt in der Vergangenheit.": "The end of the maintenance is in the past.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],

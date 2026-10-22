@@ -38,6 +38,7 @@ import { markdownToHtml } from "./markdown-import";
 import { privateAddress, safeFetch } from "./safe-fetch";
 import { openSecret, sealSecret } from "./secret-box";
 import { onIssueQueued, quietly } from "./issue-sync-queue";
+import { noteWorkerRun } from "./ops-events";
 import type { Field, Identity, Page, User } from "./types";
 
 export type IssueProvider = "github" | "gitlab";
@@ -1233,13 +1234,17 @@ export function receiveIssueWebhook(token: string, headers: Headers, body: strin
 /* ---------- Worker ---------- */
 
 async function pollAll() {
+  let failure: unknown;
   for (const { page_id } of all<{ page_id: string }>("SELECT page_id FROM issue_sync_maps")) {
     try {
       await syncIssues(page_id, { scan: true });
     } catch (error) {
+      failure = error;
       console.error("Issue sync failed", error);
     }
   }
+  // For the operations dashboard (Administration → Operations).
+  noteWorkerRun("issue-sync", failure);
 }
 // Every 10 minutes; a queued record is pushed a few seconds after the change.
 export function startIssueSyncWorker() {

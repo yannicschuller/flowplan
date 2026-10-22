@@ -26,6 +26,7 @@ import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
 import { allow } from "./action-limits";
 import { addressKey } from "./client-address";
+import { recordOpsEvent } from "./ops-events";
 import { translate, type Locale } from "./i18n";
 import { ldapConfigured } from "./ldap";
 
@@ -194,6 +195,7 @@ export function limited(keys: string[]) {
   });
 }
 export function failed(keys: string[]) {
+  recordOpsEvent("login_failure");
   for (const key of keys) run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, Date.now());
 }
 // Failures within `windowMs` under `key` (for limits with their own windows).

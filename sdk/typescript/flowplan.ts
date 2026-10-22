@@ -1676,6 +1676,47 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/time-report`, { query }, options);
   }
 
+  /** Time report of a database or a workspace — Your own entries and those of records you may read (field permissions apply). Periods use the server's time zone, weeks start on Monday. `format=csv` returns comma-separated values, `format=excel` semicolons, decimal commas and a byte order mark. Amounts only for workspace members with edit rights. Answered with `Cache-Control: no-store`. (GET /api/time-reports) */
+  async timeReports(query?: { page?: string; workspace?: string; period?: "this-week" | "this-month" | "last-month" | "custom"; from?: string; to?: string; person?: string; database?: string; project?: string; status?: "open" | "billed" | "unbillable"; billable?: "yes" | "no"; group?: "person" | "project" | "record" | "database" | "day" | "week"; format?: "json" | "csv" | "excel" }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/time-reports`, { query }, options);
+  }
+
+  /** Billing status of time entries, hourly rates and currency — `{ action: "billing", status: open|billed|unbillable, ids, workspace }` or with `filter` (the GET parameters) for the whole filtered set – marking it billed leaves entries that are not billable as they are. Needs edit rights on the record and its time property; audit-logged. `{ action: "rate", workspace, kind: person|project, targetId, rate | null }` and `{ action: "currency", workspace, currency }` are for workspace owners. (POST /api/time-reports) */
+  async timeReportAction(body: {
+    action: "billing" | "rate" | "currency";
+    status?: "open" | "billed" | "unbillable";
+    ids?: string[];
+    filter?: Record<string, unknown>;
+    workspace?: string;
+    kind?: "person" | "project";
+    targetId?: string;
+    rate?: number | null;
+    currency?: string;
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/time-reports`, { json: body }, options);
+  }
+
+  /** Scheduled maintenance announced by the administration — `notice` is null when none is announced or it has ended. Answered with `Cache-Control: no-store`. (GET /api/maintenance) */
+  async maintenanceNotice(options?: RequestOptions): Promise<{
+    notice: {
+      message?: string;
+      /** Unix time in ms */
+      start?: number;
+      /** Unix time in ms */
+      end?: number;
+    } | null;
+  }> {
+    return this.json<{
+    notice: {
+      message?: string;
+      /** Unix time in ms */
+      start?: number;
+      /** Unix time in ms */
+      end?: number;
+    } | null;
+  }>("GET", `/api/maintenance`, {}, options);
+  }
+
   /** Burndown of a sprint (GET /api/sprint-charts) */
   async sprintCharts(query: { page: string; sprint: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/sprint-charts`, { query }, options);

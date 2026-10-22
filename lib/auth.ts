@@ -4,6 +4,7 @@ import { all, one, run, id } from "./db";
 import type { Identity, User } from "./types";
 import { identityFromApiToken } from "./api-tokens";
 import { needsTwoFactorSetup } from "./two-factor-policy";
+import { recordOpsEvent } from "./ops-events";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -258,6 +259,8 @@ export class HttpError extends Error {
     message: string,
   ) {
     super(message);
+    // Every limit that refuses with 429 counts for the operations dashboard.
+    if (status === 429) recordOpsEvent("rate_limited");
   }
 }
 export function checkOrigin(req: Request) {

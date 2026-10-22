@@ -6,6 +6,7 @@
 // happens inside the caller's transaction, so a refused write counts nothing.
 import { HttpError } from "./auth";
 import { one, run } from "./db";
+import { recordOpsEvent } from "./ops-events";
 
 const DAY = 86_400_000;
 const MB = 1024 * 1024;
@@ -33,11 +34,15 @@ export function anonymousBytesToday(scope: string, now = Date.now()) {
 export function takeAnonymousBudget(scope: string, bytes: number, limitMb = ANONYMOUS_UPLOAD_MB, now = Date.now()) {
   if (bytes <= 0) return;
   run("DELETE FROM anonymous_uploads WHERE at<?", now - DAY);
-  if (anonymousBytesToday(scope, now) + bytes > limitMb * MB)
+  if (anonymousBytesToday(scope, now) + bytes > limitMb * MB) {
+    recordOpsEvent("anonymous_refused");
     throw new HttpError(413, "Das Tageslimit für diesen Link ist erreicht. Bitte morgen erneut versuchen.");
+  }
   const instance = anonymousInstanceMb();
-  if (instance && anonymousBytesToday(INSTANCE_SCOPE, now) + bytes > instance * MB)
+  if (instance && anonymousBytesToday(INSTANCE_SCOPE, now) + bytes > instance * MB) {
+    recordOpsEvent("anonymous_refused");
     throw new HttpError(413, "Diese Instanz nimmt heute keine weiteren anonymen Uploads an.");
+  }
   run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", scope, bytes, now);
   run("INSERT INTO anonymous_uploads(scope,bytes,at) VALUES(?,?,?)", INSTANCE_SCOPE, bytes, now);
 }

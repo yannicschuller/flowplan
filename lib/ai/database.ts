@@ -25,6 +25,7 @@ import { aiJson } from "./json";
 import { instanceAiSettings } from "./settings";
 import { resolveAi } from "./resolve";
 import { redactSecrets } from "./redact";
+import { noteWorkerRun } from "../ops-events";
 import {
   AI_FILL_TYPES,
   aiCellMeta,
@@ -430,7 +431,9 @@ export function startAiWorker() {
       await processAiCellJobs();
       const { processEmbeddings } = await import("./semantic");
       await processEmbeddings();
+      noteWorkerRun("ai");
     } catch (error) {
+      noteWorkerRun("ai", redactSecrets(String((error as Error)?.message || error)));
       console.error("KI-Hintergrundarbeit fehlgeschlagen:", redactSecrets(String((error as Error)?.message || error)));
     } finally {
       runtime.flowplanAiBusy = false;
