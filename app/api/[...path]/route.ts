@@ -48,6 +48,7 @@ import { mailStatus, sendTestMail } from "@/lib/mail";
 import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
 import { encryptExisting, encryptionOverview } from "@/lib/encryption-status";
 import { pageShares } from "@/lib/page-share";
+import { documentLog, encryptedArchive, identityOf, isEncryptedPage, requirePlaintext, requirePlaintextSpace, spaceKeys } from "@/lib/e2ee-server";
 import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
 import { runSpaceGitExport, spaceGitOverview, spaceGitStatus } from "@/lib/space-git-export";
 import { NextResponse } from "next/server";
@@ -852,6 +853,22 @@ async function handleGET(
         aiPolicy: { access: instanceAiSettings().access, enabled: instanceAiSettings().enabled, allowed: aiAllowedUsers() },
       });
     }
+    // End-to-end encrypted spaces (lib/e2ee-server.ts): my wrapped key
+    // pair, a space's sealed keys, a document's encrypted log and the
+    // encrypted archive of a space. Ciphertext only.
+    if (path[0] === "e2ee") {
+      if (path.length === 2 && path[1] === "identity") return NextResponse.json({ identity: identityOf(user.id) });
+      if (path.length === 3 && path[1] === "spaces") return NextResponse.json(spaceKeys(user, z.uuid().parse(path[2])));
+      if (path.length === 4 && path[1] === "spaces" && path[3] === "archive")
+        return NextResponse.json(encryptedArchive(user, z.uuid().parse(path[2])), {
+          headers: { "Content-Disposition": 'attachment; filename="flowplan-encrypted-archive.json"', "Cache-Control": "private, no-store" },
+        });
+      if (path.length === 4 && path[1] === "pages" && path[3] === "log") {
+        const after = z.coerce.number().int().min(0).parse(url.searchParams.get("after") || "0");
+        return NextResponse.json(documentLog(user, z.uuid().parse(path[2]), after));
+      }
+      throw new HttpError(404, "Nicht gefunden.");
+    }
     if (path.length === 2 && path[0] === "avatars") {
       const picture = avatarFor(user, z.uuid().parse(path[1]));
       if (!picture) throw new HttpError(404, "Kein Profilbild.");
@@ -1041,6 +1058,7 @@ async function handlePOST(
         .parse(await req.json());
       const p = requirePage(user, body.pageId, true);
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
+      requirePlaintext(p);
       const maxUpload = maxUploadMbFor(user);
       const image = await downloadImage(body.url, Math.min(maxUpload, 15) * 1024 * 1024);
       enforceQuota(p.workspace_id, image.data.length);
@@ -1067,7 +1085,8 @@ async function handlePOST(
       if (user.demo || user.apiScope)
         throw new HttpError(403, "Hier nicht verfügbar.");
       const data = await req.formData();
-      requirePage(user, z.uuid().parse(data.get("pageId")), true);
+      // The recording would reach the transcription service as plaintext.
+      requirePlaintext(requirePage(user, z.uuid().parse(data.get("pageId")), true));
       const file = data.get("file");
       if (!(file instanceof Blob) || !file.type.startsWith("audio/"))
         throw new HttpError(400, "Keine Aufnahme.");
@@ -1127,6 +1146,7 @@ async function handlePOST(
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > 30 * 1024 * 1024) throw new HttpError(413, "Die Datei darf maximal 30 MB groß sein.");
+      requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
       const text = await file.text();
       const kind = /\.json$/i.test(file.name) || text.trimStart().startsWith("{") ? "trello" : "jira";
       return NextResponse.json(
@@ -1158,6 +1178,7 @@ async function handlePOST(
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > ARCHIVE_LIMIT)
         throw new HttpError(413, "ZIP darf maximal 100 MB groß sein.");
+      requirePlaintextSpace({ id: z.uuid().parse(data.get("spaceId")) });
       return NextResponse.json(
         await importZip(
           user,
@@ -1185,6 +1206,11 @@ async function handlePOST(
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
       if (file.size > BOARD_IMPORT_LIMITS.bytes)
         throw new HttpError(413, "Die Datei ist zu groß (höchstens 20 MB).");
+      for (const key of ["pageId", "parentId"]) {
+        const value = data.get(key);
+        if (typeof value === "string" && value) requirePlaintext(one<Page>("SELECT * FROM pages WHERE id=?", value));
+      }
+      if (typeof data.get("spaceId") === "string" && data.get("spaceId")) requirePlaintextSpace({ id: String(data.get("spaceId")) });
       const fields = Object.fromEntries(
         ["pageId", "workspaceId", "spaceId", "parentId"]
           .map((key) => [key, data.get(key)])
@@ -1208,6 +1234,11 @@ async function handlePOST(
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
       const file = data.get("file");
       if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      // Pages of encrypted spaces take only files the browser encrypted
+      // (lib/e2ee.ts encryptFile): no name, no type, no content to inspect.
+      const encrypted = isEncryptedPage(p);
+      if (encrypted && data.get("purpose") !== "e2ee")
+        throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
       const maxUpload = maxUploadMbFor(user);
       if (file.size > maxUpload * 1024 * 1024)
         throw new HttpError(413, `Maximal ${maxUpload} MB pro Datei.`);
@@ -1225,9 +1256,10 @@ async function handlePOST(
         dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
       // The type must match the content; photos lose their location.
       const raw = Buffer.from(await file.arrayBuffer());
-      const mime = verifiedMime(file.type, raw);
-      const content = stripLocation(raw, mime);
-      const name = sanitizeFileName(file.name);
+      if (encrypted && raw.subarray(0, 4).toString("latin1") !== "FPX1") throw new HttpError(400, "Ungültige Eingabe.");
+      const mime = encrypted ? "application/octet-stream" : verifiedMime(file.type, raw);
+      const content = encrypted ? raw : stripLocation(raw, mime);
+      const name = encrypted ? "encrypted.bin" : sanitizeFileName(file.name);
       await mkdir(dir, { recursive: true });
       await writeFile(resolve(dir, fid), content);
       run(

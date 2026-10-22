@@ -78,6 +78,8 @@ export const commandActionNames = [
   "webhook.delete", "inbound.save", "inbound.rotate", "inbound.delete",
   "issueSync.connect", "issueSync.disconnect", "issueSync.map", "issueSync.unmap",
   "calendarSync.map", "calendarSync.unmap", "calendarSync.disconnect", "meeting.note",
+  "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate",
+  "e2ee.append", "e2ee.compact", "e2ee.title",
 ] as const;
 // Prefixes command() refuses for every API token.
 export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
@@ -143,6 +145,20 @@ export const commandActions: ActionDoc[] = [
       }),
     }),
     result: okResult,
+  },
+  {
+    action: "e2ee.append",
+    summary: "Append an encrypted update to a document of an encrypted space",
+    description:
+      "End-to-end encrypted spaces (docs/e2ee-design.md): the client encrypts a Yjs update with the space key (AES-256-GCM, lib/e2ee.ts) and sends the ciphertext. Needs editor rights and the space's current key; `version` is the space key version used. Plaintext commands (`document.sync`, exports, comments, share links …) are refused for these pages.",
+    input: z.object({
+      action: z.literal("e2ee.append"),
+      pageId: uuid,
+      version: z.number().int().positive(),
+      data: z.string().describe("Base64 ciphertext: format byte, 12-byte IV, AES-GCM ciphertext and tag"),
+      client: z.string().max(100).optional().describe("Editor instance ID; the live channel does not echo the update to it"),
+    }),
+    result: z.object({ seq: z.number().int() }),
   },
   {
     action: "page.owner",
@@ -982,9 +998,14 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   // Journal
   { path: "/api/journals/{journalId}/review", method: "get", op: { id: "journalReview", tag: "Journal", summary: "Review of a period", params: [p("journalId", "Page ID of the journal"), q("from", "YYYY-MM-DD", { type: "string", format: "date" }, true), q("to", "YYYY-MM-DD", { type: "string", format: "date" }, true)], ok: { schema: { type: "object", additionalProperties: true }, description: "Days, trackers and entries" }, errors: [400, 401, 403, 404] } },
   { path: "/api/journals/{dayId}/events", method: "get", op: { id: "journalEvents", tag: "Journal", summary: "Appointments of a journal day", params: [p("dayId", "Page ID of the day page"), q("zone", "IANA time zone, default UTC")], ok: { schema: { type: "object", additionalProperties: true }, description: "Events" }, errors: [400, 401, 403, 404] } },
+  // End-to-end encrypted spaces: ciphertext only
+  { path: "/api/e2ee/identity", method: "get", op: { id: "e2eeIdentity", tag: "Encryption", summary: "My key pair as stored on the server", description: "The public key and the private key wrapped with the passphrase and with the recovery key (opaque to the server); null before setup.", ok: { schema: { type: "object", additionalProperties: true }, description: "Identity" }, errors: [401] } },
+  { path: "/api/e2ee/spaces/{spaceId}", method: "get", op: { id: "e2eeSpaceKeys", tag: "Encryption", summary: "Sealed keys and key holders of an encrypted space", params: [p("spaceId", "Space ID")], ok: { schema: { type: "object", additionalProperties: true }, description: "Key version, my sealed keys, members holding the key" }, errors: [401, 403, 404] } },
+  { path: "/api/e2ee/spaces/{spaceId}/archive", method: "get", op: { id: "e2eeArchive", tag: "Encryption", summary: "Encrypted archive of a space", description: "Every document as encrypted snapshot and updates, encrypted titles, my sealed space keys and my wrapped private key. Decryptable with the passphrase or the recovery key only.", params: [p("spaceId", "Space ID")], ok: { schema: { type: "object", additionalProperties: true }, description: "The archive (Content-Disposition: attachment)" }, errors: [401, 403, 404] } },
+  { path: "/api/e2ee/pages/{pageId}/log", method: "get", op: { id: "e2eeLog", tag: "Encryption", summary: "Encrypted updates of a document", description: "The encrypted snapshot (when `after` is before it) and every encrypted update after `after`.", params: [p("pageId", "Page ID"), q("after", "Last sequence number already known", { type: "integer", minimum: 0 })], ok: { schema: { type: "object", additionalProperties: true }, description: "Snapshot and updates" }, errors: [400, 401, 403, 404] } },
   // Files
   { path: "/api/files/{fileId}", method: "get", op: { id: "getFile", tag: "Files", summary: "Download a file", description: "Needs read access to the page the file belongs to. Supports `Range` requests.", params: [p("fileId", "File ID")], ok: { content: "application/octet-stream", description: "The file with its own content type" }, errors: [401, 403, 404] } },
-  { path: "/api/upload", method: "post", op: { id: "uploadFile", tag: "Files", summary: "Upload a file to a page", description: "The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, purpose: { type: "string", enum: ["cover"] } }, required: ["pageId", "file"] }, required: true }, ok: { schema: ref("FileInfo"), description: "The stored file" }, errors: [400, 401, 403, 404, 409, 413] } },
+  { path: "/api/upload", method: "post", op: { id: "uploadFile", tag: "Files", summary: "Upload a file to a page", description: "The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, purpose: { type: "string", enum: ["cover", "e2ee"] } }, required: ["pageId", "file"] }, required: true }, ok: { schema: ref("FileInfo"), description: "The stored file" }, errors: [400, 401, 403, 404, 409, 413] } },
   { path: "/api/avatars/{userId}", method: "get", op: { id: "avatar", tag: "Files", summary: "Profile picture of a person you share a workspace with", params: [p("userId", "User ID")], ok: { content: "image/*", description: "The picture" }, errors: [401, 404] } },
   // Import and export
   { path: "/api/export/docx", method: "get", op: { id: "exportDocx", tag: "Import and export", summary: "A page or record as a Word file", description: "Reads only, so read tokens may use it. `row` picks one record of the database `page`.", params: [q("page", "Page ID", { type: "string", format: "uuid" }, true), q("row", "Record ID (one record of the database)", { type: "string", format: "uuid" })], ok: { content: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", description: "The DOCX file (Content-Disposition: attachment)" }, errors: [400, 401, 403, 404, 413] } },
@@ -1087,6 +1108,7 @@ export function openApiDocument(): Json {
     { name: "Records", description: "Records of databases and what belongs to them." },
     { name: "Journal", description: "Journals and their days." },
     { name: "Files", description: "Uploads and downloads." },
+    { name: "Encryption", description: "End-to-end encrypted spaces: keys and ciphertext, never content." },
     { name: "Import and export", description: "Markdown, ZIP archives, backups and the Git export." },
     { name: "Tokens and webhooks", description: "Your tokens, and webhooks that tell other services about changes." },
     { name: "Calendar", description: "iCalendar feeds. CalDAV (`/api/caldav/…`, PROPFIND and REPORT, basic auth with the access created by `calendar.caldav`) is served outside this document." },

@@ -63,7 +63,7 @@ test("the command endpoint describes every action a token may send", () => {
   // The names come from the switch in lib/api.ts command().
   const source = readFileSync("lib/api.ts", "utf8");
   const body = source.slice(source.indexOf("export function command("));
-  const inCode = new Set([...body.matchAll(/case "([a-zA-Z.]+)":/g)].map((m) => m[1]).filter((name) => !tokenRefusedActionPrefixes.some((p) => name.startsWith(p))));
+  const inCode = new Set([...body.matchAll(/case "([a-zA-Z0-9.]+)":/g)].map((m) => m[1]).filter((name) => !tokenRefusedActionPrefixes.some((p) => name.startsWith(p))));
   assert.ok(inCode.size > 100);
   assert.deepEqual([...commandActionNames].sort(), [...inCode].sort());
   // Each documented action has a schema in the oneOf; the rest sit in CommandOther.

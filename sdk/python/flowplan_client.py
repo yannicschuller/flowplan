@@ -367,7 +367,7 @@ CommandResult = dict[str, Any]
 
 # Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source.
 CommandOther = TypedDict("CommandOther", {
-    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "search.save", "search.delete", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke"]],
+    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "search.save", "search.delete", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title"]],
 }, total=False)
 
 # Create a workspace
@@ -420,6 +420,19 @@ CommandPageUpdate = TypedDict("CommandPageUpdate", {
 
 CommandPageUpdateResult = TypedDict("CommandPageUpdateResult", {
     "ok": Required[Literal[True]],
+}, total=False)
+
+# Append an encrypted update to a document of an encrypted space. End-to-end encrypted spaces (docs/e2ee-design.md): the client encrypts a Yjs update with the space key (AES-256-GCM, lib/e2ee.ts) and sends the ciphertext. Needs editor rights and the space's current key; `version` is the space key version used. Plaintext commands (`document.sync`, exports, comments, share links …) are refused for these pages.
+CommandE2eeAppend = TypedDict("CommandE2eeAppend", {
+    "action": Required[Literal["e2ee.append"]],
+    "pageId": Required[str],
+    "version": Required[int],
+    "data": Required[str],  # Base64 ciphertext: format byte, 12-byte IV, AES-GCM ciphertext and tag
+    "client": str,  # Editor instance ID; the live channel does not echo the update to it
+}, total=False)
+
+CommandE2eeAppendResult = TypedDict("CommandE2eeAppendResult", {
+    "seq": Required[int],
 }, total=False)
 
 # Set or remove the owner of a page. Needs editor rights. The owner must be a member (not a guest) of the workspace who can read the page; they get the review reminders.
@@ -835,7 +848,7 @@ CommandShortcutsSaveResult = TypedDict("CommandShortcutsSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1022,10 +1035,14 @@ JournalEventsQuery = TypedDict("JournalEventsQuery", {
     "zone": str,  # IANA time zone, default UTC
 }, total=False)
 
+E2eeLogQuery = TypedDict("E2eeLogQuery", {
+    "after": int,  # Last sequence number already known
+}, total=False)
+
 UploadFileForm = TypedDict("UploadFileForm", {
     "pageId": Required[str],
     "file": Required[FormFile],
-    "purpose": Literal["cover"],
+    "purpose": Literal["cover", "e2ee"],
 }, total=False)
 
 ExportDocxQuery = TypedDict("ExportDocxQuery", {
@@ -1400,12 +1417,28 @@ class FlowplanClient:
         """Appointments of a journal day (GET /api/journals/{dayId}/events)"""
         return self._json("GET", "/api/journals/" + _p(day_id) + "/events", query=dict(query) if query else None, headers=headers)
 
+    def e2ee_identity(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """My key pair as stored on the server — The public key and the private key wrapped with the passphrase and with the recovery key (opaque to the server); null before setup. (GET /api/e2ee/identity)"""
+        return self._json("GET", "/api/e2ee/identity", headers=headers)
+
+    def e2ee_space_keys(self, space_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Sealed keys and key holders of an encrypted space (GET /api/e2ee/spaces/{spaceId})"""
+        return self._json("GET", "/api/e2ee/spaces/" + _p(space_id), headers=headers)
+
+    def e2ee_archive(self, space_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Encrypted archive of a space — Every document as encrypted snapshot and updates, encrypted titles, my sealed space keys and my wrapped private key. Decryptable with the passphrase or the recovery key only. (GET /api/e2ee/spaces/{spaceId}/archive)"""
+        return self._json("GET", "/api/e2ee/spaces/" + _p(space_id) + "/archive", headers=headers)
+
+    def e2ee_log(self, page_id: str, query: Optional["E2eeLogQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Encrypted updates of a document — The encrypted snapshot (when `after` is before it) and every encrypted update after `after`. (GET /api/e2ee/pages/{pageId}/log)"""
+        return self._json("GET", "/api/e2ee/pages/" + _p(page_id) + "/log", query=dict(query) if query else None, headers=headers)
+
     def get_file(self, file_id: str, headers: Optional[dict[str, str]] = None) -> bytes:
         """Download a file — Needs read access to the page the file belongs to. Supports `Range` requests. (GET /api/files/{fileId})"""
         return self._bytes("GET", "/api/files/" + _p(file_id), headers=headers)
 
     def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None) -> "FileInfo":
-        """Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. (POST /api/upload)"""
+        """Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload)"""
         return self._json("POST", "/api/upload", form=dict(form), headers=headers)
 
     def avatar(self, user_id: str, headers: Optional[dict[str, str]] = None) -> bytes:

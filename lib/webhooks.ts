@@ -13,6 +13,7 @@
 // (lib/notification-templates.ts). Credentials for the Matrix client API
 // and Slack's chat.postMessage are sealed (lib/ai/secrets.ts).
 import { publicHiddenFieldIds, stripCells } from "./field-access";
+import { metadataOnly } from "./e2ee-server";
 import { createHmac, randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -297,6 +298,8 @@ export function emitWebhook(
     workspaceId,
   );
   let queued = 0;
+  // Pages of end-to-end encrypted spaces: ids only, never content.
+  data = metadataOnly(data) as typeof data;
   // Receivers are outside: properties with a read rule are never sent
   // (lib/field-access.ts).
   if (data.pageId && (data.cells || data.changed) && hooks.length) {

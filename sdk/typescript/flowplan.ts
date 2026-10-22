@@ -591,7 +591,7 @@ export type CommandResult = Record<string, unknown>;
 
 /** Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source. */
 export type CommandOther = {
-  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke";
+  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title";
   [key: string]: unknown;
 };
 
@@ -661,6 +661,21 @@ export type CommandPageUpdate = {
 
 export type CommandPageUpdateResult = {
   ok: true;
+};
+
+/** Append an encrypted update to a document of an encrypted space. End-to-end encrypted spaces (docs/e2ee-design.md): the client encrypts a Yjs update with the space key (AES-256-GCM, lib/e2ee.ts) and sends the ciphertext. Needs editor rights and the space's current key; `version` is the space key version used. Plaintext commands (`document.sync`, exports, comments, share links …) are refused for these pages. */
+export type CommandE2eeAppend = {
+  action: "e2ee.append";
+  pageId: string;
+  version: number;
+  /** Base64 ciphertext: format byte, 12-byte IV, AES-GCM ciphertext and tag */
+  data: string;
+  /** Editor instance ID; the live channel does not echo the update to it */
+  client?: string;
+};
+
+export type CommandE2eeAppendResult = {
+  seq: number;
 };
 
 /** Set or remove the owner of a page. Needs editor rights. The owner must be a member (not a guest) of the workspace who can read the page; they get the review reminders. */
@@ -1379,10 +1394,10 @@ export type CommandShortcutsSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : CommandResult;
 
 // ---- Client ----
 
@@ -1787,16 +1802,36 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/journals/${encodeURIComponent(dayId)}/events`, { query }, options);
   }
 
+  /** My key pair as stored on the server — The public key and the private key wrapped with the passphrase and with the recovery key (opaque to the server); null before setup. (GET /api/e2ee/identity) */
+  async e2eeIdentity(options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/e2ee/identity`, {}, options);
+  }
+
+  /** Sealed keys and key holders of an encrypted space (GET /api/e2ee/spaces/{spaceId}) */
+  async e2eeSpaceKeys(spaceId: string, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/e2ee/spaces/${encodeURIComponent(spaceId)}`, {}, options);
+  }
+
+  /** Encrypted archive of a space — Every document as encrypted snapshot and updates, encrypted titles, my sealed space keys and my wrapped private key. Decryptable with the passphrase or the recovery key only. (GET /api/e2ee/spaces/{spaceId}/archive) */
+  async e2eeArchive(spaceId: string, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/e2ee/spaces/${encodeURIComponent(spaceId)}/archive`, {}, options);
+  }
+
+  /** Encrypted updates of a document — The encrypted snapshot (when `after` is before it) and every encrypted update after `after`. (GET /api/e2ee/pages/{pageId}/log) */
+  async e2eeLog(pageId: string, query?: { after?: number }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/e2ee/pages/${encodeURIComponent(pageId)}/log`, { query }, options);
+  }
+
   /** Download a file — Needs read access to the page the file belongs to. Supports `Range` requests. (GET /api/files/{fileId}) */
   async getFile(fileId: string, options?: RequestOptions): Promise<Response> {
     return this.request("GET", `/api/files/${encodeURIComponent(fileId)}`, {}, options);
   }
 
-  /** Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. (POST /api/upload) */
+  /** Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload) */
   async uploadFile(form: {
     pageId: string;
     file: Blob;
-    purpose?: "cover";
+    purpose?: "cover" | "e2ee";
   }, options?: RequestOptions): Promise<FileInfo> {
     return this.json<FileInfo>("POST", `/api/upload`, { form }, options);
   }

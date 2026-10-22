@@ -200,6 +200,10 @@ import {
 import type { ShareLink } from "@/lib/share-links";
 import { catalogFor } from "@/lib/template-catalogs";
 import { templateCategories } from "@/lib/template-categories";
+import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers, EncryptedTitleInput, useDecryptedTitles } from "./e2ee";
+import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
+import { ENCRYPTED_TITLE } from "@/lib/e2ee";
+import { LockKey } from "@phosphor-icons/react";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -238,6 +242,8 @@ type PageData = DatabaseData & {
   };
   // Behind a journal PIN that was not entered yet.
   locked?: { journalId: string };
+  // A page of an end-to-end encrypted space (components/e2ee.tsx).
+  encrypted?: { spaceId: string; keyVersion: number; encryptTitles: boolean };
   sinceVisit?: SinceVisit | null;
   readers?: Reader[];
   following?: boolean;
@@ -398,6 +404,11 @@ export default function WorkspaceApp({
     [spaceIcon, setSpaceIcon] = useState("folder"),
     [spaceColor, setSpaceColor] = useState("none"),
     [privateSpace, setPrivateSpace] = useState(false),
+    // "Verschlüsselter Bereich": end-to-end encrypted, optionally with titles.
+    [encryptedSpace, setEncryptedSpace] = useState(false),
+    [encryptTitles, setEncryptTitles] = useState(false),
+    [e2eeDialog, setE2eeDialog] = useState<"setup" | "unlock" | null>(null),
+    [spaceKeys, setSpaceKeys] = useState<string | null>(null),
     [epoch, setEpoch] = useState(0),
     [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
     // Quick filter above the page tree.
@@ -1124,7 +1135,10 @@ export default function WorkspaceApp({
   }, [split, screen, pageId]);
   // Phones: the bottom bar steps aside while the keyboard is open.
   const keyboardOpen = useSoftKeyboard();
-  const activePages = boot.pages.filter((p) => !p.deleted_at),
+  // Encrypted titles are decrypted here, in the browser, once unlocked.
+  const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
+  const e2eeState = useE2ee();
+  const activePages = titledPages.filter((p) => !p.deleted_at),
     editable = mayEdit && !reading,
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
@@ -2097,7 +2111,9 @@ export default function WorkspaceApp({
               <div className="nav-section-title">
                 <span>
                   <SpaceIcon icon={space.icon} color={space.icon_color} />
-                  {space.visibility === "private" && (
+                  {(space as { encrypted?: number }).encrypted ? (
+                    <LockKey size={12} weight="fill" className="e2ee-space-icon" aria-label={t("Verschlüsselter Bereich", "Encrypted space")} />
+                  ) : space.visibility === "private" && (
                     <Lock size={12} aria-label={t("Privater Bereich", "Private space")} />
                   )}{" "}
                   <span className="space-name" title={space.name}>
@@ -2116,14 +2132,25 @@ export default function WorkspaceApp({
                       <DotsThree size={16} />
                     </button>
                   )}
-                  <button
-                    className="icon-button"
-                    title={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
-                    aria-label={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
-                    onClick={() => setSpaceExport(space.id)}
-                  >
-                    <DownloadSimple size={14} />
-                  </button>
+                  {(space as { encrypted?: number }).encrypted ? (
+                    <button
+                      className="icon-button"
+                      title={t(`Mitglieder und Schlüssel von ${space.name}`, `Members and keys of ${space.name}`)}
+                      aria-label={t(`Mitglieder und Schlüssel von ${space.name}`, `Members and keys of ${space.name}`)}
+                      onClick={() => setSpaceKeys(space.id)}
+                    >
+                      <LockKey size={14} />
+                    </button>
+                  ) : (
+                    <button
+                      className="icon-button"
+                      title={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
+                      aria-label={t(`${space.name} als Markdown exportieren`, `Export ${space.name} as Markdown`)}
+                      onClick={() => setSpaceExport(space.id)}
+                    >
+                      <DownloadSimple size={14} />
+                    </button>
+                  )}
                   {canCreate && (
                     <button
                       className={`icon-button ${selecting ? "active" : ""}`}
@@ -2343,7 +2370,7 @@ export default function WorkspaceApp({
             {screen === "page" && data ? (
               <>
                 <PageIcon name={data.page.icon} size={16} />
-                <span>{data.page.title}</span>
+                <span>{titledPages.find((p) => p.id === data.page.id)?.title ?? data.page.title}</span>
               </>
             ) : (
               <span>
@@ -2382,13 +2409,20 @@ export default function WorkspaceApp({
                   {reading ? <PencilSimple size={20} /> : <BookOpen size={20} />}
                 </button>
               )}
-              <button
-                title={t("Kommentare", "Comments")}
-                className={`icon-button ${comments ? "active" : ""}`}
-                onClick={() => setComments(!comments)}
-              >
-                <ChatCircle size={20} />
-              </button>
+              {!data.encrypted && (
+                <button
+                  title={t("Kommentare", "Comments")}
+                  className={`icon-button ${comments ? "active" : ""}`}
+                  onClick={() => setComments(!comments)}
+                >
+                  <ChatCircle size={20} />
+                </button>
+              )}
+              {data.encrypted && (
+                <span className="e2ee-page-lock" title={t("Ende-zu-Ende-verschlüsselt", "End-to-end encrypted")} aria-label={t("Ende-zu-Ende-verschlüsselt", "End-to-end encrypted")}>
+                  <LockKey size={18} weight="fill" />
+                </span>
+              )}
               <ReadersButton readers={data.readers || []} />
               {data.following !== undefined && (
                 <FollowButton
@@ -2417,13 +2451,20 @@ export default function WorkspaceApp({
                   }
                 />
               </button>
-              <button
-                className="button compact share-button"
-                onClick={() => setShare(true)}
-              >
-                <ShareNetwork size={15} />
-                {t("Teilen", "Share")}
-              </button>
+              {data.encrypted ? (
+                <button className="button compact share-button" onClick={() => setSpaceKeys(data.encrypted!.spaceId)}>
+                  <LockKey size={15} />
+                  {t("Mitglieder", "Members")}
+                </button>
+              ) : (
+                <button
+                  className="button compact share-button"
+                  onClick={() => setShare(true)}
+                >
+                  <ShareNetwork size={15} />
+                  {t("Teilen", "Share")}
+                </button>
+              )}
               <Dropdown.Root>
                 <Dropdown.Trigger
                   className="icon-button"
@@ -2442,13 +2483,15 @@ export default function WorkspaceApp({
                       <Flag />
                       {t("Icon ändern", "Change icon")}
                     </Dropdown.Item>
-                    <Dropdown.Item
-                      className="dropdown-item"
-                      onSelect={() => setCoverPicker(true)}
-                    >
-                      <SquaresFour />
-                      {t("Cover ändern", "Change cover")}
-                    </Dropdown.Item>
+                    {!data.encrypted && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => setCoverPicker(true)}
+                      >
+                        <SquaresFour />
+                        {t("Cover ändern", "Change cover")}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() =>
@@ -2478,19 +2521,21 @@ export default function WorkspaceApp({
                       {t("Schrift wechseln", "Change font")}
                     </Dropdown.Item>
                     <Dropdown.Separator className="dropdown-separator" />
-                    <Dropdown.Item
-                      className="dropdown-item"
-                      onSelect={async () => {
-                        const r = await act({
-                          action: "page.duplicate",
-                          pageId,
-                        });
-                        if (r?.id) void openPage(String(r.id));
-                      }}
-                    >
-                      <Copy />
-                      {t("Duplizieren", "Duplicate")}
-                    </Dropdown.Item>
+                    {!data.encrypted && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={async () => {
+                          const r = await act({
+                            action: "page.duplicate",
+                            pageId,
+                          });
+                          if (r?.id) void openPage(String(r.id));
+                        }}
+                      >
+                        <Copy />
+                        {t("Duplizieren", "Duplicate")}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => setMove(true)}
@@ -2498,7 +2543,7 @@ export default function WorkspaceApp({
                       <ArrowRight />
                       {t("Verschieben", "Move")}
                     </Dropdown.Item>
-                    {data.page.kind === "document" && (
+                    {data.page.kind === "document" && !data.encrypted && (
                       <Dropdown.Item
                         className="dropdown-item"
                         onSelect={() => setToRecord(true)}
@@ -2507,21 +2552,25 @@ export default function WorkspaceApp({
                         {t("In Datenbank verschieben …", "Move into database …")}
                       </Dropdown.Item>
                     )}
-                    <Dropdown.Item
-                      className="dropdown-item"
-                      onSelect={() => setTemplateName(true)}
-                    >
-                      <SquaresFour />
-                      {t("Als Vorlage speichern", "Save as template")}
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      className="dropdown-item"
-                      onSelect={() => setPageExport(true)}
-                    >
-                      <DownloadSimple />
-                      {t("Exportieren", "Export")}
-                    </Dropdown.Item>
-                    {data.page.kind === "document" && !data.locked && aiUsable(boot.ai, "summarize") && (
+                    {!data.encrypted && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => setTemplateName(true)}
+                      >
+                        <SquaresFour />
+                        {t("Als Vorlage speichern", "Save as template")}
+                      </Dropdown.Item>
+                    )}
+                    {!data.encrypted && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => setPageExport(true)}
+                      >
+                        <DownloadSimple />
+                        {t("Exportieren", "Export")}
+                      </Dropdown.Item>
+                    )}
+                    {data.page.kind === "document" && !data.locked && !data.encrypted && aiUsable(boot.ai, "summarize") && (
                       <Dropdown.Item
                         className="dropdown-item"
                         disabled={!aiPageReadable(boot.ai, data.page.id)}
@@ -2538,14 +2587,16 @@ export default function WorkspaceApp({
                         )}
                       </Dropdown.Item>
                     )}
-                    <Dropdown.Item
-                      className="dropdown-item"
-                      onSelect={() => printPage()}
-                    >
-                      <FileText />
-                      {t("Drucken / PDF", "Print / PDF")}
-                    </Dropdown.Item>
-                    {data.page.kind === "document" && !data.locked && (
+                    {!data.encrypted && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => printPage()}
+                      >
+                        <FileText />
+                        {t("Drucken / PDF", "Print / PDF")}
+                      </Dropdown.Item>
+                    )}
+                    {data.page.kind === "document" && !data.locked && !data.encrypted && (
                       <Dropdown.Item className="dropdown-item" onSelect={startPresentation}>
                         <PresentIcon />
                         {t("Präsentieren", "Present")}
@@ -2557,7 +2608,7 @@ export default function WorkspaceApp({
                         {splitShown ? t("Andere Seite daneben öffnen …", "Open another page beside it …") : t("Seite daneben öffnen …", "Open a page beside it …")}
                       </Dropdown.Item>
                     )}
-                    {data.page.kind === "document" && !data.locked && (
+                    {data.page.kind === "document" && !data.locked && !data.encrypted && (
                       <Dropdown.Item
                         className="dropdown-item"
                         onSelect={() => setSourcePage(sourceOpen ? null : data.page.id)}
@@ -2574,18 +2625,22 @@ export default function WorkspaceApp({
                       <UsersThree />
                       {t("Besitzer und Prüfung …", "Owner and review …")}
                     </Dropdown.Item>
-                    <Dropdown.Item className="dropdown-item" onSelect={() => openPageAliases(data.page.id)}>
-                      <AliasIcon />
-                      {t("Aliasse …", "Aliases …")}
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      className="dropdown-item"
-                      onSelect={() => setHistory(true)}
-                    >
-                      <Clock />
-                      {t("Versionsverlauf", "Version history")}
-                    </Dropdown.Item>
-                    {data.page.kind === "document" && (
+                    {!data.encrypted && (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => openPageAliases(data.page.id)}>
+                        <AliasIcon />
+                        {t("Aliasse …", "Aliases …")}
+                      </Dropdown.Item>
+                    )}
+                    {!data.encrypted && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => setHistory(true)}
+                      >
+                        <Clock />
+                        {t("Versionsverlauf", "Version history")}
+                      </Dropdown.Item>
+                    )}
+                    {data.page.kind === "document" && !data.encrypted && (
                       <Dropdown.Item
                         className="dropdown-item"
                         // The open editor shows or hides who wrote what.
@@ -2906,7 +2961,7 @@ export default function WorkspaceApp({
                         size={iconPixels[data.page.icon_size || ""]}
                       />
                     </button>
-                    {editable && !data.page.cover && (
+                    {editable && !data.page.cover && !data.encrypted && (
                       <button
                         className="add-cover text-button"
                         onClick={() => setCoverPicker(true)}
@@ -2914,6 +2969,15 @@ export default function WorkspaceApp({
                         {t("Cover hinzufügen", "Add cover")}
                       </button>
                     )}
+                    {data.encrypted?.encryptTitles ? (
+                      <EncryptedTitleInput
+                        page={data.page}
+                        title={titledPages.find((p) => p.id === data.page.id)?.title ?? ""}
+                        editable={editable}
+                        onSave={(cipher) => act({ action: "e2ee.title", pageId: data.page.id, cipher })}
+                        onError={(message) => notifyError(new Error(message))}
+                      />
+                    ) : (
                     <input
                       key={`${data.page.id}-title`}
                       className="page-title"
@@ -2932,6 +2996,7 @@ export default function WorkspaceApp({
                           });
                       }}
                     />
+                    )}
                     {data.page.locked === 1 && (
                       <div className="locked-notice">
                         <Lock size={14} />
@@ -3043,6 +3108,18 @@ export default function WorkspaceApp({
                         onError={notifyError}
                       />
                     )}
+                    {data.encrypted ? (
+                      <EncryptedPage
+                        key={data.page.id}
+                        userId={boot.user.id}
+                        page={data.page}
+                        spaceId={data.encrypted.spaceId}
+                        title={titledPages.find((p) => p.id === data.page.id)?.title ?? data.page.title}
+                        editable={editable}
+                        onStatus={setStatus}
+                        onError={(message) => notifyError(new Error(message))}
+                      />
+                    ) : (
                     <DocumentEditor
                       key={`${data.page.id}-${data.generation}-${epoch}`}
                       generation={data.generation}
@@ -3067,11 +3144,12 @@ export default function WorkspaceApp({
                       }
                       onSourceClose={() => setSourcePage(null)}
                     />
+                    )}
                     </>
                   )}
                   <div className="backlinks">
-                    {!data.locked && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
-                    {!data.locked && (
+                    {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
+                    {!data.locked && !data.encrypted && (
                       <UnlinkedMentions
                         key={data.page.id}
                         pageId={data.page.id}
@@ -3879,12 +3957,16 @@ export default function WorkspaceApp({
             e.preventDefault();
             // A failure shows inside this dialog, with "Retry" submitting again.
             const form = e.currentTarget;
+            // Encrypted titles: the page starts with the placeholder, then
+            // gets its title encrypted in the browser.
+            const titleEncrypted = !!(boot.spaces.find((s) => s.id === spaceId) as { encrypt_titles?: number } | undefined)?.encrypt_titles;
+            if (titleEncrypted && !e2eeState.unlocked) return setE2eeDialog("unlock");
             const result = await act({
               action: "page.create",
               workspaceId: boot.workspace.id,
               spaceId,
               parentId: parent,
-              title: newTitle || t("Ohne Titel", "Untitled"),
+              title: titleEncrypted ? ENCRYPTED_TITLE : newTitle || t("Ohne Titel", "Untitled"),
               kind: newKind,
               starterTemplate,
               ...(newKind === "database" && !starterTemplate
@@ -3893,6 +3975,13 @@ export default function WorkspaceApp({
                   : databaseChoicePayload(databaseChoice)
                 : {}),
             }, () => form.requestSubmit());
+            if (result?.id && titleEncrypted && newTitle.trim())
+              try {
+                await openSpace(spaceId);
+                await act({ action: "e2ee.title", pageId: String(result.id), cipher: await encryptTitle(spaceId, String(result.id), newTitle.trim()) });
+              } catch (error) {
+                notifyError(error);
+              }
             if (result?.id) {
               if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
               setCreate(false);
@@ -4404,6 +4493,11 @@ export default function WorkspaceApp({
           }
         />
       )}
+      <E2eeSetupDialog open={e2eeDialog === "setup"} onClose={() => setE2eeDialog(null)} />
+      <E2eeUnlockDialog open={e2eeDialog === "unlock"} onClose={() => setE2eeDialog(null)} />
+      {spaceKeys && (
+        <EncryptedSpaceMembers spaceId={spaceKeys} userId={boot.user.id} open onClose={() => setSpaceKeys(null)} onChanged={() => void refresh()} />
+      )}
       <Modal
         open={newWorkspace}
         onClose={() => setNewWorkspace(false)}
@@ -4443,6 +4537,29 @@ export default function WorkspaceApp({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
+            if (encryptedSpace) {
+              // Keys first: set up or unlock, then the space key is made here.
+              const identity = await loadIdentity(boot.user.id).catch(() => undefined);
+              if (identity === undefined) return;
+              if (!identity) return setE2eeDialog("setup");
+              if (!e2eeState.unlocked) return setE2eeDialog("unlock");
+              try {
+                const id = await createEncryptedSpace({
+                  workspaceId: boot.workspace.id,
+                  name: spaceName,
+                  icon: spaceIcon,
+                  iconColor: spaceColor,
+                  encryptTitles,
+                });
+                setNewSpace(false);
+                setEncryptedSpace(false);
+                await refresh();
+                void openSpace(id).catch(() => null);
+              } catch (error) {
+                notifyError(error);
+              }
+              return;
+            }
             const r = await act({
               action: "space.create",
               workspaceId: boot.workspace.id,
@@ -4482,6 +4599,35 @@ export default function WorkspaceApp({
           <p className="muted">
             {t("Private Bereiche sind nur für dich und ausdrücklich berechtigte Mitglieder sichtbar.", "Private spaces are only visible to you and members with explicit access.")}
           </p>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              name="encrypted-space"
+              checked={encryptedSpace}
+              onChange={(e) => setEncryptedSpace(e.target.checked)}
+            />
+            <LockKey size={14} /> {t("Verschlüsselter Bereich", "Encrypted space")}
+          </label>
+          {encryptedSpace && (
+            <div className="e2ee-create-note">
+              <label className="checkbox-label">
+                <input type="checkbox" checked={encryptTitles} onChange={(e) => setEncryptTitles(e.target.checked)} />
+                {t("Titel verschlüsseln", "Encrypt titles")}
+              </label>
+              <p className="muted">
+                {t(
+                  "Ende-zu-Ende-verschlüsselt: Inhalte, Dateien und auf Wunsch Titel werden im Browser verschlüsselt; der Server und Sicherungen enthalten nur Chiffretext. Sichtbar bleiben Seitenstruktur, Größen, Zeitpunkte und Mitglieder. Nur Dokumente – keine Datenbanken, Kommentare, Suche, KI, Freigabelinks oder Veröffentlichung.",
+                  "End-to-end encrypted: content, files and optionally titles are encrypted in the browser; the server and backups hold only ciphertext. Page structure, sizes, times and members stay visible. Documents only – no databases, comments, search, AI, share links or publishing.",
+                )}
+              </p>
+              <p className="e2ee-warning">
+                {t(
+                  "Wer Passphrase und Wiederherstellungsschlüssel verliert, verliert den Zugang zu den Daten. Niemand kann sie wiederherstellen.",
+                  "Whoever loses passphrase and recovery key loses access to the data. Nobody can restore it.",
+                )}
+              </p>
+            </div>
+          )}
           <button className="button primary">{t("Bereich erstellen", "Create space")}</button>
         </form>
       </Modal>

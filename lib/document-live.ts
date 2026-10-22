@@ -44,6 +44,13 @@ export function publishDocumentUpdate(key: string, update: string, from?: string
   broadcast(key, { type: "update", update }, from);
 }
 
+// An encrypted document update was appended (lib/e2ee-server.ts): the
+// ciphertext with its sequence number; only members with the key read it.
+export function publishEncryptedUpdate(key: string, update: { seq: number; version: number; data: string }, from?: string) {
+  const listeners = documents.get(key);
+  if (listeners) send(listeners, { type: "e2ee", ...update }, from);
+}
+
 // Someone moved their cursor: the others ask for the current cursors.
 export function publishPresence(key: string, from?: string) {
   broadcast(key, { type: "presence" }, from);

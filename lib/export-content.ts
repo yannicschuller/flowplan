@@ -12,6 +12,7 @@ import { all, one, transaction } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { requirePage, pageRole, spaceRole } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
+import { requirePlaintext, requirePlaintextSpace } from "./e2ee-server";
 import { database, rows } from "./api";
 import { relatedData } from "./related-data";
 import { computedCells } from "./database";
@@ -108,10 +109,13 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
     space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", options.spaceId) || null;
     if (!space) throw new HttpError(404, "Bereich nicht gefunden.");
     if (!spaceRole(user, space)) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
+    // Encrypted spaces leave only as the encrypted archive or decrypted in the browser.
+    requirePlaintextSpace(space);
   } else {
     if (!options.pageId) throw new HttpError(400, "Seite fehlt.");
     root = requirePage(user, options.pageId);
     requireUnlocked(user, root);
+    requirePlaintext(root);
   }
   if (options.rowId && (root?.kind !== "database" || options.children))
     throw new HttpError(400, "Nur ein Eintrag einer Datenbank.");

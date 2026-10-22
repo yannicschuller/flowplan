@@ -1,6 +1,7 @@
 import { teamReply } from "./service-desk";
 import { deletePlugin, updatePlugin } from "./plugins";
 import { addDomain, removeDomain, savePublicationTheme } from "./custom-domains";
+import { afterEncryptedPageCreate, e2eeCommand, encryptedPageData, guardEncryptedCommand, isEncryptedPage, makeSpaceEncrypted } from "./e2ee-server";
 import { saveInstanceAi, saveUserAiPrefs, saveUserAiProvider, setUserAiPolicy } from "./ai/settings";
 import { setAiBlock, setAiRule } from "./ai/access";
 import { aiStatus } from "./ai/resolve";
@@ -371,6 +372,9 @@ export function pageData(user: Identity, pid: string, options: { presence?: bool
       state: null,
       generation: "1",
     };
+  // End-to-end encrypted: the content comes as ciphertext through its own
+  // log (lib/e2ee-server.ts); here only what the page shell needs.
+  if (isEncryptedPage(p)) return { ...encryptedPageData(user, p) };
   // Pages and records whose text links here.
   const backlinks = textBacklinks(user, p);
   const hidden = p.kind === "database" ? hiddenRowIds(user, p) : new Set();
@@ -598,7 +602,20 @@ export function command(
   const afterCommit: (() => void)[] = [];
   const execute = () => {
     let result: unknown = { ok: true };
+    // Pages of encrypted spaces: only what works without plaintext.
+    guardEncryptedCommand(action, b);
     switch (action) {
+      case "e2ee.identity.setup":
+      case "e2ee.identity.update":
+      case "e2ee.identity.reset":
+      case "e2ee.member.add":
+      case "e2ee.member.remove":
+      case "e2ee.rotate":
+      case "e2ee.append":
+      case "e2ee.compact":
+      case "e2ee.title":
+        result = e2eeCommand(user, action, b, afterCommit);
+        break;
       case "workspace.create":
         if (!instanceSettings().allowWorkspaceCreation && !user.isAdmin)
           throw new HttpError(
@@ -927,7 +944,10 @@ export function command(
         break;
       case "space.create": {
         requireMember(user, wid(), "editor");
-        const sid = id();
+        // An encrypted space comes with its id chosen in the browser: the
+        // sealed space key names the space it belongs to.
+        const sid = b.encrypted && b.id !== undefined ? uuid.parse(b.id) : id();
+        if (one("SELECT 1 FROM spaces WHERE id=?", sid)) throw new HttpError(409, "Ungültige Eingabe.");
         run(
           "INSERT INTO spaces(id,workspace_id,name,visibility,owner_id,icon,icon_color) VALUES(?,?,?,?,?,?,?)",
           sid,
@@ -938,6 +958,8 @@ export function command(
           spaceIconSchema.parse(b.icon ?? "folder"),
           spaceColorSchema.parse(b.iconColor ?? "none"),
         );
+        // "Verschlüsselter Bereich": the creator's sealed space key comes along.
+        if (b.encrypted) makeSpaceEncrypted(user, sid, b.encrypted);
         result = { id: sid };
         break;
       }
@@ -1019,6 +1041,7 @@ export function command(
             throw new HttpError(400, "Vorlage passt nicht zum Seitentyp.");
           applyStarterTemplate(created, user.id, key);
         }
+        afterEncryptedPageCreate(created, b);
         result = { id: created };
         break;
       }

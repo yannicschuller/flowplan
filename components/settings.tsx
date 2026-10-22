@@ -25,6 +25,7 @@ import { AccountSecurity } from "./account-security";
 import { TwoFactorSettings } from "./two-factor";
 import { DeleteOwnAccount } from "./delete-own-account";
 import { MySessions } from "./my-sessions";
+import { E2eeKeySettings } from "./e2ee";
 import { CalendarConnections } from "./calendar-connections";
 import { SsoMappings, type SsoMappingRow } from "./sso-mappings";
 import {
@@ -335,6 +336,7 @@ export default function Settings({
                   {/* LDAP accounts sign in with a password: the authenticator app applies to them too. */}
                   {!boot.localAccount && boot.ldapAccount && <TwoFactorSettings />}
                   {!boot.user.demo && <MySessions onError={onError} />}
+                  {!boot.user.demo && <E2eeKeySettings userId={boot.user.id} onError={onError} />}
                 </div>
                 <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>
                   <Select

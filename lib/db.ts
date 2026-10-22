@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 54) return;
+  if (globalDb.flowplanSchema === 55) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -751,7 +751,48 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS plugins_origin ON plugins(origin);
     CREATE TABLE IF NOT EXISTS custom_domains(host TEXT PRIMARY KEY,page_id TEXT NOT NULL UNIQUE REFERENCES pages(id) ON DELETE CASCADE,token TEXT NOT NULL,verified_at INTEGER,checked_at INTEGER,last_error TEXT,created_by TEXT,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS publication_themes(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,theme TEXT NOT NULL DEFAULT '{}',updated_at INTEGER NOT NULL);`);
-  globalDb.flowplanSchema = 54;
+  // End-to-end encrypted spaces (lib/e2ee-server.ts, docs/e2ee-design.md):
+  // per person a key pair whose private key is wrapped by passphrase and
+  // recovery key (opaque blobs), per space and key version the space key
+  // sealed for each member, and documents as an append-only log of
+  // encrypted Yjs updates plus one encrypted snapshot.
+  {
+    const spaces = (d.prepare("PRAGMA table_info(spaces)").all() as { name: string }[]).map((c) => c.name);
+    if (!spaces.includes("encrypted")) d.exec("ALTER TABLE spaces ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0");
+    if (!spaces.includes("key_version")) d.exec("ALTER TABLE spaces ADD COLUMN key_version INTEGER NOT NULL DEFAULT 0");
+    if (!spaces.includes("encrypt_titles")) d.exec("ALTER TABLE spaces ADD COLUMN encrypt_titles INTEGER NOT NULL DEFAULT 0");
+    if (!spaces.includes("rotate_pending")) d.exec("ALTER TABLE spaces ADD COLUMN rotate_pending INTEGER NOT NULL DEFAULT 0");
+    if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "title_cipher"))
+      d.exec("ALTER TABLE pages ADD COLUMN title_cipher TEXT");
+  }
+  // The triggers are the last line of defence: whatever code path tries to
+  // store plaintext for a page of an encrypted space, the write fails.
+  d.exec(`CREATE TABLE IF NOT EXISTS e2ee_identities(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,public_key TEXT NOT NULL,wrapped_private TEXT NOT NULL,recovery_wrapped TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS e2ee_space_keys(space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,key_version INTEGER NOT NULL,sealed TEXT NOT NULL,sealed_by TEXT,created_at INTEGER NOT NULL,PRIMARY KEY(space_id,user_id,key_version));
+    CREATE INDEX IF NOT EXISTS e2ee_space_keys_user ON e2ee_space_keys(user_id);
+    CREATE TABLE IF NOT EXISTS e2ee_updates(seq INTEGER PRIMARY KEY AUTOINCREMENT,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,key_version INTEGER NOT NULL,data BLOB NOT NULL,created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS e2ee_updates_page ON e2ee_updates(page_id,seq);
+    CREATE TABLE IF NOT EXISTS e2ee_snapshots(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,upto INTEGER NOT NULL,key_version INTEGER NOT NULL,data BLOB NOT NULL,created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS e2ee_documents_insert BEFORE INSERT ON documents WHEN (COALESCE(NEW.html,'')!='' OR NEW.state IS NOT NULL) AND EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_documents_update BEFORE UPDATE OF html,state ON documents WHEN (COALESCE(NEW.html,'')!='' OR NEW.state IS NOT NULL) AND EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_snapshots_insert BEFORE INSERT ON snapshots WHEN (COALESCE(NEW.html,'')!='' OR NEW.state IS NOT NULL) AND EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_comments_insert BEFORE INSERT ON comments WHEN EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_threads_insert BEFORE INSERT ON inline_threads WHEN EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_rows_insert BEFORE INSERT ON rows WHEN EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_share_links_insert BEFORE INSERT ON share_links WHEN EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.root_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_publications_insert BEFORE INSERT ON publications WHEN EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_page_public BEFORE UPDATE OF public_token ON pages WHEN NEW.public_token IS NOT NULL AND EXISTS(SELECT 1 FROM spaces s WHERE s.id=NEW.space_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_page_move BEFORE UPDATE OF space_id ON pages WHEN NEW.space_id IS NOT OLD.space_id AND (COALESCE((SELECT encrypted FROM spaces WHERE id=OLD.space_id),0)=1 OR COALESCE((SELECT encrypted FROM spaces WHERE id=NEW.space_id),0)=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_page_kind BEFORE INSERT ON pages WHEN NEW.kind!='document' AND EXISTS(SELECT 1 FROM spaces s WHERE s.id=NEW.space_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_grant_removed AFTER DELETE ON grants WHEN COALESCE(OLD.user_id,'')!='' AND EXISTS(SELECT 1 FROM spaces WHERE id=OLD.resource_id AND encrypted=1) BEGIN
+      DELETE FROM e2ee_space_keys WHERE space_id=OLD.resource_id AND user_id=OLD.user_id;
+      UPDATE spaces SET rotate_pending=1 WHERE id=OLD.resource_id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_member_removed AFTER DELETE ON members BEGIN
+      UPDATE spaces SET rotate_pending=1 WHERE workspace_id=OLD.workspace_id AND encrypted=1 AND id IN (SELECT space_id FROM e2ee_space_keys WHERE user_id=OLD.user_id);
+      DELETE FROM e2ee_space_keys WHERE user_id=OLD.user_id AND space_id IN (SELECT id FROM spaces WHERE workspace_id=OLD.workspace_id);
+    END;`);
+  globalDb.flowplanSchema = 55;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

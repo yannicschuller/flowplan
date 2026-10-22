@@ -1,3 +1,4 @@
+import { isEncryptedPage } from "./e2ee-server";
 import { lockedPageIds } from "./journal-extras";
 import { publicHiddenFieldIds } from "./field-access";
 import { hiddenFileIds } from "./row-files";
@@ -71,6 +72,8 @@ function indexPage(pageId: string) {
     pageId,
   );
   if (!page || page.deleted_at) return;
+  // End-to-end encrypted pages stay out of the index (lib/e2ee-server.ts).
+  if (isEncryptedPage(one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
   run(
     "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
     pageId,
@@ -113,6 +116,7 @@ function indexRow(pageId: string, rowId: string, fields: Field[]) {
 // prefixed keys (c:, m:, f:) next to pages and records.
 function indexExtra(pageId: string, key: string) {
   run("DELETE FROM search_index WHERE page_id=? AND row_id=?", pageId, key);
+  if (isEncryptedPage(one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId))) return;
   const [prefix, id] = [key.slice(0, 1), key.slice(2)];
   const entry =
     prefix === "c"

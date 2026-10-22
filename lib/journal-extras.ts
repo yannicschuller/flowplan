@@ -12,6 +12,7 @@ import { failuresSince } from "./local-auth";
 import { htmlState, stateHtml } from "./document-server";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
+import { encryptedPageIds } from "./e2ee-server";
 import { calendarRange } from "./database-calendar";
 import { visibleRows } from "./row-access";
 import { cellText } from "./cell-text";
@@ -530,9 +531,13 @@ export function lockedPageIds(user: Identity, workspaceId: string) {
     user.id,
     Date.now(),
   ).map((r) => r.id);
-  if (!locked.length) return new Set<string>();
+  // Pages of end-to-end encrypted spaces count as locked too: the server
+  // holds no plaintext of them for search, exports, previews or the AI
+  // (lib/e2ee-server.ts). Their sub-pages are in the same space.
+  const encrypted = encryptedPageIds(workspaceId);
+  if (!locked.length) return encrypted;
   // The journals, their days and every page below them.
-  const ids = new Set(locked);
+  const ids = new Set([...locked, ...encrypted]);
   let level = locked;
   for (let depth = 0; level.length && depth < 64; depth++) {
     level = all<{ id: string }>(

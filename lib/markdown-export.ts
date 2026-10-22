@@ -8,6 +8,7 @@ import { all, one, transaction, audit } from "./db";
 import { HttpError, appUrl } from "./auth";
 import { requirePage, pageRole, spaceRole } from "./permissions";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
+import { requirePlaintext, requirePlaintextSpace } from "./e2ee-server";
 import { database, rows } from "./api";
 import { relatedData } from "./related-data";
 import { computedCells } from "./database";
@@ -66,10 +67,13 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     space = one<Space>("SELECT * FROM spaces WHERE id=? AND deleted_at IS NULL", options.spaceId) || null;
     if (!space) throw new HttpError(404, "Bereich nicht gefunden.");
     if (!spaceRole(user, space)) throw new HttpError(403, "Keine Berechtigung für diesen Bereich.");
+    // Encrypted spaces leave only as the encrypted archive or decrypted in the browser.
+    requirePlaintextSpace(space);
   } else {
     if (!options.pageId) throw new HttpError(400, "Seite fehlt.");
     root = requirePage(user, options.pageId);
     requireUnlocked(user, root);
+    requirePlaintext(root);
   }
   const workspaceId = space ? space.workspace_id : root!.workspace_id;
   const locked = lockedPageIds(user, workspaceId);

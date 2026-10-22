@@ -7,6 +7,7 @@
 //   1. the person may read it (page permissions, record access),
 //   2. it is not in the trash (nor any page above it, nor its space),
 //   3. it is not inside a journal protected with a PIN – even while unlocked,
+//      nor in an end-to-end encrypted space (lib/e2ee-server.ts),
 //   4. no manager marked it, a page above it or its space "Für KI gesperrt"
 //      (ai_blocks) – this beats every personal rule,
 //   5. the person's own rules allow it: the closest rule wins
@@ -31,7 +32,7 @@ export const AI_BLOCKED_MESSAGE = "Diese Seite ist für die KI gesperrt.";
 // Everything needed to judge many pages of one person at once.
 class AccessContext {
   private pages = new Map<string, PageLite | null>();
-  private workspaces = new Map<string, { spaces: Map<string, { deleted: boolean }>; pinned: Set<string> }>();
+  private workspaces = new Map<string, { spaces: Map<string, { deleted: boolean; encrypted: boolean }>; pinned: Set<string> }>();
   private rules: Map<string, "include" | "exclude">;
   // Every block by its target, whatever workspace the row names: a block
   // follows a page that moves to another workspace.
@@ -49,7 +50,12 @@ class AccessContext {
     if (entry) return entry;
     for (const p of all<PageLite>("SELECT id,workspace_id,space_id,parent_id,deleted_at,kind FROM pages WHERE workspace_id=?", id)) this.pages.set(p.id, p);
     entry = {
-      spaces: new Map(all<{ id: string; deleted_at: string | null }>("SELECT id,deleted_at FROM spaces WHERE workspace_id=?", id).map((s) => [s.id, { deleted: !!s.deleted_at }])),
+      spaces: new Map(
+        all<{ id: string; deleted_at: string | null; encrypted: number }>("SELECT id,deleted_at,encrypted FROM spaces WHERE workspace_id=?", id).map((s) => [
+          s.id,
+          { deleted: !!s.deleted_at, encrypted: !!s.encrypted },
+        ]),
+      ),
       pinned: new Set(
         all<{ page_id: string }>("SELECT s.page_id FROM journal_settings s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND s.lock_hash IS NOT NULL", id).map((r) => r.page_id),
       ),
@@ -85,6 +91,8 @@ class AccessContext {
     const space = ws.spaces.get(page.space_id);
     if (page.deleted_at || !space || space.deleted) return "trash";
     if (!this.visible(page)) return "hidden";
+    // End-to-end encrypted: the server has no plaintext to give the AI.
+    if (space.encrypted) return "blocked";
     if (this.blocks.has(page.space_id)) return "blocked";
     // The page and everything above it.
     const chain: PageLite[] = [];
