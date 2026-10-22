@@ -27,7 +27,7 @@ test("tokens, calendar subscriptions, e-mail channel and admin backup work from 
 
   // E-mail channel per notification kind.
   await page.goto("/#settings/notifications");
-  const mention = page.getByRole("checkbox", { name: "Erwähnungen per E-Mail" });
+  const mention = page.getByRole("switch", { name: "Erwähnungen per E-Mail" });
   await expect(mention).toBeChecked();
   await mention.uncheck();
   await expect.poll(async () => (await (await page.request.get("/api/bootstrap")).json()).notificationPrefs.mention.email).toBe(false);

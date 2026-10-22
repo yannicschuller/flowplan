@@ -5,30 +5,30 @@ import { CircleHalf, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { clearLocale, setLocale, useT } from "../../i18n";
 import { Select } from "../../select";
-import { SettingGroup, SettingRow } from "../../settings-ui";
+import { CONTROL, SaveState, SettingGroup, SettingRow, useSaveState } from "../../settings-ui";
 import { useUserSettings } from "../user-context";
 
 export default function AppearanceSection() {
   const t = useT();
-  const { boot, mutate, onError, theme, setTheme } = useUserSettings();
+  const { boot, mutate, theme, setTheme } = useUserSettings();
+  const [status, run] = useSaveState();
   return (
     <>
-      <SettingGroup title={t("Sprache und Erscheinungsbild", "Language and appearance")}>
+      <SettingGroup id="language" title={t("Sprache und Erscheinungsbild", "Language and appearance")}>
         <SettingRow label={t("Sprache", "Language")} description={t("Gilt auf allen Geräten, auch für E-Mails und Push-Hinweise.", "Applies on all devices, also to e-mails and push notifications.")}>
+          <SaveState status={status} />
           <Select
-            className="language-select"
+            className={`language-select ${CONTROL.md}`}
             name="profile-language"
             aria-label={t("Sprache", "Language")}
             value={boot.language ?? ""}
-            onChange={async (e) => {
+            onChange={(e) => {
               const value = isLocale(e.target.value) ? e.target.value : null;
-              try {
+              void run(async () => {
                 await mutate({ action: "profile.language", language: value });
                 if (value) setLocale(value);
                 else clearLocale();
-              } catch (err) {
-                onError((err as Error).message);
-              }
+              });
             }}
           >
             <option value="">{`🌐 ${t("Automatisch (folgt dem Browser)", "Automatic (follows the browser)")}`}</option>
@@ -57,7 +57,7 @@ export default function AppearanceSection() {
           </div>
         </SettingRow>
       </SettingGroup>
-      <SettingGroup title={t("Hilfe", "Help")}>
+      <SettingGroup id="help" title={t("Hilfe", "Help")}>
         <SettingRow
           label={t("Alle Tastenkürzel", "All keyboard shortcuts")}
           description={t("Die Übersicht öffnet sich überall mit ? oder ⌘ / Ctrl + /.", "The overview opens anywhere with ? or ⌘ / Ctrl + /.")}

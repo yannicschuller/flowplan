@@ -1,14 +1,13 @@
 "use client";
+// Settings → Benachrichtigungen: which kinds of notifications reach the
+// inbox and, from there, push and e-mail. One card; each kind is a row with
+// three switches – a matrix with column heads on wide screens, a stacked
+// card with labelled switches on phones.
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
-import {
-  notificationDefaults,
-  notificationKinds,
-  type NotificationKind,
-  type NotificationPrefs,
-} from "@/lib/notification-kinds";
+import { notificationDefaults, notificationKinds, type NotificationKind, type NotificationPrefs } from "@/lib/notification-kinds";
+import { SaveState, SettingGroup, Switch, useSaveState } from "./settings-ui";
 
-// Which kinds of notifications reach the inbox and, from there, push.
 // i18n-table: 1 – what each kind is about
 const kindHints: Record<NotificationKind, [string, string]> = {
   mention: ["Jemand erwähnt dich mit @ oder weist dir eine Aufgabe zu.", "Someone @mentions you or assigns you a task."],
@@ -21,20 +20,21 @@ const kindHints: Record<NotificationKind, [string, string]> = {
   security: ["Jemand gibt mehrmals eine falsche PIN für dein Journal ein.", "Someone enters a wrong PIN for your journal several times."],
 };
 
+type Channels = { inbox: boolean; push: boolean; email: boolean };
+
 export function NotificationSettings({
   prefs,
   onChange,
   onReset,
 }: {
   prefs: NotificationPrefs;
-  onReset?: () => void;
-  onChange: (
-    kind: NotificationKind,
-    value: { inbox: boolean; push: boolean; email: boolean },
-  ) => void;
+  // Rejects when saving failed; the error is shown next to the switches.
+  onReset?: () => Promise<unknown>;
+  onChange: (kind: NotificationKind, value: Channels) => Promise<unknown>;
 }) {
   const t = useT();
-  // Checkboxes react at once; the saved state arrives with the next refresh.
+  const [status, run] = useSaveState();
+  // Switches react at once; the saved state arrives with the next refresh.
   // While someone is clicking, an answer to an earlier click must not undo
   // later ones: the saved state is taken over only after a quiet moment.
   const [local, setLocal] = useState(prefs);
@@ -42,105 +42,83 @@ export function NotificationSettings({
   useEffect(() => {
     if (Date.now() - lastChange.current > 3000) setLocal(prefs);
   }, [prefs]);
-  const change = (
-    kind: NotificationKind,
-    value: { inbox: boolean; push: boolean; email: boolean },
-  ) => {
+  // Saves go out one after the other, so a later click always wins.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const change = (kind: NotificationKind, value: Channels) => {
     lastChange.current = Date.now();
     setLocal((current) => ({ ...current, [kind]: value }));
-    onChange(kind, value);
+    const next = queue.current.catch(() => {}).then(() => onChange(kind, value));
+    queue.current = next;
+    void run(() => next);
   };
+  const kinds = Object.keys(notificationKinds) as NotificationKind[];
+  const changed = kinds.some((kind) => (["inbox", "push", "email"] as const).some((channel) => local[kind][channel] !== notificationDefaults[kind][channel]));
+  const channels = [
+    { key: "inbox", name: t("Posteingang", "Inbox"), label: (kind: NotificationKind) => t(`${notificationKinds[kind]} im Posteingang`, `${t(notificationKinds[kind])} in the inbox`) },
+    { key: "push", name: t("Push", "Push"), label: (kind: NotificationKind) => t(`${notificationKinds[kind]} als Push`, `${t(notificationKinds[kind])} as push`) },
+    { key: "email", name: "E-Mail", label: (kind: NotificationKind) => t(`${notificationKinds[kind]} per E-Mail`, `${t(notificationKinds[kind])} by email`) },
+  ] as const;
   return (
-    <section className="settings-section">
-      <h2>{t("Benachrichtigungsarten", "Notification kinds")}</h2>
-      <p className="muted">
-        {t(
-          "Was dich direkt betrifft, kommt standardmäßig überall an; Änderungen an Seiten, denen du folgst, und Automationen nur im Posteingang. Per E-Mail kommt eine Zusammenfassung, wenn eine Benachrichtigung zehn Minuten ungelesen bleibt (geteilte Seiten sofort) – sofern die Instanz E-Mails versenden kann.",
-          "What concerns you directly arrives everywhere by default; changes on pages you follow and automations only in the inbox. By e-mail you get a summary when a notification stays unread for ten minutes (shared pages right away) – if the instance can send e-mail.",
-        )}
-      </p>
-      <table className="notification-prefs">
-        <thead>
-          <tr>
-            <th>{t("Art", "Kind")}</th>
-            <th>{t("Posteingang", "Inbox")}</th>
-            <th>{t("Push", "Push")}</th>
-            <th>E-Mail</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(Object.keys(notificationKinds) as NotificationKind[]).map(
-            (kind) => (
-              <tr key={kind}>
-                <td>
-                  {t(notificationKinds[kind])}
-                  <small className="notification-hint">{t(...kindHints[kind])}</small>
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    aria-label={t(`${notificationKinds[kind]} im Posteingang`, `${t(notificationKinds[kind])} in the inbox`)}
-                    checked={local[kind].inbox}
-                    onChange={(e) =>
-                      change(kind, {
-                        inbox: e.target.checked,
-                        push: e.target.checked && local[kind].push,
-                        email: e.target.checked && local[kind].email,
-                      })
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    aria-label={t(`${notificationKinds[kind]} als Push`, `${t(notificationKinds[kind])} as push`)}
-                    checked={local[kind].push}
-                    disabled={!local[kind].inbox}
-                    onChange={(e) =>
-                      change(kind, {
-                        inbox: local[kind].inbox,
-                        push: e.target.checked,
-                        email: local[kind].email,
-                      })
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    aria-label={t(`${notificationKinds[kind]} per E-Mail`, `${t(notificationKinds[kind])} by email`)}
-                    checked={local[kind].email}
-                    disabled={!local[kind].inbox}
-                    onChange={(e) =>
-                      change(kind, {
-                        inbox: local[kind].inbox,
-                        push: local[kind].push,
-                        email: e.target.checked,
-                      })
-                    }
-                  />
-                </td>
-              </tr>
-            ),
+    <SettingGroup
+      id="kinds"
+      title={t("Benachrichtigungsarten", "Notification kinds")}
+      description={t(
+        "Was dich direkt betrifft, kommt standardmäßig überall an; Änderungen an Seiten, denen du folgst, und Automationen nur im Posteingang. Per E-Mail kommt eine Zusammenfassung, wenn eine Benachrichtigung zehn Minuten ungelesen bleibt (geteilte Seiten sofort) – sofern die Instanz E-Mails versenden kann.",
+        "What concerns you directly arrives everywhere by default; changes on pages you follow and automations only in the inbox. By e-mail you get a summary when a notification stays unread for ten minutes (shared pages right away) – if the instance can send e-mail.",
+      )}
+      actions={
+        <>
+          <SaveState status={status} />
+          {onReset && changed && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                lastChange.current = 0;
+                setLocal(notificationDefaults);
+                void run(onReset);
+              }}
+            >
+              {t("Auf Standard zurücksetzen", "Reset to defaults")}
+            </button>
           )}
-        </tbody>
-      </table>
-      {onReset &&
-        (Object.keys(notificationKinds) as NotificationKind[]).some((kind) =>
-          (["inbox", "push", "email"] as const).some((channel) => local[kind][channel] !== notificationDefaults[kind][channel]),
-        ) && (
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              lastChange.current = 0;
-              setLocal(notificationDefaults);
-              onReset();
-            }}
-          >
-            {t("Auf Standard zurücksetzen", "Reset to defaults")}
-          </button>
-        )}
-    </section>
+        </>
+      }
+    >
+      <div className="notif-matrix" role="group" aria-label={t("Benachrichtigungsarten", "Notification kinds")}>
+        <div className="notif-head" aria-hidden>
+          <span>{t("Art", "Kind")}</span>
+          {channels.map((c) => (
+            <span key={c.key}>{c.name}</span>
+          ))}
+        </div>
+        {kinds.map((kind) => (
+          <div className="notif-kind" key={kind}>
+            <div className="setting-text">
+              <span className="setting-label">{t(notificationKinds[kind])}</span>
+              <small>{t(...kindHints[kind])}</small>
+            </div>
+            {channels.map((c) => (
+              <label className="notif-channel" key={c.key}>
+                <span className="notif-channel-name">{c.name}</span>
+                <Switch
+                  label={c.label(kind)}
+                  checked={local[kind][c.key]}
+                  disabled={c.key !== "inbox" && !local[kind].inbox}
+                  onChange={(on) =>
+                    change(
+                      kind,
+                      c.key === "inbox"
+                        ? { inbox: on, push: on && local[kind].push, email: on && local[kind].email }
+                        : { ...local[kind], [c.key]: on },
+                    )
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        ))}
+      </div>
+    </SettingGroup>
   );
 }

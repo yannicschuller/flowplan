@@ -56,9 +56,12 @@ test("create an account, sign out, sign in with the password and change it", asy
     await expect(page.locator("input[name=password]")).toHaveJSProperty("validity.valid", false);
     await register(page, email, "ein-langes-passwort");
 
-    // Settings: the profile offers name, password and passkeys.
+    // Settings: "Anmeldung & Sicherheit" offers password and passkeys; the
+    // password form opens under its row.
     await page.goto("/#settings/account");
-    await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Anmeldung & Sicherheit" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Passkey hinzufügen" })).toBeVisible();
+    await page.getByRole("button", { name: "Passwort ändern …" }).click();
     await page.getByLabel("Bisheriges Passwort").fill("ein-langes-passwort");
     await page.getByLabel("Neues Passwort", { exact: true }).fill("ganz-neues-passwort");
     await page.getByLabel("Neues Passwort wiederholen").fill("ganz-neues-passwort");
@@ -99,8 +102,7 @@ test("add a passkey and sign in with it", async ({ browser }, info) => {
   try {
     setSignup(true);
     await register(page, email, "ein-langes-passwort");
-    await page.goto("/#settings/account");
-    await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible();
+    await page.goto("/#settings/account/passkeys");
     await page.getByRole("button", { name: "Passkey hinzufügen" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Passkey angelegt" })).toBeVisible();
     await expect(page.locator(".passkey-list li")).toHaveCount(1);

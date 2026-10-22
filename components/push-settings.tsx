@@ -1,9 +1,14 @@
 "use client";
+// Push on this device: Web Push in the browser, the Flowplan app's own push
+// (flowplan-app) or the desktop app's system notifications (Electron has no
+// Web Push). In the settings (`group`) a card of setting rows; in the
+// introduction (components/onboarding.tsx) the plain section.
 import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import { api } from "./ui";
 import { desktopApp, inDesktopApp, nativeApp } from "@/lib/native-app";
-export default function PushSettings() {
+import { SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
+export default function PushSettings({ group = false }: { group?: boolean }) {
   const t = useT();
   // In the Flowplan app the app delivers push itself (flowplan-app).
   const [app, setApp] = useState<ReturnType<typeof nativeApp>>(undefined);
@@ -137,6 +142,110 @@ export default function PushSettings() {
     } finally {
       setBusy(false);
     }
+  }
+  const sendTest = async () => {
+    setBusy(true);
+    try {
+      await api("/api/push", { action: "test" });
+      setMessage(t("Testbenachrichtigung wurde zum Versand eingereiht.", "The test notification has been queued."));
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const iosHint = t(
+    "Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.",
+    "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.",
+  );
+  if (group) {
+    const testButton = (
+      <button className="button" disabled={busy} onClick={() => void sendTest()}>
+        {t("Testbenachrichtigung senden", "Send test notification")}
+      </button>
+    );
+    return (
+      <SettingGroup
+        id="push"
+        title={t("Push-Benachrichtigungen", "Push notifications")}
+        description={
+          desktop
+            ? t("Benachrichtigungen übernimmt die Desktop-App: Sie fragt, solange sie läuft, nach neuen Benachrichtigungen und zeigt sie als Mitteilungen des Systems mit der Zahl am App-Symbol. „Nicht stören“ und „Alle Profile“ findest du im Menü der App.", "Notifications are handled by the desktop app: while it runs, it asks for new notifications and shows them as system notifications with the count on the app icon. Find “Do Not Disturb” and “All Profiles” in the app's menu.")
+            : t("Erhalte Hinweise zu neuen Kommentaren und Erwähnungen, auch wenn Flowplan geschlossen ist. Auf dem Sperrbildschirm erscheint ein allgemeiner Hinweis ohne Dokumentinhalt.", "Get notified about new comments and mentions even when Flowplan is closed. The lock screen shows a general notice without document content.")
+        }
+      >
+        {desktop === "old" ? (
+          <SettingRow label={t("Desktop-App", "Desktop app")} description={t("Aktualisiere die Flowplan-Desktop-App, damit sie Benachrichtigungen anzeigt.", "Update the Flowplan desktop app so it shows notifications.")}>
+            <StatusBadge tone="warn">{t("Veraltet", "Outdated")}</StatusBadge>
+          </SettingRow>
+        ) : desktop?.notifications ? (
+          <SettingRow
+            label={t("Mitteilungen der Desktop-App", "Desktop app notifications")}
+            description={desktopOn ? t("Die Desktop-App zeigt Mitteilungen an", "The desktop app shows notifications") : t("Die Desktop-App zeigt keine Mitteilungen an", "The desktop app does not show notifications")}
+          >
+            <StatusBadge tone={desktopOn ? "ok" : "off"}>{desktopOn ? t("An", "On") : t("Aus", "Off")}</StatusBadge>
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  setDesktopOn(await desktop.notifications!.setEnabled(!desktopOn));
+                } catch (e) {
+                  setMessage((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {desktopOn ? t("Mitteilungen ausschalten", "Turn off notifications") : t("Mitteilungen einschalten", "Turn on notifications")}
+            </button>
+          </SettingRow>
+        ) : app ? (
+          <SettingRow
+            label={t("Flowplan-App", "Flowplan app")}
+            description={subscribed ? t("Die Flowplan-App erhält Benachrichtigungen", "The Flowplan app receives notifications") : t("Die Flowplan-App erhält keine Benachrichtigungen", "The Flowplan app does not receive notifications")}
+          >
+            <StatusBadge tone={subscribed ? "ok" : "off"}>{subscribed ? t("An", "On") : t("Aus", "Off")}</StatusBadge>
+            {app.openSettings && (
+              <button className="button primary" onClick={() => app.openSettings?.()}>
+                {t("App-Einstellungen öffnen", "Open app settings")}
+              </button>
+            )}
+            {subscribed && testButton}
+          </SettingRow>
+        ) : installRequired ? (
+          <SettingRow label={t("Auf diesem Gerät", "On this device")} description={iosHint}>
+            <StatusBadge tone="warn">{t("Vom Home-Bildschirm öffnen", "Open from the Home Screen")}</StatusBadge>
+          </SettingRow>
+        ) : !supported ? (
+          <SettingRow label={t("Auf diesem Gerät", "On this device")} description={t("Dieser Browser unterstützt Push hier nicht. Verwende eine sichere HTTPS-Adresse und einen unterstützten Browser.", "This browser does not support push here. Use a secure HTTPS address and a supported browser.")}>
+            <StatusBadge tone="off">{t("Nicht unterstützt", "Not supported")}</StatusBadge>
+          </SettingRow>
+        ) : (
+          <SettingRow
+            label={t("Auf diesem Gerät", "On this device")}
+            description={t("Gilt für die aktuelle Anmeldung auf diesem Gerät. Nach Abmeldung oder Ablauf der Sitzung ist eine erneute Aktivierung nötig.", "Applies to the current sign-in on this device. After signing out or when the session expires, enable it again.")}
+          >
+            <StatusBadge tone={subscribed ? "ok" : "off"}>{subscribed ? t("Aktiviert", "Enabled") : t("Deaktiviert", "Disabled")}</StatusBadge>
+            <button className={`button${subscribed ? "" : " primary"}`} disabled={busy || !registration || !key} onClick={subscribed ? disable : enable}>
+              {subscribed ? t("Push deaktivieren", "Disable push") : t("Push aktivieren", "Enable push")}
+            </button>
+            {subscribed && testButton}
+          </SettingRow>
+        )}
+        {!desktop && !app && !installRequired && (
+          <SettingRow label={t("iPhone und iPad", "iPhone and iPad")} description={iosHint}>
+            {null}
+          </SettingRow>
+        )}
+        {message && (
+          <p className="setting-note" role="status">
+            {message}
+          </p>
+        )}
+      </SettingGroup>
+    );
   }
   return (
     <section className="settings-section push-settings">

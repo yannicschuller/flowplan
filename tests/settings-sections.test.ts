@@ -69,3 +69,30 @@ test("every section is wired to a component", () => {
     assert.match(block, new RegExp(`\\b${s.id}:`), `${s.area}/${s.id} has no component`);
   }
 });
+
+test("search targets of the personal and connection sections exist in their panels", () => {
+  // Each anchor is the id of a card (SettingGroup id), a row (SettingRow
+  // anchor) or an element of the panel; "new" is the page of a new webhook.
+  const sources = [
+    "components/settings/user/account.tsx",
+    "components/account-security.tsx",
+    "components/two-factor.tsx",
+    "components/my-sessions.tsx",
+    "components/e2ee.tsx",
+    "components/notification-settings.tsx",
+    "components/weekly-digest-settings.tsx",
+    "components/push-settings.tsx",
+    "components/offline-settings.tsx",
+    "components/integration-settings.tsx",
+    "components/calendar-connections.tsx",
+    "components/issue-sync-settings.tsx",
+    "components/clipper-settings.tsx",
+    "components/capture-target.tsx",
+  ]
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
+  for (const id of ["account", "notifications", "devices", "api", "connections", "clipper"])
+    for (const entry of findSection("settings", id)?.entries || [])
+      if (entry.anchor) assert.match(sources, new RegExp(`(id|anchor)="${entry.anchor}"`), `settings/${id}/${entry.anchor} has no target`);
+  assert.equal(parseSettingsHash("#settings/webhooks/new")?.anchor, "new");
+});

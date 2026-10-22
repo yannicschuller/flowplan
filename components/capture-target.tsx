@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { api } from "./ui";
+import { CONTROL, SaveState, SettingGroup, SettingRow, useSaveState } from "./settings-ui";
 
 export type CaptureDatabase = { id: string; title: string; icon: string; space: string };
 export type CaptureTargets = { databases: CaptureDatabase[]; default: string | null };
@@ -72,41 +73,45 @@ export function CaptureTargetPicker({
   );
 }
 
-// Settings: the default capture database of this workspace.
-export function CaptureDefaultSetting({ workspaceId, onError }: { workspaceId: string; onError: (message: string) => void }) {
+// Settings → Web-Clipper: the default capture database of this workspace,
+// as a card with one row; saves on change.
+export function CaptureDefaultSetting({ workspaceId }: { workspaceId: string }) {
   const t = useT();
   const [targets, setTargets] = useCaptureTargets(workspaceId);
+  const [status, run] = useSaveState();
   if (!targets?.databases.length) return null;
   return (
-    <>
-      <h3>{t("Erfassen", "Capture")}</h3>
-      <p>
-        {t(
+    <SettingGroup id="capture" title={t("Erfassen", "Capture")}>
+      <SettingRow
+        id="capture-default"
+        label={t("Datenbank zum Erfassen", "Database for capturing")}
+        description={t(
           "Teilen, Web-Clipper und „Schnell erfassen“ (⌘⌥N) legen Einträge in dieser Datenbank an, etwa in deinem Eingang. Die Standardvorlage der Datenbank wird übernommen.",
           "Share, the web clipper and “Quick capture” (⌘⌥N) create records in this database, e.g. your inbox. The database's default record template applies.",
         )}
-      </p>
-      <Select
-        aria-label={t("Datenbank zum Erfassen", "Database for capturing")}
-        value={targets.default || ""}
-        onChange={async (e) => {
-          const pageId = e.target.value || null;
-          try {
-            await api("/api/command", { action: "capture.target", workspaceId, pageId });
-            setTargets({ ...targets, default: pageId });
-          } catch (error) {
-            onError((error as Error).message);
-          }
-        }}
       >
-        <option value="">{t("Keine – als Seite speichern", "None – save as a page")}</option>
-        {targets.databases.map((d) => (
-          <option key={d.id} value={d.id}>
-            {d.title || t("Ohne Titel", "Untitled")}
-            {d.space ? ` · ${d.space}` : ""}
-          </option>
-        ))}
-      </Select>
-    </>
+        <Select
+          id="capture-default"
+          className={CONTROL.lg}
+          value={targets.default || ""}
+          onChange={(e) => {
+            const pageId = e.target.value || null;
+            void run(async () => {
+              await api("/api/command", { action: "capture.target", workspaceId, pageId });
+              setTargets({ ...targets, default: pageId });
+            });
+          }}
+        >
+          <option value="">{t("Keine – als Seite speichern", "None – save as a page")}</option>
+          {targets.databases.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.title || t("Ohne Titel", "Untitled")}
+              {d.space ? ` · ${d.space}` : ""}
+            </option>
+          ))}
+        </Select>
+        <SaveState status={status} />
+      </SettingRow>
+    </SettingGroup>
   );
 }

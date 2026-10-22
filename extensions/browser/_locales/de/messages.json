@@ -6,7 +6,7 @@
   "commandHighlight": { "message": "Auswahl in Flowplan markieren" },
   "menuHighlight": { "message": "In Flowplan markieren" },
   "setupTitle": { "message": "Mit Flowplan verbinden" },
-  "setupIntro": { "message": "Gib die Adresse deiner Flowplan-Instanz und ein API-Token ein. Das Token legst du in Flowplan unter Einstellungen → API & Webhooks → Persönliche API-Tokens mit dem Recht „Nur Browser-Erweiterung“ an." },
+  "setupIntro": { "message": "Gib die Adresse deiner Flowplan-Instanz und ein API-Token ein. Das Token legst du in Flowplan unter Einstellungen → API & KI-Assistenten → Persönliche API-Tokens mit dem Recht „Nur Browser-Erweiterung“ an." },
   "instanceLabel": { "message": "Adresse der Instanz" },
   "tokenLabel": { "message": "API-Token" },
   "connect": { "message": "Verbinden" },

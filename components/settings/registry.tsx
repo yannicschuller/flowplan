@@ -28,6 +28,7 @@ import {
   UserCircle,
   Users,
   UsersThree,
+  WebhooksLogo,
   type Icon,
 } from "@phosphor-icons/react";
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, type SectionMeta, type SettingsArea } from "@/lib/settings-sections";
@@ -37,6 +38,7 @@ import NotificationsSection from "./user/notifications";
 import AiSection from "./user/ai";
 import DevicesSection from "./user/devices";
 import ApiSection from "./user/api";
+import WebhooksSection from "./user/webhooks";
 import ConnectionsSection from "./user/connections";
 import ClipperSection from "./user/clipper";
 import WorkspaceSection from "./user/workspace";
@@ -83,6 +85,7 @@ export const ICONS: Record<string, Icon> = {
   UserCircle,
   Users,
   UsersThree,
+  WebhooksLogo,
 };
 
 const USER_COMPONENTS: Record<string, ComponentType> = {
@@ -92,6 +95,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   ai: AiSection,
   devices: DevicesSection,
   api: ApiSection,
+  webhooks: WebhooksSection,
   connections: ConnectionsSection,
   clipper: ClipperSection,
   workspace: WorkspaceSection,

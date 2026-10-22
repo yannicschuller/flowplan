@@ -1127,7 +1127,7 @@ export function openApiDocument(): Json {
       version: buildInfo().version || "dev",
       summary: "The HTTP API of a Flowplan instance for scripts, integrations and the generated SDKs.",
       description: [
-        "Every request carries a personal API token (`Authorization: Bearer fp_…`, created under Settings → API & Webhooks) and acts with the rights of the person who created it. Read tokens may only call GET endpoints and the Markdown export; write tokens also `POST /api/command`, uploads, imports and webhooks. Tokens never get administration rights and cannot create further tokens.",
+        "Every request carries a personal API token (`Authorization: Bearer fp_…`, created under Settings → API & AI assistants) and acts with the rights of the person who created it. Read tokens may only call GET endpoints and the Markdown export; write tokens also `POST /api/command`, uploads, imports and webhooks. Tokens never get administration rights and cannot create further tokens.",
         "",
         "Errors answer with JSON `{ \"error\": \"…\" }` and the status: 400 invalid input (with `details`), 401 no valid token, 403 not allowed, 404 not found, 409 conflict (locked page, stale version, a limit reached), 413 too large, 429 too many requests, 500 unexpected. Messages follow `Accept-Language` (German by default).",
         "",

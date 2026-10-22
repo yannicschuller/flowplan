@@ -1,10 +1,10 @@
 "use client";
-// Settings → API & Webhooks: personal tokens, AI assistants (MCP) and – for
-// owners – the workspace's webhooks.
+// Settings → API & KI-Assistenten: personal tokens and AI assistants (MCP).
+// The workspace's webhooks are in Settings → Webhooks (./webhooks.tsx).
 import { IntegrationSettings } from "../../integration-settings";
 import { useUserSettings } from "../user-context";
 
 export default function ApiSection() {
-  const { boot, owner, onError } = useUserSettings();
-  return <IntegrationSettings workspaceId={boot.workspace.id} owner={owner} pages={boot.pages.filter((p) => !p.deleted_at)} onError={onError} />;
+  const { onError } = useUserSettings();
+  return <IntegrationSettings onError={onError} />;
 }

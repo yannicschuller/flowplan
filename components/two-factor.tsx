@@ -1,7 +1,7 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
 // Two-factor sign-in with an authenticator app (lib/two-factor.ts):
-// Settings → General → your profile, and the screen an instance shows when
+// Settings → Konto & Sicherheit (as a setting row), and the screen an instance shows when
 // it requires a second factor that the account does not have yet.
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -18,6 +18,7 @@ import {
 } from "@simplewebauthn/browser";
 import { BrandMark } from "./brand-mark";
 import { useT } from "./i18n";
+import { SettingRow, StatusBadge } from "./settings-ui";
 import type { TwoFactorStatus } from "@/lib/two-factor";
 
 type Setup = {
@@ -50,9 +51,12 @@ const confirmation = (value: string) => {
 export function TwoFactorSettings({
   enforced = false,
   onDone,
+  row = false,
 }: {
   enforced?: boolean;
   onDone?: () => void;
+  // In the settings: a setting row with the state; details open under it.
+  row?: boolean;
 }) {
   const t = useT();
   const [status, setStatus] = useState<TwoFactorStatus | null>(null),
@@ -61,7 +65,8 @@ export function TwoFactorSettings({
     [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
-    [confirm, setConfirm] = useState("");
+    [confirm, setConfirm] = useState(""),
+    [open, setOpen] = useState(false);
   useEffect(() => {
     post<{ status: TwoFactorStatus }>("two-factor")
       .then((r) => setStatus(r.status))
@@ -148,8 +153,8 @@ export function TwoFactorSettings({
           );
     });
   const codesText = (codes || []).join("\n");
-  return (
-    <div className="two-factor">
+  const messages = (
+    <>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -160,7 +165,9 @@ export function TwoFactorSettings({
           {notice}
         </p>
       )}
-      {codes ? (
+    </>
+  );
+  const body = codes ? (
         <div className="recovery-codes">
           <p>
             <strong>
@@ -390,8 +397,53 @@ export function TwoFactorSettings({
             {t("Authenticator-App einrichten", "Set up an authenticator app")}
           </button>
         </div>
+      );
+  if (!row)
+    return (
+      <div className="two-factor">
+        {messages}
+        {body}
+      </div>
+    );
+  // In the settings: one row with the state, the details under it.
+  const enabled = !!status?.enabled;
+  const details = codes || setup || (enabled && open);
+  return (
+    <>
+      <SettingRow
+        anchor="two-factor"
+        label={t("Zwei-Faktor-Anmeldung", "Two-factor sign-in")}
+        description={
+          status?.required && !enabled
+            ? t("Auf dieser Instanz ist eine Zwei-Faktor-Anmeldung vorgeschrieben.", "Two-factor sign-in is required on this instance.")
+            : t("Nach dem Passwort ein Code aus einer Authenticator-App. Mit einem Passkey braucht es keinen Code.", "After the password, a code from an authenticator app. Signing in with a passkey needs no code.")
+        }
+      >
+        {status &&
+          (enabled ? (
+            <StatusBadge tone="ok">{t(`An · ${status.recoveryLeft} Codes übrig`, `On · ${status.recoveryLeft} codes left`)}</StatusBadge>
+          ) : (
+            <StatusBadge tone={status.required ? "warn" : "off"}>{t("Aus", "Off")}</StatusBadge>
+          ))}
+        {status && !enabled && !setup && !codes && (
+          <button type="button" className="button" disabled={!!busy} onClick={() => void begin()}>
+            {busy === "setup" ? <SpinnerGap className="spin" /> : <ShieldCheck size={17} aria-hidden />}
+            {t("Authenticator-App einrichten", "Set up an authenticator app")}
+          </button>
+        )}
+        {enabled && !codes && (
+          <button type="button" className="button" aria-expanded={open} aria-controls="two-factor-details" onClick={() => setOpen(!open)}>
+            {open ? t("Schließen", "Close") : t("Verwalten", "Manage")}
+          </button>
+        )}
+      </SettingRow>
+      {(details || error || notice) && (
+        <div className="setting-row wide two-factor" id="two-factor-details">
+          {messages}
+          {details && body}
+        </div>
       )}
-    </div>
+    </>
   );
 }
 

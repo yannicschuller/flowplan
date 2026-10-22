@@ -19,7 +19,7 @@ Manually (e.g. in a Docker image): `npm install n8n-nodes-flowplan` in
 
 ## Credentials
 
-Create a personal API token in Flowplan under **Settings → API & webhooks**
+Create a personal API token in Flowplan under **Settings → API & AI assistants**
 and add a credential *Flowplan API* in n8n:
 
 | Field | Value |

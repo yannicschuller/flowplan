@@ -7,7 +7,8 @@ import { useEffect, useMemo, useState } from "react";
 import { LockKey, LockKeyOpen, Printer, DownloadSimple, Warning } from "@phosphor-icons/react";
 import { Modal, download } from "./ui";
 import { useT } from "./i18n";
-import { SettingGroup, SettingRow } from "./settings-ui";
+import { CONTROL, SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
+import { Select } from "./select";
 import type { SaveStatus } from "@/lib/save-status";
 import type { Page, Space } from "@/lib/types";
 import {
@@ -530,7 +531,7 @@ export function EncryptedSpaceMembers({ spaceId, userId, open, onClose, onChange
 export function E2eeKeySettings({ userId, onError }: { userId: string; onError: (message: string) => void }) {
   const t = useT();
   const state = useE2ee();
-  const [dialog, setDialog] = useState<"setup" | "unlock" | "passphrase" | "recovery" | "reset" | null>(null),
+  const [dialog, setDialog] = useState<"setup" | "unlock" | "passphrase" | "recovery" | null>(null),
     [current, setCurrent] = useState(""),
     [next, setNext] = useState(""),
     [recoveryKey, setRecoveryKey] = useState(""),
@@ -557,41 +558,50 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
   };
   return (
     <SettingGroup
+      id="encryption"
       title={t("Ende-zu-Ende-Verschlüsselung", "End-to-end encryption")}
       description={t(
         "Schlüssel für verschlüsselte Bereiche. Passphrase und Wiederherstellungsschlüssel kennt nur du – gehen beide verloren, sind die Daten verloren.",
         "Keys for encrypted spaces. Only you know the passphrase and the recovery key – if both are lost, the data is lost.",
       )}
     >
-      {state.identity === null ? (
-        <SettingRow label={t("Status", "Status")} description={t("Noch nicht eingerichtet.", "Not set up yet.")}>
+      {state.identity === undefined ? (
+        <SettingRow label={t("Status", "Status")}>
+          <span className="settings-loading" role="status">
+            {t("Wird geladen …", "Loading …")}
+          </span>
+        </SettingRow>
+      ) : state.identity === null ? (
+        <SettingRow label={t("Status", "Status")} description={t("Noch nicht eingerichtet. Nötig für verschlüsselte Bereiche.", "Not set up yet. Needed for encrypted spaces.")}>
+          <StatusBadge tone="off">{t("Nicht eingerichtet", "Not set up")}</StatusBadge>
           <button className="button" onClick={() => setDialog("setup")}>
             {t("Verschlüsselung einrichten", "Set up encryption")}
           </button>
         </SettingRow>
       ) : (
         <>
-          <SettingRow label={t("Status", "Status")} description={state.unlocked ? t("In diesem Tab entsperrt.", "Unlocked in this tab.") : t("Gesperrt.", "Locked.")}>
+          <SettingRow label={t("Status", "Status")} description={state.unlocked ? t("In diesem Tab entsperrt.", "Unlocked in this tab.") : t("Zum Lesen verschlüsselter Bereiche entsperren.", "Unlock to read encrypted spaces.")}>
+            {state.unlocked ? <StatusBadge tone="ok">{t("Entsperrt", "Unlocked")}</StatusBadge> : <StatusBadge tone="info">{t("Gesperrt", "Locked")}</StatusBadge>}
             {state.unlocked ? (
               <button className="button" onClick={() => void lockSoon()}>
-                <LockKey size={16} /> {t("Jetzt sperren", "Lock now")}
+                <LockKey size={16} aria-hidden /> {t("Jetzt sperren", "Lock now")}
               </button>
             ) : (
               <button className="button" onClick={() => setDialog("unlock")}>
-                <LockKeyOpen size={16} /> {t("Entsperren", "Unlock")}
+                <LockKeyOpen size={16} aria-hidden /> {t("Entsperren", "Unlock")}
               </button>
             )}
           </SettingRow>
-          <SettingRow label={t("Automatisch sperren", "Lock automatically")} description={t("Nach so vielen Minuten ohne Aktivität.", "After this many minutes without activity.")}>
-            <select value={autoLockMinutes()} onChange={(e) => setAutoLockMinutes(Number(e.target.value))}>
+          <SettingRow id="e2ee-autolock" label={t("Automatisch sperren", "Lock automatically")} description={t("Nach so vielen Minuten ohne Aktivität.", "After this many minutes without activity.")}>
+            <Select id="e2ee-autolock" className={CONTROL.sm} value={autoLockMinutes()} onChange={(e) => setAutoLockMinutes(Number(e.target.value))}>
               {AUTOLOCK_CHOICES.map((m) => (
                 <option key={m} value={m}>
                   {t(`${m} Minuten`, `${m} minutes`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </SettingRow>
-          <SettingRow label={t("Passphrase", "Passphrase")}>
+          <SettingRow label={t("Passphrase", "Passphrase")} description={t("Nicht dein Anmeldepasswort. Sie verlässt deinen Browser nie.", "Not your sign-in password. It never leaves your browser.")}>
             <button className="button" onClick={() => setDialog("passphrase")}>
               {t("Passphrase ändern", "Change passphrase")}
             </button>
@@ -601,14 +611,13 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
               {t("Neuen erzeugen", "Create a new one")}
             </button>
           </SettingRow>
-          <SettingRow label={t("Zurücksetzen", "Reset")} description={t("Nur wenn Passphrase und Wiederherstellungsschlüssel verloren sind: neue Schlüssel, alle Bereichsschlüssel sind weg.", "Only if passphrase and recovery key are lost: new keys, all space keys are gone.")}>
-            <button className="button danger" onClick={() => setDialog("reset")}>
-              {t("Schlüssel zurücksetzen", "Reset keys")}
-            </button>
-          </SettingRow>
         </>
       )}
-      {message && <p className="muted" role="status">{message}</p>}
+      {message && (
+        <p className="setting-note" role="status">
+          {message}
+        </p>
+      )}
       <E2eeSetupDialog open={dialog === "setup"} onClose={close} />
       <E2eeUnlockDialog open={dialog === "unlock"} onClose={close} />
       <Modal open={dialog === "passphrase"} onClose={close} title={t("Passphrase ändern", "Change passphrase")}>
@@ -666,7 +675,28 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
           </form>
         )}
       </Modal>
-      <Modal open={dialog === "reset"} onClose={close} title={t("Schlüssel zurücksetzen", "Reset keys")}>
+    </SettingGroup>
+  );
+}
+
+// The danger zone's row: new keys when passphrase and recovery key are both
+// lost. Only shown once keys exist.
+export function E2eeResetRow({ onError }: { onError: (message: string) => void }) {
+  const t = useT();
+  const state = useE2ee();
+  const [open, setOpen] = useState(false),
+    [busy, setBusy] = useState(false);
+  if (!state.identity) return null;
+  return (
+    <SettingRow
+      anchor="reset-keys"
+      label={t("Schlüssel zurücksetzen", "Reset keys")}
+      description={t("Nur wenn Passphrase und Wiederherstellungsschlüssel verloren sind: neue Schlüssel, alle Bereichsschlüssel sind weg.", "Only if passphrase and recovery key are lost: new keys, all space keys are gone.")}
+    >
+      <button className="button danger" onClick={() => setOpen(true)}>
+        {t("Schlüssel zurücksetzen …", "Reset keys …")}
+      </button>
+      <Modal open={open} onClose={() => !busy && setOpen(false)} title={t("Schlüssel zurücksetzen", "Reset keys")}>
         <div className="e2ee-form">
           <p className="e2ee-warning" role="alert">
             <Warning size={18} weight="fill" />
@@ -675,11 +705,25 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
               "Your current keys are deleted. You can only read encrypted spaces again once a member gives you the space key again. Spaces where only you held a key are lost.",
             )}
           </p>
-          <button className="button danger" disabled={busy} onClick={() => void act(async () => (await resetIdentity(), close()))}>
+          <button
+            className="button danger-solid"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await resetIdentity();
+                setOpen(false);
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
             {t("Endgültig zurücksetzen", "Reset for good")}
           </button>
         </div>
       </Modal>
-    </SettingGroup>
+    </SettingRow>
   );
 }

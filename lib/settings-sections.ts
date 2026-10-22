@@ -52,15 +52,17 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "personal",
     icon: "UserCircle",
     title: { de: "Konto & Sicherheit", en: "Account & security" },
-    description: { de: "Profil, Passwort, zweiter Faktor, Passkeys, Geräte und deine Grenzen.", en: "Profile, password, second factor, passkeys, devices and your limits." },
-    keywords: { de: "profil name passwort passkey zwei-faktor 2fa authenticator sitzungen geräte abmelden verschlüsselung e2ee grenzen speicher konto löschen", en: "profile name password passkey two-factor 2fa authenticator sessions devices sign out encryption e2ee limits storage delete account" },
+    description: { de: "Profil, Anmeldung, angemeldete Geräte, Verschlüsselung und deine Grenzen.", en: "Profile, sign-in, signed-in devices, encryption and your limits." },
+    keywords: { de: "profil name anzeigename passwort passkey zwei-faktor 2fa authenticator sitzungen geräte abmelden verschlüsselung e2ee grenzen speicher konto löschen", en: "profile name display name password passkey two-factor 2fa authenticator sessions devices sign out encryption e2ee limits storage delete account" },
     entries: [
-      { title: { de: "Passwort ändern", en: "Change password" } },
-      { title: { de: "Passkeys", en: "Passkeys" } },
-      { title: { de: "Zwei-Faktor-Anmeldung", en: "Two-factor sign-in" }, keywords: { de: "2fa authenticator code", en: "2fa authenticator code" } },
-      { title: { de: "Angemeldete Geräte", en: "Signed-in devices" }, keywords: { de: "sitzungen abmelden", en: "sessions sign out" } },
-      { title: { de: "Ende-zu-Ende-Verschlüsselung", en: "End-to-end encryption" }, keywords: { de: "e2ee schlüssel passphrase", en: "e2ee key passphrase" } },
-      { title: { de: "Konto löschen", en: "Delete account" } },
+      { title: { de: "Anzeigename", en: "Display name" }, keywords: { de: "profil name", en: "profile name" }, anchor: "profile" },
+      { title: { de: "Passwort ändern", en: "Change password" }, anchor: "password" },
+      { title: { de: "Passkeys", en: "Passkeys" }, anchor: "passkeys" },
+      { title: { de: "Zwei-Faktor-Anmeldung", en: "Two-factor sign-in" }, keywords: { de: "2fa authenticator code wiederherstellungscodes", en: "2fa authenticator code recovery codes" }, anchor: "two-factor" },
+      { title: { de: "Angemeldete Geräte", en: "Signed-in devices" }, keywords: { de: "sitzungen abmelden", en: "sessions sign out" }, anchor: "sessions" },
+      { title: { de: "Ende-zu-Ende-Verschlüsselung", en: "End-to-end encryption" }, keywords: { de: "e2ee schlüssel passphrase wiederherstellungsschlüssel", en: "e2ee key passphrase recovery key" }, anchor: "encryption" },
+      { title: { de: "Deine Grenzen", en: "Your limits" }, keywords: { de: "speicher kontingent", en: "storage quota" }, anchor: "limits" },
+      { title: { de: "Konto löschen", en: "Delete account" }, anchor: "delete-account" },
     ],
   },
   {
@@ -87,8 +89,9 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     description: { de: "Was dich im Posteingang, per Push und per E-Mail erreicht.", en: "What reaches you in the inbox, as push and by e-mail." },
     keywords: { de: "posteingang push e-mail erwähnungen kommentare wöchentliche zusammenfassung digest", en: "inbox push email mentions comments weekly digest" },
     entries: [
-      { title: { de: "Wöchentliche Zusammenfassung", en: "Weekly digest" } },
-      { title: { de: "Push-Benachrichtigungen", en: "Push notifications" } },
+      { title: { de: "Benachrichtigungsarten", en: "Notification kinds" }, keywords: { de: "posteingang push e-mail erwähnungen kommentare", en: "inbox push email mentions comments" }, anchor: "kinds" },
+      { title: { de: "Wöchentliche Zusammenfassung", en: "Weekly digest" }, anchor: "weekly-digest" },
+      { title: { de: "Push-Benachrichtigungen", en: "Push notifications" }, keywords: { de: "desktop-app mitteilungen", en: "desktop app notifications" }, anchor: "push" },
     ],
   },
   {
@@ -108,6 +111,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "Offline & Geräte", en: "Offline & devices" },
     description: { de: "Inhalte auf diesem Gerät für die Nutzung ohne Verbindung.", en: "Content on this device for use without a connection." },
     keywords: { de: "offline synchronisierung gerät kopie cache", en: "offline sync device copy cache" },
+    entries: [{ title: { de: "Offline-Nutzung", en: "Offline use" }, anchor: "offline" }],
   },
   // ------------------------------------------------------------- connections
   {
@@ -115,14 +119,23 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     area: "settings",
     group: "connections",
     icon: "PlugsConnected",
-    title: { de: "API & Webhooks", en: "API & webhooks" },
-    description: { de: "Persönliche API-Tokens, KI-Assistenten (MCP) und Webhooks des Arbeitsbereichs.", en: "Personal API tokens, AI assistants (MCP) and the workspace's webhooks." },
-    keywords: { de: "api token schlüssel mcp claude chatgpt webhook n8n home assistant automationen", en: "api token key mcp claude chatgpt webhook n8n home assistant automations" },
+    title: { de: "API & KI-Assistenten", en: "API & AI assistants" },
+    description: { de: "Persönliche API-Tokens und KI-Assistenten über MCP.", en: "Personal API tokens and AI assistants over MCP." },
+    keywords: { de: "api token schlüssel mcp claude chatgpt cursor n8n home assistant browser-erweiterung", en: "api token key mcp claude chatgpt cursor n8n home assistant browser extension" },
     entries: [
-      { title: { de: "Persönliche API-Tokens", en: "Personal API tokens" } },
-      { title: { de: "KI-Assistenten (MCP)", en: "AI assistants (MCP)" } },
-      { title: { de: "Webhooks", en: "Webhooks" } },
+      { title: { de: "Persönliche API-Tokens", en: "Personal API tokens" }, anchor: "tokens" },
+      { title: { de: "KI-Assistenten (MCP)", en: "AI assistants (MCP)" }, anchor: "mcp" },
     ],
+  },
+  {
+    id: "webhooks",
+    area: "settings",
+    group: "connections",
+    icon: "WebhooksLogo",
+    title: { de: "Webhooks", en: "Webhooks" },
+    description: { de: "Ereignisse des Arbeitsbereichs an n8n, Slack, Matrix, Teams oder Discord.", en: "The workspace's events to n8n, Slack, Matrix, Teams or Discord." },
+    keywords: { de: "webhook n8n home assistant slack matrix teams discord automationen ereignisse chat", en: "webhook n8n home assistant slack matrix teams discord automations events chat" },
+    entries: [{ title: { de: "Webhook anlegen", en: "Create webhook" }, anchor: "new" }],
   },
   {
     id: "connections",
@@ -132,6 +145,10 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "Kalender & Issues", en: "Calendars & issues" },
     description: { de: "Google- und Microsoft-Kalender, GitHub- und GitLab-Issues.", en: "Google and Microsoft calendars, GitHub and GitLab issues." },
     keywords: { de: "kalender google outlook microsoft github gitlab issues synchronisierung", en: "calendar google outlook microsoft github gitlab issues sync" },
+    entries: [
+      { title: { de: "Kalender verbinden", en: "Connect calendar" }, anchor: "calendar" },
+      { title: { de: "GitHub oder GitLab verbinden", en: "Connect GitHub or GitLab" }, anchor: "issues" },
+    ],
   },
   {
     id: "clipper",
@@ -141,6 +158,10 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "Web-Clipper", en: "Web clipper" },
     description: { de: "Webseiten speichern, Lesezeichen importieren, Schnell erfassen.", en: "Save web pages, import bookmarks, quick capture." },
     keywords: { de: "clipper lesezeichen bookmarklet browser erweiterung erfassen", en: "clipper bookmarks bookmarklet browser extension capture" },
+    entries: [
+      { title: { de: "Erfassen", en: "Capture" }, keywords: { de: "schnell erfassen datenbank eingang", en: "quick capture database inbox" }, anchor: "capture" },
+      { title: { de: "Browser-Lesezeichen importieren", en: "Import browser bookmarks" }, anchor: "bookmarks" },
+    ],
   },
   // --------------------------------------------------------------- workspace
   {
