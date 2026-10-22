@@ -187,7 +187,20 @@ await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
 after(() => server.close());
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE = "true";
-const settle = () => new Promise((r) => setTimeout(r, 150));
+// Waits until the automatic dispatch started by an event has finished: a
+// delivery it claimed carries a next_at ten minutes ahead until it is done.
+// A fixed pause was too short on a busy machine.
+const settle = async () => {
+  await new Promise((r) => setTimeout(r, 50));
+  for (let i = 0; i < 200; i++) {
+    const inFlight = one<{ n: number }>(
+      "SELECT COUNT(*) n FROM webhook_deliveries WHERE delivered_at IS NULL AND next_at>?",
+      Date.now() + 5 * 60_000,
+    )?.n;
+    if (!inFlight) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+};
 const lastBody = (hookId: string) =>
   JSON.parse(one<{ body: string }>("SELECT body FROM webhook_deliveries WHERE webhook_id=? ORDER BY rowid DESC LIMIT 1", hookId)!.body);
 
