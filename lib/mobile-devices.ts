@@ -12,7 +12,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, id, one, run } from "./db";
-import { HttpError } from "./auth";
+import { adminGroup, HttpError } from "./auth";
 import { cellText } from "./cell-text";
 import { openTasksEverywhere } from "./doc-tasks";
 import { pageLocationHash } from "./page-location";
@@ -194,6 +194,9 @@ export function mobileSummary(user: Identity, todayInput?: unknown) {
     timer: runningTimer(user),
     today,
     at: Date.now(),
+    // The person administers the instance: the app also shows the
+    // administrators' widgets (GET /api/mobile/admin-summary).
+    admin: !user.demo && user.groups.includes(adminGroup()),
   };
 }
 

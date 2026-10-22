@@ -1066,7 +1066,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/calendar-sync/[...path]/route.ts": "Browser OAuth connection to Google and Microsoft 365 calendars",
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",
   "app/api/git/[token]/route.ts": "Git integration callbacks with their own token",
-  "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token)",
+  "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token; the administrators' widget summary only for instance administrators)",
   "app/api/print/[token]/route.ts": "Print views of the browser app",
   "app/api/print/route.ts": "Print views of the browser app",
   "app/api/public-templates/[id]/files/[fileId]/route.ts": "Public template gallery",

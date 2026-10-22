@@ -11,6 +11,8 @@ import {
   unregisterByDeviceToken,
   unregisterMobileDevice,
 } from "@/lib/mobile-devices";
+import { isInstanceAdmin, mobileAdminSummary } from "@/lib/mobile-admin";
+import { updateStatus } from "@/lib/update-check";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +22,8 @@ export const dynamic = "force-dynamic";
 // POST /api/mobile/unregister  likewise, or with the device token (Bearer fpd_…)
 //                              when the app leaves the instance
 // GET  /api/mobile/summary     in the background, with the device token
+// GET  /api/mobile/admin-summary  likewise, for the administrators' widgets
+//                              (lib/mobile-admin.ts): 403 for everyone else
 function failure(e: unknown) {
   const status = e instanceof HttpError ? e.status : e instanceof ZodError || e instanceof SyntaxError ? 400 : 500;
   return NextResponse.json(
@@ -32,9 +36,15 @@ export const GET = withRequestLocale(handleGET);
 async function handleGET(req: Request, { params }: { params: Promise<{ action: string }> }) {
   try {
     const { action } = await params;
-    if (action !== "summary") throw new HttpError(404, "Nicht gefunden");
+    if (action !== "summary" && action !== "admin-summary") throw new HttpError(404, "Nicht gefunden");
     const user = identityFromDeviceToken((await headers()).get("authorization"));
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
+    if (action === "admin-summary") {
+      // Checked on every call: the admin group of the device's session now.
+      if (!isInstanceAdmin(user)) throw new HttpError(403, "Administrator-Gruppe erforderlich.");
+      const update = await updateStatus().catch(() => null);
+      return NextResponse.json(mobileAdminSummary(Date.now(), update), { headers: { "Cache-Control": "no-store" } });
+    }
     return NextResponse.json(mobileSummary(user, new URL(req.url).searchParams.get("today")), {
       headers: { "Cache-Control": "no-store" },
     });
