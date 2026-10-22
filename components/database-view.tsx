@@ -99,6 +99,7 @@ import RowDocument from "./row-document";
 import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { AiSummaryDialog, type AiSummaryTarget } from "./ai-summary";
 import { UnlinkedMentions } from "./unlinked-mentions";
+import { DuplicateHint, RelatedPages } from "./related-pages";
 import { MarkdownRecordsImport } from "./markdown-records-import";
 import { DatabaseExportMenu, RecordExportMenu } from "./record-export";
 import { RecordToPage } from "./record-to-page";
@@ -5306,6 +5307,7 @@ export default function DatabaseView({
                 cellText(selected.cells[fields[0].id]) || t("Ohne Titel", "Untitled")
               )}
             </h2>
+            {freshRowId === selected.id && <DuplicateHint workspaceId={page.workspace_id} title={cellText(selected.cells[fields[0].id])} databaseId={page.id} excludeRowId={selected.id} />}
             <div
               className={`row-columns${recordLayout.properties === "side" ? " properties-side" : ""}`}
             >
@@ -5396,6 +5398,7 @@ export default function DatabaseView({
                   onLinked={onRefresh}
                   onError={onError}
                 />
+                <RelatedPages key={`related-${selected.id}`} pageId={page.id} rowId={selected.id} />
               </div>
               <div className="row-main">
                 <RowDocument

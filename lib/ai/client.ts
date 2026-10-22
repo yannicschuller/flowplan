@@ -100,8 +100,8 @@ export async function streamAiFrom(
 
 // ---- Ask the workspace (POST /api/ai/ask, lib/ai/ask.ts) ----
 
-export type AskSource = { n: number; pageId: string; rowId?: string; title: string; pageTitle?: string; kind: string };
-export type AskScope = { kind: "workspace" } | { kind: "page"; pageId: string } | { kind: "space"; spaceId: string };
+export type AskSource = { n: number; pageId: string; rowId?: string; title: string; pageTitle?: string; kind: string; workspaceId?: string; workspaceName?: string };
+export type AskScope = { kind: "workspace" } | { kind: "page"; pageId: string } | { kind: "space"; spaceId: string } | { kind: "all" };
 export type AskOptions = {
   workspaceId: string;
   question: string;
@@ -150,4 +150,35 @@ export function citationParts(text: string, sources: AskSource[]): ({ text: stri
   }
   if (last < text.length) parts.push({ text: text.slice(last) });
   return parts;
+}
+
+// ---- AI actions (POST /api/ai/actions/{propose,run}, lib/ai/actions.ts) ----
+
+export type { ActionPreview, ActionResult } from "./actions";
+import type { ActionPreview, ActionResult } from "./actions";
+
+async function postJson<T>(url: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new AiRequestError(serverMessage(data?.error || "Die KI-Anfrage ist fehlgeschlagen."), response.status);
+  return data as T;
+}
+export type ProposeActionsOptions = {
+  workspaceId: string;
+  instruction: string;
+  context?: string;
+  pageId?: string | null;
+  sources?: { pageId: string; rowId?: string | null }[];
+  mode?: "general" | "transcript";
+  signal?: AbortSignal;
+};
+// The model's proposal, checked by the server: nothing is written yet.
+export async function proposeAiActions({ signal, ...body }: ProposeActionsOptions) {
+  const local = new Date();
+  const today = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
+  return (await postJson<{ actions: ActionPreview[] }>("/api/ai/actions/propose", { ...body, today }, signal)).actions;
+}
+// Runs the confirmed actions (checked again on the server).
+export async function runAiActions(workspaceId: string, actions: unknown[]) {
+  return (await postJson<{ results: ActionResult[] }>("/api/ai/actions/run", { workspaceId, actions })).results;
 }

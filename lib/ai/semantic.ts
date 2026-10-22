@@ -227,27 +227,57 @@ const MAX_SCANNED = 200_000;
 // The chunks closest in meaning to the question (unfiltered – the caller
 // MUST pass them through aiFilter before using them). The embedding call
 // counts against the AI rate limit unless `limited` says the request it
-// belongs to (an Ask whose answer takes the slot) is counted already.
+// belongs to (an Ask whose answer takes the slot) is counted already. A
+// `vector` made earlier (lib/ai/ask.ts across workspaces) skips the call.
 export async function semanticCandidates(
   user: Identity,
   workspaceId: string,
   question: string,
-  options: { pages?: Set<string> | null; limit?: number; signal?: AbortSignal; limited?: boolean } = {},
+  options: { pages?: Set<string> | null; limit?: number; signal?: AbortSignal; limited?: boolean; vector?: Float32Array | null } = {},
 ): Promise<SemanticHit[]> {
   const config = semanticFor(user, workspaceId);
   if (!config) return [];
   if (!one("SELECT 1 FROM ai_embeddings WHERE workspace_id=? AND model=? LIMIT 1", workspaceId, config.embeddingModel)) return [];
+  let query = options.vector || null;
+  if (!query) {
+    if (!options.limited) limitAi(user.id);
+    const [values] = (await embed(config, [question.slice(0, 2000)], options.signal)) || [];
+    if (!values?.length) return [];
+    query = fromVector(toVector(values));
+  }
+  return nearestChunks(workspaceId, config.embeddingModel, query, options.limit ?? 40, (row) => !options.pages || options.pages.has(row.page_id));
+}
+
+// The question as a normalized vector (one embedding call, rate-limited
+// unless `limited`), or null without semantic search for this person.
+export async function semanticQueryVector(
+  user: Identity,
+  workspaceId: string,
+  question: string,
+  options: { signal?: AbortSignal; limited?: boolean } = {},
+): Promise<Float32Array | null> {
+  const config = semanticFor(user, workspaceId);
+  if (!config) return null;
   if (!options.limited) limitAi(user.id);
   const [values] = (await embed(config, [question.slice(0, 2000)], options.signal)) || [];
-  if (!values?.length) return [];
-  const query = fromVector(toVector(values));
-  const limit = options.limit ?? 40;
+  return values?.length ? fromVector(toVector(values)) : null;
+}
+
+// The best chunks of a workspace for a vector, scanning at most
+// MAX_SCANNED rows.
+function nearestChunks(
+  workspaceId: string,
+  model: string,
+  query: Float32Array,
+  limit: number,
+  keep: (row: { page_id: string; row_id: string }) => boolean,
+): SemanticHit[] {
   const best: SemanticHit[] = [];
   let worst = -Infinity;
   const statement = db().prepare("SELECT page_id,row_id,chunk,vector FROM ai_embeddings WHERE workspace_id=? AND model=? LIMIT ?");
-  for (const raw of statement.iterate(workspaceId, config.embeddingModel, MAX_SCANNED)) {
+  for (const raw of statement.iterate(workspaceId, model, MAX_SCANNED)) {
     const row = raw as { page_id: string; row_id: string; chunk: number; vector: Uint8Array };
-    if (options.pages && !options.pages.has(row.page_id)) continue;
+    if (!keep(row)) continue;
     const vector = fromVector(row.vector);
     if (vector.length !== query.length) continue;
     let score = 0;
@@ -259,6 +289,34 @@ export async function semanticCandidates(
     worst = best[best.length - 1].score;
   }
   return best;
+}
+
+// Sources close in meaning to a page or record ("Verwandte Seiten"): the
+// mean of its stored vectors against the workspace – no provider call, so
+// nothing leaves the server. Unfiltered like semanticCandidates: callers
+// pass the hits through aiFilter. Empty without semantic search for this
+// person or before the source is embedded.
+export function semanticNeighbours(user: Identity, workspaceId: string, pageId: string, rowId: string, limit = 60): SemanticHit[] {
+  const config = semanticFor(user, workspaceId);
+  if (!config) return [];
+  const own = all<{ vector: Uint8Array }>(
+    "SELECT vector FROM ai_embeddings WHERE page_id=? AND row_id=? AND model=? ORDER BY chunk LIMIT 50",
+    pageId,
+    rowId,
+    config.embeddingModel,
+  ).map((r) => fromVector(r.vector));
+  if (!own.length) return [];
+  const mean = new Array<number>(own[0].length).fill(0);
+  for (const v of own) if (v.length === mean.length) for (let i = 0; i < v.length; i++) mean[i] += v[i];
+  const query = fromVector(toVector(mean));
+  // Best chunk per source.
+  const hits = nearestChunks(workspaceId, config.embeddingModel, query, limit * 4, (row) => !(row.page_id === pageId && row.row_id === rowId));
+  const bySource = new Map<string, SemanticHit>();
+  for (const hit of hits) {
+    const k = `${hit.pageId}/${hit.rowId}`;
+    if (!bySource.has(k)) bySource.set(k, hit);
+  }
+  return [...bySource.values()].slice(0, limit);
 }
 
 // For the administration: how much is stored.

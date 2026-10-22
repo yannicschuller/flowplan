@@ -14,7 +14,10 @@ import { aiInsertTransaction, aiMarkdownToHtml, selectionText, type AiInsertMode
 import { defaultTranslateTarget, WRITE_ACTIONS, WRITE_LANGUAGES, WRITE_TONES, type WriteAction, type WriteLanguage, type WriteTone } from "@/lib/ai/prompts";
 import { aiTarget, setAiTarget } from "@/lib/ai/target";
 import { useLocale, useT } from "./i18n";
-import { AiProviderFooter } from "./ai-context";
+import { AiProviderFooter, useAi } from "./ai-context";
+import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
+import { aiUsable } from "@/lib/ai/client";
+import { Lightning } from "@phosphor-icons/react";
 import { Select } from "./select";
 
 export type AiWriterRequest =
@@ -72,6 +75,10 @@ export function AiWriter({
   // A prompt's answer goes in at the caret ("Einfügen"; an empty line is
   // replaced); a selection is replaced ("Ersetzen").
   const atCaret = request.kind === "prompt";
+  // AI actions from the answer (pages, tasks, records): a preview first.
+  const ai = useAi();
+  const actionsUsable = aiUsable(ai.status, "actions") && !!ai.workspaceId && !rowId;
+  const [actions, setActions] = useState<AiActionsRequest | null>(null);
 
   // Mark the text in the editor while the panel is open.
   useEffect(() => {
@@ -168,14 +175,14 @@ export function AiWriter({
   }, [editor, onClose]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || actions) return;
       event.preventDefault();
       if (phase === "running") controller.current?.abort();
       else close();
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [close, phase]);
+  }, [close, phase, actions]);
 
   function insert(mode: AiInsertMode) {
     if (editor.isDestroyed) return;
@@ -330,6 +337,22 @@ export function AiWriter({
                     <ArrowClockwise size={14} /> {t("Erneut", "Retry")}
                   </button>
                 )}
+                {answer.trim() && actionsUsable && (
+                  <button
+                    type="button"
+                    className="button compact"
+                    onClick={() =>
+                      setActions({
+                        instruction: job?.label || instruction || t("Was lässt sich aus diesem Text anlegen?", "What can be created from this text?"),
+                        context: request.kind === "transcript" ? `${request.text}\n\n${answer}` : answer,
+                        pageId,
+                        mode: request.kind === "transcript" ? "transcript" : "general",
+                      })
+                    }
+                  >
+                    <Lightning size={14} /> {t("Aktionen vorschlagen", "Propose actions")}
+                  </button>
+                )}
                 {request.kind !== "transcript" && (
                   <button type="button" className="button compact" onClick={() => setPhase("choose")}>
                     <ArrowsClockwise size={14} /> {t("Andere Aktion", "Other action")}
@@ -344,6 +367,7 @@ export function AiWriter({
         </>
       )}
       <AiProviderFooter />
+      {ai.workspaceId && <AiActionsPanel workspaceId={ai.workspaceId} request={actions} onClose={() => setActions(null)} />}
     </div>
   );
 }

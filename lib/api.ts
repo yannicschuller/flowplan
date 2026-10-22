@@ -131,6 +131,7 @@ import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
 import { notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
+import { setWeeklyDigest, weeklyDigestPrefs } from "./weekly-digest";
 import { sharePage, updatePageShare } from "./page-share";
 import { limitInviter, mailAllowed } from "./action-limits";
 import { templateCategoryIds } from "./template-categories";
@@ -289,6 +290,7 @@ export function bootstrap(user: Identity, wid?: string) {
     recentVisits: recentVisits(user, workspace.id, 8),
     dueTasks: dueTaskCount(user, workspace.id),
     notificationPrefs: notificationPrefs(user),
+    weeklyDigest: weeklyDigestPrefs(user),
     instance: {
       name: instanceSettings().name,
       announcement: instanceSettings().announcement,
@@ -630,6 +632,10 @@ export function command(
         break;
       case "notification.email":
         result = setEmailForAll(user, b.email);
+        break;
+      // The weekly digest e-mail (lib/weekly-digest.ts).
+      case "notification.weekly":
+        result = setWeeklyDigest(user, b);
         break;
       case "profile.language":
         result = { language: setFixedLanguage(user.id, b.language) };

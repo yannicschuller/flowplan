@@ -1291,11 +1291,26 @@ export type CommandIssueSyncUnmapResult = {
   ok: true;
 };
 
+/** Weekly digest e-mail on or off. Every Monday at 07:00 in `timeZone`: changes in followed pages, open and overdue tasks. `aiSummary` adds a short AI summary only while AI is usable for you; otherwise the plain list is sent. Needs SMTP on the instance. */
+export type CommandNotificationWeekly = {
+  action: "notification.weekly";
+  enabled: boolean;
+  aiSummary?: boolean;
+  /** IANA time zone, e.g. Europe/Berlin */
+  timeZone?: string;
+};
+
+export type CommandNotificationWeeklyResult = {
+  enabled: boolean;
+  aiSummary: boolean;
+  timeZone: string;
+};
+
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandNotificationWeekly | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : CommandResult;
 
 // ---- Client ----
 
@@ -1439,6 +1454,11 @@ export class FlowplanClient {
   /** Links between pages as a graph (GET /api/graph) */
   async graph(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/graph`, { query }, options);
+  }
+
+  /** Related pages, or pages with a similar title — With `page` (and `row`): related pages and records (`items` with their `reasons`) – by meaning when semantic search is on for you, else by links, backlinks, shared links, tags and title. With `workspace` and `title`: existing pages, or records of `database`, with a similar title (duplicate hint). Only what you may read. Answered with `Cache-Control: no-store`. (GET /api/related) */
+  async related(query?: { page?: string; row?: string; workspace?: string; title?: string; database?: string; exclude?: string; excludeRow?: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/related`, { query }, options);
   }
 
   /** Saved page templates of a workspace (GET /api/templates) */

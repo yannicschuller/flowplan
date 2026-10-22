@@ -93,6 +93,11 @@ function layout(
   return `<!doctype html><html lang="${locale}"><body style="margin:0;background:#f6f4ef;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d1c22"><div style="max-width:520px;margin:0 auto;padding:32px 20px"><p style="font-weight:700;font-size:15px;margin:0 0 20px;color:#3b3fd8">${escape(instanceName())}</p><h1 style="font-size:21px;margin:0 0 16px">${escape(title)}</h1>${body}${button}<p style="margin:28px 0 0;font-size:12px;color:#8a8691">${footer}</p></div></body></html>`;
 }
 
+// For other mail builders (lib/weekly-digest.ts).
+export const mailLayout = layout;
+export const mailEscape = escape;
+export const mailAppUrl = appUrl;
+
 export function queueMail(to: string, subject: string, text: string, html: string) {
   if (!mailConfig() || !/^[^\s@]+@[^\s@]+$/.test(to)) return false;
   run(
@@ -375,6 +380,11 @@ export function startMailWorker() {
     } catch (error) {
       console.error("E-Mail-Zusammenfassung fehlgeschlagen", error);
     }
+    // The weekly digest (Monday 07:00 in each person's time zone) goes into
+    // the same queue; loaded lazily, it imports this module.
+    void import("./weekly-digest")
+      .then((digest) => digest.queueWeeklyDigests())
+      .catch((error) => console.error("Wöchentliche Zusammenfassung fehlgeschlagen", error));
     void dispatchMail();
   }, 60_000);
   runtime.flowplanMailTimer.unref?.();

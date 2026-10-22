@@ -761,6 +761,15 @@ const exact: Record<string, string> = {
   "Ein Alias hat höchstens 100 Zeichen.": "An alias has at most 100 characters.",
   "Höchstens 10 Aliasse.": "At most 10 aliases.",
   "Eine Datenbank hat höchstens eine Alias-Eigenschaft.": "A database has at most one aliases property.",
+  // AI actions, long recordings (lib/ai/actions.ts, lib/transcribe.ts)
+  "Die KI hat eine ungültige Aktion vorgeschlagen.": "The AI proposed an invalid action.",
+  "Die Aktion ist nicht möglich.": "The action is not possible.",
+  "Zu viele Aufnahmen gleichzeitig. Bitte später erneut versuchen.": "Too many recordings at the same time. Please try again later.",
+  "Keine Berechtigung.": "No permission.",
+  "Aufnahme nicht gefunden.": "Recording not found.",
+  "Die Aufnahme ist unvollständig.": "The recording is incomplete.",
+  "Transkription fehlgeschlagen.": "Transcription failed.",
+  "Die Anfrage konnte nicht verarbeitet werden.": "The request could not be processed.",
   // User provisioning (SCIM/LDAP)
   "Aktion fehlgeschlagen.": "Action failed.",
 };

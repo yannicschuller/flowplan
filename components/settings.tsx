@@ -50,6 +50,7 @@ import {
   ArrowRight,
 } from "@phosphor-icons/react";
 import { UserAiSettings } from "./ai-settings";
+import { WeeklyDigestSettings } from "./weekly-digest-settings";
 import { api, Avatar, download, downloadBlob, Modal } from "./ui";
 import type { Bootstrap, Space } from "@/lib/types";
 type SettingsData = {
@@ -253,6 +254,7 @@ export default function Settings({
                   }}
                 />
               )}
+              <WeeklyDigestSettings prefs={boot.weeklyDigest} ai={boot.ai} mail={!!boot.instance?.mail} save={mutate} onError={onError} />
               <PushSettings />
             </>
           )}

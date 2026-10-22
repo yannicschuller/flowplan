@@ -45,7 +45,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 // API tokens and therefore not listed.
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
-  "profile.onboarded", "profile.language", "notification.reset", "notification.email",
+  "profile.onboarded", "profile.language", "notification.reset", "notification.email", "notification.weekly",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport",
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
@@ -428,6 +428,19 @@ export const commandActions: ActionDoc[] = [
     description: "Workspace owners and administrators. Records and issues stay; only the links end.",
     input: z.object({ action: z.literal("issueSync.unmap"), pageId: uuid }),
     result: okResult,
+  },
+  {
+    action: "notification.weekly",
+    summary: "Weekly digest e-mail on or off",
+    description:
+      "Every Monday at 07:00 in `timeZone`: changes in followed pages, open and overdue tasks. `aiSummary` adds a short AI summary only while AI is usable for you; otherwise the plain list is sent. Needs SMTP on the instance.",
+    input: z.object({
+      action: z.literal("notification.weekly"),
+      enabled: z.boolean(),
+      aiSummary: z.boolean().optional(),
+      timeZone: z.string().max(100).optional().describe("IANA time zone, e.g. Europe/Berlin"),
+    }),
+    result: z.object({ enabled: z.boolean(), aiSummary: z.boolean(), timeZone: z.string() }),
   },
 ];
 const otherActions = commandActionNames.filter((name) => !commandActions.some((a) => a.action === name));
@@ -862,6 +875,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/records", method: "get", op: { id: "records", tag: "Workspace", summary: "Records across all databases", description: "With an optional filter (JSON, same shape as a view filter group) and the saved record views.", params: [workspace, q("filter", "Filter as JSON")], ok: { schema: { type: "object", additionalProperties: true }, description: "Records with their databases and views" }, errors: [400, 401, 403] } },
   { path: "/api/export", method: "get", op: { id: "exportWorkspace", tag: "Workspace", summary: "Whole workspace as JSON", description: "Every readable page outside the trash with its content; records only as far as you may see them.", params: [workspace], ok: { schema: ref("WorkspaceExport"), description: "The export (Content-Disposition: attachment)" }, errors: [401, 403] } },
   { path: "/api/graph", method: "get", op: { id: "graph", tag: "Workspace", summary: "Links between pages as a graph", params: [workspace], ok: { schema: { type: "object", additionalProperties: true }, description: "Nodes and edges" }, errors: [400, 401, 403] } },
+  { path: "/api/related", method: "get", op: { id: "related", tag: "Workspace", summary: "Related pages, or pages with a similar title", description: `With \`page\` (and \`row\`): related pages and records (\`items\` with their \`reasons\`) – by meaning when semantic search is on for you, else by links, backlinks, shared links, tags and title. With \`workspace\` and \`title\`: existing pages, or records of \`database\`, with a similar title (duplicate hint). Only what you may read. ${noStore}`, params: [q("page", "Page or database ID", { type: "string", format: "uuid" }), q("row", "Record ID", { type: "string", format: "uuid" }), q("workspace", "Workspace ID (with title)", { type: "string", format: "uuid" }), q("title", "Title to compare"), q("database", "Only records of this database (with title)", { type: "string", format: "uuid" }), q("exclude", "Page to leave out (with title)", { type: "string", format: "uuid" }), q("excludeRow", "Record to leave out (with title)", { type: "string", format: "uuid" })], ok: { schema: { type: "object", additionalProperties: true }, description: "Items" }, errors: [400, 401, 403, 404] } },
   { path: "/api/templates", method: "get", op: { id: "templates", tag: "Workspace", summary: "Saved page templates of a workspace", params: [workspace], ok: { schema: { type: "array", items: { type: "object", additionalProperties: true } }, description: "Templates" }, errors: [401, 403] } },
   { path: "/api/media", method: "get", op: { id: "media", tag: "Workspace", summary: "Media library", description: "Files of the pages you may read, 60 per call.", params: [workspace, q("kind", "Only this kind", { type: "string", enum: ["all", "image", "video", "audio", "pdf", "other"], default: "all" }), q("q", "Name contains"), q("offset", "Paging offset", { type: "integer", minimum: 0 })], ok: { schema: { type: "object", additionalProperties: true }, description: "Files with their pages" }, errors: [401, 403] } },
   { path: "/api/citations", method: "get", op: { id: "citations", tag: "Workspace", summary: "Bibliography of a workspace", params: [workspace], ok: { schema: { type: "object", properties: { items: { type: "array", items: { type: "object", additionalProperties: true } } }, required: ["items"] }, description: "Items" }, errors: [400, 401, 403] } },
@@ -957,6 +971,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/live/route.ts": "Share links with their own token",
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",
+  "app/api/transcribe/[...path]/route.ts": "Voice notes of the browser app (chunked upload to the transcription service)",
   "app/api/webhooks/slack/[id]/route.ts": "Slack Event Subscriptions of a Slack webhook, signed with its signing secret",
 };
 

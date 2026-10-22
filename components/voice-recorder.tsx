@@ -8,7 +8,8 @@ import { Microphone, Stop, Trash } from "@phosphor-icons/react";
 import { Modal } from "./ui";
 import type { AiAvailability } from "./ai-context";
 
-const MAX_SECONDS = 10 * 60;
+// Meetings up to two hours; long recordings are uploaded in chunks.
+const MAX_SECONDS = 2 * 60 * 60;
 function pickType() {
   if (typeof MediaRecorder === "undefined") return "";
   return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((t) =>
@@ -24,14 +25,17 @@ export function VoiceRecorder({
   onInsert,
   summarize = "hidden",
   summarizeHint = "",
+  actions = "hidden",
 }: {
   open: boolean;
   transcription: boolean;
   onClose: () => void;
-  onInsert: (file: File, transcribe: boolean, summarize: boolean) => void;
+  onInsert: (file: File, transcribe: boolean, summarize: boolean, actions: boolean) => void;
   // A summary of the transcript by the AI ("summarize"), below it.
   summarize?: AiAvailability;
   summarizeHint?: string;
+  // "Aufgaben und Zusammenfassung erzeugen" through the AI actions preview.
+  actions?: AiAvailability;
 }) {
   const t = useT();
   const [state, setState] = useState<"idle" | "recording" | "done">("idle");
@@ -41,6 +45,7 @@ export function VoiceRecorder({
   const [url, setUrl] = useState("");
   const [toText, setToText] = useState(transcription);
   const [summary, setSummary] = useState(false);
+  const [tasks, setTasks] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -78,7 +83,8 @@ export function VoiceRecorder({
       return setError(t("Kein Zugriff auf das Mikrofon. Erlaube es in den Browser-Einstellungen.", "No access to the microphone. Allow it in the browser settings."));
     }
     const chunks: Blob[] = [];
-    const rec = new MediaRecorder(stream.current, { mimeType: type });
+    // Speech at 32 kbit/s: two hours stay below 30 MB.
+    const rec = new MediaRecorder(stream.current, { mimeType: type, audioBitsPerSecond: 32_000 });
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = () => {
       stopAll();
@@ -133,6 +139,18 @@ export function VoiceRecorder({
                 {summarize === "blocked" && <small className="muted"> · {summarizeHint}</small>}
               </label>
             )}
+            {transcription && actions !== "hidden" && (
+              <label className="voice-option" title={actions === "blocked" ? summarizeHint : undefined}>
+                <input
+                  type="checkbox"
+                  checked={tasks && toText && actions === "ok"}
+                  disabled={!toText || actions === "blocked"}
+                  onChange={(e) => setTasks(e.target.checked)}
+                />
+                {t("Aufgaben und Zusammenfassung erzeugen", "Generate tasks and summary")}
+                <small className="muted"> · {t("als Vorschlag, den du bestätigst", "as a proposal you confirm")}</small>
+              </label>
+            )}
             {!transcription && (
               <small className="muted">{t("Transkription ist auf diesem Server nicht eingerichtet; die Aufnahme wird als Audio eingefügt.", "Transcription is not set up on this server; the recording is inserted as audio.")}</small>
             )}
@@ -140,7 +158,9 @@ export function VoiceRecorder({
               <button type="button" className="button" onClick={() => { setFile(null); setState("idle"); }}>
                 <Trash size={16} /> {t("Verwerfen", "Discard")}
               </button>
-              <button type="button" className="button primary" onClick={() => onInsert(file, transcription && toText, transcription && toText && summary && summarize === "ok")}>
+              <button type="button" className="button primary" onClick={() =>
+                  onInsert(file, transcription && toText, transcription && toText && summary && summarize === "ok", transcription && toText && tasks && actions === "ok")
+                }>
                 {t("Einfügen", "Insert")}
               </button>
             </div>

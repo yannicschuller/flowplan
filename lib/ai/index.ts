@@ -8,7 +8,8 @@
 // can turn features off for themselves (Settings → KI) and decide what the
 // AI may read.
 //
-// FEATURE IDS (lib/ai/features.ts): "write" | "summarize" | "ask" | "database".
+// FEATURE IDS (lib/ai/features.ts): "write" | "summarize" | "ask" | "database"
+// | "actions".
 // Add new ones there; administration and settings pick them up.
 //
 // SERVER
@@ -89,6 +90,14 @@
 //     "Mit KI ausfüllen", databases from a description (JSON answers through
 //     aiJson in lib/ai/json.ts: parsed robustly, validated, one retry).
 //     POST /api/ai/database/{cell,queue,propose}, GET /api/ai/database/status.
+//
+//   actions (lib/ai/actions.ts, POST /api/ai/actions/{propose,run}): the
+//     model proposes pages, tasks, text and records as JSON tool calls; the
+//     server checks them as the person and shows a preview; only confirmed
+//     actions run (checked again, via command(), audited as "ai.action").
+//   ask across workspaces (scope { kind: "all" }), related pages by meaning
+//     (semanticNeighbours, lib/related-pages.ts – no provider call) and the
+//     AI summary of the weekly digest (lib/weekly-digest.ts, "summarize").
 //
 // KEYS are sealed (lib/ai/secrets.ts), write-only and never returned by any
 // view, export, log or error (lib/ai/redact.ts). Features never see them

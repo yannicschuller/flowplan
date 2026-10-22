@@ -19217,6 +19217,141 @@ h3 .block-reactions {
 .ai-source-chip small {
   color: var(--muted);
 }
+.ai-source-chip .ai-source-workspace {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface);
+}
+.ai-ask-across {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ai-ask-actions {
+  margin-top: 8px;
+}
+/* AI actions: the preview with checkboxes (components/ai-actions.tsx). */
+.ai-action-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-action-list > li {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  min-width: 0;
+}
+.ai-action-list > li.blocked {
+  opacity: 0.75;
+}
+.ai-action-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-action-title {
+  margin: 0;
+  font-weight: 600;
+}
+.ai-action-tasks {
+  margin: 0;
+  padding-left: 4px;
+  list-style: none;
+}
+.ai-action-tasks .chip {
+  margin-left: 6px;
+}
+.ai-action-cells {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0;
+}
+.ai-action-cells > div {
+  display: contents;
+}
+.ai-action-cells dt {
+  color: var(--muted);
+}
+.ai-action-cells dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ai-action-text {
+  max-height: 180px;
+  margin: 0;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.ai-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+/* Related pages and the duplicate hint (components/related-pages.tsx). */
+.related-pages {
+  margin: 18px 0 8px;
+}
+.related-pages h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.related-pages ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.related-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 6px;
+  text-align: left;
+}
+.related-page:hover {
+  background: var(--hover);
+}
+.related-page .related-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.related-page small {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.duplicate-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--secondary);
+  font-size: 13px;
+}
 .ai-cite-number {
   display: inline-flex;
   align-items: center;

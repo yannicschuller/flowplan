@@ -28,6 +28,14 @@ export const AI_FEATURES = [
     label: ["KI in Datenbanken", "AI in databases"],
     description: ["KI-Eigenschaften, Felder ausfüllen, Datenbanken aus einer Beschreibung anlegen.", "AI properties, filling in fields, creating databases from a description."],
   },
+  {
+    id: "actions",
+    label: ["KI-Aktionen", "AI actions"],
+    description: [
+      "Seiten, Aufgaben und Einträge aus Antworten und Transkripten vorschlagen – angelegt wird erst nach Bestätigung.",
+      "Propose pages, tasks and records from answers and transcripts – nothing is created before you confirm.",
+    ],
+  },
 ] as const;
 
 export type AiFeature = (typeof AI_FEATURES)[number]["id"];

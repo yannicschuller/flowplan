@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 48) return;
+  if (globalDb.flowplanSchema === 49) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -664,6 +664,9 @@ function migrate(d: DatabaseSync) {
   d.exec(
     "CREATE TRIGGER IF NOT EXISTS search_page_aliases AFTER UPDATE OF aliases ON pages BEGIN INSERT INTO search_dirty SELECT NEW.id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.id AND row_id=''); END;",
   );
+  // Weekly digest e-mail (lib/weekly-digest.ts): opt-in, AI summary opt-in,
+  // the person's time zone and the local Monday last sent.
+  d.exec(`CREATE TABLE IF NOT EXISTS weekly_digests(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,enabled INTEGER NOT NULL DEFAULT 0,ai_summary INTEGER NOT NULL DEFAULT 0,time_zone TEXT NOT NULL DEFAULT 'UTC',last_week TEXT,updated_at INTEGER NOT NULL);`);
   // Directory provisioning (lib/scim.ts, lib/ldap-auth.ts): SCIM bearer
   // tokens (hashes only), provisioned users and groups with their members,
   // the last SCIM requests, LDAP-linked accounts with their directory groups,
@@ -676,7 +679,7 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS scim_requests(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,method TEXT NOT NULL,path TEXT NOT NULL,status INTEGER NOT NULL,token_id TEXT,detail TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS ldap_accounts(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,dn TEXT NOT NULL COLLATE NOCASE UNIQUE,username TEXT NOT NULL DEFAULT '',groups_json TEXT NOT NULL DEFAULT '[]',is_admin INTEGER NOT NULL DEFAULT 0,locked INTEGER NOT NULL DEFAULT 0,synced_at INTEGER,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS directory_status(key TEXT PRIMARY KEY,value TEXT NOT NULL,updated_at INTEGER NOT NULL);`);
-  globalDb.flowplanSchema = 48;
+  globalDb.flowplanSchema = 49;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
