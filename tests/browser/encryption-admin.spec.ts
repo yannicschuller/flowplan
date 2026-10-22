@@ -17,7 +17,8 @@ test("the encryption status is shown in the administration", async ({ page }, in
   await page.goto("/#admin/security");
   const section = page.locator(".encryption-settings");
   if (admin.encryption.enabled) {
-    await expect(section).toContainText(`Verschlüsselung an · Schlüssel-ID ${admin.encryption.keyId}`);
+    await expect(section).toContainText("Verschlüsselung an");
+    await expect(section).toContainText(admin.encryption.keyId);
     if (admin.encryption.litestream && !admin.encryption.litestreamSseC) await expect(section.locator(".callout.warning")).toContainText("unverschlüsselt");
   } else await expect(section).toContainText("Aus. Mit FLOWPLAN_ENCRYPTION_KEY");
   await section.scrollIntoViewIfNeeded();
@@ -26,9 +27,10 @@ test("the encryption status is shown in the administration", async ({ page }, in
   // hourly backups are an instance setting (Instanz).
   if (admin.encryption.enabled) {
     await page.goto("/#admin/storage");
-    await expect(page.locator(".settings-section").filter({ has: page.getByRole("heading", { name: "Geplante Sicherung", exact: true }) })).toContainText("verschlüsselt");
+    await expect(page.getByRole("region", { name: "Sicherungen" })).toContainText("verschlüsselt");
   }
-  await page.goto("/#admin/general");
+  // The backup settings have one home: Speicher & Sicherung.
+  await page.goto("/#admin/storage");
   await expect(page.getByRole("switch", { name: "Stündlich statt täglich" })).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -38,15 +38,17 @@ test("an admin deletes a disabled account after seeing what happens", async ({ b
     await page.goto(`${origin}/#admin/users`);
     const row = page.locator(".user-row", { hasText: name });
     await row.getByRole("button", { name: "Verwalten" }).click();
-    await expect(row.getByRole("button", { name: "Konto löschen …" })).toHaveCount(0);
-    await expect(row).toContainText("sobald das Konto deaktiviert ist");
-    await row.getByRole("button", { name: "Deaktivieren" }).click();
-    await row.getByRole("button", { name: "Konto löschen …" }).click();
+    const sheet = page.getByRole("dialog", { name, exact: true });
+    await expect(sheet.getByRole("button", { name: "Konto löschen …" })).toHaveCount(0);
+    await expect(sheet).toContainText("sobald das Konto deaktiviert ist");
+    await sheet.getByRole("button", { name: "Deaktivieren" }).click();
+    await sheet.getByRole("button", { name: "Konto löschen …" }).click();
     const dialog = page.getByRole("dialog", { name: `${name} löschen?` });
     await expect(dialog).toContainText("nur diese Person als Mitglied");
     await page.screenshot({ path: `test-results/admin-verification/delete-dialog.png` });
     await dialog.getByRole("button", { name: "Endgültig löschen" }).click();
     await expect(page.locator(".user-row", { hasText: name })).toHaveCount(0);
+    await expect(sheet).toHaveCount(0);
     expect(db.prepare("SELECT count(*) n FROM members WHERE user_id=?").get(leaving.uid)).toEqual({ n: 0 });
     expect(errors).toEqual([]);
   } finally {

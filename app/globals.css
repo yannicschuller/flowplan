@@ -2802,34 +2802,6 @@ tr:hover .row-open,
   width: fit-content;
   cursor: pointer;
 }
-.admin-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-  margin-bottom: 24px;
-}
-.admin-stats > div {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 20px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 5px;
-}
-.admin-stats svg {
-  color: var(--muted);
-  width: 22px;
-  height: 22px;
-}
-.admin-stats strong {
-  font-size: 26px;
-  grid-row: 1/3;
-  grid-column: 2;
-}
-.admin-stats span {
-  color: var(--secondary);
-  font-size: 12px;
-}
 .admin-page .callout {
   margin-bottom: 25px;
 }
@@ -3096,9 +3068,6 @@ tr:hover .row-open,
 .admin-metrics strong {
   font-size: 14px;
   overflow-wrap: anywhere;
-}
-.quota-input {
-  width: 120px;
 }
 .admin-page meter {
   display: block;
@@ -4115,9 +4084,6 @@ mark[data-color] {
   font-weight: 500;
   color: var(--muted);
 }
-.instance-settings {
-  display: block;
-}
 .saved-search-form {
   display: flex;
   gap: 6px;
@@ -4397,116 +4363,6 @@ mark[data-color] {
 .checkbox-label > span > small {
   display: block;
   font-size: 12.5px;
-}
-
-/* Administration: one account per row, "Verwalten" opens limits and actions. */
-.user-row {
-  border-top: 1px solid var(--border);
-}
-.user-row:first-child {
-  border-top: 0;
-}
-.user-row.is-disabled .user-row-who {
-  opacity: 0.55;
-}
-.user-row-summary {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-}
-.user-row-who {
-  display: grid;
-  flex: 1;
-  gap: 2px;
-  min-width: 0;
-}
-.user-row-who strong {
-  font-size: 13.5px;
-  font-weight: 500;
-}
-.user-row-who small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.user-row-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.user-row-storage {
-  color: var(--secondary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.user-row.open .user-row-summary > .button {
-  background: var(--hover);
-}
-.user-row-panel {
-  display: grid;
-  gap: 16px;
-  margin: 0 0 14px 44px;
-  padding: 16px 18px;
-  border-radius: 12px;
-  background: var(--surface);
-}
-.user-row-meters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px 24px;
-}
-.user-row-limits {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-}
-.user-row-limits > label {
-  display: grid;
-  gap: 5px;
-  margin: 0;
-  color: var(--secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
-.user-row-limits .number-field {
-  width: 190px;
-}
-.user-row-limits > small {
-  flex-basis: 100%;
-}
-.user-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-@media (max-width: 700px) {
-  .user-row-summary {
-    flex-wrap: wrap;
-  }
-  .user-row-chips {
-    order: 3;
-    justify-content: flex-start;
-    width: 100%;
-    padding-left: 44px;
-  }
-  .user-row-panel {
-    margin-left: 0;
-  }
-  .user-row-limits .number-field {
-    width: 100%;
-  }
-  .user-row-limits > label {
-    flex: 1 1 100%;
-  }
 }
 
 /* Settings pages: groups of rows (components/settings-ui.tsx). */
@@ -5708,22 +5564,6 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .space-settings :is(select, .fp-select) {
     max-width: 140px;
     font-size: 12px;
-  }
-  .admin-stats {
-    gap: 8px;
-  }
-  .admin-stats > div {
-    padding: 12px;
-    display: flex;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 9px;
-  }
-  .admin-stats strong {
-    font-size: 25px;
-  }
-  .admin-stats span {
-    font-size: 10px;
   }
   .admin-page .callout {
     font-size: 12px;
@@ -10262,24 +10102,6 @@ textarea {
 .settings-body .member-row.is-disabled > span:nth-child(2) {
   opacity: 0.6;
 }
-.settings-list-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.settings-list-head h2 {
-  flex: 1;
-  margin: 0 !important;
-}
-.settings-list-head input[type="search"] {
-  width: min(280px, 100%);
-  padding: 7px 10px;
-}
-.settings-list {
-  display: grid;
-}
 .status-chip {
   padding: 2px 8px;
   border-radius: 999px;
@@ -10339,32 +10161,6 @@ textarea {
 .settings-body .data-table td:first-child {
   padding-left: 24px;
 }
-.audit-table code {
-  font-size: 12px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: var(--hover);
-}
-.audit-table td:first-child {
-  white-space: nowrap;
-  color: var(--secondary);
-}
-.admin-stats {
-  gap: 14px;
-}
-.admin-stats > div {
-  border-radius: 14px;
-  background: var(--bg);
-  box-shadow: 0 1px 2px #1724390a;
-}
-.admin-stats svg {
-  width: 34px;
-  height: 34px;
-  padding: 7px;
-  border-radius: 10px;
-  background: var(--blue-light);
-  color: var(--blue);
-}
 .admin-metrics > div {
   border-radius: 12px;
 }
@@ -10385,21 +10181,6 @@ textarea {
   .settings-body .data-table td:first-child {
     padding-left: 16px;
   }
-  .admin-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .admin-stats > div {
-    padding: 12px;
-  }
-  .admin-stats strong {
-    font-size: 20px;
-  }
-}
-/* The instance form is a column of setting groups. */
-.settings-body .instance-settings {
-  display: block;
-  max-width: none;
 }
 /* Setting groups bring their own card; the general section card does not
    apply to them. */
@@ -10407,9 +10188,6 @@ textarea {
 .settings-body .setting-group {
   margin: 0 0 16px;
   padding: 0;
-}
-.settings-body .instance-settings .setting-group {
-  margin-bottom: 16px;
 }
 
 /* ---------- Settings shell: tiles → detail pages ----------
@@ -10840,9 +10618,6 @@ textarea {
   max-width: none;
   overflow-x: auto;
 }
-.settings-shell .settings-list-head input[type="search"] {
-  min-width: 0;
-}
 @media (max-width: 1100px) {
   .settings-detail-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -11020,9 +10795,7 @@ pre,
 .font-mono {
   font-family: var(--font-mono);
 }
-/* Numbers line up wherever they are compared. */
 .data-table,
-.admin-stats strong,
 .admin-metrics strong,
 .record-count,
 .column-calculation,
@@ -12531,99 +12304,6 @@ label.task-due {
   letter-spacing: 0.02em;
   pointer-events: none;
 }
-
-/* Admin → Betrieb → Speicher */
-.admin-storage {
-  display: grid;
-  gap: 18px;
-}
-.storage-status {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  align-items: start;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-.storage-status > svg {
-  margin-top: 2px;
-  color: var(--muted);
-}
-.storage-status[data-state="ok"] > svg {
-  color: #2f9e6e;
-}
-.storage-status[data-state="error"] {
-  border-color: color-mix(in srgb, #e03131 40%, var(--border));
-}
-.storage-status[data-state="error"] > svg {
-  color: #e03131;
-}
-.storage-status strong {
-  display: block;
-  font-size: 15px;
-}
-.storage-status span {
-  font-size: 13px;
-  color: var(--secondary);
-  overflow-wrap: anywhere;
-}
-.storage-status dl {
-  grid-column: 2;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 22px;
-  margin: 8px 0 0;
-}
-.storage-status dt {
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.storage-status dd {
-  margin: 2px 0 0;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.storage-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-.storage-panel {
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  display: grid;
-  gap: 10px;
-  align-content: start;
-}
-.storage-panel h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-}
-.storage-panel h3 strong {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-}
-.storage-panel h4 {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 6px 0 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-.storage-panel h4 span {
-  font-weight: 450;
-  color: var(--secondary);
-  font-variant-numeric: tabular-nums;
-}
 .storage-breakdown {
   display: grid;
   gap: 8px;
@@ -12673,15 +12353,6 @@ label.task-due {
 .storage-breakdown li.storage-empty {
   display: block;
   color: var(--muted);
-}
-.storage-counts-title {
-  margin: 4px 0 0;
-  font-size: 15px;
-}
-@media (max-width: 800px) {
-  .storage-columns {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Collaborators outside the visible part of the board */
@@ -15125,20 +14796,6 @@ h3 .block-reactions {
 .passkey-list small {
   color: var(--muted);
   font-size: 12px;
-}
-.member-row .reset-link {
-  flex-basis: 100%;
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--secondary);
-}
-.member-row .reset-link input {
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-.member-row:has(.reset-link) {
-  flex-wrap: wrap;
 }
 /* The language switch stays in the footer on phones too. */
 /* ---------- PDF preview and viewer (components/pdf-viewer.tsx) ---------- */
@@ -18327,13 +17984,13 @@ h3 .block-reactions {
 
 /* Admin: pages of the scheduled Markdown export. */
 .markdown-export-pages {
-  margin: 8px 0 12px;
-  padding-left: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 .markdown-export-picker {
   display: grid;
   gap: 10px;
-  margin-top: 8px;
 }
 .markdown-export-choices {
   display: grid;
@@ -18349,10 +18006,6 @@ h3 .block-reactions {
 }
 .markdown-export-choices small {
   color: var(--secondary);
-}
-.markdown-export-settings h3 {
-  margin: 18px 0 6px;
-  font-size: 14px;
 }
 
 /* Sign-in and sign-up fit the screen without scrolling: tighter spacing,
@@ -22487,7 +22140,6 @@ html.split-resizing * {
 }
 /* ===== End of end-to-end encrypted spaces. ===== */
 
-
 /* ===== Imports from Confluence, Evernote, Google Docs and Obsidian (components/import-sources.tsx). ===== */
 .import-sources-options {
   display: grid;
@@ -22535,3 +22187,566 @@ html.split-resizing * {
   flex-wrap: wrap;
 }
 /* ===== End of imports from other tools. ===== */
+
+/* ===== Administration sections (components/settings/admin/*): the status
+   line at the top, lists of users and workspaces, the user sheet. Built on
+   the setting groups of components/settings-ui.tsx. ===== */
+.admin-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.admin-status-badges {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+/* The global .error (a red message box) must not reach the building
+   blocks that use "error" as their tone. */
+.status-badge.error,
+.save-state.error {
+  margin: 0;
+  border: 0;
+}
+.status-badge.error {
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.save-state.error {
+  padding: 0;
+  background: none;
+  font-size: 12.5px;
+}
+.admin-status p {
+  grid-column: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.admin-status-action {
+  grid-column: 2;
+  grid-row: 2;
+}
+.admin-fix-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  color: var(--blue);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.admin-fix-link:hover {
+  text-decoration: underline;
+}
+.admin-break {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.admin-nowrap {
+  white-space: nowrap;
+}
+.admin-note {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+/* A text setting with its own save. */
+.admin-text-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+.admin-text-setting.multiline {
+  display: grid;
+  justify-content: stretch;
+}
+.admin-text-setting textarea {
+  width: 100%;
+  resize: vertical;
+}
+.admin-text-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.admin-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.admin-inline-form {
+  flex-wrap: wrap;
+}
+.admin-copy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-copy code {
+  overflow-wrap: anywhere;
+}
+.admin-details > summary {
+  min-height: 32px;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.admin-details[open] > summary {
+  margin-bottom: 8px;
+}
+.admin-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  background: var(--border);
+}
+.admin-counts > div {
+  display: grid;
+  gap: 2px;
+  padding: 12px 22px;
+  background: var(--bg);
+}
+.admin-counts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.admin-counts dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.setting-group .admin-counts:last-child {
+  border-radius: 0 0 14px 14px;
+  overflow: hidden;
+}
+/* Lists: users, workspaces, the activity log. */
+.settings-body .admin-users,
+.settings-body .admin-list-card {
+  padding: 0;
+  overflow: hidden;
+}
+.admin-users-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 16px 22px;
+}
+.admin-users-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.admin-users-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: min(300px, 100%);
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.admin-search:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.admin-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  outline: none;
+}
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 22px 14px;
+}
+.admin-list-card .responsive-table th:first-child,
+.admin-list-card .responsive-table td:first-child {
+  padding-left: 22px;
+}
+.admin-list-card .responsive-table th:last-child,
+.admin-list-card .responsive-table td:last-child {
+  padding-right: 22px;
+}
+.admin-list-card .responsive-table tr:last-child td {
+  border-bottom: 0;
+}
+.admin-list-card .settings-empty {
+  margin: 0 22px 18px;
+}
+.admin-more {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+.admin-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--blue-light);
+}
+.admin-bulk strong {
+  margin-right: auto;
+  font-size: 13.5px;
+}
+.admin-users .settings-empty {
+  margin: 0 22px 18px;
+}
+.admin-user-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.admin-user-table th {
+  padding: 9px 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  background: var(--surface);
+}
+.admin-user-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.admin-user-table tr:last-child td {
+  border-bottom: 0;
+}
+.admin-user-table :is(th, td).check {
+  width: 44px;
+  padding-left: 22px;
+}
+.admin-user-table :is(th, td).end {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.admin-user-table td.action {
+  padding-right: 22px;
+  text-align: right;
+}
+.admin-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.admin-who > span {
+  display: grid;
+  min-width: 0;
+}
+.admin-who strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-weight: 550;
+}
+.admin-who small {
+  color: var(--secondary);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.admin-user-table td.who {
+  min-width: 220px;
+}
+.admin-who small.signin {
+  color: var(--muted);
+}
+.admin-user-table td.last {
+  color: var(--secondary);
+}
+.admin-user-table :is(td.last, td.storage, td.state, td.action) {
+  white-space: nowrap;
+}
+@media (min-width: 861px) {
+  .admin-users-tools {
+    flex-wrap: nowrap;
+  }
+}
+.admin-user-table tr.is-selected td {
+  background: color-mix(in srgb, var(--blue-light) 60%, transparent);
+}
+.admin-user-table tr.is-disabled td.who strong {
+  color: var(--secondary);
+}
+.admin-user-table input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+/* One account in a side sheet (full screen on phones). */
+.modal.admin-user-sheet {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  background: var(--surface);
+}
+.modal.admin-user-sheet .modal-heading {
+  margin-bottom: 0;
+}
+.modal.admin-user-sheet .setting-group {
+  margin: 0;
+}
+.admin-user-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.admin-user-sheet-head > span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-user-sheet-head small {
+  color: var(--secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.admin-user-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.admin-user-note {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--blue-light);
+  color: var(--text);
+  font-size: 13px;
+}
+.admin-user-meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px 24px;
+}
+.admin-user-sheet .setting-control input[readonly] {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+/* Usage of a workspace: text and a small bar. */
+.admin-usage {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+  font-variant-numeric: tabular-nums;
+}
+.admin-usage-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.admin-usage-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+}
+.admin-usage.full .admin-usage-bar > span {
+  background: #c98a1b;
+}
+.admin-quota {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.admin-quota .number-field {
+  width: 140px;
+}
+.admin-maintenance-form {
+  display: grid;
+}
+.settings-body .file-label.danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-width: 860px) {
+  .admin-status {
+    padding: 12px 14px;
+  }
+  .admin-status {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-status-action {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .admin-users-head,
+  .admin-filters {
+    padding-inline: 16px;
+  }
+  .admin-users-tools,
+  .admin-search,
+  .admin-filters > * {
+    width: 100%;
+  }
+  .admin-users-tools > * {
+    flex: 1 1 100%;
+  }
+  .admin-search {
+    min-height: 44px;
+  }
+  .admin-bulk {
+    padding-inline: 16px;
+  }
+  .admin-bulk strong {
+    flex-basis: 100%;
+  }
+  .admin-counts > div {
+    padding: 10px 16px;
+  }
+  .admin-list-card .responsive-table {
+    border-top: 1px solid var(--border);
+  }
+  .admin-list-card .responsive-table tr {
+    padding: 10px 16px;
+  }
+  .admin-list-card .responsive-table tr:last-child {
+    border-bottom: 0;
+  }
+  .admin-list-card .responsive-table :is(th, td):first-child,
+  .admin-list-card .responsive-table :is(th, td):last-child {
+    padding-inline: 0;
+  }
+  .admin-list-card .responsive-table td {
+    align-items: center;
+    min-width: 0;
+  }
+  .admin-list-card .responsive-table td > * {
+    min-width: 0;
+    text-align: right;
+  }
+  .admin-list-card .settings-empty,
+  .admin-users .settings-empty {
+    margin-inline: 16px;
+  }
+  .admin-usage {
+    min-width: 0;
+    justify-items: end;
+  }
+  .admin-usage-bar {
+    width: 120px;
+  }
+  /* The user table becomes a list: check, person, state, button. */
+  .admin-user-table thead {
+    display: none;
+  }
+  .admin-user-table,
+  .admin-user-table tbody {
+    display: block;
+  }
+  .admin-user-table tr {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas: "check who who" "check state action";
+    align-items: center;
+    gap: 4px 8px;
+    padding: 12px 16px 12px 4px;
+    border-top: 1px solid var(--border);
+  }
+  .admin-user-table td {
+    padding: 0;
+    border: 0;
+  }
+  .admin-user-table td.check {
+    grid-area: check;
+    align-self: start;
+    display: flex;
+    justify-content: center;
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
+    align-items: center;
+  }
+  .admin-user-table td.who {
+    grid-area: who;
+  }
+  .admin-user-table td.who {
+    min-width: 0;
+  }
+  .admin-user-table td.last,
+  .admin-user-table td.storage {
+    display: none;
+  }
+  .admin-user-table td.state {
+    grid-area: state;
+  }
+  .admin-user-table td.action {
+    grid-area: action;
+    padding: 0;
+  }
+}
+.setting-text small a,
+.admin-status p a,
+.setting-group > header p a:not(.admin-fix-link) {
+  color: var(--blue);
+  text-decoration: underline;
+}
+@media (max-width: 860px) {
+  .settings-shell .settings-body .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+/* Long badge texts (French) wrap instead of widening the page. */
+.admin-status-badges > .status-badge {
+  max-width: 100%;
+  white-space: normal;
+}
+@media (max-width: 860px) {
+  .modal.admin-user-sheet :is(.button, input:not([type="checkbox"])) {
+    min-height: 44px;
+  }
+  .modal.admin-user-sheet .modal-heading .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

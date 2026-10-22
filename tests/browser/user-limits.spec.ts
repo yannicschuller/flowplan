@@ -40,11 +40,13 @@ test("limits per person, shown to the person, and a fixed language", async ({ pa
     await admin.page.goto(`${origin}/#admin/users`);
     const row = admin.page.locator(".user-row", { hasText: name });
     await row.getByRole("button", { name: "Verwalten" }).click();
-    await row.getByLabel(`Speicher für ${name}`).fill("200");
-    await row.getByLabel(`Eigene Arbeitsbereiche für ${name}`).fill("3");
-    await row.getByRole("button", { name: "Grenzen speichern" }).click();
+    // The account opens in a side sheet (full screen on phones).
+    const sheet = admin.page.getByRole("dialog", { name, exact: true });
+    await sheet.getByLabel(`Speicher für ${name}`).fill("200");
+    await sheet.getByLabel(`Eigene Arbeitsbereiche für ${name}`).fill("3");
+    await sheet.getByRole("button", { name: "Grenzen speichern" }).click();
     await expect.poll(() => (db.prepare("SELECT limits FROM users WHERE id=?").get(person.uid) as { limits: string }).limits).toBe(JSON.stringify({ storageMb: 200, workspaces: 3 }));
-    await expect(row.locator(".usage-meter")).toHaveCount(2);
+    await expect(sheet.locator(".usage-meter")).toHaveCount(2);
     await admin.page.screenshot({ path: `test-results/admin-verification/${info.project.name}-user-limits.png`, fullPage: true });
 
     // The person sees what applies to them.

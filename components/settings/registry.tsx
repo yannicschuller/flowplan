@@ -12,10 +12,12 @@ import {
   EnvelopeSimple,
   FileArrowDown,
   FolderSimple,
+  Gauge,
   HardDrives,
   Key,
   ListChecks,
   LockKey,
+  Megaphone,
   Palette,
   PlugsConnected,
   Pulse,
@@ -57,6 +59,9 @@ import SecuritySection from "./admin/security";
 import AuditSection from "./admin/audit";
 import MonitoringSection from "./admin/monitoring";
 import GeneralSection from "./admin/general";
+import LimitsSection from "./admin/limits";
+import AdminExtensionsSection from "./admin/extensions";
+import MaintenanceSection from "./admin/maintenance";
 
 export const ICONS: Record<string, Icon> = {
   BellSimple,
@@ -67,10 +72,12 @@ export const ICONS: Record<string, Icon> = {
   EnvelopeSimple,
   FileArrowDown,
   FolderSimple,
+  Gauge,
   HardDrives,
   Key,
   ListChecks,
   LockKey,
+  Megaphone,
   Palette,
   PlugsConnected,
   Pulse,
@@ -115,6 +122,9 @@ const ADMIN_COMPONENTS: Record<string, ComponentType> = {
   audit: AuditSection,
   monitoring: MonitoringSection,
   general: GeneralSection,
+  limits: LimitsSection,
+  extensions: AdminExtensionsSection,
+  maintenance: MaintenanceSection,
 };
 
 export type SectionDef = SectionMeta & { Icon: Icon; Component: ComponentType };

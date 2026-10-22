@@ -81,16 +81,21 @@ Administration (`#admin/…`):
 | Group | Sections |
 |---|---|
 | Personen | `users` Benutzer · `signin` Anmeldung & SSO · `workspaces` Arbeitsbereiche |
-| Daten | `storage` Speicher & Sicherung · `export` Markdown- & Git-Export |
-| Dienste | `mail` E-Mail · `ai` KI |
+| Daten | `storage` Speicher & Sicherung · `limits` Grenzen & Aufbewahrung · `export` Markdown- & Git-Export |
+| Dienste | `mail` E-Mail · `ai` KI · `extensions` Erweiterungen & Domains |
 | Sicherheit | `security` Verschlüsselung · `audit` Aktivitätsprotokoll |
-| Betrieb | `monitoring` Überwachung · `general` Instanz |
+| Betrieb | `monitoring` Überwachung · `maintenance` Wartung & Hinweise · `general` Instanz |
 
-Planned in phase 2 (ids reserved, add them when their content moves):
-`admin/limits` Grenzen & Aufbewahrung and `admin/extensions` Erweiterungen &
-Domains (out of the instance form in `general`), `admin/maintenance` Wartung
-& Hinweise (maintenance notice + instance notice), `settings/webhooks`
-(Webhooks out of `api`). `admin/overview` stays the landing page itself – the
+Every instance setting has one home: registration, two-factor and inactive
+accounts in `signin`, quotas, uploads and versions in `limits`, backups in
+`storage`, the notice in `maintenance`, plugins and domains in `extensions`,
+name and demo in `general`. Administration sections start with
+`<AdminStatus>` (components/settings/admin/parts.tsx: badges, one sentence,
+a link to the fix) and save single instance settings with `InstanceSwitch`,
+`InstanceSelect`, `InstanceNumber` and `InstanceText` (saved on change, the
+state next to the control).
+
+Planned: `settings/webhooks` (Webhooks out of `api`). `admin/overview` stays the landing page itself – the
 live charts go above the tiles (`status` slot of the shell).
 
 ## Adding or moving a section

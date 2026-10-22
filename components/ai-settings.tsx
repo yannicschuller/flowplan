@@ -8,7 +8,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useT } from "./i18n";
 import { api } from "./ui";
 import { Select } from "./select";
-import { SaveBar, SettingGroup, SettingRow, Switch, SwitchRow } from "./settings-ui";
+import { EmptyState, SaveBar, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSaveState } from "./settings-ui";
+import { AdminStatus, FixLink, type StatusItem } from "./settings/admin/parts";
 import { serverMessage } from "@/lib/i18n-errors";
 import {
   AI_DEFAULTS,
@@ -329,8 +330,25 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
   useEffect(() => {
     void load();
   }, []);
-  if (!view || !draft) return <div className="loading-content">{t("Wird geladen …", "Loading …")}</div>;
+  if (!view || !draft)
+    return (
+      <p className="settings-loading" role="status">
+        {t("Wird geladen …", "Loading …")}
+      </p>
+    );
   const dirty = JSON.stringify(draft) !== JSON.stringify(view.settings) || "apiKey" in keyChange;
+  const saved = view.settings;
+  const items: StatusItem[] = [saved.enabled ? { tone: "ok", label: t("KI an", "AI on") } : { tone: "off", label: t("KI aus", "AI off") }];
+  if (saved.enabled) {
+    items.push(
+      saved.provider
+        ? { tone: "info", label: t(AI_PROVIDER_NAMES[saved.provider.kind], AI_PROVIDER_NAMES_EN[saved.provider.kind]) }
+        : { tone: saved.userProviders ? "info" : "warn", label: t("Kein Anbieter der Instanz", "No instance provider") },
+      saved.access === "selected" ? { tone: "info", label: t(`${view.allowedUsers.length} ausgewählte Personen`, `${view.allowedUsers.length} selected people`) } : { tone: "info", label: t("Alle Personen", "Everyone") },
+    );
+    if (view.key.unreadable) items.push({ tone: "error", label: t("Schlüssel nicht lesbar", "Key unreadable") });
+    if (saved.semanticSearch) items.push({ tone: "ok", label: t("Suche nach Bedeutung", "Semantic search") });
+  }
   const mb = (bytes: number) => (bytes / 1_048_576).toLocaleString(undefined, { maximumFractionDigits: 1 });
   const set = (patch: Partial<InstanceAi>) => setDraft({ ...draft, ...patch });
   const provider = draft.provider;
@@ -339,6 +357,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
     <form
       key={formKey}
       className="ai-admin"
+      id="ai-admin"
       aria-label={t("KI-Einstellungen der Instanz", "AI settings of the instance")}
       onSubmit={async (e) => {
         e.preventDefault();
@@ -354,7 +373,19 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
         }
       }}
     >
+      <AdminStatus items={items} action={saved.enabled && !saved.provider && !saved.userProviders ? <FixLink href="#admin/ai/ai-provider">{t("Anbieter einrichten", "Set up provider")}</FixLink> : undefined}>
+        {saved.enabled
+          ? saved.provider?.kind === "ollama"
+            ? t("Texte bleiben auf deinem Server.", "Text stays on your server.")
+            : saved.provider
+              ? t("Texte gehen an den Anbieter im Internet.", "Text goes to the provider on the internet.")
+              : saved.userProviders
+                ? t("Personen nutzen nur eigene Anbieter.", "People only use their own providers.")
+                : t("Ohne Anbieter gibt es keine KI-Funktionen.", "Without a provider there are no AI features.")
+          : t("Nirgends gibt es KI-Funktionen.", "There are no AI features anywhere.")}
+      </AdminStatus>
       <SettingGroup
+        id="ai-switch"
         title={t("Künstliche Intelligenz", "Artificial intelligence")}
         description={t(
           "Ausgeschaltet gibt es nirgends KI-Funktionen. Eingeschaltet gehen Texte, mit denen jemand eine KI-Funktion nutzt, an den gewählten Anbieter. Mit Ollama bleibt alles auf deinem Server.",
@@ -365,6 +396,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
       </SettingGroup>
 
       <SettingGroup
+        id="ai-provider"
         title={t("Anbieter der Instanz", "Instance provider")}
         description={
           provider
@@ -418,8 +450,16 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
         )}
       </SettingGroup>
 
-      <SettingGroup title={t("Wer KI nutzen darf", "Who may use AI")}>
-        <SettingRow id="ai-access" label={t("Personen", "People")} description={t("„Ausgewählte“: unter Benutzer pro Person freischalten.", "“Selected”: enable per person under Users.")}>
+      <SettingGroup id="ai-who" title={t("Wer KI nutzen darf", "Who may use AI")}>
+        <SettingRow
+          id="ai-access"
+          label={t("Personen", "People")}
+          description={
+            <>
+              {t("„Ausgewählte“: pro Person freischalten unter", "“Selected”: enable per person under")} <a href="#admin/users">{t("Benutzer", "Users")}</a>.
+            </>
+          }
+        >
           <Select id="ai-access" value={draft.access} onChange={(e) => set({ access: e.target.value as InstanceAi["access"] })}>
             <option value="everyone">{t("Alle", "Everyone")}</option>
             <option value="selected">{t("Ausgewählte Personen", "Selected people")}</option>
@@ -439,7 +479,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
         />
       </SettingGroup>
 
-      <SettingGroup title={t("Funktionen", "Features")} description={t("Jede Funktion lässt sich einzeln erlauben. Personen können erlaubte Funktionen für sich ausschalten.", "Each feature can be allowed separately. People can switch allowed features off for themselves.")}>
+      <SettingGroup id="ai-allowed" title={t("Funktionen", "Features")} description={t("Jede Funktion lässt sich einzeln erlauben. Personen können erlaubte Funktionen für sich ausschalten.", "Each feature can be allowed separately. People can switch allowed features off for themselves.")}>
         {AI_FEATURES.map((f) => (
           <SwitchRow
             key={f.id}
@@ -451,6 +491,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
         ))}
       </SettingGroup>
       <SettingGroup
+        id="ai-semantic"
         title={t("Suche nach Bedeutung", "Semantic search")}
         description={t(
           "Für „KI fragen“: Inhalte werden zusätzlich mit dem Embedding-Modell des Instanz-Anbieters als Vektoren gespeichert, damit Fragen auch ohne gleiche Wörter passende Stellen finden. Journale mit PIN, für die KI gesperrte Seiten und Bereiche sowie der Papierkorb werden nie eingebettet; persönliche KI-Regeln und Berechtigungen gelten bei jeder Frage. Speicherbedarf: 4 Byte je Dimension und Abschnitt (768 Dimensionen ≈ 3 KB je Abschnitt von bis zu ~900 Zeichen, etwa das 3- bis 4-Fache des Textes).",
@@ -553,19 +594,22 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
   useEffect(() => {
     void load();
   }, [boot.workspace.id]);
-  const command = async (body: Record<string, unknown>) => {
-    try {
+  // Changes save at once; the state shows next to the cards' titles.
+  const [saving, run] = useSaveState();
+  const command = async (body: Record<string, unknown>) =>
+    (await run(async () => {
       await api("/api/command", body);
       await load();
       void onRefresh().catch(() => {});
       return true;
-    } catch (e) {
-      onError((e as Error).message);
-      return false;
-    }
-  };
+    })) ?? false;
   if (boot.user.demo) return <p className="muted">{t("KI ist in der Demo nicht verfügbar.", "AI is not available in the demo.")}</p>;
-  if (!view) return <div className="loading-content">{t("Wird geladen …", "Loading …")}</div>;
+  if (!view)
+    return (
+      <p className="settings-loading" role="status">
+        {t("Wird geladen …", "Loading …")}
+      </p>
+    );
   const { status, settings, instance } = view;
   if (!instance.enabled)
     return (
@@ -579,7 +623,9 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
   return (
     <>
       <SettingGroup
+        id="ai-features"
         title={t("Künstliche Intelligenz", "Artificial intelligence")}
+        actions={<SaveState status={saving} />}
         description={
           status.provider
             ? status.provider.local
@@ -613,7 +659,7 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
           ))}
       </SettingGroup>
       {(instance.userProviders || settings.provider) && <OwnProvider key={`${JSON.stringify(settings.provider)}:${view.key.stored}:${view.key.hint}`} view={view} command={command} onError={onError} />}
-      <AiAccessRules boot={boot} view={view} command={command} />
+      <AiAccessRules boot={boot} view={view} command={command} saving={saving} />
     </>
   );
 }
@@ -694,7 +740,7 @@ function OwnProvider({ view, command, onError }: { view: UserView; command: (b: 
 
 // "Worauf die KI zugreifen darf": everything I may see, or only what I
 // include; plus rules for the workspace, spaces, pages and databases.
-function AiAccessRules({ boot, view, command }: { boot: Bootstrap; view: UserView; command: (b: Record<string, unknown>) => Promise<boolean> }) {
+function AiAccessRules({ boot, view, command, saving }: { boot: Bootstrap; view: UserView; command: (b: Record<string, unknown>) => Promise<boolean>; saving: ReturnType<typeof useSaveState>[0] }) {
   const t = useT();
   const [target, setTarget] = useState(""),
     [mode, setMode] = useState<"include" | "exclude">("exclude");
@@ -722,7 +768,9 @@ function AiAccessRules({ boot, view, command }: { boot: Bootstrap; view: UserVie
   }, [boot.pages, boot.spaces, boot.workspace, t]);
   return (
     <SettingGroup
+      id="ai-access"
       title={t("Worauf die KI zugreifen darf", "What the AI may access")}
+      actions={<SaveState status={saving} />}
       description={t(
         "Die KI liest nie mehr, als du selbst sehen darfst. Gesperrte Seiten, Journale mit PIN, private Einträge anderer und der Papierkorb sind immer ausgeschlossen. Regeln gelten für Unterseiten und Einträge mit; die nächstgelegene Regel gewinnt.",
         "The AI never reads more than you may see yourself. Pages closed to the AI, journals with a PIN, other people's private records and the trash are always excluded. Rules apply to sub-pages and records too; the closest rule wins.",
@@ -734,6 +782,11 @@ function AiAccessRules({ boot, view, command }: { boot: Bootstrap; view: UserVie
           <option value="selected">{t("Nur ausgewählte", "Only selected")}</option>
         </Select>
       </SettingRow>
+      {view.rules.length === 0 && (
+        <div className="setting-row wide">
+          <EmptyState title={t("Noch keine Regeln", "No rules yet")}>{t("Es gilt der Grundsatz oben.", "The default above applies.")}</EmptyState>
+        </div>
+      )}
       {view.rules.map((rule) => (
         <SettingRow
           key={rule.targetId}

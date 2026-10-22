@@ -47,18 +47,17 @@ test("admins download an instance backup and stage or cancel a restore", async (
   const admin = await context.newPage();
   try {
     await admin.goto(`${origin}/#admin/storage`);
-    const section = admin.getByRole("region", { name: "Instanzsicherung" });
+    // Download in "Gesamte Instanz", restore in the danger zone at the end.
+    const whole = admin.getByRole("region", { name: "Gesamte Instanz" });
+    const section = admin.getByRole("region", { name: "Aus Sicherung wiederherstellen" });
     const downloading = admin.waitForEvent("download");
-    await section
-      .getByRole("link", { name: "Sicherung herunterladen" })
-      .click();
+    await whole.getByRole("link", { name: "Herunterladen" }).click();
     const download = await downloading;
     expect(download.suggestedFilename()).toMatch(/^flowplan-instanz-.*\.zip$/);
     const file = (await download.path())!;
     await section.getByLabel("Instanzsicherung hochladen").setInputFiles(file);
-    await expect(section.getByRole("status")).toContainText(
-      "Bereit zur Übernahme beim Neustart",
-    );
+    await expect(section).toContainText("Bereit zur Übernahme beim Neustart");
+    await expect(section.getByRole("status")).toContainText("Sicherung vom");
     await section
       .getByRole("button", { name: "Wiederherstellung abbrechen" })
       .click();
