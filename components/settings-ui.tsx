@@ -54,10 +54,11 @@ export function DangerZone({ title, description, children, id }: { title?: strin
 
 // One setting: label and explanation left, control right. With `id` the
 // label belongs to the control of that id; `wide` puts the control under
-// the text (text areas, lists).
-export function SettingRow({ label, description, children, id, wide = false }: { label: string; description?: ReactNode; children: ReactNode; id?: string; wide?: boolean }) {
+// the text (text areas, lists). `anchor` gives the row itself an id: a
+// target of the search and of #settings/<section>/<anchor>.
+export function SettingRow({ label, description, children, id, wide = false, anchor }: { label: string; description?: ReactNode; children: ReactNode; id?: string; wide?: boolean; anchor?: string }) {
   return (
-    <div className={`setting-row${wide ? " wide" : ""}`}>
+    <div className={`setting-row${wide ? " wide" : ""}`} id={anchor}>
       <div className="setting-text">
         {id ? <label htmlFor={id}>{label}</label> : <span className="setting-label">{label}</span>}
         {description && <small>{description}</small>}

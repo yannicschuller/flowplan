@@ -6,7 +6,7 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
-// A personal API token from Flowplan (Settings → API & webhooks). Requests
+// A personal API token from Flowplan (Settings → API & AI assistants). Requests
 // act as the person who created it, with their permissions; "read" tokens
 // only read.
 export class FlowplanApi implements ICredentialType {
@@ -36,7 +36,7 @@ export class FlowplanApi implements ICredentialType {
 			default: '',
 			placeholder: 'fp_…',
 			description:
-				'Personal API token from Settings → API & webhooks. Use a write token to create pages and records or to register the trigger’s webhook.',
+				'Personal API token from Settings → API & AI assistants. Use a write token to create pages and records or to register the trigger’s webhook.',
 			required: true,
 		},
 	];

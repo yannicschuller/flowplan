@@ -6,7 +6,7 @@
   "commandHighlight": { "message": "Highlight the selection in Flowplan" },
   "menuHighlight": { "message": "Highlight in Flowplan" },
   "setupTitle": { "message": "Connect to Flowplan" },
-  "setupIntro": { "message": "Enter the address of your Flowplan instance and an API token. Create the token in Flowplan under Settings → API & webhooks → Personal API tokens with the permission “Browser extension only”." },
+  "setupIntro": { "message": "Enter the address of your Flowplan instance and an API token. Create the token in Flowplan under Settings → API & AI assistants → Personal API tokens with the permission “Browser extension only”." },
   "instanceLabel": { "message": "Instance address" },
   "tokenLabel": { "message": "API token" },
   "connect": { "message": "Connect" },

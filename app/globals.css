@@ -3879,23 +3879,6 @@ mark[data-color] {
   background: var(--blue);
   vertical-align: middle;
 }
-.notification-prefs {
-  border-collapse: collapse;
-  width: 100%;
-  max-width: 520px;
-  font-size: 14px;
-}
-.notification-prefs th,
-.notification-prefs td {
-  padding: 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-.notification-prefs th:not(:first-child),
-.notification-prefs td:not(:first-child) {
-  text-align: center;
-  width: 110px;
-}
 .form-choices {
   display: grid;
   gap: 6px;
@@ -4328,13 +4311,6 @@ mark[data-color] {
 }
 
 /* Settings pages: groups of rows (components/settings-ui.tsx). */
-.profile-row {
-  display: grid;
-  gap: 14px;
-}
-.profile-row .member-row {
-  margin: 0;
-}
 .limits-overview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -10691,10 +10667,6 @@ textarea {
   .settings-shell .settings-body input:not([type="checkbox"], [type="radio"]) {
     max-width: 100%;
   }
-  .settings-shell .notification-prefs :is(th, td):not(:first-child) {
-    width: 64px;
-    padding-inline: 4px;
-  }
   /* Controls in panels reach 44 px. */
   .settings-shell .settings-body :is(.button, select, input:is([type="text"], [type="email"], [type="search"], [type="number"], [type="url"], [type="password"], :not([type]))) {
     min-height: 44px;
@@ -12432,8 +12404,7 @@ label.task-due {
   font-size: 11px;
   color: var(--muted);
 }
-.integration-secret,
-.mcp-address {
+.integration-secret {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -12443,16 +12414,9 @@ label.task-due {
   background: var(--blue-light);
   font-size: 13px;
 }
-.integration-secret code,
-.mcp-address code {
+.integration-secret code {
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
-}
-.mcp-clients {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 12px;
 }
 .mcp-config {
   margin: 0 0 8px;
@@ -12491,11 +12455,6 @@ label.task-due {
   font-size: 12px;
 }
 /* Webhook settings: chat formats, templates and the live preview. */
-.webhook-editing {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 13px;
-}
 .webhook-digest {
   display: inline-flex;
   align-items: center;
@@ -12509,14 +12468,7 @@ label.task-due {
   font-size: 12px;
   resize: vertical;
 }
-.webhook-template-bar,
 .webhook-placeholders,
-.webhook-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
 .webhook-actions {
   flex-wrap: nowrap;
 }
@@ -13229,16 +13181,6 @@ h3 .block-reactions {
   width: fit-content;
   cursor: grab;
   border-style: dashed;
-}
-.clipper-settings h3 {
-  margin: 18px 0 4px;
-  font-size: 14px;
-}
-.clipper-import {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
 }
 
 /* Voice notes (components/voice-recorder.tsx). */
@@ -14670,29 +14612,6 @@ h3 .block-reactions {
   text-align: left;
 }
 /* Settings → profile: name, password, passkeys (components/account-security.tsx). */
-.account-security {
-  display: grid;
-  gap: 12px;
-  max-width: 460px;
-  margin-top: 14px;
-}
-.account-security h3 {
-  margin: 14px 0 0;
-  font-size: 15px;
-}
-.account-form {
-  display: grid;
-  gap: 10px;
-}
-.account-form label {
-  display: grid;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--secondary);
-}
-.account-form .button {
-  justify-self: start;
-}
 .account-status {
   color: var(--blue);
   font-size: 13px;
@@ -17894,16 +17813,497 @@ h3 .block-reactions {
 .my-sessions small {
   color: var(--secondary);
 }
-.my-sessions .session-current {
-  color: var(--blue);
+
+/* ---------- Settings: personal & connections (phase 2, package A) ----------
+   Konto & Sicherheit, Benachrichtigungen, Offline & Geräte, API &
+   KI-Assistenten, Webhooks, Kalender & Issues, Web-Clipper – on the building
+   blocks of components/settings-ui.tsx. Only what the blocks do not cover. */
+.settings-body .setting-row[id],
+.settings-body .setting-group[id] {
+  scroll-margin-top: 72px;
+}
+.setting-rows > .setting-note {
+  margin: 0;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.setting-rows > .setting-note.settings-loading {
+  color: var(--muted);
+}
+/* A percentage width in the auto-sized control column resolves to the
+   input's minimum: the fixed widths apply directly. */
+.settings-body .setting-control > input.control-sm {
+  width: 120px;
+}
+.settings-body .setting-control > input.control-md {
+  width: 220px;
+}
+.settings-body .setting-control > input.control-lg {
+  width: 320px;
+}
+.settings-body .setting-control > input:is(.control-sm, .control-md, .control-lg) {
+  max-width: 100%;
+}
+.setting-group-actions > .save-state.idle {
+  display: none;
+}
+.setting-group-actions:not(:has(> :not(.save-state.idle))) {
+  display: none;
+}
+.webhook-actions a.button,
+.webhook-editor-head a.button,
+.webhook-editor-actions a.button,
+.clipper-settings a.button:not(.bookmarklet) {
+  color: var(--text);
+}
+.setting-control .save-state:empty {
+  display: none;
+}
+/* Konto: who you are, the password form, passkeys, devices. */
+.account-identity {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+}
+.account-identity-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.account-identity-text strong {
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.account-identity-text small {
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.account-form {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  background: var(--surface);
+}
+.account-form label {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.account-form .error {
+  margin: 0;
+}
+.account-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.setting-sublist {
+  padding-top: 0;
+  border-top: 0;
+}
+.passkey-list .icon-button {
+  width: 36px;
+  height: 36px;
+}
+.setting-row.two-factor {
+  background: var(--surface);
+}
+.my-sessions-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.my-sessions-head .setting-text {
+  flex: 1 1 260px;
+}
+.my-sessions {
+  margin: 4px 0 0;
+}
+.my-sessions li {
+  flex-wrap: wrap;
+}
+.my-sessions li > span:not(.status-badge) {
+  flex: 1 1 200px;
+}
+.my-sessions li > .status-badge {
+  display: inline-flex;
+  flex: none;
+}
+.my-sessions strong {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.my-sessions small {
+  font-size: 12.5px;
+}
+/* The danger zone's buttons: red text that keeps 4.5:1 on the card. */
+.settings-body .danger-zone .button.danger,
+.settings-body .button.danger {
+  color: #b02f38 !important;
+  border-color: color-mix(in srgb, #b02f38 40%, var(--border));
+}
+[data-theme="dark"] .settings-body .danger-zone .button.danger,
+[data-theme="dark"] .settings-body .button.danger {
+  color: #f3b0b0 !important;
+}
+.delete-account .button.danger-solid,
+.e2ee-form .button.danger-solid {
+  border-color: #b8432b;
+  background: #b8432b;
+}
+/* Benachrichtigungen: one row per kind, three switches. Wide screens: a
+   matrix with column heads; phones: the switches carry their own names. */
+.notif-matrix {
+  display: grid;
+}
+.notif-head,
+.notif-kind {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 96px);
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+}
+.notif-head {
+  padding-block: 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 550;
+}
+.notif-head > span:not(:first-child) {
+  text-align: center;
+}
+.notif-channel {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  cursor: pointer;
+}
+.notif-channel-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Switches in these panels get a 44 px hit area without growing. */
+:is(.notif-matrix, .settings-body .setting-control) .switch::after {
+  content: "";
+  position: absolute;
+  top: -11px;
+  right: -4px;
+  bottom: -11px;
+  left: -4px;
+}
+/* API & KI-Assistenten */
+.api-code {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--hover);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.mcp-client-control {
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+}
+.mcp-clients button {
+  min-height: 32px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--secondary);
+  font-size: 13px;
   font-weight: 600;
 }
-.settings-subsection {
-  margin: 22px 0 6px;
+.mcp-clients button[data-active="true"] {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px #1d1a1426;
 }
-.settings-subsection h3 {
+.mcp-config {
   margin: 0;
-  font-size: 14px;
+}
+.api-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.api-token-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  margin: 0;
+}
+.api-token-form label {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.api-token-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.api-token-name strong {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.api-token-name code {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.integration-list .responsive-table td {
+  vertical-align: middle;
+}
+.integration-secret {
+  font-size: 13px;
+}
+.integration-secret code {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+/* Webhooks: the list and one webhook's page. */
+.webhook-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.webhook-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+}
+.webhook-item-main {
+  display: grid;
+  flex: 1 1 280px;
+  gap: 5px;
+  min-width: 0;
+}
+.webhook-url {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 550;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.webhook-url:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+.webhook-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.webhook-item-main small {
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.webhook-item-main small.error {
+  color: #a43c3f;
+}
+.webhook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.webhook-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 16px;
+}
+.webhook-editor-head h2 {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.webhook-editor form {
+  margin: 0;
+}
+.webhook-editor-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 -4px 16px #1d1a1410;
+}
+.webhook-editor-actions .save-state {
+  margin-right: auto;
+}
+.webhook-template {
+  display: grid;
+  gap: 8px;
+}
+.webhook-digest input {
+  min-height: 32px;
+}
+/* Kalender & Issues */
+.calendar-sync-mapping {
+  display: block;
+}
+.issue-sync-connection + .issue-sync-connection {
+  border-top: 4px solid var(--hover);
+}
+.issue-sync-connection .setting-row.wide {
+  padding-top: 4px;
+  border-top: 0;
+}
+.issue-sync-databases {
+  display: grid;
+  gap: 4px;
+}
+.issue-sync-form {
+  display: grid;
+  gap: 12px;
+  background: var(--surface);
+}
+.issue-sync-form label {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.issue-sync-form textarea {
+  width: 100%;
+}
+/* Web-Clipper: the file button keeps its icon beside the text. */
+.settings-body label.button.file-label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.settings-body label.button.file-label.disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+@media (max-width: 700px) {
+  .account-identity {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .account-identity > .status-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .settings-body .setting-control > input:is(.control-sm, .control-md, .control-lg) {
+    width: 100%;
+  }
+  /* A list of switches: the switch stays beside its event. */
+  .setting-row.webhook-event {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .notif-head {
+    display: none;
+  }
+  .notif-kind {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .notif-kind > .setting-text {
+    grid-column: 1 / -1;
+  }
+  .notif-channel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .notif-channel-name {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    color: var(--secondary);
+    font-size: 12.5px;
+    white-space: normal;
+  }
+  .api-token-form label,
+  .api-token-form .button {
+    flex: 1 1 100%;
+  }
+  .webhook-actions,
+  .webhook-actions .button {
+    flex: 1 1 100%;
+  }
+  .my-sessions li .button {
+    margin-left: 32px;
+  }
+  .mcp-clients {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  .mcp-clients button {
+    min-height: 44px;
+  }
+  .webhook-editor-actions .button {
+    flex: 1 1 140px;
+  }
+}
+@media (max-width: 860px) {
+  .settings-body .copy-field {
+    flex-wrap: wrap;
+  }
+  .settings-body .copy-field input {
+    flex: 1 1 100%;
+  }
+  .passkey-list .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .settings-body .setting-control .segmented label {
+    min-height: 44px;
+  }
+  .webhook-url {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .settings-body .integration-list .icon-button,
+  .settings-body .my-sessions .button.compact {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* Admin: pages of the scheduled Markdown export. */
@@ -18321,13 +18721,6 @@ h3 .block-reactions {
   color: #e8c98a;
 }
 
-.notification-prefs .notification-hint {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-}
 
 /* AI settings (components/ai-settings.tsx) */
 .ai-test {
@@ -20866,20 +21259,6 @@ tr:hover .row-open-mark,
 /* ======================= end of error presentation / mobile shell ======== */
 
 /* ---------- GitHub/GitLab issue sync (components/issue-sync-*.tsx) ---------- */
-.issue-sync-settings .issue-sync-connection {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.issue-sync-connection h3 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-}
 .issue-sync-dialog > p svg {
   vertical-align: -2px;
 }

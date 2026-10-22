@@ -73,7 +73,7 @@ Settings (`#settings/…`):
 | Group | Sections |
 |---|---|
 | Persönlich | `account` Konto & Sicherheit · `appearance` Darstellung & Sprache · `notifications` Benachrichtigungen · `ai` KI · `devices` Offline & Geräte |
-| Verbindungen | `api` API & Webhooks · `connections` Kalender & Issues · `clipper` Web-Clipper |
+| Verbindungen | `api` API & KI-Assistenten · `webhooks` Webhooks (one page per webhook: `#settings/webhooks/<id>`, `#settings/webhooks/new`) · `connections` Kalender & Issues · `clipper` Web-Clipper |
 | Arbeitsbereich „…“ | `workspace` Allgemein · `members` Mitglieder · `groups` Gruppen & Rechte · `spaces` Bereiche · `extensions` Block-Erweiterungen · `data` Import & Export · `time` Zeiten |
 
 Administration (`#admin/…`):

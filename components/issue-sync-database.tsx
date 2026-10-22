@@ -169,7 +169,7 @@ export function IssueSyncDialog({ page, database, editable }: { page: Page; data
             !status.map && <p className="muted">{t("Nicht verbunden. Eigentümer des Arbeitsbereichs richten das ein.", "Not connected. Workspace owners set this up.")}</p>
           ) : !status.connections.length ? (
             <p className="callout-inline">
-              {t("Verbinde zuerst GitHub oder GitLab in den Einstellungen unter „API & Webhooks“.", "First connect GitHub or GitLab in the settings under “API & webhooks”.")}
+              {t("Verbinde zuerst GitHub oder GitLab unter Einstellungen → Kalender & Issues.", "First connect GitHub or GitLab under Settings → Calendars & issues.")}
             </p>
           ) : (
             <>

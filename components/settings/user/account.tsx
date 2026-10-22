@@ -1,54 +1,60 @@
 "use client";
-// Settings → Konto & Sicherheit: profile, password and second factor,
-// signed-in devices, end-to-end encryption keys, one's limits on this
-// instance and deleting the account.
+// Settings → Konto & Sicherheit, as cards: Profil, Anmeldung & Sicherheit
+// (password, two-factor, passkeys, signed-in devices), Ende-zu-Ende-
+// Verschlüsselung, one's limits on this instance and – at the end – the
+// danger zone (reset encryption keys, delete the account).
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "../../i18n";
 import { Avatar } from "../../ui";
-import { SettingGroup, SettingRow, UsageMeter } from "../../settings-ui";
-import { AccountSecurity } from "../../account-security";
+import { DangerZone, SettingGroup, SettingRow, StatusBadge, UsageMeter } from "../../settings-ui";
+import { PasskeysRow, PasswordRow, ProfileNameRow } from "../../account-security";
 import { TwoFactorSettings } from "../../two-factor";
 import { DeleteOwnAccount } from "../../delete-own-account";
 import { MySessions } from "../../my-sessions";
-import { E2eeKeySettings } from "../../e2ee";
+import { E2eeKeySettings, E2eeResetRow } from "../../e2ee";
 import { useUserSettings } from "../user-context";
 
 export default function AccountSection() {
   const t = useT();
   const { boot, onRefresh, onError } = useUserSettings();
+  const local = !!boot.localAccount;
+  const demo = !!boot.user.demo;
+  // LDAP accounts sign in with a password: the authenticator app applies to them too.
+  const twoFactor = local || !!boot.ldapAccount;
   return (
     <>
-      <SettingGroup title={t("Dein Profil", "Your profile")}>
-        <div className="setting-row wide profile-row">
-          <div className="member-row">
-            <Avatar name={boot.user.name} userId={boot.user.id} />
-            <span>
-              {boot.user.name}
-              <small>{boot.user.email}</small>
-            </span>
-            <span className="tag tag-blue">{boot.localAccount ? "E-Mail" : boot.ldapAccount ? "LDAP" : "SSO"}</span>
-          </div>
-          {boot.localAccount ? (
-            <AccountSecurity name={boot.user.name} onRenamed={onRefresh} />
-          ) : (
-            <p className="muted small">{t("Name und E-Mail werden von deinem Identitätsanbieter übernommen.", "Your name and e-mail come from your identity provider.")}</p>
-          )}
-          {/* LDAP accounts sign in with a password: the authenticator app applies to them too. */}
-          {!boot.localAccount && boot.ldapAccount && <TwoFactorSettings />}
-          {!boot.user.demo && <MySessions onError={onError} />}
-          {!boot.user.demo && <E2eeKeySettings userId={boot.user.id} onError={onError} />}
+      <SettingGroup id="profile" title={t("Profil", "Profile")} description={t("So sehen dich andere in Kommentaren, Erwähnungen und der Mitgliederliste.", "How others see you in comments, mentions and the member list.")}>
+        <div className="setting-row account-identity">
+          <Avatar name={boot.user.name} userId={boot.user.id} />
+          <span className="account-identity-text">
+            <strong>{boot.user.name}</strong>
+            <small>{boot.user.email}</small>
+          </span>
+          <StatusBadge tone="info">{local ? t("E-Mail-Konto", "E-mail account") : boot.ldapAccount ? "LDAP" : "SSO"}</StatusBadge>
         </div>
-        {!boot.user.demo && (
-          <SettingRow
-            label={t("Konto löschen", "Delete account")}
-            description={t("Löscht dein Konto und deine persönlichen Daten. Vorher siehst du, was mit deinen Arbeitsbereichen passiert.", "Deletes your account and your personal data. You see first what happens to your workspaces.")}
-          >
-            <DeleteOwnAccount />
+        {local ? (
+          <ProfileNameRow name={boot.user.name} onRenamed={onRefresh} />
+        ) : (
+          <SettingRow label={t("Name und E-Mail", "Name and e-mail")} description={t("Werden von deinem Identitätsanbieter übernommen und lassen sich nur dort ändern.", "Come from your identity provider and can only be changed there.")}>
+            {null}
           </SettingRow>
         )}
       </SettingGroup>
+
+      {(local || twoFactor || !demo) && (
+        <SettingGroup id="signin" title={t("Anmeldung & Sicherheit", "Sign-in & security")} description={t("Passwort, zweiter Faktor, Passkeys und die Geräte, auf denen du angemeldet bist.", "Password, second factor, passkeys and the devices you are signed in on.")}>
+          {local && <PasswordRow />}
+          {twoFactor && <TwoFactorSettings row />}
+          {local && <PasskeysRow />}
+          {!demo && <MySessions onError={onError} />}
+        </SettingGroup>
+      )}
+
+      {!demo && <E2eeKeySettings userId={boot.user.id} onError={onError} />}
+
       {boot.myLimits && (
         <SettingGroup
+          id="limits"
           title={t("Deine Grenzen", "Your limits")}
           description={t("So viel steht dir auf dieser Instanz zur Verfügung. Mehr gibt es bei den Admins.", "This is what you have on this instance. Admins can give you more.")}
         >
@@ -67,6 +73,19 @@ export default function AccountSection() {
             <strong className="setting-value">{boot.myLimits.uploadMb} MB</strong>
           </SettingRow>
         </SettingGroup>
+      )}
+
+      {!demo && (
+        <DangerZone id="danger" description={t("Was du hier tust, lässt sich nicht rückgängig machen.", "What you do here cannot be undone.")}>
+          <E2eeResetRow onError={onError} />
+          <SettingRow
+            anchor="delete-account"
+            label={t("Konto löschen", "Delete account")}
+            description={t("Löscht dein Konto und deine persönlichen Daten. Vorher siehst du, was mit deinen Arbeitsbereichen passiert.", "Deletes your account and your personal data. You see first what happens to your workspaces.")}
+          >
+            <DeleteOwnAccount />
+          </SettingRow>
+        </DangerZone>
       )}
     </>
   );

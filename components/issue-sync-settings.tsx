@@ -5,6 +5,7 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
+import { CONTROL, EmptyState, SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
 import { api } from "./ui";
 
 type Provider = "github" | "gitlab";
@@ -38,8 +39,9 @@ const parsePeople = (text: string) =>
     .map(([login, email]) => ({ login, email }));
 const when = (at?: number | null) => (at ? new Date(at).toLocaleString(LOCALE_TAG) : "");
 
-// Workspace settings: GitHub/GitLab connections for the issue sync
-// (lib/issue-sync.ts). Owners and administrators only; others see nothing.
+// Settings → Kalender & Issues: GitHub/GitLab connections for the issue
+// sync (lib/issue-sync.ts). Owners and administrators only; others see
+// nothing.
 export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: string; onError: (message: string) => void }) {
   const t = useT();
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -101,92 +103,109 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
     setTimeout(() => setCopied(""), 1500);
   };
   const Logo = ({ provider }: { provider: Provider }) => (provider === "github" ? <GithubLogo aria-hidden /> : <GitlabLogo aria-hidden />);
+  const connectButton = (
+    <button
+      type="button"
+      className="button"
+      onClick={() => {
+        setTested("");
+        setDraft({ ...emptyDraft });
+      }}
+    >
+      <Plus aria-hidden /> {t("GitHub oder GitLab verbinden", "Connect GitHub or GitLab")}
+    </button>
+  );
+  const copyField = (id: string, label: string, value: string, what: string) => (
+    <SettingRow wide id={id} label={label}>
+      <div className="copy-field">
+        <input id={id} readOnly value={value} onFocus={(e) => e.target.select()} />
+        <button type="button" className="button" onClick={() => void copy(value, what)}>
+          <Copy aria-hidden /> {copied === what ? t("Kopiert", "Copied") : t("Kopieren", "Copy")}
+        </button>
+      </div>
+    </SettingRow>
+  );
   return (
-    <section className="settings-section issue-sync-settings">
-      <h2>{t("GitHub- und GitLab-Issues", "GitHub and GitLab issues")}</h2>
-      <p className="muted">
-        {t(
-          "Verbinde einen Anbieter, um Datenbanken mit den Issues eines Repositorys zu synchronisieren – in beide Richtungen oder nur in eine. Die Zuordnung legst du in der Datenbank fest („…“ → Issues synchronisieren). Die Synchronisierung handelt als die Person, die die Verbindung einrichtet.",
-          "Connect a provider to sync databases with the issues of a repository – both ways or only one. The mapping is set in the database (“…” → Sync issues). The sync acts as the person who sets up the connection.",
-        )}
-      </p>
-      {overview.connections.map((c) => (
-        <div key={c.id} className="issue-sync-connection">
-          <h3>
-            <Logo provider={c.provider} /> {c.provider === "github" ? "GitHub" : "GitLab"}
-            {c.baseUrl ? ` · ${c.baseUrl}` : ""}
-            {c.repo ? ` · ${c.repo}` : ""}
-          </h3>
-          <p className={c.active && !c.error ? "muted" : "error"}>
-            {t("Verbunden von", "Connected by")} {c.connectedBy || "?"}
-            {!c.active && ` · ${t("pausiert: die Person ist nicht mehr Eigentümer – bitte das Token neu speichern", "paused: the person is no longer an owner – please save the token again")}`}
-            {c.error ? ` · ${serverMessage(c.error)}` : ""}
-            {c.backoffUntil ? ` · ${t("Ratenlimit bis", "Rate limit until")} ${when(c.backoffUntil)}` : ""}
-          </p>
-          <label>
-            {t("Webhook-Adresse (Ereignisse: Issues, Kommentare)", "Webhook address (events: issues, comments)")}
-            <div className="copy-field">
-              <input readOnly value={c.hookUrl} onFocus={(e) => e.target.select()} />
-              <button type="button" className="button compact" onClick={() => void copy(c.hookUrl, `url-${c.id}`)}>
-                <Copy /> {copied === `url-${c.id}` ? t("Kopiert", "Copied") : t("Kopieren", "Copy")}
-              </button>
-            </div>
-          </label>
-          {c.hookSecret && (
-            <label>
-              {c.provider === "github" ? t("Secret", "Secret") : t("Secret token", "Secret token")}
-              <div className="copy-field">
-                <input readOnly value={c.hookSecret} onFocus={(e) => e.target.select()} />
-                <button type="button" className="button compact" onClick={() => void copy(c.hookSecret, `secret-${c.id}`)}>
-                  <Copy /> {copied === `secret-${c.id}` ? t("Kopiert", "Copied") : t("Kopieren", "Copy")}
-                </button>
-              </div>
-            </label>
-          )}
-          {c.databases.length > 0 && (
-            <ul className="issue-sync-databases">
-              {c.databases.map((d) => (
-                <li key={d.pageId}>
-                  <strong>{d.title}</strong> ↔ {d.repo}
-                  <span className={d.state.error ? "error" : "muted"}>
-                    {d.state.lastPull ? ` · ${t("Abgerufen", "Pulled")} ${when(d.state.lastPull)}` : ""}
-                    {d.state.lastPush ? ` · ${t("Übertragen", "Pushed")} ${when(d.state.lastPush)}` : ""}
-                    {d.state.error ? ` · ${serverMessage(d.state.error)}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="lifecycle-buttons">
-            <button
-              type="button"
-              className="button"
-              disabled={busy}
-              onClick={() => {
-                setTested("");
-                setDraft({ id: c.id, provider: c.provider, baseUrl: c.baseUrl, repo: c.repo, token: "", people: c.people.map((p) => `${p.login} = ${p.email}`).join("\n") });
-              }}
-            >
-              {t("Bearbeiten", "Edit")}
-            </button>
-            <button type="button" className="button danger" disabled={busy} onClick={() => remove(c)}>
-              <Trash /> {t("Entfernen", "Remove")}
-            </button>
-          </div>
+    <SettingGroup
+      id="issues"
+      title={t("GitHub- und GitLab-Issues", "GitHub and GitLab issues")}
+      description={t(
+        "Verbinde einen Anbieter, um Datenbanken mit den Issues eines Repositorys zu synchronisieren – in beide Richtungen oder nur in eine. Die Zuordnung legst du in der Datenbank fest („…“ → Issues synchronisieren). Die Synchronisierung handelt als die Person, die die Verbindung einrichtet.",
+        "Connect a provider to sync databases with the issues of a repository – both ways or only one. The mapping is set in the database (“…” → Sync issues). The sync acts as the person who sets up the connection.",
+      )}
+      actions={!draft && overview.connections.length > 0 ? connectButton : undefined}
+    >
+      {!overview.connections.length && !draft && (
+        <div className="setting-row wide">
+          <EmptyState icon={<GithubLogo size={20} />} title={t("Noch keine Verbindung", "No connection yet")} action={connectButton}>
+            {t("Ein Zugangstoken mit dem Recht, Issues zu lesen und zu schreiben, genügt.", "An access token that may read and write issues is enough.")}
+          </EmptyState>
         </div>
-      ))}
-      {draft ? (
-        <div className="git-settings issue-sync-form">
+      )}
+      {overview.connections.map((c) => {
+        const failing = !c.active || !!c.error;
+        return (
+          <div key={c.id} className="issue-sync-connection">
+            <SettingRow
+              label={`${c.provider === "github" ? "GitHub" : "GitLab"}${c.baseUrl ? ` · ${c.baseUrl}` : ""}${c.repo ? ` · ${c.repo}` : ""}`}
+              description={
+                <>
+                  {t("Verbunden von", "Connected by")} {c.connectedBy || "?"}
+                  {!c.active && ` · ${t("pausiert: die Person ist nicht mehr Eigentümer – bitte das Token neu speichern", "paused: the person is no longer an owner – please save the token again")}`}
+                  {c.error ? <span className="error"> · {serverMessage(c.error)}</span> : ""}
+                  {c.backoffUntil ? ` · ${t("Ratenlimit bis", "Rate limit until")} ${when(c.backoffUntil)}` : ""}
+                </>
+              }
+            >
+              <StatusBadge tone={failing ? (c.active ? "error" : "warn") : "ok"}>{!c.active ? t("Pausiert", "Paused") : c.error ? t("Fehler", "Error") : t("Verbunden", "Connected")}</StatusBadge>
+              <button
+                type="button"
+                className="button"
+                disabled={busy}
+                onClick={() => {
+                  setTested("");
+                  setDraft({ id: c.id, provider: c.provider, baseUrl: c.baseUrl, repo: c.repo, token: "", people: c.people.map((p) => `${p.login} = ${p.email}`).join("\n") });
+                }}
+              >
+                {t("Bearbeiten", "Edit")}
+              </button>
+              <button type="button" className="button danger" disabled={busy} onClick={() => remove(c)}>
+                <Trash aria-hidden /> {t("Entfernen", "Remove")}
+              </button>
+            </SettingRow>
+            {copyField(`hook-url-${c.id}`, t("Webhook-Adresse (Ereignisse: Issues, Kommentare)", "Webhook address (events: issues, comments)"), c.hookUrl, `url-${c.id}`)}
+            {c.hookSecret && copyField(`hook-secret-${c.id}`, c.provider === "github" ? t("Secret", "Secret") : t("Secret token", "Secret token"), c.hookSecret, `secret-${c.id}`)}
+            {c.databases.length > 0 && (
+              <div className="setting-row wide">
+                <ul className="issue-sync-databases">
+                  {c.databases.map((d) => (
+                    <li key={d.pageId}>
+                      <Logo provider={c.provider} /> <strong>{d.title}</strong> ↔ {d.repo}
+                      <span className={d.state.error ? "error" : "muted"}>
+                        {d.state.lastPull ? ` · ${t("Abgerufen", "Pulled")} ${when(d.state.lastPull)}` : ""}
+                        {d.state.lastPush ? ` · ${t("Übertragen", "Pushed")} ${when(d.state.lastPush)}` : ""}
+                        {d.state.error ? ` · ${serverMessage(d.state.error)}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {draft && (
+        <div className="setting-row wide issue-sync-form" role="group" aria-label={draft.id ? t("Verbindung bearbeiten", "Edit connection") : t("Neue Verbindung", "New connection")}>
           <label>
             {t("Anbieter", "Provider")}
-            <Select value={draft.provider} onChange={(e) => setDraft({ ...draft, provider: e.target.value as Provider })} disabled={busy}>
+            <Select className={CONTROL.md} value={draft.provider} onChange={(e) => setDraft({ ...draft, provider: e.target.value as Provider })} disabled={busy}>
               <option value="github">GitHub</option>
               <option value="gitlab">GitLab</option>
             </Select>
           </label>
           <label>
             {t("Server (leer für github.com bzw. gitlab.com)", "Server (empty for github.com or gitlab.com)")}
-            <input type="url" value={draft.baseUrl} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder="https://gitlab.example.org" maxLength={500} disabled={busy} autoComplete="off" />
+            <input className={CONTROL.lg} type="url" value={draft.baseUrl} onChange={(e) => setDraft({ ...draft, baseUrl: e.target.value })} placeholder="https://gitlab.example.org" maxLength={500} disabled={busy} autoComplete="off" />
             <small className="muted">
               {overview.allowedHosts.length
                 ? `${t("Erlaubte eigene Server:", "Allowed own servers:")} ${overview.allowedHosts.join(", ")}`
@@ -195,11 +214,12 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
           </label>
           <label>
             {draft.provider === "github" ? t("Repository (besitzer/name)", "Repository (owner/name)") : t("Projekt (gruppe/projekt)", "Project (group/project)")}
-            <input value={draft.repo} onChange={(e) => setDraft({ ...draft, repo: e.target.value })} placeholder={draft.provider === "github" ? "acme/web" : "team/app"} maxLength={300} disabled={busy} autoComplete="off" />
+            <input className={CONTROL.lg} value={draft.repo} onChange={(e) => setDraft({ ...draft, repo: e.target.value })} placeholder={draft.provider === "github" ? "acme/web" : "team/app"} maxLength={300} disabled={busy} autoComplete="off" />
           </label>
           <label>
             {t("Zugangstoken (Issues lesen und schreiben)", "Access token (read and write issues)")}
             <input
+              className={CONTROL.lg}
               type="password"
               value={draft.token}
               onChange={(e) => setDraft({ ...draft, token: e.target.value })}
@@ -213,8 +233,12 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
             {t("Personen: je Zeile „Login = E-Mail“ eines Mitglieds (für Zuständige)", "People: one “login = e-mail” of a member per line (for assignees)")}
             <textarea value={draft.people} onChange={(e) => setDraft({ ...draft, people: e.target.value })} rows={3} disabled={busy} placeholder="octocat = ada@example.org" />
           </label>
-          {tested && <p className="muted" role="status">{tested}</p>}
-          <div className="lifecycle-buttons">
+          {tested && (
+            <p className="save-state saved" role="status">
+              {tested}
+            </p>
+          )}
+          <div className="account-form-actions">
             <button type="button" className="button" disabled={busy || !draft.repo.trim() || (!draft.token.trim() && !draft.id)} onClick={() => void test(draft)}>
               {t("Verbindung testen", "Test connection")}
             </button>
@@ -226,11 +250,7 @@ export function IssueSyncSettings({ workspaceId, onError }: { workspaceId: strin
             </button>
           </div>
         </div>
-      ) : (
-        <button type="button" className="button" onClick={() => setDraft({ ...emptyDraft })}>
-          <Plus /> {t("GitHub oder GitLab verbinden", "Connect GitHub or GitLab")}
-        </button>
       )}
-    </section>
+    </SettingGroup>
   );
 }

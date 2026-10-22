@@ -3,6 +3,7 @@ import { useLocale, useT } from "./i18n";
 import { friendlyError } from "./ui";
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "./page-activity";
+import { SettingGroup, SettingRow, StatusBadge, SwitchRow } from "./settings-ui";
 import { bytes } from "./admin-storage";
 import {
   OFFLINE_CHANGED,
@@ -16,7 +17,8 @@ import {
   type OfflineMarker,
 } from "./offline";
 
-// Opt-in per device: the copies contain the workspace's private content.
+// Settings → Offline & Geräte. Opt-in per device: the copies contain the
+// workspace's private content.
 export function OfflineSettings({
   userId,
   workspaceId,
@@ -115,58 +117,70 @@ export function OfflineSettings({
   }
   const updated = marker?.lastRefresh;
   return (
-    <section className="settings-section">
-      <h2>{t("Offline-Nutzung", "Offline use")}</h2>
-      <p>
-        {t("Speichert die App und die Seiten dieses Arbeitsbereichs auf diesem Gerät, damit du sie ohne Verbindung öffnen kannst. Solange die App geöffnet ist, hält sie die Kopie aktuell: Geänderte und neue Seiten werden geladen, gelöschte und nicht mehr freigegebene entfernt. Nur auf eigenen Geräten aktivieren: Die Kopien bleiben bis zum Abmelden oder Ausschalten erhalten.", "Stores the app and this workspace's pages on this device so you can open them without a connection. While the app is open it keeps the copy current: changed and new pages are loaded, deleted pages and pages no longer shared with you are removed. Only enable on your own devices: the copies stay until you sign out or turn this off.")}
-      </p>
+    <SettingGroup
+      id="offline"
+      title={t("Offline-Nutzung", "Offline use")}
+      description={t(
+        "Speichert die App und die Seiten dieses Arbeitsbereichs auf diesem Gerät, damit du sie ohne Verbindung öffnen kannst. Solange die App geöffnet ist, hält sie die Kopie aktuell. Nur auf eigenen Geräten aktivieren: Die Kopien bleiben bis zum Abmelden oder Ausschalten erhalten.",
+        "Stores the app and this workspace's pages on this device so you can open them without a connection. While the app is open it keeps the copy current. Only enable on your own devices: the copies stay until you sign out or turn this off.",
+      )}
+    >
       {!supported ? (
-        <p className="muted">
-          {t("Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).", "This browser does not support offline use (secure connection and service worker required).")}
-        </p>
+        <SettingRow label={t("Auf diesem Gerät", "On this device")} description={t("Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).", "This browser does not support offline use (secure connection and service worker required).")}>
+          <StatusBadge tone="off">{t("Nicht unterstützt", "Not supported")}</StatusBadge>
+        </SettingRow>
       ) : enabled ? (
         <>
-          <p className="offline-state" data-testid="offline-state">
-            {updated
-              ? t("Offline-Kopie aktualisiert", "Offline copy updated") + " " + ago(updated, Date.now(), locale)
-              : t("Offline-Kopie noch nicht vollständig", "Offline copy not complete yet")}
-            {marker.pages !== undefined && ` · ${pagesText(marker.pages)}`}
-            {marker.bytes !== undefined && ` · ${bytes(marker.bytes)}`}
-          </p>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={!!marker.includeRecords}
-              disabled={busy}
-              onChange={(e) => void records(e.target.checked)}
-            />
-            <span>
-              {t("Auch Eintragsinhalte und Dateien speichern", "Also store record contents and files")}{" "}
-              <span className="muted">
-                {t(`(höchstens ${bytes(RECORD_LIMIT)}; sonst nur, was du schon geöffnet hast)`, `(at most ${bytes(RECORD_LIMIT)}; otherwise only what you have opened)`)}
+          <SettingRow
+            label={t("Offline-Kopie", "Offline copy")}
+            description={
+              <span className="offline-state" data-testid="offline-state">
+                {updated ? t("Offline-Kopie aktualisiert", "Offline copy updated") + " " + ago(updated, Date.now(), locale) : t("Offline-Kopie noch nicht vollständig", "Offline copy not complete yet")}
+                {marker.pages !== undefined && ` · ${pagesText(marker.pages)}`}
+                {marker.bytes !== undefined && ` · ${bytes(marker.bytes)}`}
               </span>
-            </span>
-          </label>
-          <div className="archive-actions">
+            }
+          >
+            <StatusBadge tone={updated ? "ok" : "warn"}>{t("An", "On")}</StatusBadge>
             <button className="button" disabled={busy} onClick={update}>
               {t("Jetzt aktualisieren", "Update now")}
             </button>
+          </SettingRow>
+          <SwitchRow
+            label={t("Auch Eintragsinhalte und Dateien speichern", "Also store record contents and files")}
+            description={t(`Höchstens ${bytes(RECORD_LIMIT)}; sonst nur, was du schon geöffnet hast.`, `At most ${bytes(RECORD_LIMIT)}; otherwise only what you have opened.`)}
+            checked={!!marker.includeRecords}
+            disabled={busy}
+            onChange={(on) => void records(on)}
+          />
+          <SettingRow label={t("Offline-Kopien entfernen", "Remove offline copies")} description={t("Löscht die Kopien auf diesem Gerät. Du kannst sie jederzeit neu laden.", "Deletes the copies on this device. You can load them again at any time.")}>
             <button className="button danger" disabled={busy} onClick={disable}>
               {t("Offline-Kopien entfernen", "Remove offline copies")}
             </button>
-          </div>
+          </SettingRow>
         </>
       ) : (
-        <button className="button primary" disabled={busy} onClick={enable}>
-          {t("Auf diesem Gerät offline verfügbar machen", "Make available offline on this device")}
-        </button>
+        <SettingRow label={t("Auf diesem Gerät", "On this device")} description={t("Aus. Inhalte brauchen eine Verbindung.", "Off. Content needs a connection.")}>
+          <StatusBadge tone="off">{t("Aus", "Off")}</StatusBadge>
+          <button className="button primary" disabled={busy} onClick={enable}>
+            {t("Auf diesem Gerät offline verfügbar machen", "Make available offline on this device")}
+          </button>
+        </SettingRow>
       )}
-      {progress && (
-        <p role="status">
-          {t("Wird gespeichert …", "Saving …")}{" "}{progress[0]} {t("von", "of")}{" "}{progress[1]}
+      {(progress || message) && (
+        <p className="setting-note" role="status">
+          {progress ? `${t("Wird gespeichert …", "Saving …")} ${progress[0]} ${t("von", "of")} ${progress[1]}` : message}
         </p>
       )}
-      {message && !progress && <p role="status">{message}</p>}
-    </section>
+      <SettingRow
+        label={t("Synchronisierung", "Sync")}
+        description={t(
+          "Dokumente und Whiteboards werden zusätzlich auf diesem Gerät gespeichert und nach Wiederherstellung der Verbindung zusammengeführt. Einträge in Datenbanken lassen sich offline anlegen, ändern und löschen; Konflikte kannst du danach auflösen.",
+          "Documents and whiteboards are also stored on this device and merged once the connection is back. Database records can be created, changed and deleted offline; you can resolve conflicts afterwards.",
+        )}
+      >
+        {null}
+      </SettingRow>
+    </SettingGroup>
   );
 }

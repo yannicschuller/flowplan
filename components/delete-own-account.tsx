@@ -1,5 +1,5 @@
 "use client";
-// Settings → General → Your profile: deleting one's own account. Shows what
+// Settings → Konto & Sicherheit → Gefahrenzone: deleting one's own account. Shows what
 // happens first (workspaces deleted, workspaces handed over), then asks for
 // the password – or, for SSO accounts, the e-mail address.
 import { useState, type FormEvent } from "react";
@@ -57,10 +57,10 @@ export function DeleteOwnAccount() {
   };
   return (
     <>
-      <button type="button" className="button compact danger" disabled={busy} onClick={open}>
+      <button type="button" className="button danger" disabled={busy} onClick={open}>
         {t("Konto löschen …", "Delete account …")}
       </button>
-      {!plan && error && <p role="alert" className="error">{error}</p>}
+      {!plan && error && <span role="alert" className="save-state error">{error}</span>}
       <Modal open={!!plan} onClose={() => !busy && setPlan(null)} title={t("Dein Konto löschen?", "Delete your account?")}>
         {plan && (
           <form className="delete-account" onSubmit={submit}>
