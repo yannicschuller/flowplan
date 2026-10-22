@@ -109,8 +109,7 @@ export function WorkspaceIconPicker({
         <WorkspaceIcon name={name} icon={icon} />
       </span>
       <div className="workspace-icon-actions">
-        <span className="muted">{t("Symbol des Arbeitsbereichs", "Workspace icon")}</span>
-        <div>
+        <div role="group" aria-label={t("Symbol des Arbeitsbereichs", "Workspace icon")}>
           <button
             type="button"
             className="button compact"

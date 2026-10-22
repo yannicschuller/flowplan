@@ -146,7 +146,7 @@ export function SpaceManager({
             {!duplicating && <AiBlockToggle targetId={space.id} kind="space" onError={setError} />}
             {!duplicating && <SpaceGitExport spaceId={space.id} onError={setError} />}
             {!duplicating && (
-              <div className="lifecycle-buttons">
+              <div className="lifecycle-buttons ws-modal-more" role="group" aria-label={t("Weitere Aktionen", "More actions")}>
                 <button
                   type="button"
                   className="button"

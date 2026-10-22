@@ -145,69 +145,99 @@ export function TimeReport({ pageId, workspaceId, title }: { pageId?: string; wo
     <div className="time-report">
       <div className="time-report-bar" role="group" aria-label={t("Filter", "Filters")}>
         {pageId && (
-          <Select aria-label={t("Umfang", "Scope")} value={scope} onChange={(e) => setScope(e.target.value as "database" | "workspace")}>
-            <option value="database">{t(`Nur „${title}“`, `Only “${title}”`)}</option>
-            <option value="workspace">{t("Ganzer Arbeitsbereich", "Whole workspace")}</option>
-          </Select>
+          <label className="time-report-filter">
+            <span>{t("Umfang", "Scope")}</span>
+            <Select aria-label={t("Umfang", "Scope")} value={scope} onChange={(e) => setScope(e.target.value as "database" | "workspace")}>
+              <option value="database">{t(`Nur „${title}“`, `Only “${title}”`)}</option>
+              <option value="workspace">{t("Ganzer Arbeitsbereich", "Whole workspace")}</option>
+            </Select>
+          </label>
         )}
-        <Select aria-label={t("Zeitraum", "Period")} value={filters.period} onChange={(e) => set({ period: e.target.value as Filters["period"] })}>
-          <option value="this-week">{t("Diese Woche", "This week")}</option>
-          <option value="this-month">{t("Dieser Monat", "This month")}</option>
-          <option value="last-month">{t("Letzter Monat", "Last month")}</option>
-          <option value="custom">{t("Eigener Zeitraum", "Custom period")}</option>
-        </Select>
+        <label className="time-report-filter">
+          <span>{t("Zeitraum", "Period")}</span>
+          <Select aria-label={t("Zeitraum", "Period")} value={filters.period} onChange={(e) => set({ period: e.target.value as Filters["period"] })}>
+            <option value="this-week">{t("Diese Woche", "This week")}</option>
+            <option value="this-month">{t("Dieser Monat", "This month")}</option>
+            <option value="last-month">{t("Letzter Monat", "Last month")}</option>
+            <option value="custom">{t("Eigener Zeitraum", "Custom period")}</option>
+          </Select>
+        </label>
         {filters.period === "custom" && (
           <>
-            <input type="date" aria-label={t("Von", "From")} value={filters.from} onChange={(e) => set({ from: e.target.value })} />
-            <input type="date" aria-label={t("Bis", "To")} value={filters.to} onChange={(e) => set({ to: e.target.value })} />
+            <label className="time-report-filter">
+              <span>{t("Von", "From")}</span>
+              <input type="date" value={filters.from} onChange={(e) => set({ from: e.target.value })} />
+            </label>
+            <label className="time-report-filter">
+              <span>{t("Bis", "To")}</span>
+              <input type="date" value={filters.to} onChange={(e) => set({ to: e.target.value })} />
+            </label>
           </>
         )}
-        <Select aria-label={t("Person", "Person")} value={filters.person} onChange={(e) => set({ person: e.target.value })}>
-          <option value="">{t("Alle Personen", "All people")}</option>
-          {options(seen.people).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
-        {scope === "workspace" && (
-          <Select aria-label={t("Datenbank", "Database")} value={filters.database} onChange={(e) => set({ database: e.target.value })}>
-            <option value="">{t("Alle Datenbanken", "All databases")}</option>
-            {options(seen.databases).map((p) => (
+        <label className="time-report-filter">
+          <span>{t("Person", "Person")}</span>
+          <Select aria-label={t("Person", "Person")} value={filters.person} onChange={(e) => set({ person: e.target.value })}>
+            <option value="">{t("Alle Personen", "All people")}</option>
+            {options(seen.people).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
           </Select>
+        </label>
+        {scope === "workspace" && (
+          <label className="time-report-filter">
+            <span>{t("Datenbank", "Database")}</span>
+            <Select aria-label={t("Datenbank", "Database")} value={filters.database} onChange={(e) => set({ database: e.target.value })}>
+              <option value="">{t("Alle Datenbanken", "All databases")}</option>
+              {options(seen.databases).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </label>
         )}
-        <Select aria-label={t("Projekt", "Project")} value={filters.project} onChange={(e) => set({ project: e.target.value })}>
-          <option value="">{t("Alle Projekte", "All projects")}</option>
-          <option value="none">{t("Ohne Projekt", "No project")}</option>
-          {options(seen.projects).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
-        <Select aria-label={t("Abrechnungsstatus", "Billing status")} value={filters.status} onChange={(e) => set({ status: e.target.value as Filters["status"] })}>
-          <option value="">{t("Jeder Status", "Any status")}</option>
-          <option value="open">{t("offen", "open")}</option>
-          <option value="billed">{t("abgerechnet", "billed")}</option>
-          <option value="unbillable">{t("nicht abrechenbar", "not billable")}</option>
-        </Select>
-        <Select aria-label={t("Abrechenbar", "Billable")} value={filters.billable} onChange={(e) => set({ billable: e.target.value as Filters["billable"] })}>
-          <option value="">{t("Abrechenbar und nicht", "Billable or not")}</option>
-          <option value="yes">{t("Nur abrechenbare", "Billable only")}</option>
-          <option value="no">{t("Nur nicht abrechenbare", "Not billable only")}</option>
-        </Select>
-        <Select aria-label={t("Gruppieren nach", "Group by")} value={filters.group} onChange={(e) => set({ group: e.target.value as ReportGroup })}>
-          <option value="person">{t("Nach Person", "By person")}</option>
-          <option value="project">{t("Nach Projekt", "By project")}</option>
-          <option value="record">{t("Nach Eintrag", "By record")}</option>
-          {scope === "workspace" && <option value="database">{t("Nach Datenbank", "By database")}</option>}
-          <option value="day">{t("Nach Tag", "By day")}</option>
-          <option value="week">{t("Nach Woche", "By week")}</option>
-        </Select>
+        <label className="time-report-filter">
+          <span>{t("Projekt", "Project")}</span>
+          <Select aria-label={t("Projekt", "Project")} value={filters.project} onChange={(e) => set({ project: e.target.value })}>
+            <option value="">{t("Alle Projekte", "All projects")}</option>
+            <option value="none">{t("Ohne Projekt", "No project")}</option>
+            {options(seen.projects).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="time-report-filter">
+          <span>{t("Abrechnungsstatus", "Billing status")}</span>
+          <Select aria-label={t("Abrechnungsstatus", "Billing status")} value={filters.status} onChange={(e) => set({ status: e.target.value as Filters["status"] })}>
+            <option value="">{t("Jeder Status", "Any status")}</option>
+            <option value="open">{t("offen", "open")}</option>
+            <option value="billed">{t("abgerechnet", "billed")}</option>
+            <option value="unbillable">{t("nicht abrechenbar", "not billable")}</option>
+          </Select>
+        </label>
+        <label className="time-report-filter">
+          <span>{t("Abrechenbar", "Billable")}</span>
+          <Select aria-label={t("Abrechenbar", "Billable")} value={filters.billable} onChange={(e) => set({ billable: e.target.value as Filters["billable"] })}>
+            <option value="">{t("Abrechenbar und nicht", "Billable or not")}</option>
+            <option value="yes">{t("Nur abrechenbare", "Billable only")}</option>
+            <option value="no">{t("Nur nicht abrechenbare", "Not billable only")}</option>
+          </Select>
+        </label>
+        <label className="time-report-filter">
+          <span>{t("Gruppieren nach", "Group by")}</span>
+          <Select aria-label={t("Gruppieren nach", "Group by")} value={filters.group} onChange={(e) => set({ group: e.target.value as ReportGroup })}>
+            <option value="person">{t("Nach Person", "By person")}</option>
+            <option value="project">{t("Nach Projekt", "By project")}</option>
+            <option value="record">{t("Nach Eintrag", "By record")}</option>
+            {scope === "workspace" && <option value="database">{t("Nach Datenbank", "By database")}</option>}
+            <option value="day">{t("Nach Tag", "By day")}</option>
+            <option value="week">{t("Nach Woche", "By week")}</option>
+          </Select>
+        </label>
         {Object.entries(filters).some(([k, v]) => v !== initial[k as keyof Filters]) && (
           <button type="button" className="button compact" onClick={() => setFilters(initial)}>
             {t("Filter zurücksetzen", "Reset filters")}

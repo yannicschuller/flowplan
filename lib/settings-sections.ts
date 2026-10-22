@@ -149,8 +149,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "workspace",
     icon: "SlidersHorizontal",
     title: { de: "Allgemein", en: "General" },
-    description: { de: "Name und Symbol, E-Mail-Eingang, Archivieren, Verlassen und Löschen.", en: "Name and icon, inbound e-mail, archiving, leaving and deleting." },
-    keywords: { de: "arbeitsbereich name symbol icon e-mail-eingang archivieren verlassen löschen", en: "workspace name icon inbound email archive leave delete" },
+    description: { de: "Name und Symbol, E-Mail-Eingang, Verlassen und Löschen.", en: "Name and icon, inbound e-mail, leaving and deleting." },
+    keywords: { de: "arbeitsbereich name symbol icon emoji bild e-mail-eingang webhook imap verlassen löschen gefahrenzone", en: "workspace name icon emoji image inbound email webhook imap leave delete danger zone" },
+    entries: [
+      { title: { de: "Name & Symbol des Arbeitsbereichs", en: "Workspace name & icon" }, anchor: "identity" },
+      { title: { de: "E-Mail-Eingang", en: "Inbound e-mail" }, keywords: { de: "weiterleiten mailgun postmark", en: "forward mailgun postmark" }, anchor: "inbound-mail" },
+      { title: { de: "Arbeitsbereich verlassen", en: "Leave workspace" }, anchor: "danger" },
+      { title: { de: "Arbeitsbereich löschen", en: "Delete workspace" }, anchor: "danger" },
+    ],
   },
   {
     id: "members",
@@ -159,7 +165,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     icon: "UsersThree",
     title: { de: "Mitglieder", en: "Members" },
     description: { de: "Wer zum Arbeitsbereich gehört, mit welcher Rolle, und wer eingeladen ist.", en: "Who belongs to the workspace, in which role, and who is invited." },
-    keywords: { de: "mitglieder einladen einladung rolle gast eigentümer", en: "members invite invitation role guest owner" },
+    keywords: { de: "mitglieder einladen einladung rolle gast eigentümer entfernen", en: "members invite invitation role guest owner remove" },
+    entries: [
+      { title: { de: "Mitglied einladen", en: "Invite member" }, anchor: "members" },
+      { title: { de: "Ausstehende Einladungen", en: "Pending invitations" }, keywords: { de: "einladungslink", en: "invitation link" }, anchor: "invitations" },
+    ],
   },
   {
     id: "groups",
@@ -169,6 +179,10 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     title: { de: "Gruppen & Rechte", en: "Groups & permissions" },
     description: { de: "Gruppen bilden, SSO-Gruppen zuordnen und Zugriff auf Bereiche geben.", en: "Form groups, map SSO groups and give access to spaces." },
     keywords: { de: "gruppen rechte berechtigungen sso zugriff sichtbarkeit", en: "groups permissions sso access visibility" },
+    entries: [
+      { title: { de: "SSO-Gruppen zuordnen", en: "Map SSO groups" }, anchor: "sso" },
+      { title: { de: "Zugriff auf Bereiche", en: "Access to spaces" }, keywords: { de: "privat sichtbarkeit", en: "private visibility" }, anchor: "access" },
+    ],
   },
   {
     id: "spaces",
@@ -194,13 +208,15 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "workspace",
     icon: "Database",
     title: { de: "Import & Export", en: "Import & export" },
-    description: { de: "Arbeitsbereich und Bereiche exportieren, aus Notion, Jira, Trello und anderen importieren.", en: "Export the workspace and spaces, import from Notion, Jira, Trello and others." },
-    keywords: { de: "export import zip json markdown notion appflowy jira trello confluence evernote obsidian backup sicherung", en: "export import zip json markdown notion appflowy jira trello confluence evernote obsidian backup" },
+    description: { de: "Importieren, exportieren, Archive wiederherstellen und der Papierkorb.", en: "Import, export, restore archives and the trash." },
+    keywords: { de: "export import zip json markdown pdf epub notion appflowy jira trello confluence evernote google docs obsidian backup sicherung wiederherstellen papierkorb aufbewahrung versionen", en: "export import zip json markdown pdf epub notion appflowy jira trello confluence evernote google docs obsidian backup restore trash retention versions" },
     entries: [
-      { title: { de: "Arbeitsbereich exportieren", en: "Export workspace" } },
-      { title: { de: "Bereich als Markdown exportieren", en: "Export space as Markdown" } },
-      { title: { de: "Aus Jira oder Trello importieren", en: "Import from Jira or Trello" } },
-      { title: { de: "Flowplan-Backup importieren", en: "Import a Flowplan backup" } },
+      { title: { de: "Aus Notion, AppFlowy, Confluence, Evernote oder Obsidian importieren", en: "Import from Notion, AppFlowy, Confluence, Evernote or Obsidian" }, keywords: { de: "google docs markdown zip", en: "google docs markdown zip" }, anchor: "import" },
+      { title: { de: "Aus Jira oder Trello importieren", en: "Import from Jira or Trello" }, anchor: "import" },
+      { title: { de: "Arbeitsbereich exportieren", en: "Export workspace" }, anchor: "export" },
+      { title: { de: "Bereich als Markdown exportieren", en: "Export space as Markdown" }, keywords: { de: "pdf epub e-book", en: "pdf epub e-book" }, anchor: "export" },
+      { title: { de: "Flowplan-Archiv wiederherstellen", en: "Restore a Flowplan archive" }, keywords: { de: "backup importieren sicherung", en: "import backup" }, anchor: "backups" },
+      { title: { de: "Papierkorb & Aufbewahrung", en: "Trash & retention" }, anchor: "trash" },
     ],
   },
   {

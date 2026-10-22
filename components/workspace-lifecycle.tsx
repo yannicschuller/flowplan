@@ -1,9 +1,12 @@
 "use client";
+// Leaving and deleting a workspace: the danger zone at the end of
+// Settings → Allgemein (workspace), with a confirmation by the name.
 import { useT } from "./i18n";
 import { Select } from "./select";
 import { useState } from "react";
 import type { Bootstrap } from "@/lib/types";
 import { api, Modal } from "./ui";
+import { DangerZone, SettingRow } from "./settings-ui";
 export function WorkspaceLifecycle({
   boot,
   onExit,
@@ -55,38 +58,32 @@ export function WorkspaceLifecycle({
     }
   }
   return (
-    <section className="settings-section workspace-lifecycle">
-      <h2>{t("Arbeitsbereich verlassen oder löschen", "Leave or delete workspace")}</h2>
-      <p>
-        {t("Beim Verlassen bleiben die Inhalte für die übrigen Mitglieder erhalten.", "When you leave, the content stays for the other members.")}
-      </p>
-      {lastOwner && (
-        <p className="muted">
-          {t("Übertrage zuerst unter „Mitglieder“ die Eigentümerrolle an ein aktives Mitglied, bevor du den Arbeitsbereich verlässt.", "First pass the owner role to an active member under “Members” before you leave the workspace.")}
-        </p>
-      )}
-      <div className="lifecycle-buttons">
-        <button
-          className="button"
-          disabled={lastOwner || (owned && !owners.length)}
-          onClick={() => open("leave")}
-        >
+    <DangerZone id="danger" description={t("Was hier passiert, lässt sich nicht rückgängig machen.", "What happens here cannot be undone.")}>
+      <SettingRow
+        label={t("Arbeitsbereich verlassen", "Leave workspace")}
+        description={
+          lastOwner
+            ? t("Du bist der einzige Eigentümer. Gib zuerst unter „Mitglieder“ einem aktiven Mitglied die Rolle Eigentümer.", "You are the only owner. First give an active member the owner role under “Members”.")
+            : t("Du verlierst den Zugriff; die Inhalte bleiben für die übrigen Mitglieder erhalten.", "You lose access; the content stays for the other members.")
+        }
+      >
+        <button className="button danger" disabled={lastOwner || (owned && !owners.length)} onClick={() => open("leave")}>
           {t("Arbeitsbereich verlassen", "Leave workspace")}
         </button>
-        {boot.workspace.role === "owner" && (
-          <button
-            className="button danger"
-            disabled={!canDelete}
-            onClick={() => open("delete")}
-          >
+      </SettingRow>
+      {boot.workspace.role === "owner" && (
+        <SettingRow
+          label={t("Arbeitsbereich löschen", "Delete workspace")}
+          description={
+            canDelete
+              ? t("Löscht alle Bereiche, Seiten, Einträge und Anhänge für alle Mitglieder endgültig.", "Deletes all spaces, pages, records and attachments permanently for all members.")
+              : t("Lege zuerst einen weiteren Arbeitsbereich an, um diesen endgültig löschen zu können.", "Create another workspace first to be able to delete this one permanently.")
+          }
+        >
+          <button className="button danger" disabled={!canDelete} onClick={() => open("delete")}>
             {t("Arbeitsbereich löschen", "Delete workspace")}
           </button>
-        )}
-      </div>
-      {boot.workspace.role === "owner" && !canDelete && (
-        <p className="muted">
-          {t("Lege zuerst einen weiteren Arbeitsbereich an, um diesen endgültig löschen zu können.", "Create another workspace first to be able to delete this one permanently.")}
-        </p>
+        </SettingRow>
       )}
       {mode && (
         <Modal
@@ -115,7 +112,7 @@ export function WorkspaceLifecycle({
                 : t("Du verlierst deinen Zugriff auf diesen Arbeitsbereich. Eine erneute Einladung ist nötig, um wieder beizutreten. Deine anderen Arbeitsbereiche und deine Anmeldung bleiben erhalten.", "You lose access to this workspace. A new invitation is needed to join again. Your other workspaces and your sign-in stay.")}
             </p>
             {mode === "leave" && owned && (
-              <label>
+              <label className="ws-modal-field">
                 {t("Eigene Bereiche übertragen an", "Hand your own spaces over to")}
                 <Select
                   value={target}
@@ -133,7 +130,7 @@ export function WorkspaceLifecycle({
                 </small>
               </label>
             )}
-            <label>
+            <label className="ws-modal-field">
               {t("Arbeitsbereichsname zur Bestätigung", "Workspace name to confirm")}
               <input
                 autoFocus
@@ -175,6 +172,6 @@ export function WorkspaceLifecycle({
           </form>
         </Modal>
       )}
-    </section>
+    </DangerZone>
   );
 }

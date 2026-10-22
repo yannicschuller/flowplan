@@ -37,19 +37,24 @@ function send(body: FormData, onProgress: (share: number) => void) {
 export function ImportSources({
   workspaceId,
   spaces,
+  spaceId,
   canWrite,
   onRefresh,
   onError,
 }: {
   workspaceId: string;
   spaces: { id: string; name: string }[];
+  // The target space chosen outside (Settings → Import & Export); without
+  // it the panel offers its own choice.
+  spaceId?: string;
   canWrite: boolean;
   onRefresh: () => Promise<unknown> | unknown;
   onError: (message: string) => void;
 }) {
   const t = useT();
   const [source, setSource] = useState("auto");
-  const [space, setSpace] = useState(spaces[0]?.id || "");
+  const [ownSpace, setSpace] = useState(spaces[0]?.id || "");
+  const space = spaceId ?? ownSpace;
   const [mode, setMode] = useState<"pages" | "database">("pages");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -106,18 +111,20 @@ export function ImportSources({
   };
   const busy = !!progress;
   return (
-    <section className="settings-section import-sources">
-      <h2>{t("Aus Confluence, Evernote, Google Docs oder Obsidian importieren", "Import from Confluence, Evernote, Google Docs or Obsidian")}</h2>
-      <p>
-        {t(
-          "Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
-          "Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
-        )}
-      </p>
-      <div className="import-sources-options">
-        <label>
-          {t("Quelle", "Source")}
-          <Select value={source} onChange={(e) => setSource(e.target.value)} disabled={busy} aria-label={t("Quelle des Imports", "Source of the import")}>
+    <div className="setting-row wide import-sources" id="import-tools">
+      <div className="setting-text">
+        <span className="setting-label">{t("Confluence, Evernote, Google Docs oder Obsidian", "Confluence, Evernote, Google Docs or Obsidian")}</span>
+        <small>
+          {t(
+            "Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
+            "Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
+          )}
+        </small>
+      </div>
+      <div className="ws-form ws-form-inline">
+        <div className="ws-field">
+          <label htmlFor="import-source">{t("Quelle", "Source")}</label>
+          <Select id="import-source" value={source} onChange={(e) => setSource(e.target.value)} disabled={busy} aria-label={t("Quelle des Imports", "Source of the import")}>
             <option value="auto">{t("Automatisch erkennen", "Detect automatically")}</option>
             {Object.entries(names).map(([value, name]) => (
               <option key={value} value={value}>
@@ -125,41 +132,45 @@ export function ImportSources({
               </option>
             ))}
           </Select>
-        </label>
-        <label>
-          {t("Zielbereich", "Target space")}
-          <Select value={space} onChange={(e) => setSpace(e.target.value)} disabled={busy} aria-label={t("Zielbereich des Imports", "Target space of the import")}>
-            {spaces.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label>
-          {t("Importieren als", "Import as")}
-          <Select value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy} aria-label={t("Importieren als", "Import as")}>
-            <option value="pages">{t("Seiten (mit Ordnern als Unterseiten)", "Pages (folders as sub-pages)")}</option>
+        </div>
+        {spaceId === undefined && (
+          <div className="ws-field">
+            <label htmlFor="import-source-space">{t("Zielbereich", "Target space")}</label>
+            <Select id="import-source-space" value={space} onChange={(e) => setSpace(e.target.value)} disabled={busy} aria-label={t("Zielbereich des Imports", "Target space of the import")}>
+              {spaces.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+        <div className="ws-field">
+          <label htmlFor="import-source-mode">{t("Importieren als", "Import as")}</label>
+          <Select id="import-source-mode" value={mode} onChange={(e) => setMode(e.target.value as "pages" | "database")} disabled={busy} aria-label={t("Importieren als", "Import as")}>
+            <option value="pages">{t("Seiten (Ordner als Unterseiten)", "Pages (folders as sub-pages)")}</option>
             <option value="database">{t("Neue Datenbank (Tags, Daten, Ordner als Eigenschaften)", "New database (tags, dates, folders as properties)")}</option>
           </Select>
-        </label>
+        </div>
+        <div className="ws-form-actions">
+          <label className={`button file-label ws-file${canWrite && !busy ? "" : " disabled"}`}>
+            <UploadSimple aria-hidden />
+            {t("Datei auswählen und prüfen", "Choose and check file")}
+            <input
+              type="file"
+              accept=".zip,.enex,.html,.htm,.docx,application/zip"
+              hidden
+              disabled={!canWrite || busy}
+              aria-label={t("Datei für den Import", "File to import")}
+              onChange={(e) => {
+                const chosen = e.target.files?.[0];
+                e.target.value = "";
+                if (chosen) void choose(chosen);
+              }}
+            />
+          </label>
+        </div>
       </div>
-      <label className={`button file-label${canWrite && !busy ? "" : " disabled"}`}>
-        <UploadSimple />
-        {t("Datei auswählen", "Choose file")}
-        <input
-          type="file"
-          accept=".zip,.enex,.html,.htm,.docx,application/zip"
-          hidden
-          disabled={!canWrite || busy}
-          aria-label={t("Datei für den Import", "File to import")}
-          onChange={(e) => {
-            const chosen = e.target.files?.[0];
-            e.target.value = "";
-            if (chosen) void choose(chosen);
-          }}
-        />
-      </label>
       {progress && (
         <div className="import-sources-progress" role="status">
           <progress max={1} value={progress.phase === "upload" ? progress.share : undefined} />
@@ -171,10 +182,10 @@ export function ImportSources({
         </div>
       )}
       {preview && file && !busy && (
-        <div className="import-sources-preview">
-          <h3>
-            {names[preview.source] || preview.source}: {preview.title}
-          </h3>
+        <div className="import-sources-preview" role="region" aria-label={t("Vorschau des Imports", "Preview of the import")}>
+          <strong className="ws-break">
+            {t("Vorschau", "Preview")} · {names[preview.source] || preview.source}: {preview.title}
+          </strong>
           <ul>
             <li>{mode === "database" ? t(`${preview.pages} Einträge`, `${preview.pages} records`) : t(`${preview.pages} Seiten`, `${preview.pages} pages`)}</li>
             {preview.folders > 0 && mode === "pages" && <li>{t(`${preview.folders} Ordner als Seiten`, `${preview.folders} folders as pages`)}</li>}
@@ -189,11 +200,9 @@ export function ImportSources({
             </ul>
           )}
           <div className="import-sources-actions">
-            <button type="button" className="primary" onClick={() => void start()} disabled={!canWrite || (!preview.pages && !preview.folders)}>
-              {t("Importieren", "Import")}
-            </button>
             <button
               type="button"
+              className="button"
               onClick={() => {
                 setPreview(null);
                 setFile(null);
@@ -201,10 +210,17 @@ export function ImportSources({
             >
               {t("Abbrechen", "Cancel")}
             </button>
+            <button type="button" className="button primary" onClick={() => void start()} disabled={!canWrite || (!preview.pages && !preview.folders)}>
+              {t("Importieren", "Import")}
+            </button>
           </div>
         </div>
       )}
-      {done && <p role="status">{done}</p>}
-    </section>
+      {done && (
+        <p role="status" className="ws-result">
+          {done}
+        </p>
+      )}
+    </div>
   );
 }
