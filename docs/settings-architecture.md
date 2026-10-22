@@ -98,6 +98,31 @@ state next to the control).
 Planned: `settings/webhooks` (Webhooks out of `api`). `admin/overview` stays the landing page itself – the
 live charts go above the tiles (`status` slot of the shell).
 
+## Live overview and monitoring
+
+- The administration's landing page starts with the live strip
+  (`components/settings/admin/live-strip.tsx`): problems and notices of the
+  tiles, four live numbers and the requests of 24 hours from
+  `/api/admin/monitoring?view=live`, polled every 15 s while visible
+  (`use-live.ts`, paused in a hidden tab, "Live" badge). Tiles may carry a
+  figure, a sparkline or a meter (`TileSummary.value/valueLabel/spark/meter`,
+  series from `adminSummary().charts`).
+- `#admin/monitoring` is the full dashboard (`components/settings/admin/monitoring.tsx`,
+  data from `lib/admin-monitoring.ts`): health, KPIs, charts, queues, events
+  with filters, quick actions, workers, alerts by webhook and the
+  statistics switch. It takes the full width (no rail).
+- Charts: `components/charts.tsx` (line/area with crosshair, stacked columns,
+  donut, legend, `ChartTable`) and `components/sparkline.tsx` – plain SVG,
+  colours `--chart-1…5`/`--chart-other`, axis text `--chart-text` (light and
+  dark), keyboard (arrow keys) and touch, a table under every chart. Classes
+  `vz-*` (the database charts own `chart-*`).
+- Collected numbers: `lib/metrics.ts` (requests, 5xx and latency per minute
+  from `lib/request-metrics.ts` via Node's `diagnostics_channel` – no
+  database write per request; people per hour from `lib/auth.ts`; AI tokens
+  from `lib/ai/run.ts`; storage per day), written once a minute by
+  `lib/metrics-worker.ts`. Kept 48 h / 35 d / 400 d. `FLOWPLAN_METRICS=off`
+  or the switch in the section turns it off. Tests: `tests/metrics.test.ts`.
+
 ## Adding or moving a section
 
 1. Add the metadata to `SETTINGS_SECTIONS` (group, icon, `{de,en}` texts,

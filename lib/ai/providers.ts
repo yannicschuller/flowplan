@@ -10,6 +10,7 @@
 // (HttpError) with a German message that never contains the key.
 import { AI_DEFAULTS, type AiProviderKind } from "./features";
 import { redactSecrets } from "./redact";
+import { estimateTokens, noteAiUsage } from "../metrics";
 import { AI_MESSAGES, AiError, aiFetch, lines, sseEvents, type AiResponse } from "./transport";
 
 export type AiConfig = {
@@ -28,7 +29,11 @@ export type ChatInput = {
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
+  // Filled with the tokens the provider reports (where it does) – for the
+  // usage statistics (lib/metrics.ts).
+  usage?: TokenUsage;
 };
+export type TokenUsage = { input?: number; output?: number };
 
 // Upper bounds for what comes back.
 export const MAX_OUTPUT_CHARS = 200_000;
@@ -134,15 +139,22 @@ function chatRequest(config: AiConfig, input: ChatInput): { url: string; body: u
   }
 }
 
-// The text pieces of one provider's stream.
-async function* pieces(config: AiConfig, body: AsyncIterable<Buffer>): AsyncGenerator<string> {
+const tokens = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.round(n) : undefined);
+
+// The text pieces of one provider's stream; the token counts it reports go
+// into `usage`.
+async function* pieces(config: AiConfig, body: AsyncIterable<Buffer>, usage: TokenUsage = {}): AsyncGenerator<string> {
   if (config.kind === "ollama") {
     for await (const line of lines(body, MAX_STREAM_BYTES)) {
       if (!line.trim()) continue;
       const data = parse(config, line);
       if (data.error) streamError(config, data.error);
       if (typeof data.message?.content === "string") yield data.message.content;
-      if (data.done) return;
+      if (data.done) {
+        usage.input = tokens(data.prompt_eval_count) ?? usage.input;
+        usage.output = tokens(data.eval_count) ?? usage.output;
+        return;
+      }
     }
     return;
   }
@@ -153,12 +165,22 @@ async function* pieces(config: AiConfig, body: AsyncIterable<Buffer>): AsyncGene
     if (config.kind === "openai") {
       const text = data?.choices?.[0]?.delta?.content;
       if (typeof text === "string") yield text;
+      if (data?.usage) {
+        usage.input = tokens(data.usage.prompt_tokens) ?? usage.input;
+        usage.output = tokens(data.usage.completion_tokens) ?? usage.output;
+      }
     } else if (config.kind === "anthropic") {
       if (data?.type === "content_block_delta" && data.delta?.type === "text_delta" && typeof data.delta.text === "string") yield data.delta.text;
+      if (data?.type === "message_start") usage.input = tokens(data.message?.usage?.input_tokens) ?? usage.input;
+      if (data?.type === "message_delta") usage.output = tokens(data.usage?.output_tokens) ?? usage.output;
       if (data?.type === "message_stop") return;
     } else {
       for (const part of data?.candidates?.[0]?.content?.parts || [])
         if (typeof part?.text === "string" && !part.thought) yield part.text;
+      if (data?.usageMetadata) {
+        usage.input = tokens(data.usageMetadata.promptTokenCount) ?? usage.input;
+        usage.output = tokens(data.usageMetadata.candidatesTokenCount) ?? usage.output;
+      }
     }
   }
 }
@@ -178,7 +200,7 @@ export async function* streamChat(config: AiConfig, input: ChatInput): AsyncGene
   });
   if (response.status < 200 || response.status >= 300) await failure(config, response);
   let size = 0;
-  for await (const piece of pieces(config, response.body)) {
+  for await (const piece of pieces(config, response.body, input.usage)) {
     if (input.signal?.aborted) throw new AiError(499, AI_MESSAGES.aborted);
     if (!piece) continue;
     size += piece.length;
@@ -229,6 +251,7 @@ export async function embed(config: AiConfig, texts: string[], signal?: AbortSig
   }
   if (!Array.isArray(vectors) || vectors.length !== input.length || !vectors.every((v) => Array.isArray(v) && v.every((n) => typeof n === "number")))
     throw new AiError(502, AI_MESSAGES.garbled);
+  noteAiUsage("embeddings", estimateTokens(input.reduce((sum, t) => sum + t.length, 0)), 0);
   return vectors as number[][];
 }
 

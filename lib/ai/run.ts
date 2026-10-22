@@ -7,7 +7,8 @@ import { limitAi } from "../action-limits";
 import type { Identity } from "../types";
 import { requireAiRead } from "./access";
 import { AI_REASON_TEXT, type AiFeature } from "./features";
-import { streamChat, type ChatMessage } from "./providers";
+import { streamChat, type ChatMessage, type TokenUsage } from "./providers";
+import { estimateTokens, noteAiUsage } from "../metrics";
 import { redactSecrets } from "./redact";
 import { resolveAi } from "./resolve";
 
@@ -64,9 +65,19 @@ export async function* aiStream(user: Identity, feature: AiFeature, raw: AiRunIn
   const count = running.get(user.id) || 0;
   if (count >= AI_LIMITS.concurrent) throw new HttpError(429, "Zu viele KI-Anfragen in kurzer Zeit. Bitte später erneut versuchen.");
   running.set(user.id, count + 1);
+  // Tokens per feature for the monitoring (lib/metrics.ts): as reported by
+  // the provider, else estimated from the characters.
+  const usage: TokenUsage = {};
+  let written = 0;
   try {
-    for await (const piece of streamChat(resolved.config, { ...input, signal: options.signal })) yield piece;
+    for await (const piece of streamChat(resolved.config, { ...input, signal: options.signal, usage })) {
+      written += piece.length;
+      yield piece;
+    }
   } finally {
+    // Only answered requests (a provider that was not reached used nothing).
+    if (written || usage.input !== undefined || usage.output !== undefined)
+      noteAiUsage(feature, usage.input ?? estimateTokens(size), usage.output ?? estimateTokens(written));
     const left = (running.get(user.id) || 1) - 1;
     if (left > 0) running.set(user.id, left);
     else running.delete(user.id);

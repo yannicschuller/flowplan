@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 56) return;
+  if (globalDb.flowplanSchema === 57) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -804,7 +804,15 @@ function migrate(d: DatabaseSync) {
         ALTER TABLE api_tokens_scoped RENAME TO api_tokens;
         RELEASE api_token_scopes;`);
   }
-  globalDb.flowplanSchema = 56;
+  // Usage statistics of the instance (lib/metrics.ts): requests, 5xx and
+  // latency per minute (kept 48 hours) and per hour with the people active
+  // in it (35 days), storage and disk per day, AI tokens per day and feature.
+  // Counts only – no addresses, paths or people are stored.
+  d.exec(`CREATE TABLE IF NOT EXISTS metrics_minute(at INTEGER PRIMARY KEY,requests INTEGER NOT NULL,errors INTEGER NOT NULL,hist TEXT NOT NULL DEFAULT '');
+    CREATE TABLE IF NOT EXISTS metrics_hour(at INTEGER PRIMARY KEY,requests INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,hist TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS metrics_day(day TEXT PRIMARY KEY,database_bytes INTEGER NOT NULL,upload_bytes INTEGER NOT NULL,files INTEGER NOT NULL,disk_total INTEGER,disk_free INTEGER,at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS metrics_ai(day TEXT NOT NULL,feature TEXT NOT NULL,requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,feature));`);
+  globalDb.flowplanSchema = 57;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

@@ -62,5 +62,21 @@ test("services, monitoring and the activity of the last day", () => {
   assert.equal(typeof s.general.version, "string");
   assert.equal(s.general.update, null);
   assert.equal(adminSummary(Date.now(), { current: "0.1.0", latest: "9.9.9", url: "" }).general.update, "9.9.9");
-  assert.deepEqual(Object.keys(s).sort(), ["ai", "audit", "export", "general", "mail", "monitoring", "security", "signin", "storage", "users", "workspaces"]);
+  assert.deepEqual(Object.keys(s).sort(), ["ai", "audit", "charts", "export", "extensions", "general", "limits", "mail", "maintenance", "monitoring", "security", "signin", "storage", "users", "workspaces"]);
+});
+
+test("limits, extensions and the maintenance notice", async () => {
+  const { saveMaintenance } = await import("../lib/admin-ops");
+  const s = adminSummary();
+  assert.equal(typeof s.limits.uploadMb, "number");
+  assert.ok(s.limits.exceptions >= 1);
+  assert.equal(s.extensions.plugins, 0);
+  assert.equal(s.extensions.domains, 0);
+  assert.equal(s.maintenance.state, null);
+  const now = Date.now();
+  saveMaintenance(admin.id, { message: "Update", start: now + 3_600_000, end: now + 7_200_000 }, now);
+  assert.equal(adminSummary(now).maintenance.state, "scheduled");
+  assert.equal(adminSummary(now + 4_000_000).maintenance.state, "active");
+  assert.equal(adminSummary(now + 8_000_000).maintenance.state, null);
+  saveMaintenance(admin.id, null, now);
 });

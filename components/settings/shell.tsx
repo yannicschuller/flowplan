@@ -10,10 +10,26 @@ import { ArrowLeft, CaretRight, MagnifyingGlass, type Icon } from "@phosphor-ico
 import { parseSettingsHash, settingsHash, matchesQuery, type GroupMeta, type SettingsArea, type SettingsRoute, type Text } from "@/lib/settings-sections";
 import { useT } from "../i18n";
 import { StatusBadge, type Tone } from "../settings-ui";
+import { Sparkline } from "../sparkline";
 import type { SectionDef } from "./registry";
 
-// What a tile says about its section besides the title.
-export type TileSummary = { line?: string; tone?: Tone; badge?: string; value?: string };
+// What a tile says about its section besides the title. Optional and only
+// on wide tiles: a figure with its label (`value` + `valueLabel`), a trend
+// (`spark`, oldest first; `sparkLabel` names it for screen readers; colour
+// 1–5 of the chart palette) or a meter (`meter`, 0–1). Phones show the trend
+// or the meter small next to the title.
+export type TileSummary = {
+  line?: string;
+  tone?: Tone;
+  badge?: string;
+  value?: string;
+  valueLabel?: string;
+  spark?: (number | null)[];
+  sparkLabel?: string;
+  sparkTone?: 1 | 2 | 3 | 4 | 5;
+  meter?: number;
+  meterLabel?: string;
+};
 
 // Set when a tile (or a search result) opened the section: "back" can then
 // go back in the history instead of adding an entry.
@@ -184,6 +200,44 @@ function Tile({ area, section, summary, title, anchor }: { area: SettingsArea; s
   const tx = useText();
   const { Icon } = section;
   const tone = summary?.tone;
+  const visual =
+    summary?.spark && summary.spark.filter((v) => typeof v === "number").length >= 2 ? (
+      <Sparkline values={summary.spark} label={summary.sparkLabel || ""} tone={summary.sparkTone} />
+    ) : summary?.meter !== undefined ? (
+      <span
+        className={`settings-tile-meter${summary.meter >= 0.95 ? " full" : summary.meter >= 0.8 ? " high" : ""}`}
+        role="meter"
+        aria-label={summary.meterLabel}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(Math.min(1, summary.meter) * 100)}
+      >
+        <span style={{ width: `${Math.max(2, Math.min(1, summary.meter) * 100)}%` }} />
+      </span>
+    ) : null;
+  if (visual || summary?.valueLabel)
+    return (
+      <a className={`settings-tile rich${tone === "error" ? " alert" : ""}`} href={settingsHash({ area, section: section.id, anchor })} data-section={section.id} onClick={() => (openedFromHome = true)}>
+        <span className="settings-tile-icon" aria-hidden>
+          <Icon size={20} />
+        </span>
+        <span className="settings-tile-text">
+          <strong>{title}</strong>
+          <small>{summary?.line || tx(section.description)}</small>
+        </span>
+        <CaretRight size={16} className="settings-tile-caret" aria-hidden />
+        <span className="settings-tile-foot">
+          {(summary?.value || summary?.badge) && (
+            <span className="settings-tile-figure">
+              {summary.value && <strong>{summary.value}</strong>}
+              {summary.value && summary.valueLabel && <small>{summary.valueLabel}</small>}
+              {summary.badge && <StatusBadge tone={summary.tone || "off"}>{summary.badge}</StatusBadge>}
+            </span>
+          )}
+          {visual && <span className="settings-tile-visual">{visual}</span>}
+        </span>
+      </a>
+    );
   return (
     <a
       className={`settings-tile${tone === "error" ? " alert" : ""}`}
@@ -243,7 +297,7 @@ function SettingsDetail({ area, title, sections, groups, groupTitle, detailActio
   };
   const body = <Component />;
   return (
-    <div className="settings-detail">
+    <div className="settings-detail" data-detail={section.id}>
       <div className="settings-detail-bar">
         <button type="button" className="settings-back" onClick={back}>
           <ArrowLeft size={18} aria-hidden />
