@@ -6,6 +6,7 @@ import { useT } from "./i18n";
 import { useCallback, useEffect, useState } from "react";
 import { PuzzlePiece, Trash } from "@phosphor-icons/react";
 import { api } from "./ui";
+import { CONTROL, EmptyState, SettingGroup, SettingRow, StatusBadge, SwitchRow } from "./settings-ui";
 
 type SettingField = { type: "string" | "number" | "boolean"; label: string; default?: string | number | boolean };
 type Plugin = {
@@ -81,47 +82,60 @@ export function PluginSettings({
     return permission;
   };
   return (
-    <section className="settings-section plugin-settings">
-      <h2>
-        <PuzzlePiece size={18} aria-hidden="true" /> {t("Block-Erweiterungen", "Block extensions")}
-      </h2>
-      <p className="muted">
-        {t(
+    <>
+      <SettingGroup
+        id="extensions"
+        title={t("Erweiterungen des Arbeitsbereichs", "Extensions of the workspace")}
+        description={t(
           "Eigene Blocktypen von Webadressen, die die Administration freigegeben hat. Sie laufen abgeschottet in einem Rahmen, sehen weder Konto noch E-Mail-Adresse und lesen Datenbanken nur, wenn du sie hier erlaubst – immer mit den Rechten der lesenden Person.",
           "Custom block types from web addresses your administrators allowed. They run isolated in a frame, see neither account nor e-mail address and read databases only when you allow it here – always with the rights of the person reading.",
         )}
-      </p>
-      {owner && (
-        <div className="plugin-register">
-          <input
-            type="url"
-            value={url}
-            placeholder="https://plugins.example.org/poll/"
-            aria-label={t("Adresse der Erweiterung", "Address of the extension")}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void register()}
-          />
-          <button className="button primary" disabled={busy || !url.trim()} onClick={() => void register()}>
-            {busy ? t("Wird geprüft …", "Checking …") : t("Registrieren", "Register")}
-          </button>
-        </div>
-      )}
-      {!plugins.length && <p className="muted">{t("Noch keine Block-Erweiterungen.", "No block extensions yet.")}</p>}
-      <ul className="plugin-list">
-        {plugins.map((plugin) => {
-          const draft = drafts[plugin.id] || plugin.settings;
-          const anyDatabase = plugin.requested.includes("read:database");
-          const granted = plugin.permissions.filter((p) => p.startsWith("read:database:")).map((p) => p.slice(14));
-          return (
-            <li key={plugin.id} className={plugin.enabled ? "" : "plugin-off"}>
-              <div className="plugin-head">
-                <strong>
-                  {plugin.name} <span className="muted">{plugin.version}</span>
-                </strong>
-                <code>{plugin.origin}</code>
+      >
+        {owner && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void register();
+            }}
+          >
+            <SettingRow label={t("Adresse der Erweiterung", "Address of the extension")} id="plugin-url" description={t("Die Adresse ihres Manifests; die Administration muss die Domain freigegeben haben.", "The address of its manifest; the administrators must have allowed the domain.")}>
+              <input id="plugin-url" type="url" className={CONTROL.lg} value={url} placeholder="https://plugins.example.org/poll/" onChange={(e) => setUrl(e.target.value)} />
+              <button className="button primary" disabled={busy || !url.trim()}>
+                {busy ? t("Wird geprüft …", "Checking …") : t("Registrieren", "Register")}
+              </button>
+            </SettingRow>
+          </form>
+        )}
+        {!plugins.length && (
+          <div className="setting-row wide">
+            <EmptyState icon={<PuzzlePiece size={20} />} title={t("Noch keine Block-Erweiterungen", "No block extensions yet")}>
+              {owner ? t("Registriere eine Erweiterung über ihre Adresse.", "Register an extension by its address.") : t("Eigentümer des Arbeitsbereichs registrieren Erweiterungen.", "Owners of the workspace register extensions.")}
+            </EmptyState>
+          </div>
+        )}
+      </SettingGroup>
+      {plugins.map((plugin) => {
+        const draft = drafts[plugin.id] || plugin.settings;
+        const anyDatabase = plugin.requested.includes("read:database");
+        const granted = plugin.permissions.filter((p) => p.startsWith("read:database:")).map((p) => p.slice(14));
+        return (
+          <SettingGroup
+            key={plugin.id}
+            id={`plugin-${plugin.id}`}
+            title={`${plugin.name} ${plugin.version}`}
+            description={
+              <>
+                {plugin.description && <>{plugin.description} </>}
+                <code className="ws-break">{plugin.origin}</code>
+              </>
+            }
+            actions={
+              <>
+                <StatusBadge tone={plugin.enabled ? "ok" : "off"}>{plugin.enabled ? t("Aktiv", "Active") : t("Aus", "Off")}</StatusBadge>
                 {owner && (
                   <button
-                    className="icon-button"
+                    type="button"
+                    className="icon-button ws-danger-icon"
                     title={t("Erweiterung entfernen", "Remove extension")}
                     aria-label={t("Erweiterung entfernen", "Remove extension")}
                     onClick={() =>
@@ -129,43 +143,38 @@ export function PluginSettings({
                       void act({ action: "plugin.delete", pluginId: plugin.id })
                     }
                   >
-                    <Trash size={16} />
+                    <Trash size={18} />
                   </button>
                 )}
-              </div>
-              {plugin.description && <p className="muted">{plugin.description}</p>}
-              <p className="plugin-blocks">
-                {t("Blöcke:", "Blocks:")} {plugin.blocks.map((b) => `${b.icon ? b.icon + " " : ""}${b.label}`).join(", ")}
-              </p>
-              <p className="plugin-permissions">
-                {t("Darf:", "May:")}{" "}
-                {plugin.permissions.length ? plugin.permissions.map(permissionLabel).join(" · ") : t("nur sich selbst zeigen", "only show itself")}
-              </p>
-              {owner && (
-                <div className="plugin-options">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={plugin.enabled}
-                      onChange={(e) => void act({ action: "plugin.update", pluginId: plugin.id, enabled: e.target.checked })}
-                    />
-                    {t("Aktiv", "Active")}
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={plugin.public}
-                      onChange={(e) => void act({ action: "plugin.update", pluginId: plugin.id, public: e.target.checked })}
-                    />
-                    {t("Auch auf veröffentlichten Seiten zeigen", "Also show on published pages")}
-                  </label>
-                </div>
-              )}
-              {owner && anyDatabase && (
-                <fieldset className="plugin-databases">
-                  <legend>{t("Datenbanken, die sie lesen darf", "Databases it may read")}</legend>
+              </>
+            }
+          >
+            <SettingRow label={t("Blöcke", "Blocks")}>
+              <span className="ws-value">{plugin.blocks.map((b) => `${b.icon ? b.icon + " " : ""}${b.label}`).join(", ")}</span>
+            </SettingRow>
+            <SettingRow label={t("Darf", "May")}>
+              <span className="ws-value">{plugin.permissions.length ? plugin.permissions.map(permissionLabel).join(" · ") : t("nur sich selbst zeigen", "only show itself")}</span>
+            </SettingRow>
+            {owner && (
+              <SwitchRow
+                label={t("Aktiv", "Active")}
+                description={t("Ausgeschaltet zeigen ihre Blöcke nur ihren Text.", "Switched off, its blocks only show their text.")}
+                checked={plugin.enabled}
+                onChange={(enabled) => void act({ action: "plugin.update", pluginId: plugin.id, enabled })}
+              />
+            )}
+            {owner && (
+              <SwitchRow
+                label={t("Auch auf veröffentlichten Seiten zeigen", "Also show on published pages")}
+                checked={plugin.public}
+                onChange={(on) => void act({ action: "plugin.update", pluginId: plugin.id, public: on })}
+              />
+            )}
+            {owner && anyDatabase && (
+              <SettingRow wide label={t("Datenbanken, die sie lesen darf", "Databases it may read")}>
+                <div className="ws-checks" role="group" aria-label={t("Datenbanken, die sie lesen darf", "Databases it may read")}>
                   {databases.map((d) => (
-                    <label key={d.id} className="checkbox-label">
+                    <label key={d.id} className="ws-check">
                       <input
                         type="checkbox"
                         checked={granted.includes(d.id)}
@@ -177,50 +186,52 @@ export function PluginSettings({
                           })
                         }
                       />
-                      {d.title || t("Ohne Titel", "Untitled")}
+                      <span>{d.title || t("Ohne Titel", "Untitled")}</span>
                     </label>
                   ))}
-                </fieldset>
-              )}
-              {owner && Object.keys(plugin.settingsSchema).length > 0 && (
-                <form
-                  className="plugin-config"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void act({ action: "plugin.update", pluginId: plugin.id, settings: draft });
-                  }}
-                >
-                  {Object.entries(plugin.settingsSchema).map(([key, field]) => (
-                    <label key={key} className={field.type === "boolean" ? "checkbox-label" : "plugin-config-field"}>
-                      {field.type !== "boolean" && <span>{field.label}</span>}
-                      <input
-                        type={field.type === "boolean" ? "checkbox" : field.type === "number" ? "number" : "text"}
-                        {...(field.type === "boolean"
-                          ? { checked: !!draft[key] }
-                          : { value: String(draft[key] ?? field.default ?? "") })}
-                        onChange={(e) =>
-                          setDrafts((all) => ({
-                            ...all,
-                            [plugin.id]: {
-                              ...draft,
-                              [key]: field.type === "boolean" ? e.target.checked : field.type === "number" ? Number(e.target.value) : e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                      {field.type === "boolean" && field.label}
-                    </label>
-                  ))}
-                  <p className="muted">{t("Einstellungen sind für alle sichtbar, die den Block sehen – keine Passwörter eintragen.", "Settings are visible to everyone who sees the block – do not enter passwords.")}</p>
-                  <button className="button" type="submit">
-                    {t("Einstellungen speichern", "Save settings")}
-                  </button>
-                </form>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+                  {!databases.length && <p className="ws-note">{t("Im Arbeitsbereich gibt es noch keine Datenbank.", "The workspace has no database yet.")}</p>}
+                </div>
+              </SettingRow>
+            )}
+            {owner && Object.keys(plugin.settingsSchema).length > 0 && (
+              <form
+                className="setting-row wide"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void act({ action: "plugin.update", pluginId: plugin.id, settings: draft });
+                }}
+              >
+                <div className="setting-text">
+                  <span className="setting-label">{t("Einstellungen", "Settings")}</span>
+                  <small>{t("Einstellungen sind für alle sichtbar, die den Block sehen – keine Passwörter eintragen.", "Settings are visible to everyone who sees the block – do not enter passwords.")}</small>
+                </div>
+                <div className="ws-form">
+                  {Object.entries(plugin.settingsSchema).map(([key, field]) => {
+                    const id = `plugin-${plugin.id}-${key}`;
+                    const change = (value: unknown) => setDrafts((all) => ({ ...all, [plugin.id]: { ...draft, [key]: value } }));
+                    return field.type === "boolean" ? (
+                      <label key={key} className="ws-check">
+                        <input type="checkbox" checked={!!draft[key]} onChange={(e) => change(e.target.checked)} />
+                        <span>{field.label}</span>
+                      </label>
+                    ) : (
+                      <div key={key} className="ws-field">
+                        <label htmlFor={id}>{field.label}</label>
+                        <input id={id} type={field.type === "number" ? "number" : "text"} value={String(draft[key] ?? field.default ?? "")} onChange={(e) => change(field.type === "number" ? Number(e.target.value) : e.target.value)} />
+                      </div>
+                    );
+                  })}
+                  <div className="ws-form-actions">
+                    <button className="button" type="submit">
+                      {t("Einstellungen speichern", "Save settings")}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </SettingGroup>
+        );
+      })}
+    </>
   );
 }

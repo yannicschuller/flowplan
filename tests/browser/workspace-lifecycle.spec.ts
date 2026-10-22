@@ -215,9 +215,9 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
     await nav(page, "Einstellungen", mobile);
     await page.getByRole("link", { name: /^Bereiche/ }).click();
     await page
-      .locator(".utility-row")
+      .locator(".ws-space-item")
       .filter({ hasText: name })
-      .getByRole("button", { name: "Verwalten", exact: true })
+      .getByRole("button", { name: `${name} verwalten`, exact: true })
       .click();
     await page
       .getByRole("dialog", { name: "Bereich verwalten", exact: true })

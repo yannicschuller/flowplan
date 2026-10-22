@@ -78,9 +78,9 @@ test("owners turn members into guests who only see shared pages", async ({
     .click();
   await expect(
     page
-      .locator(".member-row")
+      .locator(".ws-member")
       .filter({ hasText: `Gast ${tag}` })
-      .locator(".tag-yellow"),
+      .locator(".status-badge.warn"),
   ).toHaveText("Gast");
 
   const guest = await browser.newContext({

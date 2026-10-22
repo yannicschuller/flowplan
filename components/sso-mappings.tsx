@@ -6,6 +6,7 @@ import { useState } from "react";
 import { IdentificationCard, Plus, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Select } from "./select";
+import { StatusBadge } from "./settings-ui";
 
 export type SsoMappingRow = {
   id: string;
@@ -61,7 +62,7 @@ export function SsoMappings({
     <div className="sso-mappings">
       {!readOnly && (
         <form
-          className="invite-form"
+          className="ws-form ws-form-inline"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!target || (!role && !groupId)) return;
@@ -77,101 +78,91 @@ export function SsoMappings({
           }}
         >
           {workspaces && (
-            <Select
-              aria-label={t("Arbeitsbereich", "Workspace")}
-              value={target}
-              onChange={(e) => {
-                setTarget(e.target.value);
-                setGroupId("");
-              }}
-            >
-              {workspaces.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
+            <div className="ws-field">
+              <label htmlFor="sso-map-workspace">{t("Arbeitsbereich", "Workspace")}</label>
+              <Select
+                id="sso-map-workspace"
+                aria-label={t("Arbeitsbereich", "Workspace")}
+                value={target}
+                onChange={(e) => {
+                  setTarget(e.target.value);
+                  setGroupId("");
+                }}
+              >
+                {workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          <div className="ws-field">
+            <label htmlFor="sso-map-group">{t("SSO-Gruppe", "SSO group")}</label>
+            <input id="sso-map-group" required value={ssoGroup} maxLength={200} placeholder={t("z. B. marketing", "e.g. marketing")} onChange={(e) => setSsoGroup(e.target.value)} />
+          </div>
+          <div className="ws-field">
+            <label htmlFor="sso-map-role">{t("Rolle im Arbeitsbereich", "Role in the workspace")}</label>
+            <Select id="sso-map-role" value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="">{t("Keine Mitgliedschaft", "No membership")}</option>
+              <option value="viewer">{t("Ansehen", "View")}</option>
+              <option value="editor">{t("Bearbeiten", "Edit")}</option>
+              <option value="owner">{t("Eigentümer", "Owner")}</option>
+            </Select>
+          </div>
+          <div className="ws-field">
+            <label htmlFor="sso-map-target">{t("Gruppe im Arbeitsbereich", "Group in the workspace")}</label>
+            <Select id="sso-map-target" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+              <option value="">{t("Keine Gruppe", "No group")}</option>
+              {groupsOf(target).map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
                 </option>
               ))}
             </Select>
-          )}
-          <input
-            required
-            value={ssoGroup}
-            maxLength={200}
-            aria-label={t("SSO-Gruppe", "SSO group")}
-            placeholder={t(
-              "SSO-Gruppe, z. B. marketing",
-              "SSO group, e.g. marketing",
-            )}
-            onChange={(e) => setSsoGroup(e.target.value)}
-          />
-          <Select
-            aria-label={t("Rolle im Arbeitsbereich", "Role in the workspace")}
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            <option value="">
-              {t("Keine Mitgliedschaft", "No membership")}
-            </option>
-            <option value="viewer">{t("Ansehen", "View")}</option>
-            <option value="editor">{t("Bearbeiten", "Edit")}</option>
-            <option value="owner">{t("Eigentümer", "Owner")}</option>
-          </Select>
-          <Select
-            aria-label={t("Gruppe im Arbeitsbereich", "Group in the workspace")}
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value)}
-          >
-            <option value="">{t("Keine Gruppe", "No group")}</option>
-            {groupsOf(target).map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </Select>
-          <button className="button primary" disabled={!role && !groupId}>
-            <Plus />
-            {t("Zuordnen", "Map")}
-          </button>
+          </div>
+          <div className="ws-form-actions">
+            <button className="button primary" disabled={!role && !groupId}>
+              <Plus />
+              {t("Zuordnen", "Map")}
+            </button>
+          </div>
         </form>
       )}
-      {mappings.map((m) => (
-        <div className="utility-row" key={m.id}>
-          <IdentificationCard />
-          <strong>{m.sso_group}</strong>
-          <span>
-            {[
-              workspaces ? workspaceName(m.workspace_id) : null,
-              m.role
-                ? t(
-                    `Mitglied: ${roleName(m.role)}`,
-                    `Member: ${roleName(m.role)}`,
-                  )
-                : null,
-              m.group_id
-                ? t(
-                    `Gruppe: ${groupName(m.group_id)}`,
-                    `Group: ${groupName(m.group_id)}`,
-                  )
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-          {!readOnly && (
-            <button
-              type="button"
-              className="icon-button"
-              title={t("Zuordnung entfernen", "Remove mapping")}
-              aria-label={t(
-                `Zuordnung für ${m.sso_group} entfernen`,
-                `Remove the mapping for ${m.sso_group}`,
+      {mappings.length ? (
+        <ul className="ws-list" aria-label={t("Zuordnungen", "Mappings")}>
+          {mappings.map((m) => (
+            <li className="ws-item" key={m.id}>
+              <span className="ws-item-icon" aria-hidden>
+                <IdentificationCard size={18} />
+              </span>
+              <div className="ws-item-text">
+                <strong className="ws-break">{m.sso_group}</strong>
+                <span className="ws-badges">
+                  {workspaces && <StatusBadge tone="off">{workspaceName(m.workspace_id)}</StatusBadge>}
+                  {m.role && <StatusBadge tone="info">{t(`Mitglied: ${roleName(m.role)}`, `Member: ${roleName(m.role)}`)}</StatusBadge>}
+                  {m.group_id && <StatusBadge tone="info">{t(`Gruppe: ${groupName(m.group_id)}`, `Group: ${groupName(m.group_id)}`)}</StatusBadge>}
+                </span>
+              </div>
+              {!readOnly && (
+                <div className="ws-item-controls">
+                  <button
+                    type="button"
+                    className="icon-button ws-danger-icon"
+                    title={t("Zuordnung entfernen", "Remove mapping")}
+                    aria-label={t(`Zuordnung für ${m.sso_group} entfernen`, `Remove the mapping for ${m.sso_group}`)}
+                    onClick={() => void onDelete(m.workspace_id, m.id)}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               )}
-              onClick={() => void onDelete(m.workspace_id, m.id)}
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-      ))}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="ws-note">{t("Noch keine Zuordnungen.", "No mappings yet.")}</p>
+      )}
     </div>
   );
 }

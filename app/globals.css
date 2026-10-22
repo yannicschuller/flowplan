@@ -2760,44 +2760,6 @@ tr:hover .row-open,
 .member-row .button {
   font-size: 11px;
 }
-.invite-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-.invite-form > label,
-.invite-form > .checkbox-label {
-  margin: 0;
-  white-space: nowrap;
-}
-.invite-form > input {
-  flex: 1 1 220px;
-  min-width: 200px;
-}
-.invite-form :is(select, .fp-select) {
-  max-width: 140px;
-}
-.space-settings {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 4px 15px;
-  margin-bottom: 17px;
-}
-.permission-row {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  font-size: 12px;
-  padding: 12px 0;
-}
-.permission-row > span {
-  flex: 1;
-}
-.permission-row :is(select, .fp-select) {
-  font-size: 11px;
-  max-width: 220px;
-}
 .file-label {
   width: fit-content;
   cursor: pointer;
@@ -4373,19 +4335,6 @@ mark[data-color] {
 .profile-row .member-row {
   margin: 0;
 }
-.workspace-identity {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 16px;
-}
-.workspace-identity > label {
-  display: grid;
-  flex: 1 1 240px;
-  gap: 5px;
-  margin: 0;
-  font-size: 13px;
-}
 .limits-overview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -5218,9 +5167,6 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .member-row .button {
     padding: 6px;
   }
-  .invite-form {
-    flex-wrap: wrap;
-  }
 }
 @media (max-width: 767px) {
   body {
@@ -5546,24 +5492,6 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   }
   .member-row .button {
     font-size: 10px;
-  }
-  .invite-form {
-    gap: 7px;
-  }
-  .invite-form input {
-    min-width: 100%;
-    font-size: 14px;
-  }
-  .permission-row {
-    flex-wrap: wrap;
-  }
-  .permission-row :is(select, .fp-select) {
-    width: 100%;
-    max-width: 100%;
-  }
-  .space-settings :is(select, .fp-select) {
-    max-width: 140px;
-    font-size: 12px;
   }
   .admin-page .callout {
     font-size: 12px;
@@ -7729,10 +7657,6 @@ tr.order-drop-after > td {
 .lifecycle-error {
   color: var(--danger, #b42318);
   overflow-wrap: anywhere;
-}
-.workspace-lifecycle small {
-  font-weight: 400;
-  color: var(--muted);
 }
 .trash-space {
   flex-wrap: wrap;
@@ -18392,38 +18316,6 @@ h3 .block-reactions {
   }
 }
 
-/* Settings → Members: open invitations. */
-.pending-invites h3 {
-  margin: 22px 0 2px;
-  font-size: 14px;
-}
-.pending-invite small {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-}
-.pending-invite .tag {
-  flex: none;
-}
-.pending-invite-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--hover);
-  color: var(--secondary);
-}
-@media (max-width: 560px) {
-  .pending-invite {
-    flex-wrap: wrap;
-  }
-  .pending-invite > span:nth-child(2) {
-    flex-basis: calc(100% - 50px);
-  }
-}
-
 [data-theme="dark"] .tag-yellow {
   background: rgba(240, 200, 100, 0.14);
   color: #e8c98a;
@@ -21870,12 +21762,6 @@ html.split-resizing * {
   justify-content: center;
   line-height: 1;
 }
-.plugin-settings h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.plugin-register,
 .domain-add,
 .domain-actions {
   display: flex;
@@ -21883,63 +21769,10 @@ html.split-resizing * {
   gap: 8px;
   margin: 10px 0;
 }
-.plugin-register input,
 .domain-add input {
   flex: 1 1 240px;
   min-width: 0;
 }
-.plugin-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-}
-.plugin-list > li {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-}
-.plugin-list > li.plugin-off {
-  opacity: 0.65;
-}
-.plugin-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-.plugin-head code {
-  font-size: 12px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-.plugin-head .icon-button {
-  margin-left: auto;
-}
-.plugin-blocks,
-.plugin-permissions {
-  margin: 6px 0;
-  font-size: 14px;
-}
-.plugin-options,
-.plugin-databases {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  margin: 8px 0;
-}
-.plugin-databases {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-}
-.plugin-config {
-  display: grid;
-  gap: 8px;
-  margin-top: 8px;
-}
-.plugin-config-field,
 .publication-theme-field {
   display: grid;
   gap: 4px;
@@ -22141,16 +21974,6 @@ html.split-resizing * {
 /* ===== End of end-to-end encrypted spaces. ===== */
 
 /* ===== Imports from Confluence, Evernote, Google Docs and Obsidian (components/import-sources.tsx). ===== */
-.import-sources-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.import-sources-options label {
-  display: grid;
-  gap: 4px;
-}
 .import-sources-progress {
   display: flex;
   align-items: center;
@@ -22170,7 +21993,8 @@ html.split-resizing * {
   border-radius: 8px;
   background: var(--surface);
 }
-.import-sources-preview h3 {
+.import-sources-preview > strong {
+  display: block;
   margin: 0 0 6px;
 }
 .import-sources-preview ul {
@@ -22750,3 +22574,450 @@ html.split-resizing * {
     min-height: 44px;
   }
 }
+
+/* ===== Workspace settings (components/settings/user/workspace, members,
+   groups, spaces, extensions, data, time and their panels): lists of
+   items inside setting groups, small forms with visible labels, file
+   buttons, the bottom sheet on phones. Prefix ws-. ===== */
+.ws-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ws-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+}
+.ws-item-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--secondary);
+}
+.ws-item-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+.ws-item-text > strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-weight: 550;
+}
+.ws-item-text > small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.ws-item-text > code,
+.setting-group > header code {
+  font-size: 12px;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.ws-break {
+  overflow-wrap: anywhere;
+}
+.ws-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.ws-badges small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.ws-you {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.ws-item-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.ws-item-controls .ws-role {
+  width: 150px;
+}
+.ws-item .icon-button,
+.setting-group-actions .icon-button {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.ws-danger-icon:hover {
+  color: #b3343c;
+  background: #fbecec;
+}
+[data-theme="dark"] .ws-danger-icon:hover {
+  color: #f3b0b0;
+  background: #3a2224;
+}
+.ws-value {
+  max-width: 44ch;
+  color: var(--secondary);
+  font-size: 13.5px;
+  text-align: right;
+}
+.ws-note {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ws-result {
+  margin: 0;
+  color: #3f6d52;
+  font-size: 12.5px;
+  text-align: right;
+}
+.ws-result.error {
+  color: #a43c3f;
+}
+[data-theme="dark"] .ws-result {
+  color: #a8d8b9;
+}
+[data-theme="dark"] .ws-result.error {
+  color: #f3b0b0;
+}
+.ws-stack {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  max-width: 320px;
+}
+.setting-group a.button {
+  color: var(--text);
+  text-decoration: none;
+}
+.ws-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+/* A file picker as a button: icon and text in one line (the global label
+   rule stacks them). */
+label.button.ws-file {
+  flex-direction: row;
+  margin: 0;
+  font-weight: 500;
+}
+label.button.ws-file.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Small forms: every field with a visible label above it. */
+.ws-form {
+  display: grid;
+  gap: 14px;
+}
+.ws-form-inline {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  align-items: start;
+}
+.ws-form-inline > .ws-form-actions {
+  grid-column: 1 / -1;
+}
+.ws-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.ws-field > label {
+  display: block;
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.ws-field > small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.ws-field > :is(input, .fp-select) {
+  width: 100%;
+}
+.ws-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.ws-form .modal-actions {
+  margin-top: 4px;
+}
+label.ws-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  margin: 0;
+  font-weight: 400;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+label.ws-check > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+label.ws-check small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.ws-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 2px 16px;
+}
+.ws-checklist {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ws-checklist > li {
+  border-bottom: 1px solid var(--border);
+}
+.ws-checklist > li:last-child {
+  border-bottom: 0;
+}
+.ws-checklist label.ws-check {
+  min-height: 52px;
+}
+.ws-checklist label.ws-check > span {
+  overflow-wrap: anywhere;
+}
+label.ws-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+}
+label.ws-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  border: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+.ws-modal-field {
+  margin-bottom: 16px;
+}
+/* The space dialog: duplicate and delete apart from the fields. */
+.ws-modal-more {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+/* Gruppen & Rechte: one block per space, the groups indented below it. */
+.ws-space + .ws-space {
+  border-top: 1px solid var(--border);
+}
+.ws-space > .setting-row:first-child {
+  border-top: 0;
+}
+.ws-space:first-child > .setting-row:first-child {
+  border-top: 1px solid var(--border);
+}
+.ws-space .setting-control {
+  flex-wrap: wrap;
+}
+.setting-row.ws-sub {
+  padding-left: 44px;
+  border-top-style: dashed;
+}
+.setting-row.ws-sub label {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+.ws-space-state {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 22px 10px;
+}
+.setting-group .sso-mappings {
+  display: grid;
+  gap: 4px;
+  padding: 14px 22px 0;
+  border-top: 1px solid var(--border);
+}
+.setting-group .sso-mappings > .ws-list {
+  margin: 0 -22px;
+}
+.setting-group .sso-mappings > .ws-note {
+  padding-bottom: 14px;
+}
+.settings-section .sso-mappings > .ws-list .ws-item {
+  padding-inline: 0;
+}
+.sso-mappings > .ws-form {
+  padding-bottom: 14px;
+}
+.settings-shell .workspace-icon-picker {
+  flex-wrap: wrap;
+  margin: 0;
+}
+.settings-shell .workspace-icon-preview .workspace-letter {
+  width: 48px;
+  height: 48px;
+  font-size: 22px;
+}
+.setting-group.danger-zone .button.danger:not(:disabled) {
+  border-color: color-mix(in srgb, #b3343c 45%, var(--border));
+  color: #b3343c !important;
+}
+[data-theme="dark"] .setting-group.danger-zone .button.danger:not(:disabled) {
+  color: #f3b0b0 !important;
+}
+.setting-group.danger-zone .button.danger:disabled {
+  opacity: 0.6;
+  color: var(--secondary) !important;
+}
+/* Zeiten: the report inside a setting group. */
+.time-report-filter {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ws-time .time-report-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.ws-time .time-report-bar .fp-select,
+.ws-time .time-report-bar input {
+  width: 100%;
+}
+.ws-time .time-report summary {
+  min-height: 44px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+/* Phones: a bottom sheet instead of a centred dialog. */
+@media (max-width: 600px) {
+  .modal.ws-sheet {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 92dvh;
+    transform: none;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 700px) {
+  .ws-item {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    padding: 14px 16px;
+  }
+  .ws-item-controls {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .ws-item.ws-item-inline {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .ws-item-inline > .ws-item-controls {
+    grid-column: auto;
+  }
+  .ws-item-icon {
+    width: 32px;
+    height: 32px;
+  }
+  /* The remove buttons stay at the end of the row. */
+  .ws-item-controls > .icon-button:last-child {
+    margin-left: auto;
+  }
+  .ws-item-controls .ws-role {
+    flex: 1 1 150px;
+  }
+  .ws-stack {
+    justify-items: start;
+    max-width: none;
+  }
+  .ws-result,
+  .ws-value {
+    text-align: left;
+  }
+  .ws-buttons {
+    justify-content: flex-start;
+  }
+  .setting-row.ws-sub {
+    padding-left: 32px;
+  }
+  .setting-group .sso-mappings {
+    padding-inline: 16px;
+  }
+  .setting-group .sso-mappings > .ws-list {
+    margin: 0 -16px;
+  }
+  .ws-space-state {
+    justify-content: flex-start;
+    padding-inline: 16px;
+  }
+  .ws-time .time-report-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ws-time .time-report-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 860px) {
+  /* Touch targets: icon buttons and the styled selects reach 44 px. */
+  .settings-shell .ws-item .icon-button,
+  .settings-shell .setting-group-actions .icon-button {
+    width: 44px;
+    height: 44px;
+    padding: 12px;
+  }
+  .settings-shell .settings-body .fp-select,
+  .modal.ws-sheet :is(.fp-select, .button, input:not([type="checkbox"])) {
+    min-height: 44px;
+  }
+  label.ws-check {
+    min-height: 44px;
+  }
+}
+/* ===== End of workspace settings. ===== */
