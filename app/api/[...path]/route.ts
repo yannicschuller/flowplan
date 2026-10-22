@@ -1172,6 +1172,28 @@ async function handlePOST(
         }),
       );
     }
+    // Confluence, Evernote, Google Docs and Obsidian (lib/importers):
+    // dryRun=1 answers with a preview (counts and warnings) only.
+    if (path.length === 2 && path[0] === "import" && path[1] === "source") {
+      const data = await req.formData();
+      const file = data.get("file");
+      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
+      if (file.size > ARCHIVE_LIMIT) throw new HttpError(413, "Die Datei darf maximal 100 MB groß sein.");
+      const { importFromSource } = await import("@/lib/importers");
+      return NextResponse.json(
+        await importFromSource(
+          user,
+          z.uuid().parse(data.get("workspaceId")),
+          z.uuid().parse(data.get("spaceId")),
+          { name: file.name, bytes: Buffer.from(await file.arrayBuffer()) },
+          {
+            source: z.enum(["auto", "confluence", "evernote", "gdocs", "obsidian"]).catch("auto").parse(data.get("source") || "auto"),
+            mode: data.get("mode") === "database" ? "database" : "pages",
+            dryRun: data.get("dryRun") === "1",
+          },
+        ),
+      );
+    }
     if (path[0] === "import" && path[1] === "zip") {
       const data = await req.formData();
       const file = data.get("file");

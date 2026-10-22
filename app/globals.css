@@ -22028,3 +22028,52 @@ html.split-resizing * {
   }
 }
 /* ===== End of end-to-end encrypted spaces. ===== */
+
+
+/* ===== Imports from Confluence, Evernote, Google Docs and Obsidian (components/import-sources.tsx). ===== */
+.import-sources-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.import-sources-options label {
+  display: grid;
+  gap: 4px;
+}
+.import-sources-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--muted);
+}
+.import-sources-progress progress {
+  flex: 1;
+  max-width: 280px;
+  accent-color: var(--blue);
+}
+.import-sources-preview {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.import-sources-preview h3 {
+  margin: 0 0 6px;
+}
+.import-sources-preview ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.import-sources-warnings {
+  color: var(--muted);
+  font-size: 13px;
+}
+.import-sources-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* ===== End of imports from other tools. ===== */

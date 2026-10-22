@@ -20,6 +20,7 @@ import { PluginSettings } from "./plugin-settings";
 import { TimeReport } from "./time-report";
 import { useEffect, useState } from "react";
 import { ClipperSettings } from "./clipper-settings";
+import { ImportSources } from "./import-sources";
 import { InboundMailSettings } from "./inbound-mail-settings";
 import { AccountSecurity } from "./account-security";
 import { TwoFactorSettings } from "./two-factor";
@@ -1060,6 +1061,13 @@ export default function Settings({
                 </label>
                 {zipResult && <p role="status">{zipResult}</p>}
               </section>
+              <ImportSources
+                workspaceId={boot.workspace.id}
+                spaces={boot.spaces}
+                canWrite={boot.workspace.role !== "viewer"}
+                onRefresh={onRefresh}
+                onError={onError}
+              />
               <section className="settings-section">
                 <h2>{t("Flowplan-Backup importieren", "Import a Flowplan backup")}</h2>
                 <p>

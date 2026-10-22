@@ -55,6 +55,9 @@ export function ClipperSettings({
           <BookmarkSimple /> {t("In Flowplan speichern", "Save to Flowplan")}
         </a>
       )}
+      <p className="muted">
+        {t("Mehr kann die Browser-Erweiterung (Chrome, Edge, Firefox): ganze Artikel, Auswahlen, Lesezeichen mit Tags und Markierungen per Rechtsklick. Sie meldet sich mit einem API-Token mit dem Recht „Nur Browser-Erweiterung“ an (Einstellungen → API & Webhooks → Persönliche API-Tokens).", "The browser extension (Chrome, Edge, Firefox) does more: whole articles, selections, bookmarks with tags and highlights by right-click. It signs in with an API token with the permission “Browser extension only” (Settings → API & webhooks → Personal API tokens).")}
+      </p>
       {canWrite && <CaptureDefaultSetting workspaceId={workspaceId} onError={onError} />}
       <h3>{t("Browser-Lesezeichen importieren", "Import browser bookmarks")}</h3>
       <p>

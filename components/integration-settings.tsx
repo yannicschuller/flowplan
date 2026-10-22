@@ -10,7 +10,7 @@ import { WebhookSettings } from "./webhook-settings";
 type Token = {
   id: string;
   name: string;
-  scope: "read" | "write";
+  scope: "read" | "write" | "clipper";
   prefix: string;
   created_at: number;
   last_used_at: number | null;
@@ -131,7 +131,7 @@ export function IntegrationSettings({
   const t = useT();
   const [tokens, setTokens] = useState<Token[]>([]),
     [tokenName, setTokenName] = useState(""),
-    [scope, setScope] = useState<"read" | "write">("read"),
+    [scope, setScope] = useState<"read" | "write" | "clipper">("read"),
     [fresh, setFresh] = useState<{ label: string; value: string } | null>(null);
   const load = useCallback(async () => {
     try {
@@ -177,9 +177,10 @@ export function IntegrationSettings({
             placeholder={t("Name, z. B. Home Assistant", "Name, e.g. Home Assistant")}
             aria-label={t("Name des Tokens", "Token name")}
           />
-          <Select value={scope} onChange={(e) => setScope(e.target.value as "read" | "write")} aria-label={t("Rechte des Tokens", "Token permissions")}>
+          <Select value={scope} onChange={(e) => setScope(e.target.value as "read" | "write" | "clipper")} aria-label={t("Rechte des Tokens", "Token permissions")}>
             <option value="read">{t("Nur lesen", "Read only")}</option>
             <option value="write">{t("Lesen und schreiben", "Read and write")}</option>
+            <option value="clipper">{t("Nur Browser-Erweiterung (Web-Clipper)", "Browser extension only (web clipper)")}</option>
           </Select>
           <button className="button primary">{t("Token erstellen", "Create token")}</button>
         </form>
@@ -201,7 +202,7 @@ export function IntegrationSettings({
               <span>
                 <strong>{token.name}</strong>
                 <small>
-                  {token.prefix}… · {token.scope === "read" ? t("nur lesen", "read only") : t("lesen und schreiben", "read and write")} · {t("zuletzt benutzt:", "last used:")}{" "}
+                  {token.prefix}… · {token.scope === "read" ? t("nur lesen", "read only") : token.scope === "clipper" ? t("nur Browser-Erweiterung", "browser extension only") : t("lesen und schreiben", "read and write")} · {t("zuletzt benutzt:", "last used:")}{" "}
                   {when(token.last_used_at)}
                 </small>
               </span>

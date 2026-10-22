@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flowplan</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="icons/icon.png" alt="" width="20" height="20" />
+        <strong>Flowplan</strong>
+        <button type="button" id="disconnect" class="link" hidden data-i18n="disconnect"></button>
+      </header>
+
+      <form id="setup" hidden>
+        <h1 data-i18n="setupTitle"></h1>
+        <p class="muted" data-i18n="setupIntro"></p>
+        <label><span data-i18n="instanceLabel"></span><input id="instance" type="url" required placeholder="https://flowplan.example.org" autocomplete="url" /></label>
+        <label><span data-i18n="tokenLabel"></span><input id="token" type="password" required placeholder="fp_…" autocomplete="off" spellcheck="false" /></label>
+        <div class="row">
+          <button type="submit" class="primary" data-i18n="connect"></button>
+          <button type="button" id="open-instance" class="link" data-i18n="openInstance"></button>
+        </div>
+      </form>
+
+      <form id="clip" hidden>
+        <p class="muted" id="who"></p>
+        <label><span data-i18n="titleLabel"></span><input id="title" maxlength="300" /></label>
+        <label><span data-i18n="targetLabel"></span><select id="target"></select></label>
+        <label><span data-i18n="tagsLabel"></span><input id="tags" maxlength="400" /></label>
+        <div class="modes">
+          <button type="button" class="primary" data-mode="page" data-i18n="savePage"></button>
+          <button type="button" data-mode="selection" data-i18n="saveSelection"></button>
+          <button type="button" data-mode="bookmark" data-i18n="saveBookmark"></button>
+        </div>
+        <p class="muted small" data-i18n="highlightHint"></p>
+      </form>
+
+      <p id="status" role="status"></p>
+    </main>
+    <script src="api.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,14 +1,16 @@
 // Personal API tokens for scripts, n8n or Home Assistant. A request with
 // "Authorization: Bearer fp_…" acts as the person who created the token,
-// with their rights; read tokens only answer GET requests. Only a hash is
-// stored, the token is shown once.
+// with their rights; read tokens only answer GET requests. Clipper tokens
+// (the browser extension, lib/clipper.ts) only reach the clipper endpoints:
+// everywhere else they count as no token at all. Only a hash is stored,
+// the token is shown once.
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import type { Identity, User } from "./types";
 
-export type ApiScope = "read" | "write";
+export type ApiScope = "read" | "write" | "clipper";
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 const MAX_TOKENS = 20;
 
@@ -18,7 +20,7 @@ export function createApiToken(user: Identity, input: unknown) {
   const b = z
     .object({
       name: z.string().trim().min(1).max(80),
-      scope: z.enum(["read", "write"]),
+      scope: z.enum(["read", "write", "clipper"]),
       days: z.number().int().min(1).max(3650).nullable().optional(),
     })
     .parse(input);
@@ -60,8 +62,9 @@ export function revokeApiToken(user: Identity, tokenId: unknown) {
   run("DELETE FROM api_tokens WHERE id=? AND user_id=?", z.string().parse(tokenId), user.id);
 }
 
-// The identity behind a bearer token, or null.
-export function identityFromApiToken(header: string | null): Identity | null {
+// The identity behind a bearer token, or null. Clipper tokens are only
+// accepted where the caller asks for them (the clipper endpoints).
+export function identityFromApiToken(header: string | null, options: { clipper?: boolean } = {}): Identity | null {
   const match = header?.match(/^Bearer\s+(fp_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
   const row = one<User & { token_id: string; scope: ApiScope; last_used_at: number | null }>(
@@ -70,7 +73,7 @@ export function identityFromApiToken(header: string | null): Identity | null {
     hashToken(match[1]),
     Date.now(),
   );
-  if (!row) return null;
+  if (!row || (row.scope === "clipper" && !options.clipper)) return null;
   // Last use for the overview, at most once a minute.
   if (!row.last_used_at || Date.now() - row.last_used_at > 60_000)
     run("UPDATE api_tokens SET last_used_at=? WHERE id=?", Date.now(), row.token_id);

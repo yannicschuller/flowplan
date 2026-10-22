@@ -859,6 +859,29 @@ const exact: Record<string, string> = {
   "Der Schlüssel des Bereichs wurde erneuert. Bitte neu laden.": "The key of the space was renewed. Please reload.",
   "Inzwischen gibt es neuere Änderungen.": "There are newer changes in the meantime.",
   "Ungültiger Schlüssel.": "Invalid key.",
+  // Imports from Confluence, Evernote, Google Docs and Obsidian (lib/importers).
+  "Die Datei darf maximal 100 MB groß sein.": "The file may be at most 100 MB.",
+  "Das Format der Datei wurde nicht erkannt.": "The format of the file was not recognised.",
+  "Keine Evernote-Datei (.enex) gefunden.": "No Evernote file (.enex) found.",
+  "Bitte den Confluence-Export als ZIP hochladen.": "Please upload the Confluence export as a ZIP.",
+  "Bitte den Obsidian-Tresor als ZIP hochladen.": "Please upload the Obsidian vault as a ZIP.",
+  "In der Datei wurden keine Seiten gefunden.": "No pages were found in the file.",
+  "Verschlüsselter Text kann nicht übernommen werden.": "Encrypted text cannot be imported.",
+  "Verweis auf eine fehlende Ressource übersprungen.": "Reference to a missing resource skipped.",
+  "Bild ohne Datei im Export übersprungen.": "Image without a file in the export skipped.",
+  "Keine Confluence-Seiten gefunden.": "No Confluence pages found.",
+  "Anhang fehlt im Export.": "Attachment missing from the export.",
+  "Keine Google-Docs-Dokumente (.html oder .docx) gefunden.": "No Google Docs documents (.html or .docx) found.",
+  "Eingebettete Notizen werden als Link übernommen.": "Embedded notes are imported as links.",
+  "Bild ohne Datei im Tresor übersprungen.": "Image without a file in the vault skipped.",
+  "Keine Notizen (.md) gefunden.": "No notes (.md) found.",
+  // Browser extension (lib/clipper.ts).
+  "Bitte melde dich mit einem API-Token an.": "Please sign in with an API token.",
+  "Das API-Token ist ungültig oder abgelaufen.": "The API token is invalid or has expired.",
+  "In diese Seite kann nicht gespeichert werden.": "You cannot save to this page.",
+  "Der Ausschnitt ist zu groß.": "The clip is too large.",
+  "Kein Text markiert.": "No text highlighted.",
+  "Kein Inhalt zum Speichern.": "Nothing to save.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
@@ -935,6 +958,13 @@ const patterns: [RegExp, string][] = [
   [/^Absender abgelehnt: (.+)$/, "Sender rejected: $1"],
   [/^Der Git-Anbieter antwortet mit HTTP (\d+)\.$/, "The Git provider answers with HTTP $1."],
   [/^Das Manifest ist ungültig: (.+)$/, "The manifest is invalid: $1"],
+  // Import previews (lib/importers).
+  [/^Maximal (\d+) Seiten je Import\.$/, "At most $1 pages per import."],
+  [/^(\d+) Dateien werden von keiner Seite verwendet und nicht übernommen\.$/, "$1 files are not used by any page and are not imported."],
+  [/^(\d+) Blogbeiträge werden nicht übernommen\.$/, "$1 blog posts are not imported."],
+  [/^Makro „(.+)“ wird nicht übernommen\.$/, "Macro “$1” is not imported."],
+  [/^(.+): keine Notizen gefunden\.$/, "$1: no notes found."],
+  [/^(.+): Word-Datei konnte nicht gelesen werden\.$/, "$1: the Word file could not be read."],
 ];
 
 export function englishMessage(message: string) {

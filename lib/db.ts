@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 55) return;
+  if (globalDb.flowplanSchema === 56) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -465,7 +465,7 @@ function migrate(d: DatabaseSync) {
     d.exec("ALTER TABLE notification_prefs ADD COLUMN email INTEGER NOT NULL DEFAULT 1");
   // Calendar subscriptions, API tokens, webhooks, instance state.
   d.exec(`CREATE TABLE IF NOT EXISTS calendar_feeds(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,view_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS api_tokens(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,scope TEXT NOT NULL CHECK(scope IN ('read','write')),token_hash TEXT NOT NULL UNIQUE,prefix TEXT NOT NULL,created_at INTEGER NOT NULL,last_used_at INTEGER,expires_at INTEGER);
+    CREATE TABLE IF NOT EXISTS api_tokens(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,scope TEXT NOT NULL CHECK(scope IN ('read','write','clipper')),token_hash TEXT NOT NULL UNIQUE,prefix TEXT NOT NULL,created_at INTEGER NOT NULL,last_used_at INTEGER,expires_at INTEGER);
     CREATE TABLE IF NOT EXISTS webhooks(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,url TEXT NOT NULL,events TEXT NOT NULL,page_id TEXT,secret TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS webhook_deliveries(id TEXT PRIMARY KEY,webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,body TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL,created_at INTEGER NOT NULL,delivered_at INTEGER,status INTEGER,error TEXT);
     CREATE INDEX IF NOT EXISTS webhook_deliveries_due ON webhook_deliveries(delivered_at,next_at);
@@ -792,7 +792,19 @@ function migrate(d: DatabaseSync) {
       UPDATE spaces SET rotate_pending=1 WHERE workspace_id=OLD.workspace_id AND encrypted=1 AND id IN (SELECT space_id FROM e2ee_space_keys WHERE user_id=OLD.user_id);
       DELETE FROM e2ee_space_keys WHERE user_id=OLD.user_id AND space_id IN (SELECT id FROM spaces WHERE workspace_id=OLD.workspace_id);
     END;`);
-  globalDb.flowplanSchema = 55;
+  // Browser extension tokens (lib/clipper.ts): the scope "clipper" only
+  // reaches the clipper endpoints. Older databases get the wider CHECK.
+  {
+    const table = d.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='api_tokens'").get() as { sql?: string } | undefined;
+    if (table?.sql && !table.sql.includes("'clipper'"))
+      d.exec(`SAVEPOINT api_token_scopes;
+        CREATE TABLE api_tokens_scoped(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,scope TEXT NOT NULL CHECK(scope IN ('read','write','clipper')),token_hash TEXT NOT NULL UNIQUE,prefix TEXT NOT NULL,created_at INTEGER NOT NULL,last_used_at INTEGER,expires_at INTEGER);
+        INSERT INTO api_tokens_scoped(id,user_id,name,scope,token_hash,prefix,created_at,last_used_at,expires_at) SELECT id,user_id,name,scope,token_hash,prefix,created_at,last_used_at,expires_at FROM api_tokens;
+        DROP TABLE api_tokens;
+        ALTER TABLE api_tokens_scoped RENAME TO api_tokens;
+        RELEASE api_token_scopes;`);
+  }
+  globalDb.flowplanSchema = 56;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

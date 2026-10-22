@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-export SYSTEM "http://xml.evernote.com/pub/evernote-export3.dtd">
+<en-export export-date="20260101T120000Z" application="Evernote" version="10.0">
+  <note>
+    <title>Einkaufsliste &amp; Ideen</title>
+    <created>20260102T080910Z</created>
+    <updated>20260103T101112Z</updated>
+    <tag>privat</tag>
+    <tag>listen</tag>
+    <note-attributes><source-url>https://example.com/rezept</source-url></note-attributes>
+    <content><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">
+<en-note><div><b>Wichtig:</b> Milch kaufen</div><div><en-todo checked="true"/>Brot</div><div><en-todo checked="false"/>Käse</div><div><br/></div><div><en-media type="image/png" hash="9ac006b464edc30433a4c439ba858ad6"/></div><div><span style="font-style: italic;">kursiv</span> und <a href="https://example.com">Link</a></div><div><a href="javascript:alert(1)">böse</a><script>alert(1)</script></div></en-note>]]></content>
+    <resource>
+      <data encoding="base64">
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==
+      </data>
+      <mime>image/png</mime>
+      <resource-attributes><file-name>foto.png</file-name></resource-attributes>
+    </resource>
+    <resource>
+      <data encoding="base64">JVBERi0xLjQKJcOkw7zDtsOfCg==</data>
+      <mime>application/pdf</mime>
+      <resource-attributes><file-name>rechnung.pdf</file-name></resource-attributes>
+    </resource>
+  </note>
+  <note>
+    <title>Zweite Notiz</title>
+    <created>20250505T050505Z</created>
+    <tag>listen</tag>
+    <content><![CDATA[<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd"><en-note><p>Nur Text</p><en-crypt hint="pw">AAAA</en-crypt></en-note>]]></content>
+  </note>
+</en-export>

@@ -240,7 +240,7 @@ SearchResult = TypedDict("SearchResult", {
 ApiToken = TypedDict("ApiToken", {
     "id": Required[str],
     "name": Required[str],
-    "scope": Required[Literal["read", "write"]],
+    "scope": Required[Literal["read", "write", "clipper"]],  # `clipper` tokens (browser extension) only reach /api/clipper/*
     "prefix": Required[str],  # The first characters of the token
     "created_at": Required[int],  # Milliseconds since 1970
     "last_used_at": Optional[int],
@@ -1076,6 +1076,15 @@ ImportZipForm = TypedDict("ImportZipForm", {
     "file": Required[FormFile],
 }, total=False)
 
+ImportSourceForm = TypedDict("ImportSourceForm", {
+    "workspaceId": Required[str],
+    "spaceId": Required[str],
+    "file": Required[FormFile],
+    "source": Literal["auto", "confluence", "evernote", "gdocs", "obsidian"],
+    "mode": Literal["pages", "database"],
+    "dryRun": Literal["0", "1"],
+}, total=False)
+
 ImportTrackerForm = TypedDict("ImportTrackerForm", {
     "workspaceId": Required[str],
     "spaceId": Required[str],
@@ -1473,6 +1482,10 @@ class FlowplanClient:
         """Import a ZIP of Markdown, HTML or Notion pages into a space (POST /api/import/zip)"""
         return self._json("POST", "/api/import/zip", form=dict(form), headers=headers)
 
+    def import_source(self, form: "ImportSourceForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Import from Confluence, Evernote, Google Docs or Obsidian — Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source)"""
+        return self._json("POST", "/api/import/source", form=dict(form), headers=headers)
+
     def import_tracker(self, form: "ImportTrackerForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Jira (CSV) or Trello (JSON) into a new database (POST /api/import/tracker)"""
         return self._json("POST", "/api/import/tracker", form=dict(form), headers=headers)
@@ -1488,6 +1501,14 @@ class FlowplanClient:
     def clip_article(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Readable text of a web article — Fetched by the server (internal addresses are refused). (POST /api/clip)"""
         return self._json("POST", "/api/clip", json_body=body, headers=headers)
+
+    def clipper_targets(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Where the browser extension may save — For `clipper` (or write) tokens: workspaces with the spaces and the documents and databases you may write to. Answers carry CORS headers for browser-extension origins only, without credentials. (GET /api/clipper/targets)"""
+        return self._json("GET", "/api/clipper/targets", headers=headers)
+
+    def clipper_save(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Save a clip from the browser extension — For `clipper` (or write) tokens. `mode`: `page` or `selection` (HTML, sanitised on the server) as a new page in a space, a sub-page of a document or a record of a database; `bookmark` into the space's bookmarks database (title, URL, description, favicon, tags); `highlight` as a quote with a link to the source, appended to the target document (into a space: a new page for the source). Tags go into a property named Tags if the database has one. (POST /api/clipper/save)"""
+        return self._json("POST", "/api/clipper/save", json_body=body, headers=headers)
 
     def embed(self, query: "EmbedQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Link preview or player for a URL (GET /api/embed)"""

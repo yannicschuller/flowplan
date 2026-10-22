@@ -165,6 +165,14 @@ export async function importZip(
   if (!space || !["editor", "owner"].includes(spaceRole(user, space) || ""))
     throw new HttpError(403, "Keine Schreibrechte im Zielbereich.");
   const entries = await entriesOf(bytes);
+  // An Obsidian vault (its settings folder): wikilinks, embeds, folder
+  // notes and tags need the vault importer (lib/importers/obsidian.ts).
+  if ([...entries.keys()].some((name) => name.startsWith(".obsidian/"))) {
+    const { parseObsidian } = await import("./importers/obsidian");
+    const { writeImport } = await import("./importers/write");
+    const result = writeImport(user, workspaceId, spaceId, parseObsidian(entries));
+    return { rootIds: result.rootIds, pages: result.pages + result.folders, rows: 0, files: result.files };
+  }
   // Notion exports "Name.csv" (current view) and "Name_all.csv" (all rows).
   const nodes = new Map<string, Node>();
   for (const path of entries.keys()) {

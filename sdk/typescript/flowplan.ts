@@ -383,7 +383,8 @@ export type SearchResult = {
 export type ApiToken = {
   id: string;
   name: string;
-  scope: "read" | "write";
+  /** `clipper` tokens (browser extension) only reach /api/clipper/* */
+  scope: "read" | "write" | "clipper";
   /** The first characters of the token */
   prefix: string;
   /** Milliseconds since 1970 */
@@ -1880,6 +1881,18 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/import/zip`, { form }, options);
   }
 
+  /** Import from Confluence, Evernote, Google Docs or Obsidian — Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source) */
+  async importSource(form: {
+    workspaceId: string;
+    spaceId: string;
+    file: Blob;
+    source?: "auto" | "confluence" | "evernote" | "gdocs" | "obsidian";
+    mode?: "pages" | "database";
+    dryRun?: "0" | "1";
+  }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("POST", `/api/import/source`, { form }, options);
+  }
+
   /** Jira (CSV) or Trello (JSON) into a new database (POST /api/import/tracker) */
   async importTracker(form: {
     workspaceId: string;
@@ -1908,6 +1921,38 @@ export class FlowplanClient {
     url: string;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("POST", `/api/clip`, { json: body }, options);
+  }
+
+  /** Where the browser extension may save — For `clipper` (or write) tokens: workspaces with the spaces and the documents and databases you may write to. Answers carry CORS headers for browser-extension origins only, without credentials. (GET /api/clipper/targets) */
+  async clipperTargets(options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/clipper/targets`, {}, options);
+  }
+
+  /** Save a clip from the browser extension — For `clipper` (or write) tokens. `mode`: `page` or `selection` (HTML, sanitised on the server) as a new page in a space, a sub-page of a document or a record of a database; `bookmark` into the space's bookmarks database (title, URL, description, favicon, tags); `highlight` as a quote with a link to the source, appended to the target document (into a space: a new page for the source). Tags go into a property named Tags if the database has one. (POST /api/clipper/save) */
+  async clipperSave(body: {
+    mode: "page" | "selection" | "bookmark" | "highlight";
+    target: {
+      workspaceId: string;
+      spaceId?: string;
+      pageId?: string;
+    };
+    url: string;
+    title?: string;
+    description?: string;
+    favicon?: string;
+    html?: string;
+    text?: string;
+    tags?: string[];
+  }, options?: RequestOptions): Promise<{
+    pageId: string;
+    rowId?: string;
+    url: string;
+  }> {
+    return this.json<{
+    pageId: string;
+    rowId?: string;
+    url: string;
+  }>("POST", `/api/clipper/save`, { json: body }, options);
   }
 
   /** Link preview or player for a URL (GET /api/embed) */

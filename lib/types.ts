@@ -19,7 +19,7 @@ export type Identity = User & {
   isAdmin: boolean;
   demo?: boolean;
   // Set when the request came with a personal API token.
-  apiScope?: "read" | "write";
+  apiScope?: "read" | "write" | "clipper";
   // Signed in, but the instance requires a second factor this account has
   // not set up yet: only setting it up is possible (lib/two-factor-policy.ts).
   twoFactorSetup?: boolean;

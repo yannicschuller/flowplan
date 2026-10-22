@@ -283,6 +283,10 @@ function tasks(user: Identity, args: { workspaceId?: string; includeDone?: boole
 // from the editor ("document.sync"), so versions, mentions, tasks, the
 // activity and webhooks behave the same.
 export function appendToPage(user: Identity, args: { pageId: string; markdown: string }) {
+  return appendHtmlToPage(user, { pageId: args.pageId, html: markdownToHtml(args.markdown) });
+}
+// The same for HTML (highlights from the browser extension, lib/clipper.ts).
+export function appendHtmlToPage(user: Identity, args: { pageId: string; html: string }) {
   const page = requirePage(user, args.pageId, true);
   requireUnlocked(user, page);
   if (page.kind !== "document") throw new HttpError(400, "Kein Dokument.");
@@ -294,7 +298,7 @@ export function appendToPage(user: Identity, args: { pageId: string; markdown: s
   const schema = documentSchema();
   const added = PMNode.fromJSON(
     schema,
-    generateJSON(cleanHtml(markdownToHtml(args.markdown)) || "<p></p>", documentExtensions),
+    generateJSON(cleanHtml(args.html) || "<p></p>", documentExtensions),
   );
   const ydoc = new Y.Doc();
   try {
