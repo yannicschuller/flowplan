@@ -146,6 +146,16 @@ export const templateCatalog: Record<string, CatalogTemplate> = {
       "<h2>Besprechung</h2><p><strong>Datum:</strong> </p><p><strong>Teilnehmende:</strong> </p><h2>Ziel</h2><p>Was möchten wir in dieser Besprechung erreichen?</p><h2>Agenda</h2><ol><li><p>Aktueller Stand</p></li><li><p>Offene Fragen</p></li><li><p>Nächste Schritte</p></li></ol><h2>Entscheidungen</h2><p>Halte fest, was entschieden wurde und warum.</p><h2>Aufgaben</h2>" +
       tasks(task("Aufgabe, Verantwortliche und Termin festlegen")),
   },
+  meetingNote: {
+    name: "Besprechungsnotiz",
+    category: "meetings",
+    icon: "📝",
+    kind: "document",
+    description: "Notiz zu einem Termin: Teilnehmende, Agenda, Notizen und Aufgaben – auch direkt aus einem Termin im Journal.",
+    html:
+      "<p><strong>Termin:</strong> </p><h2>Teilnehmende</h2><ul><li><p></p></li></ul><h2>Agenda</h2><ol><li><p></p></li></ol><h2>Notizen</h2><p></p><h2>Aufgaben</h2>" +
+      tasks(task("")),
+  },
   oneOnOne: {
     name: "1:1-Gespräch",
     category: "meetings",

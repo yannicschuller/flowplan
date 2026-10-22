@@ -125,6 +125,16 @@ export const templateCatalogEn: Record<TemplateKey, CatalogTemplate> = {
       "<h2>Meeting</h2><p><strong>Date:</strong> </p><p><strong>Attendees:</strong> </p><h2>Goal</h2><p>What do we want to achieve in this meeting?</p><h2>Agenda</h2><ol><li><p>Current status</p></li><li><p>Open questions</p></li><li><p>Next steps</p></li></ol><h2>Decisions</h2><p>Write down what was decided and why.</p><h2>Tasks</h2>" +
       tasks(task("Set the task, owner and date")),
   },
+  meetingNote: {
+    name: "Meeting note",
+    category: "meetings",
+    icon: "📝",
+    kind: "document",
+    description: "Notes for one appointment: attendees, agenda, notes and tasks – also straight from an appointment in the journal.",
+    html:
+      "<p><strong>Date:</strong> </p><h2>Attendees</h2><ul><li><p></p></li></ul><h2>Agenda</h2><ol><li><p></p></li></ol><h2>Notes</h2><p></p><h2>Tasks</h2>" +
+      tasks(task("")),
+  },
   oneOnOne: {
     name: "1:1 meeting",
     category: "meetings",

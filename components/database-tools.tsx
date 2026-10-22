@@ -4,6 +4,7 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { DotsThree, Lightning, FlowArrow, Copy, Timer, GitBranch } from "@phosphor-icons/react";
 import { TimeReport } from "./time-report";
 import { GitSettings } from "./git-settings";
+import { CalendarSyncButton } from "./calendar-sync-dialog";
 import { IssueSyncDialog, IssueSyncMenuItem } from "./issue-sync-database";
 import { useT } from "./i18n";
 import { Modal } from "./ui";
@@ -47,6 +48,7 @@ export function DatabaseTools({
   const rules = (settings.automations || []).filter((a) => a.enabled).length;
   return (
     <>
+      <CalendarSyncButton pageId={page.id} fields={database.fields} views={database.views} editable={editable} />
       <Dropdown.Root>
         <Dropdown.Trigger asChild>
           <button title={t("Weitere Werkzeuge", "More tools")} aria-label={t("Weitere Werkzeuge", "More tools")}>

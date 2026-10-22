@@ -763,8 +763,55 @@ CommandIssueSyncUnmapResult = TypedDict("CommandIssueSyncUnmapResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Sync a database view with a Google or Microsoft 365 calendar. Needs editor rights on the database and a calendar connection of the caller (set up in the browser under Settings → Account → Connect calendar). The view needs a date property. One calendar per view and person; changing the calendar starts the sync anew. The sync runs every ten minutes.
+CommandCalendarSyncMap = TypedDict("CommandCalendarSyncMap", {
+    "action": Required[Literal["calendarSync.map"]],
+    "connectionId": Required[str],
+    "pageId": Required[str],
+    "viewId": Required[str],
+    "calendarId": Required[str],  # Calendar ID from the provider's calendar list
+    "calendarName": str,
+}, total=False)
+
+CommandCalendarSyncMapResult = TypedDict("CommandCalendarSyncMapResult", {
+    "id": Required[str],
+}, total=False)
+
+# Stop syncing a view with its calendar. Events already in the calendar and records in the database stay.
+CommandCalendarSyncUnmap = TypedDict("CommandCalendarSyncUnmap", {
+    "action": Required[Literal["calendarSync.unmap"]],
+    "id": Required[str],
+}, total=False)
+
+CommandCalendarSyncUnmapResult = TypedDict("CommandCalendarSyncUnmapResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Remove a calendar connection of the caller. Ends all syncs of the connection and forgets its tokens. Access can also be revoked in the Google or Microsoft account.
+CommandCalendarSyncDisconnect = TypedDict("CommandCalendarSyncDisconnect", {
+    "action": Required[Literal["calendarSync.disconnect"]],
+    "connectionId": Required[str],
+}, total=False)
+
+CommandCalendarSyncDisconnectResult = TypedDict("CommandCalendarSyncDisconnectResult", {
+    "ok": Required[Literal[True]],
+}, total=False)
+
+# Create a meeting note for an appointment of a journal day. Needs editor rights on the journal. For a record (`event.pageId` and `event.rowId`) the title, people and attendees come from the record; for a calendar event they come from `event`. Attendees whose e-mail belongs to a member become mentions. Returns the existing note when there already is one for the appointment.
+CommandMeetingNote = TypedDict("CommandMeetingNote", {
+    "action": Required[Literal["meeting.note"]],
+    "pageId": Required[str],  # The journal day
+    "zone": str,  # IANA time zone for the times in the note
+    "event": Required[dict[str, Any]],
+}, total=False)
+
+CommandMeetingNoteResult = TypedDict("CommandMeetingNoteResult", {
+    "id": Required[str],
+    "existing": Required[bool],
+}, total=False)
+
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

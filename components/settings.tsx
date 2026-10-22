@@ -23,6 +23,7 @@ import { AccountSecurity } from "./account-security";
 import { TwoFactorSettings } from "./two-factor";
 import { DeleteOwnAccount } from "./delete-own-account";
 import { MySessions } from "./my-sessions";
+import { CalendarConnections } from "./calendar-connections";
 import { SsoMappings, type SsoMappingRow } from "./sso-mappings";
 import {
   GearSix,
@@ -405,6 +406,7 @@ export default function Settings({
                   </button>
                 </SettingRow>
               </SettingGroup>
+              {!boot.user.demo && <CalendarConnections onError={onError} />}
             </>
           )}
           {tab === "workspace" && (

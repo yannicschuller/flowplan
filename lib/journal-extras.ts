@@ -556,6 +556,11 @@ export type DayEvent = {
   source: string;
   pageId?: string;
   rowId?: string;
+  // Calendar events: their UID and attendees (meeting notes, lib/meeting-notes.ts).
+  uid?: string;
+  attendees?: { email: string; name: string }[];
+  // The meeting note of this appointment, when there is one the reader can open.
+  noteId?: string;
 };
 function shift(date: string, days: number) {
   return Temporal.PlainDate.from(date).add({ days }).toString();
@@ -650,6 +655,8 @@ type IcsEvent = {
   endMs: number;
   rule: Recurrence | null;
   exclude: string[];
+  uid: string;
+  attendees: { email: string; name: string }[];
 };
 export const icsUrlSchema = z
   .string()
@@ -721,6 +728,13 @@ export function parseIcs(text: string, zone = "UTC"): IcsEvent[] {
         const exclude = (current.EXDATE || []).flatMap((e) =>
           e.value.split(",").map((v) => `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`),
         );
+        const attendees = (current.ATTENDEE || [])
+          .map((a) => ({
+            email: a.value.replace(/^mailto:/i, "").trim().toLowerCase(),
+            name: icsText(/(?:^|;)CN=("([^"]*)"|[^;]*)/i.exec(a.params)?.[2] ?? /(?:^|;)CN=([^;]*)/i.exec(a.params)?.[1] ?? ""),
+          }))
+          .filter((a) => /^[^@\s]+@[^@\s]+$/.test(a.email))
+          .slice(0, 100);
         events.push({
           title: icsText(get("SUMMARY")?.value || "") || "Termin",
           start: start.value,
@@ -730,6 +744,8 @@ export function parseIcs(text: string, zone = "UTC"): IcsEvent[] {
           endMs: end.ms,
           rule,
           exclude,
+          uid: (get("UID")?.value || "").trim().slice(0, 300),
+          attendees,
         });
       }
       current = null;
@@ -761,7 +777,15 @@ export function icsEventsOn(events: IcsEvent[], date: string, zone: string): Day
         );
     }
     if (hit)
-      out.push({ title: event.title, start: event.start, end: event.end, timed: event.timed, source: "Kalender" });
+      out.push({
+        title: event.title,
+        start: event.start,
+        end: event.end,
+        timed: event.timed,
+        source: "Kalender",
+        ...(event.uid ? { uid: event.uid } : {}),
+        ...(event.attendees.length ? { attendees: event.attendees } : {}),
+      });
   }
   return out.slice(0, 100);
 }

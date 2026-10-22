@@ -40,5 +40,8 @@ export async function register() {
     // E-mail inbound capture over IMAP (INBOUND_IMAP_*), every two minutes.
     const { startInboundMailWorker } = await import("./lib/inbound-mail");
     startInboundMailWorker();
+    // Google / Microsoft 365 calendar sync (lib/calendar-sync.ts), every ten minutes.
+    const { startCalendarSyncWorker } = await import("./lib/calendar-sync");
+    startCalendarSyncWorker();
   }
 }

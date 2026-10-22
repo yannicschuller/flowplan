@@ -100,13 +100,14 @@ export function pinnedLookup(allowPrivate: boolean) {
 export function safePost(raw: string, body: string, headers: Record<string, string>, allowPrivate = false, timeout = 10_000) {
   return safeSend(raw, body, headers, { allowPrivate, timeout }).then((r) => r.status);
 }
-// The same with another method (PUT for Matrix) and the start of the answer
-// (Slack's message ID), at most `maxBytes` of it.
+// The same with another method (PUT for Matrix; GET, PATCH and DELETE for
+// calendar APIs) and the start of the answer (Slack's message ID), at most
+// `maxBytes` of it.
 export function safeSend(
   raw: string,
   body: string,
   headers: Record<string, string>,
-  { method = "POST", allowPrivate = false, timeout = 10_000, maxBytes = 0 }: { method?: "POST" | "PUT"; allowPrivate?: boolean; timeout?: number; maxBytes?: number } = {},
+  { method = "POST", allowPrivate = false, timeout = 10_000, maxBytes = 0 }: { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; allowPrivate?: boolean; timeout?: number; maxBytes?: number } = {},
 ) {
   return new Promise<{ status: number; body: string }>((resolve, reject) => {
     const url = new URL(raw);

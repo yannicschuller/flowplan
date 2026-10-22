@@ -7,6 +7,7 @@ import { sprintCharts } from "@/lib/sprints";
 import { gitConfig, gitLinks } from "@/lib/git-integration";
 import { crossRecords, recordViews } from "@/lib/cross-records";
 import { hasCalDavAccess } from "@/lib/caldav";
+import { withMeetingNotes } from "@/lib/meeting-notes";
 import { transferTargets } from "@/lib/row-transfer";
 import { computeMetric, metricSchema, metricSources } from "@/lib/dashboard-metric";
 import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "@/lib/upload-safety";
@@ -357,7 +358,7 @@ async function handleGET(
         calendarError = e instanceof HttpError ? e.message : "Der Kalender konnte nicht geladen werden.";
       }
       events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
-      return NextResponse.json({ events, calendarError }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ events: withMeetingNotes(user, day, events), calendarError }, { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "pages" && path[1] && path[2] === "preview")
       return NextResponse.json(pagePreview(user, z.uuid().parse(path[1])), {

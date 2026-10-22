@@ -75,6 +75,7 @@ export const commandActionNames = [
   "calendar.feed", "calendar.feed.revoke", "calendar.caldav", "calendar.caldav.revoke",
   "webhook.delete", "inbound.save", "inbound.rotate", "inbound.delete",
   "issueSync.connect", "issueSync.disconnect", "issueSync.map", "issueSync.unmap",
+  "calendarSync.map", "calendarSync.unmap", "calendarSync.disconnect", "meeting.note",
 ] as const;
 // Prefixes command() refuses for every API token.
 export const tokenRefusedActionPrefixes = ["admin.", "token.", "ai."] as const;
@@ -428,6 +429,56 @@ export const commandActions: ActionDoc[] = [
     description: "Workspace owners and administrators. Records and issues stay; only the links end.",
     input: z.object({ action: z.literal("issueSync.unmap"), pageId: uuid }),
     result: okResult,
+  },  {
+    action: "calendarSync.map",
+    summary: "Sync a database view with a Google or Microsoft 365 calendar",
+    description:
+      "Needs editor rights on the database and a calendar connection of the caller (set up in the browser under Settings → Account → Connect calendar). The view needs a date property. One calendar per view and person; changing the calendar starts the sync anew. The sync runs every ten minutes.",
+    input: z.object({
+      action: z.literal("calendarSync.map"),
+      connectionId: uuid,
+      pageId: uuid,
+      viewId: z.string().max(100),
+      calendarId: z.string().min(1).max(1000).describe("Calendar ID from the provider's calendar list"),
+      calendarName: z.string().max(300).optional(),
+    }),
+    result: idResult,
+  },
+  {
+    action: "calendarSync.unmap",
+    summary: "Stop syncing a view with its calendar",
+    description: "Events already in the calendar and records in the database stay.",
+    input: z.object({ action: z.literal("calendarSync.unmap"), id: uuid }),
+    result: okResult,
+  },
+  {
+    action: "calendarSync.disconnect",
+    summary: "Remove a calendar connection of the caller",
+    description: "Ends all syncs of the connection and forgets its tokens. Access can also be revoked in the Google or Microsoft account.",
+    input: z.object({ action: z.literal("calendarSync.disconnect"), connectionId: uuid }),
+    result: okResult,
+  },
+  {
+    action: "meeting.note",
+    summary: "Create a meeting note for an appointment of a journal day",
+    description:
+      "Needs editor rights on the journal. For a record (`event.pageId` and `event.rowId`) the title, people and attendees come from the record; for a calendar event they come from `event`. Attendees whose e-mail belongs to a member become mentions. Returns the existing note when there already is one for the appointment.",
+    input: z.object({
+      action: z.literal("meeting.note"),
+      pageId: uuid.describe("The journal day"),
+      zone: z.string().max(100).optional().describe("IANA time zone for the times in the note"),
+      event: z.object({
+        title: z.string().max(500).optional(),
+        start: z.string().max(40),
+        end: z.string().max(40).optional(),
+        timed: z.boolean().optional(),
+        pageId: uuid.optional(),
+        rowId: uuid.optional(),
+        uid: z.string().max(500).optional(),
+        attendees: z.array(z.object({ email: z.string().max(254), name: z.string().max(200).optional() })).max(200).optional(),
+      }),
+    }),
+    result: z.object({ id: uuid, existing: z.boolean() }),
   },
 ];
 const otherActions = commandActionNames.filter((name) => !commandActions.some((a) => a.action === name));
@@ -945,6 +996,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/scim/v2/[...path]/route.ts": "SCIM 2.0 (RFC 7643/7644) is its own standard with its own bearer tokens; discovery at /api/scim/v2/ServiceProviderConfig",
   "app/api/ai/[...path]/route.ts": "AI features refuse API tokens",
   "app/api/auth/[action]/route.ts": "Browser sign-in and account settings",
+  "app/api/calendar-sync/[...path]/route.ts": "Browser OAuth connection to Google and Microsoft 365 calendars",
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",
   "app/api/git/[token]/route.ts": "Git integration callbacks with their own token",
   "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token)",

@@ -2,6 +2,7 @@
 // Journal building blocks: settings (template, trackers, calendar, PIN),
 // the review of a week or month, the bar above a day page (trackers, place,
 // appointments) and the lock screen.
+import { MeetingNoteButton } from "./meeting-note-button";
 import { useT } from "./i18n";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
@@ -686,6 +687,9 @@ type DayEvent = {
   source: string;
   pageId?: string;
   rowId?: string;
+  uid?: string;
+  attendees?: { email: string; name: string }[];
+  noteId?: string;
 };
 const time = new Intl.DateTimeFormat(LOCALE_TAG, { hour: "2-digit", minute: "2-digit" });
 export function JournalDayBar({
@@ -889,6 +893,7 @@ export function JournalDayBar({
                   <span>{event.title}</span>
                 )}
                 <small>{event.source}</small>
+                <MeetingNoteButton dayId={pageId} event={event} editable={editable} onError={onError} />
               </li>
             ))}
             {calendarError && <li className="muted">{calendarError}</li>}

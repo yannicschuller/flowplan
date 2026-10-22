@@ -18,6 +18,8 @@ import { issueSyncCommand } from "./issue-sync";
 import { queueIssuePush } from "./issue-sync-queue";
 import { deleteRecordView, saveRecordView } from "./cross-records";
 import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
+import { deleteCalendarMapping, disconnectCalendar, saveCalendarMapping } from "./calendar-sync";
+import { createMeetingNote } from "./meeting-notes";
 import { restoreBlock } from "./restore-block";
 import { saveSurvey } from "./survey-server";
 import { transferRows } from "./row-transfer";
@@ -2721,6 +2723,20 @@ export function command(
         break;
       case "calendar.caldav.revoke":
         revokeCalDavAccess(user, pid(), z.string().max(100).parse(b.viewId));
+        break;
+      // Google / Microsoft 365 calendar sync, per person (lib/calendar-sync.ts).
+      case "calendarSync.map":
+        result = saveCalendarMapping(user, b);
+        break;
+      case "calendarSync.unmap":
+        deleteCalendarMapping(user, b);
+        break;
+      case "calendarSync.disconnect":
+        disconnectCalendar(user, b);
+        break;
+      // A meeting note for an appointment of a journal day (lib/meeting-notes.ts).
+      case "meeting.note":
+        result = createMeetingNote(user, b);
         break;
       case "token.create":
         result = createApiToken(user, b);

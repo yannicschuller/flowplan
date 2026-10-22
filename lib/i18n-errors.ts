@@ -763,6 +763,23 @@ const exact: Record<string, string> = {
   "Eine Datenbank hat höchstens eine Alias-Eigenschaft.": "A database has at most one aliases property.",
   // User provisioning (SCIM/LDAP)
   "Aktion fehlgeschlagen.": "Action failed.",
+  // Google / Microsoft 365 calendar sync and meeting notes
+  "Der Kalenderanbieter begrenzt gerade die Anfragen. Die Synchronisierung versucht es später erneut.": "The calendar provider is limiting requests right now. The sync will try again later.",
+  "Der Kalenderanbieter hat die Anmeldung abgelehnt.": "The calendar provider refused the sign-in.",
+  "Der Kalenderanbieter ist gerade nicht erreichbar.": "The calendar provider cannot be reached right now.",
+  "Der Kalenderanbieter meldet einen Fehler.": "The calendar provider reports an error.",
+  "Der Zugriff auf den Kalender wurde nicht erlaubt.": "Access to the calendar was not allowed.",
+  "Die Kalenderverbindung ist abgelaufen. Bitte erneut verbinden.": "Connecting the calendar timed out. Please connect again.",
+  "Diese Ansicht hat kein Datum.": "This view has no date.",
+  "Diese Kalenderverbindung ist auf dieser Instanz nicht eingerichtet.": "This calendar connection is not set up on this instance.",
+  "Dieser Kalender ist schon mit einer anderen Ansicht verbunden.": "This calendar is already connected to another view.",
+  "Kalender lassen sich nur im Browser verbinden.": "Calendars can only be connected in the browser.",
+  "Kalenderverbindung nicht gefunden.": "Calendar connection not found.",
+  "Kalenderzuordnung nicht gefunden.": "Calendar mapping not found.",
+  "Kein Aktualisierungstoken erhalten. Bitte den Zugriff erneut erlauben.": "No refresh token received. Please allow access again.",
+  "Ungültige Antwort des Kalenderanbieters.": "Invalid answer from the calendar provider.",
+  "Die Verbindung wurde beim Kalenderanbieter beendet. Bitte neu verbinden.": "The connection was ended at the calendar provider. Please connect again.",
+  "Die Synchronisierung ist fehlgeschlagen.": "The sync failed.",
 };
 const patterns: [RegExp, string][] = [
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],

@@ -13,7 +13,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 48) return;
+  if (globalDb.flowplanSchema === 49) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -676,7 +676,24 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS scim_requests(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,method TEXT NOT NULL,path TEXT NOT NULL,status INTEGER NOT NULL,token_id TEXT,detail TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS ldap_accounts(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,dn TEXT NOT NULL COLLATE NOCASE UNIQUE,username TEXT NOT NULL DEFAULT '',groups_json TEXT NOT NULL DEFAULT '[]',is_admin INTEGER NOT NULL DEFAULT 0,locked INTEGER NOT NULL DEFAULT 0,synced_at INTEGER,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS directory_status(key TEXT PRIMARY KEY,value TEXT NOT NULL,updated_at INTEGER NOT NULL);`);
-  globalDb.flowplanSchema = 48;
+  // Two-way sync with Google Calendar and Microsoft 365 (lib/calendar-sync.ts):
+  // OAuth connections per person (sealed refresh token), sign-in flows in
+  // progress, calendar ↔ database view mappings with their sync token or
+  // delta link, and the event behind each synced record. Meeting notes
+  // created from an appointment of a journal day (lib/meeting-notes.ts).
+  d.exec(`CREATE TABLE IF NOT EXISTS calendar_connections(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,provider TEXT NOT NULL,account TEXT NOT NULL DEFAULT '',refresh_token TEXT NOT NULL,access_token TEXT,access_expires INTEGER NOT NULL DEFAULT 0,last_error TEXT,created_at INTEGER NOT NULL,UNIQUE(user_id,provider,account));
+    CREATE TABLE IF NOT EXISTS calendar_oauth_flows(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,provider TEXT NOT NULL,state TEXT NOT NULL,verifier TEXT NOT NULL,nonce TEXT NOT NULL,expires INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS calendar_sync_mappings(id TEXT PRIMARY KEY,connection_id TEXT NOT NULL REFERENCES calendar_connections(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,view_id TEXT NOT NULL,calendar_id TEXT NOT NULL,calendar_name TEXT NOT NULL DEFAULT '',sync_token TEXT,last_sync_at INTEGER,last_error TEXT,failures INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(user_id,page_id,view_id),UNIQUE(connection_id,calendar_id));
+    CREATE INDEX IF NOT EXISTS calendar_sync_mappings_due ON calendar_sync_mappings(next_at);
+    CREATE TABLE IF NOT EXISTS calendar_sync_items(mapping_id TEXT NOT NULL REFERENCES calendar_sync_mappings(id) ON DELETE CASCADE,row_id TEXT NOT NULL,event_id TEXT NOT NULL,hash TEXT NOT NULL,attendees TEXT NOT NULL DEFAULT '[]',synced_at INTEGER NOT NULL,PRIMARY KEY(mapping_id,row_id),UNIQUE(mapping_id,event_id));
+    CREATE INDEX IF NOT EXISTS calendar_sync_items_row ON calendar_sync_items(row_id);
+    CREATE TABLE IF NOT EXISTS meeting_notes(journal_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,event_key TEXT NOT NULL,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,created_by TEXT,created_at INTEGER NOT NULL,PRIMARY KEY(journal_id,event_key));`);
+  {
+    // Columns added after the first version of these tables.
+    const columns = (d.prepare("PRAGMA table_info(calendar_sync_items)").all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes("attendees")) d.exec("ALTER TABLE calendar_sync_items ADD COLUMN attendees TEXT NOT NULL DEFAULT '[]'");
+  }
+  globalDb.flowplanSchema = 49;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
