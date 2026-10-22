@@ -37,7 +37,9 @@ function refreshTotal(pageId: string, rowId: string, fieldId: string) {
   run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?", JSON.stringify(cells), rowId);
 }
 
-function stopRunning(userId: string, now = Date.now()) {
+// Also for focus sessions of the mobile app, which end at a set time
+// (lib/mobile-widgets.ts).
+export function stopRunning(userId: string, now = Date.now()) {
   for (const e of all<Entry>("SELECT * FROM time_entries WHERE user_id=? AND end IS NULL", userId)) {
     run("UPDATE time_entries SET end=? WHERE id=?", Math.max(now, e.start), e.id);
     refreshTotal(e.page_id, e.row_id, e.field_id);

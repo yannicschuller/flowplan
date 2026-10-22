@@ -3,6 +3,228 @@
 
 // ---- Types from the specification ----
 
+/** Configuration of a `capture` widget. */
+export type WidgetConfigCapture = {
+  targetId?: string;
+};
+
+/** Configuration of a `tasks` widget. */
+export type WidgetConfigTasks = {
+  source?: "mine" | "view" | "page";
+  pageId?: string;
+  viewId?: string;
+  filter?: "today" | "overdue" | "open";
+  max?: number;
+};
+
+/** Configuration of a `calendar` widget. */
+export type WidgetConfigCalendar = {
+  sources?: {
+    pageId: string;
+    viewId?: string;
+  }[];
+  range?: "today" | "3days" | "week";
+  tasks?: boolean;
+  max?: number;
+};
+
+/** Configuration of a `pinned` widget. */
+export type WidgetConfigPinned = {
+  mode?: "favorites" | "page";
+  pageId?: string;
+  viewId?: string;
+  properties?: string[];
+  max?: number;
+};
+
+/** Configuration of a `counter` widget. */
+export type WidgetConfigCounter = {
+  pageId: string;
+  viewId?: string;
+  aggregate?: "count" | "sum" | "average";
+  fieldId?: string;
+  groupFieldId?: string;
+  groupValue?: string;
+  history?: boolean;
+};
+
+/** Configuration of a `journal` widget. */
+export type WidgetConfigJournal = {
+  journalId?: string;
+  habitsId?: string;
+};
+
+/** Configuration of a `time` widget. */
+export type WidgetConfigTime = {
+
+};
+
+/** Configuration of a `mentions` widget. */
+export type WidgetConfigMentions = {
+  show?: "all" | "mentions" | "assignments";
+  unreadOnly?: boolean;
+  max?: number;
+};
+
+/** Configuration of a `forms` widget. */
+export type WidgetConfigForms = {
+  pageId: string;
+  since?: number | string;
+  max?: number;
+};
+
+/** Configuration of a `focus` widget. */
+export type WidgetConfigFocus = {
+
+};
+
+/** Configuration of a `meeting` widget. */
+export type WidgetConfigMeeting = {
+  sources?: {
+    pageId: string;
+    viewId?: string;
+  }[];
+  journalId?: string;
+};
+
+/** Configuration of a `jobs` widget. */
+export type WidgetConfigJobs = {
+
+};
+
+/** Configuration of a `incident` widget. */
+export type WidgetConfigIncident = {
+
+};
+
+export type WidgetActionCaptureNote = {
+  action: "capture.note";
+  targetId: string;
+  title: string;
+  text?: string;
+  due?: string;
+};
+
+export type WidgetActionCaptureTask = {
+  action: "capture.task";
+  targetId: string;
+  title: string;
+  text?: string;
+  due?: string;
+};
+
+export type WidgetActionCaptureUpload = {
+  action: "capture.upload";
+  targetId: string;
+  type: "photo" | "voice";
+  title?: string;
+  transcribe?: boolean;
+};
+
+export type WidgetActionTaskComplete = {
+  action: "task.complete";
+  source: "doc" | "row";
+  pageId: string;
+  rowId?: string | null;
+  index?: number;
+  text?: string;
+  done?: boolean;
+};
+
+export type WidgetActionHabitCheck = {
+  action: "habit.check";
+  pageId: string;
+  fieldId: string;
+  done: boolean;
+  today: string;
+};
+
+export type WidgetActionJournalTrack = {
+  action: "journal.track";
+  journalId: string;
+  today: string;
+  trackerId: string;
+  value: number | boolean | null;
+};
+
+export type WidgetActionTimerStart = {
+  action: "timer.start";
+  pageId: string;
+  rowId: string;
+  fieldId: string;
+};
+
+export type WidgetActionTimerStop = {
+  action: "timer.stop";
+};
+
+export type WidgetActionFocusStart = {
+  action: "focus.start";
+  minutes?: number;
+  breakMinutes?: number;
+  pageId?: string;
+  rowId?: string;
+  fieldId?: string;
+};
+
+export type WidgetActionFocusStop = {
+  action: "focus.stop";
+};
+
+export type WidgetActionMentionRead = {
+  action: "mention.read";
+  notificationId: string;
+  read?: boolean;
+};
+
+export type WidgetActionMentionReadAll = {
+  action: "mention.readAll";
+};
+
+export type WidgetActionMeetingNote = {
+  action: "meeting.note";
+  pageId: string;
+  rowId: string;
+  date: string;
+  start: string;
+  end?: string;
+  timed?: boolean;
+  zone?: string;
+  journalId?: string;
+};
+
+/** Up to 16 widgets in one request. `config` follows the WidgetConfig schema of its `kind` (e.g. WidgetConfigTasks); `today` and `zone` are the phone's day and IANA time zone, `lang` de, en or fr. */
+export type WidgetDataRequest = {
+  today?: string;
+  zone?: string;
+  lang?: string;
+  widgets: ({
+    id?: string;
+    kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident";
+    config?: Record<string, unknown>;
+  })[];
+};
+
+export type WidgetDataResponse = {
+  /** Server time (ms) */
+  at: number;
+  today: string;
+  zone: string;
+  widgets: ({
+    /** The `id` sent with the widget */
+    id: string | null;
+    kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident";
+    ok: boolean;
+    /** The widget's data: at most 10 items and about 2048 bytes (`truncated: true` when shortened). Pages behind a journal PIN answer `locked: true`, end-to-end encrypted ones `encrypted: true`, without content. */
+    data?: Record<string, unknown>;
+    /** HTTP status of a widget that failed (403, 404 …) */
+    status?: number;
+    error?: string;
+  })[];
+};
+
+export type WidgetAction = WidgetActionCaptureNote | WidgetActionCaptureTask | WidgetActionCaptureUpload | WidgetActionTaskComplete | WidgetActionHabitCheck | WidgetActionJournalTrack | WidgetActionTimerStart | WidgetActionTimerStop | WidgetActionFocusStart | WidgetActionFocusStop | WidgetActionMentionRead | WidgetActionMentionReadAll | WidgetActionMeetingNote;
+
 /** Every error answer. `error` is a sentence in the reader's language (German by default, English with Accept-Language). */
 export type ErrorResponse = {
   error: string;
@@ -2124,6 +2346,35 @@ export class FlowplanClient {
   /** Whether a host is a verified custom domain — For the `ask` endpoint of Caddy's on-demand TLS: 200 for verified domains of active publications, 404 otherwise. No authentication. (GET /api/domains/allowed) */
   async customDomainAllowed(query: { domain: string }, options?: RequestOptions): Promise<Response> {
     return this.request("GET", `/api/domains/allowed`, { query }, options);
+  }
+
+  /** What a widget instance can be configured to — The choices for the configuration screen of one widget kind (targets, databases, views, calendars, journals, forms …), only what the person may see; with `pageId` also the views and properties of that database. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/widgets/options) */
+  async widgetOptions(query: { kind: "capture" | "tasks" | "calendar" | "pinned" | "counter" | "journal" | "time" | "mentions" | "forms" | "focus" | "meeting" | "jobs" | "incident"; pageId?: string; lang?: string }, options?: RequestOptions): Promise<{
+    kind: string;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    kind: string;
+    [key: string]: unknown;
+  }>("GET", `/api/mobile/widgets/options`, { query }, options);
+  }
+
+  /** The data of all configured widgets in one request — Each widget answers on its own (`ok`, `data` or `status` and `error`), so one widget whose page is gone does not fail the others. Counters keep one value per configuration and day for their 14-day history. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (POST /api/mobile/widgets/data) */
+  async widgetData(body: WidgetDataRequest, options?: RequestOptions): Promise<WidgetDataResponse> {
+    return this.json<WidgetDataResponse>("POST", `/api/mobile/widgets/data`, { json: body }, options);
+  }
+
+  /** What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action) */
+  async widgetAction(body: WidgetAction, options?: RequestOptions): Promise<{
+    ok: boolean;
+    action: string;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    ok: boolean;
+    action: string;
+    [key: string]: unknown;
+  }>("POST", `/api/mobile/widgets/action`, { json: body }, options);
   }
 
   /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp) */

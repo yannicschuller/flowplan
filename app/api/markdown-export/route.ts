@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireUser, checkOrigin, HttpError } from "@/lib/auth";
 import { exportMarkdown } from "@/lib/markdown-export";
 import { withRequestLocale } from "@/lib/content-locale";
+import { trackJob } from "@/lib/background-jobs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const options = z
@@ -42,10 +43,8 @@ async function exportPost(req: Request) {
     } finally {
       reader.releaseLock();
     }
-    const result = await exportMarkdown(
-      user,
-      options.parse(JSON.parse(Buffer.concat(chunks).toString("utf8"))),
-    );
+    const chosen = options.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+    const result = await trackJob(user, "export", "Markdown", () => exportMarkdown(user, chosen));
     const name = encodeURIComponent(result.name).replace(
       /[!'()*]/g,
       (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase(),

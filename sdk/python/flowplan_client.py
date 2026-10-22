@@ -20,6 +20,207 @@ FormFile = tuple[str, bytes, str]
 
 # ---- Types from the specification ----
 
+# Configuration of a `capture` widget.
+WidgetConfigCapture = TypedDict("WidgetConfigCapture", {
+    "targetId": str,
+}, total=False)
+
+# Configuration of a `tasks` widget.
+WidgetConfigTasks = TypedDict("WidgetConfigTasks", {
+    "source": Literal["mine", "view", "page"],
+    "pageId": str,
+    "viewId": str,
+    "filter": Literal["today", "overdue", "open"],
+    "max": int,
+}, total=False)
+
+# Configuration of a `calendar` widget.
+WidgetConfigCalendar = TypedDict("WidgetConfigCalendar", {
+    "sources": list[dict[str, Any]],
+    "range": Literal["today", "3days", "week"],
+    "tasks": bool,
+    "max": int,
+}, total=False)
+
+# Configuration of a `pinned` widget.
+WidgetConfigPinned = TypedDict("WidgetConfigPinned", {
+    "mode": Literal["favorites", "page"],
+    "pageId": str,
+    "viewId": str,
+    "properties": list[str],
+    "max": int,
+}, total=False)
+
+# Configuration of a `counter` widget.
+WidgetConfigCounter = TypedDict("WidgetConfigCounter", {
+    "pageId": Required[str],
+    "viewId": str,
+    "aggregate": Literal["count", "sum", "average"],
+    "fieldId": str,
+    "groupFieldId": str,
+    "groupValue": str,
+    "history": bool,
+}, total=False)
+
+# Configuration of a `journal` widget.
+WidgetConfigJournal = TypedDict("WidgetConfigJournal", {
+    "journalId": str,
+    "habitsId": str,
+}, total=False)
+
+# Configuration of a `time` widget.
+WidgetConfigTime = TypedDict("WidgetConfigTime", {
+
+}, total=False)
+
+# Configuration of a `mentions` widget.
+WidgetConfigMentions = TypedDict("WidgetConfigMentions", {
+    "show": Literal["all", "mentions", "assignments"],
+    "unreadOnly": bool,
+    "max": int,
+}, total=False)
+
+# Configuration of a `forms` widget.
+WidgetConfigForms = TypedDict("WidgetConfigForms", {
+    "pageId": Required[str],
+    "since": Union[int, str],
+    "max": int,
+}, total=False)
+
+# Configuration of a `focus` widget.
+WidgetConfigFocus = TypedDict("WidgetConfigFocus", {
+
+}, total=False)
+
+# Configuration of a `meeting` widget.
+WidgetConfigMeeting = TypedDict("WidgetConfigMeeting", {
+    "sources": list[dict[str, Any]],
+    "journalId": str,
+}, total=False)
+
+# Configuration of a `jobs` widget.
+WidgetConfigJobs = TypedDict("WidgetConfigJobs", {
+
+}, total=False)
+
+# Configuration of a `incident` widget.
+WidgetConfigIncident = TypedDict("WidgetConfigIncident", {
+
+}, total=False)
+
+WidgetActionCaptureNote = TypedDict("WidgetActionCaptureNote", {
+    "action": Required[Literal["capture.note"]],
+    "targetId": Required[str],
+    "title": Required[str],
+    "text": str,
+    "due": str,
+}, total=False)
+
+WidgetActionCaptureTask = TypedDict("WidgetActionCaptureTask", {
+    "action": Required[Literal["capture.task"]],
+    "targetId": Required[str],
+    "title": Required[str],
+    "text": str,
+    "due": str,
+}, total=False)
+
+WidgetActionCaptureUpload = TypedDict("WidgetActionCaptureUpload", {
+    "action": Required[Literal["capture.upload"]],
+    "targetId": Required[str],
+    "type": Required[Literal["photo", "voice"]],
+    "title": str,
+    "transcribe": bool,
+}, total=False)
+
+WidgetActionTaskComplete = TypedDict("WidgetActionTaskComplete", {
+    "action": Required[Literal["task.complete"]],
+    "source": Required[Literal["doc", "row"]],
+    "pageId": Required[str],
+    "rowId": Optional[str],
+    "index": int,
+    "text": str,
+    "done": bool,
+}, total=False)
+
+WidgetActionHabitCheck = TypedDict("WidgetActionHabitCheck", {
+    "action": Required[Literal["habit.check"]],
+    "pageId": Required[str],
+    "fieldId": Required[str],
+    "done": Required[bool],
+    "today": Required[str],
+}, total=False)
+
+WidgetActionJournalTrack = TypedDict("WidgetActionJournalTrack", {
+    "action": Required[Literal["journal.track"]],
+    "journalId": Required[str],
+    "today": Required[str],
+    "trackerId": Required[str],
+    "value": Required[Union[float, bool, None]],
+}, total=False)
+
+WidgetActionTimerStart = TypedDict("WidgetActionTimerStart", {
+    "action": Required[Literal["timer.start"]],
+    "pageId": Required[str],
+    "rowId": Required[str],
+    "fieldId": Required[str],
+}, total=False)
+
+WidgetActionTimerStop = TypedDict("WidgetActionTimerStop", {
+    "action": Required[Literal["timer.stop"]],
+}, total=False)
+
+WidgetActionFocusStart = TypedDict("WidgetActionFocusStart", {
+    "action": Required[Literal["focus.start"]],
+    "minutes": int,
+    "breakMinutes": int,
+    "pageId": str,
+    "rowId": str,
+    "fieldId": str,
+}, total=False)
+
+WidgetActionFocusStop = TypedDict("WidgetActionFocusStop", {
+    "action": Required[Literal["focus.stop"]],
+}, total=False)
+
+WidgetActionMentionRead = TypedDict("WidgetActionMentionRead", {
+    "action": Required[Literal["mention.read"]],
+    "notificationId": Required[str],
+    "read": bool,
+}, total=False)
+
+WidgetActionMentionReadAll = TypedDict("WidgetActionMentionReadAll", {
+    "action": Required[Literal["mention.readAll"]],
+}, total=False)
+
+WidgetActionMeetingNote = TypedDict("WidgetActionMeetingNote", {
+    "action": Required[Literal["meeting.note"]],
+    "pageId": Required[str],
+    "rowId": Required[str],
+    "date": Required[str],
+    "start": Required[str],
+    "end": str,
+    "timed": bool,
+    "zone": str,
+    "journalId": str,
+}, total=False)
+
+# Up to 16 widgets in one request. `config` follows the WidgetConfig schema of its `kind` (e.g. WidgetConfigTasks); `today` and `zone` are the phone's day and IANA time zone, `lang` de, en or fr.
+WidgetDataRequest = TypedDict("WidgetDataRequest", {
+    "today": str,
+    "zone": str,
+    "lang": str,
+    "widgets": Required[list[dict[str, Any]]],
+}, total=False)
+
+WidgetDataResponse = TypedDict("WidgetDataResponse", {
+    "at": Required[int],  # Server time (ms)
+    "today": Required[str],
+    "zone": Required[str],
+    "widgets": Required[list[dict[str, Any]]],
+}, total=False)
+
+WidgetAction = Union["WidgetActionCaptureNote", "WidgetActionCaptureTask", "WidgetActionCaptureUpload", "WidgetActionTaskComplete", "WidgetActionHabitCheck", "WidgetActionJournalTrack", "WidgetActionTimerStart", "WidgetActionTimerStop", "WidgetActionFocusStart", "WidgetActionFocusStop", "WidgetActionMentionRead", "WidgetActionMentionReadAll", "WidgetActionMeetingNote"]
+
 # Every error answer. `error` is a sentence in the reader's language (German by default, English with Accept-Language).
 ErrorResponse = TypedDict("ErrorResponse", {
     "error": Required[str],
@@ -1147,6 +1348,12 @@ CustomDomainAllowedQuery = TypedDict("CustomDomainAllowedQuery", {
     "domain": Required[str],  # Host name
 }, total=False)
 
+WidgetOptionsQuery = TypedDict("WidgetOptionsQuery", {
+    "kind": Required[Literal["capture", "tasks", "calendar", "pinned", "counter", "journal", "time", "mentions", "forms", "focus", "meeting", "jobs", "incident"]],  # Widget kind
+    "pageId": str,  # A database for its views and properties
+    "lang": str,  # Language of the titles (de, en, fr); the profile's language wins
+}, total=False)
+
 # ---- Client ----
 
 
@@ -1597,6 +1804,18 @@ class FlowplanClient:
     def custom_domain_allowed(self, query: "CustomDomainAllowedQuery", headers: Optional[dict[str, str]] = None) -> bytes:
         """Whether a host is a verified custom domain — For the `ask` endpoint of Caddy's on-demand TLS: 200 for verified domains of active publications, 404 otherwise. No authentication. (GET /api/domains/allowed)"""
         return self._bytes("GET", "/api/domains/allowed", query=dict(query) if query else None, headers=headers)
+
+    def widget_options(self, query: "WidgetOptionsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """What a widget instance can be configured to — The choices for the configuration screen of one widget kind (targets, databases, views, calendars, journals, forms …), only what the person may see; with `pageId` also the views and properties of that database. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/widgets/options)"""
+        return self._json("GET", "/api/mobile/widgets/options", query=dict(query) if query else None, headers=headers)
+
+    def widget_data(self, body: "WidgetDataRequest", headers: Optional[dict[str, str]] = None) -> "WidgetDataResponse":
+        """The data of all configured widgets in one request — Each widget answers on its own (`ok`, `data` or `status` and `error`), so one widget whose page is gone does not fail the others. Counters keep one value per configuration and day for their 14-day history. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (POST /api/mobile/widgets/data)"""
+        return self._json("POST", "/api/mobile/widgets/data", json_body=body, headers=headers)
+
+    def widget_action(self, body: "WidgetAction", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action)"""
+        return self._json("POST", "/api/mobile/widgets/action", json_body=body, headers=headers)
 
     def mcp(self, body: "McpRequest", headers: Optional[dict[str, str]] = None) -> "McpResponse":
         """MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp)"""
