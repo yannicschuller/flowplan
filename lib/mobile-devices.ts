@@ -1,7 +1,10 @@
 // The apps for iPhone, iPad and Android (flowplan-app). After signing in, the
 // app registers its installation from inside its web view (same origin, the
-// session cookie). The entry is bound to that session: signing out, an
-// expired session or a deleted account removes it.
+// session cookie). The entry is bound to that session: signing out, ending
+// the session in the settings or a deleted account removes it; the device
+// token works while the session lives, and using it keeps a remembered
+// session alive. Signing in again on the device moves the entry over to the
+// new session (carryOverSession in lib/auth.ts).
 //
 // - Push: the app's Expo push token becomes a push subscription with an
 //   "expo:" endpoint, so notifications reach it through the same queue,
@@ -12,7 +15,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, id, one, run } from "./db";
-import { adminGroup, HttpError } from "./auth";
+import { adminGroup, HttpError, touchSession } from "./auth";
 import { cellText } from "./cell-text";
 import { openTasksEverywhere } from "./doc-tasks";
 import { pageLocationHash } from "./page-location";
@@ -130,8 +133,8 @@ export function identityFromDeviceToken(header: string | null): Identity | null 
   const match = header?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   if (!match) return null;
   const now = Date.now();
-  const row = one<User & { device_id: string; last_seen_at: number; groups_json: string }>(
-    `SELECT u.*,d.id device_id,d.last_seen_at,s.groups_json FROM mobile_devices d
+  const row = one<User & { device_id: string; last_seen_at: number; groups_json: string; session_token: string; expires: number; session_created: number | null; remember: number; sso: number; last_seen: number | null }>(
+    `SELECT u.*,d.id device_id,d.last_seen_at,d.session_token,s.groups_json,s.expires,s.created_at session_created,s.remember,s.sso,s.last_seen FROM mobile_devices d
        JOIN users u ON u.id=d.user_id JOIN sessions s ON s.token=d.session_token
      WHERE d.token_hash=? AND s.expires>? AND u.disabled=0`,
     hashToken(match[1]),
@@ -139,6 +142,13 @@ export function identityFromDeviceToken(header: string | null): Identity | null 
   );
   if (!row) return null;
   if (now - row.last_seen_at > 60_000) run("UPDATE mobile_devices SET last_seen_at=? WHERE id=?", now, row.device_id);
+  // The widgets are the app in the background: they keep its session alive
+  // like the app's web view does (a remembered session slides, never beyond
+  // its maximum).
+  touchSession(
+    { token: row.session_token, expires: row.expires, created_at: row.session_created, remember: row.remember, sso: row.sso, last_seen: row.last_seen, demo_until: row.demo_until },
+    now,
+  );
   let groups: string[] = [];
   try {
     groups = JSON.parse(row.groups_json);

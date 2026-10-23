@@ -29,11 +29,13 @@ export function extractGroups(claims: Record<string, unknown>): string[] {
 }
 // How long sessions last. A normal session ends SESSION_HOURS after signing
 // in (default 8, at most 24). With SESSION_REMEMBER=true people can choose
-// "Stay signed in on this device": the session then lives on while it is
-// used (SESSION_IDLE_HOURS after the last request, default 7 days), never
-// beyond SESSION_MAX_DAYS after signing in (default 30) and, for SSO, never
-// beyond SESSION_GROUPS_HOURS (default 7 days), so group changes at the
-// provider take effect.
+// "Stay signed in on this device" (the apps always ask for it): the session
+// then lives on while it is used (SESSION_IDLE_HOURS after the last request,
+// default 7 days), never beyond SESSION_MAX_DAYS after signing in (default
+// 30) – for SSO the same as for passwords and passkeys. Only an instance
+// that sets SESSION_GROUPS_HOURS ends SSO sessions earlier, so group changes
+// at the provider take effect at the next sign-in; without it they follow
+// through SCIM, the LDAP sync or the next sign-in.
 const bounded = (raw: string | undefined, fallback: number, min: number, max: number) => {
   const value = Number(raw);
   return Math.min(max, Math.max(min, Number.isFinite(value) && value > 0 ? value : fallback));
@@ -45,12 +47,28 @@ export function rememberPolicy() {
   return {
     idleHours: Math.min(maxHours, bounded(process.env.SESSION_IDLE_HOURS, 168, 1, 24 * 90)),
     maxHours,
-    groupsHours: Math.min(maxHours, bounded(process.env.SESSION_GROUPS_HOURS, 168, 1, 24 * 365)),
+    groupsHours: process.env.SESSION_GROUPS_HOURS ? Math.min(maxHours, bounded(process.env.SESSION_GROUPS_HOURS, 168, 1, 24 * 365)) : null,
   };
 }
 // The latest end of a remembered session, from when it began.
 function rememberedEnd(created: number, sso: boolean, policy: NonNullable<ReturnType<typeof rememberPolicy>>) {
-  return created + (sso ? Math.min(policy.maxHours, policy.groupsHours) : policy.maxHours) * 3_600_000;
+  return created + (sso && policy.groupsHours ? policy.groupsHours : policy.maxHours) * 3_600_000;
+}
+type SessionUse = { token: string; expires: number; created_at: number | null; remember: number; sso: number; last_seen: number | null; demo_until?: number | null };
+// A session in use: a remembered one lives on (written at most every few
+// minutes; turning the option off on the instance ends the sliding), every
+// other one notes when it was last used. Called for the cookie and for the
+// apps' device tokens (lib/mobile-devices.ts), so widgets that refresh in the
+// background keep the session of their app alive like the app itself.
+export function touchSession(s: SessionUse, now = Date.now()) {
+  if (s.demo_until) return;
+  const policy = rememberPolicy();
+  const stale = now - (s.last_seen || 0) > 5 * 60_000;
+  if (s.remember && policy && s.created_at) {
+    const next = Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(s.created_at, !!s.sso, policy));
+    if (next - s.expires > 5 * 60_000) return run("UPDATE sessions SET expires=?,last_seen=? WHERE token=?", next, now, s.token);
+  }
+  if (stale) run("UPDATE sessions SET last_seen=? WHERE token=?", now, s.token);
 }
 export function identityFromToken(token: string): Identity | null {
   const now = Date.now();
@@ -61,14 +79,7 @@ export function identityFromToken(token: string): Identity | null {
   );
   if (!s) return null;
   const groups = JSON.parse(s.groups_json) as string[];
-  // A remembered session lives on while used (written at most every few
-  // minutes); turning the option off on the instance ends the sliding.
-  const policy = rememberPolicy();
-  if (s.remember && policy && s.created_at_s) {
-    const next = Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(s.created_at_s, !!s.sso, policy));
-    if (next - s.expires > 5 * 60_000) run("UPDATE sessions SET expires=?,last_seen=? WHERE token=?", next, now, hash(token));
-  } else if (!s.demo_until && now - (s.last_seen || 0) > 5 * 60_000)
-    run("UPDATE sessions SET last_seen=? WHERE token=?", now, hash(token));
+  touchSession({ token: hash(token), expires: s.expires, created_at: s.created_at_s, remember: s.remember, sso: s.sso, last_seen: s.last_seen, demo_until: s.demo_until }, now);
   // Active people per hour (lib/metrics.ts): counted in memory, never stored.
   if (!s.demo_until) noteActive(s.id, now);
   // Demo sessions live on while used: 45 minutes after the last request,
@@ -174,7 +185,12 @@ export async function issueSession(
     now,
     agent,
   );
-  (await cookies()).set(cookieName, token, {
+  const jar = await cookies();
+  // Signing in again on the same device (the session ran out, or the app
+  // signs in anew): its app installations move over to the new session.
+  const previous = jar.get(cookieName)?.value;
+  if (previous && !demo) carryOverSession(hash(previous), hash(token), userId);
+  jar.set(cookieName, token, {
     httpOnly: true,
     secure: new URL(appUrl()).protocol === "https:",
     sameSite: "lax",
@@ -187,6 +203,20 @@ export async function issueSession(
         ? Math.round((rememberedEnd(now, !!options.sso, policy) - now) / 1000)
         : hours * 3600,
   });
+}
+// The session a device signed in with before is replaced by a new one of the
+// same person: the mobile app installations (device tokens for widgets,
+// Live Activities and Shortcuts) and their push subscriptions are bound to
+// the new session instead of dying with the old one, and the old session
+// ends. A session of someone else on that device keeps its own (signing out
+// or ending a session still removes them: ON DELETE CASCADE).
+export function carryOverSession(previousHash: string, nextHash: string, userId: string) {
+  if (previousHash === nextHash) return 0;
+  if (!one("SELECT 1 FROM sessions WHERE token=? AND user_id=?", previousHash, userId)) return 0;
+  const moved = run("UPDATE mobile_devices SET session_token=? WHERE session_token=? AND user_id=?", nextHash, previousHash, userId).changes;
+  run("UPDATE push_subscriptions SET session_token=? WHERE session_token=? AND user_id=?", nextHash, previousHash, userId);
+  run("DELETE FROM sessions WHERE token=? AND user_id=?", previousHash, userId);
+  return Number(moved);
 }
 export function upsertUser(subject: string, name: string, email: string) {
   let user = one<User>("SELECT * FROM users WHERE subject=?", subject);

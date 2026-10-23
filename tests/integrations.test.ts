@@ -188,6 +188,10 @@ test("scheduled backups keep the newest copies; inactive accounts are disabled",
   assert.deepEqual(disableInactiveAccounts(), []);
   saveInstanceSettings({ inactiveDays: 365 });
   run("UPDATE users SET last_login_at=? WHERE id<>?", Date.now(), ben.id);
+  // A session in use counts as activity (stay signed in, the apps).
+  run("UPDATE sessions SET last_seen=? WHERE user_id=?", Date.now(), ben.id);
+  assert.deepEqual(disableInactiveAccounts(), []);
+  run("UPDATE sessions SET last_seen=? WHERE user_id=?", Date.now() - 400 * 86400_000, ben.id);
   assert.deepEqual(disableInactiveAccounts(), [ben.id]);
   assert.equal(one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", ben.id)!.disabled, 1);
   assert.equal(all("SELECT 1 FROM sessions WHERE user_id=?", ben.id).length, 0);
