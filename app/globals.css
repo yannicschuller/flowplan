@@ -71,6 +71,70 @@ a:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 3px;
 }
+
+/* ---------- Text selection ----------
+   Only meaningful text can be selected and copied: a long press on the tab
+   bar, a button or a menu (in the apps and mobile browsers) does nothing
+   instead of selecting "Start" or "Neue Seite". Content stays selectable:
+   documents and the editor, comments, record values, code, inputs, error
+   messages, search snippets and values such as URLs, tokens and IDs.
+   The chrome rule has no specificity (:where), so every rule below and any
+   component rule wins over it; tests/text-selection.test.ts keeps both. */
+:where(
+    button,
+    nav,
+    [role="button"],
+    [role="tab"],
+    [role="tablist"],
+    [role="toolbar"],
+    [role="menu"],
+    [role="menubar"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="option"],
+    [role="columnheader"],
+    .data-table thead th,
+    .admin-user-table thead th,
+    .no-select,
+    .sidebar,
+    .topbar,
+    .breadcrumb,
+    .mobile-tab-bar,
+    .dropdown,
+    .dropdown-item,
+    .toast,
+    .chip,
+    [class*="-chip"],
+    [class*="badge"],
+    [class*="-tabs"],
+    [class*="-actions"],
+    .settings-tile
+  ) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* Content and everything one types into, also inside the chrome above. */
+input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+.ProseMirror,
+[contenteditable="true"] :where(th, td),
+pre,
+code,
+[role="alert"],
+.error,
+[class$="-error"],
+.error-alert-text,
+.search-snippet,
+.setting-value,
+.footnotes .footnote-text,
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
 input,
 textarea,
 :is(select, .fp-select) {

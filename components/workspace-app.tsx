@@ -3908,7 +3908,7 @@ export default function WorkspaceApp({
                               : t(`Eintrag in ${p.pageTitle}`, `Record in ${p.pageTitle}`)}
                         </small>
                       )}
-                      <small>
+                      <small className={p.snippet ? "search-snippet" : undefined}>
                         {p.snippet ? (
                           <SearchSnippet text={p.snippet} />
                         ) : (
