@@ -10,6 +10,7 @@ import { z } from "zod";
 import { field, view } from "./database-schema";
 import { coverSchema, iconSizeSchema, pageIconSchema } from "./page-appearance";
 import { buildInfo } from "./build-info";
+import { disclosedVersion } from "./instance-disclosure";
 import { repeatSchema } from "./recurrence";
 import { settingsSchema } from "./database-settings-schema";
 import { chatFormats, hookConfigSchema, noticeEvents, templatesSchema } from "./notification-templates";
@@ -920,12 +921,13 @@ const schemas: Record<string, Json> = {
     properties: {
       service: { type: "string", enum: ["flowplan"] },
       status: { type: "string", enum: ["ok", "error"] },
-      checks: { type: "object", additionalProperties: { type: "string", enum: ["ok", "error"] } },
+      checks: { type: "object", description: "Details only with the metrics token or for an administrator.", additionalProperties: { type: "string", enum: ["ok", "error"] } },
       searchBacklog: { type: "integer" },
       failedPushDeliveries: { type: "integer" },
+      objectStorage: { oneOf: [{ type: "string", enum: ["off"] }, { type: "object", properties: { pending: { type: "integer" }, retrying: { type: "boolean" } } }] },
       uptimeSeconds: { type: "integer" },
     },
-    required: ["service", "status", "checks"],
+    required: ["service", "status"],
     additionalProperties: true,
   },
   SiteInfo: {
@@ -988,9 +990,9 @@ const noStore = "Answered with `Cache-Control: no-store`.";
 
 const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   // Instance
-  { path: "/api/health", method: "get", op: { id: "health", tag: "Instance", summary: "Liveness and readiness", description: "No authentication. 503 when the database or the storage fails.", security: "none", ok: { schema: ref("Health"), description: "Healthy" }, errors: [503] } },
+  { path: "/api/health", method: "get", op: { id: "health", tag: "Instance", summary: "Liveness and readiness", description: "No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator.", security: "none", ok: { schema: ref("Health"), description: "Healthy" }, errors: [503] } },
   { path: "/api/site-info", method: "get", op: { id: "siteInfo", tag: "Instance", summary: "Whether sign-up, the demo and SSO are open", security: "none", ok: { schema: ref("SiteInfo"), description: "Public facts" }, errors: [] } },
-  { path: "/api/openapi.json", method: "get", op: { id: "openapi", tag: "Instance", summary: "This document", description: "Public, cached for an hour.", security: "none", ok: { schema: { type: "object", additionalProperties: true }, description: "The OpenAPI document" }, errors: [] } },
+  { path: "/api/openapi.json", method: "get", op: { id: "openapi", tag: "Instance", summary: "This document", description: "Signed-in people and API tokens; public (`info.version` with the major version only for visitors) when the instance sets `FLOWPLAN_PUBLIC_API_DOCS=true`.", ok: { schema: { type: "object", additionalProperties: true }, description: "The OpenAPI document" }, errors: [401] } },
   { path: "/api/metrics", method: "get", op: { id: "metrics", tag: "Instance", summary: "Prometheus metrics", description: "Only with `FLOWPLAN_METRICS_TOKEN` set, sent as bearer token. 404 when metrics are off.", security: "metrics", ok: { content: "text/plain", description: "Prometheus text format" }, errors: [401, 404] } },
   // Workspace
   { path: "/api/bootstrap", method: "get", op: { id: "bootstrap", tag: "Workspace", summary: "Workspaces, spaces, pages and members", description: "Without `workspace` the first workspace. Start here to find IDs.", params: [q("workspace", "Workspace ID (default: the first)", { type: "string", format: "uuid" })], ok: { schema: ref("Bootstrap"), description: "The workspace" }, errors: [401, 404] } },
@@ -1152,7 +1154,8 @@ function operation(o: Op): Json {
   };
 }
 
-export function openApiDocument(): Json {
+// `exactVersion: false` for readers without a session (lib/instance-disclosure.ts).
+export function openApiDocument(options: { exactVersion?: boolean } = {}): Json {
   const paths: Record<string, Json> = {};
   for (const { path, method, op } of operations) (paths[path] ||= {})[method] = operation(op);
   const tags = [
@@ -1174,7 +1177,7 @@ export function openApiDocument(): Json {
     openapi: "3.1.0",
     info: {
       title: "Flowplan API",
-      version: buildInfo().version || "dev",
+      version: disclosedVersion(buildInfo().version, options.exactVersion !== false),
       summary: "The HTTP API of a Flowplan instance for scripts, integrations and the generated SDKs.",
       description: [
         "Every request carries a personal API token (`Authorization: Bearer fp_…`, created under Settings → API & AI assistants) and acts with the rights of the person who created it. Read tokens may only call GET endpoints and the Markdown export; write tokens also `POST /api/command`, uploads, imports and webhooks. Tokens never get administration rights and cannot create further tokens.",
@@ -1195,7 +1198,7 @@ export function openApiDocument(): Json {
     components: {
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "fp_…", description: "A personal API token with read, write or clipper scope." },
-        metricsToken: { type: "http", scheme: "bearer", description: "`FLOWPLAN_METRICS_TOKEN` of the instance (Prometheus only)." },
+        metricsToken: { type: "http", scheme: "bearer", description: "`FLOWPLAN_METRICS_TOKEN` of the instance (Prometheus, and the details of the health check)." },
         deviceToken: { type: "http", scheme: "bearer", bearerFormat: "fpd_…", description: "The device token of a mobile app installation (POST /api/mobile/register from the signed-in app). Lives as long as the session it was registered with." },
       },
       schemas,

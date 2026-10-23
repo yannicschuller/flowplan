@@ -106,7 +106,7 @@ try {
   check(
     "Health-Endpunkt",
     health.status === "ok",
-    JSON.stringify(health.checks),
+    JSON.stringify(health),
   );
   const home = await fetch(`${origin}/`);
   const homeHtml = await home.text();

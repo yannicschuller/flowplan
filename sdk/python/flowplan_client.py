@@ -551,9 +551,10 @@ McpResponse = TypedDict("McpResponse", {
 Health = TypedDict("Health", {
     "service": Required[Literal["flowplan"]],
     "status": Required[Literal["ok", "error"]],
-    "checks": Required[dict[str, Literal["ok", "error"]]],
+    "checks": dict[str, Literal["ok", "error"]],  # Details only with the metrics token or for an administrator.
     "searchBacklog": int,
     "failedPushDeliveries": int,
+    "objectStorage": Union[Literal["off"], dict[str, Any]],
     "uptimeSeconds": int,
 }, total=False)
 
@@ -1438,7 +1439,7 @@ class FlowplanClient:
         return self.request(method, path, **kwargs)[2]
 
     def health(self, headers: Optional[dict[str, str]] = None) -> "Health":
-        """Liveness and readiness — No authentication. 503 when the database or the storage fails. (GET /api/health)"""
+        """Liveness and readiness — No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator. (GET /api/health)"""
         return self._json("GET", "/api/health", headers=headers)
 
     def site_info(self, headers: Optional[dict[str, str]] = None) -> "SiteInfo":
@@ -1446,7 +1447,7 @@ class FlowplanClient:
         return self._json("GET", "/api/site-info", headers=headers)
 
     def openapi(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """This document — Public, cached for an hour. (GET /api/openapi.json)"""
+        """This document — Signed-in people and API tokens; public (`info.version` with the major version only for visitors) when the instance sets `FLOWPLAN_PUBLIC_API_DOCS=true`. (GET /api/openapi.json)"""
         return self._json("GET", "/api/openapi.json", headers=headers)
 
     def metrics(self, headers: Optional[dict[str, str]] = None) -> bytes:

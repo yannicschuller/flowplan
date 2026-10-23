@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { currentUser } from "@/lib/auth";
 import { serverT } from "@/lib/i18n-server";
+import { apiDocsAllowed } from "@/lib/instance-disclosure";
 import { openApiDocument } from "@/lib/openapi";
 
 export const dynamic = "force-dynamic";
@@ -110,7 +112,23 @@ const SchemaLink = ({ name }: { name: string }) => <a href={`#schema-${name}`}>{
 
 export default async function ApiDocs() {
   const t = await serverT();
-  const doc = openApiDocument();
+  // Only for signed-in people unless FLOWPLAN_PUBLIC_API_DOCS=true (#41);
+  // visitors get a sign-in hint that tells nothing about the instance.
+  const user = await currentUser();
+  if (!apiDocsAllowed(user))
+    return (
+      <main className="public-page api-docs">
+        <a href="/" className="public-brand">
+          flowplan
+        </a>
+        <h1>{t("API-Dokumentation", "API documentation")}</h1>
+        <p>{t("Melde dich an, um die API-Dokumentation dieser Instanz zu lesen.", "Sign in to read the API documentation of this instance.")}</p>
+        <p>
+          <a href="/">{t("Anmelden", "Sign in")}</a>
+        </p>
+      </main>
+    );
+  const doc = openApiDocument({ exactVersion: !!user && !user.twoFactorSetup });
   const info = doc.info as Json;
   const schemas = (doc.components as { schemas: Schemas }).schemas;
   const tags = doc.tags as { name: string; description?: string }[];

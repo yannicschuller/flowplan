@@ -796,9 +796,14 @@ export type McpResponse = {
 export type Health = {
   service: "flowplan";
   status: "ok" | "error";
-  checks: Record<string, "ok" | "error">;
+  /** Details only with the metrics token or for an administrator. */
+  checks?: Record<string, "ok" | "error">;
   searchBacklog?: number;
   failedPushDeliveries?: number;
+  objectStorage?: "off" | {
+    pending?: number;
+    retrying?: boolean;
+  };
   uptimeSeconds?: number;
   [key: string]: unknown;
 };
@@ -1710,7 +1715,7 @@ export class FlowplanClient {
     return new FlowplanError(response.status, message, details, retry > 0 ? retry : undefined);
   }
 
-  /** Liveness and readiness — No authentication. 503 when the database or the storage fails. (GET /api/health) */
+  /** Liveness and readiness — No authentication: answers only `service` and `status` (200, or 503 when the database or the storage fails). The details (`checks`, backlogs, object storage, uptime) come with `FLOWPLAN_METRICS_TOKEN` as bearer token or for a signed-in instance administrator. (GET /api/health) */
   async health(options?: RequestOptions): Promise<Health> {
     return this.json<Health>("GET", `/api/health`, {}, options);
   }
@@ -1720,7 +1725,7 @@ export class FlowplanClient {
     return this.json<SiteInfo>("GET", `/api/site-info`, {}, options);
   }
 
-  /** This document — Public, cached for an hour. (GET /api/openapi.json) */
+  /** This document — Signed-in people and API tokens; public (`info.version` with the major version only for visitors) when the instance sets `FLOWPLAN_PUBLIC_API_DOCS=true`. (GET /api/openapi.json) */
   async openapi(options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/openapi.json`, {}, options);
   }

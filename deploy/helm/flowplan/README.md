@@ -123,7 +123,9 @@ files and the Helm release history.
 - **Updates:** `helm upgrade` with a new `image.tag` (or a newer chart).
   The pod is replaced; the database is migrated on start.
 - **Metrics:** set `FLOWPLAN_METRICS_TOKEN` (at least 16 characters, best in
-  `existingSecret`) and scrape `/api/metrics` with that bearer token.
+  `existingSecret`) and scrape `/api/metrics` with that bearer token. The
+  same token unlocks the details of `/api/health`; the probes only need its
+  status code.
 
 ## Develop
 

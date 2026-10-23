@@ -100,6 +100,27 @@ export async function currentUser() {
   const token = jar.get(cookieName)?.value;
   return token ? identityFromToken(token) : null;
 }
+// The same from a request's own headers (route handlers that also run in
+// tests without a Next.js request around them): a personal API token, or
+// the session cookie.
+export function identityFromRequest(req: Request): Identity | null {
+  const authorization = req.headers.get("authorization");
+  if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
+  return sessionIdentityFromRequest(req);
+}
+// Only the session cookie of a request (never an API token).
+export function sessionIdentityFromRequest(req: Request): Identity | null {
+  for (const part of (req.headers.get("cookie") || "").split(";")) {
+    const [name, ...value] = part.trim().split("=");
+    if (name !== cookieName) continue;
+    try {
+      return identityFromToken(decodeURIComponent(value.join("=")));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 // The signed-in person, unless they still have to set up the second factor
 // the instance requires (then they count as not signed in).
 export async function activeUser() {

@@ -21,6 +21,8 @@ const config: NextConfig = {
   // the check does not run again per architecture.
   typescript: { ignoreBuildErrors: process.env.FLOWPLAN_SKIP_TYPECHECK === "1" },
   output: "standalone",
+  // No "X-Powered-By: Next.js": visitors learn nothing about the stack (#41).
+  poweredByHeader: false,
   env: {
     FLOWPLAN_VERSION: pkg.version,
     FLOWPLAN_COMMIT: gitCommit(),
@@ -68,11 +70,6 @@ const config: NextConfig = {
       {
         source: "/api/:path*",
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
-      },
-      {
-        // The API description is public and the same for everyone (lib/openapi.ts).
-        source: "/api/openapi.json",
-        headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
       },
       {
         source: "/:path*",
