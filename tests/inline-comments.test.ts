@@ -234,6 +234,42 @@ test("emoji reactions are distinct per member and reject arbitrary text; summari
     300,
   );
 });
+test("reactions with a redundant U+FE0F (emojibase-data 17) are read and stored as the picker's form", () => {
+  const f = fixture(),
+    c = f.create(f.owner),
+    base = {
+      pageId: f.pageId,
+      threadId: c.threadId,
+      messageId: c.messageId,
+      action: "thread.react",
+      active: true,
+    };
+  // Stored before the update: the viewer's 👍️ and the owner's ⌚️ and ⌚.
+  run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.viewer.id, "👍️");
+  run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚️");
+  run("INSERT INTO inline_reactions VALUES(?,?,?)", c.messageId, f.owner.id, "⌚");
+  (globalThis as { flowplanSchema?: number }).flowplanSchema = undefined;
+  // An older client still sends 👍️; the heart keeps its FE0F.
+  f.act({ ...base, emoji: "👍️" });
+  f.act({ ...base, emoji: "❤️" });
+  assert.deepEqual(
+    Object.fromEntries(
+      all<{ emoji: string; n: number }>(
+        "SELECT emoji,count(*) n FROM inline_reactions WHERE message_id=? GROUP BY emoji",
+        c.messageId,
+      ).map((r) => [r.emoji, r.n]),
+    ),
+    { "⌚": 1, "❤️": 1, "👍": 2 },
+  );
+  const thumbs = inlineThreads(f.owner, f.pageId)[0].messages[0].reactions.find((r) => r.emoji === "👍");
+  assert.equal(thumbs?.count, 2);
+  f.act({ ...base, emoji: "👍", active: false });
+  f.act({ ...base, emoji: "⌚️", active: false });
+  assert.deepEqual(
+    all<{ emoji: string }>("SELECT emoji FROM inline_reactions WHERE message_id=? AND user_id=?", c.messageId, f.owner.id).map((r) => r.emoji),
+    ["❤️"],
+  );
+});
 test("relative anchors follow insertions, reject stale drafts, and detach after deletion or generation changes", () => {
   const f = fixture(),
     anchor = f.anchor(),

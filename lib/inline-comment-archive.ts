@@ -5,6 +5,7 @@ import {
 } from "./comment-content";
 import { z } from "zod";
 import { all, run, id } from "./db";
+import { emojiPresentation } from "./emoji-presentation";
 import { withCommentDocument } from "./inline-comments";
 import { commentAnchor, commentQuote, commentRange } from "./comment-positions";
 import type { CommentAnchor } from "./inline-comment-types";
@@ -111,9 +112,9 @@ export function exportInlineComments(pageId: string): ArchivedThreads {
           "SELECT r.emoji,u.name FROM inline_reactions r JOIN users u ON u.id=r.user_id WHERE message_id=? ORDER BY r.emoji,u.name",
           m.id,
         );
-        const historical: { emoji: string; names: string[] }[] = JSON.parse(
-          m.imported_reactions,
-        );
+        const historical = (
+          JSON.parse(m.imported_reactions) as { emoji: string; names: string[] }[]
+        ).map((r) => ({ ...r, emoji: emojiPresentation(r.emoji) }));
         const reactions = Array.from(
           new Set([
             ...live.map((r) => r.emoji),

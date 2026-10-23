@@ -28,6 +28,7 @@ import {
   type CommentBinding,
 } from "./comment-positions";
 import { emojiEntries } from "./emoji-data";
+import { emojiPresentation } from "./emoji-presentation";
 import type { Identity, Page } from "./types";
 const emojis = new Set(emojiEntries.map((e) => e.emoji));
 const bodySchema = z.string().trim().min(1).max(5000);
@@ -115,8 +116,14 @@ export function inlineThreads(
               "SELECT r.emoji,r.user_id,u.name FROM inline_reactions r JOIN users u ON u.id=r.user_id WHERE r.message_id=? ORDER BY r.emoji,u.name",
               m.id,
             );
-      const imported: { emoji: string; names: string[] }[] =
-        summaries && t.id !== detailId ? [] : JSON.parse(m.imported_reactions);
+      const imported: { emoji: string; names: string[] }[] = (
+        summaries && t.id !== detailId
+          ? []
+          : (JSON.parse(m.imported_reactions) as {
+              emoji: string;
+              names: string[];
+            }[])
+      ).map((r) => ({ ...r, emoji: emojiPresentation(r.emoji) }));
       return {
         id: m.id,
         content:
@@ -430,6 +437,7 @@ export function inlineCommentCommand(
       const emoji = z
         .string()
         .max(64)
+        .transform(emojiPresentation)
         .refine((e) => emojis.has(e), "Bitte ein Emoji auswählen.")
         .parse(input.emoji);
       if (z.boolean().parse(input.active)) {

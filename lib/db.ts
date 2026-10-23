@@ -7,13 +7,14 @@ import { randomUUID } from "node:crypto";
 import { flushRelationChanges } from "./relation-sync";
 import type { Identity } from "./types";
 import { notificationDefaults, notificationOn } from "./notification-kinds";
+import { emojiPresentation } from "./emoji-presentation";
 const globalDb = globalThis as unknown as {
   flowplanDb?: DatabaseSync;
   flowplanSchema?: number;
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 57) return;
+  if (globalDb.flowplanSchema === 58) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -812,7 +813,18 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS metrics_hour(at INTEGER PRIMARY KEY,requests INTEGER NOT NULL DEFAULT 0,errors INTEGER NOT NULL DEFAULT 0,hist TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS metrics_day(day TEXT PRIMARY KEY,database_bytes INTEGER NOT NULL,upload_bytes INTEGER NOT NULL,files INTEGER NOT NULL,disk_total INTEGER,disk_free INTEGER,at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS metrics_ai(day TEXT NOT NULL,feature TEXT NOT NULL,requests INTEGER NOT NULL DEFAULT 0,tokens_in INTEGER NOT NULL DEFAULT 0,tokens_out INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,feature));`);
-  globalDb.flowplanSchema = 57;
+  // Comment reactions picked from emojibase-data 17 may end in a redundant
+  // U+FE0F (👍️); version 18 offers 👍, so they move to that form (see
+  // emoji-presentation.ts). A duplicate of the same person is dropped.
+  for (const r of d
+    .prepare("SELECT rowid,emoji FROM inline_reactions WHERE emoji LIKE '%'||char(65039)")
+    .all() as { rowid: number; emoji: string }[]) {
+    const emoji = emojiPresentation(r.emoji);
+    if (emoji === r.emoji) continue;
+    d.prepare("UPDATE OR IGNORE inline_reactions SET emoji=? WHERE rowid=?").run(emoji, r.rowid);
+    d.prepare("DELETE FROM inline_reactions WHERE rowid=? AND emoji=?").run(r.rowid, r.emoji);
+  }
+  globalDb.flowplanSchema = 58;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
