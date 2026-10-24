@@ -12,7 +12,7 @@ const { id, one, all, run } = await import("../lib/db");
 const { command, bootstrap, database } = await import("../lib/api");
 const { createWorkspace, createPage } = await import("../lib/seed");
 const { htmlState } = await import("../lib/document-server");
-const { registerMobileDevice } = await import("../lib/mobile-devices");
+const { registerMobileDevice, mobileSummary } = await import("../lib/mobile-devices");
 const { withContentLocale } = await import("../lib/content-locale");
 const W = await import("../lib/mobile-widgets");
 const { widgetAction } = await import("../lib/mobile-widget-actions");
@@ -728,4 +728,51 @@ test("guests see only what is shared with them; rate limits per person", async (
   );
   assert.equal(response.status, 429);
   assert.equal(all<{ id: string }>("SELECT id FROM notifications WHERE user_id=?", busy.user.id).length, 0);
+});
+
+test("tasks in a sensible order: overdue, today, upcoming, undated – the same in the overview and the Tasks widget", () => {
+  const acc = account("widget-order");
+  run("INSERT INTO members VALUES(?,?,?)", wid, acc.user.id, "editor");
+  const { device } = phone(acc);
+  const mention = `<span data-mention="${acc.user.id}" class="mention">@widget-order</span>`;
+  const open = (text: string) => `<li data-type="taskItem" data-checked="false"><p>${mention} ${text}</p></li>`;
+  const dated = (text: string, due: string) => taskItem(`${mention} ${text}`, due);
+  const create = (title: string) => (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title, kind: "document" }) as { id: string }).id;
+  // Written in an order that is none of the expected ones; "Zeta" first.
+  const zeta = create("Zeta order"),
+    alpha = create("Alpha order");
+  writeDocument(owner.user, wid, zeta, `<ul data-type="taskList">${open("Z1")}${dated("Upcoming", day(3))}${open("Z2")}${dated("Today", TODAY)}</ul>`);
+  writeDocument(owner.user, wid, alpha, `<ul data-type="taskList">${open("A1")}${dated("Tomorrow", day(1))}${dated("Long overdue", day(-9))}${open("A2")}${dated("Overdue", day(-1))}</ul>`);
+  const expected = ["Long overdue", "Overdue", "Today", "Tomorrow", "Upcoming", "A1", "A2", "Z1", "Z2"];
+  const strip = (text: string) => text.replace(/^@widget-order /, "");
+  const suite = one_(device, "tasks", { source: "mine", filter: "open", max: 10 });
+  // As many as fit into the widget's 2 KB, in that order.
+  assert.ok(suite.items.length >= 5);
+  assert.deepEqual(suite.items.map((t: { text: string }) => strip(t.text)), expected.slice(0, suite.items.length));
+  assert.equal(suite.total, expected.length);
+  assert.ok(suite.items.every((t: Record<string, unknown>) => !("order" in t)));
+  const summary = mobileSummary(acc.user, TODAY);
+  assert.deepEqual(summary.tasks.items.map((t) => strip(t.text)), expected.slice(0, 8));
+  assert.equal(summary.tasks.due, 3);
+  assert.equal(summary.tasks.overdue, 2);
+  // One page: by date, then the position in the document.
+  const page = one_(device, "tasks", { source: "page", pageId: alpha, max: 10 });
+  assert.deepEqual(page.items.map((t: { text: string }) => strip(t.text)), ["Long overdue", "Overdue", "Tomorrow", "A1", "A2"]);
+
+  // A database view: equal dates by priority (high first), then the view's order.
+  const db = makeDatabase(owner.user, wid, sid, "Prioritised", [
+    { id: "title", name: "Title", type: "text" },
+    { id: "due", name: "Due", type: "date" },
+    { id: "prio", name: "Priority", type: "select", options: ["High", "Medium", "Low"] },
+  ]);
+  addRow(owner.user, db, { title: "Undated high", prio: "High" });
+  addRow(owner.user, db, { title: "Today low", due: TODAY, prio: "Low" });
+  addRow(owner.user, db, { title: "Today none", due: TODAY });
+  addRow(owner.user, db, { title: "Today high", due: TODAY, prio: "High" });
+  addRow(owner.user, db, { title: "Late medium", due: day(-1), prio: "Medium" });
+  const view = one_(device, "tasks", { source: "view", pageId: db, max: 10 });
+  assert.deepEqual(
+    view.items.map((t: { text: string }) => t.text),
+    ["Late medium", "Today high", "Today low", "Today none", "Undated high"],
+  );
 });

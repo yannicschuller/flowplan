@@ -26,6 +26,7 @@ import { doneRule, isDone } from "./database-settings-schema";
 import { scheduleFields } from "./database-timeline";
 import { validZone } from "./date-values";
 import { openTasksEverywhere, taskKey } from "./doc-tasks";
+import { priorityField, priorityRank, sortTasks, type OrderedTask } from "./task-order";
 import { rewriteStoredDocument } from "./document-rewrite";
 import { visibleFields } from "./field-access";
 import { formatNumber } from "./field-format";
@@ -325,7 +326,8 @@ const dueFilter = (filter: "today" | "overdue" | "open", today: string) => (due:
 function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
   const { user, today } = ctx;
   const keep = dueFilter(config.filter, today);
-  let items: WidgetTask[] = [];
+  // With what puts them in order (lib/task-order.ts), dropped before sending.
+  let items: (WidgetTask & { order: OrderedTask })[] = [];
   let heading = ct("Meine Aufgaben", "My tasks");
   if (config.source === "mine") {
     // A task given to the person can sit in a page they may only read.
@@ -352,6 +354,7 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
         page: clip(t.title || untitled(), DETAIL),
         url: url(t.pageId, t.rowId),
         canEdit: canEdit(t.pageId),
+        order: { due: t.due, page: t.title, pageId: t.pageId, rowId: t.rowId, index: t.index },
       }));
   } else if (config.source === "page") {
     const access = requireAccess(user, config.pageId);
@@ -378,6 +381,7 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
         page: heading,
         url: url(access.page.id, t.row_id || null),
         canEdit: rank[access.role] >= 2 && !access.page.locked,
+        order: { due: t.due, rowId: t.row_id, index: t.idx },
       });
     }
   } else {
@@ -389,7 +393,8 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
     const rule = doneRule(loaded.fields, loaded.settings as never);
     const ruleVisible = !!rule && loaded.shown.includes(rule.field);
     const { start } = scheduleFields(loaded.shown, loaded.view);
-    for (const row of loaded.rows) {
+    const priority = priorityField(loaded.shown);
+    for (const [position, row] of loaded.rows.entries()) {
       if (ruleVisible && isDone(rule, row.cells)) continue;
       const raw = start ? row.cells[start.id] : null;
       const due = typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : null;
@@ -404,10 +409,16 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
         page: heading,
         url: url(access.page.id, row.id),
         canEdit: ruleVisible && rank[row.role || access.role] >= 2 && !access.page.locked,
+        // Equal dates: priority, then the view's own order.
+        order: { due, priority: priorityRank(priority, row.cells[priority?.id ?? ""]), index: position },
       });
     }
   }
-  return { title: heading, total: items.length, items: items.slice(0, config.max) };
+  const sorted = sortTasks(
+    items.map((item) => ({ ...item.order, item })),
+    today,
+  ).map(({ item: { order: _order, ...item } }) => item);
+  return { title: heading, total: sorted.length, items: sorted.slice(0, config.max) };
 }
 
 // ---- 3. Today / calendar and 11. Meeting now ----

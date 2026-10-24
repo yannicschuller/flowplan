@@ -18,6 +18,7 @@ import { all, id, one, run } from "./db";
 import { adminGroup, HttpError, touchSession } from "./auth";
 import { cellText } from "./cell-text";
 import { openTasksEverywhere } from "./doc-tasks";
+import { sortTasks } from "./task-order";
 import { pageLocationHash } from "./page-location";
 import { pageRole } from "./permissions";
 import { EXPO_ENDPOINT } from "./push";
@@ -185,7 +186,13 @@ export function mobileSummary(user: Identity, todayInput?: unknown) {
   const unread = Number(
     one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", user.id)?.n || 0,
   );
-  const tasks = openTasksEverywhere(user).filter((t) => t.assigned || t.journal || t.due);
+  // Overdue, today, upcoming, undated – as in the "Tasks" widget.
+  const tasks = sortTasks(
+    openTasksEverywhere(user)
+      .filter((t) => t.assigned || t.journal || t.due)
+      .map((t) => ({ ...t, page: t.title })),
+    today,
+  );
   const due = tasks.filter((t) => t.due && t.due <= today);
   return {
     name: user.name,
