@@ -49,7 +49,8 @@ export const widgetConfigs = {
     max: z.number().int().min(1).max(MAX_ITEMS).default(MAX_ITEMS),
   }),
   pinned: z.object({
-    mode: z.enum(["favorites", "page"]).default("favorites"),
+    // "recent": the pages the person opened last (app shortcuts on Android).
+    mode: z.enum(["favorites", "page", "recent"]).default("favorites"),
     pageId: uuid.optional(),
     viewId: viewId.optional(),
     properties: z.array(z.string().min(1).max(100)).max(3).default([]),
@@ -101,6 +102,7 @@ export const widgetActions = [
   "capture.note",
   "capture.task",
   "capture.upload",
+  "capture.share",
   "task.complete",
   "habit.check",
   "journal.track",
@@ -122,6 +124,15 @@ export const actionSchemas = {
     type: z.enum(["photo", "voice"]),
     title: z.string().trim().max(300).optional(),
     transcribe: z.boolean().default(true),
+  }),
+  // "Share" from another app (Android share target, iOS share extension):
+  // text, a link and/or files (photos, PDFs) in one capture. Multipart with
+  // any number of "file" parts up to SHARE_MAX_FILES, or JSON without files.
+  "capture.share": z.object({
+    targetId: uuid,
+    title: z.string().trim().max(300).optional(),
+    text: z.string().max(20_000).optional(),
+    url: z.string().trim().max(2000).optional(),
   }),
   "task.complete": z.object({
     source: z.enum(["doc", "row"]),

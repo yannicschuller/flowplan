@@ -30,7 +30,7 @@ export type WidgetConfigCalendar = {
 
 /** Configuration of a `pinned` widget. */
 export type WidgetConfigPinned = {
-  mode?: "favorites" | "page";
+  mode?: "favorites" | "page" | "recent";
   pageId?: string;
   viewId?: string;
   properties?: string[];
@@ -119,6 +119,14 @@ export type WidgetActionCaptureUpload = {
   type: "photo" | "voice";
   title?: string;
   transcribe?: boolean;
+};
+
+export type WidgetActionCaptureShare = {
+  action: "capture.share";
+  targetId: string;
+  title?: string;
+  text?: string;
+  url?: string;
 };
 
 export type WidgetActionTaskComplete = {
@@ -224,7 +232,7 @@ export type WidgetDataResponse = {
   })[];
 };
 
-export type WidgetAction = WidgetActionCaptureNote | WidgetActionCaptureTask | WidgetActionCaptureUpload | WidgetActionTaskComplete | WidgetActionHabitCheck | WidgetActionJournalTrack | WidgetActionTimerStart | WidgetActionTimerStop | WidgetActionFocusStart | WidgetActionFocusStop | WidgetActionMentionRead | WidgetActionMentionReadAll | WidgetActionMeetingNote;
+export type WidgetAction = WidgetActionCaptureNote | WidgetActionCaptureTask | WidgetActionCaptureUpload | WidgetActionCaptureShare | WidgetActionTaskComplete | WidgetActionHabitCheck | WidgetActionJournalTrack | WidgetActionTimerStart | WidgetActionTimerStop | WidgetActionFocusStart | WidgetActionFocusStop | WidgetActionMentionRead | WidgetActionMentionReadAll | WidgetActionMeetingNote;
 
 /** Every error answer. `error` is a sentence in the reader's language (German by default, English with Accept-Language). */
 export type ErrorResponse = {
@@ -2370,7 +2378,7 @@ export class FlowplanClient {
     return this.json<WidgetDataResponse>("POST", `/api/mobile/widgets/data`, { json: body }, options);
   }
 
-  /** What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action) */
+  /** What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), save what was shared from another app (`capture.share`: title, text and link, with up to 10 photos or PDFs as repeated `file` parts), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action) */
   async widgetAction(body: WidgetAction, options?: RequestOptions): Promise<{
     ok: boolean;
     action: string;

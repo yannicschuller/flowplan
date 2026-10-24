@@ -5,7 +5,7 @@ import { withContentLocale } from "@/lib/content-locale";
 import { localizedMessage } from "@/lib/i18n-errors";
 import { pickLocale, type Locale } from "@/lib/i18n";
 import { limitWidgets, widgetKinds, widgetLocale, widgetOptions, widgetsData, widgetUser, type WidgetKind } from "@/lib/mobile-widgets";
-import { widgetAction, type UploadFile } from "@/lib/mobile-widget-actions";
+import { SHARE_MAX_FILES, widgetAction, type UploadFile } from "@/lib/mobile-widget-actions";
 import type { Identity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
 // GET  /api/mobile/widgets/options?kind=…[&pageId=…]
 // POST /api/mobile/widgets/data      { today, zone, lang, widgets: [{ id, kind, config }] }
 // POST /api/mobile/widgets/action    { action, … } (JSON), or multipart/form-data
-//                                    for capture.upload (fields + "file")
+//                                    for capture.upload (fields + "file") and
+//                                    capture.share (fields + up to 10 "file")
 const headers = { "Cache-Control": "no-store" };
 const JSON_LIMIT = 32_000;
 
@@ -74,12 +75,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
     if ((req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
       limitWidgets(user, "upload");
       const form = await req.formData();
-      const file = form.get("file");
-      const upload: UploadFile | null =
-        file instanceof File ? { name: file.name, type: file.type, bytes: Buffer.from(await file.arrayBuffer()) } : null;
+      // capture.share takes several "file" parts, capture.upload the first.
+      const parts = form.getAll("file").filter((value): value is File => value instanceof File);
+      if (parts.length > SHARE_MAX_FILES) throw new HttpError(413, "Anfrage zu groß.");
+      const uploads: UploadFile[] = await Promise.all(
+        parts.map(async (file) => ({ name: file.name, type: file.type, bytes: Buffer.from(await file.arrayBuffer()) })),
+      );
       const fields = Object.fromEntries([...form.entries()].filter(([key, value]) => key !== "file" && typeof value === "string"));
       const input = { ...fields, ...(fields.transcribe !== undefined ? { transcribe: fields.transcribe !== "0" && fields.transcribe !== "false" } : {}) };
-      return NextResponse.json(await widgetAction(user, input, upload), { headers });
+      return NextResponse.json(await widgetAction(user, input, uploads[0] ?? null, uploads), { headers });
     }
     return NextResponse.json(await widgetAction(user, await jsonBody(req)), { headers });
   });

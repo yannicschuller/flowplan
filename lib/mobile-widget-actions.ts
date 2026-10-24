@@ -191,6 +191,90 @@ async function captureUpload(user: Identity, input: z.infer<(typeof actionSchema
   return { ...result, file: fileUrl, transcribed, ...(transcript ? { text: transcript.slice(0, 500) } : {}) };
 }
 
+// "Share" from another app: text, a link and files at once. Photos and PDFs
+// only (what the share targets of the apps accept); a database gets a record
+// (files in its files property when it has one), a document a sub page.
+export const SHARE_MAX_FILES = 10;
+const SHARE_TYPES = /^(image\/(png|jpeg|gif|webp|avif|heic|heif)|application\/pdf)$/;
+async function captureShare(user: Identity, input: z.infer<(typeof actionSchemas)["capture.share"]>, files: UploadFile[]) {
+  const text = (input.text || "").trim();
+  // Apps often put the link into the text as well (or only there).
+  const link = /^https?:\/\/\S+$/i.test(input.url || "") ? input.url! : text.match(/https?:\/\/\S+/)?.[0] || "";
+  if (!text && !link && !files.length && !input.title)
+    throw new HttpError(400, ct("Es wurde nichts geteilt.", "Nothing was shared."));
+  if (files.length > SHARE_MAX_FILES)
+    throw new HttpError(413, ct(`Höchstens ${SHARE_MAX_FILES} Dateien auf einmal.`, `At most ${SHARE_MAX_FILES} files at once.`));
+  const writer = writerOf(user);
+  const { page } = captureTarget(user, input.targetId);
+  const maxMb = maxUploadMbFor(user);
+  const kept = files.map((file) => {
+    if (!file.bytes.length) throw new HttpError(400, ct("Datei fehlt.", "File missing."));
+    if (file.bytes.length > maxMb * 1024 * 1024) throw new HttpError(413, ct(`Maximal ${maxMb} MB pro Datei.`, `At most ${maxMb} MB per file.`));
+    const mime = verifiedMime(file.type, file.bytes);
+    if (!SHARE_TYPES.test(mime)) throw new HttpError(400, ct("Nur Fotos und PDFs können geteilt werden.", "Only photos and PDFs can be shared."));
+    const pdf = mime === "application/pdf";
+    return { name: sanitizeFileName(file.name || (pdf ? "dokument.pdf" : "foto.jpg")), mime, bytes: pdf ? file.bytes : stripLocation(file.bytes, mime) };
+  });
+  const total = kept.reduce((sum, file) => sum + file.bytes.length, 0);
+  if (total) {
+    enforceQuota(page.workspace_id, total);
+    enforceUserStorage(user, total);
+  }
+  const title = (
+    input.title ||
+    text.replace(link, "").trim().split("\n")[0].trim().slice(0, 120) ||
+    (link ? new URL(link).hostname : "") ||
+    kept[0]?.name ||
+    ct("Geteilt", "Shared")
+  ).slice(0, 300);
+  const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+  if (kept.length) mkdirSync(dir, { recursive: true });
+  const stored = kept.map((file) => {
+    const fileId = id();
+    return { ...file, id: fileId, url: `/api/files/${fileId}` };
+  });
+  // Photos show in the text, PDFs as a preview of their first page.
+  const media = stored
+    .map((file) =>
+      file.mime === "application/pdf"
+        ? `<div data-pdf="${file.url}" data-title="${escaped(file.name)}"><a href="${file.url}">${escaped(file.name)}</a></div>`
+        : `<p><img src="${file.url}" alt="${escaped(file.name)}"></p>`,
+    )
+    .join("");
+  const result = transaction(() => {
+    const store = (ownerId: string) => {
+      for (const file of stored) {
+        const path = resolve(dir, file.id);
+        writeFileSync(path, file.bytes);
+        onTransactionRollback(() => unlinkSync(path));
+        run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file.id, ownerId, file.name, file.mime, file.bytes.length, user.id);
+        audit(user.id, "file.upload", ownerId, file.name);
+      }
+    };
+    if (page.kind === "database") {
+      store(page.id);
+      const created = command(
+        writer,
+        { action: "capture.record", pageId: page.id, title, text, url: link, ...(media ? { article: media } : {}) },
+        true,
+      ) as { rowId: string };
+      const filesField = visibleFields(user, page, fieldsOf(page.id)).find((f) => f.type === "files" && !f.access?.write);
+      if (filesField && stored.length) {
+        const version = one<{ version: number }>("SELECT version FROM rows WHERE id=?", created.rowId)!.version;
+        command(writer, { action: "row.update", pageId: page.id, rowId: created.rowId, version, cells: { [filesField.id]: stored.map((f) => f.url) } }, true);
+      }
+      return { pageId: page.id, rowId: created.rowId, url: url(page.id, created.rowId) };
+    }
+    const body = text.replace(link, "").trim();
+    const pageId = subPage(writer, page, title, "");
+    store(pageId);
+    const html = cleanHtml(textHtml(body) + (link ? `<p><a href="${escaped(link)}">${escaped(link)}</a></p>` : "") + media);
+    run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), pageId);
+    return { pageId, url: url(pageId) };
+  }, writer);
+  return { ...result, files: stored.map((file) => file.url) };
+}
+
 // ---- Tasks and habits ----
 
 function completeTask(user: Identity, input: z.infer<(typeof actionSchemas)["task.complete"]>) {
@@ -331,7 +415,12 @@ function meetingNote(user: Identity, input: z.infer<(typeof actionSchemas)["meet
 
 // ---- Dispatch ----
 
-export async function widgetAction(user: Identity, input: unknown, file: UploadFile | null = null): Promise<Record<string, unknown>> {
+export async function widgetAction(
+  user: Identity,
+  input: unknown,
+  file: UploadFile | null = null,
+  files: UploadFile[] = file ? [file] : [],
+): Promise<Record<string, unknown>> {
   const { action } = z.object({ action: z.enum(widgetActions) }).passthrough().parse(input);
   const body = actionSchemas[action].parse(input) as never;
   let result: Record<string, unknown>;
@@ -342,6 +431,9 @@ export async function widgetAction(user: Identity, input: unknown, file: UploadF
       break;
     case "capture.upload":
       result = await captureUpload(user, body, file);
+      break;
+    case "capture.share":
+      result = await captureShare(user, body, files);
       break;
     case "task.complete":
       result = completeTask(user, body);

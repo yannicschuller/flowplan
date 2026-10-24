@@ -625,6 +625,18 @@ function pinnedData(ctx: Context, config: WidgetConfig<"pinned">) {
     }
     return { title: ct("Favoriten", "Favorites"), total: items.length, items: items.slice(0, config.max) };
   }
+  if (config.mode === "recent") {
+    // Last opened first; pages behind a PIN or end-to-end encrypted are left
+    // out (their titles are not shown outside the app).
+    const items: Record<string, unknown>[] = [];
+    for (const v of all<{ page_id: string }>("SELECT page_id FROM page_visits WHERE user_id=? ORDER BY seen_at DESC LIMIT 100", user.id)) {
+      const access = pageAccess(user, v.page_id);
+      if (!access || access.locked || access.encrypted || access.page.journal_date) continue;
+      items.push({ id: access.page.id, kind: access.page.kind, title: clip(access.page.title || untitled()), icon: access.page.icon, url: url(access.page.id) });
+      if (items.length >= config.max) break;
+    }
+    return { title: ct("Zuletzt geöffnet", "Recently opened"), total: items.length, items };
+  }
   const access = requireAccess(user, config.pageId);
   const heading = headingOf(access);
   if (access.locked || access.encrypted) return { title: heading, ...status(access), url: url(access.page.id), items: [] };
