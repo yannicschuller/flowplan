@@ -1203,7 +1203,8 @@ export function widgetOptions(user: Identity, kind: WidgetKind, query: { pageId?
   const t = (de: string, en: string) => ct(de, en);
   switch (kind) {
     case "capture":
-      return { kind, targets: captureTargetList(user), voice: transcriptionEnabled() };
+      // share: the instance takes "capture.share" (apps fall back to the web share target).
+      return { kind, targets: captureTargetList(user), voice: transcriptionEnabled(), share: true };
     case "tasks":
       return {
         kind,

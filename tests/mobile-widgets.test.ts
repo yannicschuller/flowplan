@@ -101,7 +101,8 @@ test("only a device token opens the widget API; a revoked device gets 401", asyn
   const ok = await get(`Bearer ${deviceToken}`);
   assert.equal(ok.status, 200);
   assert.equal(ok.headers.get("Cache-Control"), "no-store");
-  const options = (await ok.json()) as { targets: { id: string; kind: string }[] };
+  const options = (await ok.json()) as { targets: { id: string; kind: string }[]; share?: boolean };
+  assert.equal(options.share, true);
   assert.ok(options.targets.some((t) => t.id === tasksDb && t.kind === "database"));
   assert.ok(options.targets.some((t) => t.id === plan && t.kind === "document"));
   assert.equal((await get()).status, 401);
