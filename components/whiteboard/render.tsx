@@ -5,6 +5,8 @@ import { LibraryIcon } from "../library-icons";
 import type { CSSProperties, ReactNode } from "react";
 import { safeImageSource, type Point, type WhiteboardItem } from "@/lib/whiteboard-model";
 import { connectorGeometry, contentBounds, shapePath } from "@/lib/whiteboard-geometry";
+import { displayText } from "@/lib/field-format";
+import type { RowCardData, RowCardProp } from "@/lib/whiteboard-cards";
 
 export type PageRef = {
   id: string;
@@ -98,11 +100,13 @@ function CoveredShape({
     </g>
   );
 }
-export type RowCard = {
-  title: string;
-  database: string;
-  props: { name: string; value: string }[];
-};
+export type RowCard = RowCardData;
+// A property on a record card: dates and numbers formatted here, in the
+// person's language and time zone, like the database views do.
+function rowCardValue(prop: RowCardProp) {
+  if (prop.raw === undefined || !prop.format) return prop.value;
+  return displayText(prop.format, prop.raw).slice(0, 60) || prop.value;
+}
 export function WhiteboardShape({
   item,
   items,
@@ -277,12 +281,12 @@ export function WhiteboardShape({
             <foreignObject x={14} y={0} width={Math.max(1, item.w - 20)} height={item.h}>
               <div className="wb-card-body wb-row-card">
                 <small>{row?.database || page?.title || t("Datenbank", "Database")}</small>
-                <strong>{row?.title ?? t("Eintrag nicht verfügbar", "Record not available")}</strong>
+                <strong>{row ? row.title || t("Ohne Titel", "Untitled") : t("Eintrag nicht verfügbar", "Record not available")}</strong>
                 {!!row?.props.length && (
                   <span className="wb-row-props">
                     {row.props.map((p) => (
                       <span key={p.name} title={p.name}>
-                        {p.value}
+                        {rowCardValue(p)}
                       </span>
                     ))}
                   </span>
