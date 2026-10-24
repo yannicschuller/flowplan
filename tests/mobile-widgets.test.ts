@@ -101,7 +101,8 @@ test("only a device token opens the widget API; a revoked device gets 401", asyn
   const ok = await get(`Bearer ${deviceToken}`);
   assert.equal(ok.status, 200);
   assert.equal(ok.headers.get("Cache-Control"), "no-store");
-  const options = (await ok.json()) as { targets: { id: string; kind: string }[] };
+  const options = (await ok.json()) as { targets: { id: string; kind: string }[]; share?: boolean };
+  assert.equal(options.share, true);
   assert.ok(options.targets.some((t) => t.id === tasksDb && t.kind === "database"));
   assert.ok(options.targets.some((t) => t.id === plan && t.kind === "document"));
   assert.equal((await get()).status, 401);
@@ -209,6 +210,72 @@ test("quick capture: notes, tasks, photos and voice memos land where the person 
   assert.equal(data.target.id, tasksDb);
   assert.equal(data.voice, false);
   assert.equal(one_(V, "capture", { targetId: tasksDb }).target, null);
+});
+
+test("share from another app: text, a link, photos and PDFs in one capture", async () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  const pdf = Buffer.from("%PDF-1.4\n%shared\n");
+  const share = (user: Identity, body: Record<string, unknown>, files: { name: string; type: string; bytes: Buffer }[] = []) =>
+    withContentLocale("en", () => widgetAction(user, { action: "capture.share", ...body }, files[0] ?? null, files));
+
+  // Into the inbox database: one record, the link in the text, both files in
+  // the files property and shown in the record.
+  const record = await share(O, { targetId: tasksDb, text: "Worth reading https://example.com/a" }, [
+    { name: "IMG_2.png", type: "image/png", bytes: png },
+    { name: "Offer.pdf", type: "application/pdf", bytes: pdf },
+  ]);
+  const cells = JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", record.rowId as string)!.cells);
+  assert.equal(cells.title, "Worth reading");
+  assert.deepEqual(cells.files, record.files);
+  assert.equal((record.files as string[]).length, 2);
+  const mimes = all<{ mime: string; page_id: string }>("SELECT mime,page_id FROM files WHERE id IN (?,?)", ...(record.files as string[]).map((f) => f.split("/").pop()!));
+  assert.deepEqual(mimes.map((f) => f.mime).sort(), ["application/pdf", "image/png"]);
+  assert.ok(mimes.every((f) => f.page_id === tasksDb));
+  const rowHtml = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", record.rowId as string)?.html ?? "";
+  assert.match(rowHtml, /https:\/\/example\.com\/a/);
+  assert.match(rowHtml, /data-pdf="\/api\/files\//);
+
+  // Into a document: a sub page with the text, the link and the media; the
+  // files belong to the new page.
+  const page = await share(E, { targetId: plan, title: "Receipt", url: "https://example.com/r" }, [{ name: "scan.pdf", type: "application/pdf", bytes: pdf }]);
+  const child = one<{ parent_id: string; title: string }>("SELECT parent_id,title FROM pages WHERE id=?", page.pageId as string)!;
+  assert.equal(child.parent_id, plan);
+  assert.equal(child.title, "Receipt");
+  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.pageId as string)!.html;
+  assert.match(html, /href="https:\/\/example\.com\/r"/);
+  assert.match(html, /data-pdf="\/api\/files\/[a-f0-9-]+"/);
+  assert.equal(one<{ page_id: string }>("SELECT page_id FROM files WHERE id=?", (page.files as string[])[0].split("/").pop()!)!.page_id, page.pageId);
+
+  // Only a link: the host is the title. Nothing at all, other file types, too
+  // many files and viewers are refused.
+  const bare = await share(O, { targetId: plan, url: "https://news.example.org/story" });
+  assert.equal(one<{ title: string }>("SELECT title FROM pages WHERE id=?", bare.pageId as string)!.title, "news.example.org");
+  await assert.rejects(share(O, { targetId: plan }), /Nothing was shared/);
+  await assert.rejects(share(O, { targetId: plan }, [{ name: "x.html", type: "text/html", bytes: Buffer.from("<script>") }]), /Only photos and PDFs/);
+  await assert.rejects(share(O, { targetId: plan }, [{ name: "fake.pdf", type: "application/pdf", bytes: Buffer.from("not a pdf") }]), /Only photos and PDFs/);
+  await assert.rejects(
+    share(O, { targetId: plan }, Array.from({ length: 11 }, (_, i) => ({ name: `${i}.png`, type: "image/png", bytes: png }))),
+    (e: { status: number }) => e.status === 413,
+  );
+  await assert.rejects(share(V, { targetId: tasksDb, text: "No" }), (e: { status: number }) => e.status === 403);
+
+  // Through the endpoint: multipart with several "file" parts.
+  const { deviceToken } = phone(owner);
+  const form = new FormData();
+  form.append("action", "capture.share");
+  form.append("targetId", tasksDb);
+  form.append("title", "Two photos");
+  form.append("file", new File([new Uint8Array(png)], "a.png", { type: "image/png" }));
+  form.append("file", new File([new Uint8Array(png)], "b.png", { type: "image/png" }));
+  const response = await route.POST(
+    new Request("http://localhost/api/mobile/widgets/action", { method: "POST", headers: { authorization: `Bearer ${deviceToken}` }, body: form }),
+    { params: Promise.resolve({ action: "action" }) },
+  );
+  assert.equal(response.status, 200);
+  const answer = (await response.json()) as { ok: boolean; action: string; files: string[]; rowId: string; url: string };
+  assert.equal(answer.action, "capture.share");
+  assert.equal(answer.files.length, 2);
+  assert.match(answer.url, new RegExp(answer.rowId));
 });
 
 test("interactive tasks: my tasks, a view and a page, completed with the web app's rules", async () => {
@@ -412,6 +479,27 @@ test("pinned views and counters show only what the person may read", () => {
   // Average over a property the editor cannot read: refused.
   const [hidden] = widgets(E, [{ kind: "counter", config: { pageId: db, aggregate: "sum", fieldId: "secret" } }]);
   assert.equal(hidden.status, 400);
+});
+
+test("recently opened pages (Android app shortcuts): newest first, only what the person may read", () => {
+  const acc = account("widget-recent");
+  run("INSERT INTO members VALUES(?,?,?)", wid, acc.user.id, "editor");
+  const R = phone(acc).device;
+  const page = (title: string) => (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title, kind: "document" }) as { id: string }).id;
+  const [first, second, gone] = [page("First"), page("Second"), page("Gone")];
+  const privateWorkspace = createWorkspace(stranger.user.id, "Private");
+  const elsewhere = createPage(privateWorkspace, bootstrap(stranger.user, privateWorkspace).spaces[0].id, stranger.user.id, "Not yours", "document");
+  const visit = (pageId: string, at: number) => run("INSERT INTO page_visits(user_id,page_id,seen_at) VALUES(?,?,?)", R.id, pageId, at);
+  visit(first, 1);
+  visit(second, 3);
+  visit(gone, 4);
+  visit(elsewhere, 5);
+  run("UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", gone);
+  const recent = one_(R, "pinned", { mode: "recent", max: 5 });
+  assert.equal(recent.title, "Recently opened");
+  assert.deepEqual(recent.items.map((i: { title: string }) => i.title), ["Second", "First"]);
+  assert.equal(recent.items[0].url, `/#page=${second}`);
+  assert.deepEqual(one_(R, "pinned", { mode: "recent", max: 1 }).items.map((i: { id: string }) => i.id), [second]);
 });
 
 test("journals behind a PIN show 'locked'; encrypted spaces only a status", () => {

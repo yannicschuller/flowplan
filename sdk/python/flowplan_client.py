@@ -44,7 +44,7 @@ WidgetConfigCalendar = TypedDict("WidgetConfigCalendar", {
 
 # Configuration of a `pinned` widget.
 WidgetConfigPinned = TypedDict("WidgetConfigPinned", {
-    "mode": Literal["favorites", "page"],
+    "mode": Literal["favorites", "page", "recent"],
     "pageId": str,
     "viewId": str,
     "properties": list[str],
@@ -130,6 +130,14 @@ WidgetActionCaptureUpload = TypedDict("WidgetActionCaptureUpload", {
     "type": Required[Literal["photo", "voice"]],
     "title": str,
     "transcribe": bool,
+}, total=False)
+
+WidgetActionCaptureShare = TypedDict("WidgetActionCaptureShare", {
+    "action": Required[Literal["capture.share"]],
+    "targetId": Required[str],
+    "title": str,
+    "text": str,
+    "url": str,
 }, total=False)
 
 WidgetActionTaskComplete = TypedDict("WidgetActionTaskComplete", {
@@ -220,7 +228,7 @@ WidgetDataResponse = TypedDict("WidgetDataResponse", {
     "widgets": Required[list[dict[str, Any]]],
 }, total=False)
 
-WidgetAction = Union["WidgetActionCaptureNote", "WidgetActionCaptureTask", "WidgetActionCaptureUpload", "WidgetActionTaskComplete", "WidgetActionHabitCheck", "WidgetActionJournalTrack", "WidgetActionTimerStart", "WidgetActionTimerStop", "WidgetActionFocusStart", "WidgetActionFocusStop", "WidgetActionMentionRead", "WidgetActionMentionReadAll", "WidgetActionMeetingNote"]
+WidgetAction = Union["WidgetActionCaptureNote", "WidgetActionCaptureTask", "WidgetActionCaptureUpload", "WidgetActionCaptureShare", "WidgetActionTaskComplete", "WidgetActionHabitCheck", "WidgetActionJournalTrack", "WidgetActionTimerStart", "WidgetActionTimerStop", "WidgetActionFocusStart", "WidgetActionFocusStop", "WidgetActionMentionRead", "WidgetActionMentionReadAll", "WidgetActionMeetingNote"]
 
 # Every error answer. `error` is a sentence in the reader's language (German by default, English with Accept-Language).
 ErrorResponse = TypedDict("ErrorResponse", {
@@ -1831,7 +1839,7 @@ class FlowplanClient:
         return self._json("POST", "/api/mobile/widgets/data", json_body=body, headers=headers)
 
     def widget_action(self, body: "WidgetAction", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action)"""
+        """What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), save what was shared from another app (`capture.share`: title, text and link, with up to 10 photos or PDFs as repeated `file` parts), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action)"""
         return self._json("POST", "/api/mobile/widgets/action", json_body=body, headers=headers)
 
     def intent_pages(self, query: Optional["IntentPagesQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
