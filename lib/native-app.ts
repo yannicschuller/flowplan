@@ -17,6 +17,11 @@ type FlowplanApp = {
   // Whether "back" (window.FlowplanNavigation, lib/app-back.ts) would do
   // something: the app offers its back gesture only then.
   backState?: (canGoBack: boolean) => void;
+  // iPhone and iPad: the camera's document scanner. The app saves the scan
+  // as a PDF with the text it recognised at the end of this page (or
+  // record), through its own API (lib/mobile-capture.ts); the open editor
+  // gets it like any change from elsewhere.
+  scanDocument?: (target: { pageId: string; rowId?: string }) => void;
 };
 
 export function nativeApp(): FlowplanApp | undefined {
@@ -44,6 +49,14 @@ export function desktopApp(): FlowplanDesktop | undefined {
   return (window as unknown as { FlowplanDesktop?: FlowplanDesktop }).FlowplanDesktop;
 }
 export const inDesktopApp = () => typeof navigator !== "undefined" && /FlowplanDesktop\//.test(navigator.userAgent);
+
+// Whether the app here can scan documents (newer iOS apps).
+export const nativeScanAvailable = () => typeof nativeApp()?.scanDocument === "function";
+export function nativeScan(pageId: string, rowId?: string) {
+  try {
+    nativeApp()?.scanDocument?.({ pageId, ...(rowId ? { rowId } : {}) });
+  } catch {}
+}
 
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 // Several changes in a row lead to one refresh.

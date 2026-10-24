@@ -1379,6 +1379,10 @@ IntentWorkspacesQuery = TypedDict("IntentWorkspacesQuery", {
     "lang": str,  # Language (de, en, fr)
 }, total=False)
 
+MobileCaptureTargetsQuery = TypedDict("MobileCaptureTargetsQuery", {
+    "lang": str,  # Language of the titles (de, en, fr); the profile's language wins
+}, total=False)
+
 # ---- Client ----
 
 
@@ -1857,6 +1861,18 @@ class FlowplanClient:
     def intent_focus(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Hold back push notifications during a Focus — While `hide` is true, push notifications to this device that belong to another workspace than `workspaceId` (all of them when it is null) are left out; they stay in the inbox. Ends after `hours` (default 24) or with `hide: false`. 30 requests per person and minute. (POST /api/mobile/intents/focus)"""
         return self._json("POST", "/api/mobile/intents/focus", json_body=body, headers=headers)
+
+    def mobile_capture_targets(self, query: Optional["MobileCaptureTargetsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Where the share extension can save — The inbox (the person's capture database, null when none is set) and every database and document the person may add to, with the upload limits. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/targets)"""
+        return self._json("GET", "/api/mobile/capture/targets", query=dict(query) if query else None, headers=headers)
+
+    def mobile_capture_save(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Save shared text, a link, images or PDFs — From the share extension and the document scanner: JSON, or multipart/form-data with the fields and up to 10 `file` parts (images and PDFs). Into a database as a record (files in its first files property), into a document as a sub page (`place: subpage`) or at its end (`place: append`; also a record's document with `rowId`). `targetId: inbox` uses the capture database. `recognized` is the text the phone read in a scanned PDF, stored as its search text. 30 saves per person and minute, 20 with files per hour. (POST /api/mobile/capture/save)"""
+        return self._json("POST", "/api/mobile/capture/save", json_body=body, headers=headers)
+
+    def mobile_spotlight(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Pages and open tasks for the phone's search — The 500 most recently changed pages the person may read (title, place, a short excerpt) and up to 200 open tasks, for the on-device search index (iOS Spotlight). Nothing of end-to-end encrypted spaces, pages behind a journal PIN or journal days. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/spotlight)"""
+        return self._json("GET", "/api/mobile/capture/spotlight", headers=headers)
 
     def mcp(self, body: "McpRequest", headers: Optional[dict[str, str]] = None) -> "McpResponse":
         """MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp)"""

@@ -48,7 +48,7 @@ const fieldsOf = (pageId: string) => JSON.parse(one<{ fields: string }>("SELECT 
 
 // A target the person may add to: readable for writing, not read-only, not
 // behind a PIN, not end-to-end encrypted (the server would see plaintext).
-function captureTarget(user: Identity, pageId: string) {
+export function captureTarget(user: Identity, pageId: string) {
   const access = pageAccess(user, pageId);
   if (!access) throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
   if (access.encrypted) throw new HttpError(409, ct("Für verschlüsselte Seiten nicht verfügbar.", "Not available for encrypted pages."));
@@ -73,7 +73,7 @@ function dueField(user: Identity, page: Page) {
 }
 
 // A sub page of a document with the given content (inside a transaction).
-function subPage(writer: Identity, target: Page, title: string, html: string) {
+export function subPage(writer: Identity, target: Page, title: string, html: string) {
   const created = command(
     writer,
     { action: "page.create", workspaceId: target.workspace_id, spaceId: target.space_id, parentId: target.id, title: title.slice(0, 300), kind: "document" },
