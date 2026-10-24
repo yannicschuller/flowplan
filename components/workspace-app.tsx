@@ -3,6 +3,7 @@ import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice }
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { parseSettingsHash } from "@/lib/settings-sections";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
+import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
 import { nativeApp } from "@/lib/native-app";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
@@ -29,7 +30,7 @@ import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
-import { KeyboardShortcuts } from "./keyboard-shortcuts";
+import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
 import { activeKeymap, isMacPlatform, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
@@ -691,6 +692,17 @@ export default function WorkspaceApp({
   // "Back" in the apps (swipe from the edge, Android's back): closes what is
   // open, then goes up and to the place before (lib/app-back.ts).
   useEffect(() => (nativeApp() ? installAppBack() : undefined), []);
+  // The apps' hardware keyboard: the shortcuts as key commands, listed when
+  // ⌘ is held on the iPad (lib/app-shortcuts.ts).
+  useEffect(
+    () =>
+      installAppShortcuts(
+        (action) => shortcutRef.current(action),
+        (action) => (action === "shortcuts" ? t("Tastenkürzel", "Keyboard shortcuts") : actionLabel(action, t)),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   // The navigation drawer on phones closes on back like a dialog.
   useEffect(() => (mobile ? addBackCloser(() => setMobile(false)) : undefined), [mobile]);
   // Settings → Konto opens the introduction and the shortcut overlay again.
@@ -972,7 +984,8 @@ export default function WorkspaceApp({
       const action = matchAction(e, isTyping(e.target));
       if (!action) return;
       e.preventDefault();
-      shortcutRef.current(action);
+      // Once, also when the app reports the same key (lib/app-shortcuts.ts).
+      if (firstRun(action)) shortcutRef.current(action);
     };
     const network = () => setOnline(navigator.onLine);
     network();
@@ -4789,13 +4802,21 @@ export default function WorkspaceApp({
                 const starred = boot.favorites.includes(target.id);
                 return (
                   <>
-                    <Dropdown.Item
-                      className="dropdown-item"
-                      onSelect={() => window.open(url(), "_blank", "noopener")}
-                    >
-                      <ArrowSquareOut />
-                      {t("In neuem Tab öffnen", "Open in new tab")}
-                    </Dropdown.Item>
+                    {/* The iPad app opens the page in a window of its own. */}
+                    {nativeApp()?.openWindow ? (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => nativeApp()?.openWindow?.(url())}>
+                        <ArrowSquareOut />
+                        {t("In neuem Fenster öffnen", "Open in new window")}
+                      </Dropdown.Item>
+                    ) : (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => window.open(url(), "_blank", "noopener")}
+                      >
+                        <ArrowSquareOut />
+                        {t("In neuem Tab öffnen", "Open in new tab")}
+                      </Dropdown.Item>
+                    )}
                     {wide && !(screen === "page" && pageId === target.id) && (
                       <Dropdown.Item className="dropdown-item" onSelect={() => openSplit(target.id)}>
                         <SquareSplitHorizontal />

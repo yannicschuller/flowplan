@@ -116,3 +116,51 @@ test("a resting palm does not disturb the pen", async ({ page }, testInfo) => {
   expect(box.width).toBeGreaterThan(180);
   expect(box.height).toBeLessThan(60);
 });
+
+// With pen-only drawing off, fingers draw – but not the hand holding the pen
+// right after a stroke (lib/stylus.ts palmLikely).
+test("the palm after a stroke does not draw, also with pen-only drawing off", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers pen and touch.");
+  const { wb, at } = await board(page);
+  const cdp = await page.context().newCDPSession(page);
+  await wb.getByRole("button", { name: "Stift", exact: true }).click();
+  // Switched off on purpose (not "not decided yet").
+  await wb.getByLabel("Nur mit dem Stift zeichnen").check();
+  await wb.getByLabel("Nur mit dem Stift zeichnen").uncheck();
+  await pen(cdp, at(-100, -60), at(80, 40));
+  await expect(wb.locator(".wb-pen")).toHaveCount(1);
+  // The setting stays off after the first pen (it was decided).
+  await expect(wb.getByLabel("Nur mit dem Stift zeichnen")).not.toBeChecked();
+  // At once: the palm.
+  await finger(cdp, at(-150, 100), at(-50, 160));
+  await expect(wb.locator(".wb-pen")).toHaveCount(1);
+  // A moment later a finger draws.
+  await page.waitForTimeout(700);
+  await finger(cdp, at(-150, 100), at(-50, 160));
+  await expect(wb.locator(".wb-pen")).toHaveCount(2);
+});
+
+// Scribble: handwriting into a sticky note's text runs past its edges; the
+// pen there writes, it does not close the note or draw.
+test("Scribble next to an open text field keeps it open", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One run covers the pen.");
+  const { wb, at } = await board(page);
+  const cdp = await page.context().newCDPSession(page);
+  // A double click makes a note and opens its text.
+  const start = at(0, -80);
+  await page.mouse.dblclick(start.x, start.y);
+  const editor = wb.locator("textarea.wb-editor");
+  await expect(editor).toBeFocused();
+  await page.keyboard.type("Hallo");
+  const box = (await editor.boundingBox())!;
+  const near = { x: box.x + box.width + 12, y: box.y + box.height / 2 };
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: near.x, y: near.y, clickCount: 1, pointerType: "pen", button: "left", buttons: 1, force: 0.5 });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: near.x, y: near.y, clickCount: 1, pointerType: "pen", button: "left", buttons: 1, force: 0.5 });
+  await expect(editor).toBeVisible();
+  // Far from the field the pen closes it as before.
+  const far = at(-200, 150);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: far.x, y: far.y, clickCount: 1, pointerType: "pen", button: "left", buttons: 1, force: 0.5 });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: far.x, y: far.y, clickCount: 1, pointerType: "pen", button: "left", buttons: 1, force: 0.5 });
+  await expect(editor).toHaveCount(0);
+  await expect(wb.locator(".wb-sticky", { hasText: "Hallo" })).toBeVisible();
+});

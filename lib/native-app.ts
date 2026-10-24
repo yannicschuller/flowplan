@@ -17,6 +17,12 @@ type FlowplanApp = {
   // Whether "back" (window.FlowplanNavigation, lib/app-back.ts) would do
   // something: the app offers its back gesture only then.
   backState?: (canGoBack: boolean) => void;
+  // The global shortcuts for the hardware keyboard: the app makes key
+  // commands of them (lib/app-shortcuts.ts).
+  shortcuts?: (commands: unknown[]) => void;
+  // iPad: a page of the instance in a window of its own (only offered where
+  // the app can open windows).
+  openWindow?: (url: string) => void;
 };
 
 export function nativeApp(): FlowplanApp | undefined {
