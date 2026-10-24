@@ -2,6 +2,7 @@
 // The language in the browser: provided by the root layout, switchable.
 // Switching stores the choice in a cookie for a year and reloads, so server
 // and client render the same language.
+import { safeCollisionPadding } from "./safe-area";
 import { createContext, useContext } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { CaretDown, Check } from "@phosphor-icons/react";
@@ -57,7 +58,7 @@ export function LanguageSwitch({ className }: { className?: string }) {
         <CaretDown size={11} aria-hidden />
       </Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content className="dropdown language-menu" side="top" align="end" sideOffset={6} collisionPadding={8}>
+        <Dropdown.Content className="dropdown language-menu" side="top" align="end" sideOffset={6} collisionPadding={safeCollisionPadding()}>
           <Dropdown.RadioGroup value={locale} onValueChange={(l) => isLocale(l) && l !== locale && setLocale(l)}>
             {LOCALES.map((l) => (
               <Dropdown.RadioItem key={l} value={l} lang={l} className="dropdown-item">

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, type ReactNode } from "react";
+import { safeInsets } from "./safe-area";
 
 export type ContextMenuItem = { icon: ReactNode; label: string; run: () => void; danger?: boolean; disabled?: boolean } | "separator";
 
@@ -28,10 +29,11 @@ export function ContextMenu({ x, y, label, items, onClose }: { x: number; y: num
       window.removeEventListener("resize", shut);
     };
   }, []);
-  // Stays inside the window.
+  // Stays inside the window and out of its safe areas (notch, home indicator).
   const height = items.length * 36;
-  const left = Math.max(8, Math.min(x, (typeof window === "undefined" ? 1200 : window.innerWidth) - 240));
-  const top = Math.max(8, Math.min(y, (typeof window === "undefined" ? 800 : window.innerHeight) - height - 16));
+  const safe = safeInsets();
+  const left = Math.max(8 + safe.left, Math.min(x, (typeof window === "undefined" ? 1200 : window.innerWidth) - 240 - safe.right));
+  const top = Math.max(8 + safe.top, Math.min(y, (typeof window === "undefined" ? 800 : window.innerHeight) - height - 16 - safe.bottom));
   return (
     <div ref={menu} className="dropdown record-menu" role="menu" aria-label={label} style={{ position: "fixed", left, top }}>
       {items.map((item, index) =>

@@ -1,6 +1,7 @@
 "use client";
 // Following a page, who has read it and what changed since one's own last
 // visit (components of the page header and above the content).
+import { safeCollisionPadding } from "./safe-area";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useLocale, useT } from "./i18n";
 import { translate, type Locale } from "@/lib/i18n";
@@ -81,7 +82,7 @@ export function ReadersButton({ readers }: { readers: Reader[] }) {
         <small>{others.length}</small>
       </Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content className="dropdown readers-menu" align="end" sideOffset={6}>
+        <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown readers-menu" align="end" sideOffset={6}>
           <Dropdown.Label className="menu-label">{t("Gesehen von", "Seen by")}</Dropdown.Label>
           {others.slice(0, 20).map((reader) => (
             <div className="reader" key={reader.id}>

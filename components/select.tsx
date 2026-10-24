@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { safeInsets } from "./safe-area";
 import { CaretDown, Check } from "@phosphor-icons/react";
 
 type Choice = {
@@ -97,8 +98,10 @@ export function Select({
               left: r.left + host.clientLeft - host.scrollLeft,
             };
           })();
-    const below = window.innerHeight - rect.bottom;
-    const up = below < 240 && rect.top > below;
+    // The room above and below, without the status bar and home indicator.
+    const safe = safeInsets();
+    const below = window.innerHeight - safe.bottom - rect.bottom;
+    const up = below < 240 && rect.top - safe.top > below;
     setPlace({
       host,
       top: (up ? rect.top - 4 : rect.bottom + 4) - base.top,

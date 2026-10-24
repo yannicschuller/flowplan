@@ -1,4 +1,5 @@
 "use client";
+import { safeCollisionPadding } from "./safe-area";
 import { useState, type ReactNode } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { DotsThree, Lightning, FlowArrow, Copy, Timer, GitBranch } from "@phosphor-icons/react";
@@ -56,7 +57,7 @@ export function DatabaseTools({
           </button>
         </Dropdown.Trigger>
         <Dropdown.Portal>
-          <Dropdown.Content className="dropdown" align="end" sideOffset={4}>
+          <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end" sideOffset={4}>
             {item(<Copy />, t("Datensatzvorlagen", "Record templates"), onTemplates)}
             <Dropdown.Separator className="dropdown-separator" />
             {item(<Lightning />, t("Automationen", "Automations"), () => setPanel("automations"), rules ? String(rules) : undefined)}

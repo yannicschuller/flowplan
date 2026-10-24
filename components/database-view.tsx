@@ -1,5 +1,6 @@
 "use client";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
+import { safeCollisionPadding } from "./safe-area";
 import { serverMessage } from "@/lib/i18n-errors";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { CSV_FORMULA } from "@/lib/cell-text";
@@ -2590,7 +2591,7 @@ export default function DatabaseView({
               </button>
             </Dropdown.Trigger>
             <Dropdown.Portal>
-              <Dropdown.Content className="dropdown" align="start" sideOffset={4}>
+              <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="start" sideOffset={4}>
                 {viewTabs.more.map((v) => {
                   const Icon = viewIcons[v.type];
                   return (
