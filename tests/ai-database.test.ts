@@ -62,6 +62,13 @@ const row = (cells: Record<string, unknown>, user: Identity = admin) => (command
 const cells = (rowId: string) => JSON.parse(one<{ cells: string }>("SELECT cells FROM rows WHERE id=?", rowId)!.cells) as Record<string, unknown>;
 const field = (fid: string) => database(books).fields.find((f) => f.id === fid)!;
 const context = { names: () => "", relationTitles: () => [], content: () => "Inhalt des Eintrags" };
+// The debounce and the queue on one clock. processAutoDirty queues its jobs
+// due at the `now` it is given; the queue must then run at that time, not at
+// its own Date.now(), which can still be the millisecond before.
+let clock = 0;
+const later = () => (clock = Math.max(Date.now(), clock) + 1);
+const settle = () => processAutoDirty(0, later());
+const work = () => processAiCellJobs(50, Math.max(Date.now(), clock));
 
 // ---- Templates and constraints ----
 
@@ -219,7 +226,7 @@ test("Für alle ausfüllen: queued, processed in the background, private records
   const total = one<{ n: number }>("SELECT count(*) n FROM rows WHERE page_id=?", books)!.n;
   assert.equal(queued.queued, total - 1, "the private record is skipped");
   assert.equal(aiDatabaseStatus(ben, books).pending, queued.queued);
-  while (aiDatabaseStatus(ben, books).pending) await processAiCellJobs(50);
+  while (aiDatabaseStatus(ben, books).pending) await work();
   const filled = (await import("../lib/db")).all<{ cells: string }>("SELECT cells FROM rows WHERE page_id=? AND access!='private'", books);
   // Records with a description got a summary; without one there is nothing to summarize.
   for (const r of filled.map((x) => JSON.parse(x.cells))) assert.equal(typeof r.summary === "string" && r.summary.startsWith("Zusammenfassung"), !!r.desc, JSON.stringify(r));
@@ -231,7 +238,7 @@ test("Mit KI ausfüllen: only empty cells of the chosen property, constrained to
   mock.answer = () => '{"value": ["Lustig", "Erfunden"]}';
   const queued = queueAiCells(ben, { pageId: books, fieldId: "tags", rowIds: [a, b], mode: "fill" });
   assert.deepEqual(queued, { queued: 1, skipped: 1 });
-  await processAiCellJobs(50);
+  await work();
   assert.deepEqual(cells(a).tags, ["Lustig"]);
   assert.deepEqual(cells(b).tags, ["Lang"], "filled cells stay");
   assert.match(mock.chats[mock.chats.length - 1].prompt, /Gesucht: Tags/);
@@ -248,46 +255,47 @@ test("over the rate limit, queued values wait instead of failing", async () => {
   try {
     limitAi(limited.id);
   } catch {}
-  await processAiCellJobs(50);
+  await work();
   const job = one<{ next_at: number }>("SELECT next_at FROM ai_cell_jobs WHERE row_id=?", r);
   assert.ok(job && job.next_at > Date.now() + 30_000, "postponed by a minute");
   process.env.FLOWPLAN_AI_REQUESTS_PER_HOUR = "100000";
 });
 
-test("automatic updates: debounced, only when inputs change, stop when the person loses access", async () => {
+test("automatic updates: debounced, only when inputs change, stop when the person loses access", async (t) => {
   schema(ben, database(books).fields.map((f) => (f.id === "summary" ? { ...f, ai: { ...f.ai!, auto: true } } : f)));
   const r = row({ title: "Faust", desc: "Ein Gelehrter wettet." });
   mock.answer = (request) => `{"value": "Kurz: ${request.prompt.includes("Teufel") ? "Teufel" : "Gelehrter"}"}`;
   assert.ok(one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "new records are marked");
   assert.equal(processAutoDirty(60_000), 0, "debounced: too recent");
-  assert.equal(processAutoDirty(0, Date.now() + 1), 1);
+  assert.equal(settle(), 1);
   assert.equal(one<{ user_id: string; mode: string }>("SELECT user_id,mode FROM ai_cell_jobs WHERE row_id=?", r)?.user_id, ben.id);
-  await processAiCellJobs(50);
+  await work();
   assert.equal(cells(r).summary, "Kurz: Gelehrter");
   // Its own write and changes elsewhere do not recompute.
-  processAutoDirty(0, Date.now() + 1);
+  settle();
   const v = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
   command(admin, { action: "row.update", pageId: books, rowId: r, version: v, cells: { author: "Goethe" } });
-  assert.equal(processAutoDirty(0, Date.now() + 1), 0, "the author is no input");
+  assert.equal(settle(), 0, "the author is no input");
   // A referenced property changes: recomputed as Ben.
   const v2 = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
   command(admin, { action: "row.update", pageId: books, rowId: r, version: v2, cells: { desc: "Ein Gelehrter wettet mit dem Teufel." } });
-  assert.equal(processAutoDirty(0, Date.now() + 1), 1);
-  await processAiCellJobs(50);
+  assert.equal(settle(), 1);
+  await work();
   assert.equal(cells(r).summary, "Kurz: Teufel");
   assert.equal(one<{ computed_by: string }>("SELECT computed_by FROM ai_cell_meta WHERE row_id=? AND field_id='summary'", r)!.computed_by, ben.id);
   // Ben becomes a viewer: the next run stops automatic updates.
   run("UPDATE members SET role='viewer' WHERE workspace_id=? AND user_id=?", wid, ben.id);
+  // Restored even if an assertion fails, so later tests keep Ben as editor.
+  t.after(() => run("UPDATE members SET role='editor' WHERE workspace_id=? AND user_id=?", wid, ben.id));
   const v3 = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
   command(admin, { action: "row.update", pageId: books, rowId: r, version: v3, cells: { desc: "Neu." } });
-  processAutoDirty(0, Date.now() + 1);
-  await processAiCellJobs(50);
+  settle();
+  await work();
   assert.equal(field("summary").ai?.auto, undefined, "switched off");
   assert.equal(cells(r).summary, "Kurz: Teufel", "nothing written in his name");
-  run("UPDATE members SET role='editor' WHERE workspace_id=? AND user_id=?", wid, ben.id);
 });
 
-test("automatic values never take 'Zuletzt geändert' as input: refused when saved, left out of the hash", async () => {
+test("automatic values never take 'Zuletzt geändert' as input: refused when saved, left out of the hash", async (t) => {
   const withChanged: Field[] = [...database(books).fields.filter((f) => f.id !== "summary"), { id: "changed", name: "Geändert", type: "updated_at" }];
   const stamped = (ai: Partial<Field["ai"]> = {}): Field => ({ id: "summary", name: "Zusammenfassung", type: "text", ai: { prompt: "Fasse {Beschreibung} zusammen, Stand {Geändert}", ...ai } });
   assert.throws(() => schema(ben, [...withChanged, stamped({ auto: true })]), /jedem Schreiben der KI/);
@@ -296,27 +304,28 @@ test("automatic values never take 'Zuletzt geändert' as input: refused when sav
   // A property switched on before this check existed: its own write must
   // not queue it again once the minute changes.
   run("UPDATE databases SET fields=? WHERE page_id=?", JSON.stringify([...withChanged, stamped({ auto: true, autoBy: ben.id })]), books);
+  // Switched off again even if an assertion fails: later schema saves would be refused.
+  t.after(() => schema(admin, [...withChanged, stamped()]));
   let calls = 0;
   mock.answer = () => `{"value": "Antwort ${++calls}"}`;
   // Only this record's prompts (jobs of earlier tests may still be waiting).
   const asked = () => mock.chats.filter((c) => c.prompt.includes("Briefe"));
   const r = row({ title: "Werther", desc: "Briefe eines Unglücklichen." });
-  assert.equal(processAutoDirty(0, Date.now() + 1), 1);
-  await processAiCellJobs(50);
+  assert.equal(settle(), 1);
+  await work();
   assert.equal(asked().length, 1);
   assert.match(asked()[0].prompt, /Stand \d{4}-\d{2}-\d{2}/, "the prompt itself carries the timestamp");
   assert.ok(one("SELECT 1 FROM ai_auto_dirty WHERE row_id=?", r), "marked dirty by its own write");
   run("UPDATE rows SET cells=cells,updated_at=datetime('now','+2 minutes') WHERE id=?", r);
-  assert.equal(processAutoDirty(0, Date.now() + 1), 0, "a later minute is no new input");
-  await processAiCellJobs(50);
+  assert.equal(settle(), 0, "a later minute is no new input");
+  await work();
   assert.equal(asked().length, 1);
   // A referenced property changing still recomputes.
   const v = one<{ version: number }>("SELECT version FROM rows WHERE id=?", r)!.version;
   command(admin, { action: "row.update", pageId: books, rowId: r, version: v, cells: { desc: "Briefe an Lotte." } });
-  assert.equal(processAutoDirty(0, Date.now() + 1), 1);
-  await processAiCellJobs(50);
+  assert.equal(settle(), 1);
+  await work();
   assert.equal(asked().length, 2);
-  schema(admin, [...withChanged, stamped()]);
 });
 
 test("removing an AI property removes its bookkeeping", () => {
