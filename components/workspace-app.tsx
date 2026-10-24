@@ -1,4 +1,5 @@
 "use client";
+import { safeCollisionPadding } from "./safe-area";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { parseSettingsHash } from "@/lib/settings-sections";
@@ -1984,7 +1985,7 @@ export default function WorkspaceApp({
             <CaretDown size={14} />
           </Dropdown.Trigger>
           <Dropdown.Portal>
-            <Dropdown.Content className="dropdown" align="start" sideOffset={4}>
+            <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="start" sideOffset={4}>
               {boot.workspaces.map((w) => (
                 <Dropdown.Item
                   className="dropdown-item"
@@ -2304,7 +2305,7 @@ export default function WorkspaceApp({
                 <DotsThree size={22} />
               </Dropdown.Trigger>
               <Dropdown.Portal>
-                <Dropdown.Content className="dropdown" align="end">
+                <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
                   <Dropdown.Item
                     className="dropdown-item"
                     onSelect={() => {
@@ -2515,7 +2516,7 @@ export default function WorkspaceApp({
                   <DotsThree size={24} />
                 </Dropdown.Trigger>
                 <Dropdown.Portal>
-                  <Dropdown.Content className="dropdown" align="end">
+                  <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => {
@@ -4800,7 +4801,7 @@ export default function WorkspaceApp({
               className="dropdown"
               align="start"
               sideOffset={2}
-              collisionPadding={8}
+              collisionPadding={safeCollisionPadding()}
               aria-label={t(`Aktionen für ${pageMenu.page.title || "Ohne Titel"}`, `Actions for ${pageMenu.page.title || "Untitled"}`)}
             >
               {(() => {

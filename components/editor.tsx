@@ -1,4 +1,5 @@
 "use client";
+import { safeCollisionPadding } from "./safe-area";
 import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutlineOpen } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
@@ -1818,7 +1819,7 @@ export default function DocumentEditor({
                 </button>
               </Dropdown.Trigger>
               <Dropdown.Portal>
-                <Dropdown.Content
+                <Dropdown.Content collisionPadding={safeCollisionPadding()}
                   className="dropdown color-menu"
                   sideOffset={6}
                   onCloseAutoFocus={(event) => event.preventDefault()}

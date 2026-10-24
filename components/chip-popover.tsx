@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { CaretDown } from "@phosphor-icons/react";
+import { safeInsets } from "./safe-area";
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -87,9 +88,11 @@ export function ChipPopover({
       if (!el || !anchor) return;
       const left = anchor.getBoundingClientRect().left;
       const width = el.offsetWidth;
-      const room = window.innerWidth - 8;
+      // Within the window and clear of the notch in landscape.
+      const safe = safeInsets();
+      const room = window.innerWidth - 8 - safe.right;
       let next = Math.min(0, room - (left + width));
-      if (left + next < 8) next = 8 - left;
+      if (left + next < 8 + safe.left) next = 8 + safe.left - left;
       setShift((current) => (Math.abs(current - next) > 1 ? next : current));
     };
     place();

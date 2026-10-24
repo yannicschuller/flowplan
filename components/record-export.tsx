@@ -2,6 +2,7 @@
 // Export menus for databases and single records: CSV of the current view,
 // Markdown (with frontmatter) as one file or as a ZIP with files, and for a
 // record also Print / PDF.
+import { safeCollisionPadding } from "./safe-area";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { DotsThree, DownloadSimple, FileCsv, FileDoc, FileText, FileZip, NotePencil, Printer } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -54,7 +55,7 @@ export function DatabaseExportMenu({
         </button>
       </Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content className="dropdown" align="end" sideOffset={4}>
+        <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end" sideOffset={4}>
           <Dropdown.Item className="dropdown-item" onSelect={onCsv}>
             <FileCsv />
             {t("CSV (aktuelle Ansicht)", "CSV (current view)")}
@@ -111,7 +112,7 @@ export function RecordExportMenu({
         </button>
       </Dropdown.Trigger>
       <Dropdown.Portal>
-        <Dropdown.Content className="dropdown" align="end" sideOffset={4}>
+        <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end" sideOffset={4}>
           <Dropdown.Item className="dropdown-item" onSelect={run("markdown")}>
             <FileText />
             {t("Als Markdown exportieren (.md)", "Export as Markdown (.md)")}

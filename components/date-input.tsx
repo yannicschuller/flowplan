@@ -100,6 +100,9 @@ export default function DateInput({
   return (
     <div
       className="date-input"
+      // iOS shows an empty date field as a blank box; the stylesheet puts
+      // this hint in it on touch screens (app/globals.css, .date-input).
+      data-placeholder={draft || disabled ? undefined : t("Datum wählen", "Pick a date")}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null))
           void save();

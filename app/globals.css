@@ -23,6 +23,11 @@
   font-family: var(--font-ui);
   font-feature-settings: "ss01", "cv05";
   color-scheme: light;
+  /* iOS enlarges text it thinks is too small for a wide block ("text
+     autosizing") – in landscape and wherever a line runs wider than the
+     screen, e.g. a long link in a dialog. Sizes stay as written. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 * {
   box-sizing: border-box;
@@ -4824,6 +4829,16 @@ h2:has(> .row-title-input) .row-title-icon {
 .row-property > * {
   min-width: 0;
 }
+/* A date with its "time" checkbox below: the name lines up with the field,
+   not with the middle of field and checkbox. */
+.row-property:has(> * > .date-input) {
+  align-items: start;
+}
+.row-property:has(> * > .date-input) > span:first-child {
+  display: flex;
+  align-items: center;
+  min-height: calc(1.5em + 22px);
+}
 @media (max-width: 600px) {
   .row-property {
     grid-template-columns: 104px minmax(0, 1fr);
@@ -4840,6 +4855,44 @@ input:is([type="date"], [type="datetime-local"], [type="time"]) {
 }
 input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-and-time-value {
   text-align: left;
+  /* Empty, iOS draws the value as nothing at all and the field shrinks to
+     a thin strip; one line keeps it as tall as the fields around it. */
+  min-height: 1.5em;
+}
+/* An empty date field on touch screens: iOS shows a blank box, so a hint
+   ("Pick a date") sits in it like a placeholder (components/date-input.tsx
+   sets data-placeholder while the field is empty). Laid over the field in
+   the same grid cell; taps go through to the field. */
+@media (pointer: coarse) {
+  .date-input[data-placeholder] > input {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .date-input[data-placeholder]::before {
+    content: attr(data-placeholder);
+    grid-row: 1;
+    grid-column: 1;
+    align-self: center;
+    z-index: 1;
+    padding: 0 12px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--date-placeholder-size, inherit);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+  .date-input[data-placeholder]:focus-within::before {
+    content: none;
+  }
+  /* Browsers that do draw "dd.mm.yyyy" (Chrome on Android tablets) leave
+     the hint the room until the field is focused. */
+  .date-input[data-placeholder] > input:not(:focus)::-webkit-datetime-edit {
+    color: transparent;
+  }
+  .row-property .date-input {
+    --date-placeholder-size: 13px;
+  }
 }
 .row-notes {
   border-top: 1px solid var(--border);
@@ -5590,6 +5643,9 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .row-property input,
   .row-property :is(select, .fp-select) {
     font-size: 14px;
+  }
+  .row-property .date-input {
+    --date-placeholder-size: 14px;
   }
   .row-detail h2 {
     font-size: 25px;
@@ -18986,6 +19042,100 @@ h3 .block-reactions {
     bottom: calc(88px + var(--safe-bottom));
   }
 }
+/* Without the sidebar (collapsed, focus mode) the page reaches the left
+   edge – in landscape that is where the notch or Dynamic Island sits. */
+@media (min-width: 768px) {
+  .app-shell:is(.desktop-collapsed, .focus-mode) .main {
+    padding-left: var(--safe-left);
+  }
+}
+.toast {
+  left: calc(50% + (var(--safe-left) - var(--safe-right)) / 2);
+  max-width: calc(100% - 32px - var(--safe-left) - var(--safe-right));
+}
+.offline-refresh-status {
+  left: calc(12px + var(--safe-left));
+  bottom: calc(12px + var(--safe-bottom));
+}
+.maintenance-banner {
+  top: calc(10px + var(--safe-top));
+}
+.document-outline {
+  right: calc(20px + var(--safe-right));
+}
+.pdf-viewer,
+.presentation {
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+.pdf-viewer-bar {
+  padding-top: calc(6px + var(--safe-top));
+}
+.presentation {
+  padding-top: var(--safe-top);
+}
+
+/* Dialogs keep out of the safe areas as well. A centred dialog is centred
+   in the room between them and never taller or wider than that room (with
+   a margin), so its heading and buttons do not slide under the status bar
+   or the home indicator, nor in landscape under the notch. Full-height
+   dialogs (record as a page or side panel) reach the edges with their
+   background and pad their content instead; bottom sheets end above the
+   home indicator. --modal-margin is the gap to the room's edge. */
+:root {
+  --modal-margin: 16px;
+}
+.modal {
+  top: calc(50% + (var(--safe-top) - var(--safe-bottom)) / 2);
+  left: calc(50% + (var(--safe-left) - var(--safe-right)) / 2);
+  max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 2 * var(--modal-margin));
+  max-height: min(85dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--modal-margin)));
+}
+@media (max-width: 767px) {
+  :root {
+    --modal-margin: 12px;
+  }
+  .modal {
+    max-height: min(90dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--modal-margin)));
+  }
+}
+.modal.modal-full,
+.modal.modal-side {
+  padding-top: calc(23px + var(--safe-top));
+  padding-bottom: calc(23px + var(--safe-bottom));
+  padding-right: calc(23px + var(--safe-right));
+}
+.modal.modal-full {
+  left: 50%;
+  padding-left: calc(23px + var(--safe-left));
+}
+@media (max-width: 767px) {
+  .modal.modal-full,
+  .modal.modal-side {
+    padding: calc(20px + var(--safe-top)) calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom))
+      calc(20px + var(--safe-left));
+  }
+}
+/* A side panel as wide as the screen also touches the left edge. */
+@media (max-width: 620px) {
+  .modal.modal-side {
+    padding-left: calc(20px + var(--safe-left));
+  }
+}
+.modal.survey-builder-modal {
+  max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 2 * var(--modal-margin));
+}
+/* Menus never run under the home indicator or the notch (Radix measures
+   the room to the window edge; components/safe-area.ts adds the insets to
+   its collision padding, here the height follows). */
+.dropdown {
+  max-height: min(
+    calc(85dvh - var(--safe-top) - var(--safe-bottom)),
+    var(--radix-dropdown-menu-content-available-height, 85dvh)
+  );
+}
+.chip-popover {
+  max-width: min(560px, calc(100vw - 16px - var(--safe-left) - var(--safe-right)));
+}
 
 /* Kind of a new database (tasks, documents, empty, saved templates). */
 .database-kinds {
@@ -21079,6 +21229,9 @@ h3 .block-reactions {
 }
 .related-pages ul {
   display: grid;
+  /* One column as wide as the list: an implicit column would grow to the
+     longest unbroken title and push the list out of a narrow dialog. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   margin: 0;
   padding: 0;
@@ -21087,24 +21240,53 @@ h3 .block-reactions {
 .related-page {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
   min-width: 0;
   padding: 5px 6px;
   border-radius: 6px;
+  font-size: 13px;
   text-align: left;
 }
 .related-page:hover {
   background: var(--hover);
 }
+.related-page > svg {
+  flex-shrink: 0;
+}
 .related-page .related-title {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .related-page small {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
+}
+/* Phones: the title takes the room, where it is from goes below it. */
+@media (max-width: 600px) {
+  .related-page {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .related-page .related-title {
+    flex: 1 1 calc(100% - 32px);
+  }
+  .related-page small {
+    max-width: none;
+    margin-left: 24px;
+  }
+  .related-page small + small {
+    margin-left: 0;
+  }
 }
 .duplicate-hint {
   display: flex;
@@ -24698,10 +24880,11 @@ label.ws-search input {
     bottom: 0;
     left: 0;
     width: 100%;
-    max-height: 92dvh;
+    max-width: none;
+    max-height: min(92dvh, calc(100dvh - var(--safe-top) - 12px));
     transform: none;
     border-radius: 16px 16px 0 0;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+    padding: 20px calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(20px + var(--safe-left));
   }
 }
 @media (max-width: 700px) {
