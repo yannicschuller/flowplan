@@ -11,6 +11,7 @@ import type { Identity, Page } from "./types";
 import { userLocale } from "./user-locale";
 import { localizedMessage } from "./i18n-errors";
 import { translate } from "./i18n";
+import { focusSilences } from "./mobile-focus";
 const runtime = globalThis as unknown as {
   flowplanPushTimer?: ReturnType<typeof setInterval>;
   flowplanPushRun?: Promise<void>;
@@ -268,6 +269,11 @@ export async function flushPushQueue(
             page.deleted_at ||
             !pageRole({ id: job.user_id } as Identity, page)))
       ) {
+        run("DELETE FROM push_deliveries WHERE id=?", job.id);
+        return;
+      }
+      // A Focus filter of the app holds other workspaces back (lib/mobile-focus.ts).
+      if (job.endpoint.startsWith(EXPO_ENDPOINT) && focusSilences(job.subscription_id, page?.workspace_id, now)) {
         run("DELETE FROM push_deliveries WHERE id=?", job.id);
         return;
       }
