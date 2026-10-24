@@ -148,7 +148,9 @@ test("scheduled rules create records from a template, once per date, as their cr
   const tomorrow = since + 86_400_000;
   assert.equal(transaction(() => processScheduledAutomations(since)), 0);
   assert.equal(transaction(() => processScheduledAutomations(tomorrow)), 1);
-  assert.equal(transaction(() => processScheduledAutomations(tomorrow + 60_000)), 0);
+  // Once per date: running again for the same slot creates nothing. (Not a minute later: just
+  // before midnight UTC that minute would already be the next day's slot.)
+  assert.equal(transaction(() => processScheduledAutomations(tomorrow)), 0);
   const created = one<{ cells: string; created_by: string; content: string }>(
     "SELECT cells,created_by,content FROM rows WHERE page_id=? ORDER BY rowid DESC LIMIT 1",
     pageId,
