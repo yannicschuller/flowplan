@@ -25,7 +25,7 @@ import { queryRows } from "./database";
 import { doneRule, isDone } from "./database-settings-schema";
 import { scheduleFields } from "./database-timeline";
 import { validZone } from "./date-values";
-import { openTasksEverywhere } from "./doc-tasks";
+import { openTasksEverywhere, taskKey } from "./doc-tasks";
 import { rewriteStoredDocument } from "./document-rewrite";
 import { visibleFields } from "./field-access";
 import { formatNumber } from "./field-format";
@@ -237,6 +237,8 @@ const rowTitle = (loaded: Pick<Loaded, "fields" | "shown">, row: Row) => {
   return first && loaded.shown.includes(first) ? clip(cellText(row.cells[first.id])) || untitled() : untitled();
 };
 
+// What an action sends back unchanged: links and identities are never cut.
+const KEEP_WHOLE = new Set(["url", "id", "pageId", "rowId", "fieldId", "viewId", "notificationId", "key", "source", "due", "day", "start", "end", "createdAt"]);
 // Makes an answer fit: the longest list loses its last entries, then texts
 // get shorter, until the JSON is at most MAX_WIDGET_BYTES.
 export function capped<T extends Record<string, unknown>>(data: T): T & { truncated?: true } {
@@ -257,7 +259,7 @@ export function capped<T extends Record<string, unknown>>(data: T): T & { trunca
   const shorten = (node: unknown, max: number): unknown => {
     if (typeof node === "string") return node.length > max ? `${node.slice(0, max - 1)}…` : node;
     if (Array.isArray(node)) return node.map((v) => shorten(v, max));
-    if (node && typeof node === "object") return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, k === "url" ? v : shorten(v, max)]));
+    if (node && typeof node === "object") return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, KEEP_WHOLE.has(k) ? v : shorten(v, max)]));
     return node;
   };
   for (const max of [60, 40, 24, 12]) {
@@ -303,11 +305,13 @@ function captureData(ctx: Context, config: WidgetConfig<"capture">) {
 // ---- 2. Interactive tasks ----
 
 export type WidgetTask = {
-  // Everything the "task.complete" action needs back.
+  // Everything the "task.complete" action needs back: for document tasks
+  // the position and the key (the text is shortened for showing).
   source: "doc" | "row";
   pageId: string;
   rowId: string | null;
   index?: number;
+  key?: string;
   text: string;
   due: string | null;
   done: boolean;
@@ -324,6 +328,15 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
   let items: WidgetTask[] = [];
   let heading = ct("Meine Aufgaben", "My tasks");
   if (config.source === "mine") {
+    // A task given to the person can sit in a page they may only read.
+    const editable = new Map<string, boolean>();
+    const canEdit = (pageId: string) => {
+      if (!editable.has(pageId)) {
+        const access = pageAccess(user, pageId);
+        editable.set(pageId, !!access && rank[access.role] >= 2 && !access.page.locked && !access.locked && !access.encrypted);
+      }
+      return editable.get(pageId)!;
+    };
     items = openTasksEverywhere(user)
       .filter((t) => t.assigned || t.journal || t.due)
       .filter((t) => keep(t.due))
@@ -332,12 +345,13 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
         pageId: t.pageId,
         rowId: t.rowId,
         index: t.index,
+        key: taskKey(t.text),
         text: clip(t.text, 120),
         due: t.due,
         done: false,
         page: clip(t.title || untitled(), DETAIL),
         url: url(t.pageId, t.rowId),
-        canEdit: true,
+        canEdit: canEdit(t.pageId),
       }));
   } else if (config.source === "page") {
     const access = requireAccess(user, config.pageId);
@@ -357,6 +371,7 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
         pageId: access.page.id,
         rowId: t.row_id || null,
         index: t.idx,
+        key: taskKey(t.text),
         text: clip(t.text, 120),
         due: t.due,
         done: false,

@@ -196,8 +196,9 @@ async function captureUpload(user: Identity, input: z.infer<(typeof actionSchema
 function completeTask(user: Identity, input: z.infer<(typeof actionSchemas)["task.complete"]>) {
   const writer = writerOf(user);
   if (input.source === "doc") {
-    if (input.index === undefined || input.text === undefined) throw new HttpError(400, ct("Ungültige Anfrage.", "Invalid request."));
-    command(writer, { action: "task.update", pageId: input.pageId, rowId: input.rowId || null, index: input.index, text: input.text, checked: input.done });
+    if (input.index === undefined || (input.key === undefined && input.text === undefined)) throw new HttpError(400, ct("Ungültige Anfrage.", "Invalid request."));
+    const identity = input.key !== undefined ? { key: input.key } : { text: input.text };
+    command(writer, { action: "task.update", pageId: input.pageId, rowId: input.rowId || null, index: input.index, ...identity, checked: input.done });
     return { done: input.done };
   }
   if (!input.rowId) throw new HttpError(400, ct("Ungültige Anfrage.", "Invalid request."));

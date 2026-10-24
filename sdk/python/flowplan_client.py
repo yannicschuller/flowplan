@@ -138,6 +138,7 @@ WidgetActionTaskComplete = TypedDict("WidgetActionTaskComplete", {
     "pageId": Required[str],
     "rowId": Optional[str],
     "index": int,
+    "key": str,
     "text": str,
     "done": bool,
 }, total=False)

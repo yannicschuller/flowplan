@@ -2,6 +2,7 @@
 // person, a due date can be set on it. They are collected per document on
 // every save, so "Meine Aufgaben" lists them across the workspace; ticking
 // one off there changes the document itself (live for open editors).
+import { createHash } from "node:crypto";
 import * as Y from "yjs";
 import { hiddenRowIds } from "./row-access";
 import { Node as PMNode } from "@tiptap/pm/model";
@@ -46,6 +47,21 @@ function lineOf(item: JsonNode) {
   }
   return { text: parts.join("").replace(/\s+/g, " ").trim(), assignees };
 }
+// The longest task text that is stored (and compared): longer lines are cut.
+export const TASK_TEXT_MAX = 500;
+// A task's identity for clients that only show it shortened (the widgets of
+// the mobile apps): a hash of its stored text, checked together with its
+// position like the text itself.
+export const taskKey = (text: string) => createHash("sha256").update(text.slice(0, TASK_TEXT_MAX)).digest("base64url").slice(0, 22);
+// Is this still the task the client saw? Its key, or its text: whole, or (app
+// builds before the key) as the widget showed it – cut and ending in "…".
+function sameTask(line: string, change: { text?: string; key?: string }) {
+  const stored = line.slice(0, TASK_TEXT_MAX);
+  if (change.key !== undefined) return taskKey(stored) === change.key;
+  const text = change.text ?? "";
+  if (text === stored) return true;
+  return text.length > 1 && text.endsWith("…") && stored.length >= text.length && stored.startsWith(text.slice(0, -1));
+}
 export function extractTasks(json: JsonNode): DocTask[] {
   const tasks: DocTask[] = [];
   const walk = (node: JsonNode) => {
@@ -89,7 +105,7 @@ export function syncDocTasks(
         page.id,
         rowId || "",
         task.index,
-        task.text.slice(0, 500),
+        task.text.slice(0, TASK_TEXT_MAX),
         task.checked ? 1 : 0,
         assignee,
         task.due,
@@ -212,15 +228,20 @@ export function otherWorkspaceTasks(user: Identity, workspaceId: string, include
 }
 
 // Changes one task (checked, due date) in the stored document and sends the
-// change to open editors.
-export const taskChangeSchema = z.object({
-  pageId: z.uuid(),
-  rowId: z.uuid().nullable().optional(),
-  index: z.number().int().min(0).max(5000),
-  text: z.string().max(500),
-  checked: z.boolean().optional(),
-  due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-});
+// change to open editors. The task is found by its position and checked by
+// its text (or key): a document changed meanwhile gives 409, never the
+// wrong task.
+export const taskChangeSchema = z
+  .object({
+    pageId: z.uuid(),
+    rowId: z.uuid().nullable().optional(),
+    index: z.number().int().min(0).max(5000),
+    text: z.string().max(TASK_TEXT_MAX).optional(),
+    key: z.string().min(1).max(64).optional(),
+    checked: z.boolean().optional(),
+    due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  })
+  .refine((change) => change.text !== undefined || change.key !== undefined, { message: "text or key" });
 export function changeDocTask(user: Identity, input: unknown) {
   const change = taskChangeSchema.parse(input);
   const page = requirePage(user, change.pageId, true);
@@ -242,7 +263,7 @@ export function changeDocTask(user: Identity, input: unknown) {
         if (tickAll) attrs = { ...node.attrs, checked: true };
         if (index === change.index) {
           const json = node.toJSON() as JsonNode;
-          if (lineOf(json).text !== change.text)
+          if (!sameTask(lineOf(json).text, change))
             throw new HttpError(409, "Die Aufgabe wurde inzwischen geändert. Bitte neu laden.");
           found = true;
           attrs = {
@@ -332,7 +353,7 @@ export function backfillDocTasks() {
             page.id,
             rowId || "",
             task.index,
-            task.text.slice(0, 500),
+            task.text.slice(0, TASK_TEXT_MAX),
             task.checked ? 1 : 0,
             assignee,
             task.due,

@@ -265,6 +265,110 @@ test("interactive tasks: my tasks, a view and a page, completed with the web app
   assert.equal(denied.status, 404);
 });
 
+test("checking off from the phone: long tasks, mentions with a due date, records – through the route", async () => {
+  const acc = account("widget-checker");
+  run("INSERT INTO members VALUES(?,?,?)", wid, acc.user.id, "editor");
+  const { deviceToken } = phone(acc);
+  const post = async (action: "data" | "action", body: Record<string, unknown>) => {
+    const response = await route.POST(
+      new Request(`http://localhost/api/mobile/widgets/${action}?lang=en`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ action }) },
+    );
+    return { status: response.status, body: (await response.json()) as Record<string, any> };
+  };
+  const tasks = async (config: Record<string, unknown>) => {
+    const answer = await post("data", { today: TODAY, zone: "UTC", widgets: [{ id: "t", kind: "tasks", config }] });
+    assert.equal(answer.status, 200);
+    const [result] = answer.body.widgets as Result[];
+    assert.equal(result.ok, true, result.error ?? "");
+    return result.data!.items as Record<string, any>[];
+  };
+  // What the app sends back: exactly the fields of the item.
+  const complete = (item: Record<string, any>) =>
+    post("action", { action: "task.complete", source: item.source, pageId: item.pageId, ...(item.rowId ? { rowId: item.rowId } : {}), ...(item.index !== undefined ? { index: item.index } : {}), ...(item.key ? { key: item.key } : {}), done: true });
+
+  const long = `Prepare the quarterly report with all numbers from sales, marketing and support, then ${"send it to everyone who asked for it ".repeat(4)}`.trim();
+  assert.ok(long.length > 120);
+  const longer = "x".repeat(520);
+  const mention = `<span data-mention="${acc.user.id}" class="mention">@widget-checker</span>`;
+  const doc = (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "Phone tasks", kind: "document" }) as { id: string }).id;
+  writeDocument(
+    owner.user,
+    wid,
+    doc,
+    `<ul data-type="taskList">${taskItem(`${mention} ${long}`, TODAY)}${taskItem(`Call ${mention} about the offer`, day(1))}${taskItem(`${mention} ${longer}`, day(2))}</ul>`,
+  );
+  const mine = await tasks({ source: "mine", filter: "open", max: 10 });
+  const ours = mine.filter((t) => t.pageId === doc);
+  assert.equal(ours.length, 3);
+  const [first, second, third] = ours;
+  // Shown shortened; identified by position and key.
+  assert.ok(first.text.length <= 120 && first.text.endsWith("…"));
+  assert.equal(typeof first.key, "string");
+  assert.equal(first.canEdit, true);
+  assert.equal(second.text, "Call @widget-checker about the offer");
+  assert.equal(second.due, day(1));
+
+  assert.equal((await complete(first)).status, 200);
+  assert.equal((await complete(second)).status, 200);
+  assert.equal((await complete(third)).status, 200);
+  const after = await tasks({ source: "mine", filter: "open", max: 10 });
+  assert.equal(after.filter((t) => t.pageId === doc).length, 0);
+  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM doc_tasks WHERE page_id=? AND checked=1", doc)!.n, 3);
+  assert.equal((await tasks({ source: "page", pageId: doc })).length, 0);
+
+  // A stale position is still refused (the document changed meanwhile).
+  writeDocument(owner.user, wid, doc, `<ul data-type="taskList">${taskItem(`${mention} Something new`, TODAY)}${taskItem(`${mention} Second`, TODAY)}</ul>`);
+  const fresh = (await tasks({ source: "page", pageId: doc })).find((t) => t.text.endsWith("Second"))!;
+  const stale = await complete({ ...fresh, index: 0 });
+  assert.equal(stale.status, 409);
+  assert.equal(typeof stale.body.error, "string");
+  // App builds before the key send the shown text, shortened with "…".
+  const old = (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "Old app", kind: "document" }) as { id: string }).id;
+  writeDocument(owner.user, wid, old, `<ul data-type="taskList">${taskItem(`${mention} ${long}`, TODAY)}</ul>`);
+  const legacy = (await tasks({ source: "page", pageId: old }))[0];
+  assert.ok(legacy.text.endsWith("…"));
+  assert.equal((await post("action", { action: "task.complete", source: "doc", pageId: old, index: legacy.index, text: legacy.text, done: true })).status, 200);
+  assert.equal((await tasks({ source: "page", pageId: old })).length, 0);
+
+  // A task in a record's document, and a record of a database view.
+  const db = makeDatabase(owner.user, wid, sid, "Phone records", [
+    { id: "title", name: "Title", type: "text" },
+    { id: "due", name: "Due", type: "date" },
+    { id: "done", name: "Erledigt", type: "checkbox" },
+  ]);
+  const record = addRow(owner.user, db, { title: "Order paper", due: TODAY });
+  const { rowDocumentData } = await import("../lib/row-documents");
+  const Y = await import("yjs");
+  const initial = rowDocumentData(owner.user, db, record);
+  const rowDoc = new Y.Doc();
+  Y.applyUpdate(rowDoc, Buffer.from(initial.state, "base64"));
+  Y.applyUpdate(rowDoc, htmlState(`<ul data-type="taskList">${taskItem(`${mention} Check the invoice`, TODAY)}</ul>`));
+  command(owner.user, { action: "row.document.sync", pageId: db, rowId: record, generation: initial.generation, update: Buffer.from(Y.encodeStateAsUpdate(rowDoc)).toString("base64") });
+  const inRecord = (await tasks({ source: "mine", filter: "today" })).find((t) => t.rowId === record)!;
+  assert.equal(inRecord.text, "@widget-checker Check the invoice");
+  assert.equal((await complete(inRecord)).status, 200);
+  assert.equal((await tasks({ source: "mine", filter: "today" })).filter((t) => t.rowId === record).length, 0);
+
+  const row = (await tasks({ source: "view", pageId: db, filter: "today" })).find((t) => t.rowId === record)!;
+  assert.equal(row.source, "row");
+  assert.equal(row.canEdit, true);
+  assert.equal((await complete(row)).status, 200);
+  assert.equal((await tasks({ source: "view", pageId: db, filter: "today" })).filter((t) => t.rowId === record).length, 0);
+
+  // A task given to the person in a page they may only read: shown, not tickable.
+  const readOnly = (command(owner.user, { action: "page.create", workspaceId: wid, spaceId: sid, title: "Read only", kind: "document" }) as { id: string }).id;
+  writeDocument(owner.user, wid, readOnly, `<ul data-type="taskList">${taskItem(`${mention} Just look`, TODAY)}</ul>`);
+  run("UPDATE pages SET locked=1 WHERE id=?", readOnly);
+  const locked = (await tasks({ source: "mine", filter: "today" })).find((t) => t.pageId === readOnly)!;
+  assert.equal(locked.canEdit, false);
+  assert.equal((await complete(locked)).status, 409);
+});
+
 test("pinned views and counters show only what the person may read", () => {
   const rows = [
     { title: "Won deal", stage: "won", amount: 10, secret: "S-100" },

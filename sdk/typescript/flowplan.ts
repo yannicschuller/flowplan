@@ -127,6 +127,7 @@ export type WidgetActionTaskComplete = {
   pageId: string;
   rowId?: string | null;
   index?: number;
+  key?: string;
   text?: string;
   done?: boolean;
 };

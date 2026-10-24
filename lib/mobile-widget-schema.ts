@@ -128,6 +128,9 @@ export const actionSchemas = {
     pageId: uuid,
     rowId: uuid.nullable().optional(),
     index: z.number().int().min(0).max(5000).optional(),
+    // A document task: its position and its `key` from the widget's answer
+    // (or its text, from app builds before the key).
+    key: z.string().min(1).max(64).optional(),
     text: z.string().max(500).optional(),
     done: z.boolean().default(true),
   }),
