@@ -1356,6 +1356,21 @@ WidgetOptionsQuery = TypedDict("WidgetOptionsQuery", {
     "lang": str,  # Language of the titles (de, en, fr); the profile's language wins
 }, total=False)
 
+IntentPagesQuery = TypedDict("IntentPagesQuery", {
+    "q": str,  # Part of the title
+    "ids": str,  # Comma-separated page IDs
+    "lang": str,  # Language of the titles (de, en, fr); the profile's language wins
+}, total=False)
+
+IntentSearchQuery = TypedDict("IntentSearchQuery", {
+    "q": Required[str],  # Search text
+    "lang": str,  # Language of the titles (de, en, fr)
+}, total=False)
+
+IntentWorkspacesQuery = TypedDict("IntentWorkspacesQuery", {
+    "lang": str,  # Language (de, en, fr)
+}, total=False)
+
 # ---- Client ----
 
 
@@ -1818,6 +1833,22 @@ class FlowplanClient:
     def widget_action(self, body: "WidgetAction", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action)"""
         return self._json("POST", "/api/mobile/widgets/action", json_body=body, headers=headers)
+
+    def intent_pages(self, query: Optional["IntentPagesQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Pages to open from Siri and Shortcuts — At most 20 readable pages across the person's workspaces: whose title contains `q`, the ones listed in `ids`, or – without either – favorites and recently opened pages. Nothing of end-to-end encrypted spaces. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/pages)"""
+        return self._json("GET", "/api/mobile/intents/pages", query=dict(query) if query else None, headers=headers)
+
+    def intent_search(self, query: "IntentSearchQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Full-text search for Siri and Shortcuts — The web app's search in every workspace of the person, at most 10 hits with plain-text snippets. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/search)"""
+        return self._json("GET", "/api/mobile/intents/search", query=dict(query) if query else None, headers=headers)
+
+    def intent_workspaces(self, query: Optional["IntentWorkspacesQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Workspaces for a Focus filter — The person's workspaces by name. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/workspaces)"""
+        return self._json("GET", "/api/mobile/intents/workspaces", query=dict(query) if query else None, headers=headers)
+
+    def intent_focus(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Hold back push notifications during a Focus — While `hide` is true, push notifications to this device that belong to another workspace than `workspaceId` (all of them when it is null) are left out; they stay in the inbox. Ends after `hours` (default 24) or with `hide: false`. 30 requests per person and minute. (POST /api/mobile/intents/focus)"""
+        return self._json("POST", "/api/mobile/intents/focus", json_body=body, headers=headers)
 
     def mcp(self, body: "McpRequest", headers: Optional[dict[str, str]] = None) -> "McpResponse":
         """MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp)"""

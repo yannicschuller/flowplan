@@ -2383,6 +2383,56 @@ export class FlowplanClient {
   }>("POST", `/api/mobile/widgets/action`, { json: body }, options);
   }
 
+  /** Pages to open from Siri and Shortcuts — At most 20 readable pages across the person's workspaces: whose title contains `q`, the ones listed in `ids`, or – without either – favorites and recently opened pages. Nothing of end-to-end encrypted spaces. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/pages) */
+  async intentPages(query?: { q?: string; ids?: string; lang?: string }, options?: RequestOptions): Promise<{
+    pages: Record<string, unknown>[];
+  }> {
+    return this.json<{
+    pages: Record<string, unknown>[];
+  }>("GET", `/api/mobile/intents/pages`, { query }, options);
+  }
+
+  /** Full-text search for Siri and Shortcuts — The web app's search in every workspace of the person, at most 10 hits with plain-text snippets. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/search) */
+  async intentSearch(query: { q: string; lang?: string }, options?: RequestOptions): Promise<{
+    query: string;
+    results: Record<string, unknown>[];
+  }> {
+    return this.json<{
+    query: string;
+    results: Record<string, unknown>[];
+  }>("GET", `/api/mobile/intents/search`, { query }, options);
+  }
+
+  /** Workspaces for a Focus filter — The person's workspaces by name. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/workspaces) */
+  async intentWorkspaces(query?: { lang?: string }, options?: RequestOptions): Promise<{
+    workspaces: {
+      id?: string;
+      name?: string;
+    }[];
+  }> {
+    return this.json<{
+    workspaces: {
+      id?: string;
+      name?: string;
+    }[];
+  }>("GET", `/api/mobile/intents/workspaces`, { query }, options);
+  }
+
+  /** Hold back push notifications during a Focus — While `hide` is true, push notifications to this device that belong to another workspace than `workspaceId` (all of them when it is null) are left out; they stay in the inbox. Ends after `hours` (default 24) or with `hide: false`. 30 requests per person and minute. (POST /api/mobile/intents/focus) */
+  async intentFocus(body: {
+    workspaceId?: string | null;
+    hide?: boolean;
+    hours?: number;
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    focus?: Record<string, unknown> | null;
+  }> {
+    return this.json<{
+    ok: boolean;
+    focus?: Record<string, unknown> | null;
+  }>("POST", `/api/mobile/intents/focus`, { json: body }, options);
+  }
+
   /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp) */
   async mcp(body: McpRequest, options?: RequestOptions): Promise<McpResponse> {
     return this.json<McpResponse>("POST", `/api/mcp`, { json: body }, options);

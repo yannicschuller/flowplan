@@ -958,6 +958,21 @@ export default function WorkspaceApp({
         const back =
           screenRef.current === "page" && currentId.current ? `page=${currentId.current}` : screenRef.current || "home";
         window.history.replaceState(null, "", `${location.pathname}#${back}`);
+      } else if (fragment.startsWith("workspace=") || fragment.startsWith("search=")) {
+        // From the mobile app (Focus filters, Siri "Search Flowplan"): the
+        // workspace to switch to, or the search with its text.
+        const params = new URLSearchParams(fragment);
+        const workspace = params.get("workspace");
+        const text = params.get("search");
+        const back =
+          screenRef.current === "page" && currentId.current ? `page=${currentId.current}` : screenRef.current || "home";
+        window.history.replaceState(null, "", `${location.pathname}#${back}`);
+        if (workspace && /^[0-9a-f-]{36}$/i.test(workspace) && workspace !== currentWorkspace.current)
+          void switchWorkspace(workspace);
+        if (text !== null) {
+          openSearch();
+          setQuery(text.slice(0, 200));
+        }
       }
     };
     navigate();
