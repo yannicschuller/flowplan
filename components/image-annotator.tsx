@@ -4,6 +4,7 @@
 // pixels, so they stay sharp at any size. Saving writes a new image with the
 // markings; the original and the shapes stay on the image, so the markings
 // can be changed or removed later without loss.
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowArcLeft,
@@ -146,6 +147,7 @@ export function ImageAnnotator({
   onClose: () => void;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   // Markings are drawn on the original; an image without one is its own.
   const base = original || src;
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -399,10 +401,10 @@ export function ImageAnnotator({
             ))}
           </div>
           <div>
-            <button type="button" aria-label={t("Rückgängig", "Undo")} title={t("Rückgängig (⌘Z)", "Undo (⌘Z)")} disabled={!shapes.length} onClick={undo}>
+            <button type="button" aria-label={t("Rückgängig", "Undo")} title={t("Rückgängig", "Undo") + keyHints.suffix("Mod+Z")} disabled={!shapes.length} onClick={undo}>
               <ArrowArcLeft size={18} />
             </button>
-            <button type="button" aria-label={t("Wiederholen", "Redo")} title={t("Wiederholen (⇧⌘Z)", "Redo (⇧⌘Z)")} disabled={!undone.length} onClick={redo}>
+            <button type="button" aria-label={t("Wiederholen", "Redo")} title={t("Wiederholen", "Redo") + keyHints.suffix("Mod+Shift+Z")} disabled={!undone.length} onClick={redo}>
               <ArrowArcRight size={18} />
             </button>
             <button

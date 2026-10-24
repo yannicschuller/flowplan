@@ -36,7 +36,11 @@ test("combinations are parsed into one written form", () => {
   assert.equal(normalizeCombo("mod+k"), "Mod+K");
   assert.equal(normalizeCombo("Shift + Alt + Mod + n"), "Mod+Alt+Shift+N");
   assert.equal(normalizeCombo("ctrl+option+esc"), "Ctrl+Alt+Escape");
-  assert.equal(normalizeCombo("cmd+space"), "Meta+Space");
+  // ⌘ / Cmd is the platform modifier: stored as Mod, so it is Ctrl on a PC.
+  assert.equal(normalizeCombo("cmd+space"), "Mod+Space");
+  assert.equal(normalizeCombo("⌘+⌥+N"), "Mod+Alt+N");
+  assert.equal(normalizeCombo("Win+K"), "Meta+K");
+  assert.equal(normalizeCombo("⌃+K"), "Ctrl+K");
   assert.equal(normalizeCombo("Mod+Plus"), "Mod+Plus");
   assert.equal(normalizeCombo("f2"), "F2");
   // A character typed with Shift carries it already.

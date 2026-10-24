@@ -1,6 +1,7 @@
 "use client";
 // Settings → Darstellung & Sprache: language (profile, all devices),
 // light or dark (this device), keyboard shortcuts and the introduction.
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { CircleHalf, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { clearLocale, setLocale, useT } from "../../i18n";
@@ -10,6 +11,7 @@ import { useUserSettings } from "../user-context";
 
 export default function AppearanceSection() {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const { boot, mutate, theme, setTheme } = useUserSettings();
   const [status, run] = useSaveState();
   return (
@@ -60,7 +62,11 @@ export default function AppearanceSection() {
       <SettingGroup id="help" title={t("Hilfe", "Help")}>
         <SettingRow
           label={t("Alle Tastenkürzel", "All keyboard shortcuts")}
-          description={t("Die Übersicht öffnet sich überall mit ? oder ⌘ / Ctrl + /.", "The overview opens anywhere with ? or ⌘ / Ctrl + /.")}
+          description={
+            keyHints.visible
+              ? t(`Die Übersicht öffnet sich überall mit ? oder ${keyHints.keys("Mod+/")}.`, `The overview opens anywhere with ? or ${keyHints.keys("Mod+/")}.`)
+              : t("Für eine angeschlossene Tastatur.", "For an attached keyboard.")
+          }
         >
           <button type="button" className="button" onClick={() => window.dispatchEvent(new Event("flowplan:shortcuts"))}>
             <Keyboard size={16} aria-hidden="true" />

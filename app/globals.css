@@ -192,19 +192,27 @@ small {
 svg {
   flex-shrink: 0;
 }
-label {
+label,
+/* A field with several controls (a date with its "Remove date" button):
+   looks like a label, but is none – a label would pass every tap on its
+   buttons to its first input (WebKit), opening the date picker instead. */
+.field-group {
   display: flex;
   flex-direction: column;
   gap: 7px;
   margin-bottom: 18px;
   font-weight: 500;
 }
-label small {
+label small,
+.field-group small {
   font-weight: 400;
 }
 label input,
 label :is(select, .fp-select),
-label textarea {
+label textarea,
+.field-group input,
+.field-group :is(select, .fp-select),
+.field-group textarea {
   width: 100%;
   font-weight: 400;
 }
@@ -217,6 +225,17 @@ kbd,
   padding: 1px 5px;
   font-family: inherit;
   white-space: nowrap;
+}
+/* Shortcut hints only where a keyboard is (lib/keyboard-hints.ts sets
+   data-keyboard-hints; before that, touch-only screens hide them). The
+   shortcut overview itself always lists the keys. */
+:root[data-keyboard-hints="off"] :is(kbd, .keycap, .kbd-hint):not(.shortcuts-dialog *) {
+  display: none !important;
+}
+@media (hover: none) and (pointer: coarse) {
+  :root:not([data-keyboard-hints]) :is(kbd, .keycap, .kbd-hint):not(.shortcuts-dialog *) {
+    display: none !important;
+  }
 }
 .muted {
   color: var(--muted);
@@ -992,7 +1011,7 @@ kbd,
   font-size: 11px;
   color: #a3a9b2;
 }
-.home-footnote > span:last-child {
+.home-footnote > .kbd-hint {
   margin-left: auto;
 }
 .page-top-actions {
@@ -5383,7 +5402,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     margin-top: 30px;
     font-size: 10px;
   }
-  .home-footnote > span:last-child {
+  .home-footnote > .kbd-hint {
     display: none;
   }
   .page-content,
@@ -20019,7 +20038,7 @@ h3 .block-reactions {
   padding: 0;
   list-style: none;
 }
-.onboarding-keys kbd {
+.onboarding-keys :is(kbd, code) {
   display: inline-block;
   min-width: 110px;
   margin-right: 8px;
@@ -20180,7 +20199,7 @@ h3 .block-reactions {
   gap: 12px;
   margin-top: 10px;
 }
-.link-protection-body label {
+.link-protection-body .field-group {
   display: grid;
   gap: 4px;
   color: var(--secondary);

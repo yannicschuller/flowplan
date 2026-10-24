@@ -1,6 +1,7 @@
 "use client";
 // The database a capture goes into, with the person's default capture
 // database preselected; "Use as default" remembers another choice.
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useEffect, useState } from "react";
 import { useT } from "./i18n";
 import { Select } from "./select";
@@ -77,6 +78,7 @@ export function CaptureTargetPicker({
 // as a card with one row; saves on change.
 export function CaptureDefaultSetting({ workspaceId }: { workspaceId: string }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const [targets, setTargets] = useCaptureTargets(workspaceId);
   const [status, run] = useSaveState();
   if (!targets?.databases.length) return null;
@@ -86,8 +88,8 @@ export function CaptureDefaultSetting({ workspaceId }: { workspaceId: string }) 
         id="capture-default"
         label={t("Datenbank zum Erfassen", "Database for capturing")}
         description={t(
-          "Teilen, Web-Clipper und „Schnell erfassen“ (⌘⌥N) legen Einträge in dieser Datenbank an, etwa in deinem Eingang. Die Standardvorlage der Datenbank wird übernommen.",
-          "Share, the web clipper and “Quick capture” (⌘⌥N) create records in this database, e.g. your inbox. The database's default record template applies.",
+          `Teilen, Web-Clipper und „Schnell erfassen“${keyHints.action("capture") && ` (${keyHints.action("capture")})`} legen Einträge in dieser Datenbank an, etwa in deinem Eingang. Die Standardvorlage der Datenbank wird übernommen.`,
+          `Share, the web clipper and “Quick capture”${keyHints.action("capture") && ` (${keyHints.action("capture")})`} create records in this database, e.g. your inbox. The database's default record template applies.`,
         )}
       >
         <Select

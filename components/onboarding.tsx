@@ -3,6 +3,7 @@
 // appearance, workspace name, e-mail summaries, push), pages to start with,
 // and a short tour of what Flowplan does. Shown once (users.onboarded_at);
 // Settings → General and the command palette open it again.
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
@@ -59,6 +60,7 @@ export function Onboarding({
   onClose: () => void;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const locale = useLocale();
   const owner = boot.workspace.role === "owner";
   const canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest;
@@ -134,7 +136,10 @@ export function Onboarding({
       icon: MagnifyingGlass,
       title: t("Suchen und erfassen", "Search and capture"),
       text: t("Volltextsuche über alles, auch in PDFs und Bildern. Schnellerfassung landet direkt in einer Datenbank deiner Wahl.", "Full-text search across everything, also in PDFs and images. Quick capture lands right in a database of your choice."),
-      tip: t("⌘/Strg + K sucht, ⌘/Strg + ⌥ + N erfasst.", "⌘/Ctrl + K searches, ⌘/Ctrl + ⌥ + N captures."),
+      tip:
+        keyHints.action("search") && keyHints.action("capture")
+          ? t(`${keyHints.action("search")} sucht, ${keyHints.action("capture")} erfasst.`, `${keyHints.action("search")} searches, ${keyHints.action("capture")} captures.`)
+          : t("Die Suche in der Seitenleiste findet alles, auch Text in PDFs.", "The search in the sidebar finds everything, text in PDFs too."),
       slug: "search-and-notifications",
     },
     {
@@ -390,16 +395,21 @@ export function Onboarding({
                 ))}
               </p>
             )}
+            {/* Shortcuts only with a keyboard (lib/keyboard-hints.ts); "/" is typed. */}
             <ul className="onboarding-keys">
+              {keyHints.action("search") && (
+                <li>
+                  <kbd>{keyHints.action("search")}</kbd> {t("Suchen und Befehle", "Search and commands")}
+                </li>
+              )}
               <li>
-                <kbd>{t("⌘/Strg K", "⌘/Ctrl K")}</kbd> {t("Suchen und Befehle", "Search and commands")}
+                <code>/</code> {t("Blöcke in einer Seite", "Blocks in a page")}
               </li>
-              <li>
-                <kbd>/</kbd> {t("Blöcke in einer Seite", "Blocks in a page")}
-              </li>
-              <li>
-                <kbd>{t("⌘/Strg ⌥ N", "⌘/Ctrl ⌥ N")}</kbd> {t("Schnell erfassen", "Quick capture")}
-              </li>
+              {keyHints.action("capture") && (
+                <li>
+                  <kbd>{keyHints.action("capture")}</kbd> {t("Schnell erfassen", "Quick capture")}
+                </li>
+              )}
             </ul>
             <p className="muted">
               {t("Diese Einführung findest du wieder unter Einstellungen → Darstellung & Sprache.", "You find this introduction again under Settings → Appearance & language.")}

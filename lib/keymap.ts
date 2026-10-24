@@ -7,6 +7,10 @@
 //
 // A combination is written as "Mod+Alt+N": modifiers first (Mod, Ctrl, Meta,
 // Alt, Shift), then one key. "Mod" is ⌘ on Apple devices and Ctrl elsewhere.
+// Recorded and stored combinations use Mod for that key, so one account's
+// shortcuts work on a Mac and a PC alike; "Ctrl" and "Meta" stay for the
+// other physical keys (⌃ on the Mac, the Windows key elsewhere).
+import { appleOS, currentOS } from "./device-os";
 
 export const SHORTCUT_ACTIONS = [
   "search",
@@ -152,9 +156,11 @@ export function parseCombo(text: string): Combo | null {
       lower = part.toLowerCase(),
       last = i === parts.length - 1;
     const modifier =
-      lower === "mod" ? "mod"
-      : lower === "ctrl" || lower === "control" || lower === "strg" ? "ctrl"
-      : lower === "meta" || lower === "cmd" || lower === "command" || lower === "⌘" || lower === "super" || lower === "win" ? "meta"
+      // ⌘ / Cmd is the Apple name of the platform modifier: stored as Mod,
+      // so the combination works with Ctrl on Windows and Linux as well.
+      lower === "mod" || lower === "cmd" || lower === "command" || lower === "⌘" ? "mod"
+      : lower === "ctrl" || lower === "control" || lower === "strg" || lower === "⌃" ? "ctrl"
+      : lower === "meta" || lower === "super" || lower === "win" ? "meta"
       : lower === "alt" || lower === "option" || lower === "opt" || lower === "⌥" ? "alt"
       : lower === "shift" || lower === "⇧" ? "shift"
       : null;
@@ -197,11 +203,10 @@ export function platformCombo(text: string, mac: boolean): string | null {
   });
 }
 
+// Whether THIS device writes and presses shortcuts the Apple way (⌘ for Mod).
+// Decided per device (lib/device-os.ts), never per account.
 export function isMacPlatform(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const platform =
-    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform || navigator.userAgent;
-  return /mac|iphone|ipad|ipod/i.test(platform);
+  return appleOS(currentOS());
 }
 
 // The parts of a key event the keymap needs (KeyboardEvent fits).
@@ -349,10 +354,12 @@ const KEY_LABELS: Record<string, string> = {
   Backspace: "⌫",
   Plus: "+",
 };
+// Off the Mac keys are written out, as on the keycaps there.
+const PC_KEY_LABELS: Record<string, string> = { Enter: "Enter", Backspace: "Backspace" };
 export function formatCombo(text: string, mac: boolean): string {
   const c = parseCombo(text);
   if (!c) return text;
-  const key = KEY_LABELS[c.key] || c.key;
+  const key = (!mac && PC_KEY_LABELS[c.key]) || KEY_LABELS[c.key] || c.key;
   if (mac)
     return [c.ctrl && "⌃", c.alt && "⌥", c.shift && "⇧", (c.mod || c.meta) && "⌘", key].filter(Boolean).join(" ");
   return [(c.mod || c.ctrl) && "Ctrl", c.meta && "Win", c.alt && "Alt", c.shift && "Shift", key].filter(Boolean).join(" + ");

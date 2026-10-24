@@ -67,8 +67,10 @@ export function LinkProtection({
   return (
     <details className="link-protection">
       <summary>{t("Passwort und Ablaufdatum", "Password and expiry date")}</summary>
+      {/* Groups, no <label>s: WebKit passes taps on their buttons ("Kein
+          Ablauf", "Entfernen") to the first input, opening the date picker. */}
       <div className="link-protection-body">
-        <label>
+        <div className="field-group">
           {password ? t("Neues Passwort", "New password") : t("Passwort", "Password")}
           <span className="link-protection-row">
             <input
@@ -91,8 +93,8 @@ export function LinkProtection({
             )}
           </span>
           <small className="muted">{t("Mindestens 6 Zeichen. Besucher geben es einmal pro Gerät ein.", "At least 6 characters. Visitors enter it once per device.")}</small>
-        </label>
-        <label>
+        </div>
+        <div className="field-group">
           {t("Läuft ab am", "Expires on")}
           <span className="link-protection-row">
             <input
@@ -116,7 +118,7 @@ export function LinkProtection({
             )}
           </span>
           <small className="muted">{t("Danach zeigt der Link nur noch „abgelaufen“ – auch für Dateien.", "Afterwards the link only shows “expired” – files included.")}</small>
-        </label>
+        </div>
       </div>
     </details>
   );

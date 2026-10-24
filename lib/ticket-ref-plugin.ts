@@ -2,6 +2,7 @@
 // the workspace uses that prefix. Nothing is stored – the text stays plain,
 // so references written before the ID property existed work too. A click
 // opens the record, hovering shows its title and status.
+import { keyboardHints } from "./keyboard-hints";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -69,7 +70,13 @@ export const TicketRefs = Extension.create<{ pageId: string }>({
               titles.set(ticket, "…");
               void resolve(pageId, ticket).then((found) => {
                 if (view.isDestroyed) return;
-                const hint = view.editable ? tr("⌘/Strg-Klick öffnet den Eintrag", "⌘/Ctrl-click opens the record") : "";
+                const keys = keyboardHints();
+                const hint =
+                  view.editable && keys.visible
+                    ? keys.mac
+                      ? tr("⌘-Klick öffnet den Eintrag", "⌘-click opens the record")
+                      : tr("Ctrl-Klick öffnet den Eintrag", "Ctrl-click opens the record")
+                    : "";
                 const text = found
                   ? [[found.title, found.status, found.database].filter(Boolean).join(" · "), hint].filter(Boolean).join("\n")
                   : tr("Kein Eintrag mit dieser Nummer", "No record with this number");

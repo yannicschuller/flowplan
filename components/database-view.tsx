@@ -1,4 +1,5 @@
 "use client";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/i18n-errors";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { CSV_FORMULA } from "@/lib/cell-text";
@@ -125,7 +126,7 @@ import {
   deeperGroupingFields,
   type DatabaseGroup,
 } from "@/lib/database-groups";
-import { CellInput } from "./cell-input";
+import { CellInput, FieldLabel } from "./cell-input";
 import { FieldAccessEditor, FieldLock } from "./field-access-editor";
 import { describeRule } from "@/lib/field-access-rules";
 export { CellInput } from "./cell-input";
@@ -340,6 +341,7 @@ export default function DatabaseView({
   onError: (s: string) => void;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   // "Mit KI zusammenfassen" for the view's records or one record.
   const aiSummarize = useAiAvailability("summarize", page.id);
   const aiBlockedHint = useAiBlockedHint();
@@ -741,7 +743,7 @@ export default function DatabaseView({
             className={`icon-button read-mode-toggle${readRows.includes(row.id) ? " active" : ""}`}
             aria-pressed={readRows.includes(row.id)}
             aria-label={readRows.includes(row.id) ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")}
-            title={readRows.includes(row.id) ? t("Bearbeiten (⌘⌥E)", "Edit (⌘⌥E)") : t("Lesemodus (⌘⌥E)", "Reading mode (⌘⌥E)")}
+            title={(readRows.includes(row.id) ? t("Bearbeiten", "Edit") : t("Lesemodus", "Reading mode")) + keyHints.suffix("Mod+Alt+E")}
             onClick={() => toggleRecordReading(row.id)}
           >
             {readRows.includes(row.id) ? <PencilSimple size={17} /> : <BookOpen size={17} />}
@@ -4176,7 +4178,7 @@ export default function DatabaseView({
               </Select>
             </label>
             {fields.find((f) => f.id === bulkField) && (
-              <label>
+              <FieldLabel field={fields.find((f) => f.id === bulkField)!}>
                 {t("Neuer Wert", "New value")}
                 <CellInput
                   key={bulkField}
@@ -4188,7 +4190,7 @@ export default function DatabaseView({
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
                 />
-              </label>
+              </FieldLabel>
             )}
           </>
         )}
@@ -5318,7 +5320,7 @@ export default function DatabaseView({
               <div className="row-properties">
                 {recordFields.map((f) => (
                   <Fragment key={`${selected.id}-${f.id}`}>
-                    <PropertyRow group={f.type === "files"}>
+                    <PropertyRow group={f.type === "files" || f.type === "date"}>
                       <span>{f.name}</span>
                       {computedTypes.includes(f.type) ? (
                         <span>
@@ -5815,6 +5817,9 @@ function PropertyRow({
   group: boolean;
   children: ReactNode;
 }) {
+  // Fields with several controls (files; a date with "Datum entfernen" and
+  // its time switch) are no <label>: WebKit passes taps on their buttons to
+  // the first input, which reopened the date picker instead of clearing.
   return group ? (
     <div className="row-property">{children}</div>
   ) : (

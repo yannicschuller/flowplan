@@ -1,4 +1,5 @@
 "use client";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
@@ -87,6 +88,7 @@ export function CommentComposer({
   disabled?: boolean;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const listId = useId();
   const [error, setError] = useState(""),
     [mention, setMention] = useState<MentionRange | null>(null),
@@ -552,7 +554,8 @@ export function CommentComposer({
         </p>
       )}
       <small className="comment-input-hint">
-        {body.length.toLocaleString(LOCALE_TAG)} / 5.000 · {t("⌘/Strg+Enter zum Senden", "⌘/Ctrl+Enter to send")}
+        {body.length.toLocaleString(LOCALE_TAG)} / 5.000
+        {keyHints.visible && ` · ${t(`${keyHints.keys("Mod+Enter")} zum Senden`, `${keyHints.keys("Mod+Enter")} to send`)}`}
       </small>
     </fieldset>
   );

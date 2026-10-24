@@ -42,7 +42,7 @@ function pickDate(view: EditorView, pos: number, current: string | null, anchor:
   const input = document.createElement("input");
   input.type = "date";
   input.className = "task-due-picker";
-  input.setAttribute("aria-label", "Fällig am");
+  input.setAttribute("aria-label", tr("Fällig am", "Due on"));
   input.value = current || localToday();
   box.append(input);
   const rect = anchor.getBoundingClientRect();
@@ -63,24 +63,25 @@ function pickDate(view: EditorView, pos: number, current: string | null, anchor:
     if (done) return;
     done = true;
     box.remove();
-    document.removeEventListener("mousedown", outside, true);
+    document.removeEventListener("pointerdown", outside, true);
   };
-  const outside = (event: MouseEvent) => {
+  const outside = (event: Event) => {
     if (!box.contains(event.target as Node)) finish();
   };
   if (current) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "task-due-remove";
-    remove.textContent = "Datum entfernen";
-    remove.addEventListener("click", () => {
+    remove.textContent = tr("Datum entfernen", "Remove date");
+    remove.addEventListener("click", (event) => {
+      event.preventDefault();
       set(null);
       finish();
     });
     box.append(remove);
   }
   document.body.append(box);
-  document.addEventListener("mousedown", outside, true);
+  document.addEventListener("pointerdown", outside, true);
   input.addEventListener("change", () => {
     set(input.value || null);
     finish();
@@ -92,6 +93,10 @@ function pickDate(view: EditorView, pos: number, current: string | null, anchor:
       finish();
     }
   });
+  // Touch screens: a task with a date gets the popover first, so "Datum
+  // entfernen" can be reached – the system picker (a sheet on Android, a
+  // popover on iOS) would cover it and swallow the tap.
+  if (current && typeof matchMedia === "function" && matchMedia("(hover: none) and (pointer: coarse)").matches) return;
   input.focus();
   try {
     input.showPicker();

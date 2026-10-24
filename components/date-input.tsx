@@ -7,9 +7,9 @@ import {
   dateInZone,
   isTimed,
   localValue,
-  localToInstant,
-  instantOf,
-  validDateValue,
+  dateToSave,
+  draftDateValue,
+  InvalidDateDraft,
   type TimeChoice,
 } from "@/lib/date-values";
 
@@ -52,20 +52,13 @@ export default function DateInput({
     input.current?.setCustomValidity(error);
   }, [error]);
   function resolve(text: string, mode: boolean, occurrence: TimeChoice) {
-    if (!text) return "";
-    if (!mode) {
-      if (!validDateValue(text))
+    try {
+      return draftDateValue(text, mode, occurrence, value, zone);
+    } catch (e) {
+      if (e instanceof InvalidDateDraft)
         throw new Error(t("Bitte ein gültiges Datum eingeben.", "Please enter a valid date."));
-      return text;
+      throw e;
     }
-    // An unchanged local value retains the exact offset of an existing fold occurrence.
-    if (
-      isTimed(value) &&
-      text === localValue(value, zone) &&
-      occurrence === "reject"
-    )
-      return instantOf(value, zone).toString();
-    return localToInstant(text, zone, occurrence);
   }
   function update(text: string, mode = timed, occurrence = choice) {
     setDraft(text);
@@ -80,21 +73,37 @@ export default function DateInput({
       setError((e as Error).message);
     }
   }
+  const failed = () =>
+    new Error(t("Datum konnte nicht gespeichert werden. Bitte erneut versuchen.", "The date could not be saved. Please try again."));
   async function save() {
     if (commit !== "blur" || !changed.current) return;
     try {
-      const next = resolve(draft, timed, choice);
-      if (next !== value) {
+      const next = dateToSave(resolve(draft, timed, choice), value);
+      if (next !== null) {
         const result = await onChange(next);
-        if (result === null || result === false)
-          throw new Error(
-            t("Datum konnte nicht gespeichert werden. Bitte erneut versuchen.", "The date could not be saved. Please try again."),
-          );
+        if (result === null || result === false) throw failed();
       }
       setError("");
       changed.current = false;
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+  // "Datum entfernen": saves "" at once. A pending draft is dropped, so the
+  // blur that follows cannot bring the old date back.
+  async function clear(keyboard: boolean) {
+    const before = draft;
+    setDraft("");
+    setError("");
+    changed.current = false;
+    // Keyboard users keep their place; a tap must not focus the date input,
+    // that would open the picker again (iOS, Android).
+    if (keyboard) input.current?.focus({ preventScroll: true });
+    if (dateToSave("", value) === null) return;
+    const result = await onChange("");
+    if (result === null || result === false) {
+      setDraft(before);
+      setError(failed().message);
     }
   }
   return (
@@ -123,11 +132,12 @@ export default function DateInput({
           className="date-clear"
           aria-label={t(`${name} entfernen`, `Remove ${name}`)}
           title={t("Datum entfernen", "Remove date")}
-          onClick={async () => {
-            setDraft("");
-            setError("");
-            changed.current = false;
-            if (value) await onChange("");
+          // A tap must not reach the date input: inside a <label> WebKit
+          // hands the click on to it, which opens the picker and keeps the date.
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void clear(e.detail === 0);
           }}
         >
           {t("Datum entfernen", "Remove date")}

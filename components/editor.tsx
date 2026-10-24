@@ -1,4 +1,5 @@
 "use client";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { matchedAlias, pageAliases } from "@/lib/aliases";
 import { DocumentOutline, OutlineToggle, useOutlineOpen } from "./document-outline";
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
@@ -234,6 +235,7 @@ export default function DocumentEditor({
   onHtml: (v: string) => void;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const locale = useLocale();
   const doc = useMemo(() => new Y.Doc(), [pageId, rowId]);
   // One id per open editor: the live channel does not echo its own changes
@@ -1134,7 +1136,7 @@ export default function DocumentEditor({
             group: "ai" as const,
             name: t("KI-Assistent", "AI assistant"),
             keywords: ["ki", "ai", "assistent", "assistant", "schreiben", "write", "gpt"],
-            description: aiWrite === "blocked" ? aiBlockedHint : t("Text von der KI schreiben lassen (⌘J)", "Let the AI write text (⌘J)"),
+            description: aiWrite === "blocked" ? aiBlockedHint : t("Text von der KI schreiben lassen", "Let the AI write text") + keyHints.suffix("Mod+J"),
             icon: Sparkle,
             disabled: aiWrite === "blocked",
             run: () => openAi.current(true),
@@ -1903,7 +1905,7 @@ export default function DocumentEditor({
               <TextSubscript />
             </button>
             <button
-              title={t("Verdecken (Spoiler) · ⌘⌥H", "Hide (spoiler) · ⌘⌥H")}
+              title={t("Verdecken (Spoiler)", "Hide (spoiler)") + (keyHints.keys("Mod+Alt+H") && ` · ${keyHints.keys("Mod+Alt+H")}`)}
               aria-pressed={!!editor?.isActive("spoiler")}
               className={editor?.isActive("spoiler") ? "active" : ""}
               onClick={() => editor?.chain().focus().toggleMark("spoiler").run()}

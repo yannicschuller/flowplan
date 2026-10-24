@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { ratingMax } from "@/lib/field-format";
 import DateInput from "./date-input";
 import { cellText } from "@/lib/database";
@@ -16,6 +16,12 @@ import type { Field, Row, User } from "@/lib/types";
 import { useSprints } from "./sprint-context";
 import { aliasList } from "@/lib/aliases";
 export type CellFile = { url: string; name: string; mime: string };
+// The label around a CellInput – or, for a date, a group that looks the same:
+// a <label> passes taps on the date's buttons ("Datum entfernen", the time
+// switch) to the date input in WebKit, which opens the picker instead.
+export function FieldLabel({ field, children }: { field: Pick<Field, "type">; children: ReactNode }) {
+  return field.type === "date" ? <div className="field-group">{children}</div> : <label>{children}</label>;
+}
 export function CellInput({
   field: f,
   value,

@@ -107,7 +107,7 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Unterseiten öffnen oder schließen", "Expand or collapse sub-pages"), keys: ["→", "←"] },
         { label: t("Seite öffnen", "Open the page"), keys: ["↵"] },
         { label: t("In geteilter Ansicht öffnen", "Open in split view"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
-        { label: t("Seiten auswählen", "Select pages"), keys: [t("⇧ + Klick", "⇧ + click")] },
+        { label: t("Seiten auswählen", "Select pages"), keys: [mac ? t("⇧ + Klick", "⇧ + click") : t("Shift + Klick", "Shift + click")] },
       ],
     },
     {

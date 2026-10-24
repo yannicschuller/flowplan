@@ -7,6 +7,7 @@
 // Blocks without a Markdown form stand in the text as
 // <!-- flowplan:block N … --> and come back unchanged; a marker removed from
 // the text removes its block, after asking.
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/core";
 import { useT } from "./i18n";
@@ -37,6 +38,7 @@ export function MarkdownSourceView({
   onError: (message: string) => void;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const [source, setSource] = useState<Source | null>(null),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
@@ -134,7 +136,7 @@ export function MarkdownSourceView({
               type="button"
               className="button compact primary"
               disabled={!source || busy || !edited}
-              title={t("Übernehmen (⌘↵)", "Apply (⌘↵)")}
+              title={t("Übernehmen", "Apply") + keyHints.suffix("Mod+Enter")}
               onClick={() => void apply(false)}
             >
               {changed ? t("Trotzdem übernehmen", "Apply anyway") : t("Übernehmen", "Apply")}

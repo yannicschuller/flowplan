@@ -124,3 +124,34 @@ export function dateInZone(zone: string) {
   return Temporal.Now.zonedDateTimeISO(zone).toPlainDate().toString();
 }
 export { Temporal };
+
+// ---- The value handling of a date field (components/date-input.tsx) ----
+
+// An all-day draft that is not a date ("2026-02-30").
+export class InvalidDateDraft extends Error {}
+const emptyDate = (value: unknown) => value === undefined || value === null || value === "";
+// The stored value a draft stands for. An empty draft is "" – the date is
+// removed, never ignored. An unchanged local time keeps the exact offset of
+// the stored value (the repeated hour of a clock change).
+export function draftDateValue(
+  text: string,
+  timed: boolean,
+  occurrence: TimeChoice,
+  current: unknown,
+  zone: string,
+): string {
+  if (!text) return "";
+  if (!timed) {
+    if (!validDateValue(text) || isTimed(text)) throw new InvalidDateDraft("invalid date");
+    return text;
+  }
+  if (isTimed(current) && text === localValue(current, zone) && occurrence === "reject")
+    return instantOf(current, zone).toString();
+  return localToInstant(text, zone, occurrence);
+}
+// What a field has to save: the new value, or null when it equals the
+// stored one (an empty draft on an empty field saves nothing).
+export function dateToSave(next: string, current: unknown): string | null {
+  if (emptyDate(next) && emptyDate(current)) return null;
+  return next === current ? null : next;
+}

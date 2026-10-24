@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { useSharedLive } from "./shared-live";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { CellInput, type CellFile } from "./cell-input";
+import { CellInput, FieldLabel, type CellFile } from "./cell-input";
 import type { SharedComment } from "@/lib/shared-content";
 import type { Field, Row } from "@/lib/types";
 import { compressImage } from "@/lib/image-compress";
@@ -162,7 +162,7 @@ export function SharedInteractions({
           {data.fields
             .filter((f) => !["created_at", "updated_at"].includes(f.type))
             .map((f) => (
-              <label key={f.id}>
+              <FieldLabel key={f.id} field={f}>
                 {f.name}
                 <CellInput
                   field={f}
@@ -181,7 +181,7 @@ export function SharedInteractions({
                   commit="change"
                   onChange={(value) => setCells({ ...cells, [f.id]: value })}
                 />
-              </label>
+              </FieldLabel>
             ))}
           {data.canEditContent &&
             (live.doc ? (

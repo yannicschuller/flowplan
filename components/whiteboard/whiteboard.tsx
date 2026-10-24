@@ -1,4 +1,5 @@
 "use client";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "../i18n";
@@ -270,6 +271,7 @@ export default function Whiteboard({
   onOpenPage: (pageId: string) => void;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const statusLabel = useStatusLabel();
   const doc = useMemo(() => {
     const d = new Y.Doc();
@@ -2542,7 +2544,7 @@ export default function Whiteboard({
           </button>
           <button
             aria-label={t("Duplizieren", "Duplicate")}
-            title={t("Duplizieren (⌘D)", "Duplicate (⌘D)")}
+            title={t("Duplizieren", "Duplicate") + keyHints.suffix("Mod+D")}
             onClick={() => duplicate()}
           >
             <CopySimple size={16} />
@@ -2840,14 +2842,14 @@ export default function Whiteboard({
     <>
       <button
         aria-label={t("Rückgängig", "Undo")}
-        title={t("Rückgängig (⌘Z)", "Undo (⌘Z)")}
+        title={t("Rückgängig", "Undo") + keyHints.suffix("Mod+Z")}
         onClick={() => undo.undo()}
       >
         <ArrowCounterClockwise size={18} />
       </button>
       <button
         aria-label={t("Wiederholen", "Redo")}
-        title={t("Wiederholen (⇧⌘Z)", "Redo (⇧⌘Z)")}
+        title={t("Wiederholen", "Redo") + keyHints.suffix("Mod+Shift+Z")}
         onClick={() => undo.redo()}
       >
         <ArrowClockwise size={18} />

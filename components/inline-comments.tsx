@@ -1,4 +1,5 @@
 "use client";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useT } from "./i18n";
@@ -48,6 +49,7 @@ export function InlineComments({
   userId: string;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const panel = useRef<HTMLElement | null>(null);
   const linkedThread = useRef<string | null>(null);
   const scrolledThread = useRef<string | null>(null);
@@ -293,7 +295,7 @@ export function InlineComments({
           className="button compact"
           onMouseDown={(e) => e.preventDefault()}
           onClick={begin}
-          title={t("Auswahl oder aktuellen Block kommentieren (⌘/Strg+Alt+M)", "Comment on the selection or current block (⌘/Ctrl+Alt+M)")}
+          title={t("Auswahl oder aktuellen Block kommentieren", "Comment on the selection or current block") + keyHints.suffix("Mod+Alt+M")}
         >
           <ChatCircle /> {t("Text kommentieren", "Comment on text")}
         </button>

@@ -5,6 +5,7 @@
 // selected expression, a comment, copying. "Umwandeln in" changes the type
 // of the line (text, heading, list, quote, code) and keeps its text; it is
 // offered on right-click, so the menu over a selection stays small.
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
@@ -64,6 +65,7 @@ export function TextMenu({
   onAi?: () => void;
 }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const locale = useLocale();
   const [place, setPlace] = useState<Place | null>(null);
   // Results for a selected calculation ("3/4 + 1/6", "(a + b)²", "2x = 8").
@@ -399,7 +401,7 @@ export function TextMenu({
             role="menuitem"
             className="text-menu-ai"
             aria-disabled={ai === "blocked" || undefined}
-            title={ai === "blocked" ? aiHint : t("KI-Schreibassistent (⌘J)", "AI writing assistant (⌘J)")}
+            title={ai === "blocked" ? aiHint : t("KI-Schreibassistent", "AI writing assistant") + keyHints.suffix("Mod+J")}
             onClick={() => {
               if (ai === "blocked") return;
               close();
@@ -433,7 +435,7 @@ export function TextMenu({
           <button
             type="button"
             role="menuitem"
-            title={t("Fußnote einfügen (⌘⌥F)", "Insert footnote (⌘⌥F)")}
+            title={t("Fußnote einfügen", "Insert footnote") + keyHints.suffix("Mod+Alt+F")}
             onClick={run(() => editor.commands.openFootnote())}
           >
             <Note size={15} /> {t("Fußnote", "Footnote")}

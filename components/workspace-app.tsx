@@ -33,7 +33,8 @@ import { Onboarding } from "./onboarding";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
-import { activeKeymap, isMacPlatform, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
+import { activeKeymap, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
 import { openPageAliases, AliasIcon } from "./page-aliases";
@@ -457,16 +458,17 @@ export default function WorkspaceApp({
     [paletteSplit, setPaletteSplit] = useState(false),
     // A page from the tree is being dragged: the drop zone at the right edge shows.
     [pageDrag, setPageDrag] = useState(false),
-    [splitDropOver, setSplitDropOver] = useState(false),
-    // Apple keyboard (⌘) – for the shortcut hints, after the first render.
-    [mac, setMac] = useState(false);
+    [splitDropOver, setSplitDropOver] = useState(false);
+  // Shortcut hints: only with a keyboard, written for this device's system
+  // (⌘ on Apple devices, Ctrl elsewhere) – lib/keyboard-hints.ts.
+  const keyHints = useKeyboardHints(),
+    mac = keyHints.mac;
   const splitRow = useRef<HTMLDivElement>(null),
     wideRef = useRef(false),
     presentingRef = useRef(false);
   wideRef.current = wide;
   presentingRef.current = !!presenting;
   useEffect(() => {
-    setMac(isMacPlatform());
     const media = matchMedia("(min-width: 1025px)");
     const update = () => setWide(media.matches);
     update();
@@ -1166,7 +1168,7 @@ export default function WorkspaceApp({
   shortcutRef.current = runShortcut;
   // Hints in titles follow the own shortcuts ("Lesemodus (⌘ ⌥ E)").
   const hint = (action: ShortcutAction) => {
-    const keys = shortcutHint(action, mac);
+    const keys = keyHints.visible ? shortcutHint(action, mac) : "";
     return keys ? ` (${keys})` : "";
   };
   // The open page shows in the split view too: the split closes.
@@ -2016,7 +2018,7 @@ export default function WorkspaceApp({
             <button onClick={openSearch}>
               <MagnifyingGlass size={19} />
               {t("Suchen", "Search")}
-              {shortcutHint("search", mac) && <span className="keycap">{shortcutHint("search", mac)}</span>}
+              {keyHints.visible && shortcutHint("search", mac) && <span className="keycap">{shortcutHint("search", mac)}</span>}
             </button>
             {canAsk && (
               <button onClick={() => setAsk({ question: "" })}>
@@ -2939,7 +2941,9 @@ export default function WorkspaceApp({
               <div className="home-footnote">
                 <Stack size={16} />
                 <span>{t("Weniger suchen. Mehr bewegen.", "Search less. Get more done.")}</span>
-                <span>{t("⌘ K zum schnellen Finden", "⌘ K to find things fast")}</span>
+                {keyHints.visible && shortcutHint("search", mac) && (
+                  <span className="kbd-hint">{t(`${shortcutHint("search", mac)} zum schnellen Finden`, `${shortcutHint("search", mac)} to find things fast`)}</span>
+                )}
               </div>
             </div>
           )}

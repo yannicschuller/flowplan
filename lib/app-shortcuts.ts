@@ -9,6 +9,7 @@
 // both the key event and the app report runs once (`firstRun`).
 import { activeKeymap, isMacPlatform, parseCombo, subscribeKeymap, SHORTCUT_ACTIONS, type Keymap, type ShortcutAction } from "./keymap";
 import { nativeApp } from "./native-app";
+import { noteHardwareKeyboard } from "./keyboard-hints";
 
 export type AppKeyCommand = {
   action: ShortcutAction;
@@ -91,6 +92,8 @@ export function installAppShortcuts(run: (action: ShortcutAction) => void, title
   const api = Object.freeze({
     run: (action: unknown) => {
       if (typeof action !== "string" || !(SHORTCUT_ACTIONS as readonly string[]).includes(action)) return false;
+      // A key command means a hardware keyboard: the hints may show.
+      noteHardwareKeyboard();
       if (firstRun(action)) run(action as ShortcutAction);
       return true;
     },
