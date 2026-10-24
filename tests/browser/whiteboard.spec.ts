@@ -172,6 +172,9 @@ test("whiteboards are embedded in documents and open from there", async ({
     .click({ position: { x: box.width / 2, y: box.height / 2 } });
   await page.keyboard.type("Sichtbar im Dokument");
   await page.keyboard.press("Escape");
+  // Phones show the saving state in the actions menu.
+  if (testInfo.project.name === "mobile")
+    await wb.getByRole("button", { name: "Ansicht und Aktionen" }).click();
   await expect(wb.getByText("Gespeichert", { exact: true })).toBeVisible({
     timeout: 10000,
   });
@@ -315,14 +318,20 @@ test("board templates and presenting frames", async ({ page }, testInfo) => {
   );
   await page.goto(`/#page=${board.id}`);
   const wb = page.getByLabel("Whiteboard", { exact: true });
-  await wb.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  // Phones keep templates in the sheet behind "Weitere Werkzeuge".
+  const templates = async () => {
+    if (testInfo.project.name === "mobile")
+      await wb.getByRole("button", { name: "Weitere Werkzeuge" }).click();
+    await wb.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  };
+  await templates();
   await page
     .getByRole("dialog", { name: "Vorlage einfügen" })
     .getByRole("button", { name: "Mindmap" })
     .click();
   await expect(wb.locator(".wb-shape")).toHaveCount(5);
   await expect(wb.locator(".wb-connector")).toHaveCount(4);
-  await wb.getByRole("button", { name: "Vorlagen", exact: true }).click();
+  await templates();
   await page
     .getByRole("dialog", { name: "Vorlage einfügen" })
     .getByRole("button", { name: "Retrospektive" })
@@ -452,6 +461,76 @@ test("comment pins, tables, voting, timer and full screen", async ({
   expect(full.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 1);
   await page.screenshot({ path: "test-results/whiteboard/workshop.png" });
   await wb.getByRole("button", { name: "Vollbild beenden" }).click();
+  await expect(wb).not.toHaveClass(/wb-fullscreen/);
+  expect(errors).toEqual([]);
+  await command({ action: "page.delete", pageId: board.id });
+});
+
+test("phones get one tool bar, a tool sheet and one actions menu, nothing clipped", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Phone layout");
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const { command, board } = await setup(page, `Handy ${Date.now()}`);
+  await page.goto(`/#page=${board.id}`);
+  const wb = page.getByLabel("Whiteboard", { exact: true });
+  await expect(wb).toBeVisible();
+  const skip = page.getByRole("button", { name: "Überspringen" });
+  if (await skip.isVisible()) await skip.click();
+  const dock = wb.getByRole("toolbar", { name: "Werkzeuge" });
+  // Inside the viewport, above the tab bar, no horizontal scrolling.
+  // (In full screen the board covers the tab bar.)
+  const fits = async (selector: string) =>
+    page.evaluate((selector) => {
+      const box = document.querySelector(selector)!.getBoundingClientRect();
+      const bar = document.querySelector(".mobile-tab-bar");
+      const covered = !!document.querySelector(".whiteboard.wb-fullscreen");
+      const barTop = bar && !covered && getComputedStyle(bar).display !== "none" ? bar.getBoundingClientRect().top : innerHeight;
+      return {
+        overflow: document.documentElement.scrollWidth - innerWidth,
+        inside: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= Math.min(innerHeight, barTop) + 0.5,
+      };
+    }, selector);
+  // The page opens with the whole board and its tools in view.
+  expect(await fits(".wb-dock")).toEqual({ overflow: 0, inside: true });
+  await expect(dock.getByRole("button")).toHaveCount(7);
+  await expect(wb.getByRole("button", { name: "Als PNG exportieren" })).toHaveCount(0);
+  await expect(wb.locator(".wb-empty")).toContainText("Unten ein Werkzeug wählen");
+  const hint = (await wb.locator(".wb-empty span").boundingBox())!;
+  const bar = (await dock.boundingBox())!;
+  expect(hint.y + hint.height).toBeLessThanOrEqual(bar.y);
+  // The other tools wait in a sheet.
+  await dock.getByRole("button", { name: "Weitere Werkzeuge" }).click();
+  const sheet = wb.getByRole("dialog", { name: "Weitere Werkzeuge" });
+  await expect(sheet.getByRole("heading", { name: "Einfügen" })).toBeVisible();
+  expect((await fits(".wb-sheet")).inside).toBe(true);
+  await sheet.getByRole("button", { name: "Radierer" }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(dock.getByRole("button", { name: "Weitere Werkzeuge" })).toHaveClass(/active/);
+  // View and export actions sit in one menu.
+  await wb.getByRole("button", { name: "Ansicht und Aktionen" }).click();
+  const menu = wb.getByRole("dialog", { name: "Ansicht und Aktionen" });
+  for (const name of ["Alles anzeigen", "Vollbild", "Kommentare ausblenden", "Importieren …", "Als SVG exportieren", "Als PNG exportieren"])
+    await expect(menu.getByRole("button", { name, exact: true })).toBeVisible();
+  expect((await fits(".wb-actions")).inside).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  // Other phone sizes, upright and sideways.
+  for (const [width, height] of [[320, 568], [360, 740], [430, 932], [844, 390], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await wb.evaluate((el) => el.scrollIntoView({ block: "end" }));
+    await expect(dock).toBeVisible();
+    expect(await fits(".wb-dock"), `${width}×${height}`).toEqual({ overflow: 0, inside: true });
+    expect(await fits(".wb-corner-end"), `${width}×${height}`).toEqual({ overflow: 0, inside: true });
+  }
+  // Full screen keeps the bar.
+  await wb.getByRole("button", { name: "Ansicht und Aktionen" }).click();
+  await menu.getByRole("button", { name: "Vollbild", exact: true }).click();
+  await expect(wb).toHaveClass(/wb-fullscreen/);
+  expect(await fits(".wb-dock")).toEqual({ overflow: 0, inside: true });
+  await wb.getByRole("button", { name: "Ansicht und Aktionen" }).click();
+  await menu.getByRole("button", { name: "Vollbild beenden" }).click();
   await expect(wb).not.toHaveClass(/wb-fullscreen/);
   expect(errors).toEqual([]);
   await command({ action: "page.delete", pageId: board.id });
