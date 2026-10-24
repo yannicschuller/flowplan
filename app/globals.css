@@ -17715,6 +17715,36 @@ h3 .block-reactions {
   gap: 4px;
   font-size: 13px;
 }
+/* Settings → Calendars on iPhone, iPad and Mac (components/caldav-profile.tsx). */
+.caldav-profile {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.caldav-profile fieldset {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.caldav-profile .checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+}
+.caldav-profile-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.caldav-profile-link p {
+  flex: 1 1 200px;
+  margin: 0;
+}
 
 .diff-restore {
   float: right;

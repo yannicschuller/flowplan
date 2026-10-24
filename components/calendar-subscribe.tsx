@@ -3,6 +3,7 @@ import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import { CalendarPlus, Copy } from "@phosphor-icons/react";
 import { Modal, api } from "./ui";
+import { canInstallProfile, installProfile } from "./caldav-profile";
 
 // "Abonnieren": a personal secret link for Apple, Google or Outlook
 // calendars (lib/calendar-feed.ts). The link is shown once; a new one
@@ -116,6 +117,19 @@ function CalDavSync({ pageId, viewId, active, onChange }: { pageId: string; view
       setBusy(false);
     }
   };
+  // A configuration profile with this calendar (components/caldav-profile.tsx).
+  const profile = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await installProfile([{ pageId, viewId }]);
+      onChange(true);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const field = (label: string, value: string) => (
     <label>
       {label}
@@ -157,6 +171,11 @@ function CalDavSync({ pageId, viewId, active, onChange }: { pageId: string; view
           {active && (
             <button className="button" disabled={busy} onClick={() => void run("calendar.caldav.revoke")}>
               {t("Zugang beenden", "End access")}
+            </button>
+          )}
+          {canInstallProfile() && (
+            <button className="button" disabled={busy} onClick={() => void profile()}>
+              {t("In Apple Kalender einrichten", "Set up in Apple Calendar")}
             </button>
           )}
         </div>

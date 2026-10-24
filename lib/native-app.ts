@@ -22,6 +22,12 @@ type FlowplanApp = {
   // record), through its own API (lib/mobile-capture.ts); the open editor
   // gets it like any change from elsewhere.
   scanDocument?: (target: { pageId: string; rowId?: string }) => void;
+  // Opens an address of this instance in Safari / the browser (a
+  // configuration profile installs only from there: components/caldav-profile.tsx).
+  openInBrowser?: (url: string) => void;
+  // Records a voice note in the app, transcribed on the device where it can
+  // (lib/native-voice.ts).
+  recordVoiceNote?: (request: { id: string; summarize: boolean; serverTranscription: boolean }) => void;
 };
 
 export function nativeApp(): FlowplanApp | undefined {

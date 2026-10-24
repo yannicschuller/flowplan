@@ -26,6 +26,8 @@ import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
 import { transcribeRecording } from "@/lib/transcribe-client";
 import { transcriptHtml, transcriptText } from "@/lib/transcript";
+import { canRecordInApp, recordInApp } from "@/lib/native-voice";
+import type { Transcript } from "@/lib/transcribe";
 import { aiTargetPlugin } from "@/lib/ai/target";
 import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml } from "@/lib/ai/insert";
 import { registerAiInserter } from "@/lib/ai/editor-bridge";
@@ -1069,6 +1071,58 @@ export default function DocumentEditor({
   }
   const calloutLabel = calloutLabels(t),
     calloutDescription = calloutDescriptions(t);
+  // A voice note: the audio, below it the spoken words (from the server's
+  // transcription, or from the app's on the device) and, when asked, the
+  // AI's summary or tasks.
+  const insertVoice = async (file: File, toText: boolean, summarize: boolean, actions: boolean, transcript: Transcript | null = null) => {
+    await upload(file);
+    if (!toText) return;
+    onStatus("transcribing");
+    try {
+      // Long recordings go up in chunks (lib/transcribe-client.ts); the
+      // app may have transcribed on the device already.
+      const data = transcript || (await transcribeRecording(file, pageId));
+      const speaker = (n: number) => t(`Sprecher ${n}`, `Speaker ${n}`);
+      // With segments: a toggle with timestamps (and speakers, when the
+      // service separated them) instead of plain paragraphs.
+      const block = transcriptHtml(data, { title: t("Transkript", "Transcript"), speaker });
+      if (block && editor && !editor.isDestroyed) {
+        editor.chain().focus().insertContent(block).run();
+        const at = editor.state.selection.from;
+        if (summarize) setAiRequest({ kind: "transcript", from: at, to: at, text: transcriptText(data, speaker) });
+        if (actions && aiWorkspace)
+          setTranscriptActions({ instruction: t("Aufgaben und Zusammenfassung erzeugen", "Generate tasks and summary"), context: transcriptText(data, speaker), pageId, mode: "transcript" });
+        return;
+      }
+      const paragraphs = String(data.text || "")
+        .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÄÖÜ])/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (paragraphs.length) {
+        editor
+          ?.chain()
+          .focus()
+          .insertContent(paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })))
+          .run();
+        // The summary goes below the transcript, through the preview.
+        if (summarize && editor && !editor.isDestroyed) {
+          const at = editor.state.selection.from;
+          setAiRequest({ kind: "transcript", from: at, to: at, text: paragraphs.join("\n\n") });
+        }
+        if (actions && aiWorkspace)
+          setTranscriptActions({ instruction: t("Aufgaben und Zusammenfassung erzeugen", "Generate tasks and summary"), context: paragraphs.join("\n\n"), pageId, mode: "transcript" });
+      } else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      onStatus("saved");
+    }
+  };
+  // In the app the recording is native (lib/native-voice.ts).
+  const recordVoice = async () => {
+    const note = await recordInApp({ summarize: !embedded && aiSummarize === "ok", serverTranscription: transcription }, onError);
+    if (note) await insertVoice(note.file, !!note.transcript || (note.text && transcription), note.summarize && aiSummarize === "ok", false, note.transcript);
+  };
   // Every block of the "/" menu, with a stable id (remembered as recently
   // used) and its section. Second levels (the callout kinds) are reached
   // by choosing the entry or found directly when typing.
@@ -1385,7 +1439,7 @@ export default function DocumentEditor({
       keywords: ["audio", "aufnahme", "mikrofon", "diktat", "voice", "sprache"],
       description: transcription ? t("Aufnehmen und als Text einfügen", "Record and insert as text") : t("Aufnehmen und als Audio einfügen", "Record and insert as audio"),
       icon: Microphone,
-      run: () => setVoice(true),
+      run: () => (canRecordInApp() ? void recordVoice() : setVoice(true)),
     },
     {
       id: "synced",
@@ -2181,49 +2235,9 @@ export default function DocumentEditor({
         summarizeHint={aiBlockedHint}
         actions={embedded || rowId ? "hidden" : aiActions}
         onClose={() => setVoice(false)}
-        onInsert={async (file, toText, summarize, actions) => {
+        onInsert={(file, toText, summarize, actions) => {
           setVoice(false);
-          await upload(file);
-          if (!toText) return;
-          onStatus("transcribing");
-          try {
-            // Long recordings go up in chunks (lib/transcribe-client.ts).
-            const data = await transcribeRecording(file, pageId);
-            const speaker = (n: number) => t(`Sprecher ${n}`, `Speaker ${n}`);
-            // With segments: a toggle with timestamps (and speakers, when the
-            // service separated them) instead of plain paragraphs.
-            const block = transcriptHtml(data, { title: t("Transkript", "Transcript"), speaker });
-            if (block && editor && !editor.isDestroyed) {
-              editor.chain().focus().insertContent(block).run();
-              const at = editor.state.selection.from;
-              if (summarize) setAiRequest({ kind: "transcript", from: at, to: at, text: transcriptText(data, speaker) });
-              if (actions && aiWorkspace)
-                setTranscriptActions({ instruction: t("Aufgaben und Zusammenfassung erzeugen", "Generate tasks and summary"), context: transcriptText(data, speaker), pageId, mode: "transcript" });
-              return;
-            }
-            const paragraphs = String(data.text || "")
-              .split(/\n{2,}|(?<=[.!?])\s+(?=[A-ZÄÖÜ])/)
-              .map((p) => p.trim())
-              .filter(Boolean);
-            if (paragraphs.length) {
-              editor
-                ?.chain()
-                .focus()
-                .insertContent(paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })))
-                .run();
-              // The summary goes below the transcript, through the preview.
-              if (summarize && editor && !editor.isDestroyed) {
-                const at = editor.state.selection.from;
-                setAiRequest({ kind: "transcript", from: at, to: at, text: paragraphs.join("\n\n") });
-              }
-              if (actions && aiWorkspace)
-                setTranscriptActions({ instruction: t("Aufgaben und Zusammenfassung erzeugen", "Generate tasks and summary"), context: paragraphs.join("\n\n"), pageId, mode: "transcript" });
-            } else onError(t("In der Aufnahme wurde keine Sprache erkannt.", "No speech was recognised in the recording."));
-          } catch (error) {
-            onError((error as Error).message);
-          } finally {
-            onStatus("saved");
-          }
+          void insertVoice(file, toText, summarize, actions);
         }}
       />
       {aiWorkspace && <AiActionsPanel workspaceId={aiWorkspace} request={transcriptActions} onClose={() => setTranscriptActions(null)} />}

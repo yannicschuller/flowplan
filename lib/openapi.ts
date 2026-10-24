@@ -1126,6 +1126,8 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/forms/[token]/route.ts": "Public forms with their own link token",
   "app/api/git/[token]/route.ts": "Git integration callbacks with their own token",
   "app/api/mobile/[action]/route.ts": "The mobile apps (session cookie or device token; the administrators' widget summary only for instance administrators)",
+  "app/api/mobile/notifications/route.ts": "Buttons on the mobile apps' push notifications, only with the device token",
+  "app/api/calendar-profile/route.ts": "Apple configuration profile with CalDAV accounts: created from the browser's account settings, downloaded once by its link",
   "app/api/print/[token]/route.ts": "Print views of the browser app",
   "app/api/print/route.ts": "Print views of the browser app",
   "app/api/public-templates/[id]/files/[fileId]/route.ts": "Public template gallery",

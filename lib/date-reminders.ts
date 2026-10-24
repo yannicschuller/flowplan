@@ -18,6 +18,7 @@ import {
   reminderTarget,
   type DateReminder,
 } from "./date-reminder-options";
+import { rememberTaskTarget } from "./notification-targets";
 import type { Field, Identity, Page } from "./types";
 
 export const MAX_REMINDERS_PER_USER = 1000;
@@ -268,14 +269,17 @@ export function processDateReminders(now = Date.now()) {
         ).changes
       )
         return;
+      const notificationId = id();
       run(
         "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
-        id(),
+        notificationId,
         reminder.user_id,
         `Erinnerung: „${title}“ – ${field.name}: ${formatDateValue(occurrence, reminder.time_zone)}`,
         reminder.page_id,
         reminder.row_id,
       );
+      // "Done" and "Tomorrow" on the app's notification (lib/notification-actions.ts).
+      rememberTaskTarget(notificationId, { type: "row", pageId: reminder.page_id, rowId: reminder.row_id, fieldId: field.id });
       fired++;
     });
   }
