@@ -5340,8 +5340,11 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     position: fixed;
     top: auto;
     bottom: 0;
-    left: 0;
-    right: 0;
+    /* Clear of the side insets: on a closed iPhone Duo the status bar and
+       camera sit in a column along the side (the row scrolls, so padding
+       would not keep its buttons out of it). */
+    left: var(--safe-left, 0px);
+    right: var(--safe-right, 0px);
     z-index: 30;
     width: auto;
     margin: 0;
@@ -5961,7 +5964,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     position: fixed;
     z-index: 31;
     top: auto;
-    right: 16px;
+    right: calc(16px + var(--safe-right, 0px));
     bottom: 88px;
     float: none;
     width: 44px;

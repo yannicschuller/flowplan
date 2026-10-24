@@ -708,6 +708,21 @@ export default function WorkspaceApp({
   );
   // The navigation drawer on phones closes on back like a dialog.
   useEffect(() => (mobile ? addBackCloser(() => setMobile(false)) : undefined), [mobile]);
+  // It exists only in the phone layout (≤ 767 px, app/globals.css): when the
+  // window gets wider while it is open (a foldable such as iPhone Duo opens,
+  // the phone turns, a window grows) the sidebar takes over, and the drawer
+  // closes – instead of staying open unseen, taking the next "back" and
+  // coming back when the window narrows again.
+  useEffect(() => {
+    if (!mobile) return;
+    const wide = matchMedia("(min-width: 768px)");
+    const close = () => {
+      if (wide.matches) setMobile(false);
+    };
+    close();
+    wide.addEventListener("change", close);
+    return () => wide.removeEventListener("change", close);
+  }, [mobile]);
   // Settings → Konto opens the introduction and the shortcut overlay again.
   useEffect(() => {
     const open = () => setOnboarding(true);
