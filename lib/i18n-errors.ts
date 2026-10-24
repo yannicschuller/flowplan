@@ -155,6 +155,8 @@ const exact: Record<string, string> = {
   "Diese Seite ist kein Journaltag.": "This page is not a journal day.",
   "Eine neue Dokumentversion ist verfügbar. Die Seite wird neu geladen.": "A new document version is available. The page is reloading.",
   "Version nicht gefunden.": "Version not found.",
+  "Anmerkungen gibt es nur für PDFs.": "Annotations are only available for PDFs.",
+  "Zu viele Anmerkungen für eine Datei.": "Too many annotations for one file.",
   "Version ohne Inhalt.": "Version without content.",
   "Diese Version enthält Einträge mit eigenen Rechten. Nur Besitzer stellen sie wieder her.": "This version contains records with their own permissions. Only owners restore it.",
   "Ungültiger Datensatzkommentar in der Version.": "Invalid record comment in the version.",

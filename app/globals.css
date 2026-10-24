@@ -16296,6 +16296,371 @@ h3 .block-reactions {
   cursor: default;
 }
 
+/* ---------- Ink: handwriting on pages (components/ink, lib/ink) ---------- */
+/* The layer lies over a positioned page box. No z-index or opacity here:
+   the highlighter layer multiplies with the page below it. */
+.ink-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ink-layer > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.ink-highlights {
+  mix-blend-mode: multiply;
+}
+.ink-layer[data-editing] {
+  pointer-events: auto;
+  cursor: crosshair;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.ink-layer[data-tool="text"] {
+  cursor: text;
+}
+.ink-layer[data-tool="lasso"] {
+  cursor: default;
+}
+.ink-lasso {
+  stroke: #1c7ed6;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.ink-laser {
+  stroke: #ff2d2d;
+  stroke-opacity: 0.85;
+  filter: drop-shadow(0 0 3px #ff2d2d);
+}
+.ink-selection rect {
+  stroke: #1c7ed6;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+.ink-handle {
+  fill: #fff;
+  stroke: #1c7ed6;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.ink-ui {
+  pointer-events: auto;
+}
+.ink-selection-bar {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #1d1c23;
+  color: #ecebf1;
+  box-shadow: 0 6px 20px #0005;
+  white-space: nowrap;
+  cursor: default;
+}
+.ink-selection-bar button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 7px;
+  color: inherit;
+}
+.ink-selection-bar button:hover {
+  background: #ffffff1f;
+}
+.ink-selection-hint {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  color: #b3afbd;
+}
+.ink-text-input {
+  position: absolute;
+  min-width: 120px;
+  margin: 0;
+  padding: 0 2px;
+  border: 1px dashed #1c7ed6;
+  border-radius: 3px;
+  background: #ffffffd9;
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.25;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.ink-toolbar {
+  --ink-bar-bg: var(--bg);
+  --ink-bar-fg: var(--secondary);
+  --ink-bar-strong: var(--text);
+  --ink-bar-hover: var(--hover);
+  --ink-bar-active-bg: var(--blue-light);
+  --ink-bar-active: var(--blue);
+  --ink-bar-line: var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 12px;
+  background: var(--ink-bar-bg);
+  color: var(--ink-bar-fg);
+  border-bottom: 1px solid var(--ink-bar-line);
+}
+.ink-group {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+.ink-group.ink-end {
+  margin-left: auto;
+}
+.ink-toolbar button {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--ink-bar-fg);
+}
+.ink-toolbar button:hover:not(:disabled) {
+  background: var(--ink-bar-hover);
+  color: var(--ink-bar-strong);
+}
+.ink-toolbar button.active {
+  background: var(--ink-bar-active-bg);
+  color: var(--ink-bar-active);
+}
+.ink-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ink-labels button {
+  padding: 0 10px;
+  font-size: 13px;
+}
+.ink-swatch {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: var(--swatch) !important;
+  box-shadow: inset 0 0 0 1px #0003;
+}
+.ink-toolbar .ink-swatch {
+  min-width: 26px;
+  height: 26px;
+}
+.ink-swatch.active {
+  outline: 2px solid var(--ink-bar-active);
+  outline-offset: 2px;
+}
+.ink-width {
+  display: block;
+  width: 18px;
+  border-radius: 4px;
+  background: currentColor;
+}
+.ink-size {
+  font-weight: 600;
+  line-height: 1;
+}
+/* Favourites on a light chip, so a black pen shows on a dark bar too. */
+.ink-toolbar .ink-preset {
+  min-width: 34px;
+  height: 30px;
+  margin: 0 1px;
+  background: #f6f4ef;
+  box-shadow: inset 0 0 0 1px #0002;
+}
+.ink-toolbar .ink-preset:hover:not(:disabled) {
+  background: #fff;
+}
+.ink-toolbar .ink-preset.active {
+  background: #fff;
+  outline: 2px solid var(--ink-bar-active);
+  outline-offset: 1px;
+}
+.ink-preset-mark {
+  display: block;
+  width: 20px;
+  height: var(--mark);
+  border-radius: 99px;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px #0002;
+}
+.ink-preset-mark.highlighter {
+  opacity: 0.7;
+  border-radius: 2px;
+}
+.ink-menu-anchor {
+  position: relative;
+}
+.ink-menu {
+  position: fixed;
+  z-index: 230;
+  display: grid;
+  gap: 6px;
+  width: min(300px, calc(100vw - 32px));
+  margin-top: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px #0004;
+  font-size: 14px;
+  transform: translateX(calc(-100% + 36px));
+}
+.ink-menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ink-menu-select {
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.ink-menu-select select {
+  flex: 1;
+  min-width: 0;
+}
+.ink-menu-hint {
+  margin: -4px 0 4px 26px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.ink-versions {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.ink-toolbar .ink-versions button {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  height: auto;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--text);
+}
+.ink-toolbar .ink-versions button:hover {
+  background: var(--hover);
+}
+.ink-versions span {
+  font-size: 12px;
+  color: var(--secondary);
+}
+.ink-status {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.ink-toolbar .ink-done {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px;
+  background: var(--ink-bar-active-bg);
+  color: var(--ink-bar-active);
+  font-weight: 600;
+}
+/* In the (always dark) PDF viewer. */
+.pdf-viewer .ink-toolbar {
+  --ink-bar-bg: #1d1c23;
+  --ink-bar-fg: #cfccd8;
+  --ink-bar-strong: #fff;
+  --ink-bar-hover: #ffffff1a;
+  --ink-bar-active-bg: #4c6ef533;
+  --ink-bar-active: #91a7ff;
+  --ink-bar-line: #2e2c35;
+}
+.pdf-page-wrap {
+  position: relative;
+  flex-shrink: 0;
+  max-width: none;
+  line-height: 0;
+}
+.pdf-page-wrap .pdf-page {
+  width: 100%;
+}
+.pdf-viewer.is-annotating .pdf-viewer-pages-area {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.pdf-viewer-annotate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  margin-right: 6px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #ffffff14;
+  color: #ecebf1;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pdf-viewer-annotate:hover {
+  background: #ffffff26;
+}
+.pdf-viewer-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 16px;
+  background: #2b3a67;
+  color: #e7ecff;
+  font-size: 13px;
+}
+.pdf-viewer-notice.is-error {
+  background: #6b2730;
+  color: #ffe3e3;
+}
+.pdf-viewer-notice button {
+  margin-left: auto;
+  padding: 4px;
+  color: inherit;
+}
+@media (max-width: 600px) {
+  .pdf-viewer-annotate span,
+  .pdf-viewer-fit {
+    display: none;
+  }
+  .pdf-viewer-annotate {
+    padding: 0 9px;
+  }
+  .ink-toolbar {
+    flex-wrap: nowrap;
+    gap: 4px 6px;
+    padding: 4px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ink-status {
+    display: none;
+  }
+  /* Save and done stay in reach while the tools scroll. */
+  .ink-group.ink-end {
+    position: sticky;
+    right: -8px;
+    padding: 0 8px 0 6px;
+    background: var(--ink-bar-bg);
+    box-shadow: -10px 0 10px -6px var(--ink-bar-bg);
+  }
+}
+
 /* ---------- Function graphs (lib/function-plot.ts) ---------- */
 .function-plot {
   position: relative;

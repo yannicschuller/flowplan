@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 58) return;
+  if (globalDb.flowplanSchema === 59) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -824,7 +824,16 @@ function migrate(d: DatabaseSync) {
     d.prepare("UPDATE OR IGNORE inline_reactions SET emoji=? WHERE rowid=?").run(emoji, r.rowid);
     d.prepare("DELETE FROM inline_reactions WHERE rowid=? AND emoji=?").run(r.rowid, r.emoji);
   }
-  globalDb.flowplanSchema = 58;
+  // Ink on PDFs (lib/ink-store.ts, lib/ink/README.md): the markings of a file
+  // next to the untouched original, with the text typed on it (search) and
+  // every saved state as a version. Never for pages of encrypted spaces.
+  d.exec(`CREATE TABLE IF NOT EXISTS file_ink(file_id TEXT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,data TEXT NOT NULL,text TEXT NOT NULL DEFAULT '',version INTEGER NOT NULL,updated_by TEXT,updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS file_ink_versions(file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,version INTEGER NOT NULL,data TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL,PRIMARY KEY(file_id,version));
+    CREATE TRIGGER IF NOT EXISTS e2ee_file_ink_insert BEFORE INSERT ON file_ink WHEN EXISTS(SELECT 1 FROM files f JOIN pages p ON p.id=f.page_id JOIN spaces s ON s.id=p.space_id WHERE f.id=NEW.file_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_file_ink_update BEFORE UPDATE ON file_ink WHEN EXISTS(SELECT 1 FROM files f JOIN pages p ON p.id=f.page_id JOIN spaces s ON s.id=p.space_id WHERE f.id=NEW.file_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS search_file_ink AFTER UPDATE OF text ON file_ink BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;
+    CREATE TRIGGER IF NOT EXISTS search_file_ink_insert AFTER INSERT ON file_ink WHEN NEW.text!='' BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;`);
+  globalDb.flowplanSchema = 59;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

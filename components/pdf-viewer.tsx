@@ -2,12 +2,15 @@
 // PDF preview and viewer, rendered with pdf.js in the browser (the file is
 // fetched like a download and drawn onto canvases – the browser's own PDF
 // plug-in never runs). openPdf() opens the viewer from anywhere; the host is
-// mounted once in the root layout. PdfThumbnail draws the first page.
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowsOut, DownloadSimple, FilePdf, MagnifyingGlassMinus, MagnifyingGlassPlus, X } from "@phosphor-icons/react";
-import { useT } from "./i18n";
+// mounted once in the root layout and loads the viewer (pdf-viewer-dialog.tsx)
+// when a PDF is opened. PdfThumbnail draws the first page.
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { FilePdf } from "@phosphor-icons/react";
+import { canvasSize } from "@/lib/ink/coords";
 
-type PdfDocument = import("pdfjs-dist").PDFDocumentProxy;
+export type PdfDocument = import("pdfjs-dist").PDFDocumentProxy;
+// The viewer itself (pages, zoom, annotating) loads on first use.
+const PdfViewerDialog = lazy(() => import("./pdf-viewer-dialog"));
 const EVENT = "flowplan:pdf";
 
 export function openPdf(src: string, title: string) {
@@ -29,7 +32,7 @@ function pdfjs() {
 }
 // One loaded document per file, shared by previews and the viewer.
 const documents = new Map<string, Promise<PdfDocument>>();
-function loadPdf(src: string) {
+export function loadPdf(src: string) {
   let doc = documents.get(src);
   if (!doc) {
     doc = (async () => {
@@ -53,15 +56,15 @@ function loadPdf(src: string) {
 // A canvas draws one page at a time: a new size (zoom) cancels the
 // drawing still in progress.
 const drawing = new WeakMap<HTMLCanvasElement, { cancel: () => void }>();
-async function renderPage(doc: PdfDocument, number: number, canvas: HTMLCanvasElement, width: number) {
+export async function renderPage(doc: PdfDocument, number: number, canvas: HTMLCanvasElement, width: number) {
   drawing.get(canvas)?.cancel();
   const page = await doc.getPage(number);
   const base = page.getViewport({ scale: 1 });
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
-  const viewport = page.getViewport({ scale: (width / base.width) * ratio });
+  const size = canvasSize(base, width, window.devicePixelRatio || 1);
+  const viewport = page.getViewport({ scale: size.scale });
   drawing.get(canvas)?.cancel();
-  canvas.width = Math.floor(viewport.width);
-  canvas.height = Math.floor(viewport.height);
+  canvas.width = size.width;
+  canvas.height = size.height;
   canvas.style.aspectRatio = `${base.width} / ${base.height}`;
   const task = page.render({ canvas, viewport });
   drawing.set(canvas, task);
@@ -92,24 +95,7 @@ export function PdfThumbnail({ src, width = 220 }: { src: string; width?: number
   return failed ? <FilePdf size={40} className="pdf-thumb-fallback" /> : <canvas ref={canvas} className="pdf-thumb" />;
 }
 
-// One page of the viewer; drawn once it comes near the visible area.
-function ViewerPage({ doc, number, width }: { doc: PdfDocument; number: number; width: number }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const [visible, setVisible] = useState(number <= 2);
-  useEffect(() => {
-    const el = canvas.current;
-    if (!el || visible) return;
-    const io = new IntersectionObserver(([entry]) => entry.isIntersecting && setVisible(true), { rootMargin: "800px 0px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [visible]);
-  useEffect(() => {
-    if (visible && canvas.current) renderPage(doc, number, canvas.current, width).catch(() => {});
-  }, [doc, number, width, visible]);
-  return <canvas ref={canvas} className="pdf-page" data-page={number} style={{ width }} />;
-}
-
-const fileLink = /^\/api\/(files\/[\w-]+|share\/[\w-]+\/files\/[\w-]+)$/;
+export const fileLink = /^\/api\/(files\/[\w-]+|share\/[\w-]+\/files\/[\w-]+)$/;
 // Static PDF blocks (read-only pages, published pages) get their preview.
 function decorate(root: ParentNode) {
   for (const block of root.querySelectorAll<HTMLElement>(".pdf-block[data-pdf]:not([data-ready])")) {
@@ -127,7 +113,6 @@ function decorate(root: ParentNode) {
 }
 
 export function PdfViewerHost() {
-  const t = useT();
   // Links to PDFs in Flowplan open the viewer instead of downloading.
   // In text being edited only with ⌘/Ctrl, so clicking still places the caret.
   useEffect(() => {
@@ -160,112 +145,22 @@ export function PdfViewerHost() {
       observer.disconnect();
     };
   }, []);
-  const [open, setOpen] = useState<{ src: string; title: string } | null>(null);
-  const [doc, setDoc] = useState<PdfDocument | null>(null);
-  const [error, setError] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [fitWidth, setFitWidth] = useState(800);
-  const [current, setCurrent] = useState(1);
-  const scroller = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<{ src: string; title: string; n: number } | null>(null);
   useEffect(() => {
+    let n = 0;
     const show = (event: Event) => {
       const detail = (event as CustomEvent<{ src: string; title: string }>).detail;
       if (!fileLink.test(detail?.src || "")) return;
-      setOpen(detail);
-      setDoc(null);
-      setError(false);
-      setZoom(1);
-      setCurrent(1);
+      // A new viewer each time (fresh zoom, page and ink).
+      setOpen({ src: detail.src, title: detail.title, n: ++n });
     };
     window.addEventListener(EVENT, show);
     return () => window.removeEventListener(EVENT, show);
   }, []);
-  useEffect(() => {
-    if (!open) return;
-    let alive = true;
-    loadPdf(open.src)
-      .then((d) => alive && setDoc(d))
-      .catch(() => alive && setError(true));
-    const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(null);
-      if ((event.metaKey || event.ctrlKey) && (event.key === "+" || event.key === "=")) {
-        event.preventDefault();
-        setZoom((z) => Math.min(3, z + 0.25));
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key === "-") {
-        event.preventDefault();
-        setZoom((z) => Math.max(0.5, z - 0.25));
-      }
-    };
-    document.addEventListener("keydown", key);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      alive = false;
-      document.removeEventListener("keydown", key);
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
-  // Pages fit the window width (at most 900 px), times the zoom.
-  useEffect(() => {
-    if (!open) return;
-    const measure = () => setFitWidth(Math.min(900, (scroller.current?.clientWidth || window.innerWidth) - 32));
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [open]);
-  const onScroll = useCallback(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const pages = [...el.querySelectorAll<HTMLElement>(".pdf-page")];
-    const middle = el.scrollTop + el.clientHeight / 3;
-    const page = pages.findLast((p) => p.offsetTop <= middle);
-    setCurrent(Number(page?.dataset.page || 1));
-  }, []);
   if (!open) return null;
-  const width = Math.round(fitWidth * zoom);
   return (
-    <div className="pdf-viewer" role="dialog" aria-modal="true" aria-label={open.title || "PDF"}>
-      <header className="pdf-viewer-bar">
-        <FilePdf size={20} />
-        <strong title={open.title}>{open.title || "PDF"}</strong>
-        {doc && (
-          <span className="pdf-viewer-pages">
-            {t(`Seite ${current} von ${doc.numPages}`, `Page ${current} of ${doc.numPages}`)}
-          </span>
-        )}
-        <span className="pdf-viewer-actions">
-          <button type="button" className="icon-button" aria-label={t("Verkleinern", "Zoom out")} title={t("Verkleinern", "Zoom out")} onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
-            <MagnifyingGlassMinus size={18} />
-          </button>
-          <span className="pdf-viewer-zoom">{Math.round(zoom * 100)} %</span>
-          <button type="button" className="icon-button" aria-label={t("Vergrößern", "Zoom in")} title={t("Vergrößern", "Zoom in")} onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
-            <MagnifyingGlassPlus size={18} />
-          </button>
-          <button type="button" className="icon-button" aria-label={t("An Breite anpassen", "Fit to width")} title={t("An Breite anpassen", "Fit to width")} onClick={() => setZoom(1)}>
-            <ArrowsOut size={18} />
-          </button>
-          <a className="icon-button" href={open.src} download={open.title || "document.pdf"} aria-label={t("Herunterladen", "Download")} title={t("Herunterladen", "Download")}>
-            <DownloadSimple size={18} />
-          </a>
-          <button type="button" className="icon-button" aria-label={t("Schließen", "Close")} title={t("Schließen", "Close")} onClick={() => setOpen(null)}>
-            <X size={18} />
-          </button>
-        </span>
-      </header>
-      <div className="pdf-viewer-pages-area" ref={scroller} onScroll={onScroll}>
-        {error ? (
-          <p className="pdf-viewer-message" role="alert">
-            {t("Das PDF ließ sich nicht anzeigen. Du kannst es herunterladen.", "The PDF could not be shown. You can download it.")}
-          </p>
-        ) : !doc ? (
-          <p className="pdf-viewer-message" role="status">
-            {t("PDF wird geladen …", "Loading PDF …")}
-          </p>
-        ) : (
-          Array.from({ length: doc.numPages }, (_, i) => <ViewerPage key={i} doc={doc} number={i + 1} width={width} />)
-        )}
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      <PdfViewerDialog key={open.n} src={open.src} title={open.title} onClose={() => setOpen(null)} />
+    </Suspense>
   );
 }
