@@ -1134,6 +1134,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/route.ts": "Share links with their own token",
   "app/api/share/[token]/files/route.ts": "Share links with their own token",
   "app/api/share/[token]/files/[fileId]/route.ts": "Share links with their own token",
+  "app/api/share/[token]/files/[fileId]/ink/route.ts": "Share links with their own token",
   "app/api/share/[token]/live/route.ts": "Share links with their own token",
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",

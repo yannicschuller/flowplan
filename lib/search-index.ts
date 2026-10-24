@@ -132,7 +132,7 @@ function indexExtra(pageId: string, key: string) {
             pageId,
           )
         : one<{ title: string; body: string }>(
-            "SELECT f.name title,f.name||' '||f.mime||COALESCE(char(10)||t.text,'') body FROM files f LEFT JOIN file_texts t ON t.file_id=f.id WHERE f.id=? AND f.page_id=?",
+            "SELECT f.name title,f.name||' '||f.mime||COALESCE(char(10)||t.text,'')||COALESCE(char(10)||NULLIF(i.text,''),'') body FROM files f LEFT JOIN file_texts t ON t.file_id=f.id LEFT JOIN file_ink i ON i.file_id=f.id WHERE f.id=? AND f.page_id=?",
             id,
             pageId,
           );
