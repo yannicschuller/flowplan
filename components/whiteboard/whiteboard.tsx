@@ -5,6 +5,7 @@ import { useStatusLabel, useT } from "../i18n";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -64,6 +65,8 @@ import {
   TreeStructure,
   MagnifyingGlass,
   UploadSimple,
+  DotsNine,
+  DotsThree,
 } from "@phosphor-icons/react";
 import { Modal, api } from "../ui";
 import {
@@ -343,7 +346,14 @@ export default function Whiteboard({
     [cardOpen, setCardOpen] = useState(false),
     [cardQuery, setCardQuery] = useState(""),
     [status, setStatus] = useState("Gespeichert"),
-    [space, setSpace] = useState(false);
+    [space, setSpace] = useState(false),
+    // Layout by the room the board has (see the effect below): "dock" puts
+    // the most used tools in one bar at the bottom (phones, short landscape
+    // screens, narrow split panes); "menu" folds view and export actions
+    // into one overflow menu when the action bar would not fit.
+    [layout, setLayout] = useState<{ dock: boolean; menu: boolean }>({ dock: false, menu: false }),
+    [moreOpen, setMoreOpen] = useState(false),
+    [actionsOpen, setActionsOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null),
     svg = useRef<SVGSVGElement>(null),
     gesture = useRef<Gesture | null>(null),
@@ -355,6 +365,7 @@ export default function Whiteboard({
       null,
     ),
     fileInput = useRef<HTMLInputElement>(null),
+    importInput = useRef<HTMLInputElement>(null),
     dirty = useRef(false),
     lastVector = useRef<Uint8Array | null>(null),
     inflight = useRef(false),
@@ -763,6 +774,82 @@ export default function Whiteboard({
     return () => el.removeEventListener("wheel", wheel);
     // The canvas is a new element after entering or leaving full screen.
   }, [zoomAt, fullscreen]);
+
+  // Which layout fits the board: measured before painting, so phones never
+  // see the desktop tool column first.
+  useLayoutEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const phone = window.matchMedia("(max-width: 760px), (max-height: 500px)");
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect();
+      const dock = phone.matches || width < 420 || height < 360;
+      const menu = dock || width < 760;
+      setLayout((l) => (l.dock === dock && l.menu === menu ? l : { dock, menu }));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(el);
+    phone.addEventListener("change", measure);
+    return () => {
+      observer?.disconnect();
+      phone.removeEventListener("change", measure);
+    };
+    // The board is a new element after entering or leaving full screen.
+  }, [fullscreen]);
+  // Phones: the page opens with the whole board in view – the title just
+  // above, the tools above the tab bar – not with the tools below the fold.
+  useEffect(() => {
+    const el = container.current;
+    if (!el || !window.matchMedia("(max-width: 760px), (max-height: 500px)").matches) return;
+    const scroller = el.closest(".main-scroll");
+    if (!scroller) return;
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (scroller.scrollTop > 0 || active?.closest("input, textarea, [contenteditable='true']")) return;
+      const below = el.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom;
+      if (below > 0) scroller.scrollTop = Math.ceil(below);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  // The tool sheet and the actions menu close on a tap elsewhere or Escape.
+  useEffect(() => {
+    if (!moreOpen && !actionsOpen) return;
+    const close = () => {
+      setMoreOpen(false);
+      setActionsOpen(false);
+    };
+    const down = (e: PointerEvent) => {
+      if (!(e.target as Element | null)?.closest?.(".wb-sheet, .wb-actions, .wb-more, .wb-actions-toggle")) close();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      close();
+      container.current?.focus({ preventScroll: true });
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("keydown", key, true);
+    };
+  }, [moreOpen, actionsOpen]);
+  // A finger on the board never scrolls or zooms the page – touch-action
+  // alone is not always enough in iOS web views. Menus and fields that
+  // scroll themselves keep their touches.
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const move = (e: TouchEvent) => {
+      if (!e.cancelable) return;
+      const target = e.target as Element | null;
+      if (target?.closest?.(".wb-sheet, .wb-actions, .wb-panel, .wb-comment-popover, .wb-style-bar, textarea, input, select")) return;
+      e.preventDefault();
+    };
+    el.addEventListener("touchmove", move, { passive: false });
+    return () => el.removeEventListener("touchmove", move);
+  }, [fullscreen]);
 
   // ---- editing the board ----
   const change = useCallback(
@@ -2590,6 +2677,200 @@ export default function Whiteboard({
       : []),
     ["laser", t("Laserpointer", "Laser pointer"), <CursorClick key="k" size={18} />, "K"],
   ];
+  // Phones: the most used tools stay in the bar, the rest wait in a sheet.
+  const dockKeys: Tool[] = ["select", "hand", "sticky", "text", "shape", "pen"];
+  const dockTools = tools.filter(([key]) => dockKeys.includes(key));
+  const moreTools = tools.filter(([key]) => !dockKeys.includes(key));
+  const moreTool = layout.dock ? moreTools.find(([key]) => key === tool) : undefined;
+  const pickTool = (key: Tool) => {
+    setTool(key);
+    setShapeMenu(key === "shape" && tool === "shape" ? !shapeMenu : key === "shape");
+  };
+  type BoardAction = {
+    key: string;
+    label: string;
+    title: string;
+    icon: React.ReactNode;
+    run: () => void;
+    active?: boolean;
+    pressed?: boolean;
+    keepOpen?: boolean;
+  };
+  const insertActions: BoardAction[] = editable
+    ? [
+        { key: "image", label: t("Bild", "Image"), title: t("Bild einfügen", "Insert image"), icon: <ImageSquare size={18} />, run: () => fileInput.current?.click() },
+        { key: "media", label: t("Bilder und Symbole suchen", "Search images and icons"), title: t("Bilder (Openverse) und Symbole", "Images (Openverse) and icons"), icon: <MagnifyingGlass size={18} />, run: () => setImagesOpen(true) },
+        { key: "emoji", label: t("Emoji", "Emoji"), title: t("Emoji oder Sticker", "Emoji or sticker"), icon: <Smiley size={18} />, run: () => setEmojiOpen(true) },
+        { key: "card", label: t("Seite verknüpfen", "Link page"), title: t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard"), icon: <FileText size={18} />, run: () => setCardOpen(true) },
+        { key: "templates", label: t("Vorlagen", "Templates"), title: t("Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm", "Templates: retro, kanban, mind map, SWOT, flowchart"), icon: <SquaresFour size={18} />, run: () => setTemplatesOpen(true) },
+      ]
+    : [];
+  const meetingActions: BoardAction[] = editable
+    ? [
+        {
+          key: "vote",
+          label: t("Abstimmung", "Vote"),
+          title: t("Abstimmung", "Vote"),
+          icon: <ThumbsUp size={18} />,
+          active: !!meta.voting?.active,
+          run: () => {
+            setVotingOpen((v) => !v);
+            setTimerOpen(false);
+          },
+        },
+        {
+          key: "timer",
+          label: t("Timer", "Timer"),
+          title: t("Timer", "Timer"),
+          icon: <Timer size={18} />,
+          active: !!timer,
+          run: () => {
+            setTimerOpen((v) => !v);
+            setVotingOpen(false);
+          },
+        },
+      ]
+    : [];
+  const viewActions: BoardAction[] = [
+    {
+      key: "snap",
+      label: t("Am Raster ausrichten", "Snap to grid"),
+      title: t("Am Raster ausrichten (Hilfslinien gibt es immer; ⌥ beim Ziehen schaltet beides ab)", "Snap to grid (guides are always on; ⌥ while dragging turns both off)"),
+      icon: <GridFour size={16} />,
+      active: snapGrid,
+      pressed: snapGrid,
+      keepOpen: true,
+      run: () => {
+        setSnapGrid(!snapGrid);
+        store("flowplan-board-snap", !snapGrid);
+      },
+    },
+    ...(editable && !presenter
+      ? [
+          {
+            key: "follow",
+            label: t("Folge mir", "Follow me"),
+            title: t("Folge mir: alle sehen deinen Ausschnitt", "Follow me: everyone sees your view"),
+            icon: <UsersThree size={16} />,
+            run: () => setMetaValue("presenter", { userId, name: userName || "Jemand", since: Date.now() }),
+          },
+        ]
+      : []),
+    {
+      key: "fit",
+      label: t("Alles anzeigen", "Show everything"),
+      title: t("Alles anzeigen (⇧1)", "Show everything (⇧1)"),
+      icon: <ArrowsOut size={16} />,
+      run: () => fitToContent(),
+    },
+    {
+      key: "fullscreen",
+      label: fullscreen ? t("Vollbild beenden", "Exit full screen") : t("Vollbild", "Full screen"),
+      title: fullscreen ? t("Vollbild beenden (Esc)", "Exit full screen (Esc)") : t("Vollbild", "Full screen"),
+      icon: fullscreen ? <CornersIn size={16} /> : <CornersOut size={16} />,
+      pressed: fullscreen,
+      run: () => void toggleFullscreen(),
+    },
+    {
+      key: "comments",
+      label: showComments ? t("Kommentare ausblenden", "Hide comments") : t("Kommentare anzeigen", "Show comments"),
+      title: showComments ? t("Kommentare ausblenden", "Hide comments") : t("Kommentare anzeigen", "Show comments"),
+      icon: <ChatCircle size={16} weight={showComments ? "fill" : "regular"} />,
+      pressed: showComments,
+      keepOpen: true,
+      run: () => setShowComments((v) => !v),
+    },
+  ];
+  const exportActions: BoardAction[] = [
+    ...(editable
+      ? [
+          {
+            key: "import",
+            label: t("Importieren …", "Import …"),
+            title: t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)"),
+            icon: <UploadSimple size={16} />,
+            run: () => importInput.current?.click(),
+          },
+        ]
+      : []),
+    { key: "svg", label: t("Als SVG exportieren", "Export as SVG"), title: t("Als SVG exportieren", "Export as SVG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("svg") },
+    { key: "png", label: t("Als PNG exportieren", "Export as PNG"), title: t("Als PNG exportieren", "Export as PNG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("png") },
+  ];
+  const importFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void importBoardFile(file);
+  };
+  const undoButtons = editable && (
+    <>
+      <button
+        aria-label={t("Rückgängig", "Undo")}
+        title={t("Rückgängig (⌘Z)", "Undo (⌘Z)")}
+        onClick={() => undo.undo()}
+      >
+        <ArrowCounterClockwise size={18} />
+      </button>
+      <button
+        aria-label={t("Wiederholen", "Redo")}
+        title={t("Wiederholen (⇧⌘Z)", "Redo (⇧⌘Z)")}
+        onClick={() => undo.redo()}
+      >
+        <ArrowClockwise size={18} />
+      </button>
+    </>
+  );
+  const zoomButtons = (
+    <>
+      <button aria-label={t("Verkleinern", "Zoom out")} onClick={() => zoomAt(1 / 1.2)}>
+        <Minus size={16} />
+      </button>
+      <button
+        aria-label={t("Zoom zurücksetzen", "Reset zoom")}
+        className="wb-zoom-value"
+        onClick={() => setView((v) => ({ ...v, zoom: 1 }))}
+      >
+        {Math.round(view.zoom * 100)} %
+      </button>
+      <button aria-label={t("Vergrößern", "Zoom in")} onClick={() => zoomAt(1.2)}>
+        <Plus size={16} />
+      </button>
+    </>
+  );
+  const actionsToggle = (
+    <button
+      className={`wb-actions-toggle${actionsOpen ? " active" : ""}`}
+      aria-label={t("Ansicht und Aktionen", "View and actions")}
+      title={t("Ansicht und Aktionen", "View and actions")}
+      aria-haspopup="dialog"
+      aria-expanded={actionsOpen}
+      onClick={() => {
+        setActionsOpen((v) => !v);
+        setMoreOpen(false);
+      }}
+    >
+      <DotsThree size={18} weight="bold" />
+    </button>
+  );
+  // An entry of the tool sheet or the actions menu: symbol and name.
+  const menuButton = (a: BoardAction, close: () => void) => (
+    <button
+      key={a.key}
+      className={a.active ? "active" : undefined}
+      aria-pressed={a.pressed}
+      aria-label={a.label}
+      title={a.title}
+      onClick={() => {
+        if (!a.keepOpen) close();
+        a.run();
+      }}
+    >
+      {a.icon}
+      <span>{a.label}</span>
+    </button>
+  );
+  const closeMore = () => setMoreOpen(false);
+  const closeActions = () => setActionsOpen(false);
+
   const cardPages = pages
     .filter(
       (p) =>
@@ -2602,7 +2883,7 @@ export default function Whiteboard({
   const board = (
     <div
       ref={container}
-      className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}`}
+      className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}${layout.dock ? " wb-layout-dock" : ""}${layout.menu ? " wb-layout-menu" : ""}`}
       tabIndex={0}
       aria-label={t("Whiteboard", "Whiteboard")}
       onKeyDown={onKeyDown}
@@ -3339,105 +3620,58 @@ export default function Whiteboard({
       )}
       {stylePanel}
       <div
-        className="wb-toolbar"
+        className={`wb-toolbar${layout.dock ? " wb-dock" : ""}`}
         role="toolbar"
         aria-label={t("Werkzeuge", "Tools")}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {tools.map(([key, label, icon, shortcut]) => (
+        {(layout.dock ? dockTools : tools).map(([key, label, icon, shortcut]) => (
           <button
             key={key}
             className={tool === key ? "active" : ""}
             aria-pressed={tool === key}
             aria-label={label}
             title={`${label} (${shortcut})`}
-            onClick={() => {
-              setTool(key);
-              setShapeMenu(
-                key === "shape" && tool === "shape"
-                  ? !shapeMenu
-                  : key === "shape",
-              );
-            }}
+            onClick={() => pickTool(key)}
           >
             {icon}
           </button>
         ))}
-        {editable && (
-          <>
+        {layout.dock ? (
+          moreTools.length + insertActions.length > 0 && (
             <button
-              aria-label={t("Bild", "Image")}
-              title={t("Bild einfügen", "Insert image")}
-              onClick={() => fileInput.current?.click()}
-            >
-              <ImageSquare size={18} />
-            </button>
-            <button
-              aria-label={t("Bilder und Symbole suchen", "Search images and icons")}
-              title={t("Bilder (Openverse) und Symbole", "Images (Openverse) and icons")}
-              onClick={() => setImagesOpen(true)}
-            >
-              <MagnifyingGlass size={18} />
-            </button>
-            <button
-              aria-label={t("Emoji", "Emoji")}
-              title={t("Emoji oder Sticker", "Emoji or sticker")}
-              onClick={() => setEmojiOpen(true)}
-            >
-              <Smiley size={18} />
-            </button>
-            <button
-              aria-label={t("Seite verknüpfen", "Link page")}
-              title={t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard")}
-              onClick={() => setCardOpen(true)}
-            >
-              <FileText size={18} />
-            </button>
-            <button
-              aria-label={t("Vorlagen", "Templates")}
-              title={t("Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm", "Templates: retro, kanban, mind map, SWOT, flowchart")}
-              onClick={() => setTemplatesOpen(true)}
-            >
-              <SquaresFour size={18} />
-            </button>
-            <button
-              aria-label={t("Abstimmung", "Vote")}
-              title={t("Abstimmung", "Vote")}
-              className={meta.voting?.active ? "active" : ""}
+              className={`wb-more${moreOpen || moreTool ? " active" : ""}`}
+              aria-label={t("Weitere Werkzeuge", "More tools")}
+              title={moreTool ? moreTool[1] : t("Weitere Werkzeuge", "More tools")}
+              aria-haspopup="dialog"
+              aria-expanded={moreOpen}
               onClick={() => {
-                setVotingOpen((v) => !v);
-                setTimerOpen(false);
+                setMoreOpen((v) => !v);
+                setActionsOpen(false);
+                setShapeMenu(false);
               }}
             >
-              <ThumbsUp size={18} />
+              {moreTool ? moreTool[2] : <DotsNine size={18} weight="bold" />}
             </button>
-            <button
-              aria-label={t("Timer", "Timer")}
-              title={t("Timer", "Timer")}
-              className={timer ? "active" : ""}
-              onClick={() => {
-                setTimerOpen((v) => !v);
-                setVotingOpen(false);
-              }}
-            >
-              <Timer size={18} />
-            </button>
-            <span className="wb-sep" />
-            <button
-              aria-label={t("Rückgängig", "Undo")}
-              title={t("Rückgängig (⌘Z)", "Undo (⌘Z)")}
-              onClick={() => undo.undo()}
-            >
-              <ArrowCounterClockwise size={18} />
-            </button>
-            <button
-              aria-label={t("Wiederholen", "Redo")}
-              title={t("Wiederholen (⇧⌘Z)", "Redo (⇧⌘Z)")}
-              onClick={() => undo.redo()}
-            >
-              <ArrowClockwise size={18} />
-            </button>
-          </>
+          )
+        ) : (
+          editable && (
+            <>
+              {[...insertActions, ...meetingActions].map((a) => (
+                <button
+                  key={a.key}
+                  className={a.active ? "active" : undefined}
+                  aria-label={a.label}
+                  title={a.title}
+                  onClick={a.run}
+                >
+                  {a.icon}
+                </button>
+              ))}
+              <span className="wb-sep" />
+              {undoButtons}
+            </>
+          )
         )}
         <input
           ref={fileInput}
@@ -3451,7 +3685,97 @@ export default function Whiteboard({
             if (f) void addImage(f);
           }}
         />
+        {/* With the actions menu the import picker lives here: the menu
+            closes while the file dialog is open. */}
+        {layout.menu && editable && (
+          <input
+            ref={importInput}
+            type="file"
+            hidden
+            accept=".excalidraw,.drawio,.xml,.svg,.json,application/json"
+            aria-label={t("Excalidraw- oder draw.io-Datei importieren", "Import an Excalidraw or draw.io file")}
+            onChange={importFile}
+          />
+        )}
       </div>
+      {layout.dock && editable && (
+        <div
+          className="wb-corner wb-corner-start"
+          role="toolbar"
+          aria-label={t("Rückgängig und Wiederholen", "Undo and redo")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {undoButtons}
+        </div>
+      )}
+      {layout.dock && (
+        <div className="wb-corner wb-corner-end" onPointerDown={(e) => e.stopPropagation()}>
+          {actionsToggle}
+        </div>
+      )}
+      {layout.dock && moreOpen && (
+        <div
+          className="wb-sheet"
+          role="dialog"
+          aria-label={t("Weitere Werkzeuge", "More tools")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {moreTools.length > 0 && (
+            <section>
+              <h3>{t("Werkzeuge", "Tools")}</h3>
+              <div className="wb-sheet-grid">
+                {moreTools.map(([key, label, icon]) => (
+                  <button
+                    key={key}
+                    className={tool === key ? "active" : undefined}
+                    aria-pressed={tool === key}
+                    aria-label={label}
+                    onClick={() => {
+                      pickTool(key);
+                      closeMore();
+                    }}
+                  >
+                    {icon}
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+          {insertActions.length > 0 && (
+            <section>
+              <h3>{t("Einfügen", "Insert")}</h3>
+              <div className="wb-sheet-grid">{insertActions.map((a) => menuButton(a, closeMore))}</div>
+            </section>
+          )}
+          {meetingActions.length > 0 && (
+            <section>
+              <h3>{t("Moderation", "Facilitation")}</h3>
+              <div className="wb-sheet-grid">{meetingActions.map((a) => menuButton(a, closeMore))}</div>
+            </section>
+          )}
+        </div>
+      )}
+      {layout.menu && actionsOpen && (
+        <div
+          className="wb-actions"
+          role="dialog"
+          aria-label={t("Ansicht und Aktionen", "View and actions")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {layout.dock && (
+            <div className="wb-actions-zoom">
+              <span className="wb-status" aria-live="polite">
+                {statusLabel(status)}
+              </span>
+              {zoomButtons}
+            </div>
+          )}
+          {viewActions.map((a) => menuButton(a, closeActions))}
+          <span className="wb-actions-sep" />
+          {exportActions.map((a) => menuButton(a, closeActions))}
+        </div>
+      )}
       {editable && tool === "shape" && shapeMenu && (
         <div
           className="wb-shape-menu"
@@ -3562,103 +3886,54 @@ export default function Whiteboard({
           <span className="wb-menu-hint">{t("Laserpointer: alle sehen deine Spur", "Laser pointer: everyone sees your trail")}</span>
         </div>
       )}
-      <div className="wb-zoom" onPointerDown={(e) => e.stopPropagation()}>
-        <span className="wb-status" aria-live="polite">
-          {statusLabel(status)}
-        </span>
-        <button aria-label={t("Verkleinern", "Zoom out")} onClick={() => zoomAt(1 / 1.2)}>
-          <Minus size={16} />
-        </button>
-        <button
-          aria-label={t("Zoom zurücksetzen", "Reset zoom")}
-          className="wb-zoom-value"
-          onClick={() => setView((v) => ({ ...v, zoom: 1 }))}
-        >
-          {Math.round(view.zoom * 100)} %
-        </button>
-        <button aria-label={t("Vergrößern", "Zoom in")} onClick={() => zoomAt(1.2)}>
-          <Plus size={16} />
-        </button>
-        <button
-          aria-label={t("Am Raster ausrichten", "Snap to grid")}
-          aria-pressed={snapGrid}
-          title={t("Am Raster ausrichten (Hilfslinien gibt es immer; ⌥ beim Ziehen schaltet beides ab)", "Snap to grid (guides are always on; ⌥ while dragging turns both off)")}
-          className={snapGrid ? "active" : ""}
-          onClick={() => {
-            setSnapGrid(!snapGrid);
-            store("flowplan-board-snap", !snapGrid);
-          }}
-        >
-          <GridFour size={16} />
-        </button>
-        {editable && !presenter && (
-          <button
-            aria-label={t("Folge mir", "Follow me")}
-            title={t("Folge mir: alle sehen deinen Ausschnitt", "Follow me: everyone sees your view")}
-            onClick={() => setMetaValue("presenter", { userId, name: userName || "Jemand", since: Date.now() })}
-          >
-            <UsersThree size={16} />
-          </button>
-        )}
-        <button
-          aria-label={t("Alles anzeigen", "Show everything")}
-          title={t("Alles anzeigen (⇧1)", "Show everything (⇧1)")}
-          onClick={() => fitToContent()}
-        >
-          <ArrowsOut size={16} />
-        </button>
-        <button
-          aria-label={fullscreen ? t("Vollbild beenden", "Exit full screen") : t("Vollbild", "Full screen")}
-          aria-pressed={fullscreen}
-          title={fullscreen ? t("Vollbild beenden (Esc)", "Exit full screen (Esc)") : t("Vollbild", "Full screen")}
-          onClick={() => void toggleFullscreen()}
-        >
-          {fullscreen ? <CornersIn size={16} /> : <CornersOut size={16} />}
-        </button>
-        <button
-          aria-label={
-            showComments ? t("Kommentare ausblenden", "Hide comments") : t("Kommentare anzeigen", "Show comments")
-          }
-          aria-pressed={showComments}
-          title={showComments ? t("Kommentare ausblenden", "Hide comments") : t("Kommentare anzeigen", "Show comments")}
-          onClick={() => setShowComments((v) => !v)}
-        >
-          <ChatCircle size={16} weight={showComments ? "fill" : "regular"} />
-        </button>
-        {editable && (
-          <label
-            className="wb-import"
-            title={t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)")}
-          >
-            <UploadSimple size={16} /> {t("Importieren …", "Import …")}
-            <input
-              type="file"
-              hidden
-              accept=".excalidraw,.drawio,.xml,.svg,.json,application/json"
-              aria-label={t("Excalidraw- oder draw.io-Datei importieren", "Import an Excalidraw or draw.io file")}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) void importBoardFile(file);
-              }}
-            />
-          </label>
-        )}
-        <button
-          aria-label={t("Als SVG exportieren", "Export as SVG")}
-          title={t("Als SVG exportieren", "Export as SVG")}
-          onClick={() => exportBoard("svg")}
-        >
-          <DownloadSimple size={16} /> SVG
-        </button>
-        <button
-          aria-label={t("Als PNG exportieren", "Export as PNG")}
-          title={t("Als PNG exportieren", "Export as PNG")}
-          onClick={() => exportBoard("png")}
-        >
-          <DownloadSimple size={16} /> PNG
-        </button>
-      </div>
+      {!layout.dock && (
+        <div className="wb-zoom" onPointerDown={(e) => e.stopPropagation()}>
+          <span className="wb-status" aria-live="polite">
+            {statusLabel(status)}
+          </span>
+          {zoomButtons}
+          {layout.menu ? (
+            actionsToggle
+          ) : (
+            <>
+              {viewActions.map((a) => (
+                <button
+                  key={a.key}
+                  className={a.active ? "active" : undefined}
+                  aria-pressed={a.pressed}
+                  aria-label={a.label}
+                  title={a.title}
+                  onClick={a.run}
+                >
+                  {a.icon}
+                </button>
+              ))}
+              {editable && (
+                <label
+                  className="wb-import"
+                  title={t("Importieren … (Excalidraw, draw.io)", "Import … (Excalidraw, draw.io)")}
+                >
+                  <UploadSimple size={16} /> {t("Importieren …", "Import …")}
+                  <input
+                    type="file"
+                    hidden
+                    accept=".excalidraw,.drawio,.xml,.svg,.json,application/json"
+                    aria-label={t("Excalidraw- oder draw.io-Datei importieren", "Import an Excalidraw or draw.io file")}
+                    onChange={importFile}
+                  />
+                </label>
+              )}
+              {exportActions
+                .filter((a) => a.key !== "import")
+                .map((a) => (
+                  <button key={a.key} aria-label={a.label} title={a.title} onClick={a.run}>
+                    {a.icon} {a.key.toUpperCase()}
+                  </button>
+                ))}
+            </>
+          )}
+        </div>
+      )}
       {presenting !== null ? (
         <div
           className="wb-present"
@@ -3729,16 +4004,16 @@ export default function Whiteboard({
           ))}
         </div>
       </Modal>
-      {!items.length && (
+      {/* Phones: once a tool is chosen its options take the hint's place. */}
+      {!items.length && !(layout.dock && tool !== "select" && tool !== "hand") && (
         <div className="wb-empty" aria-hidden="true">
           {editable ? (
             <>
-              <span className="wb-empty-wide">
-                {t("Doppelklick für einen Notizzettel – oder links ein Werkzeug wählen.", "Double-click for a sticky note – or choose a tool on the left.")}
-              </span>
               {/* Phones: the tools sit at the bottom. */}
-              <span className="wb-empty-narrow">
-                {t("Unten ein Werkzeug wählen, etwa den Notizzettel.", "Choose a tool below, such as the sticky note.")}
+              <span>
+                {layout.dock
+                  ? t("Unten ein Werkzeug wählen, etwa den Notizzettel.", "Choose a tool below, such as the sticky note.")
+                  : t("Doppelklick für einen Notizzettel – oder links ein Werkzeug wählen.", "Double-click for a sticky note – or choose a tool on the left.")}
               </span>
             </>
           ) : (

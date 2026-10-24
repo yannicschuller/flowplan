@@ -9247,7 +9247,16 @@ textarea {
   background: #fafbfc;
   outline: none;
   touch-action: none;
+  overscroll-behavior: contain;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  /* Room the controls keep from the screen edges: the safe areas count
+     only in full screen, otherwise the page around the board keeps them. */
+  --wb-inset-top: 0px;
+  --wb-inset-right: 0px;
+  --wb-inset-bottom: 0px;
+  --wb-inset-left: 0px;
 }
 .whiteboard:focus-visible {
   box-shadow: 0 0 0 3px var(--blue-light);
@@ -9548,17 +9557,6 @@ textarea {
   font-size: 14px;
   pointer-events: none;
 }
-.wb-empty-narrow {
-  display: none;
-}
-@media (max-width: 760px) {
-  .wb-empty-wide {
-    display: none;
-  }
-  .wb-empty-narrow {
-    display: inline;
-  }
-}
 .wb-card-search {
   width: 100%;
   margin-bottom: 10px;
@@ -9586,32 +9584,28 @@ textarea {
 .page-content.whiteboard-page {
   max-width: none;
 }
+/* Phones: the board fills what the scrolling page shows below the top bar
+   and above the tab bar (or the home indicator), edge to edge (the page's
+   21px side padding); title and related pages scroll around it. A finger on
+   the board never scrolls the page, so a 48px strip of page always stays in
+   view to scroll with. */
 @media (max-width: 760px) {
   .whiteboard {
-    height: calc(100dvh - 150px);
+    height: calc(
+      100dvh - 57px - var(--safe-top, 0px) -
+        max(var(--tab-bar-space, 0px), var(--safe-bottom, 0px)) - 48px
+    );
+    min-height: 260px;
     border-radius: 0;
-    margin: 0 -16px;
+    border-inline: 0;
+    margin: 0 -21px;
   }
-  .wb-toolbar {
-    left: 8px;
-    top: auto;
-    bottom: 64px;
-    translate: none;
-    flex-direction: row;
-    flex-wrap: wrap;
-    max-width: calc(100% - 16px);
-  }
-  .wb-toolbar .wb-sep {
-    width: 1px;
-    height: 20px;
-    margin: 0 4px;
-  }
-  .wb-shape-menu {
-    left: 8px;
-    top: auto;
-    bottom: 120px;
-    translate: none;
-    grid-template-columns: repeat(5, auto);
+}
+/* Phones turned sideways and other short screens. */
+@media (max-height: 500px) and (min-width: 761px) {
+  .whiteboard {
+    height: calc(100dvh - 57px - var(--safe-top, 0px) - var(--safe-bottom, 0px) - 40px);
+    min-height: 220px;
   }
 }
 .wb-text-swatch {
@@ -9983,12 +9977,6 @@ textarea {
   float: right;
 }
 @media (max-width: 760px) {
-  .wb-panel {
-    left: 8px;
-    top: auto;
-    bottom: 120px;
-    translate: none;
-  }
   .wb-comment-popover {
     width: min(300px, calc(100% - 16px));
   }
@@ -10016,6 +10004,280 @@ textarea {
   .wb-panel {
     left: 104px;
   }
+}
+.whiteboard.wb-fullscreen {
+  --wb-inset-top: var(--safe-top, 0px);
+  --wb-inset-right: var(--safe-right, 0px);
+  --wb-inset-bottom: var(--safe-bottom, 0px);
+  --wb-inset-left: var(--safe-left, 0px);
+}
+/* Compact layout (.wb-layout-dock, chosen in whiteboard.tsx by the room the
+   board has – phones, landscape phones, narrow panes): one bar of the most
+   used tools at the bottom, a sheet with the rest, undo/redo top left, view
+   and export actions in one menu top right. Like Freeform or tldraw. */
+.whiteboard.wb-layout-dock .wb-toolbar.wb-dock {
+  left: calc(8px + var(--wb-inset-left));
+  right: calc(8px + var(--wb-inset-right));
+  top: auto;
+  bottom: calc(10px + var(--wb-inset-bottom));
+  translate: none;
+  width: fit-content;
+  max-width: calc(100% - 16px - var(--wb-inset-left) - var(--wb-inset-right));
+  max-height: none;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 4px;
+  border-radius: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.wb-toolbar.wb-dock::-webkit-scrollbar {
+  display: none;
+}
+.whiteboard.wb-layout-dock .wb-toolbar.wb-dock button,
+.wb-corner button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  color: var(--text);
+}
+.wb-corner button {
+  width: 36px;
+  height: 36px;
+}
+.wb-toolbar.wb-dock .wb-more {
+  position: relative;
+  margin-left: 2px;
+}
+.wb-toolbar.wb-dock .wb-more::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--border);
+}
+.wb-toolbar.wb-dock .wb-more.active,
+.wb-corner button.active {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.wb-corner {
+  position: absolute;
+  top: calc(8px + var(--wb-inset-top));
+  z-index: 3;
+  display: flex;
+  gap: 0;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.wb-corner-start {
+  left: calc(8px + var(--wb-inset-left));
+}
+.wb-corner-end {
+  right: calc(8px + var(--wb-inset-right));
+}
+.wb-sheet {
+  position: absolute;
+  left: calc(8px + var(--wb-inset-left));
+  right: calc(8px + var(--wb-inset-right));
+  bottom: calc(68px + var(--wb-inset-bottom));
+  z-index: 6;
+  max-width: 460px;
+  max-height: calc(100% - 128px - var(--wb-inset-top) - var(--wb-inset-bottom));
+  margin-inline: auto;
+  padding: 10px 8px 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  border-radius: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+.wb-sheet h3 {
+  margin: 0 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wb-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.wb-sheet-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-height: 62px;
+  padding: 9px 4px 6px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.2;
+  text-align: center;
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+.wb-sheet-grid button.active {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+/* View and export actions in one menu: top right on phones, above the zoom
+   bar where the full bar does not fit (tablets, narrow windows). */
+.wb-actions {
+  position: absolute;
+  right: 12px;
+  bottom: 60px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  width: 248px;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 76px);
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  animation: menu-in 0.14s var(--ease-out) both;
+}
+.whiteboard.wb-layout-dock .wb-actions {
+  top: calc(56px + var(--wb-inset-top));
+  right: calc(8px + var(--wb-inset-right));
+  bottom: auto;
+  max-height: calc(100% - 128px - var(--wb-inset-top) - var(--wb-inset-bottom));
+}
+.wb-actions > button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  flex: none;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  text-align: left;
+}
+.wb-actions > button[aria-pressed="true"],
+.wb-actions > button.active {
+  color: var(--blue);
+}
+.wb-actions-sep {
+  flex: none;
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.wb-actions-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-bottom: 4px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+.wb-actions-zoom .wb-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.wb-actions-zoom button {
+  padding: 7px;
+  border-radius: 8px;
+  color: var(--text);
+}
+/* The import entry is a label (it holds the file input): one line, like
+   the buttons next to it. */
+.wb-zoom label.wb-import {
+  flex-direction: row;
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+.wb-zoom .wb-actions-toggle.active {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+/* Options of the chosen tool and the vote and timer panels sit above the
+   bar; badges at the top move below the corner buttons. */
+.whiteboard.wb-layout-dock .wb-shape-menu,
+.whiteboard.wb-layout-dock .wb-panel {
+  left: calc(8px + var(--wb-inset-left));
+  right: calc(8px + var(--wb-inset-right));
+  top: auto;
+  bottom: calc(68px + var(--wb-inset-bottom));
+  translate: none;
+  width: fit-content;
+  max-width: calc(100% - 16px - var(--wb-inset-left) - var(--wb-inset-right));
+  margin-inline: auto;
+}
+.whiteboard.wb-layout-dock .wb-shape-menu {
+  grid-template-columns: repeat(5, auto);
+}
+.whiteboard.wb-layout-dock .wb-panel {
+  width: min(300px, 100% - 16px);
+  max-height: calc(100% - 128px - var(--wb-inset-top) - var(--wb-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.whiteboard.wb-layout-dock .wb-style-bar {
+  left: calc(8px + var(--wb-inset-left)) !important;
+  right: calc(8px + var(--wb-inset-right));
+  top: calc(56px + var(--wb-inset-top)) !important;
+  max-width: none;
+  width: fit-content;
+  margin-inline: auto;
+}
+.whiteboard.wb-layout-dock :is(.wb-timer, .wb-presenting) {
+  top: calc(56px + var(--wb-inset-top));
+  max-width: calc(100% - 16px);
+}
+.whiteboard.wb-layout-dock .wb-present-start {
+  top: calc(8px + var(--wb-inset-top));
+  right: calc(56px + var(--wb-inset-right));
+}
+.whiteboard.wb-layout-dock .wb-present {
+  bottom: calc(68px + var(--wb-inset-bottom));
+}
+/* The hint sits just above the tools it points to. */
+.whiteboard.wb-layout-dock .wb-empty {
+  align-items: flex-end;
+  padding-bottom: calc(80px + var(--wb-inset-bottom));
+  font-size: 13px;
+}
+.whiteboard.wb-layout-menu:not(.wb-layout-dock) .wb-empty {
+  padding-left: 110px;
 }
 /* ---------- Settings & administration ----------
    Navigation on the left, readable content on the right, every section a
