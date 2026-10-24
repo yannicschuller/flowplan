@@ -26,7 +26,12 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   const wb = page.getByLabel("Whiteboard", { exact: true });
   const canvas = wb.locator(".wb-canvas");
   const box = (await canvas.boundingBox())!;
-  const at = (x: number, y: number) => ({ x: box.x + box.width / 2 + x, y: box.y + box.height / 2 + y });
+  // The board is taller than the window: clicking controls into view scrolls
+  // the page, so points on the board are measured where it is now.
+  const at = async (x: number, y: number) => {
+    const now = (await canvas.boundingBox())!;
+    return { x: now.x + now.width / 2 + x, y: now.y + now.height / 2 + y };
+  };
 
   // Mind map: a note, Tab adds two branches, laid out to the right.
   await canvas.dblclick({ position: { x: box.width / 2 - 300, y: box.height / 2 } });
@@ -73,7 +78,7 @@ test("mind map, arranging, stamps, drawn shapes, hidden voting, symbols and reco
   // A roughly drawn rectangle becomes a clean rectangle.
   await wb.getByRole("button", { name: "Stift", exact: true }).click();
   await wb.getByLabel("Formen erkennen").check();
-  const start = at(150, 120);
+  const start = await at(150, 120);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   for (const [dx, dy] of [[160, 2], [162, 100], [2, 102], [0, 4]] as const)
