@@ -277,7 +277,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Registrierung mit E-Mail und Passwort", en: "Sign-up with email and password" }, anchor: "registration" },
       { title: { de: "Inaktive Konten sperren", en: "Block inactive accounts" }, anchor: "registration" },
       { title: { de: "Zwei-Faktor-Anmeldung verlangen", en: "Require two-factor sign-in" }, keywords: { de: "2fa", en: "2fa" }, anchor: "two-factor" },
-      { title: { de: "SSO-Gruppen zentral zuordnen", en: "Map SSO groups centrally" }, anchor: "sso" },
+      { title: { de: "SSO-Gruppen zentral zuordnen", en: "Map SSO groups centrally" }, anchor: "sso-groups" },
       { title: { de: "SCIM-Token", en: "SCIM tokens" }, anchor: "scim" },
       { title: { de: "LDAP-Verzeichnis", en: "LDAP directory" }, anchor: "ldap" },
     ],

@@ -4473,6 +4473,12 @@ mark[data-color] {
 .setting-row.wide .setting-control > :is(input, textarea) {
   width: 100%;
 }
+/* A block under the text (a breakdown, a small form, a list) takes the
+   row's width instead of shrinking to its content. */
+.setting-row.wide .setting-control > :is(div, form, fieldset) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .setting-control > input:not([type="checkbox"]) {
   width: min(320px, 100%);
 }
@@ -24534,23 +24540,112 @@ label.ws-search input {
   justify-content: flex-end;
   padding: 0 22px 10px;
 }
-.setting-group .sso-mappings {
-  display: grid;
-  gap: 4px;
-  padding: 14px 22px 0;
-  border-top: 1px solid var(--border);
+/* SSO groups → role and group (components/sso-mappings.tsx), in the
+   administration and in Groups & permissions: the fields in a grid that
+   follows the card's width (one column on phones, two, then all in one
+   row), the add button below them on the left; the mappings as a table
+   that runs to the card's edges, like the admin lists. */
+.sso-mapping-form {
+  container-type: inline-size;
 }
-.setting-group .sso-mappings > .ws-list {
-  margin: 0 -22px;
+.sso-mapping-form > .ws-form-inline {
+  grid-template-columns: minmax(0, 1fr);
 }
-.setting-group .sso-mappings > .ws-note {
-  padding-bottom: 14px;
+.sso-mapping-form > .ws-form-inline > .ws-form-actions {
+  justify-content: flex-start;
 }
-.settings-section .sso-mappings > .ws-list .ws-item {
-  padding-inline: 0;
+@container (min-width: 440px) {
+  .sso-mapping-form > .ws-form-inline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sso-mapping-form > .ws-form-inline.three > .ws-field:first-child {
+    grid-column: 1 / -1;
+  }
 }
-.sso-mappings > .ws-form {
-  padding-bottom: 14px;
+@container (min-width: 680px) {
+  .sso-mapping-form > .ws-form-inline {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .sso-mapping-form > .ws-form-inline.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .sso-mapping-form > .ws-form-inline.three > .ws-field:first-child {
+    grid-column: auto;
+  }
+}
+.setting-row.sso-mapping-list:has(> .responsive-table) {
+  padding: 0;
+}
+.sso-mapping-list .responsive-table :is(th, td):first-child {
+  padding-left: 22px;
+}
+.sso-mapping-list .responsive-table :is(th, td):last-child {
+  padding-right: 22px;
+}
+.sso-mapping-list .responsive-table tr:last-child td {
+  border-bottom: 0;
+}
+.sso-mapping-list .responsive-table td.end {
+  width: 1%;
+  padding-block: 4px;
+}
+/* Workspace, role and group stay on one line; the SSO group wraps. */
+.sso-mapping-list .responsive-table td:not(.primary) {
+  white-space: nowrap;
+}
+.sso-mapping-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 550;
+}
+.sso-mapping-name > svg {
+  flex: none;
+  color: var(--muted);
+}
+.sso-mapping-none {
+  color: var(--muted);
+}
+/* Below 860 px the table is a list of cards (settings-ui ResponsiveTable). */
+@media (max-width: 860px) {
+  .sso-mapping-list .responsive-table tr {
+    padding: 10px 22px;
+  }
+  .sso-mapping-list .responsive-table :is(th, td):is(:first-child, :last-child) {
+    padding-inline: 0;
+  }
+  .sso-mapping-list .responsive-table tr:last-child {
+    border-bottom: 0;
+  }
+  .sso-mapping-list .responsive-table td {
+    align-items: center;
+    min-width: 0;
+  }
+  .sso-mapping-list .responsive-table td:not(.primary) {
+    white-space: normal;
+  }
+  /* The remove button sits at the end of the card's title line. */
+  .sso-mapping-list .responsive-table tr {
+    position: relative;
+  }
+  .sso-mapping-list .responsive-table td.primary {
+    padding-right: 52px;
+  }
+  .sso-mapping-list .responsive-table td.end {
+    position: absolute;
+    top: 2px;
+    right: 9px;
+    width: auto;
+    padding: 0;
+  }
+  .sso-mapping-list .responsive-table td.end::before {
+    content: none;
+  }
+  .sso-mapping-list .responsive-table td.end .icon-button {
+    width: 44px;
+    height: 44px;
+  }
 }
 .settings-shell .workspace-icon-picker {
   flex-wrap: wrap;
@@ -24650,12 +24745,6 @@ label.ws-search input {
   }
   .setting-row.ws-sub {
     padding-left: 32px;
-  }
-  .setting-group .sso-mappings {
-    padding-inline: 16px;
-  }
-  .setting-group .sso-mappings > .ws-list {
-    margin: 0 -16px;
   }
   .ws-space-state {
     justify-content: flex-start;

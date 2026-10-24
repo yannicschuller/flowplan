@@ -1,7 +1,7 @@
 "use client";
 // Administration → Anmeldung & SSO: who gets an account (registration,
 // creating workspaces, inactive accounts), the two-factor policy, single
-// sign-on with the SSO groups mapped centrally, and the directories (SCIM,
+// sign-on, the SSO groups mapped centrally, and the directories (SCIM,
 // LDAP) – each as a card with its state.
 import { useT } from "../../i18n";
 import { SsoMappings } from "../../sso-mappings";
@@ -161,31 +161,32 @@ export default function SigninSection() {
         >
           <FixLink href={docs("sign-in")}>{t("Anleitung", "Guide")}</FixLink>
         </SettingRow>
-        {(data.oidcConfigured || !!data.ssoMappings?.length) && (
-          <SettingRow
-            wide
-            label={t("SSO-Gruppen zentral zuordnen", "Map SSO groups centrally")}
-            description={t(
-              "Gruppen aus dem Identitätsanbieter geben bei jeder SSO-Anmeldung eine Rolle im gewählten Arbeitsbereich und/oder eine seiner Gruppen. Dieselben Zuordnungen sehen die Eigentümer in den Einstellungen des Arbeitsbereichs.",
-              "Groups from the identity provider give a role in the chosen workspace and/or one of its groups at every SSO sign-in. The workspace's owners see the same mappings in its settings.",
-            )}
-          >
-            <SsoMappings
-              mappings={data.ssoMappings || []}
-              groups={data.workspaceGroups || []}
-              workspaces={data.workspaces}
-              onAdd={async (workspaceId, m) =>
-                !!(await act({
-                  action: "admin.ssoMapping.add",
-                  workspaceId,
-                  ...m,
-                }))
-              }
-              onDelete={(workspaceId, id) => act({ action: "admin.ssoMapping.delete", workspaceId, id })}
-            />
-          </SettingRow>
-        )}
       </SettingGroup>
+
+      {(data.oidcConfigured || !!data.ssoMappings?.length) && (
+        <SettingGroup
+          id="sso-groups"
+          title={t("SSO-Gruppen zentral zuordnen", "Map SSO groups centrally")}
+          description={t(
+            "Gruppen aus dem Identitätsanbieter geben bei jeder SSO-Anmeldung eine Rolle im gewählten Arbeitsbereich und/oder eine seiner Gruppen. Dieselben Zuordnungen sehen die Eigentümer in den Einstellungen des Arbeitsbereichs.",
+            "Groups from the identity provider give a role in the chosen workspace and/or one of its groups at every SSO sign-in. The workspace's owners see the same mappings in its settings.",
+          )}
+        >
+          <SsoMappings
+            mappings={data.ssoMappings || []}
+            groups={data.workspaceGroups || []}
+            workspaces={data.workspaces}
+            onAdd={async (workspaceId, m) =>
+              !!(await act({
+                action: "admin.ssoMapping.add",
+                workspaceId,
+                ...m,
+              }))
+            }
+            onDelete={(workspaceId, id) => act({ action: "admin.ssoMapping.delete", workspaceId, id })}
+          />
+        </SettingGroup>
+      )}
 
       <AdminDirectory directory={directory} />
     </>
