@@ -28,6 +28,12 @@ type FlowplanApp = {
   // Records a voice note in the app, transcribed on the device where it can
   // (lib/native-voice.ts).
   recordVoiceNote?: (request: { id: string; summarize: boolean; serverTranscription: boolean }) => void;
+  // The global shortcuts for the hardware keyboard: the app makes key
+  // commands of them (lib/app-shortcuts.ts).
+  shortcuts?: (commands: unknown[]) => void;
+  // iPad: a page of the instance in a window of its own (only offered where
+  // the app can open windows).
+  openWindow?: (url: string) => void;
 };
 
 export function nativeApp(): FlowplanApp | undefined {

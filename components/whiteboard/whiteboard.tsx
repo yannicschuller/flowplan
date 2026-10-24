@@ -121,7 +121,22 @@ import {
   type ClusterMode,
   type Guide,
 } from "@/lib/whiteboard-tools";
-import { drawsWith, isEraser, isHovering, notePen, onPencilAction, penOnlySetting, samples, setPenOnly } from "@/lib/stylus";
+import {
+  drawsWith,
+  forgetPen,
+  isEraser,
+  isHovering,
+  notePen,
+  notePenActivity,
+  onPencilAction,
+  palmLikely,
+  penOnlySetting,
+  pushPressure,
+  samples,
+  setPenOnly,
+  stillWriting,
+  writingInField,
+} from "@/lib/stylus";
 
 const EmojiPicker = dynamic(() => import("../emoji-picker"), {
   ssr: false,
@@ -198,7 +213,7 @@ type Gesture =
   | { kind: "rotate"; id: string; center: Point }
   | { kind: "create"; id: string; start: Point }
   | { kind: "connector"; id: string }
-  | { kind: "pen"; id: string; points: Point[]; pressures: number[] | null }
+  | { kind: "pen"; id: string; points: Point[]; pressures: number[] | null; measured?: boolean }
   | { kind: "erase" };
 // i18n-table: 1 – [German, English] pairs
 const shapeNames: Record<ShapeKind, [string, string]> = {
@@ -1268,6 +1283,12 @@ export default function Whiteboard({
   }
   // Runs before every pointer-down on the board (items, handles, background).
   function onDownCapture(e: ReactPointerEvent<SVGSVGElement>) {
+    notePenActivity(e);
+    // Handwriting into the open text field (Scribble) past its edges.
+    if (writingInField(e)) {
+      e.stopPropagation();
+      return;
+    }
     stopCamera.current();
     const running = owner.current;
     if (gesture.current && running && running.id !== e.pointerId && running.type === "pen" && e.pointerType === "touch") {
@@ -1303,8 +1324,10 @@ export default function Whiteboard({
     if (editing) setEditing(null);
     const p = toWorld(e.clientX, e.clientY);
     if (e.button === 1 || tool === "hand" || space) return beginPan(e);
-    // A hand on the screen while drawing with a pen moves the board.
+    // A hand on the screen while drawing with a pen moves the board; so does
+    // the palm next to the pen (lib/stylus.ts), whatever the tool.
     if (!drawsWith(e, penOnly) && (tool === "pen" || tool === "eraser")) return beginPan(e);
+    if (palmLikely(e) && editable && tool !== "select") return beginPan(e);
     // The eraser tool, or the eraser end of a pen in any tool.
     if (editable && (tool === "eraser" || isEraser(e))) {
       gesture.current = { kind: "erase" };
@@ -1481,14 +1504,18 @@ export default function Whiteboard({
       return;
     }
     if (kind === "connector") gesture.current = { kind: "connector", id };
-    else if (kind === "pen")
+    else if (kind === "pen") {
+      // A stylus stroke keeps its pressures (lib/stylus.ts pushPressure).
+      const track = { pressures: [] as number[], measured: false };
+      if (e.pointerType === "pen") pushPressure(track, e.pressure);
       gesture.current = {
         kind: "pen",
         id,
         points: [p],
-        pressures: e.pointerType === "pen" ? [Math.round((e.pressure || 0.5) * 100) / 100] : null,
+        pressures: e.pointerType === "pen" ? track.pressures : null,
+        measured: track.measured,
       };
-    else gesture.current = { kind: "create", id, start: p };
+    } else gesture.current = { kind: "create", id, start: p };
     void e;
   }
   function onItemDown(e: ReactPointerEvent, item: WhiteboardItem) {
@@ -1576,6 +1603,7 @@ export default function Whiteboard({
       };
   }
   function onMove(e: ReactPointerEvent<SVGSVGElement>) {
+    notePenActivity(e);
     if (foreign(e)) return;
     const p = toWorld(e.clientX, e.clientY);
     lastPointer.current = p;
@@ -1736,7 +1764,7 @@ export default function Whiteboard({
       // Every point the pen measured since the last event: smooth fast strokes.
       for (const s of samples(e)) {
         g.points.push(toWorld(s.clientX, s.clientY));
-        if (g.pressures) g.pressures.push(Math.round((s.pressure || 0.5) * 100) / 100);
+        if (g.pressures) pushPressure(g as { pressures: number[]; measured?: boolean }, s.pressure);
       }
       const xs = g.points.map((q) => q.x),
         ys = g.points.map((q) => q.y);
@@ -1760,6 +1788,7 @@ export default function Whiteboard({
     }
   }
   function onUp(e: ReactPointerEvent<SVGSVGElement>) {
+    notePenActivity(e);
     pointers.current.delete(e.pointerId);
     if (foreign(e)) return;
     if (pointers.current.size < 2) pinch.current = null;
@@ -2634,7 +2663,13 @@ export default function Whiteboard({
               setProps(it.id, { text: e.target.value.slice(0, 10000) }),
             )
           }
-          onBlur={() => {
+          onBlur={(e) => {
+            // Scribble next to the field (lib/stylus.ts): still writing.
+            if (stillWriting()) {
+              const field = e.currentTarget;
+              requestAnimationFrame(() => field.focus({ preventScroll: true }));
+              return;
+            }
             editRef.current = null;
             setEditing(null);
           }}
@@ -3188,7 +3223,11 @@ export default function Whiteboard({
               onChange={(e) =>
                 setCell(item.id, cellEdit.r, cellEdit.c, e.target.value)
               }
-              onBlur={() => setCellEdit(null)}
+              onBlur={(e) => {
+                const field = e.currentTarget;
+                if (stillWriting()) requestAnimationFrame(() => field.focus({ preventScroll: true }));
+                else setCellEdit(null);
+              }}
               onKeyDown={(e) => {
                 e.stopPropagation();
                 if (e.key === "Escape") {
@@ -3870,6 +3909,7 @@ export default function Whiteboard({
               onChange={(e) => {
                 setPenOnlyState(e.target.checked);
                 setPenOnly(e.target.checked);
+                forgetPen();
               }}
             />
             {t("Nur mit dem Stift zeichnen", "Draw with the pen only")}
