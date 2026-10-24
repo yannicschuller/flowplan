@@ -4,6 +4,7 @@ import { DocumentOutline, OutlineToggle, useOutlineOpen } from "./document-outli
 import { chatTextToHtml, looksLikeChatText, mathFromPastedHtml } from "@/lib/chat-paste";
 import { serverMessage } from "@/lib/i18n-errors";
 import { reveal } from "@/lib/motion";
+import { nativeScan, nativeScanAvailable } from "@/lib/native-app";
 import { useLocale, useT } from "./i18n";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
@@ -128,6 +129,7 @@ import {
   TextAlignCenter,
   ArrowsClockwise,
   Microphone,
+  Scan,
   PencilLine,
   Check,
   X,
@@ -1491,6 +1493,21 @@ export default function DocumentEditor({
       icon: Minus,
       run: () => editor?.chain().focus().setHorizontalRule().run(),
     },
+    // In the iPhone and iPad app: the document scanner; the app adds the
+    // PDF with its recognised text at the end of this page.
+    ...(editable && nativeScanAvailable()
+      ? [
+          {
+            id: "scan",
+            group: "media",
+            name: t("Dokument scannen", "Scan document"),
+            keywords: ["scan", "scanner", "kamera", "camera", "pdf", "ocr", "beleg", "receipt"],
+            description: t("Mit der Kamera, als durchsuchbares PDF", "With the camera, as a searchable PDF"),
+            icon: Scan,
+            run: () => nativeScan(pageId, rowId),
+          } satisfies SlashItem,
+        ]
+      : []),
     ...pluginCommands.map(({ plugin, block, icon }): SlashItem => ({
       id: `plugin-${plugin.id}-${block.type}`,
       group: "extensions",

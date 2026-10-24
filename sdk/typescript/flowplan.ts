@@ -2383,6 +2383,66 @@ export class FlowplanClient {
   }>("POST", `/api/mobile/widgets/action`, { json: body }, options);
   }
 
+  /** Where the share extension can save — The inbox (the person's capture database, null when none is set) and every database and document the person may add to, with the upload limits. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/targets) */
+  async mobileCaptureTargets(query?: { lang?: string }, options?: RequestOptions): Promise<{
+    inbox: Record<string, unknown> | null;
+    targets: Record<string, unknown>[];
+    maxFiles?: number;
+    maxUploadMb?: number;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    inbox: Record<string, unknown> | null;
+    targets: Record<string, unknown>[];
+    maxFiles?: number;
+    maxUploadMb?: number;
+    [key: string]: unknown;
+  }>("GET", `/api/mobile/capture/targets`, { query }, options);
+  }
+
+  /** Save shared text, a link, images or PDFs — From the share extension and the document scanner: JSON, or multipart/form-data with the fields and up to 10 `file` parts (images and PDFs). Into a database as a record (files in its first files property), into a document as a sub page (`place: subpage`) or at its end (`place: append`; also a record's document with `rowId`). `targetId: inbox` uses the capture database. `recognized` is the text the phone read in a scanned PDF, stored as its search text. 30 saves per person and minute, 20 with files per hour. (POST /api/mobile/capture/save) */
+  async mobileCaptureSave(body: {
+    targetId?: string;
+    rowId?: string;
+    place?: "subpage" | "append";
+    title?: string;
+    text?: string;
+    url?: string;
+    recognized?: string;
+    scan?: boolean;
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    pageId: string;
+    rowId?: string;
+    url: string;
+    files?: string[];
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    ok: boolean;
+    pageId: string;
+    rowId?: string;
+    url: string;
+    files?: string[];
+    [key: string]: unknown;
+  }>("POST", `/api/mobile/capture/save`, { json: body }, options);
+  }
+
+  /** Pages and open tasks for the phone's search — The 500 most recently changed pages the person may read (title, place, a short excerpt) and up to 200 open tasks, for the on-device search index (iOS Spotlight). Nothing of end-to-end encrypted spaces, pages behind a journal PIN or journal days. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/spotlight) */
+  async mobileSpotlight(options?: RequestOptions): Promise<{
+    pages: Record<string, unknown>[];
+    tasks: Record<string, unknown>[];
+    at?: number;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    pages: Record<string, unknown>[];
+    tasks: Record<string, unknown>[];
+    at?: number;
+    [key: string]: unknown;
+  }>("GET", `/api/mobile/capture/spotlight`, {}, options);
+  }
+
   /** MCP server (Streamable HTTP, JSON answers) — For AI assistants. Only API tokens sign in; read tokens get the reading tools, write tokens all. 120 calls per person and minute, then 429 with `Retry-After`. Tools: list_workspaces, list_pages, search, read_page, query_database, get_record, my_tasks, create_page, append_to_page, create_record, update_record. (POST /api/mcp) */
   async mcp(body: McpRequest, options?: RequestOptions): Promise<McpResponse> {
     return this.json<McpResponse>("POST", `/api/mcp`, { json: body }, options);
