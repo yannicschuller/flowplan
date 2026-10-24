@@ -710,6 +710,21 @@ kbd,
   overflow: auto;
   flex: 1;
   min-height: 0;
+  /* Its own rubber band at the ends; a swipe never carries on to the
+     document behind it (see html.shell-document). */
+  overscroll-behavior: contain;
+}
+/* The workspace scrolls its panes, never the document (useShellDocument in
+   components/mobile-tab-bar.tsx sets the class while the workspace shows):
+   no document scrolling and no rubber band, which on phones slid the layout
+   under the status bar and left an empty gap above the tab bar. Public
+   pages, forms and sign-in scroll the document as before; printing too. */
+@media screen {
+  html.shell-document,
+  html.shell-document body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
 }
 .home-content {
   max-width: 1130px;
@@ -22421,6 +22436,9 @@ tr:hover .row-open-mark,
     padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
     background: var(--sidebar);
     border-top: 1px solid var(--border);
+    /* A swipe on the bar moves nothing (taps still count); iOS web views do
+       not always honour this, guardChromeTouches stops the swipe there. */
+    touch-action: none;
   }
   .mobile-tab-bar[hidden] {
     display: none;

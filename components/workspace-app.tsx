@@ -146,7 +146,7 @@ import type {
   Row,
 } from "@/lib/types";
 import { PageExportDialog } from "./page-export";
-import { MobileTabBar, useSoftKeyboard } from "./mobile-tab-bar";
+import { MobileTabBar, guardChromeTouches, useShellDocument, useSoftKeyboard } from "./mobile-tab-bar";
 import {
   Modal,
   PageIcon,
@@ -1147,6 +1147,8 @@ export default function WorkspaceApp({
   }, [split, screen, pageId]);
   // Phones: the bottom bar steps aside while the keyboard is open.
   const keyboardOpen = useSoftKeyboard();
+  // Only the panes scroll, never the document (no rubber band under the bars).
+  useShellDocument();
   // Encrypted titles are decrypted here, in the browser, once unlocked.
   const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
   const e2eeState = useE2ee();
@@ -2365,7 +2367,7 @@ export default function WorkspaceApp({
             </a>
           </div>
         )}
-        <header className="topbar">
+        <header className="topbar" ref={guardChromeTouches}>
           <div className="breadcrumb">
             <button
               className="icon-button mobile-menu"

@@ -65,6 +65,89 @@ export function useSoftKeyboard() {
   return open;
 }
 
+// The workspace scrolls its panes (.main-scroll, the sidebar, dialogs), never
+// the document: html.shell-document (app/globals.css) turns the document's
+// scrolling and rubber band off. iOS still moves the document for the
+// keyboard and does not always move it back when the keyboard closes: the
+// layout then sits too high, with empty space above the tab bar. Once no
+// field has the focus any more, the document goes back to the top.
+export function useShellDocument() {
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("shell-document");
+    let frame = 0;
+    const settle = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        // While typing, iOS keeps the caret above the keyboard this way.
+        if (typing()) return;
+        if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+      });
+    };
+    const vv = window.visualViewport;
+    window.addEventListener("scroll", settle, { passive: true });
+    vv?.addEventListener("resize", settle);
+    document.addEventListener("focusout", settle);
+    settle();
+    return () => {
+      cancelAnimationFrame(frame);
+      root.classList.remove("shell-document");
+      window.removeEventListener("scroll", settle);
+      vv?.removeEventListener("resize", settle);
+      document.removeEventListener("focusout", settle);
+    };
+  }, []);
+}
+
+const FIELD = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+const SCROLLS = /^(auto|scroll|overlay)$/;
+// Whether an element from `from` up to `stop` scrolls along the axis.
+function scrollerAlong(from: Element | null, stop: Element, axis: "x" | "y") {
+  for (let el = from; el; el = el.parentElement) {
+    const style = getComputedStyle(el);
+    if (axis === "y" ? SCROLLS.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1 : SCROLLS.test(style.overflowX) && el.scrollWidth > el.clientWidth + 1)
+      return true;
+    if (el === stop) break;
+  }
+  return false;
+}
+// Fixed chrome (the tab bar, the top bar): a swipe that starts on it moves
+// nothing. Without this, iOS hands the swipe to the document, which
+// rubber-bands under the fixed bars – the content slides up behind the
+// status bar and leaves an empty gap above the tab bar – and touch-action
+// alone is not honoured there in every iOS web view. A row inside the chrome
+// that scrolls along the swipe keeps it, fields keep theirs (caret, text
+// selection) and two fingers (zoom) are left alone. Used as a ref callback;
+// React calls the returned cleanup when the element goes.
+export function guardChromeTouches(el: HTMLElement | null) {
+  if (!el) return;
+  let start: { x: number; y: number } | null = null;
+  let block: boolean | null = null;
+  const down = (e: TouchEvent) => {
+    const touch = e.touches.length === 1 ? e.touches[0] : null;
+    start = touch && { x: touch.clientX, y: touch.clientY };
+    block = null;
+  };
+  const move = (e: TouchEvent) => {
+    if (!e.cancelable || !start || e.touches.length !== 1) return;
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest(FIELD)) return;
+    if (block === null) {
+      const dx = e.touches[0].clientX - start.x;
+      const dy = e.touches[0].clientY - start.y;
+      if (!dx && !dy) return;
+      block = !scrollerAlong(target, el, Math.abs(dx) > Math.abs(dy) ? "x" : "y");
+    }
+    if (block) e.preventDefault();
+  };
+  el.addEventListener("touchstart", down, { passive: true });
+  el.addEventListener("touchmove", move, { passive: false });
+  return () => {
+    el.removeEventListener("touchstart", down);
+    el.removeEventListener("touchmove", move);
+  };
+}
+
 export function MobileTabBar({
   active,
   unread,
@@ -95,6 +178,7 @@ export function MobileTabBar({
   return (
     <nav
       className="mobile-tab-bar"
+      ref={guardChromeTouches}
       aria-label={t("Schnellnavigation", "Quick navigation")}
       hidden={hidden}
     >
