@@ -16,6 +16,7 @@ import { pageRole, requirePage } from "./permissions";
 import { requireRow } from "./row-documents";
 import { journalLocked } from "./journal-extras";
 import { notificationOn } from "./notification-kinds";
+import { rememberTaskTarget } from "./notification-targets";
 import type { Identity, Page } from "./types";
 
 
@@ -304,14 +305,17 @@ export function processDueTasks(today = localToday()) {
       task.text,
       today,
     );
+    const notificationId = id();
     run(
       "INSERT INTO notifications(id,user_id,body,page_id,row_id,kind) VALUES(?,?,?,?,?,'reminder')",
-      id(),
+      notificationId,
       task.assignee,
       `Heute fällig: ${task.text.slice(0, 120)} („${task.title || "Ohne Titel"}“)`,
       task.page_id,
       task.row_id || null,
     );
+    // "Done" and "Tomorrow" on the app's notification (lib/notification-actions.ts).
+    rememberTaskTarget(notificationId, { type: "doc", pageId: task.page_id, rowId: task.row_id || null, key: taskKey(task.text) });
   }
   return due.length;
 }

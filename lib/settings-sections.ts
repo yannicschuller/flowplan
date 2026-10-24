@@ -143,10 +143,11 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "connections",
     icon: "CalendarBlank",
     title: { de: "Kalender & Issues", en: "Calendars & issues" },
-    description: { de: "Google- und Microsoft-Kalender, GitHub- und GitLab-Issues.", en: "Google and Microsoft calendars, GitHub and GitLab issues." },
+    description: { de: "Google- und Microsoft-Kalender, Apple Kalender, GitHub- und GitLab-Issues.", en: "Google and Microsoft calendars, Apple Calendar, GitHub and GitLab issues." },
     keywords: { de: "kalender google outlook microsoft github gitlab issues synchronisierung", en: "calendar google outlook microsoft github gitlab issues sync" },
     entries: [
       { title: { de: "Kalender verbinden", en: "Connect calendar" }, anchor: "calendar" },
+      { title: { de: "Kalender auf iPhone, iPad und Mac", en: "Calendars on iPhone, iPad and Mac" }, keywords: { de: "caldav apple kalender profil konfigurationsprofil mobileconfig", en: "caldav apple calendar profile configuration profile mobileconfig" }, anchor: "caldav-profile" },
       { title: { de: "GitHub oder GitLab verbinden", en: "Connect GitHub or GitLab" }, anchor: "issues" },
     ],
   },

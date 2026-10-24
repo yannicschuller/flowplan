@@ -85,6 +85,7 @@ test("search targets of the personal and connection sections exist in their pane
     "components/offline-settings.tsx",
     "components/integration-settings.tsx",
     "components/calendar-connections.tsx",
+    "components/caldav-profile.tsx",
     "components/issue-sync-settings.tsx",
     "components/clipper-settings.tsx",
     "components/capture-target.tsx",
