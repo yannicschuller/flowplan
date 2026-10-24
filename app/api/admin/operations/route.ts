@@ -1,10 +1,13 @@
 // Administration → Operations (lib/admin-ops.ts): the overview, the
 // activity log export (`?export=audit&format=csv|json&from&to`), health
-// alert settings with a test message, and the maintenance notice.
-// Administrators only; API tokens never.
+// alert settings with a test message, the maintenance notice and the push
+// relay's signing keys (`pushRelay.keys`, `pushRelay.rotate`,
+// lib/push-identity.ts). Administrators only; API tokens never.
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
+import { audit } from "@/lib/db";
+import { pushIdentityStatus, rotatePushIdentity } from "@/lib/push-identity";
 import { auditExport, checkHealthAlerts, opsOverview, requireOpsAdmin, saveAlertSettings, saveMaintenance, sendTestAlert } from "@/lib/admin-ops";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +58,16 @@ export const POST = withRequestLocale(async (req: Request) => {
       case "maintenance.save":
         saveMaintenance(user.id, body.notice ?? null);
         break;
+      // The push relay's signing key: list, or replace with a grace period
+      // for the old one (immediate: the old one goes at once).
+      case "pushRelay.keys":
+        return Response.json({ keys: pushIdentityStatus() }, { headers: { "Cache-Control": "no-store" } });
+      case "pushRelay.rotate": {
+        const b = z.object({ immediate: z.boolean().default(false), graceDays: z.number().int().min(0).max(90).default(7) }).parse(body);
+        const rotated = rotatePushIdentity({ immediate: b.immediate, graceMs: b.graceDays * 86_400_000 });
+        audit(user.id, "admin.push.rotate", "instance", b.immediate ? "immediate" : `grace ${b.graceDays} d`);
+        return Response.json({ rotated, keys: pushIdentityStatus() }, { headers: { "Cache-Control": "no-store" } });
+      }
       default:
         throw new HttpError(400, "Unbekannte Aktion.");
     }

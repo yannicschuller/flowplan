@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 59) return;
+  if (globalDb.flowplanSchema === 60) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -833,7 +833,16 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS e2ee_file_ink_update BEFORE UPDATE ON file_ink WHEN EXISTS(SELECT 1 FROM files f JOIN pages p ON p.id=f.page_id JOIN spaces s ON s.id=p.space_id WHERE f.id=NEW.file_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
     CREATE TRIGGER IF NOT EXISTS search_file_ink AFTER UPDATE OF text ON file_ink BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;
     CREATE TRIGGER IF NOT EXISTS search_file_ink_insert AFTER INSERT ON file_ink WHEN NEW.text!='' BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;`);
-  globalDb.flowplanSchema = 59;
+  // Schema 60 – the push relay (lib/push-relay.ts, PROTOCOL.md of
+  // flowplan-push): the instance's Ed25519 signing keys (private key only
+  // sealed, lib/ai/secrets.ts), per app installation the relay token (sealed)
+  // and the X25519 public key notifications are encrypted to, the relay
+  // tokens of its Live Activities and the queue of their updates.
+  d.exec(`CREATE TABLE IF NOT EXISTS push_identity_keys(kid TEXT PRIMARY KEY,public_key TEXT NOT NULL,private_key TEXT NOT NULL,created_at INTEGER NOT NULL,active_from INTEGER NOT NULL,retire_at INTEGER);
+    CREATE TABLE IF NOT EXISTS mobile_push_relay(device_id TEXT PRIMARY KEY REFERENCES mobile_devices(id) ON DELETE CASCADE,relay_token TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,public_key TEXT NOT NULL,created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS mobile_live_activities(device_id TEXT NOT NULL REFERENCES mobile_devices(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('focus','timer')),relay_token TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL,PRIMARY KEY(device_id,kind));
+    CREATE TABLE IF NOT EXISTS push_live_queue(device_id TEXT NOT NULL REFERENCES mobile_devices(id) ON DELETE CASCADE,kind TEXT NOT NULL,available_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(device_id,kind,available_at));`);
+  globalDb.flowplanSchema = 60;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
