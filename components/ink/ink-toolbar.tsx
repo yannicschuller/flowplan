@@ -17,11 +17,13 @@ import {
   TextT,
 } from "@phosphor-icons/react";
 import { useT } from "../i18n";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
 import type { InkTool, PencilSetting } from "@/lib/ink/presets";
 import type { InkEditor } from "./use-ink-editor";
 
 export function InkToolbar({ editor, children }: { editor: InkEditor; children?: React.ReactNode }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const [settings, setSettings] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -142,10 +144,10 @@ export function InkToolbar({ editor, children }: { editor: InkEditor; children?:
         </div>
       )}
       <div className="ink-group">
-        <button type="button" aria-label={t("Rückgängig", "Undo")} title={t("Rückgängig (⌘Z)", "Undo (⌘Z)")} disabled={!editor.canUndo} onClick={editor.undo}>
+        <button type="button" aria-label={t("Rückgängig", "Undo")} title={t("Rückgängig", "Undo") + keyHints.suffix("Mod+Z")} disabled={!editor.canUndo} onClick={editor.undo}>
           <ArrowArcLeft size={19} />
         </button>
-        <button type="button" aria-label={t("Wiederholen", "Redo")} title={t("Wiederholen (⇧⌘Z)", "Redo (⇧⌘Z)")} disabled={!editor.canRedo} onClick={editor.redo}>
+        <button type="button" aria-label={t("Wiederholen", "Redo")} title={t("Wiederholen", "Redo") + keyHints.suffix("Mod+Shift+Z")} disabled={!editor.canRedo} onClick={editor.redo}>
           <ArrowArcRight size={19} />
         </button>
         {editor.clipboard && (
