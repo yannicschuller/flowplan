@@ -5,7 +5,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -35,7 +35,7 @@ const { flushPushQueue } = await import("../lib/push");
 const relayLib = await import("../lib/push-relay");
 const identity = await import("../lib/push-identity");
 const devices = await import("../lib/mobile-devices");
-const { flushLiveActivities } = await import("../lib/live-activity-push");
+const { flushLiveActivities, focusProps, timerProps, contentState, liveActivityMessage } = await import("../lib/live-activity-push");
 const { widgetAction } = await import("../lib/mobile-widget-actions");
 const wellKnown = await import("../app/.well-known/flowplan-push/route");
 
@@ -598,6 +598,23 @@ test("PUSH_RELAY=off: a device with an Expo token gets Expo, a relay-only device
 
 // ---- Live Activities ----
 
+// The app's texts for its views (flowplan-app src/activities.ts →
+// liveActivityLabels), as it sends them.
+const LABELS = {
+  locale: "en",
+  timeZone: "Europe/Berlin",
+  focus: { focus: "Focus", break: "Break", until: "until {time}", stop: "End" },
+  timer: { label: "Time tracking" },
+};
+// expo-widgets' content state: { name, props: JSON }.
+const viewProps = (state: { name: string; props: string }) => {
+  assert.deepEqual(Object.keys(state).sort(), ["name", "props"]);
+  assert.equal(typeof state.props, "string");
+  return { name: state.name, props: JSON.parse(state.props) as Record<string, any> };
+};
+const TIMER_KEYS = ["database", "label", "start", "title", "url"];
+const FOCUS_KEYS = ["endsAt", "label", "phase", "startedAt", "stopLabel", "title", "untilLabel", "url"];
+
 test("Live Activities: timer changes are pushed as liveactivity messages without titles", async () => {
   const { user, token } = account("relay-live");
   const wid = createWorkspace(user.id, "Live"),
@@ -616,13 +633,20 @@ test("Live Activities: timer changes are pushed as liveactivity messages without
   const rowId = (command(user, { action: "row.create", pageId: dbId, cells: { title: "Secret client project" } }) as { id: string }).id;
   const timerToken = relayToken(),
     focusToken = relayToken();
-  const registered = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { timer: timerToken } });
+  const registered = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { timer: timerToken }, liveActivityLabels: LABELS });
   assert.deepEqual(registered.liveActivities, ["timer"]);
+  // Labels that do not check out are left out, never the registration.
+  {
+    const other = account("relay-live-labels");
+    const kept = registerMobileDevice(other.user, other.token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { timer: relayToken() }, liveActivityLabels: { ...LABELS, timeZone: "Mars/Olympus" } });
+    assert.deepEqual(kept.liveActivities, ["timer"]);
+    assert.equal(one<{ labels: string | null }>("SELECT l.labels FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=?", other.user.id)!.labels, null);
+  }
   // Without a notification permission there is no push subscription, but the Live Activity works.
   assert.equal(registered.push, false);
   assert.throws(() => setLiveActivityToken("Bearer fpd_notarealtokenatall00000", { kind: "focus", relayToken: focusToken }), /melde dich an/);
   assert.throws(() => setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "meeting", relayToken: focusToken }));
-  assert.deepEqual(setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "focus", relayToken: focusToken }).liveActivities, ["focus", "timer"]);
+  assert.deepEqual(setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "focus", relayToken: focusToken, labels: LABELS }).liveActivities, ["focus", "timer"]);
 
   command(user, { action: "time.start", pageId: dbId, rowId, fieldId: "spent" });
   assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM push_live_queue WHERE kind='timer'")!.n, 1);
@@ -635,8 +659,12 @@ test("Live Activities: timer changes are pushed as liveactivity messages without
   assert.equal(update.type, "liveactivity");
   assert.ok(!("payload" in update));
   assert.equal(update.liveActivity.event, "update");
-  assert.deepEqual(Object.keys(update.liveActivity.contentState), ["start"]);
-  assert.ok(Math.abs(update.liveActivity.contentState.start - Date.now()) < 10_000);
+  // Every prop the app's FlowplanTimer view reads, the title only as the label.
+  const shown = viewProps(update.liveActivity.contentState);
+  assert.equal(shown.name, "FlowplanTimer");
+  assert.deepEqual(Object.keys(shown.props).sort(), TIMER_KEYS);
+  assert.ok(Math.abs(shown.props.start - Date.now()) < 10_000);
+  assert.deepEqual({ ...shown.props, start: 0 }, { title: "Time tracking", database: "", start: 0, label: "Time tracking", url: "flowplan://open?path=%2F" });
   assert.doesNotMatch(requests[0].body.toString(), /Secret client project|Billable work/);
 
   command(user, { action: "time.stop", pageId: dbId, rowId, fieldId: "spent" });
@@ -644,19 +672,23 @@ test("Live Activities: timer changes are pushed as liveactivity messages without
   await flushPushQueue(noWebPush, noExpo);
   const [end] = messagesOf(requests[0]);
   assert.equal(end.liveActivity.event, "end");
-  assert.deepEqual(end.liveActivity.contentState, { start: null });
+  assert.equal(viewProps(end.liveActivity.contentState).name, "FlowplanTimer");
+  assert.deepEqual(Object.keys(viewProps(end.liveActivity.contentState).props).sort(), TIMER_KEYS);
   assert.ok(end.liveActivity.dismissalDate);
   // An ended activity takes no more pushes.
-  assert.equal(one("SELECT 1 FROM mobile_live_activities WHERE kind='timer'"), undefined);
+  assert.equal(one("SELECT 1 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE l.kind='timer' AND d.user_id=?", user.id), undefined);
 
   // With MOBILE_PUSH_CONTENT=on the title comes along (plain text, by choice).
   process.env.MOBILE_PUSH_CONTENT = "on";
   try {
-    setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "timer", relayToken: timerToken });
+    setLiveActivityToken(`Bearer ${registered.deviceToken}`, { kind: "timer", relayToken: timerToken, labels: LABELS });
     command(user, { action: "time.start", pageId: dbId, rowId, fieldId: "spent" });
     requests.length = 0;
     await flushPushQueue(noWebPush, noExpo);
-    assert.equal(messagesOf(requests[0])[0].liveActivity.contentState.title, "Secret client project");
+    const withContent = viewProps(messagesOf(requests[0])[0].liveActivity.contentState).props;
+    assert.equal(withContent.title, "Secret client project");
+    assert.equal(withContent.database, "Billable work");
+    assert.match(withContent.url, /^flowplan:\/\/open\?path=%2F%23/);
     command(user, { action: "time.stop", pageId: dbId, rowId, fieldId: "spent" });
     await flushPushQueue(noWebPush, noExpo);
   } finally {
@@ -667,7 +699,7 @@ test("Live Activities: timer changes are pushed as liveactivity messages without
 test("Live Activities: a focus session pushes its start, the break and its end; gone forgets the token", async () => {
   const { user, token } = account("relay-focus");
   const focusToken = relayToken();
-  const registered = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { focus: focusToken } });
+  const registered = registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", liveActivityRelayTokens: { focus: focusToken }, liveActivityLabels: LABELS });
   const device = identityFromDeviceToken(`Bearer ${registered.deviceToken}`)!;
   const started = Date.now();
   await widgetAction(device, { action: "focus.start", minutes: 25, breakMinutes: 5 });
@@ -679,13 +711,25 @@ test("Live Activities: a focus session pushes its start, the break and its end; 
   };
   await flushLiveActivities(sender, Date.now());
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].liveActivity.contentState.phase, "focus");
-  assert.ok(Math.abs(sent[0].liveActivity.contentState.endsAt - (started + 25 * 60_000)) < 5000);
-  assert.equal(sent[0].liveActivity.staleDate, Math.ceil(sent[0].liveActivity.contentState.endsAt / 1000));
+  const focus = viewProps(sent[0].liveActivity.contentState);
+  assert.equal(focus.name, "FlowplanFocus");
+  assert.deepEqual(Object.keys(focus.props).sort(), FOCUS_KEYS);
+  assert.equal(focus.props.phase, "focus");
+  assert.equal(focus.props.label, "Focus");
+  assert.equal(focus.props.title, "Focus");
+  assert.equal(focus.props.stopLabel, "End");
+  assert.ok(Math.abs(focus.props.endsAt - (started + 25 * 60_000)) < 5000);
+  // The time in the phone's time zone and language, as the app's clock() writes it.
+  const berlin = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }).format(new Date(focus.props.endsAt));
+  assert.equal(focus.props.untilLabel, `until ${berlin}`);
+  assert.equal(sent[0].liveActivity.staleDate, Math.ceil(focus.props.endsAt / 1000));
   // When the focus time is over: the break.
   await flushLiveActivities(sender, started + 25 * 60_000 + 2000);
   assert.equal(sent.length, 2);
-  assert.equal(sent[1].liveActivity.contentState.phase, "break");
+  const pause = viewProps(sent[1].liveActivity.contentState).props;
+  assert.equal(pause.phase, "break");
+  assert.equal(pause.label, "Break");
+  assert.equal(pause.startedAt, focus.props.endsAt);
   // Gone (the activity was dismissed): the token is forgotten, the end is not sent.
   await flushLiveActivities(async (messages) => messages.map(() => ({ status: "gone" as const })), started + 31 * 60_000);
   assert.equal(one("SELECT 1 FROM mobile_live_activities l JOIN mobile_devices d ON d.id=l.device_id WHERE d.user_id=?", user.id), undefined);
@@ -760,4 +804,90 @@ test("relay test vectors: signing string, signature, header and key document", (
   const theirs = vectors.signatures.vectors[0].wellKnown as typeof ours;
   assert.deepEqual(Object.keys(ours).sort(), Object.keys(theirs).sort());
   assert.deepEqual(Object.keys(ours.keys[0]).sort(), Object.keys(theirs.keys[0]).sort());
+});
+
+// ---- The contract with the app (flowplan-app test/fixtures/push-contract.json) ----
+//
+// What this instance really sends – an alert through the whole queue, and
+// the Live Activity states of both views – kept in
+// tests/fixtures/push-contract.json. The app's tests decrypt that payload
+// with its own code and read the states with its views' props; this test
+// checks that the fixture is still what the code produces.
+// FLOWPLAN_WRITE_CONTRACT=1 writes it anew (then copy it to the app).
+const CONTRACT = join(import.meta.dirname, "fixtures", "push-contract.json");
+// A fixed device key (only for the fixture).
+const CONTRACT_DEVICE = "a8abababababababababababababababababababababababababababababab6b";
+
+test("contract with the app: an alert and both Live Activity views, as sent", async () => {
+  const devicePrivate = x25519FromRaw(CONTRACT_DEVICE);
+  const devicePublic = rawX(createPublicKey(devicePrivate)).toString("base64url");
+  const { user, token } = account("relay-contract");
+  const relay = relayToken();
+  registerMobileDevice(user, token, { installationId: randomUUID(), platform: "ios", relayToken: relay, publicKey: devicePublic, relayUrl: process.env.PUSH_RELAY_URL });
+  const notificationId = id();
+  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", notificationId, user.id, "Anna commented on Roadmap");
+  requests.length = 0;
+  handler = okAll;
+  await flushPushQueue(noWebPush, noExpo);
+  const [message] = messagesOf(requests[0]);
+  const plaintext = JSON.parse(decrypt(devicePrivate, message.payload));
+  // A comment, through the same encryption (its category is the one with "Reply").
+  const comment = encryptForDevice(
+    devicePublic,
+    INSTANCE,
+    plaintextJson({ title: "Flowplan", body: "Ben: Looks good", url: `${INSTANCE}/#page=00000000-0000-4000-8000-000000000001`, id: "contract-comment", category: "flowplan.comment", data: { kind: "comment" }, sentAt: plaintext.sentAt }),
+  );
+  const at = Date.UTC(2026, 9, 24, 12, 0, 0);
+  // German: "14:25" is formatted the same by every ICU version.
+  const LABELS = { locale: "de", timeZone: "Europe/Berlin", focus: { focus: "Fokus", break: "Pause", until: "bis {time}", stop: "Beenden" }, timer: { label: "Zeiterfassung" } };
+  const task = { title: "Write the release notes", url: "/#page=00000000-0000-4000-8000-000000000002" };
+  const live = {
+    labels: LABELS,
+    focus: contentState("focus", focusProps({ phase: "focus", startedAt: at, focusEndsAt: at + 25 * 60_000, breakEndsAt: at + 30 * 60_000, task }, LABELS, false)),
+    focusBreakWithContent: contentState("focus", focusProps({ phase: "break", startedAt: at, focusEndsAt: at + 25 * 60_000, breakEndsAt: at + 30 * 60_000, task }, LABELS, true)),
+    timer: contentState("timer", timerProps({ start: at, title: "Client call", database: "Billable work", url: "/#page=00000000-0000-4000-8000-000000000003" }, LABELS, false)),
+    timerWithContent: contentState("timer", timerProps({ start: at, title: "Client call", database: "Billable work", url: "/#page=00000000-0000-4000-8000-000000000003" }, LABELS, true)),
+  };
+  const fresh = {
+    instance: INSTANCE,
+    devicePrivateKey: Buffer.from(CONTRACT_DEVICE, "hex").toString("base64url"),
+    devicePublicKey: devicePublic,
+    alert: { message: { ...message, to: "<relay token>" }, plaintext },
+    comment: { payload: comment, sentAt: plaintext.sentAt },
+    liveActivity: live,
+  };
+  if (process.env.FLOWPLAN_WRITE_CONTRACT === "1") writeFileSync(CONTRACT, `${JSON.stringify(fresh, null, 2)}\n`);
+  const kept = JSON.parse(readFileSync(CONTRACT, "utf8")) as typeof fresh & { alert: { message: Record<string, any> } };
+  assert.equal(kept.instance, INSTANCE);
+  assert.equal(kept.devicePublicKey, devicePublic);
+  // The kept alert still opens and has exactly the fields and kinds of values sent now.
+  const keptPlain = JSON.parse(decrypt(devicePrivate, kept.alert.message.payload));
+  assert.deepEqual(keptPlain, kept.alert.plaintext);
+  const shape = (value: Record<string, unknown>) => Object.fromEntries(Object.entries(value).map(([k, v]) => [k, v === null ? "null" : typeof v]));
+  assert.deepEqual(shape(keptPlain), shape(plaintext));
+  assert.deepEqual(shape({ ...kept.alert.message, payload: "" }), shape({ ...message, to: "<relay token>", payload: "" }));
+  assert.equal(kept.alert.message.category, message.category);
+  assert.equal(keptPlain.category, plaintext.category);
+  assert.equal(new URL(keptPlain.url).origin, INSTANCE);
+  assert.equal(Number.isInteger(keptPlain.sentAt) && keptPlain.sentAt < 1e11, true, "sentAt in seconds");
+  assert.equal(JSON.parse(decrypt(devicePrivate, kept.comment.payload)).category, "flowplan.comment");
+  // The Live Activity states are made the same way still.
+  assert.deepEqual(kept.liveActivity, JSON.parse(JSON.stringify(live)));
+  // No title or link of the person's data without MOBILE_PUSH_CONTENT=on.
+  assert.doesNotMatch(JSON.stringify([live.focus, live.timer]), /release notes|Client call|Billable|page=/);
+});
+
+test("Live Activities without the app's labels (older apps): only the end is pushed", () => {
+  const { user } = account("relay-no-labels");
+  // No focus session, no timer: the end, whose texts nobody sees.
+  const ended = liveActivityMessage("timer", user, null)!;
+  assert.equal(ended.end, true);
+  assert.equal(ended.message.liveActivity!.event, "end");
+  assert.equal((ended.message.liveActivity!.contentState as { name: string }).name, "FlowplanTimer");
+  run("INSERT INTO widget_focus(user_id,started_at,focus_ms,break_ms) VALUES(?,?,?,?)", user.id, Date.now(), 25 * 60_000, 5 * 60_000);
+  assert.equal(liveActivityMessage("focus", user, null), null);
+  assert.equal(liveActivityMessage("focus", user, LABELS)!.message.liveActivity!.event, "update");
+  // A long title is shortened to fit the relay's 2 KB.
+  const long = contentState("timer", timerProps({ start: 1, title: "x".repeat(5000), database: "", url: "/" }, LABELS, true));
+  assert.ok(Buffer.byteLength(JSON.stringify(long)) <= 1900);
 });

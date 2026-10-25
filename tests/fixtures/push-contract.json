@@ -1,0 +1,62 @@
+{
+  "instance": "https://app.example.test",
+  "devicePrivateKey": "qKurq6urq6urq6urq6urq6urq6urq6urq6urq6urq2s",
+  "devicePublicKey": "43EthRoOXXm4McXjSrIrQaGYFx3iCbi4-sojoRxiSFk",
+  "alert": {
+    "message": {
+      "to": "<relay token>",
+      "type": "alert",
+      "payload": "ASOqdXUNPKcK2oTuX4NbkePDhkNHtNdqYOQ0XRyl5j4FmuIYuNhlS-WAt9GDIdBpn1vegZ7bl4vqQv8E7lBve1bjc2_ouvF5HAye3uLj2zkcInN9uN5Pv4nVkpd5CcssDAX-78j01O2Z8MnYzZdk4WR8ljb91-hFmZUlVARpWjWQVx3XKNJkqXuV9jXsL0ycKdEpsZt5DH101AX3VYntkgEvt1Mxc57bl4g2P1dd7q2qTx9UfKTczu9-ZT_n6WNfVRewlMfGTkZx_D6bioDFAEKbkfhG3YCaSUZqpuJp7441JB1-0yupfZicQGi9OyBDdbfngG00qMyt0s8KHf3gANr9lA",
+      "category": "default",
+      "collapseId": null,
+      "badge": 1,
+      "priority": "high",
+      "ttl": 86400,
+      "liveActivity": null
+    },
+    "plaintext": {
+      "title": "Flowplan",
+      "body": "Anna commented on Roadmap",
+      "url": "https://app.example.test/#inbox",
+      "id": "7ec659e5-3528-467a-a004-9b56f04f13a2",
+      "category": "flowplan.read",
+      "data": null,
+      "sentAt": 1792891671
+    }
+  },
+  "comment": {
+    "payload": "AaZPNavzdnN7nFAjNw_V6x7iLnHXfY0dnt2_WfRWNxsrCH2jJe2JH-0xzY1Y3vuCwE2VeM-FADXACkfa7Fq5r8djGCwexjjlv3m6kKi-g6SCYDpJiM2nJGKpSkc80Y1ZA51dpwoT27ILj2xtAMzN3XMLLA_miEhkdRu8Vk7BJaYqinea0KoTnFVpWeUGqsGrKxpilLHcLy_xHK76C7Saxz61QYR8jCQ6DsfSpFpWXeNUzeIUuEgsXXg93piUtkQBCZKwSBJ14ECHqqUMbMfMANb1KI96a9xnKfC1XYYA0zXa6U7t2aVE84VXmTfpvpCBbYuvhCr3sbn82zV8VeX2wkZ9dH8jQRCg8ZbCCrUb23fmISVCrQl0m6im",
+    "sentAt": 1792891671
+  },
+  "liveActivity": {
+    "labels": {
+      "locale": "de",
+      "timeZone": "Europe/Berlin",
+      "focus": {
+        "focus": "Fokus",
+        "break": "Pause",
+        "until": "bis {time}",
+        "stop": "Beenden"
+      },
+      "timer": {
+        "label": "Zeiterfassung"
+      }
+    },
+    "focus": {
+      "name": "FlowplanFocus",
+      "props": "{\"phase\":\"focus\",\"label\":\"Fokus\",\"title\":\"Fokus\",\"endsAt\":1792844700000,\"startedAt\":1792843200000,\"untilLabel\":\"bis 14:25\",\"stopLabel\":\"Beenden\",\"url\":\"flowplan://open?path=%2F\"}"
+    },
+    "focusBreakWithContent": {
+      "name": "FlowplanFocus",
+      "props": "{\"phase\":\"break\",\"label\":\"Pause\",\"title\":\"Write the release notes\",\"endsAt\":1792845000000,\"startedAt\":1792844700000,\"untilLabel\":\"bis 14:30\",\"stopLabel\":\"Beenden\",\"url\":\"flowplan://open?path=%2F%23page%3D00000000-0000-4000-8000-000000000002\"}"
+    },
+    "timer": {
+      "name": "FlowplanTimer",
+      "props": "{\"title\":\"Zeiterfassung\",\"database\":\"\",\"start\":1792843200000,\"label\":\"Zeiterfassung\",\"url\":\"flowplan://open?path=%2F\"}"
+    },
+    "timerWithContent": {
+      "name": "FlowplanTimer",
+      "props": "{\"title\":\"Client call\",\"database\":\"Billable work\",\"start\":1792843200000,\"label\":\"Zeiterfassung\",\"url\":\"flowplan://open?path=%2F%23page%3D00000000-0000-4000-8000-000000000003\"}"
+    }
+  }
+}

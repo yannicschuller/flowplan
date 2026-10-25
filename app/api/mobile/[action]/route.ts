@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";
 //                              when the app leaves the instance
 // POST /api/mobile/live-activity  with the device token: the relay token of a
 //                              Live Activity that started or ended on the phone
-//                              { kind: "focus" | "timer", relayToken | null }
+//                              { kind: "focus" | "timer", relayToken | null,
+//                                relayUrl?, labels? (the views' texts) }
 // GET  /api/mobile/summary     in the background, with the device token
 // GET  /api/mobile/admin-summary  likewise, for the administrators' widgets
 //                              (lib/mobile-admin.ts): 403 for everyone else

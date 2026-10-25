@@ -47,6 +47,31 @@ const liveTokens = z
   .object({ focus: relayTokenSchema.nullable().optional(), timer: relayTokenSchema.nullable().optional() })
   .strict();
 
+// The app's own texts for its Live Activity views (flowplan-app
+// src/activities.ts → liveActivityLabels): ActivityKit replaces the whole
+// content state on a push, so the instance must send every prop the views
+// read – in the app's language and time zone, which only the app knows.
+// Labels only, nothing of the person's data; stored in plain text.
+const label = z.string().trim().min(1).max(60);
+const validFormat = (locale: string, timeZone: string) => {
+  try {
+    new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone }).format(0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+export const liveLabelsSchema = z
+  .object({
+    locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/),
+    timeZone: z.string().min(1).max(64),
+    focus: z.object({ focus: label, break: label, until: label.refine((s) => s.includes("{time}")), stop: label }).strict(),
+    timer: z.object({ label }).strict(),
+  })
+  .strict()
+  .refine((b) => validFormat(b.locale, b.timeZone), { message: "unknown locale or time zone" });
+export type LiveLabels = z.infer<typeof liveLabelsSchema>;
+
 // Version 1 (older apps): installationId, platform, name, appVersion,
 // pushToken. Version 2 adds relayToken + publicKey (both or neither),
 // relayUrl and liveActivityRelayTokens; everything else is ignored as before.
@@ -64,6 +89,9 @@ const registration = z
     // base64url of the 32-byte X25519 public key, without padding.
     publicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/).nullable().optional(),
     liveActivityRelayTokens: liveTokens.nullable().optional(),
+    // The texts of the app's Live Activity views (above); an invalid one is
+    // left out rather than refusing the registration.
+    liveActivityLabels: z.unknown().optional(),
   })
   .refine((b) => !b.relayToken === !b.publicKey, { message: "relayToken and publicKey belong together" });
 
@@ -80,19 +108,25 @@ export function pushRelayInfo() {
   return { version: 1 as const, url: config.relay, instance: config.instance };
 }
 
-function storeLiveToken(deviceId: string, kind: LiveActivityKind, token: string | null) {
+const parseLabels = (value: unknown): LiveLabels | null => {
+  const parsed = liveLabelsSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+
+function storeLiveToken(deviceId: string, kind: LiveActivityKind, token: string | null, labels: LiveLabels | null) {
   run("DELETE FROM mobile_live_activities WHERE device_id=? AND kind=?", deviceId, kind);
   if (!token) return;
   const tokenHash = hashToken(token);
   // An activity token belongs to one installation (another account on the phone before).
   run("DELETE FROM mobile_live_activities WHERE token_hash=?", tokenHash);
   run(
-    "INSERT INTO mobile_live_activities(device_id,kind,relay_token,token_hash,created_at) VALUES(?,?,?,?,?)",
+    "INSERT INTO mobile_live_activities(device_id,kind,relay_token,token_hash,created_at,labels) VALUES(?,?,?,?,?,?)",
     deviceId,
     kind,
     sealSecret(token, liveAad(deviceId, kind)),
     tokenHash,
     Date.now(),
+    labels ? JSON.stringify(labels) : null,
   );
 }
 const liveKinds = (deviceId: string) =>
@@ -176,11 +210,13 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
     );
   }
   // Live Activities need no notification permission, only the relay.
-  if (relayMatches && b.liveActivityRelayTokens)
+  if (relayMatches && b.liveActivityRelayTokens) {
+    const labels = parseLabels(b.liveActivityLabels);
     for (const kind of LIVE_ACTIVITY_KINDS) {
       const value = b.liveActivityRelayTokens[kind];
-      if (value) storeLiveToken(deviceId, kind, value);
+      if (value) storeLiveToken(deviceId, kind, value, labels);
     }
+  }
   return {
     deviceToken: token,
     push: !!subscription,
@@ -192,7 +228,9 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
 
 // A Live Activity started (or ended) on the phone after the registration:
 // its relay token (platform "ios-liveactivity" at the relay), or null.
-const liveInput = z.object({ kind: z.enum(LIVE_ACTIVITY_KINDS), relayToken: relayTokenSchema.nullable(), relayUrl: z.string().max(300).nullable().optional() }).strict();
+const liveInput = z
+  .object({ kind: z.enum(LIVE_ACTIVITY_KINDS), relayToken: relayTokenSchema.nullable(), relayUrl: z.string().max(300).nullable().optional(), labels: z.unknown().optional() })
+  .strict();
 export function setLiveActivityToken(authorization: string | null, input: unknown) {
   const match = authorization?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
   const device = match
@@ -206,7 +244,7 @@ export function setLiveActivityToken(authorization: string | null, input: unknow
   const b = liveInput.parse(input);
   const relay = pushRelayInfo();
   if (b.relayToken && (!relay || (b.relayUrl && strictOrigin(b.relayUrl) !== relay.url))) return { ok: false, liveActivities: liveKinds(device.id), pushRelay: relay };
-  storeLiveToken(device.id, b.kind, b.relayToken);
+  storeLiveToken(device.id, b.kind, b.relayToken, parseLabels(b.labels));
   return { ok: true, liveActivities: liveKinds(device.id), pushRelay: relay };
 }
 
