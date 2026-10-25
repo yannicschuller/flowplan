@@ -16,6 +16,7 @@ import {
   setOfflineRecords,
   type OfflineMarker,
 } from "./offline";
+import { offlineUnsupportedReason } from "@/lib/native-app";
 
 // Settings → Offline & Geräte. Opt-in per device: the copies contain the
 // workspace's private content.
@@ -141,9 +142,21 @@ export function OfflineSettings({
       )}
     >
       {!supported ? (
-        <SettingRow label={t("Auf diesem Gerät", "On this device")} description={t("Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).", "This browser does not support offline use (secure connection and service worker required).")}>
-          <StatusBadge tone="off">{t("Nicht unterstützt", "Not supported")}</StatusBadge>
-        </SettingRow>
+        offlineUnsupportedReason() === "ios-app" ? (
+          <SettingRow
+            label={t("In der App", "In the app")}
+            description={t(
+              "Die Flowplan-App für iPhone und iPad kann Inhalte noch nicht offline speichern: iOS erlaubt Apps keine Service Worker für frei gewählte Adressen. Offline-Nutzung gibt es in Safari, in Browsern am Computer und in der Android-App.",
+              "The Flowplan app for iPhone and iPad cannot store content offline yet: iOS gives apps no service workers for addresses of your choice. Offline use works in Safari, in desktop browsers and in the Android app.",
+            )}
+          >
+            <StatusBadge tone="off">{t("In der App noch nicht", "Not in the app yet")}</StatusBadge>
+          </SettingRow>
+        ) : (
+          <SettingRow label={t("Auf diesem Gerät", "On this device")} description={t("Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).", "This browser does not support offline use (secure connection and service worker required).")}>
+            <StatusBadge tone="off">{t("Nicht unterstützt", "Not supported")}</StatusBadge>
+          </SettingRow>
+        )
       ) : enabled ? (
         <>
           <SettingRow

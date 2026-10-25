@@ -65,6 +65,20 @@ export function desktopApp(): FlowplanDesktop | undefined {
 }
 export const inDesktopApp = () => typeof navigator !== "undefined" && /FlowplanDesktop\//.test(navigator.userAgent);
 
+// Why this device cannot keep an offline copy: the iPhone and iPad app's
+// web view (WKWebView) runs no service worker for an instance's address –
+// iOS allows them in apps only for a fixed list of domains – so the
+// browser's way does not work there; elsewhere the browser lacks it (no
+// secure connection, no service worker).
+export function offlineUnsupportedReason(
+  app: { platform?: string } | undefined = nativeApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): "ios-app" | "browser" {
+  if (app?.platform === "ios") return "ios-app";
+  if (!app && /FlowplanMobile\//.test(agent) && /iPhone|iPad|iPod|Macintosh/.test(agent)) return "ios-app";
+  return "browser";
+}
+
 // Whether the app here can scan documents (newer iOS apps).
 export const nativeScanAvailable = () => typeof nativeApp()?.scanDocument === "function";
 export function nativeScan(pageId: string, rowId?: string) {
