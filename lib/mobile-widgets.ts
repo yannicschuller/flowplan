@@ -1267,7 +1267,7 @@ export function widgetOptions(user: Identity, kind: WidgetKind, query: { pageId?
           { id: "favorites", name: t("Favoriten", "Favorites") },
           { id: "page", name: t("Seite oder Ansicht", "Page or view") },
         ],
-        pages: readablePages(user, ["document", "database", "journal", "whiteboard", "dashboard"]).filter((p) => !p.journal_date).map(listedPage),
+        pages: readablePages(user, ["document", "database", "journal", "whiteboard", "dashboard", "notebook"]).filter((p) => !p.journal_date).map(listedPage),
         database: databaseDetail(),
       };
     case "counter":

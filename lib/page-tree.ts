@@ -15,6 +15,8 @@ import { createPage } from "./seed";
 import { htmlState, cleanHtml } from "./document-server";
 import { relationPairs, insertRelationPair } from "./relation-sync";
 import { copyDashboard, dashboardTiles } from "./dashboard";
+import { copyNotebook } from "./notebook";
+import { copyPageInk } from "./page-ink-store";
 import type { Identity, Page, Field, Row } from "./types";
 // Called inside the command transaction. Permission-check the complete source
 // tree before copying anything; never silently copy a restricted descendant.
@@ -183,6 +185,9 @@ export function duplicatePages(
         copyDashboard(dashboardTiles(p.id), target, pageIds);
         // Tile titles and texts for search, as saved with the tiles.
         run("UPDATE documents SET html=(SELECT html FROM documents WHERE page_id=?) WHERE page_id=?", p.id, target);
+      } else if (p.kind === "notebook") {
+        // Sheets, paper and ink; PDF backgrounds point to the copied files.
+        copyNotebook(p.id, target, fileIds, user.id);
       } else if (p.kind === "document" || p.kind === "journal") {
         const source = one<{ html: string }>(
           "SELECT html FROM documents WHERE page_id=?",
@@ -195,6 +200,8 @@ export function duplicatePages(
           htmlState(html),
           target,
         );
+        // Drawing blocks keep their ids: the copy gets their ink.
+        copyPageInk(p.id, target, undefined, user.id);
       } else {
         const source = one<{
           fields: string;

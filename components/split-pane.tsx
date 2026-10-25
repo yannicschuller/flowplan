@@ -18,6 +18,7 @@ import type { AiStatus } from "@/lib/ai/features";
 
 const DocumentEditor = dynamic(() => import("./editor"), { ssr: false, loading: () => <PageSkeleton compact /> });
 const DashboardView = dynamic(() => import("./dashboard-view"), { ssr: false });
+const NotebookView = dynamic(() => import("./notebook/notebook-view"), { ssr: false, loading: () => <PageSkeleton compact /> });
 const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), { ssr: false, loading: () => <PageSkeleton compact /> });
 
 type PaneData = DatabaseData & {
@@ -28,6 +29,7 @@ type PaneData = DatabaseData & {
   generation: string;
   whiteboard?: { state: string; generation: string };
   dashboard?: import("./dashboard-view").DashboardPayload;
+  notebook?: import("@/lib/notebook").NotebookPayload;
   locked?: { journalId: string };
   journal?: unknown;
 };
@@ -223,6 +225,8 @@ export function SplitPane({
         onError={onError}
       />
     );
+  else if (data.page.kind === "notebook" && data.notebook)
+    body = <NotebookView key={data.page.id} pageId={data.page.id} title={data.page.title} notebook={data.notebook} editable={editable && !data.page.locked} onError={onError} />;
   else if (data.page.kind === "document" && !data.locked && !data.journal)
     body = (
       <DocumentEditor

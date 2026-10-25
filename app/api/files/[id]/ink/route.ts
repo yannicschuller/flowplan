@@ -2,12 +2,14 @@
 //   GET               the ink, its version and whether this person may change it
 //   GET ?versions=1   the saved versions (newest first)
 //   GET ?version=N    the ink of one version
-//   PUT or POST {base, doc}  saves; `base` is the version the ink was opened at
+//   PUT or POST {base, doc, recognized?}  saves; `base` is the version the ink was opened at
+//   PUT or POST {version, recognized}     text recognised on the device for that
+//                                         version (page → text), lib/ink/recognition.ts
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, checkOrigin, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
-import { fileInkVersion, fileInkVersions, readFileInk, saveFileInk } from "@/lib/ink-store";
+import { fileInkVersion, fileInkVersions, readFileInk, saveFileInk, saveFileRecognized } from "@/lib/ink-store";
 import { INK_LIMITS } from "@/lib/ink/model";
 
 export const runtime = "nodejs";
@@ -48,7 +50,10 @@ async function save(req: Request, { params }: Context) {
     const fileId = z.uuid().parse((await params).id);
     const text = await req.text();
     if (text.length > INK_LIMITS.bytes * 2) throw new HttpError(413, "Anfrage zu groß.");
-    return NextResponse.json(saveFileInk(user, fileId, JSON.parse(text)), noStore);
+    const body = JSON.parse(text);
+    if (body && typeof body === "object" && body.doc === undefined && body.recognized !== undefined)
+      return NextResponse.json(saveFileRecognized(user, fileId, body), noStore);
+    return NextResponse.json(saveFileInk(user, fileId, body), noStore);
   } catch (e) {
     return failure(e);
   }

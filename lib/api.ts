@@ -465,6 +465,20 @@ export function pageData(user: Identity, pid: string, options: { presence?: bool
       dashboard: dashboardData(user, p, role),
       html: "",
     };
+  if (p.kind === "notebook")
+    return {
+      page: p,
+      images: pageImages(pid),
+      publication: publicationSettings(pid),
+      shareLinks: role === "viewer" ? [] : listShareLinks(user, pid),
+      role,
+      comments,
+      snapshots,
+      present,
+      backlinks,
+      notebook: notebookData(user, p),
+      html: "",
+    };
   if (p.kind === "whiteboard")
     return {
       page: p,
@@ -1008,7 +1022,7 @@ export function command(
         const kind =
           savedTemplate?.kind ||
           z
-            .enum(["document", "database", "whiteboard", "journal", "dashboard"])
+            .enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"])
             .parse(b.kind || "document");
         const created = createPage(
           wid(),
@@ -1553,8 +1567,9 @@ export function command(
         if (p.kind === "whiteboard") {
           if (!s.state) throw new HttpError(400, "Version ohne Inhalt.");
           restoreWhiteboardSnapshot(p, s.state);
-        } else if (p.kind === "dashboard") {
-          // Versions of a dashboard only hold its appearance (restored above).
+        } else if (p.kind === "dashboard" || p.kind === "notebook") {
+          // Versions of a dashboard or notebook only hold its appearance
+          // (restored above); notebook sheets keep their own ink versions.
         } else if (p.kind === "document") {
           run(
             "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",
@@ -2069,6 +2084,16 @@ export function command(
         break;
       case "dashboard.save":
         result = saveDashboard(write(), b.tiles);
+        break;
+      // Notebooks: sheets, their order and paper, PDF import (lib/notebook.ts).
+      case "notebook.paper":
+      case "notebook.sheet.add":
+      case "notebook.sheet.duplicate":
+      case "notebook.sheet.delete":
+      case "notebook.sheet.move":
+      case "notebook.sheet.paper":
+      case "notebook.import":
+        result = notebookCommand(user, write(), action, b);
         break;
       case "row.access":
         result = setRowAccess(user, b);
@@ -2637,6 +2662,8 @@ export function command(
                     "SELECT html FROM documents WHERE page_id=?",
                     p.id,
                   )?.html || "",
+                // Notebooks: their sheets' paper and handwriting.
+                ...(p.kind === "notebook" ? { notebook: notebookArchive(p.id) } : {}),
               });
         const templateId = id();
         if (payload.length > 20_000_000)
@@ -2946,6 +2973,13 @@ const editActions = new Set([
   "row.update",
   "row.delete",
   "whiteboard.sync",
+  "notebook.sheet.add",
+  "notebook.sheet.duplicate",
+  "notebook.sheet.delete",
+  "notebook.sheet.move",
+  "notebook.sheet.paper",
+  "notebook.paper",
+  "notebook.import",
   "row.recurrence",
   "row.repeat",
   "row.detachOccurrence",
@@ -3054,6 +3088,7 @@ import { aliasField, aliasList } from "./aliases";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";
 import { dashboardData, saveDashboard } from "./dashboard";
+import { notebookArchive, notebookCommand, notebookData } from "./notebook";
 import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";

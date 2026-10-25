@@ -1,3 +1,4 @@
+import { DrawBlock } from "./draw-block-node";
 import { Suggestion } from "./suggestions";
 import { BlockReactionAttribute } from "./block-reactions";
 import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
@@ -529,6 +530,7 @@ export const documentExtensions = [
   MathInline,
   LinkedDatabase,
   WhiteboardEmbed,
+  DrawBlock,
   Footnote,
   BlockDirectionExtension,
 ];

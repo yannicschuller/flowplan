@@ -6,6 +6,7 @@
 // /api/openapi.json, readable at /api/docs; tests/openapi.test.ts keeps the
 // routes, the command actions and the SDKs in step with it.
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
+import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
 import { z } from "zod";
 import { field, view } from "./database-schema";
 import { coverSchema, iconSizeSchema, pageIconSchema } from "./page-appearance";
@@ -62,7 +63,8 @@ export const commandActionNames = [
   "row.recurrence", "row.repeat", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore",
   "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge",
   "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
-  "citation.import", "citation.remove", "whiteboard.sync", "dashboard.save", "search.save", "search.delete",
+  "citation.import", "citation.remove", "whiteboard.sync", "dashboard.save",
+  "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete",
   "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react",
   "comment.create", "comment.resolve", "comment.react", "reminder.set",
   "notification.prefs", "notification.read", "notification.mark", "notification.delete",
@@ -121,7 +123,7 @@ export const commandActions: ActionDoc[] = [
       workspaceId: uuid,
       spaceId: uuid,
       title: str,
-      kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard"]).optional().describe("Default: document"),
+      kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"]).optional().describe("Default: document"),
       parentId: uuid.optional().describe("Parent page in the same space"),
       databaseKind: z.enum(["tasks", "documents", "empty"]).optional(),
       templateId: z.string().max(100).optional().describe("A saved page template of the workspace"),
@@ -367,6 +369,31 @@ export const commandActions: ActionDoc[] = [
       tiles: z.array(z.object({ id: z.string().max(40), type: z.enum(tileTypes), size: z.enum(tileSizes).optional() }).passthrough()).max(MAX_TILES),
     }),
     result: z.object({ tiles: z.array(z.object({ id: z.string() }).passthrough()) }),
+  },
+  {
+    action: "notebook.sheet.add",
+    summary: "Add sheets to a notebook page",
+    description:
+      "Needs editor rights. Adds `count` (default 1) empty sheets after the sheet `after` (null or missing: at the end), optionally with their own `paper` (template blank, lined-college, lined-wide, grid, dotted, cornell, music; size a4 or letter; orientation portrait or landscape; color light or dark). The ink of a sheet is read and written with GET/POST /api/pages/{id}/ink?surface={sheetId}. Other notebook actions: notebook.sheet.duplicate {sheetId}, notebook.sheet.delete {sheetId}, notebook.sheet.move {order}, notebook.sheet.paper {sheetIds, paper|null}, notebook.paper {paper, all?}, notebook.import {fileId, pages: [{width, height}], after?} – all answer with the notebook's paper and sheets.",
+    input: z.object({
+      action: z.literal("notebook.sheet.add"),
+      pageId: uuid,
+      after: z.string().max(40).nullable().optional(),
+      count: z.number().int().min(1).max(50).optional(),
+      paper: z
+        .object({
+          template: z.enum(PAPER_TEMPLATES).optional(),
+          size: z.enum(PAPER_SIZES).optional(),
+          orientation: z.enum(PAPER_ORIENTATIONS).optional(),
+          color: z.enum(PAPER_COLORS).optional(),
+        })
+        .optional(),
+    }),
+    result: z.object({
+      created: z.array(z.string()),
+      paper: z.object({ template: z.string(), size: z.string(), orientation: z.string(), color: z.string() }),
+      sheets: z.array(z.object({ id: z.string(), position: z.number(), paper: z.object({}).passthrough(), background: z.object({}).passthrough().nullable() })),
+    }),
   },
   {
     action: "webhook.delete",
@@ -667,7 +694,7 @@ const schemas: Record<string, Json> = {
       icon: { type: "string" },
       cover: { type: "string" },
       cover_position: { type: "number" },
-      kind: { type: "string", enum: ["document", "database", "whiteboard", "journal", "dashboard"] },
+      kind: { type: "string", enum: ["document", "database", "whiteboard", "journal", "dashboard", "notebook"] },
       position: { type: "number" },
       deleted_at: { type: ["string", "null"] },
       created_by: { type: "string", format: "uuid" },
@@ -1135,6 +1162,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/files/route.ts": "Share links with their own token",
   "app/api/share/[token]/files/[fileId]/route.ts": "Share links with their own token",
   "app/api/share/[token]/files/[fileId]/ink/route.ts": "Share links with their own token",
+  "app/api/share/[token]/ink/route.ts": "Share links with their own token",
   "app/api/share/[token]/live/route.ts": "Share links with their own token",
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",

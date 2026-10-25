@@ -14,7 +14,7 @@
 // while the pen draws. Holding the pen still at the end of a stroke snaps it
 // to a line or shape.
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsOutSimple, Copy, CopySimple, Trash } from "@phosphor-icons/react";
+import { ArrowsOutSimple, Copy, CopySimple, TextAa, Trash } from "@phosphor-icons/react";
 import { useT } from "../i18n";
 import { clientToPage, type PageSize } from "@/lib/ink/coords";
 import {
@@ -125,6 +125,9 @@ export function InkLayer({
   doc,
   onPan,
   onZoom,
+  onConvert,
+  label,
+  fingersScroll = false,
 }: {
   page: string;
   size: PageSize;
@@ -134,6 +137,14 @@ export function InkLayer({
   // Two fingers while fingers draw (pen-only drawing off): scroll and zoom.
   onPan?: (dx: number, dy: number) => void;
   onZoom?: (factor: number) => void;
+  // "Convert to text" for a selection with handwriting: only where the
+  // device recognises it (lib/ink/recognition.ts).
+  onConvert?: () => void;
+  // The name of the surface for screen readers.
+  label?: string;
+  // Fingers scroll even with pen-only drawing off (a drawing block not
+  // activated yet: the document keeps scrolling under a finger).
+  fingersScroll?: boolean;
 }) {
   const t = useT();
   const active = !!editor && editing;
@@ -180,7 +191,7 @@ export function InkLayer({
   // A pen on the page never scrolls it, selects text or opens the callout;
   // with pen-only drawing off, neither does a finger. pointerdown comes
   // before touchstart, so the gesture already knows what touches.
-  const penOnly = editor?.penOnly ?? true;
+  const penOnly = fingersScroll || (editor?.penOnly ?? true);
   useEffect(() => {
     const el = root.current;
     if (!el || !active) return;
@@ -270,7 +281,9 @@ export function InkLayer({
     notePenActivity(e);
     const ed = editor;
     if (!ed || !active || (e.target as Element).closest(".ink-ui")) return;
-    if (writingInField(e)) return;
+    // Scribble into a focused field near the pen – unless the field holds
+    // this surface (a drawing block in the document being edited).
+    if (!document.activeElement?.contains(root.current) && writingInField(e)) return;
     const running = gesture.current;
     // Fingers drawing (pen-only off): a second finger scrolls and zooms instead.
     if (e.pointerType === "touch" && running && running.kind !== "pan" && "type" in running && running.type === "touch") {
@@ -287,7 +300,7 @@ export function InkLayer({
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const at = toPage(e.clientX, e.clientY);
     ed.lastPage.current = page;
-    const fingerOnly = !drawsWith(e, ed.penOnly);
+    const fingerOnly = !drawsWith(e, ed.penOnly || fingersScroll);
     // Text is placed with a tap, also by a finger: scrolling stays possible.
     if (ed.tool === "text" && !isEraser(e)) {
       gesture.current = { kind: "tap", pointer: e.pointerId, client: { x: e.clientX, y: e.clientY }, at };
@@ -516,7 +529,7 @@ export function InkLayer({
         viewBox={`0 0 ${size.width} ${size.height}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={t(`Anmerkungen auf Seite ${page}`, `Annotations on page ${page}`)}
+        aria-label={label || t(`Anmerkungen auf Seite ${page}`, `Annotations on page ${page}`)}
         data-count={visible.length}
       >
         <InkItems items={visible} layer="ink" />
@@ -573,6 +586,17 @@ export function InkLayer({
           <button type="button" aria-label={t("Duplizieren", "Duplicate")} title={t("Duplizieren", "Duplicate")} onClick={() => editor.duplicateSelection()}>
             <CopySimple size={17} />
           </button>
+          {onConvert && shown.some((i) => i.type === "pen" && selected?.ids.includes(i.id)) && (
+            <button
+              type="button"
+              className="ink-convert"
+              aria-label={t("In Text umwandeln", "Convert to text")}
+              title={t("In Text umwandeln", "Convert to text")}
+              onClick={onConvert}
+            >
+              <TextAa size={17} />
+            </button>
+          )}
           <button type="button" aria-label={t("Auswahl löschen", "Delete selection")} title={t("Auswahl löschen", "Delete selection")} onClick={() => editor.deleteSelection()}>
             <Trash size={17} />
           </button>

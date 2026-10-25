@@ -19,9 +19,19 @@ import {
 import { useT } from "../i18n";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import type { InkTool, PencilSetting } from "@/lib/ink/presets";
-import type { InkEditor } from "./use-ink-editor";
+import { INK_TOOL_KEYS, type InkEditor } from "./use-ink-editor";
 
-export function InkToolbar({ editor, children }: { editor: InkEditor; children?: React.ReactNode }) {
+export function InkToolbar({
+  editor,
+  children,
+  toolKeys = false,
+  label,
+}: {
+  editor: InkEditor;
+  children?: React.ReactNode;
+  toolKeys?: boolean;
+  label?: string;
+}) {
   const t = useT();
   const keyHints = useKeyboardHints();
   const [settings, setSettings] = useState(false);
@@ -44,6 +54,8 @@ export function InkToolbar({ editor, children }: { editor: InkEditor; children?:
       window.removeEventListener("keydown", key, true);
     };
   }, [settings]);
+  // Single-key tool shortcuts where they are on (useInkShortcuts `tools`).
+  const toolKey = (tool: InkTool) => (toolKeys ? keyHints.suffix(Object.entries(INK_TOOL_KEYS).find(([, v]) => v === tool)?.[0].toUpperCase() || "") : "");
   const tools: [InkTool, string, React.ReactNode][] = [
     ["pen", t("Stift", "Pen"), <PencilSimple key="p" size={19} />],
     ["highlighter", t("Textmarker", "Highlighter"), <HighlighterCircle key="h" size={19} />],
@@ -58,7 +70,7 @@ export function InkToolbar({ editor, children }: { editor: InkEditor; children?:
       ? [t("Kleine Schrift", "Small text"), t("Mittlere Schrift", "Medium text"), t("Große Schrift", "Large text")][i]
       : [t("Fein", "Fine"), t("Mittel", "Medium"), t("Breit", "Bold")][i];
   return (
-    <div className="ink-toolbar" role="toolbar" aria-label={t("Werkzeuge zum Anmerken", "Annotation tools")}>
+    <div className="ink-toolbar" role="toolbar" aria-label={label || t("Werkzeuge zum Anmerken", "Annotation tools")}>
       <div role="radiogroup" aria-label={t("Werkzeug", "Tool")} className="ink-group">
         {tools.map(([id, label, icon]) => (
           <button
@@ -67,7 +79,7 @@ export function InkToolbar({ editor, children }: { editor: InkEditor; children?:
             role="radio"
             aria-checked={editor.tool === id}
             aria-label={label}
-            title={label}
+            title={label + toolKey(id)}
             className={editor.tool === id ? "active" : ""}
             onClick={() => editor.setTool(id)}
           >
@@ -151,7 +163,7 @@ export function InkToolbar({ editor, children }: { editor: InkEditor; children?:
           <ArrowArcRight size={19} />
         </button>
         {editor.clipboard && (
-          <button type="button" aria-label={t("Einfügen", "Paste")} title={t("Einfügen (⌘V)", "Paste (⌘V)")} onClick={() => editor.paste()}>
+          <button type="button" aria-label={t("Einfügen", "Paste")} title={t("Einfügen", "Paste") + keyHints.suffix("Mod+V")} onClick={() => editor.paste()}>
             <ClipboardText size={19} />
           </button>
         )}

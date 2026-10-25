@@ -180,6 +180,12 @@ export function publicFile(token: string, fileId: string) {
   if (board?.kind === "whiteboard")
     for (const item of whiteboardSnapshotItems(board as Page))
       if (item.src === `/api/files/${fileId}`) referenced.add(fileId);
+  // PDFs imported as the pages of a notebook (lib/notebook.ts).
+  if (
+    board?.kind === "notebook" &&
+    one("SELECT 1 FROM notebook_sheets WHERE page_id=? AND background LIKE ?", file.page_id, `%"file":"${fileId}"%`)
+  )
+    referenced.add(fileId);
   const coverId = imageFileId(
     pages.find((p) => p.id === file.page_id)?.cover || "",
   );

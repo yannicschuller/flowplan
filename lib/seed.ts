@@ -1,3 +1,4 @@
+import { createNotebook } from "./notebook";
 import { id, run, all, transaction } from "./db";
 import type { Field, View } from "./types";
 import { ct } from "./content-locale";
@@ -102,7 +103,7 @@ export function createPage(
     kind,
     user,
     Date.now(),
-    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : "file",
+    kind === "whiteboard" ? "whiteboard" : kind === "journal" ? "journal" : kind === "dashboard" ? "dashboard" : kind === "notebook" ? "notebook" : "file",
   );
   if (kind === "database") {
     const setup = databaseSetup(databaseKind);
@@ -117,6 +118,8 @@ export function createPage(
   }
   else run("INSERT INTO documents(page_id) VALUES(?)", pid);
   if (kind === "dashboard") run("INSERT INTO dashboards(page_id) VALUES(?)", pid);
+  // Notebooks start with one sheet of the default paper (lib/notebook.ts).
+  if (kind === "notebook") createNotebook(pid);
   return pid;
 }
 export function createWorkspace(user: string, name: string, examples = false) {

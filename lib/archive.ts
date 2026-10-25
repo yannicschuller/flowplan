@@ -1,4 +1,7 @@
 import { copyDashboard, dashboardTiles } from "./dashboard";
+import { importNotebook, notebookArchive, notebookArchiveSchema } from "./notebook";
+import { pageInkDocs, writeSurface, inkBlockIds } from "./page-ink-store";
+import { emptyInk, hasInk, parseInk, serializeInk } from "./ink/model";
 import { aliasList, pageAliases, storedAliases } from "./aliases";
 import { MAX_TILES, parseTiles } from "./dashboard-schema";
 import { whiteboardData, writeWhiteboard } from "./whiteboard";
@@ -145,6 +148,15 @@ const databaseSchema = z.object({
     .max(500)
     .default([]),
 });
+// The handwriting of a document's drawing blocks still in it.
+function inkBlocksArchive(pageId: string) {
+  const html = one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || "";
+  const blocks = new Set(inkBlockIds(html));
+  const inkBlocks: Record<string, { ink: string; recognized?: string }> = {};
+  for (const [surface, ink] of pageInkDocs(pageId))
+    if (blocks.has(surface) && hasInk(ink.doc)) inkBlocks[surface] = { ink: serializeInk(ink.doc), ...(ink.recognized ? { recognized: ink.recognized } : {}) };
+  return Object.keys(inkBlocks).length ? { inkBlocks } : {};
+}
 export const archiveSchema = z.object({
   format: z.literal("flowplan-2"),
   relationPairs: z.array(relationPairSchema).max(20000).default([]),
@@ -155,7 +167,7 @@ export const archiveSchema = z.object({
     .array(
       z.object({
         name: str,
-        kind: z.enum(["document", "database"]),
+        kind: z.enum(["document", "database", "notebook"]),
         payload: z.string().max(20_000_000),
         deleted_at: str.nullable().optional(),
         files: z
@@ -200,7 +212,7 @@ export const archiveSchema = z.object({
         icon: pageIconSchema,
         cover: coverSchema,
         cover_position: z.number().finite().min(0).max(100).default(50),
-        kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard"]),
+        kind: z.enum(["document", "database", "whiteboard", "journal", "dashboard", "notebook"]),
         journal_date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -232,6 +244,10 @@ export const archiveSchema = z.object({
         database: databaseSchema.optional(),
         // Dashboards: their tiles (checked again on import).
         dashboard: z.array(z.unknown()).max(MAX_TILES).optional(),
+        // Notebooks: paper and sheets with their ink (lib/notebook.ts).
+        notebook: notebookArchiveSchema.optional(),
+        // Handwriting of drawing blocks in documents: block id → stored ink.
+        inkBlocks: z.record(z.string().regex(/^[\w-]{1,40}$/), z.object({ ink: z.string().max(6_500_000), recognized: z.string().max(10000).optional() })).optional(),
         form: z
           .object({
             internal: z.number().int().min(0).max(1),
@@ -314,7 +330,8 @@ function snapshotFor(user: Identity, wid: string) {
       payload: string;
       deleted_at: string | null;
     }>(
-      "SELECT id,name,kind,payload,deleted_at FROM templates WHERE workspace_id=? AND ((visibility='workspace' AND ?=0) OR created_by=?)",
+      // Templates of kinds an archive carries (not whiteboards or dashboards).
+      "SELECT id,name,kind,payload,deleted_at FROM templates WHERE workspace_id=? AND kind IN ('document','database','notebook') AND ((visibility='workspace' AND ?=0) OR created_by=?)",
       wid,
       isGuest(user, wid) ? 1 : 0,
       user.id,
@@ -453,6 +470,8 @@ function snapshotFor(user: Identity, wid: string) {
                 ? { whiteboard: whiteboardData(p).state }
                 : {}),
               ...(p.kind === "dashboard" ? { dashboard: dashboardTiles(p.id) } : {}),
+              ...(p.kind === "notebook" ? { notebook: notebookArchive(p.id) } : {}),
+              ...(p.kind === "document" || p.kind === "journal" ? inkBlocksArchive(p.id) : {}),
             }),
         // Versions of a database hold all its records: only for those who
         // see every record anyway.
@@ -819,8 +838,9 @@ function validateArchive(input: unknown, files: Map<string, ArchiveEntry>) {
       throw new HttpError(400, "Bereich fehlt im Archiv.");
     if (
       (p.kind === "database") !== !!p.database ||
-      ((p.kind === "document" || p.kind === "journal" || p.kind === "dashboard") &&
+      ((p.kind === "document" || p.kind === "journal" || p.kind === "dashboard" || p.kind === "notebook") &&
         p.html === undefined) ||
+      (p.kind === "notebook" && !p.notebook) ||
       (p.kind === "whiteboard" && p.whiteboard === undefined)
     )
       throw new HttpError(400, "Seiteninhalt passt nicht zum Seitentyp.");
@@ -1201,6 +1221,11 @@ async function importEntries(
           );
           if (p.kind === "dashboard")
             copyDashboard(parseTiles(JSON.stringify(p.dashboard || [])), pid, pageMap);
+          if (p.kind === "notebook") importNotebook(pid, p.notebook!, fileMap, user.id);
+          for (const [block, entry] of Object.entries(p.inkBlocks || {})) {
+            const items = Object.values(parseInk(entry.ink).pages)[0] || [];
+            if (items.length) writeSurface(pid, block, { ...emptyInk(), pages: { [block]: items } }, entry.recognized || "", user.id);
+          }
         }
         importInlineComments(pid, p.inlineThreads, rowMap, user.id);
         for (const c of p.comments)
@@ -1216,7 +1241,7 @@ async function importEntries(
           );
         // Database snapshots use JSON payloads; remap their rows separately from current records.
         // Board versions hold only a text summary in archives.
-        for (const snap of p.kind === "whiteboard" || p.kind === "dashboard" ? [] : p.snapshots) {
+        for (const snap of p.kind === "whiteboard" || p.kind === "dashboard" || p.kind === "notebook" ? [] : p.snapshots) {
           let html = snap.html,
             state: Uint8Array | null = null;
           if (p.kind === "document" || p.kind === "journal") {
@@ -1367,6 +1392,8 @@ async function importEntries(
               appearance: rewrittenAppearance,
               html: rewriteHtml(z.string().max(2_000_000).parse(payload.html)),
             };
+          else if (template.kind === "notebook")
+            payload = { appearance: rewrittenAppearance, html: "", notebook: notebookArchiveSchema.parse(payload.notebook) };
           else {
             const parsed = savedDatabaseTemplateSchema.parse(payload);
             const fields = parsed.database.fields;

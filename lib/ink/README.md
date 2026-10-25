@@ -1,8 +1,10 @@
 # Ink engine
 
-Handwriting, highlighter and text on a page surface. The PDF viewer
-(`components/pdf-viewer.tsx`) is the first consumer; notebooks or a
-handwriting block can reuse everything below without PDF code.
+Handwriting, highlighter and text on a page surface. Consumers: the PDF
+viewer (`components/pdf-viewer-dialog.tsx`), notebooks
+(`components/notebook/notebook-view.tsx`, `lib/notebook.ts`) and the drawing
+block of documents (`components/ink/draw-block*.tsx`,
+`lib/draw-block-node.ts`).
 
 ## Files
 
@@ -13,8 +15,17 @@ handwriting block can reuse everything below without PDF code.
 | `lib/ink/geometry.ts` | Pressure outline, bounds, hit tests, stroke and partial eraser, lasso, move/resize/recolour/copy, shape snapping (uses `recognizeStroke` from `lib/whiteboard-tools.ts`), `heldStill` |
 | `lib/ink/history.ts` | Undo/redo of whole states |
 | `lib/ink/presets.ts` | Tools, colours, widths, 3 favourite pens, Pencil double-tap setting, snap setting (per device, `localStorage`) |
-| `lib/ink/pdf-export.ts` | `flattenInk(pdfBytes, doc)` → new PDF with the ink as vectors (pdf-lib) |
-| `lib/ink-store.ts` | Server: ink of PDF files (`file_ink`, `file_ink_versions`) |
+| `lib/ink/pdf-export.ts` | `flattenInk(pdfBytes, doc)` → new PDF with the ink as vectors (pdf-lib); `drawInk` for any page |
+| `lib/ink/notebook-pdf.ts` | `notebookPdf(sheets, load)`: a notebook as PDF (paper as vectors or the imported PDF page, ink on top) |
+| `lib/ink/merge.ts` | `mergeInk(base, ours, theirs)`: three-way merge by item id (concurrent saves) |
+| `lib/ink/svg.ts` | `inkSvg(items, size, { paper })`: ink as an SVG document (published pages, exports) |
+| `lib/ink/recognition.ts` | Handwriting recognition in the iPhone/iPad app (contract below) |
+| `lib/ink/recognized.ts` | Cleaning and capping recognised text |
+| `lib/ink-store.ts` | Server: ink of PDF files (`file_ink`, `file_ink_versions`, `recognized`) |
+| `lib/page-ink-store.ts` | Server: ink of a page's surfaces – notebook sheets, drawing blocks (`page_ink`, `page_ink_versions`) |
+| `lib/ink-export.ts` | Server: pictures of drawing blocks and sheets for published pages and exports |
+| `components/ink/use-surface-sync.ts` | Saving surfaces while drawing, merging, following others, recognition for search |
+| `components/ink/convert.ts` | "Convert to text" of a lasso selection |
 | `components/ink/use-ink-editor.ts` | `useInkEditor(initial)`: the editing session; `useInkShortcuts(editor, on)` |
 | `components/ink/ink-layer.tsx` | `<InkLayer>`: renders and takes input for one page |
 | `components/ink/ink-toolbar.tsx` | `<InkToolbar editor>`: tools, favourites, colours, widths, eraser kind, undo/redo, paste, pen settings; children go at the end |
@@ -68,6 +79,51 @@ handwriting block can reuse everything below without PDF code.
 - `GET /api/share/{token}/files/{fileId}/ink` → read-only, for share links
   and publications.
 - Typed text goes into the search index with the file.
+
+## Server API (page surfaces)
+
+Notebook sheets (surface = sheet id) and drawing blocks (surface = block id)
+of a page; same permissions as the page (not in encrypted spaces, not on
+locked pages). The stored document has one page key: the surface.
+
+- `GET /api/pages/{id}/ink` → `{ versions: { surface: version } }`
+- `GET /api/pages/{id}/ink?surface=S[&from=P/S2]` → `{ doc, version, canEdit, updatedAt, updatedBy, recognized, copied? }`
+  (`from`: a pasted drawing block without ink of its own starts with that one's)
+- `GET …?surface=S&versions=1`, `GET …?surface=S&version=N` as for files
+- `PUT` or `POST …?surface=S` with `{ base, doc, recognized? }` → `{ version, conflict, doc? }`.
+  A save on an older `base` is merged three-way with what was saved in
+  between (`lib/ink/merge.ts`); `doc` is then the merged ink.
+- `PUT` or `POST …?surface=S` with `{ version, recognized }` stores text
+  recognised for that version (dropped when the ink changed since).
+  `/api/files/{id}/ink` takes `{ version, recognized: { page: text } }` the same way.
+- `GET /api/share/{token}/ink?page=P&block=B&height=H&paper=X` → `{ svg, text }` (read-only).
+
+Notebook structure (sheets, order, paper, PDF import) goes through the
+command API: `notebook.sheet.add`, `.duplicate`, `.delete`, `.move`,
+`.paper`, `notebook.paper`, `notebook.import` (`lib/notebook.ts`).
+
+## Handwriting recognition (iPhone/iPad app)
+
+Feature-detected: only when `window.FlowplanApp.recognizeInk` exists.
+
+```ts
+window.FlowplanApp.recognizeInk({
+  id: string,                                   // e.g. "search-…" or "convert-…"
+  width: number, height: number,                // the sheet, block or PDF page in pt
+  strokes: [{ points: [[x, y], …] }, …],        // pen strokes only (no highlighter, no text), pt, top left
+});
+// the app answers:
+window.dispatchEvent(new CustomEvent("flowplan:ink-recognized", {
+  detail: { id, text: string, lines: [{ text: string, box: [x, y, w, h] }] },   // boxes in the same pt
+}));
+```
+
+After a save (a moment later) the saved surface is recognised and its text
+stored (`recognized`, at most 4000 characters per surface, 20000 per PDF;
+control and direction characters removed) and searched like typed text. A
+lasso selection with pen strokes offers **Convert to text**: the text
+replaces the strokes as a text item (notebooks, PDFs) or becomes paragraphs
+below the block (drawing blocks); one undo step of the ink.
 
 ## Components
 

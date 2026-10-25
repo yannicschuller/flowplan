@@ -117,6 +117,10 @@ export function printHtml(content: ExportContent, author: string) {
           const db = content.readable(source);
           return db && db.kind === "database" ? { title: db.title, url: anchors.get(db.id) || content.pageUrl(db.id) } : null;
         },
+        ink: (attrs) => {
+          const picture = content.ink(entry.page.id, attrs);
+          return picture && { image: picture.svg ? svgData(picture.svg) : null, text: picture.text };
+        },
       });
     return `<article class="chapter" id="p-${entry.page.id}"><h1 class="chapter-title"><span class="number">${chapterNumbers[index]}</span>${xml(title)}</h1>${body}</article>`;
   });

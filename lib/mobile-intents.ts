@@ -26,7 +26,7 @@ import type { Identity, Page } from "./types";
 export const MAX_PAGES = 20;
 export const MAX_RESULTS = 10;
 const TITLE = 80;
-const KINDS = ["document", "database", "whiteboard", "dashboard", "journal"] as const;
+const KINDS = ["document", "database", "whiteboard", "dashboard", "journal", "notebook"] as const;
 
 const clip = (text: string, max = TITLE) => {
   const clean = text.replace(/\s+/g, " ").trim();

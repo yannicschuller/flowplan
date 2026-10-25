@@ -34,6 +34,9 @@ type FlowplanApp = {
   // iPad: a page of the instance in a window of its own (only offered where
   // the app can open windows).
   openWindow?: (url: string) => void;
+  // iPhone and iPad: handwriting recognition on the device; answers with
+  // the event "flowplan:ink-recognized" (contract: lib/ink/recognition.ts).
+  recognizeInk?: (request: import("./ink/recognition").InkRecognitionRequest) => void;
 };
 
 export function nativeApp(): FlowplanApp | undefined {

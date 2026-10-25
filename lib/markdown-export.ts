@@ -24,6 +24,11 @@ import {
 import { exportName } from "./export-name";
 import { ct } from "./content-locale";
 import { dashboardSummary } from "./dashboard";
+import { inkPicture } from "./ink-export";
+import { notebookPaper, notebookSheets, notebookText } from "./notebook";
+import { pageInkDocs } from "./page-ink-store";
+import { emptyInk } from "./ink/model";
+import { notebookPdf, notebookPdfSheets } from "./ink/notebook-pdf";
 import { commentText } from "./comment-content";
 import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
 import { aliasList, pageAliases } from "./aliases";
@@ -120,6 +125,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     ]),
   );
   const entries = new Map<string, Buffer>();
+  const pending: { path: string; build: () => Promise<Uint8Array> }[] = [];
   let total = 0,
     textBytes = 0;
   const add = (path: string, data: Buffer, text = false) => {
@@ -203,8 +209,23 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     if (!hiddenFiles.has(owner.id)) hiddenFiles.set(owner.id, hiddenFileIds(user, owner));
     return hiddenFiles.get(owner.id)!.has(file.id) ? null : file;
   };
-  function context(from: string): MarkdownContext {
+  // Drawing blocks of a page: their picture as SVG next to the attachments
+  // (ZIP), and their text.
+  const inkImage = (page: Page, from: string, attrs: Record<string, unknown>) => {
+    if (locked.has(page.id)) return null;
+    const picture = inkPicture(page, attrs);
+    if (!picture) return null;
+    let image: string | null = null;
+    if (zip && picture.svg) {
+      const path = `${prefixOfPath(from)}assets/${exportName(page.title)}-${page.id}-${String(attrs.id)}.svg`;
+      add(path, Buffer.from(picture.svg), true);
+      image = relative(from, path);
+    }
+    return { image, text: picture.text };
+  };
+  function context(from: string, page?: Page): MarkdownContext {
     return {
+      ...(page ? { ink: (attrs: Record<string, unknown>) => inkImage(page, from, attrs) } : {}),
       url(raw) {
         let url: URL;
         try {
@@ -521,7 +542,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   }
   for (const page of selected) {
     const path = paths.get(page.id)!,
-      ctx = context(path);
+      ctx = context(path, page);
     // Pages have frontmatter only for their aliases (as Obsidian reads them).
     const aliases = pageAliases(page);
     let markdown = (aliases.length ? toFrontmatter({ aliases }) + "\n" : "") + `# ${markdownText(page.title)}\n\n`;
@@ -537,6 +558,40 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         : zip
           ? ct("*Dieses Whiteboard ist leer.*", "*This whiteboard is empty.*") + "\n"
           : markdownLink(ct("Whiteboard in Flowplan öffnen", "Open the whiteboard in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n";
+    } else if (page.kind === "notebook") {
+      // A short stub: the notebook itself as a PDF next to it (ZIP), and the
+      // text typed or recognised on its sheets.
+      const sheets = notebookSheets(page.id);
+      markdown += `*${markdownText(sheets.length === 1 ? ct("Notizbuch mit einem Blatt", "Notebook with one sheet") : ct(`Notizbuch mit ${sheets.length} Blättern`, `Notebook with ${sheets.length} sheets`))}*\n\n`;
+      if (zip && !locked.has(page.id)) {
+        const pdfPath = `${prefix(page.id)}assets/${exportName(page.title)}-${page.id}.pdf`;
+        const defaults = notebookPaper(page.id);
+        const inks = pageInkDocs(page.id);
+        const pdfSheets = notebookPdfSheets(
+          defaults,
+          sheets.map((sheet) => ({ ...sheet, ink: inks.get(sheet.id)?.doc ?? emptyInk() })),
+        );
+        // Background PDFs only when the person could download them.
+        const files = new Set(sheets.flatMap((sheet) => (sheet.background && fileInfo(sheet.background.file) ? [sheet.background.file] : [])));
+        pending.push({
+          path: pdfPath,
+          build: () =>
+            notebookPdf(
+              pdfSheets,
+              async (file) => {
+                if (!files.has(file)) return null;
+                try {
+                  return readFileSync(resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads", file));
+                } catch {
+                  return null;
+                }
+              },
+              { title: page.title },
+            ),
+        });
+        markdown += markdownLink(ct("Notizbuch als PDF", "Notebook as PDF"), relative(path, pdfPath)) + "\n\n";
+      } else markdown += markdownLink(ct("Notizbuch in Flowplan öffnen", "Open the notebook in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n\n";
+      for (const text of locked.has(page.id) ? [] : notebookText(page.id)) markdown += `${markdownText(text)}\n\n`;
     } else if (page.kind === "dashboard") {
       // A text summary: the data of the tiles depends on who looks.
       for (const tile of dashboardSummary(user, page)) {
@@ -689,13 +744,21 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     );
   const record = options.rowId ? dbs.get(root!.id)!.rows[0] : null;
   const name = record ? cellText(record.cells[dbs.get(root!.id)!.schema.fields[0].id]) || recordWord() : space ? space.name : root!.title;
-  return { entries, root, space, name };
+  return { entries, root, space, name, pending };
 }
 export async function exportMarkdown(
   user: Identity,
   options: MarkdownExportOptions,
 ) {
-  const { entries, root, space, name } = transaction(() => collect(user, options));
+  const { entries, root, space, name, pending } = transaction(() => collect(user, options));
+  // Notebooks as PDF (built outside the transaction).
+  if (options.format !== "markdown")
+    for (const item of pending) {
+      const bytes = Buffer.from(await item.build());
+      const size = [...entries.values()].reduce((sum, b) => sum + b.length, 0);
+      if (size + bytes.length > MAX_BYTES) throw new HttpError(413, "Markdown-Export zu groß (maximal 250 MB, davon 30 MB Text).");
+      entries.set(item.path, bytes);
+    }
   if (options.format === "markdown")
     return {
       bytes: entries.get("index.md")!,

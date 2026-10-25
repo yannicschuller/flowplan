@@ -13,6 +13,8 @@ export type MarkdownContext = {
   whiteboard?: (pageId: string) => { title: string; image: string | null; url: string } | null;
   // Blocks of block extensions: the plugin's name and address.
   plugin?: (pluginId: string) => { name: string; url: string } | null;
+  // Drawing blocks: a picture (SVG in the ZIP export) and their text.
+  ink?: (attrs: Record<string, unknown>) => { image: string | null; text: string } | null;
 };
 export function markdownText(text: string) {
   return text
@@ -126,6 +128,7 @@ const blockLabels: Record<string, () => string> = {
   linkedDatabase: () => tr("Verknüpfte Datenbank", "Linked database"),
   syncedBlock: () => tr("Synchronisierter Block", "Synced block"),
   whiteboardEmbed: () => tr("Whiteboard", "Whiteboard"),
+  drawBlock: () => tr("Handschrift", "Handwriting"),
   media: () => tr("Medium", "Media"),
   linkCard: () => tr("Linkvorschau", "Link preview"),
   functionPlot: () => tr("Funktionsgraph", "Function graph"),
@@ -385,6 +388,12 @@ export function htmlToMarkdown(
         // The marker lets a re-import (Git, lib/git-export.ts) restore the embed.
         const marker = `<!-- flowplan:whiteboard ${String(node.attrs.pageId)} ${Math.round(Number(node.attrs.height) || 380)} -->\n`;
         return marker + (board.image ? `![${markdownText(board.title || "Whiteboard")}](<${markdownUrl(board.image)}>)\n\n${link}` : link);
+      }
+      case "drawBlock": {
+        const ink = context.ink?.(node.attrs);
+        const label = tr("Handschrift", "Handwriting");
+        const image = ink?.image ? `![${markdownText(label)}](<${markdownUrl(ink.image)}>)` : `*${markdownText(label)}*`;
+        return ink?.text ? `${image}\n\n${markdownText(ink.text)}` : image;
       }
       case "pluginBlock": {
         // A placeholder link: the frame cannot live in Markdown; its text can.

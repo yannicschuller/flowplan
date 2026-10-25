@@ -106,6 +106,7 @@ import {
   Tray,
   PresentationChart,
   Gauge,
+  NotePencil,
   Notebook,
   Lock,
   Copy,
@@ -149,6 +150,7 @@ import type {
   Row,
 } from "@/lib/types";
 import { PageExportDialog } from "./page-export";
+import { queueNotebookImport } from "./notebook/pending-import";
 import { MobileTabBar, guardChromeTouches, useShellDocument, useSoftKeyboard } from "./mobile-tab-bar";
 import {
   Modal,
@@ -231,6 +233,8 @@ const DocumentEditor = dynamic(() => import("./editor"), {
   loading: () => <Loading what="document" />,
 });
 const DashboardView = dynamic(() => import("./dashboard-view"), { ssr: false });
+// Notebooks bring the ink engine: loaded with the first notebook.
+const NotebookView = dynamic(() => import("./notebook/notebook-view"), { ssr: false, loading: () => <PageSkeleton compact /> });
 const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
@@ -238,6 +242,7 @@ const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
 type PageData = DatabaseData & {
   whiteboard?: { state: string; generation: string };
   dashboard?: import("./dashboard-view").DashboardPayload;
+  notebook?: import("@/lib/notebook").NotebookPayload;
   journal?: { days: JournalDay[]; settings?: JournalSettings };
   journalDay?: {
     journalId: string;
@@ -362,6 +367,8 @@ export default function WorkspaceApp({
     [create, setCreate] = useState(false),
     [newTitle, setNewTitle] = useState(""),
     [newKind, setNewKind] = useState<PageKind>("document"),
+    // "New notebook from PDF": the file the new notebook imports.
+    [notebookPdf, setNotebookPdf] = useState<File | null>(null),
     [databaseChoice, setDatabaseChoice] = useState<DatabaseChoice>("tasks"),
     // "Mit KI erstellen": the reviewed proposal (null: not yet proposed).
     [aiCreate, setAiCreate] = useState(false),
@@ -1786,6 +1793,7 @@ export default function WorkspaceApp({
     { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
     { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
     { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal") },
+    { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook") },
     { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard") },
     { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Sparkle, run: () => setOnboarding(true) },
     { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
@@ -2982,7 +2990,7 @@ export default function WorkspaceApp({
             data && (
               <div className={`page-layout ${comments ? "with-comments" : ""}`}>
                 <article
-                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
+                  className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
                 >
                   {data.page.cover && (
                     <div
@@ -3135,6 +3143,8 @@ export default function WorkspaceApp({
                       onChanged={refresh}
                       onError={notifyError}
                     />
+                  ) : data.page.kind === "notebook" && data.notebook ? (
+                    <NotebookView key={data.page.id} pageId={data.page.id} title={data.page.title} notebook={data.notebook} editable={editable && !data.page.locked} onError={(message) => notifyError(message)} />
                   ) : data.page.kind === "dashboard" && data.dashboard ? (
                     <DashboardView key={data.page.id} pageId={data.page.id} dashboard={data.dashboard} editable={editable} userId={boot.user.id} members={boot.members} pages={activePages} onRefresh={refresh} onError={notifyError} />
                   ) : data.page.kind === "whiteboard" && data.whiteboard ? (
@@ -4045,6 +4055,8 @@ export default function WorkspaceApp({
                 notifyError(error);
               }
             if (result?.id) {
+              if (newKind === "notebook" && notebookPdf) queueNotebookImport(String(result.id), notebookPdf);
+              setNotebookPdf(null);
               if (newKind === "database" && !starterTemplate && !aiCreate) rememberDatabaseKind(databaseChoice);
               setCreate(false);
               setAiCreate(false);
@@ -4119,7 +4131,22 @@ export default function WorkspaceApp({
               <strong>{t("Dashboard", "Dashboard")}</strong>
               <small>{t("Kennzahlen, Diagramme und Aufgaben auf einen Blick", "Metrics, charts and tasks at a glance")}</small>
             </button>
+            <button type="button" className={newKind === "notebook" ? "chosen" : ""} onClick={() => { setNewKind("notebook"); setStarterTemplate(null); }}>
+              <NotePencil size={26} />
+              <strong>{t("Notizbuch", "Notebook")}</strong>
+              <small>{t("Handschrift auf Papier oder PDFs, mit Stift", "Handwriting on paper or PDFs, with a pen")}</small>
+            </button>
           </div>
+          {newKind === "notebook" && (
+            <label className="new-notebook-pdf">
+              {t("PDF als Notizbuch öffnen (optional)", "Open a PDF as the notebook (optional)")}
+              <input type="file" accept="application/pdf,.pdf" onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setNotebookPdf(file);
+                if (file && !newTitle) setNewTitle(file.name.replace(/\.pdf$/i, ""));
+              }} />
+            </label>
+          )}
           {newKind === "database" && !starterTemplate && aiUsable(boot.ai, "database") && (
             <div className="ai-create-switch" role="radiogroup" aria-label={t("Wie anlegen?", "How to create?")}>
               <button type="button" role="radio" aria-checked={!aiCreate} className={`chip${!aiCreate ? " active" : ""}`} onClick={() => setAiCreate(false)}>

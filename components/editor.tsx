@@ -35,6 +35,8 @@ import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml } from "@/lib/a
 import { registerAiInserter } from "@/lib/ai/editor-bridge";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
+import { drawBlockNode } from "./ink/draw-block";
+import { newDrawBlockId } from "@/lib/draw-block-node";
 import { Select } from "./select";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -114,6 +116,7 @@ import {
   Image as ImageIcon,
   Table as TableIcon,
   PresentationChart,
+  Scribble,
   ArrowUUpLeft,
   ArrowUUpRight,
   TextHOne,
@@ -506,6 +509,8 @@ export default function DocumentEditor({
         linkedDatabaseNode(() => linkedContext.current),
         syncedBlockNode(() => syncedContext.current),
         whiteboardEmbedNode(),
+        // Handwriting; the ink is stored per page (not in record documents).
+        drawBlockNode({ pageId, enabled: !rowId }),
         Footnote.configure({ edit: (target) => openFootnote.current(target) }),
         BlockDirectionExtension.configure({ auto: true }),
         Collaboration.configure({ document: doc }),
@@ -1423,6 +1428,28 @@ export default function DocumentEditor({
       icon: LinkIcon,
       run: () => setReferences(true),
     },
+    ...(rowId
+      ? []
+      : [
+          {
+            id: "draw",
+            group: "media" as const,
+            name: t("Zeichnen", "Draw"),
+            keywords: ["zeichnen", "draw", "dessin", "dessiner", "handschrift", "handwriting", "sketch", "skizze", "croquis", "stift", "pencil", "ink", "tinte", "scribble"],
+            description: t("Handschrift und Skizzen mit Stift oder Finger", "Handwriting and sketches with a pen or finger"),
+            icon: Scribble,
+            run: () =>
+              editor
+                ?.chain()
+                .focus()
+                .command(({ tr, state }) => {
+                  if (state.selection instanceof NodeSelection) tr.setSelection(Selection.near(tr.doc.resolve(state.selection.to)));
+                  return true;
+                })
+                .insertContent([{ type: "drawBlock", attrs: { id: newDrawBlockId(), page: pageId, height: 300, paper: "lined" } }, { type: "paragraph" }])
+                .run(),
+          },
+        ]),
     {
       id: "whiteboard",
       group: "media",

@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 59) return;
+  if (globalDb.flowplanSchema === 60) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -833,7 +833,29 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS e2ee_file_ink_update BEFORE UPDATE ON file_ink WHEN EXISTS(SELECT 1 FROM files f JOIN pages p ON p.id=f.page_id JOIN spaces s ON s.id=p.space_id WHERE f.id=NEW.file_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
     CREATE TRIGGER IF NOT EXISTS search_file_ink AFTER UPDATE OF text ON file_ink BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;
     CREATE TRIGGER IF NOT EXISTS search_file_ink_insert AFTER INSERT ON file_ink WHEN NEW.text!='' BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;`);
-  globalDb.flowplanSchema = 59;
+  // Notebooks and handwriting (lib/notebook.ts, lib/page-ink-store.ts):
+  // - file_ink gains the text recognised in the handwriting on the device
+  //   (JSON: PDF page → text), searched like typed text;
+  // - notebooks hold the default paper, notebook_sheets the sheets in order
+  //   (paper override, imported PDF page as background);
+  // - page_ink keeps the ink of a page's surfaces – a notebook sheet or a
+  //   drawing block in a document – with every save as a version.
+  if (!(d.prepare("PRAGMA table_info(file_ink)").all() as { name: string }[]).some((c) => c.name === "recognized"))
+    d.exec("ALTER TABLE file_ink ADD COLUMN recognized TEXT NOT NULL DEFAULT ''");
+  d.exec(`DROP TRIGGER IF EXISTS search_file_ink;
+    CREATE TRIGGER search_file_ink AFTER UPDATE OF text,recognized ON file_ink BEGIN INSERT INTO search_dirty SELECT f.page_id,'f:'||f.id FROM files f WHERE f.id=NEW.file_id AND f.page_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=f.page_id AND row_id='f:'||f.id); END;
+    CREATE TABLE IF NOT EXISTS notebooks(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,paper TEXT NOT NULL DEFAULT '{}',updated_at INTEGER);
+    CREATE TABLE IF NOT EXISTS notebook_sheets(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,position INTEGER NOT NULL,paper TEXT NOT NULL DEFAULT '{}',background TEXT,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS notebook_sheets_page ON notebook_sheets(page_id,position);
+    CREATE TABLE IF NOT EXISTS page_ink(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,surface TEXT NOT NULL,data TEXT NOT NULL,text TEXT NOT NULL DEFAULT '',recognized TEXT NOT NULL DEFAULT '',version INTEGER NOT NULL,updated_by TEXT,updated_at INTEGER NOT NULL,PRIMARY KEY(page_id,surface));
+    CREATE TABLE IF NOT EXISTS page_ink_versions(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,surface TEXT NOT NULL,version INTEGER NOT NULL,data TEXT NOT NULL,created_by TEXT,created_at INTEGER NOT NULL,PRIMARY KEY(page_id,surface,version));
+    CREATE TRIGGER IF NOT EXISTS e2ee_page_ink_insert BEFORE INSERT ON page_ink WHEN EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS e2ee_page_ink_update BEFORE UPDATE ON page_ink WHEN EXISTS(SELECT 1 FROM pages p JOIN spaces s ON s.id=p.space_id WHERE p.id=NEW.page_id AND s.encrypted=1) BEGIN SELECT RAISE(ABORT,'e2ee: plaintext refused'); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_ink_insert AFTER INSERT ON page_ink BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_ink_update AFTER UPDATE OF text,recognized ON page_ink BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_ink_delete AFTER DELETE ON page_ink BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_notebook_sheet_delete AFTER DELETE ON notebook_sheets BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;`);
+  globalDb.flowplanSchema = 60;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

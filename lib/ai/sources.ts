@@ -1,6 +1,7 @@
 // What a page or a record says, as text chunks for the AI ("ask" and the
 // semantic index). This module only reads; whether the AI may read a source
 // is decided elsewhere (lib/ai/access.ts) – callers check before using it.
+import { notebookText } from "../notebook";
 import { all, one } from "../db";
 import { publicHiddenFieldIds } from "../field-access";
 import { ct } from "../content-locale";
@@ -100,7 +101,7 @@ function databaseFields(pageId: string): Field[] {
 // Text chunks of a page (rowId empty) or of one record, or null when it is
 // gone. Whiteboards contribute their title only.
 export function sourceText(pageId: string, rowId?: string | null, names = nameLookup()): SourceText | null {
-  const page = one<{ id: string; title: string; kind: SourceText["kind"]; deleted_at: string | null }>("SELECT id,title,kind,deleted_at FROM pages WHERE id=?", pageId);
+  const page = one<{ id: string; title: string; kind: SourceText["kind"] | "notebook" | "dashboard"; deleted_at: string | null }>("SELECT id,title,kind,deleted_at FROM pages WHERE id=?", pageId);
   if (!page || page.deleted_at) return null;
   if (!rowId) {
     if (page.kind === "database") {
@@ -115,8 +116,10 @@ export function sourceText(pageId: string, rowId?: string | null, names = nameLo
       };
     }
     if (page.kind === "whiteboard") return { pageId, rowId: null, title: page.title, kind: "whiteboard", chunks: [] };
+    // Notebooks: the text typed or recognised on their sheets.
+    if (page.kind === "notebook") return { pageId, rowId: null, title: page.title, kind: "document", chunks: notebookText(page.id).map((text) => text.slice(0, 4000)) };
     const html = one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || "";
-    return { pageId, rowId: null, title: page.title, kind: page.kind, chunks: chunkHtml(html) };
+    return { pageId, rowId: null, title: page.title, kind: page.kind as SourceText["kind"], chunks: chunkHtml(html) };
   }
   const row = one<RowData>(
     "SELECT r.id,r.page_id,r.cells,r.content,r.number,r.created_at,r.updated_at,r.created_by,r.updated_by,d.html FROM rows r LEFT JOIN row_documents d ON d.row_id=r.id WHERE r.id=? AND r.page_id=?",

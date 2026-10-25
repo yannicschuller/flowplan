@@ -707,6 +707,15 @@ const exact: Record<string, string> = {
   "Geplante Regeln legen nur Datensätze an; Datensätze anlegen nur geplante Regeln.": "Scheduled rules only create records; only scheduled rules create records.",
   "Die Wiederholung braucht eine Datumseigenschaft.": "Repeating needs a date property.",
   "Kein Dashboard.": "Not a dashboard.",
+  "Kein Notizbuch.": "Not a notebook.",
+  "Blatt nicht gefunden.": "Sheet not found.",
+  "Ungültige Fläche.": "Invalid drawing surface.",
+  "Diese Seite hat keine Handschrift.": "This page has no handwriting.",
+  "Ein Notizbuch braucht mindestens ein Blatt.": "A notebook needs at least one sheet.",
+  "Die Blätter haben sich inzwischen geändert.": "The sheets have changed in the meantime.",
+  "Nur PDFs lassen sich als Notizbuch öffnen.": "Only PDFs can be opened as a notebook.",
+  "Zu viele Zeichnungen auf dieser Seite.": "Too many drawings on this page.",
+  "Zu viel Handschrift auf einer Fläche.": "Too much handwriting on one surface.",
   "Kachel-IDs doppelt.": "Duplicate tile IDs.",
   // Field-level permissions (lib/field-access.ts).
   "Nur Besitzer der Datenbank ändern die Sichtbarkeit von Eigenschaften.": "Only owners of the database change the visibility of properties.",
@@ -887,6 +896,7 @@ const exact: Record<string, string> = {
   "Kein Inhalt zum Speichern.": "Nothing to save.",
 };
 const patterns: [RegExp, string][] = [
+  [/^Ein Notizbuch hat höchstens (\d+) Blätter\.$/, "A notebook has at most $1 sheets."],
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
   [/^Bitte höchstens (\d+) Seiten je (.+)-Export auswählen\.$/, "Please select at most $1 pages per $2 export."],
   [/^Bitte höchstens (.+) Datensätze je (.+)-Export auswählen\.$/, "Please select at most $1 records per $2 export."],

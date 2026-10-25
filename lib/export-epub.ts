@@ -201,6 +201,16 @@ export function epubChapters(content: ExportContent) {
           const db = content.readable(source);
           return db && db.kind === "database" ? { title: db.title, url: chapterOf.get(db.id) || content.pageUrl(db.id) } : null;
         },
+        ink: (attrs) => {
+          const picture = content.ink(entry.page.id, attrs);
+          if (!picture) return null;
+          let image: string | null = null;
+          if (picture.svg) {
+            image = `images/ink-${entry.page.id}-${String(attrs.id)}.svg`;
+            if (!resources.has(image)) resources.set(image, { mime: "image/svg+xml", bytes: Buffer.from(picture.svg) });
+          }
+          return { image, text: picture.text };
+        },
       });
     return { id: `page-${entry.page.id}`, title: entry.title, depth: entry.depth, body };
   });

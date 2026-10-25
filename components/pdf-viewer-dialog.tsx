@@ -25,6 +25,9 @@ import { useInkEditor, useInkShortcuts, type InkEditor } from "./ink/use-ink-edi
 import type { PageSize } from "@/lib/ink/coords";
 import { emptyInk, hasInk, parseInk, type InkDoc } from "@/lib/ink/model";
 import { loadPdf, renderPage, type PdfDocument } from "./pdf-viewer";
+import { convertSelection } from "./ink/convert";
+import { useKeyboardHints } from "@/lib/keyboard-hints";
+import { recognitionAvailable, recognitionId, recognitionRequest, recognizeInk } from "@/lib/ink/recognition";
 
 // What the pages need to show ink and, while annotating, to take it.
 type PageInk = {
@@ -33,6 +36,10 @@ type PageInk = {
   show: boolean;
   onPan: (dx: number, dy: number) => void;
   onZoom: (factor: number) => void;
+  // The size of a page once known (recognition needs it).
+  onSize: (page: string, size: PageSize) => void;
+  // "Convert to text" where the device recognises handwriting.
+  convert?: (size: PageSize) => void;
 };
 // One page of the viewer; drawn once it comes near the visible area. The
 // ink lies over it in page units (PDF points), whatever the zoom.
@@ -59,7 +66,10 @@ function ViewerPage({ doc, number, width, ink }: { doc: PdfDocument; number: num
       .getPage(number)
       .then((page) => {
         const { width: w, height: h } = page.getViewport({ scale: 1 });
-        if (alive) setSize({ width: w, height: h });
+        if (alive) {
+          setSize({ width: w, height: h });
+          ink.onSize(String(number), { width: w, height: h });
+        }
       })
       .catch(() => {});
     return () => {
@@ -70,7 +80,15 @@ function ViewerPage({ doc, number, width, ink }: { doc: PdfDocument; number: num
     <div className="pdf-page-wrap" data-page={number} style={{ width }}>
       <canvas ref={canvas} className="pdf-page" data-page={number} style={{ width, aspectRatio: size ? `${size.width} / ${size.height}` : undefined }} />
       {size && ink.show && (
-        <InkLayer page={String(number)} size={size} editor={ink.editor} editing={ink.editing} onPan={ink.onPan} onZoom={ink.onZoom} />
+        <InkLayer
+          page={String(number)}
+          size={size}
+          editor={ink.editor}
+          editing={ink.editing}
+          onPan={ink.onPan}
+          onZoom={ink.onZoom}
+          onConvert={ink.convert ? () => ink.convert!(size) : undefined}
+        />
       )}
     </div>
   );
@@ -78,6 +96,7 @@ function ViewerPage({ doc, number, width, ink }: { doc: PdfDocument; number: num
 
 export default function PdfViewerDialog({ src, title, onClose }: { src: string; title: string; onClose: () => void }) {
   const t = useT();
+  const keyHints = useKeyboardHints();
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [error, setError] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -123,6 +142,7 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
       });
       setInk((now) => (now ? { ...now, version: result.version } : now));
       editor.markSaved(snapshot);
+      void recognizeSaved(snapshot, result.version);
       setVersions(null);
       if (result.conflict) {
         const by = result.conflict.by || t("Jemand", "Someone");
@@ -140,6 +160,35 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
     } finally {
       setSaving(false);
     }
+  }
+  // In the app: the handwriting of changed pages recognised on the device,
+  // its text saved with the ink for search (lib/ink/recognition.ts).
+  const sizes = useRef(new Map<string, PageSize>());
+  const recognised = useRef(new Map<string, unknown>());
+  async function recognizeSaved(snapshot: InkDoc, version: number) {
+    if (!recognitionAvailable()) return;
+    const texts: Record<string, string> = {};
+    for (const [page, items] of Object.entries(snapshot.pages)) {
+      const size = sizes.current.get(page);
+      if (!size || recognised.current.get(page) === items) continue;
+      const request = recognitionRequest(recognitionId("search"), size, items);
+      if (!request) continue;
+      const result = await recognizeInk(request);
+      if (!result) continue;
+      recognised.current.set(page, items);
+      texts[page] = result.text;
+    }
+    if (!Object.keys(texts).length) return;
+    try {
+      await api(inkUrl, { version, recognized: texts });
+    } catch {}
+  }
+  const [canRecognize, setCanRecognize] = useState(false);
+  useEffect(() => setCanRecognize(recognitionAvailable()), []);
+  async function convert(size: PageSize) {
+    const result = await convertSelection(editor, size);
+    if (result === "empty") setNotice({ text: t("In der Auswahl wurde kein Text erkannt.", "No text was recognised in the selection.") });
+    if (result === "failed") setNotice({ text: t("Die Handschrift konnte nicht erkannt werden.", "The handwriting could not be recognised."), error: true });
   }
   async function finish() {
     if (editor.dirty && !(await save())) return;
@@ -254,7 +303,8 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
   const onZoom = useCallback((factor: number) => setZoom((z) => Math.min(3, Math.max(0.5, Math.round(z * factor * 4) / 4))), []);
   const width = Math.round(fitWidth * zoom);
   const annotated = hasInk(editor.doc);
-  const pageInk: PageInk = { editor, editing: annotating, show: !!ink, onPan, onZoom };
+  const onSize = useCallback((page: string, size: PageSize) => void sizes.current.set(page, size), []);
+  const pageInk: PageInk = { editor, editing: annotating, show: !!ink, onPan, onZoom, onSize, convert: annotating && canRecognize ? (size) => void convert(size) : undefined };
   return (
     <div className={`pdf-viewer${annotating ? " is-annotating" : ""}`} role="dialog" aria-modal="true" aria-label={title || "PDF"}>
       <header className="pdf-viewer-bar">
@@ -325,7 +375,7 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
               </div>
             )}
           </div>
-          <button type="button" aria-label={t("Speichern", "Save")} title={t("Speichern (⌘S)", "Save (⌘S)")} disabled={saving || !editor.dirty} onClick={() => void save()}>
+          <button type="button" aria-label={t("Speichern", "Save")} title={t("Speichern", "Save") + keyHints.suffix("Mod+S")} disabled={saving || !editor.dirty} onClick={() => void save()}>
             <FloppyDisk size={19} />
           </button>
           <button type="button" className="ink-done" onClick={() => void finish()} disabled={saving}>

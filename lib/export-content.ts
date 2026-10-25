@@ -26,6 +26,7 @@ import { whiteboardSnapshotItems } from "./whiteboard";
 import { whiteboardSvg } from "./whiteboard-svg";
 import { ct } from "./content-locale";
 import { dashboardSummary } from "./dashboard";
+import { inkPicture, notebookExportHtml, type InkPicture } from "./ink-export";
 import { markdownToHtml } from "./markdown-import";
 import type { Identity, Page, Row, Field, Space } from "./types";
 
@@ -71,6 +72,8 @@ export type ExportContent = {
   pageUrl: (id: string) => string;
   // A page's whiteboard picture, for embedded boards.
   boardSvg: (pageId: string) => string | null;
+  // A drawing block of a document or a sheet of a notebook (lib/ink-export.ts).
+  ink: (pageId: string, attrs: { id?: unknown; height?: unknown; paper?: unknown }) => InkPicture | null;
 };
 const MAX_FILE_BYTES = 25 * 1024 * 1024,
   MAX_TOTAL_BYTES = 100 * 1024 * 1024,
@@ -273,6 +276,8 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
         svg: null,
         cover,
       };
+    // A notebook: its sheets as pictures (drawing blocks the exporters draw).
+    if (page.kind === "notebook") return { page, depth, title: page.title, html: notebookExportHtml(page), svg: null, cover };
     if (page.kind === "document" || page.kind === "journal")
       return { page, depth, title: page.title, html: one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", page.id)?.html || "", svg: null, cover };
     // A database: its records as a table, then every record's document.
@@ -311,7 +316,11 @@ function collect(user: Identity, options: ExportSelection): ExportContent {
     for (const record of records) if (record.body) html += `<h2>${escaped(record.title)}</h2>${record.body}`;
     return { page, depth, title: page.title, html, svg: null, cover };
   });
-  return { root, space, name, pages, fileInfo, file, readable, pageUrl, boardSvg };
+  const ink = (pageId: string, attrs: { id?: unknown; height?: unknown; paper?: unknown }) => {
+    const page = readable(pageId);
+    return page && !locked.has(page.id) ? inkPicture(page, attrs) : null;
+  };
+  return { root, space, name, pages, fileInfo, file, readable, pageUrl, boardSvg, ink };
 }
 
 // A property as plain text, like the Markdown export shows it.

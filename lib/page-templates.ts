@@ -22,6 +22,7 @@ import {
   validateRelationGraph,
 } from "./relation-sync";
 import { formConfigSchema } from "./form-settings";
+import { importNotebook, notebookArchiveSchema } from "./notebook";
 import type { Identity, Page, Field } from "./types";
 
 export const savedRowTemplateSchema = z.object({
@@ -56,7 +57,7 @@ export type PageTemplate = {
   id: string;
   workspace_id: string;
   name: string;
-  kind: "document" | "database";
+  kind: "document" | "database" | "notebook";
   payload: string;
   visibility: string;
   category?: string;
@@ -137,6 +138,11 @@ export function applyPageTemplate(
       id(),
       page.id,
     );
+  } else if (page.kind === "notebook") {
+    // Paper and handwriting of the sheets; imported PDF pages become plain
+    // paper of their size (the PDFs are not part of templates).
+    const source = z.object({ notebook: notebookArchiveSchema }).parse(JSON.parse(payload));
+    importNotebook(page.id, source.notebook, new Map(), user.id);
   } else {
     const source = savedDatabaseTemplateSchema.parse(JSON.parse(payload));
     const fields: Field[] = source.database.fields;

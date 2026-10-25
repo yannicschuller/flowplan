@@ -10,6 +10,7 @@ import {
   type MathTarget,
 } from "./math-editor";
 import { documentExtensions, Media, widthStyle } from "@/lib/document-schema";
+import { DrawBlock } from "@/lib/draw-block-node";
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import {
   mermaidNodeView,
@@ -58,7 +59,30 @@ export default function SharedEditor({
             ),
         )
         .map((e) =>
-          e.name === "media"
+          e.name === "drawBlock"
+            ? DrawBlock.extend({
+                // Drawings show as their picture (read-only here).
+                addNodeView() {
+                  return ({ node }) => {
+                    const dom = document.createElement("div");
+                    dom.className = "ink-block-static";
+                    dom.contentEditable = "false";
+                    dom.style.aspectRatio = `720 / ${Number(node.attrs.height) || 300}`;
+                    if (presence?.token)
+                      void fetch(
+                        `/api/share/${presence.token}/ink?page=${encodeURIComponent(presence.pageId)}&block=${encodeURIComponent(String(node.attrs.id || ""))}&height=${Number(node.attrs.height) || 300}&paper=${encodeURIComponent(String(node.attrs.paper || ""))}`,
+                      )
+                        .then((r) => (r.ok ? r.json() : null))
+                        .then((data: { svg?: string | null } | null) => {
+                          // The picture is drawn on the server from checked ink (lib/ink/svg.ts).
+                          if (data?.svg) dom.innerHTML = data.svg.replace("<svg ", '<svg class="ink-block-picture" ');
+                        })
+                        .catch(() => {});
+                    return { dom };
+                  };
+                },
+              })
+            : e.name === "media"
             ? Media.extend({
                 renderHTML: ({ node }) => {
                   const { src, kind } = node.attrs;

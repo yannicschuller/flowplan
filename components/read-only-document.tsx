@@ -172,6 +172,46 @@ export function ReadOnlyDocument({
       );
       return [board];
     });
+    // Drawing blocks not drawn on the server yet (the app's read-only
+    // views): their picture, from the page's ink or through the link.
+    const drawings = Array.from(root.querySelectorAll<HTMLElement>("div[data-ink-block]:not(.ink-block-static)"));
+    if (drawings.length && (pageId || shareToken))
+      void (async () => {
+        for (const element of drawings) {
+          const block = element.dataset.inkBlock || "";
+          if (!/^[\w-]{1,40}$/.test(block)) continue;
+          const height = Number(element.dataset.inkHeight) || 300;
+          element.classList.add("ink-block-static");
+          element.style.aspectRatio = `720 / ${height}`;
+          element.textContent = "";
+          try {
+            if (shareToken) {
+              const page = pageId || new URLSearchParams(location.search).get("page") || "";
+              const r = await fetch(`/api/share/${shareToken}/ink?page=${encodeURIComponent(page)}&block=${block}&height=${height}&paper=${encodeURIComponent(element.dataset.inkPaper || "")}`);
+              const data = r.ok ? ((await r.json()) as { svg?: string | null }) : null;
+              // Drawn on the server from checked ink (lib/ink/svg.ts).
+              if (data?.svg && !unmounted) element.innerHTML = data.svg.replace("<svg ", '<svg class="ink-block-picture" ');
+              continue;
+            }
+            const r = await fetch(`/api/pages/${pageId}/ink?surface=${block}`);
+            if (!r.ok || unmounted) continue;
+            const state = (await r.json()) as { doc: unknown };
+            const [{ inkSvg }, { parseInk }, paper, { drawBlockPaper }] = await Promise.all([
+              import("@/lib/ink/svg"),
+              import("@/lib/ink/model"),
+              import("@/lib/notebook-paper"),
+              import("@/lib/draw-block-node"),
+            ]);
+            const size = { width: 720, height };
+            const items = parseInk(state.doc).pages[block] || [];
+            if (!unmounted)
+              element.innerHTML = inkSvg(items, size, { paper: paper.paperSvg(paper.blockPaperLayout(drawBlockPaper(element.dataset.inkPaper), size)) }).replace(
+                "<svg ",
+                '<svg class="ink-block-picture" ',
+              );
+          } catch {}
+        }
+      })();
     // Blocks of block extensions, read-only (components/plugin-block.ts).
     const pluginHandles = Array.from(root.querySelectorAll<HTMLElement>("[data-plugin]")).map((element) =>
       mountPluginBlock(element, {

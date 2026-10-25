@@ -94,6 +94,15 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     },
     [commit],
   );
+  // Ink of others merged in (saves, changes followed from the server): no
+  // undo step, the person's own steps stay.
+  const applyRemote = useCallback((page: string, items: InkItem[]) => {
+    const now = docRef.current;
+    if ((now.pages[page] || []) === items) return;
+    const next = withPage(now, page, items);
+    docRef.current = next;
+    setDocState(next);
+  }, []);
   const step = (direction: "undo" | "redo") => {
     const result = (direction === "undo" ? undoStep : redoStep)(historyRef.current, docRef.current);
     if (!result) return;
@@ -218,6 +227,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     reset,
     commit,
     change,
+    applyRemote,
     undo,
     redo,
     canUndo: history.past.length > 0,
@@ -244,6 +254,7 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
     selection,
     setSelection,
     selectionBox,
+    selectedItems,
     deleteSelection,
     recolorSelection,
     copySelection,
@@ -256,9 +267,15 @@ export function useInkEditor(initial: InkDoc, { active = true }: { active?: bool
 
 // Keyboard shortcuts while editing: undo/redo, delete, copy, paste,
 // duplicate, Escape (clears the selection before anything else closes).
-export function useInkShortcuts(editor: InkEditor | null, enabled: boolean) {
+// With `tools`, single keys pick a tool (P pen, H highlighter, E eraser,
+// L lasso, T text, K laser) – for surfaces that are the whole page
+// (notebooks), not inside a document where keys type text.
+export const INK_TOOL_KEYS: Record<string, InkTool> = { p: "pen", h: "highlighter", e: "eraser", l: "lasso", t: "text", k: "laser" };
+export function useInkShortcuts(editor: InkEditor | null, enabled: boolean, { tools = false }: { tools?: boolean } = {}) {
   const ref = useRef(editor);
   ref.current = editor;
+  const toolsRef = useRef(tools);
+  toolsRef.current = tools;
   useEffect(() => {
     if (!enabled) return;
     const key = (event: KeyboardEvent) => {
@@ -289,6 +306,9 @@ export function useInkShortcuts(editor: InkEditor | null, enabled: boolean) {
       } else if (event.key === "Escape" && ed.selection) {
         event.stopPropagation();
         ed.setSelection(null);
+      } else if (toolsRef.current && !mod && !event.altKey && !event.shiftKey && INK_TOOL_KEYS[k] && event.key.length === 1) {
+        event.preventDefault();
+        ed.setTool(INK_TOOL_KEYS[k]);
       }
     };
     window.addEventListener("keydown", key, true);

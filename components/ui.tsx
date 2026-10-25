@@ -27,6 +27,7 @@ import {
   Stack,
   PresentationChart,
   Gauge,
+  NotePencil,
   CalendarBlank,
   Kanban,
   SquaresFour,
@@ -60,6 +61,7 @@ const icons = {
   stack: Stack,
   whiteboard: PresentationChart,
   dashboard: Gauge,
+  notebook: NotePencil,
   journal: Notebook,
   day: CalendarBlank,
 };

@@ -9,6 +9,8 @@ import { ticketId } from "./ticket-ids";
 import type { Field, Identity, Page } from "./types";
 import { footnoteTexts } from "./footnotes";
 import { matchedAlias, pageAliases, recordAliases } from "./aliases";
+import { pageInkSearchText } from "./page-ink-store";
+import { parseRecognizedMap } from "./ink/recognized";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -67,8 +69,8 @@ function cellWords(value: unknown): string {
 
 function indexPage(pageId: string) {
   run("DELETE FROM search_index WHERE page_id=? AND row_id=''", pageId);
-  const page = one<{ title: string; aliases: string | null; html: string | null; deleted_at: string }>(
-    "SELECT p.title,p.aliases,p.deleted_at,d.html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.id=?",
+  const page = one<{ title: string; aliases: string | null; html: string | null; deleted_at: string; kind: string }>(
+    "SELECT p.title,p.aliases,p.deleted_at,p.kind,d.html FROM pages p LEFT JOIN documents d ON d.page_id=p.id WHERE p.id=?",
     pageId,
   );
   if (!page || page.deleted_at) return;
@@ -79,7 +81,9 @@ function indexPage(pageId: string) {
     pageId,
     "",
     titleColumn(page.title, pageAliases(page)),
-    documentText(page.html || "").slice(0, 400000),
+    // Handwriting: typed text and what the device recognised (notebook
+    // sheets, drawing blocks still in the document).
+    [documentText(page.html || ""), pageInkSearchText(pageId, page.kind, page.html || "")].filter(Boolean).join("\n").slice(0, 400000),
   );
 }
 function indexRow(pageId: string, rowId: string, fields: Field[]) {
@@ -137,12 +141,15 @@ function indexExtra(pageId: string, key: string) {
             pageId,
           );
   if (!entry) return;
+  // Handwriting on a PDF the device recognised (JSON: page → text).
+  const recognized =
+    prefix === "f" ? Object.values(parseRecognizedMap(one<{ recognized: string }>("SELECT recognized FROM file_ink WHERE file_id=?", id)?.recognized)).join("\n") : "";
   run(
     "INSERT INTO search_index(page_id,row_id,title,body) VALUES(?,?,?,?)",
     pageId,
     key,
     entry.title.slice(0, 300),
-    entry.body.slice(0, 100000),
+    (recognized ? `${entry.body}\n${recognized}` : entry.body).slice(0, 100000),
   );
 }
 export function ensureSearchIndex() {
@@ -250,7 +257,7 @@ export function searchWorkspace(
         ? ("file" as const)
         : key
           ? ("row" as const)
-          : page.kind === "journal" || page.kind === "dashboard"
+          : page.kind === "journal" || page.kind === "dashboard" || page.kind === "notebook"
             ? ("document" as const)
             : page.kind;
   const matchesKind = (page: Page, key: string) =>

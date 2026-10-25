@@ -3,6 +3,8 @@ import { localeTag } from "@/lib/i18n";
 import { imageFileId } from "@/lib/page-appearance";
 import { ReadOnlyDocument } from "./read-only-document";
 import { WhiteboardStatic } from "./whiteboard/render";
+import { PublicNotebook } from "./notebook/public-notebook";
+import { publicNotebookSheets, withInkPictures } from "@/lib/ink-export";
 import { whiteboardSnapshotItems } from "@/lib/whiteboard";
 import { rowOrderRanks } from "@/lib/row-order";
 import { PageIcon } from "./ui";
@@ -282,7 +284,9 @@ async function renderPublishedPage({
           ))}
         </nav>
       )}
-      {page.kind === "whiteboard" ? (
+      {page.kind === "notebook" ? (
+        <PublicNotebook label={page.title} sheets={publicNotebookSheets(page, token)} />
+      ) : page.kind === "whiteboard" ? (
         <WhiteboardStatic
           height={640}
           pages={pages.map((p) => ({ id: p.id, title: p.title, kind: p.kind }))}
@@ -493,13 +497,15 @@ async function renderPublishedPage({
             className={`font-${page.font}`}
             shareToken={token}
             title={page.title}
-            html={shortLinks(
-              withPlugins(
-                withPublicEmbeds(
-                  publishedHtml(html, token, pages),
-                  html,
-                  token,
-                  pages,
+            html={(record ? (value: string) => value : (value: string) => withInkPictures(value, page))(
+              shortLinks(
+                withPlugins(
+                  withPublicEmbeds(
+                    publishedHtml(html, token, pages),
+                    html,
+                    token,
+                    pages,
+                  ),
                 ),
               ),
             )}

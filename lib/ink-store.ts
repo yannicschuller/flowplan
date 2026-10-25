@@ -12,19 +12,23 @@ import { isEncryptedPage } from "./e2ee-server";
 import { hiddenFileIds } from "./row-files";
 import { publicFile } from "./publication";
 import { INK_LIMITS, inkItemCount, inkText, parseInk, serializeInk, type InkDoc } from "./ink/model";
+import { cleanRecognizedMap, parseRecognizedMap } from "./ink/recognized";
 import type { Identity, Page } from "./types";
 
 // Versions kept per file (the oldest go first).
 export const INK_VERSIONS_KEPT = 50;
 
 type FileRow = { id: string; page_id: string; name: string; mime: string };
-type InkRow = { data: string; version: number; updated_by: string | null; updated_at: number };
+type InkRow = { data: string; version: number; updated_by: string | null; updated_at: number; recognized: string };
 export type InkState = {
   doc: InkDoc;
   version: number;
   canEdit: boolean;
   updatedAt: number | null;
   updatedBy: string | null;
+  // Text recognised in the handwriting on the device, per PDF page
+  // (lib/ink/recognition.ts); only ever plain text.
+  recognized: Record<string, string>;
 };
 
 export const isPdfFile = (file: Pick<FileRow, "name" | "mime">) => file.mime === "application/pdf" || /\.pdf$/i.test(file.name || "");
@@ -50,7 +54,7 @@ function mayEdit(user: Identity, page: Page) {
     return false;
   }
 }
-const stored = (fileId: string) => one<InkRow>("SELECT data,version,updated_by,updated_at FROM file_ink WHERE file_id=?", fileId);
+const stored = (fileId: string) => one<InkRow>("SELECT data,version,updated_by,updated_at,recognized FROM file_ink WHERE file_id=?", fileId);
 function state(fileId: string, canEdit: boolean): InkState {
   const row = stored(fileId);
   return {
@@ -59,13 +63,14 @@ function state(fileId: string, canEdit: boolean): InkState {
     canEdit,
     updatedAt: row?.updated_at ?? null,
     updatedBy: userName(row?.updated_by ?? null),
+    recognized: parseRecognizedMap(row?.recognized),
   };
 }
 
 export function readFileInk(user: Identity, fileId: string): InkState {
   const { page } = readableFile(user, fileId);
   // Pages of encrypted spaces hold no plaintext on the server.
-  if (isEncryptedPage(page)) return { doc: parseInk(null), version: 0, canEdit: false, updatedAt: null, updatedBy: null };
+  if (isEncryptedPage(page)) return { doc: parseInk(null), version: 0, canEdit: false, updatedAt: null, updatedBy: null, recognized: {} };
   return state(fileId, mayEdit(user, page));
 }
 
@@ -78,7 +83,7 @@ export function publicFileInk(token: string, fileId: string): InkState {
 
 export type SaveInkResult = { version: number; conflict: { by: string | null; at: number; version: number } | null };
 export function saveFileInk(user: Identity, fileId: string, input: unknown, now = Date.now()): SaveInkResult {
-  const body = (input && typeof input === "object" ? input : {}) as { base?: unknown; doc?: unknown };
+  const body = (input && typeof input === "object" ? input : {}) as { base?: unknown; doc?: unknown; recognized?: unknown };
   const base = Number(body.base);
   if (!Number.isInteger(base) || base < 0 || !body.doc || typeof body.doc !== "object") throw new HttpError(400, "Ungültige Eingabe.");
   const { file, page } = readableFile(user, fileId);
@@ -95,12 +100,18 @@ export function saveFileInk(user: Identity, fileId: string, input: unknown, now 
     // a version, this one wins.
     const conflict =
       current && current.version !== base ? { by: userName(current.updated_by), at: current.updated_at, version: current.version } : null;
+    // Recognised text of pages that still have ink; sent along it replaces
+    // that page's text, otherwise the earlier text stays until the device
+    // recognises the new state.
+    const recognized = { ...parseRecognizedMap(current?.recognized), ...cleanRecognizedMap(body.recognized) };
+    for (const key of Object.keys(recognized)) if (!doc.pages[key]?.length) delete recognized[key];
     run(
-      `INSERT INTO file_ink(file_id,data,text,version,updated_by,updated_at) VALUES(?,?,?,?,?,?)
-       ON CONFLICT(file_id) DO UPDATE SET data=excluded.data,text=excluded.text,version=excluded.version,updated_by=excluded.updated_by,updated_at=excluded.updated_at`,
+      `INSERT INTO file_ink(file_id,data,text,recognized,version,updated_by,updated_at) VALUES(?,?,?,?,?,?,?)
+       ON CONFLICT(file_id) DO UPDATE SET data=excluded.data,text=excluded.text,recognized=excluded.recognized,version=excluded.version,updated_by=excluded.updated_by,updated_at=excluded.updated_at`,
       file.id,
       data,
       inkText(doc).slice(0, 100000),
+      JSON.stringify(cleanRecognizedMap(recognized)),
       version,
       user.id,
       now,
@@ -114,6 +125,28 @@ export function saveFileInk(user: Identity, fileId: string, input: unknown, now 
     );
     audit(user.id, "file.ink", page.id, `${file.name} (${inkItemCount(doc)})`);
     return { version, conflict };
+  });
+}
+
+// Text the device recognised on pages of the state `version`; dropped when
+// the ink changed since (a newer recognition follows).
+export function saveFileRecognized(user: Identity, fileId: string, input: unknown) {
+  const body = (input && typeof input === "object" ? input : {}) as { version?: unknown; recognized?: unknown };
+  const version = Number(body.version);
+  if (!Number.isInteger(version) || version < 1) throw new HttpError(400, "Ungültige Eingabe.");
+  const { file, page } = readableFile(user, fileId);
+  if (isEncryptedPage(page)) throw new HttpError(409, "Für verschlüsselte Seiten nicht verfügbar.");
+  requirePage(user, page.id, true);
+  if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+  if (page.locked) throw new HttpError(409, "Seite ist gesperrt");
+  return transaction(() => {
+    const current = stored(file.id);
+    if (!current || current.version !== version) return { saved: false };
+    const doc = parseInk(current.data);
+    const next = { ...parseRecognizedMap(current.recognized), ...cleanRecognizedMap(body.recognized) };
+    for (const key of Object.keys(next)) if (!doc.pages[key]?.length) delete next[key];
+    run("UPDATE file_ink SET recognized=? WHERE file_id=? AND version=?", JSON.stringify(cleanRecognizedMap(next)), file.id, version);
+    return { saved: true };
   });
 }
 

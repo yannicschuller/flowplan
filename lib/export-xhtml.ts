@@ -19,6 +19,8 @@ export type XhtmlContext = {
   whiteboard?: (pageId: string) => { title: string; image: string | null; url: string } | null;
   // A linked database: title and link.
   linked?: (source: string) => { title: string; url: string } | null;
+  // A drawing block (or notebook sheet): its picture (address) and text.
+  ink?: (attrs: Record<string, unknown>) => { image: string | null; text: string } | null;
   // Prefix for ids (footnotes), unique per document in a combined file.
   prefix?: string;
 };
@@ -213,6 +215,15 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         return board.image
           ? `<figure class="whiteboard"><img src="${xml(board.image)}" alt="${xml(board.title || "Whiteboard")}"/><figcaption>${link}</figcaption></figure>`
           : `<p class="whiteboard">${link}</p>`;
+      }
+      case "drawBlock": {
+        const ink = context.ink?.(node.attrs);
+        const text = ink?.text ? `<figcaption>${xml(ink.text).replace(/\n/g, "<br/>")}</figcaption>` : "";
+        return ink?.image
+          ? `<figure class="ink-block"><img src="${xml(ink.image)}" alt="${xml(ink.text || ct("Handschrift", "Handwriting"))}"/>${text}</figure>`
+          : ink?.text
+            ? `<p class="ink-block">${xml(ink.text)}</p>`
+            : "";
       }
       case "linkedDatabase": {
         const linked = context.linked?.(String(node.attrs.source || ""));

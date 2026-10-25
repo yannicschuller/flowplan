@@ -1,6 +1,6 @@
 import type { Locale } from "./i18n";
 export type Role = "owner" | "editor" | "viewer";
-export type PageKind = "document" | "database" | "whiteboard" | "journal" | "dashboard";
+export type PageKind = "document" | "database" | "whiteboard" | "journal" | "dashboard" | "notebook";
 export type User = {
   id: string;
   name: string;

@@ -17,7 +17,15 @@ import { exportName } from "./export-name";
 import { collectExportContent, documentNode, imageExtension, type ExportFile } from "./export-content";
 import type { Identity } from "./types";
 
-export type DocxSection = { title: string; html: string; svg?: string | null; cover?: string | null };
+export type DocxSection = {
+  title: string;
+  html: string;
+  svg?: string | null;
+  cover?: string | null;
+  // Drawing blocks and notebook sheets: their typed and recognised text
+  // (the picture is not part of the Word file).
+  ink?: (attrs: Record<string, unknown>) => { text: string } | null;
+};
 export type DocxOptions = {
   title: string;
   // The document, or several pages one after another (each with its title
@@ -481,6 +489,12 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
           ? linkParagraph(board.title || "Whiteboard", board.url, block, `${ct("Whiteboard", "Whiteboard")}: `)
           : paragraph(run({ text: ct("Whiteboard nicht verfügbar", "Whiteboard not available"), props: { i: true } }), paragraphProps(null, block));
       }
+      case "drawBlock": {
+        const ink = currentInk?.(node.attrs);
+        paragraph(run({ text: ct("Handschrift (in Word nicht als Bild enthalten)", "Handwriting (not included as a picture in Word)"), props: { i: true } }), paragraphProps(null, block));
+        for (const line of (ink?.text || "").split("\n").filter(Boolean)) paragraph(run({ text: line }), paragraphProps(null, block));
+        return;
+      }
       case "linkedDatabase": {
         const linked = options.linked?.(String(node.attrs.source || ""));
         return linked
@@ -495,7 +509,9 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
   }
 
   const base: Block = { indent: 0, inTable: false };
+  let currentInk: DocxSection["ink"];
   options.sections.forEach((section, index) => {
+    currentInk = section.ink;
     if (index === 0) paragraph(run({ text: section.title }), '<w:pStyle w:val="Title"/>');
     else paragraph(run({ text: section.title }), '<w:pStyle w:val="Heading1"/><w:pageBreakBefore/>');
     if (section.cover) {
@@ -624,7 +640,7 @@ export async function exportDocx(user: Identity, options: { pageId: string; rowI
   const bytes = await buildDocx({
     title: content.name,
     creator: user.name,
-    sections: [{ title: page.title, html: page.html, svg: page.svg, cover: page.cover }],
+    sections: [{ title: page.title, html: page.html, svg: page.svg, cover: page.cover, ink: (attrs) => content.ink(page.page.id, attrs) }],
     file: content.file,
     url: (raw) => exportUrl(raw, content.readable, content.pageUrl),
     whiteboard: (pageId) => {

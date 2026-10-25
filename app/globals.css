@@ -25344,3 +25344,515 @@ label.ws-search input {
   }
 }
 /* ===== End of workspace settings. ===== */
+/* ===== Notebooks (components/notebook) and drawing blocks (components/ink/draw-block.tsx). ===== */
+.page-content.notebook-page {
+  max-width: none;
+}
+.notebook-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 190px);
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.notebook-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+/* The tools keep their room whichever tool is in hand: the controls do not
+   jump between the rows when the colours come and go. */
+.notebook-bar .ink-toolbar {
+  flex: 1 1 680px;
+  min-width: 0;
+  border-bottom: 0;
+}
+.notebook-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  margin-left: auto;
+}
+.notebook-controls .icon-button {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.notebook-controls .icon-button:hover {
+  background: var(--hover);
+}
+.notebook-position,
+.notebook-zoom {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.notebook-status {
+  padding: 0 6px;
+  color: var(--secondary);
+}
+.notebook-status.is-error {
+  color: #cf4850;
+}
+.notebook-menu-anchor {
+  position: relative;
+}
+.notebook-menu {
+  gap: 2px;
+  width: min(260px, calc(100vw - 32px - var(--safe-left, 0px) - var(--safe-right, 0px)));
+  padding: 6px;
+}
+.notebook-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--text);
+  font-size: 14px;
+}
+.notebook-menu button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.notebook-menu button:disabled {
+  opacity: 0.4;
+}
+.notebook-thumb-more .notebook-menu {
+  transform: none;
+}
+.notebook-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px;
+  background: var(--blue-light);
+  color: var(--text);
+  font-size: 13px;
+}
+.notebook-notice.is-error {
+  background: #fde8ea;
+  color: #8a1f2b;
+}
+.notebook-notice .icon-button {
+  margin-left: auto;
+}
+.notebook-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.notebook-thumbs {
+  flex: 0 0 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 10px 24px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+.notebook-thumbs ol {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.notebook-thumb {
+  position: relative;
+  border-radius: 8px;
+}
+.notebook-thumb.is-dragging {
+  opacity: 0.4;
+}
+.notebook-thumb.drop-before::before,
+.notebook-thumb.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--blue);
+}
+.notebook-thumb.drop-before::before {
+  top: -8px;
+}
+.notebook-thumb.drop-after::after {
+  bottom: -8px;
+}
+.notebook-thumb-open {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px;
+  border-radius: 8px;
+}
+.notebook-thumb-open:hover {
+  background: var(--hover);
+}
+.notebook-thumb.is-current .notebook-thumb-paper {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.notebook-thumb-paper {
+  position: relative;
+  display: block;
+  width: 120px;
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+  overflow: hidden;
+}
+.notebook-thumb-paper .ink-layer {
+  pointer-events: none;
+}
+.notebook-thumb-number {
+  font-size: 12px;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.notebook-thumb-more {
+  position: absolute;
+  top: 6px;
+  right: 2px;
+}
+.notebook-thumb-more .icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px #0002;
+}
+.notebook-thumb-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.notebook-scroll {
+  /* The sheets' offsetTop is measured from here (scrolling to a sheet). */
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+}
+.notebook-sheets {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  margin: 0 auto;
+}
+.notebook-sheet {
+  position: relative;
+  flex-shrink: 0;
+  background: #fff;
+  box-shadow: 0 1px 3px #0002, 0 6px 22px #0000001a;
+  line-height: 0;
+  outline: none;
+}
+.notebook-sheet:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+.notebook-paper,
+.notebook-pdf {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.notebook-pdf.is-failed {
+  background: repeating-linear-gradient(45deg, #f1f3f5 0 10px, #fff 10px 20px);
+}
+/* Dark paper: the default black ink shows light, the highlighter glows. */
+.notebook-sheet.is-dark,
+.notebook-thumb-paper.is-dark {
+  background: #1f2125;
+}
+:is(.notebook-sheet, .notebook-thumb-paper).is-dark .ink-strokes :is(path, text)[fill="#1f1f1f"] {
+  fill: #f1f3f5;
+}
+:is(.notebook-sheet, .notebook-thumb-paper).is-dark .ink-strokes path[stroke="#1f1f1f"] {
+  stroke: #f1f3f5;
+}
+:is(.notebook-sheet, .notebook-thumb-paper).is-dark .ink-highlights {
+  mix-blend-mode: screen;
+}
+.notebook-add-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 30px;
+  padding: 10px 18px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--secondary);
+  font-size: 14px;
+}
+.notebook-add-end:hover {
+  color: var(--text);
+  border-color: var(--secondary);
+}
+.notebook-paper-form {
+  display: grid;
+  gap: 14px;
+}
+.notebook-paper-form fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.notebook-paper-form legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.notebook-paper-form label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.notebook-paper-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+}
+.notebook-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+.notebook-templates label {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+.notebook-templates label.chosen {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+.notebook-templates input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.notebook-templates label:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.notebook-template-preview {
+  position: relative;
+  display: block;
+  width: 64px;
+  aspect-ratio: 595 / 842;
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+}
+.notebook-template-preview.is-dark {
+  background: #1f2125;
+}
+.new-notebook-pdf {
+  display: grid;
+  gap: 6px;
+}
+@media (max-width: 760px) {
+  .notebook-view {
+    height: calc(
+      100dvh - 57px - var(--safe-top, 0px) -
+        max(var(--tab-bar-space, 0px), var(--safe-bottom, 0px)) - 48px
+    );
+    min-height: 300px;
+    margin: 0 -21px;
+    border-radius: 0;
+    border-inline: 0;
+  }
+  .notebook-scroll {
+    padding: 12px 10px;
+  }
+  .notebook-thumbs {
+    position: absolute;
+    z-index: 5;
+    inset: 0 auto 0 0;
+    width: 150px;
+    box-shadow: 4px 0 16px #0002;
+  }
+  .notebook-body {
+    position: relative;
+  }
+  .notebook-position {
+    display: none;
+  }
+  .notebook-controls .icon-button {
+    width: 44px;
+    height: 44px;
+    padding: 12px;
+  }
+}
+
+/* Drawing block in a document. */
+.ink-block-node {
+  position: relative;
+  margin: 10px 0;
+}
+.ink-block {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.ink-block.is-active {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+.ink-block-surface {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+  overflow: hidden;
+  border-radius: 10px;
+}
+.ink-block-surface .notebook-paper {
+  opacity: 0.9;
+}
+/* Over the text above the block while drawing: the surface stays where
+   the pen is. */
+.ink-block .ink-toolbar {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: calc(100% + 6px);
+  z-index: 6;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px #0000001f;
+}
+.ink-block-start {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--secondary);
+  box-shadow: 0 1px 3px #0002;
+  font-size: 13px;
+}
+.ink-block-start:hover {
+  color: var(--text);
+}
+.ink-block-resize {
+  display: block;
+  width: 100%;
+  height: 14px;
+  border-radius: 0 0 10px 10px;
+  cursor: ns-resize;
+  touch-action: none;
+  background: linear-gradient(var(--border), var(--border)) center / 36px 3px no-repeat;
+}
+.ink-block-resize:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.ink-block-paper select {
+  height: 32px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: normal;
+}
+.ink-block-loading {
+  display: grid;
+  place-items: center;
+  color: var(--secondary);
+  font-size: 13px;
+}
+/* Read-only pictures (published pages, read-only documents). */
+.ink-block-static {
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.ink-block-picture {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.ink-block-empty {
+  padding: 12px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.public-notebook {
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+}
+.public-notebook-sheet {
+  position: relative;
+  width: min(100%, 820px);
+  background: #fff;
+  box-shadow: 0 1px 3px #0002, 0 6px 22px #0000001a;
+  line-height: 0;
+}
+.public-notebook-sheet > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.public-notebook-sheet .public-notebook-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* ===== End of notebooks. ===== */
+.ink-block:focus {
+  outline: none;
+}
