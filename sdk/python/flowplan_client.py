@@ -1543,7 +1543,7 @@ class FlowplanClient:
         return self._json("GET", "/api/offline/changes", query=dict(query) if query else None, headers=headers)
 
     def offline_assets(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """The app's files for an offline copy — Every file of the running client build under `/_next/static` (scripts, styles, fonts, workers) with its size, the build id and the version. A device that keeps an offline copy stores them in a cache named after the build, so parts of the app never opened online load offline as well. (GET /api/offline/assets)"""
+        """The app's files for an offline copy — Every file of the running client build under `/_next/static` (scripts, styles, fonts, workers) with its size, followed by the fonts (`/fonts.css`, `/fonts/*.woff2`) and icons the app's page loads from `public`, the build id and the version. A device that keeps an offline copy stores them in a cache named after the build, so parts of the app never opened online load offline as well – also in the iPhone and iPad app, which has no service worker to catch the fonts as they load. (GET /api/offline/assets)"""
         return self._json("GET", "/api/offline/assets", headers=headers)
 
     def graph(self, query: "GraphQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

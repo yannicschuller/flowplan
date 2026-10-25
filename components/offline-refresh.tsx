@@ -15,6 +15,8 @@ import {
   type OfflineMarker,
 } from "./offline";
 
+// Sent by the app (flowplan-app src/bridge-script.ts offlineRefreshScript).
+const APP_REFRESH = "flowplan:offline-refresh";
 const MINUTE = 60_000,
   HOUR = 60 * MINUTE;
 const INTERVAL = 6 * HOUR;
@@ -67,6 +69,10 @@ export function useOfflineRefresh(userId: string, online: boolean, quiet: boolea
     const message = (e: MessageEvent) => {
       if (e.data?.type === "flowplan-offline-refresh") void run(MINUTE);
     };
+    // The iPhone and iPad app asks when it comes to the foreground (and in
+    // its background task, when iOS lets the page run).
+    const app = () => void run(5 * MINUTE);
+    window.addEventListener(APP_REFRESH, app);
     window.addEventListener("online", back);
     window.addEventListener(OFFLINE_CHANGED, load);
     document.addEventListener("visibilitychange", visible);
@@ -75,6 +81,7 @@ export function useOfflineRefresh(userId: string, online: boolean, quiet: boolea
       stopped = true;
       clearTimeout(start);
       clearInterval(timer);
+      window.removeEventListener(APP_REFRESH, app);
       window.removeEventListener("online", back);
       window.removeEventListener(OFFLINE_CHANGED, load);
       document.removeEventListener("visibilitychange", visible);

@@ -64,6 +64,7 @@ import {
   registerServiceWorker,
 } from "./offline";
 import { useOfflineRefresh } from "./offline-refresh";
+import { appCopyUnreachable } from "@/lib/offline-store";
 import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { anyOf, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
@@ -1031,7 +1032,8 @@ export default function WorkspaceApp({
       // Once, also when the app reports the same key (lib/app-shortcuts.ts).
       if (firstRun(action)) shortcutRef.current(action);
     };
-    const network = () => setOnline(navigator.onLine);
+    // The app's stored copy of a server it cannot reach counts as offline.
+    const network = () => setOnline(navigator.onLine && !appCopyUnreachable());
     network();
     // A 401 while working: the banner instead of a reload (components/ui.tsx).
     const signedOut = (e: Event) => {
