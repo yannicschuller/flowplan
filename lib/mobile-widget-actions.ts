@@ -38,6 +38,7 @@ import {
 } from "./mobile-widgets";
 import type { Field, Identity, Page } from "./types";
 import { actionSchemas, widgetActions } from "./mobile-widget-schema";
+import { markLiveActivity } from "./live-activity-queue";
 
 export { actionSchemas, widgetActions, type WidgetAction } from "./mobile-widget-schema";
 const url = (pageId: string, rowId?: string | null) => `/#page=${pageId}${rowId ? `&row=${rowId}` : ""}`;
@@ -339,7 +340,7 @@ function stopTimer(user: Identity) {
   if (running) command(writerOf(user), { action: "time.stop", pageId: running.page_id, rowId: running.row_id, fieldId: running.field_id });
   // A focus session ends with its timer.
   ensureWidgetTables();
-  run("DELETE FROM widget_focus WHERE user_id=?", user.id);
+  if (run("DELETE FROM widget_focus WHERE user_id=?", user.id).changes) markLiveActivity(user.id, "focus");
   return { timer: null };
 }
 
@@ -363,6 +364,10 @@ function startFocus(user: Identity, input: z.infer<(typeof actionSchemas)["focus
     target?.fieldId ?? null,
     target ? 1 : 0,
   );
+  // The focus Live Activity: now, and again when the focus time and the
+  // break are over (lib/live-activity-push.ts).
+  const focusEnd = now + input.minutes * 60_000;
+  markLiveActivity(user.id, "focus", [now, focusEnd + 1000, focusEnd + input.breakMinutes * 60_000 + 1000]);
   return focusState(user, now);
 }
 function stopFocus(user: Identity, now = Date.now()) {
@@ -374,7 +379,7 @@ function stopFocus(user: Identity, now = Date.now()) {
       command(writerOf(user), { action: "time.stop", pageId: focus.page_id, rowId: focus.row_id, fieldId: focus.field_id });
   }
   // Also ends a running break.
-  run("DELETE FROM widget_focus WHERE user_id=?", user.id);
+  if (run("DELETE FROM widget_focus WHERE user_id=?", user.id).changes) markLiveActivity(user.id, "focus", [now]);
   return focusState(user, now);
 }
 

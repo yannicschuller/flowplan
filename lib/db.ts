@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 60) return;
+  if (globalDb.flowplanSchema === 61) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -855,7 +855,20 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS search_page_ink_update AFTER UPDATE OF text,recognized ON page_ink BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
     CREATE TRIGGER IF NOT EXISTS search_page_ink_delete AFTER DELETE ON page_ink BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;
     CREATE TRIGGER IF NOT EXISTS search_notebook_sheet_delete AFTER DELETE ON notebook_sheets BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;`);
-  globalDb.flowplanSchema = 60;
+  // Schema 61 – the push relay (lib/push-relay.ts, PROTOCOL.md of
+  // flowplan-push): the instance's Ed25519 signing keys (private key only
+  // sealed, lib/ai/secrets.ts), per app installation the relay token (sealed)
+  // and the X25519 public key notifications are encrypted to, the relay
+  // tokens of its Live Activities and the queue of their updates.
+  d.exec(`CREATE TABLE IF NOT EXISTS push_identity_keys(kid TEXT PRIMARY KEY,public_key TEXT NOT NULL,private_key TEXT NOT NULL,created_at INTEGER NOT NULL,active_from INTEGER NOT NULL,retire_at INTEGER);
+    CREATE TABLE IF NOT EXISTS mobile_push_relay(device_id TEXT PRIMARY KEY REFERENCES mobile_devices(id) ON DELETE CASCADE,relay_token TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,public_key TEXT NOT NULL,created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS mobile_live_activities(device_id TEXT NOT NULL REFERENCES mobile_devices(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('focus','timer')),relay_token TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL,labels TEXT,PRIMARY KEY(device_id,kind));
+    CREATE TABLE IF NOT EXISTS push_live_queue(device_id TEXT NOT NULL REFERENCES mobile_devices(id) ON DELETE CASCADE,kind TEXT NOT NULL,available_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(device_id,kind,available_at));`);
+  // The app's texts for its Live Activity views (language, time zone, the
+  // labels – lib/live-activity-push.ts); databases from before had none.
+  if (!(d.prepare("PRAGMA table_info(mobile_live_activities)").all() as { name: string }[]).some((c) => c.name === "labels"))
+    d.exec("ALTER TABLE mobile_live_activities ADD COLUMN labels TEXT");
+  globalDb.flowplanSchema = 61;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

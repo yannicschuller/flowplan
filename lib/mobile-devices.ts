@@ -6,9 +6,13 @@
 // session alive. Signing in again on the device moves the entry over to the
 // new session (carryOverSession in lib/auth.ts).
 //
-// - Push: the app's Expo push token becomes a push subscription with an
-//   "expo:" endpoint, so notifications reach it through the same queue,
-//   preferences and session checks as Web Push (lib/push.ts).
+// - Push: the app's push registration becomes a push subscription, so
+//   notifications reach it through the same queue, preferences and session
+//   checks as Web Push (lib/push.ts). Apps since the push relay send a relay
+//   token and their X25519 public key (lib/push-relay.ts): notifications go
+//   end-to-end encrypted through the relay. Older apps send an Expo push
+//   token only ("expo:" endpoint) and keep getting push through Expo; an app
+//   that sends both gets the relay, and Expo again if the relay refuses it.
 // - Widgets and the Live Activity: a device token (fpd_…, only a hash is
 //   stored) lets the app read a short summary in the background – unread
 //   notifications, open tasks, the running timer. It opens nothing else.
@@ -21,7 +25,9 @@ import { openTasksEverywhere } from "./doc-tasks";
 import { sortTasks } from "./task-order";
 import { pageLocationHash } from "./page-location";
 import { pageRole } from "./permissions";
-import { EXPO_ENDPOINT } from "./push";
+import { EXPO_ENDPOINT, RELAY_ENDPOINT } from "./push";
+import { openSecret, sealSecret } from "./secret-box";
+import { liveTokenAad, relayConfig, relayTokenAad, relayTokenSchema, strictOrigin, validDeviceKey } from "./push-relay";
 import { hiddenRowIds } from "./row-access";
 import type { Field, Identity, Page, User } from "./types";
 
@@ -33,13 +39,98 @@ const hashToken = (token: string) => createHash("sha256").update(token).digest("
 export const mobilePushEnabled = () => !/^(0|off|false|no)$/i.test(process.env.MOBILE_PUSH || "");
 const expoToken = z.string().regex(/^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,200}\]$/);
 
-const registration = z.object({
-  installationId: z.uuid(),
-  platform: z.enum(["ios", "android"]),
-  name: z.string().trim().max(80).default(""),
-  appVersion: z.string().trim().max(40).default(""),
-  pushToken: expoToken.nullable().optional(),
-});
+// The Live Activities whose state the instance changes itself and pushes
+// (lib/live-activity-push.ts).
+export const LIVE_ACTIVITY_KINDS = ["focus", "timer"] as const;
+export type LiveActivityKind = (typeof LIVE_ACTIVITY_KINDS)[number];
+const liveTokens = z
+  .object({ focus: relayTokenSchema.nullable().optional(), timer: relayTokenSchema.nullable().optional() })
+  .strict();
+
+// The app's own texts for its Live Activity views (flowplan-app
+// src/activities.ts → liveActivityLabels): ActivityKit replaces the whole
+// content state on a push, so the instance must send every prop the views
+// read – in the app's language and time zone, which only the app knows.
+// Labels only, nothing of the person's data; stored in plain text.
+const label = z.string().trim().min(1).max(60);
+const validFormat = (locale: string, timeZone: string) => {
+  try {
+    new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", timeZone }).format(0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+export const liveLabelsSchema = z
+  .object({
+    locale: z.string().regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/),
+    timeZone: z.string().min(1).max(64),
+    focus: z.object({ focus: label, break: label, until: label.refine((s) => s.includes("{time}")), stop: label }).strict(),
+    timer: z.object({ label }).strict(),
+  })
+  .strict()
+  .refine((b) => validFormat(b.locale, b.timeZone), { message: "unknown locale or time zone" });
+export type LiveLabels = z.infer<typeof liveLabelsSchema>;
+
+// Version 1 (older apps): installationId, platform, name, appVersion,
+// pushToken. Version 2 adds relayToken + publicKey (both or neither),
+// relayUrl and liveActivityRelayTokens; everything else is ignored as before.
+const registration = z
+  .object({
+    installationId: z.uuid(),
+    platform: z.enum(["ios", "android"]),
+    name: z.string().trim().max(80).default(""),
+    appVersion: z.string().trim().max(40).default(""),
+    pushToken: expoToken.nullable().optional(),
+    relayToken: relayTokenSchema.nullable().optional(),
+    // The relay the token is from; must be this instance's relay (else the
+    // relay part is left out and the answer names the right one).
+    relayUrl: z.string().max(300).nullable().optional(),
+    // base64url of the 32-byte X25519 public key, without padding.
+    publicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/).nullable().optional(),
+    liveActivityRelayTokens: liveTokens.nullable().optional(),
+    // The texts of the app's Live Activity views (above); an invalid one is
+    // left out rather than refusing the registration.
+    liveActivityLabels: z.unknown().optional(),
+  })
+  .refine((b) => !b.relayToken === !b.publicKey, { message: "relayToken and publicKey belong together" });
+
+const relayAad = relayTokenAad,
+  liveAad = liveTokenAad;
+export const openRelayToken = (deviceId: string, sealed: string) => openSecret(sealed, relayAad(deviceId));
+export const openLiveToken = (deviceId: string, kind: LiveActivityKind, sealed: string) => openSecret(sealed, liveAad(deviceId, kind));
+
+// What the app needs to register with the relay: which relay, and the
+// instance origin it signs as (the "instance" of the relay registration).
+export function pushRelayInfo() {
+  const config = relayConfig();
+  if (!mobilePushEnabled() || !config.enabled) return null;
+  return { version: 1 as const, url: config.relay, instance: config.instance };
+}
+
+const parseLabels = (value: unknown): LiveLabels | null => {
+  const parsed = liveLabelsSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+
+function storeLiveToken(deviceId: string, kind: LiveActivityKind, token: string | null, labels: LiveLabels | null) {
+  run("DELETE FROM mobile_live_activities WHERE device_id=? AND kind=?", deviceId, kind);
+  if (!token) return;
+  const tokenHash = hashToken(token);
+  // An activity token belongs to one installation (another account on the phone before).
+  run("DELETE FROM mobile_live_activities WHERE token_hash=?", tokenHash);
+  run(
+    "INSERT INTO mobile_live_activities(device_id,kind,relay_token,token_hash,created_at,labels) VALUES(?,?,?,?,?,?)",
+    deviceId,
+    kind,
+    sealSecret(token, liveAad(deviceId, kind)),
+    tokenHash,
+    Date.now(),
+    labels ? JSON.stringify(labels) : null,
+  );
+}
+const liveKinds = (deviceId: string) =>
+  all<{ kind: LiveActivityKind }>("SELECT kind FROM mobile_live_activities WHERE device_id=? ORDER BY kind", deviceId).map((r) => r.kind);
 
 function requireSession(user: Identity, sessionToken: string) {
   if (user.apiScope) throw new HttpError(403, "Mit einem API-Token nicht erlaubt.");
@@ -52,6 +143,10 @@ function requireSession(user: Identity, sessionToken: string) {
 export function registerMobileDevice(user: Identity, sessionToken: string, input: unknown) {
   requireSession(user, sessionToken);
   const b = registration.parse(input);
+  if (b.publicKey && !validDeviceKey(b.publicKey)) throw new HttpError(400, "Ungültiger Push-Schlüssel.");
+  const relay = pushRelayInfo();
+  // The relay part counts only for this instance's relay.
+  const relayMatches = !!relay && (!b.relayUrl || strictOrigin(b.relayUrl) === relay.url);
   const existing = one<{ id: string; push_subscription_id: string | null }>(
     "SELECT id,push_subscription_id FROM mobile_devices WHERE user_id=? AND installation_id=?",
     user.id,
@@ -66,9 +161,12 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
     if (existing.push_subscription_id) run("DELETE FROM push_subscriptions WHERE id=?", existing.push_subscription_id);
     run("DELETE FROM mobile_devices WHERE id=?", existing.id);
   }
+  const deviceId = id();
+  const withRelay = relayMatches && !!b.relayToken && !!b.publicKey;
   let subscription: string | null = null;
-  if (b.pushToken && mobilePushEnabled()) {
-    const endpoint = `${EXPO_ENDPOINT}${b.pushToken}`;
+  if ((b.pushToken || withRelay) && mobilePushEnabled()) {
+    // Expo stays the fallback when the relay refuses the device (lib/push.ts).
+    const endpoint = b.pushToken ? `${EXPO_ENDPOINT}${b.pushToken}` : `${RELAY_ENDPOINT}${deviceId}`;
     // A phone signed in with another account before: its pushes now go here.
     run("DELETE FROM push_subscriptions WHERE endpoint=?", endpoint);
     subscription = id();
@@ -86,7 +184,7 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
   const now = Date.now();
   run(
     "INSERT INTO mobile_devices(id,user_id,installation_id,session_token,platform,name,app_version,token_hash,push_subscription_id,created_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-    id(),
+    deviceId,
     user.id,
     b.installationId,
     sessionToken,
@@ -98,7 +196,85 @@ export function registerMobileDevice(user: Identity, sessionToken: string, input
     now,
     now,
   );
-  return { deviceToken: token, push: !!subscription };
+  if (withRelay && subscription) {
+    const relayHash = hashToken(b.relayToken!);
+    // A phone signed in with another account before: its pushes now go here.
+    run("DELETE FROM mobile_push_relay WHERE token_hash=?", relayHash);
+    run(
+      "INSERT INTO mobile_push_relay(device_id,relay_token,token_hash,public_key,created_at) VALUES(?,?,?,?,?)",
+      deviceId,
+      sealSecret(b.relayToken!, relayAad(deviceId)),
+      relayHash,
+      b.publicKey!,
+      now,
+    );
+  }
+  // Live Activities need no notification permission, only the relay.
+  if (relayMatches && b.liveActivityRelayTokens) {
+    const labels = parseLabels(b.liveActivityLabels);
+    for (const kind of LIVE_ACTIVITY_KINDS) {
+      const value = b.liveActivityRelayTokens[kind];
+      if (value) storeLiveToken(deviceId, kind, value, labels);
+    }
+  }
+  return {
+    deviceToken: token,
+    push: !!subscription,
+    // Whether notifications go through the relay, end-to-end encrypted.
+    relay: withRelay && !!subscription,
+    liveActivities: liveKinds(deviceId),
+  };
+}
+
+// A Live Activity started (or ended) on the phone after the registration:
+// its relay token (platform "ios-liveactivity" at the relay), or null.
+const liveInput = z
+  .object({ kind: z.enum(LIVE_ACTIVITY_KINDS), relayToken: relayTokenSchema.nullable(), relayUrl: z.string().max(300).nullable().optional(), labels: z.unknown().optional() })
+  .strict();
+export function setLiveActivityToken(authorization: string | null, input: unknown) {
+  const match = authorization?.match(/^Bearer\s+(fpd_[A-Za-z0-9_-]{20,80})$/);
+  const device = match
+    ? one<{ id: string }>(
+        "SELECT d.id FROM mobile_devices d JOIN sessions s ON s.token=d.session_token JOIN users u ON u.id=d.user_id WHERE d.token_hash=? AND s.expires>? AND u.disabled=0",
+        hashToken(match[1]),
+        Date.now(),
+      )
+    : undefined;
+  if (!device) throw new HttpError(401, "Bitte melde dich an.");
+  const b = liveInput.parse(input);
+  const relay = pushRelayInfo();
+  if (b.relayToken && (!relay || (b.relayUrl && strictOrigin(b.relayUrl) !== relay.url))) return { ok: false, liveActivities: liveKinds(device.id), pushRelay: relay };
+  storeLiveToken(device.id, b.kind, b.relayToken, parseLabels(b.labels));
+  return { ok: true, liveActivities: liveKinds(device.id), pushRelay: relay };
+}
+
+// The person behind a device, with the rights of its session, for work in
+// the background (Live Activity pushes); null once the session ended.
+export function deviceIdentity(deviceId: string): Identity | null {
+  const row = one<User & { groups_json: string }>(
+    `SELECT u.*,s.groups_json FROM mobile_devices d JOIN users u ON u.id=d.user_id JOIN sessions s ON s.token=d.session_token
+     WHERE d.id=? AND s.expires>? AND u.disabled=0`,
+    deviceId,
+    Date.now(),
+  );
+  if (!row) return null;
+  let groups: string[] = [];
+  try {
+    groups = JSON.parse(row.groups_json);
+  } catch {}
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    disabled: row.disabled,
+    created_at: row.created_at,
+    avatar: row.avatar,
+    demo_until: row.demo_until ?? null,
+    demo: !!row.demo_until,
+    groups,
+    isAdmin: false,
+    apiScope: "read",
+  };
 }
 
 export function unregisterMobileDevice(user: Identity, installationId: unknown) {
@@ -240,8 +416,8 @@ function runningTimer(user: Identity) {
 
 // The installations of a person, for the profile settings.
 export function listMobileDevices(user: Identity) {
-  return all<{ installation_id: string; platform: string; name: string; app_version: string; created_at: number; last_seen_at: number; push: number }>(
-    "SELECT installation_id,platform,name,app_version,created_at,last_seen_at,(push_subscription_id IS NOT NULL) push FROM mobile_devices WHERE user_id=? ORDER BY last_seen_at DESC",
+  return all<{ installation_id: string; platform: string; name: string; app_version: string; created_at: number; last_seen_at: number; push: number; relay: number }>(
+    "SELECT installation_id,platform,name,app_version,created_at,last_seen_at,(push_subscription_id IS NOT NULL) push,EXISTS(SELECT 1 FROM mobile_push_relay r WHERE r.device_id=mobile_devices.id) relay FROM mobile_devices WHERE user_id=? ORDER BY last_seen_at DESC",
     user.id,
   );
 }

@@ -1,0 +1,172 @@
+{
+  "description": "Flowplan push protocol v1.1 test vectors (PROTOCOL.md §3 signatures, §4 end-to-end encryption with the §6.9 instance binding). All binary values are base64url without padding unless the field name ends in Hex. X25519/Ed25519 private keys are the raw 32-byte forms (RFC 7748 scalar before clamping / RFC 8032 seed), as used by CryptoKit rawRepresentation, Tink, libsodium (seed) and JWK 'd'.",
+  "generatedBy": "scripts/gen-vectors.ts (node:crypto)",
+  "e2e": {
+    "algorithm": "shared = X25519(ephemeralPrivate, devicePublic); key = HKDF-SHA256(ikm=shared, salt=ephemeralPublic||devicePublic, info='flowplan-push-v1\\n' + instance, L=32); ct||tag = AES-256-GCM(key, nonce, plaintext, aad='flowplan-push-v1\\n' + instance); payload = base64url(0x01 || ephemeralPublic || nonce || ct||tag)",
+    "vectors": [
+      {
+        "name": "ascii",
+        "instance": "https://app.flowplan.org",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "devicePublicKey": "333XvcA8DjkpjYioURl_5Lr3ODWze_yHlJft5DqhAwM",
+        "ephemeralPrivateKey": "wA-cv9tw-E31_sUCkRbbasBPWtutmXASOBNehxOzJ14",
+        "ephemeralPublicKey": "fM8AlR_BjJOuTRYjzt_bPF9tgXlpT3fhzEZPTsqm2WU",
+        "sharedSecretHex": "469a3929bee594ca52b9bd75c8a8e4bc1227139a0ad0397678fa5fb10d227d6c",
+        "hkdfSaltHex": "7ccf00951fc18c93ae4d1623cedfdb3c5f6d8179694f77e1cc464f4ecaa6d965df7dd7bdc03c0e39298d88a851197fe4baf73835b37bfc879497ede43aa10303",
+        "hkdfInfo": "flowplan-push-v1\nhttps://app.flowplan.org",
+        "hkdfInfoHex": "666c6f77706c616e2d707573682d76310a68747470733a2f2f6170702e666c6f77706c616e2e6f7267",
+        "keyHex": "0fd6d4e70104459d36076c1a3b5eab2d9c733e5bd09cd146e50edd67209901ce",
+        "nonceHex": "decc1f1972d8284c44d91ec8",
+        "aad": "flowplan-push-v1\nhttps://app.flowplan.org",
+        "aadHex": "666c6f77706c616e2d707573682d76310a68747470733a2f2f6170702e666c6f77706c616e2e6f7267",
+        "plaintext": "{\"title\":\"Review release notes\",\"body\":\"Anna assigned a task to you\",\"url\":\"https://app.flowplan.org/tasks/42\",\"id\":\"notif_01J9Z6K5X2\",\"category\":\"task\",\"data\":{\"taskId\":\"42\"},\"sentAt\":1767225600}",
+        "ciphertextAndTagHex": "f08e708feaeb78cfebf9d303272d857bc2c235444bd6a2ed2ef4e4e567a9fd1f8b7ceca44aa2292673df97de377b302f8ede425e6aa25458ff94a089fe747cdd383004c3446c1cd5c5051d12ede6f7378eb920da959b152e1a78fb0e8ac949dae0e1ff381c1a34efcb1a98187dbadf1b34902ac2b578e6f39480084c1c3ce7a083a967adf375b062f2d6c4ed264588b47747e37380518a346bda386d36127eb4c9692cbfb941d8c491d17a4c82b1ed2eb0debbb4fd7d5fddc05acbe61e1f7768f0c2b39a411dca7617cfb70bd9916bafc980068a",
+        "payload": "AXzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rreM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABoo"
+      },
+      {
+        "name": "unicode",
+        "instance": "https://flowplan.example.com:8443",
+        "devicePrivateKey": "GOklYCfGPYqwoGLfctwzcpQiGz8QiDH4mXp3vXNFIFI",
+        "devicePublicKey": "PfxveSkL0S8Xe_gsQy4W58lQQQibgBOuBEzEIMA8rg0",
+        "ephemeralPrivateKey": "iECFer-hrODrqfT0ig0u-DcVd9iZHjILQJeZ1gyWAW0",
+        "ephemeralPublicKey": "TRXwnp4ukiY4nZEps-ghTpgUXPLpq9CWSmJ4O91RbnU",
+        "sharedSecretHex": "e5980898fbbd923867dbd5434bcb5450155571dd30355feedbc8d15d8ed17b4b",
+        "hkdfSaltHex": "4d15f09e9e2e9226389d9129b3e8214e98145cf2e9abd0964a62783bdd516e753dfc6f79290bd12f177bf82c432e16e7c95041089b8013ae044cc420c03cae0d",
+        "hkdfInfo": "flowplan-push-v1\nhttps://flowplan.example.com:8443",
+        "hkdfInfoHex": "666c6f77706c616e2d707573682d76310a68747470733a2f2f666c6f77706c616e2e6578616d706c652e636f6d3a38343433",
+        "keyHex": "c7d3d011d4e7ef76177a1f5c4ee0882a25efa7e8751e918214f3b21e571f2400",
+        "nonceHex": "a6ce5b75d6680b7013b831c3",
+        "aad": "flowplan-push-v1\nhttps://flowplan.example.com:8443",
+        "aadHex": "666c6f77706c616e2d707573682d76310a68747470733a2f2f666c6f77706c616e2e6578616d706c652e636f6d3a38343433",
+        "plaintext": "{\"title\":\"Neuer Kommentar 💬\",\"body\":\"Jörg: „Sieht gut aus – bitte bis Freitag“\",\"url\":null,\"id\":\"notif_ümlaut\",\"category\":\"comment\",\"data\":null,\"sentAt\":1767225661}",
+        "ciphertextAndTagHex": "e883b95b2fb8bb1ef01552c4ca5a79279d7ebb8fe09a0784cb749b11c3a17d35708dd9f6df5a831bc02760b2b60cd498439a2a3c13a1c78789c945c68fab8bb64a1c12cf802e3fe0c5356e411bb5bf59222aa270e6059704a8c2a1e984f45ebd3b0dc20630e418144cbe055e2da74d3e385c66629c2715f9cf44886030ae0a3f83b05755d3428e18887d5dbcadf96ffbc76ff23027aebb292e495c3782f8365efefcde663f6cf10259b5db874be5ab6a678e201e26fea91993f3d536c6c2a2",
+        "payload": "AU0V8J6eLpImOJ2RKbPoIU6YFFzy6avQlkpieDvdUW51ps5bddZoC3ATuDHD6IO5Wy-4ux7wFVLEylp5J51-u4_gmgeEy3SbEcOhfTVwjdn231qDG8AnYLK2DNSYQ5oqPBOhx4eJyUXGj6uLtkocEs-ALj_gxTVuQRu1v1kiKqJw5gWXBKjCoemE9F69Ow3CBjDkGBRMvgVeLadNPjhcZmKcJxX5z0SIYDCuCj-DsFdV00KOGIh9Xbyt-W_7x2_yMCeuuykuSVw3gvg2Xv783mY_bPECWbXbh0vlq2pnjiAeJv6pGZPz1TbGwqI"
+      },
+      {
+        "name": "minimal",
+        "instance": "https://xn--bcher-kva.example",
+        "devicePrivateKey": "mCaTU2OrKm-PelAFN9GWFAIXxiGAhtUnHNS7YLym8XA",
+        "devicePublicKey": "ATOvMUR9R9ftS8nC7bMZQs4Mw431WSGr1obvUgOyclE",
+        "ephemeralPrivateKey": "6NeGZVMK-MkIIzJiTp9IQq7ujIXJ3TOvjZbU-w1CVkw",
+        "ephemeralPublicKey": "RBCo20oZnJfT9Way6OvOUtEHPxMO5PjTcnSW9Dv5PVs",
+        "sharedSecretHex": "df9723a85c4e297ae94ad96675e2f2aa4b8b15b53f9007d28a967f6ffabaf158",
+        "hkdfSaltHex": "4410a8db4a199c97d3f566b2e8ebce52d1073f130ee4f8d3727496f43bf93d5b0133af31447d47d7ed4bc9c2edb31942ce0cc38df55921abd686ef5203b27251",
+        "hkdfInfo": "flowplan-push-v1\nhttps://xn--bcher-kva.example",
+        "hkdfInfoHex": "666c6f77706c616e2d707573682d76310a68747470733a2f2f786e2d2d62636865722d6b76612e6578616d706c65",
+        "keyHex": "30df3447930e1ffdcffa40ea71bba574b2fd27f374904146063858eb2f1020b9",
+        "nonceHex": "c2993d15c8ef226523ab08bb",
+        "aad": "flowplan-push-v1\nhttps://xn--bcher-kva.example",
+        "aadHex": "666c6f77706c616e2d707573682d76310a68747470733a2f2f786e2d2d62636865722d6b76612e6578616d706c65",
+        "plaintext": "{\"title\":\"\",\"body\":\"\",\"url\":null,\"id\":\"x\",\"category\":null,\"data\":null,\"sentAt\":0}",
+        "ciphertextAndTagHex": "225cbdf7ed05da6fa454b98ea83b81be7fe336b18bb6817b43bd88de1c178514638863908578b3a26cbecde9bd8189a307752d04d705328bcd58c1705a5268eaed6e3403fbe3d58a7476b0c8f81b33cc718bd3a9e35bd366110f755d086f4d347f",
+        "payload": "AUQQqNtKGZyX0_VmsujrzlLRBz8TDuT403J0lvQ7-T1bwpk9FcjvImUjqwi7Ily99-0F2m-kVLmOqDuBvn_jNrGLtoF7Q72I3hwXhRRjiGOQhXizomy-zem9gYmjB3UtBNcFMovNWMFwWlJo6u1uNAP749WKdHawyPgbM8xxi9Op41vTZhEPdV0Ib000fw"
+      }
+    ],
+    "invalid": [
+      {
+        "instance": "https://evil.example.com",
+        "name": "valid payload, decrypted for another instance",
+        "payload": "AXzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rreM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABoo",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "expected": "decryption must fail → placeholder"
+      },
+      {
+        "instance": "https://app.flowplan.org",
+        "name": "tampered tag",
+        "payload": "AXzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rreM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABos",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "expected": "decryption must fail → placeholder"
+      },
+      {
+        "instance": "https://app.flowplan.org",
+        "name": "tampered ciphertext",
+        "payload": "AXzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rqeM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABoo",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "expected": "decryption must fail → placeholder"
+      },
+      {
+        "instance": "https://app.flowplan.org",
+        "name": "tampered ephemeral key",
+        "payload": "AXzPAJUewYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rreM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABoo",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "expected": "decryption must fail → placeholder"
+      },
+      {
+        "instance": "https://app.flowplan.org",
+        "name": "tampered nonce",
+        "payload": "AXzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKE1E2R7I8I5wj-rreM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABoo",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "expected": "decryption must fail → placeholder"
+      },
+      {
+        "instance": "https://app.flowplan.org",
+        "name": "unknown version byte",
+        "payload": "AnzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rreM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABoo",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "expected": "decryption must fail → placeholder"
+      },
+      {
+        "instance": "https://app.flowplan.org",
+        "name": "truncated",
+        "payload": "AXzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rreM_r-dMDJy2F",
+        "devicePrivateKey": "kKwWEB9qJbE90pmsI2e9EfvQNTAUiOsXM_3QGkRFpXA",
+        "expected": "decryption must fail → placeholder"
+      }
+    ]
+  },
+  "signatures": {
+    "algorithm": "sig = Ed25519(privateKey, UTF-8('flowplan-push-v1\\n' + instance + '\\n' + ts + '\\n' + hex(sha256(body)))); header Flowplan-Signature: kid=<kid>, ts=<ts>, sig=<base64url(sig)>",
+    "vectors": [
+      {
+        "instance": "https://app.flowplan.org",
+        "ts": 1767225600,
+        "body": "{\"requestId\":\"q8Ej8kQf0C7Z1Q3m5TcVhw\",\"messages\":[]}",
+        "bodySha256Hex": "f1d4150cfbb4bfe764398b553f256859d9f631e341d6d65c74cc875b6c839286",
+        "signingString": "flowplan-push-v1\nhttps://app.flowplan.org\n1767225600\nf1d4150cfbb4bfe764398b553f256859d9f631e341d6d65c74cc875b6c839286",
+        "kid": "kziWxzyeUibQE7LE",
+        "privateKeySeed": "R9WngtKxs5asuyWZkqgkDwjVlmPSg3uGrBm07gNpoxo",
+        "publicKey": "GVCRhz-qIQ1nVjGjnMR36lf9V0aMr1RoI72wMKr42z0",
+        "signature": "vSjtanXygBE7gky0bU52kc66be9dkWDYQ3eqi7-95bkjrOuLvZvUKu2xGait5p_JZmry55UcxbH4dZnYQjelBw",
+        "headers": {
+          "flowplan-instance": "https://app.flowplan.org",
+          "flowplan-signature": "kid=kziWxzyeUibQE7LE, ts=1767225600, sig=vSjtanXygBE7gky0bU52kc66be9dkWDYQ3eqi7-95bkjrOuLvZvUKu2xGait5p_JZmry55UcxbH4dZnYQjelBw"
+        },
+        "wellKnown": {
+          "version": 1,
+          "keys": [
+            {
+              "id": "kziWxzyeUibQE7LE",
+              "alg": "Ed25519",
+              "publicKey": "GVCRhz-qIQ1nVjGjnMR36lf9V0aMr1RoI72wMKr42z0"
+            }
+          ]
+        }
+      },
+      {
+        "instance": "https://flowplan.example.com:8443",
+        "ts": 1767225999,
+        "body": "{\"requestId\":\"zjkwMeoEwLlkswYBYxfhbw\",\"messages\":[{\"to\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"type\":\"alert\",\"payload\":\"AXzPAJUfwYyTrk0WI87f2zxfbYF5aU934cxGT07Kptll3swfGXLYKExE2R7I8I5wj-rreM_r-dMDJy2Fe8LCNURL1qLtLvTk5Wep_R-LfOykSqIpJnPfl943ezAvjt5CXmqiVFj_lKCJ_nR83TgwBMNEbBzVxQUdEu3m9zeOuSDalZsVLhp4-w6KyUna4OH_OBwaNO_LGpgYfbrfGzSQKsK1eObzlIAITBw856CDqWet83WwYvLWxO0mRYi0d0fjc4BRijRr2jhtNhJ-tMlpLL-5QdjEkdF6TIKx7S6w3ru0_X1f3cBay-YeH3do8MKzmkEdynYXz7cL2ZFrr8mABoo\",\"category\":\"task\",\"priority\":\"high\",\"ttl\":3600}]}",
+        "bodySha256Hex": "0c102240a130bacf0af27822e7c07d56ab1b19b73a1d12053e906930ed8fd170",
+        "signingString": "flowplan-push-v1\nhttps://flowplan.example.com:8443\n1767225999\n0c102240a130bacf0af27822e7c07d56ab1b19b73a1d12053e906930ed8fd170",
+        "kid": "c-q2BmLA7uKpgh5Y",
+        "privateKeySeed": "WlimojAW_FKWYXMdBEYPlHKkpoUQZ9z1UqZ0oPOGW8o",
+        "publicKey": "yBNnx7uE_zIs1gNzIqYULHXeBLzvGZ7Lzt-f0XV4jEo",
+        "signature": "o5TtxzBP6tJR5kPnHP0EtAQPm3R-hdzMOpfWBuCoQ5kyMOhzKGiZNyoveGVcd-Q9Uc1fbg3scorOd9BF2FC1AQ",
+        "headers": {
+          "flowplan-instance": "https://flowplan.example.com:8443",
+          "flowplan-signature": "kid=c-q2BmLA7uKpgh5Y, ts=1767225999, sig=o5TtxzBP6tJR5kPnHP0EtAQPm3R-hdzMOpfWBuCoQ5kyMOhzKGiZNyoveGVcd-Q9Uc1fbg3scorOd9BF2FC1AQ"
+        },
+        "wellKnown": {
+          "version": 1,
+          "keys": [
+            {
+              "id": "c-q2BmLA7uKpgh5Y",
+              "alg": "Ed25519",
+              "publicKey": "yBNnx7uE_zIs1gNzIqYULHXeBLzvGZ7Lzt-f0XV4jEo"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

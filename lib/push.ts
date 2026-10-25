@@ -12,7 +12,9 @@ import { userLocale } from "./user-locale";
 import { localizedMessage } from "./i18n-errors";
 import { translate } from "./i18n";
 import { focusSilences } from "./mobile-focus";
-import { notificationCategory, type NotificationCategory } from "./notification-targets";
+import { openSecret } from "./secret-box";
+import { NOTIFICATION_CATEGORIES, notificationCategory, type NotificationCategory } from "./notification-targets";
+import { encryptForDevice, plaintextJson, pushContent, relayConfig, relayTokenAad, sendBatched, sendToRelay, type RelayCategory, type RelayMessage, type RelayResult, type RelaySender } from "./push-relay";
 const runtime = globalThis as unknown as {
   flowplanPushTimer?: ReturnType<typeof setInterval>;
   flowplanPushRun?: Promise<void>;
@@ -169,6 +171,16 @@ type Sender = (
 // Push subscriptions of the apps (lib/mobile-devices.ts) carry the Expo push
 // token behind this prefix instead of a Web Push endpoint.
 export const EXPO_ENDPOINT = "expo:";
+// Apps that registered only with the push relay (no Expo token): the
+// endpoint names the device; the relay token itself is stored sealed in
+// mobile_push_relay (lib/mobile-devices.ts).
+export const RELAY_ENDPOINT = "relay:";
+const isMobile = (endpoint: string) => endpoint.startsWith(EXPO_ENDPOINT) || endpoint.startsWith(RELAY_ENDPOINT);
+const RELAY_CATEGORY: Record<NotificationCategory, RelayCategory> = {
+  [NOTIFICATION_CATEGORIES.task]: "task",
+  [NOTIFICATION_CATEGORIES.comment]: "comment",
+  [NOTIFICATION_CATEGORIES.read]: "default",
+};
 // The general text of a push notification, in the person's language.
 function inboxNotice(userId: string) {
   const say = translate(userLocale(userId));
@@ -207,9 +219,14 @@ export async function sendExpoPush(message: ExpoMessage) {
   if (!response.ok || result.data?.status !== "ok")
     throw Object.assign(new Error(result.data?.details?.error || "Expo push failed"), { statusCode: response.status || 502 });
 }
+const unreadCount = (userId: string) =>
+  Number(one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", userId)?.n || 0);
+const backoff = (attempts: number) => Math.min(600000, 30000 * 2 ** attempts);
+
 export async function flushPushQueue(
   send: Sender = webpush.sendNotification,
   sendExpo: ExpoSender = sendExpoPush,
+  sendRelay: RelaySender = sendToRelay,
 ) {
   const now = Date.now();
   run(
@@ -234,12 +251,23 @@ export async function flushPushQueue(
     read_at: string | null;
     body: string | null;
     kind: string | null;
+    device_id: string | null;
+    relay_token: string | null;
+    public_key: string | null;
   }>(
-    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at,n.body,n.kind FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
+    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at,n.body,n.kind,md.id device_id,r.relay_token,r.public_key FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id LEFT JOIN mobile_devices md ON md.push_subscription_id=s.id LEFT JOIN mobile_push_relay r ON r.device_id=md.id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
     now,
   );
-  if (!jobs.length) return;
+  const relay = relayConfig();
+  // Live Activities (lib/live-activity-push.ts) – loaded only when some exist.
+  const live = relay.enabled && !!one("SELECT 1 FROM push_live_queue WHERE available_at<=? LIMIT 1", now);
+  if (!jobs.length) {
+    if (live) await (await import("./live-activity-push")).flushLiveActivities(sendRelay, now);
+    return;
+  }
   const keys = pushKeys();
+  // Notifications for the relay, sent together after the loop (≤ 100 per request).
+  const viaRelay: { job: (typeof jobs)[number]; message: RelayMessage }[] = [];
   await Promise.all(
     jobs.map(async (job) => {
       if (
@@ -278,23 +306,36 @@ export async function flushPushQueue(
         return;
       }
       // A Focus filter of the app holds other workspaces back (lib/mobile-focus.ts).
-      if (job.endpoint.startsWith(EXPO_ENDPOINT) && focusSilences(job.subscription_id, page?.workspace_id, now)) {
+      if (isMobile(job.endpoint) && focusSilences(job.subscription_id, page?.workspace_id, now)) {
         run("DELETE FROM push_deliveries WHERE id=?", job.id);
+        return;
+      }
+      // The app registered with the relay: end-to-end encrypted through it.
+      if (relay.enabled && job.device_id && job.relay_token && job.public_key) {
+        try {
+          viaRelay.push({ job, message: relayAlert(job, relay.instance) });
+        } catch {
+          // The sealed token or the key does not open any more: the relay part goes.
+          dropRelay(job);
+        }
+        return;
+      }
+      // Registered with the relay only, which is off now (PUSH_RELAY=off) or
+      // refused the device: nothing can reach it.
+      if (job.endpoint.startsWith(RELAY_ENDPOINT)) {
+        if (!job.relay_token) run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+        else run("DELETE FROM push_deliveries WHERE id=?", job.id);
         return;
       }
       try {
         if (job.endpoint.startsWith(EXPO_ENDPOINT)) {
-          // The apps: the badge shows the unread notifications. The text
-          // stays as general as Web Push unless the instance opts in
-          // (MOBILE_PUSH_CONTENT=on), because it passes Expo, Apple and Google.
-          const content = /^(1|on|true|yes)$/i.test(process.env.MOBILE_PUSH_CONTENT || ""),
+          // Older apps through Expo: the badge shows the unread notifications.
+          // The text stays as general as Web Push unless the instance opts in
+          // (MOBILE_PUSH_CONTENT=on), because it passes Expo, Apple and Google
+          // in plain text.
+          const content = pushContent("expo"),
             locale = userLocale(job.user_id),
-            unread = Number(
-              one<{ n: number }>(
-                "SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL",
-                job.user_id,
-              )?.n || 0,
-            );
+            unread = unreadCount(job.user_id);
           await sendExpo({
             to: job.endpoint.slice(EXPO_ENDPOINT.length),
             title: "Flowplan",
@@ -357,13 +398,107 @@ export async function flushPushQueue(
         else
           run(
             "UPDATE push_deliveries SET available_at=?,last_error=? WHERE id=?",
-            Date.now() + Math.min(600000, 30000 * 2 ** job.attempts),
+            Date.now() + backoff(job.attempts),
             status ? `HTTP ${status}` : "Senden fehlgeschlagen",
             job.id,
           );
       }
     }),
   );
+  if (viaRelay.length) {
+    const results = await sendBatched(
+      viaRelay.map((r) => r.message),
+      sendRelay,
+    );
+    viaRelay.forEach(({ job }, i) => relayOutcome(job, results[i]));
+  }
+  if (live) await (await import("./live-activity-push")).flushLiveActivities(sendRelay, Date.now());
+}
+
+type RelayJob = {
+  id: number;
+  subscription_id: string;
+  notification_id: string;
+  attempts: number;
+  user_id: string;
+  endpoint: string;
+  page_id: string | null;
+  row_id: string | null;
+  thread_id: string | null;
+  body: string | null;
+  kind: string | null;
+  device_id: string | null;
+  relay_token: string | null;
+  public_key: string | null;
+};
+
+// One notification as an encrypted alert (PROTOCOL.md §3, §4). The text
+// comes along unless MOBILE_PUSH_CONTENT=off: only the app can read it.
+function relayAlert(job: RelayJob, instance: string): RelayMessage {
+  const content = pushContent("relay"),
+    locale = userLocale(job.user_id),
+    category = notificationCategory({ ...job, id: job.notification_id }, content);
+  const token = openSecret(job.relay_token!, relayTokenAad(job.device_id!));
+  const plaintext = plaintextJson({
+    title: "Flowplan",
+    body: content && job.body ? localizedMessage(job.body, locale).slice(0, 300) : inboxNotice(job.user_id),
+    url: new URL(notificationUrl(job), `${instance}/`).toString(),
+    id: job.notification_id,
+    category,
+    data: job.kind ? { kind: job.kind } : null,
+    sentAt: Math.floor(Date.now() / 1000),
+  });
+  return {
+    to: token,
+    type: "alert",
+    payload: encryptForDevice(job.public_key!, instance, plaintext),
+    category: RELAY_CATEGORY[category],
+    collapseId: null,
+    badge: Math.min(9999, unreadCount(job.user_id)),
+    priority: "high",
+    ttl: 86400,
+    liveActivity: null,
+  };
+}
+
+// The relay refused the device (forbidden, invalid) or its token cannot be
+// opened: its relay part goes; with an Expo token the delivery is tried
+// again through Expo right away, otherwise the subscription goes.
+function dropRelay(job: RelayJob, status = "unreadable") {
+  console.warn(`push relay: removed the relay registration of an app installation (${status})`);
+  run("DELETE FROM mobile_push_relay WHERE device_id=?", job.device_id);
+  if (job.endpoint.startsWith(EXPO_ENDPOINT))
+    run("UPDATE push_deliveries SET available_at=?,attempts=MAX(0,attempts-1) WHERE id=?", Date.now(), job.id);
+  else run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+}
+
+function relayOutcome(job: RelayJob, result: RelayResult) {
+  switch (result.status) {
+    case "ok":
+      run("UPDATE push_deliveries SET delivered_at=?,last_error=NULL WHERE id=?", Date.now(), job.id);
+      return;
+    case "gone":
+      // The app is no longer reachable (uninstalled, token revoked): the
+      // installation goes with its push subscription.
+      run("DELETE FROM mobile_devices WHERE id=?", job.device_id);
+      run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+      return;
+    case "rate_limited":
+      // Not a failed attempt: again once the relay allows it.
+      run(
+        "UPDATE push_deliveries SET available_at=?,attempts=MAX(0,attempts-1),last_error=? WHERE id=?",
+        Date.now() + (result.retryAfter ?? 60) * 1000,
+        "Relay: rate_limited",
+        job.id,
+      );
+      return;
+    case "forbidden":
+    case "invalid":
+      dropRelay(job, result.status);
+      return;
+    default:
+      run("UPDATE push_deliveries SET available_at=?,last_error=? WHERE id=?", Date.now() + backoff(job.attempts), "Relay: error", job.id);
+  }
 }
 export function dispatchPush() {
   if (!runtime.flowplanPushRun)

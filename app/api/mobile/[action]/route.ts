@@ -7,7 +7,9 @@ import {
   identityFromDeviceToken,
   mobilePushEnabled,
   mobileSummary,
+  pushRelayInfo,
   registerMobileDevice,
+  setLiveActivityToken,
   unregisterByDeviceToken,
   unregisterMobileDevice,
 } from "@/lib/mobile-devices";
@@ -21,6 +23,10 @@ export const dynamic = "force-dynamic";
 // POST /api/mobile/register    from the app's web view, with the session cookie
 // POST /api/mobile/unregister  likewise, or with the device token (Bearer fpd_…)
 //                              when the app leaves the instance
+// POST /api/mobile/live-activity  with the device token: the relay token of a
+//                              Live Activity that started or ended on the phone
+//                              { kind: "focus" | "timer", relayToken | null,
+//                                relayUrl?, labels? (the views' texts) }
 // GET  /api/mobile/summary     in the background, with the device token
 // GET  /api/mobile/admin-summary  likewise, for the administrators' widgets
 //                              (lib/mobile-admin.ts): 403 for everyone else
@@ -61,6 +67,11 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     const authorization = (await headers()).get("authorization");
     if (action === "unregister" && authorization?.startsWith("Bearer fpd_"))
       return NextResponse.json({ ok: unregisterByDeviceToken(authorization) });
+    if (action === "live-activity") {
+      const text = await req.text();
+      if (text.length > 4_000) throw new HttpError(413, "Anfrage zu groß.");
+      return NextResponse.json(setLiveActivityToken(authorization, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
+    }
     checkOrigin(req);
     const user = await activeUser();
     if (!user) throw new HttpError(401, "Bitte melde dich an.");
@@ -69,7 +80,10 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ action: 
     const body = JSON.parse(text || "{}");
     if (action === "register") {
       const sessionToken = hash((await cookies()).get(cookieName)?.value || "");
-      return NextResponse.json({ ...registerMobileDevice(user, sessionToken, body), pushAvailable: mobilePushEnabled() });
+      return NextResponse.json(
+        { ...registerMobileDevice(user, sessionToken, body), pushAvailable: mobilePushEnabled(), pushRelay: pushRelayInfo() },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     if (action === "unregister") return NextResponse.json(unregisterMobileDevice(user, body.installationId));
     throw new HttpError(404, "Nicht gefunden");
