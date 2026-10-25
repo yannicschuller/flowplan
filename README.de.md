@@ -27,7 +27,7 @@ Open Source, selbst gehostet in einem Container – oder gehostet in Deutschland
 
 ## Auf einen Blick
 
-- **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit zehn Ansichten, Whiteboards, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen.
+- **Alles in einem Seitenbaum** – Dokumente, Datenbanken mit zehn Ansichten, Whiteboards, Notizbücher für Handschrift, ein tägliches Journal, Projekte mit Tickets und Sprints, Umfragen.
 - **Komplett Open Source** unter der AGPL-3.0 – keine geschlossene Enterprise-Version, keine Funktionen hinter einem Lizenzschlüssel.
 - **Ein Container mit SQLite** – kein Postgres, kein Redis, kein externer Suchdienst. Oder gehostet in Deutschland auf [app.flowplan.org](https://app.flowplan.org).
 - **Optionale KI** – standardmäßig aus; Admins schalten sie pro Funktion und Person ein, komplett lokal mit [Ollama](https://ollama.com) oder mit Schlüssel für OpenAI, Anthropic, Gemini oder jeden OpenAI-kompatiblen Dienst. Du bestimmst, welche Seiten sie lesen darf.
@@ -36,7 +36,7 @@ Open Source, selbst gehostet in einem Container – oder gehostet in Deutschland
 
 Die Oberfläche gibt es auf Deutsch, Englisch und Französisch – weitere Sprachen lassen sich als JSON-Kataloge ergänzen ([Sprachen und Übersetzungen](https://docs.flowplan.org/de/languages)); die Dokumentation ist auf Deutsch und Englisch.
 
-**Inhalt:** [Schreiben](#schreiben-und-denken) · [Datenbanken](#ordnen-mit-datenbanken) · [KI](#ki-optional) · [Whiteboards und Journal](#whiteboards-und-ein-journal) · [Gemeinsam](#gemeinsam-überall) · [Admins und Integrationen](#für-admins-und-integrationen) · [Schnellstart](#schnellstart-docker) · [Entwicklung](#entwicklung) · [Community](#community)
+**Inhalt:** [Schreiben](#schreiben-und-denken) · [Datenbanken](#ordnen-mit-datenbanken) · [KI](#ki-optional) · [Whiteboards und Journal](#whiteboards-und-ein-journal) · [Handschrift](#handschrift-und-notizbücher) · [Startseite](#eine-startseite-nach-deinem-geschmack) · [Gemeinsam](#gemeinsam-überall) · [Admins und Integrationen](#für-admins-und-integrationen) · [Schnellstart](#schnellstart-docker) · [Entwicklung](#entwicklung) · [Community](#community)
 
 ## Schreiben und denken
 
@@ -129,9 +129,46 @@ Mehr unter [KI in der Dokumentation](https://docs.flowplan.org/de/ai).
   </tr>
 </table>
 
+## Handschrift und Notizbücher
+
+Schreiben mit dem Apple Pencil, einem anderen Tablet-Stift, der Maus oder dem Finger – in Notizbüchern, auf PDFs und mitten im Dokument.
+
+<p align="center"><img src=".github/assets/readme/notebook.webp" alt="Vorlesungsnotizen mit dem Stift auf liniertem Papier: ein Titel in Blau, zwei Sätze, eine Formel, um die ein Rechteck gezogen wird, das zur sauberen Form einrastet, eine rote Notiz mit Pfeil und ein markiertes Wort" width="100%"></p>
+
+**Notizbücher** sind eine eigene Seitenart: Blätter mit leerem, liniertem, kariertem, gepunktetem, Cornell- oder Notenpapier, A4 oder Letter, hell oder dunkel, mit Vorschauen zum Springen und Umsortieren. Ein PDF öffnet sich als Notizbuch zum Beschreiben Seite für Seite, und jedes Notizbuch lässt sich als PDF exportieren – die Handschrift als Vektoren.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/notebook-ipad-dark.webp">
+  <img src=".github/assets/readme/notebook-ipad-light.webp" alt="Ein Notizbuch in iPad-Größe: links die Seitenübersicht mit zwei Blättern, daneben ein liniertes Blatt mit handschriftlichen Notizen, einer Formel, Markierungen und einer Skizze der Kräfte an einer schiefen Ebene" width="100%">
+</picture>
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/readme/pdf-annotate.webp" alt="Ein Fachartikel im PDF-Viewer mit markierten Sätzen, einer eingekreisten Zahl in einer Tabelle und handschriftlichen Notizen in Blau"></td>
+    <td width="50%"><img src=".github/assets/readme/draw-block.webp" alt="Ein Zeichenblock auf kariertem Papier in einem Dokument: drei skizzierte App-Bildschirme mit Pfeilen dazwischen und einer roten Notiz"></td>
+  </tr>
+  <tr>
+    <td><b>Auf PDFs schreiben</b> – Textmarker und Stift direkt im Viewer; jedes Speichern ist eine Version, und das PDF lässt sich mit den Anmerkungen herunterladen.</td>
+    <td><b>Zeichenblöcke</b> – <code>/zeichnen</code> setzt eine Skizze zwischen die Absätze eines Dokuments; was mehrere gleichzeitig zeichnen, wird zusammengeführt statt überschrieben.</td>
+  </tr>
+</table>
+
+- Stift mit Druckstärke, Textmarker, Radierer für ganze Striche oder Teile, Lasso zum Verschieben, Skalieren und Umfärben, Text und Laserpointer; drei Lieblingsstifte
+- Den Stift am Ende eines Strichs kurz ruhig halten – der Strich rastet zur geraden Linie, zum Rechteck, zur Ellipse, zum Dreieck oder zur Raute ein
+- Sobald du mit einem Stift schreibst, zeichnet nur noch der Stift: Finger scrollen und zoomen, eine aufliegende Hand hinterlässt keine Spuren
+- In der App für iPhone und iPad wird Handschrift auf dem Gerät erkannt: Die Suche findet sie, und **In Text umwandeln** macht aus ausgewählten Strichen getippten Text
+
+Mehr unter [Notizbücher und Handschrift](https://docs.flowplan.org/de/notebooks).
+
+## Eine Startseite nach deinem Geschmack
+
+<p align="center"><img src=".github/assets/readme/home-customize.webp" alt="Die Startseite anpassen: Für den Kopfbereich wird ein Waldverlauf gewählt, der Notizzettel vor die Aufgaben gezogen und die Termine auf volle Breite gestellt" width="100%"></p>
+
+Stell die Startseite aus 20 Widgets zusammen – Aufgaben zum Abhaken, Termine, Journal heute, Fokus-Timer, Gewohnheiten, Zähler, Notizzettel, eine Datenbankansicht, Links und mehr. Ziehen, Größe ändern und einstellen, pro Arbeitsbereich; dazu ein Kopfbereich mit Farbe, Verlauf oder Cover, ein Emoji, Abstände und ein Hintergrund. Eigentümer legen den Standard für ihre Mitglieder fest. Mehr unter [Startseite anpassen](https://docs.flowplan.org/de/first-steps#startseite-anpassen).
+
 ## Gemeinsam, überall
 
-Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, ein Posteingang, E-Mail-Zusammenfassungen und Web-Push. Teile eine Seite mit einer einzelnen Person, mit Gästen über Links (auf Wunsch mit **Passwort und Ablaufdatum**), veröffentliche sie im Web oder mach ein Formular daraus. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux gibt es unter [flowplan.org/download](https://flowplan.org/download).
+Gleichzeitig bearbeiten mit Live-Cursorn (Yjs/CRDT), Kommentare und Textkommentare, Erwähnungen, Reaktionen, Änderungsvorschläge, ein Posteingang, E-Mail-Zusammenfassungen und Web-Push. Teile eine Seite mit einer einzelnen Person, mit Gästen über Links (auf Wunsch mit **Passwort und Ablaufdatum**), veröffentliche sie im Web oder mach ein Formular daraus. Flowplan lässt sich als App installieren und funktioniert offline; Desktop-Apps für macOS, Windows und Linux gibt es unter [flowplan.org/download](https://flowplan.org/download). Apps für iPhone, iPad und Android sind in Vorbereitung – mit Widgets, Knöpfen an Benachrichtigungen, Siri und Kurzbefehlen, Teilen aus anderen Apps, dem Apple Pencil und Fenstern auf dem iPad ([Apps](https://docs.flowplan.org/de/offline-and-apps#apps-fuer-iphone-ipad-und-android)). Ihre Benachrichtigungen laufen über das quelloffene [Flowplan-Push-Relay](https://github.com/yannicschuller/flowplan-push), Ende-zu-Ende-verschlüsselt: Sie zeigen ihren Text, während Relay, Apple und Google nur Chiffretext sehen.
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="Das Board auf dem Handy" width="32%">

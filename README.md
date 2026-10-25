@@ -27,7 +27,7 @@ Open source, self-hosted in one container – or hosted in Germany. AI optional,
 
 ## At a glance
 
-- **Everything in one page tree** – documents, databases with ten views, whiteboards, a daily journal, projects with tickets and sprints, surveys.
+- **Everything in one page tree** – documents, databases with ten views, whiteboards, notebooks for handwriting, a daily journal, projects with tickets and sprints, surveys.
 - **Completely open source** under the AGPL-3.0 – no closed enterprise edition, no features behind a licence key.
 - **One container with SQLite** – no Postgres, no Redis, no external search service. Or hosted in Germany at [app.flowplan.org](https://app.flowplan.org).
 - **Optional AI** – off by default; admins switch it on per feature and per person, completely local with [Ollama](https://ollama.com) or with a key for OpenAI, Anthropic, Gemini or any OpenAI-compatible service. You decide which pages it may read.
@@ -36,7 +36,7 @@ Open source, self-hosted in one container – or hosted in Germany. AI optional,
 
 The interface is available in English, German and French – further languages can be added as JSON catalogues ([Languages and translations](https://docs.flowplan.org/languages)); the documentation is in English and German.
 
-**Contents:** [Write](#write-and-think) · [Databases](#organise-with-databases) · [AI](#ai-optional) · [Whiteboards and journal](#whiteboards-and-a-journal) · [Together](#together-everywhere) · [Admins and integrations](#for-admins-and-integrations) · [Quick start](#quick-start-docker) · [Development](#development) · [Community](#community)
+**Contents:** [Write](#write-and-think) · [Databases](#organise-with-databases) · [AI](#ai-optional) · [Whiteboards and journal](#whiteboards-and-a-journal) · [Handwriting](#handwriting-and-notebooks) · [Home page](#a-home-page-of-your-own) · [Together](#together-everywhere) · [Admins and integrations](#for-admins-and-integrations) · [Quick start](#quick-start-docker) · [Development](#development) · [Community](#community)
 
 ## Write and think
 
@@ -129,9 +129,46 @@ See [AI in the documentation](https://docs.flowplan.org/ai).
   </tr>
 </table>
 
+## Handwriting and notebooks
+
+Write with the Apple Pencil, another tablet pen, a mouse or a finger – in notebooks, on PDFs and in the middle of a document.
+
+<p align="center"><img src=".github/assets/readme/notebook.webp" alt="Writing lecture notes with the pen on lined paper: a title in blue, two sentences, a formula boxed in with a rectangle that snaps into shape, a red note with an arrow and a highlighted word" width="100%"></p>
+
+**Notebooks** are a page kind of their own: sheets of blank, lined, grid, dotted, Cornell or music paper, A4 or Letter, light or dark, with previews to jump to and reorder them. A PDF opens as a notebook to write on page by page, and every notebook exports as a PDF with the handwriting as vectors.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme/notebook-ipad-dark.webp">
+  <img src=".github/assets/readme/notebook-ipad-light.webp" alt="A notebook in iPad size: the page overview with two sheets on the left, a sheet of lined paper with handwritten notes, a formula, highlights and a sketch of the forces on a slope" width="100%">
+</picture>
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/readme/pdf-annotate.webp" alt="A research paper in the PDF viewer with highlighted sentences, a circled number in a table and handwritten notes in blue"></td>
+    <td width="50%"><img src=".github/assets/readme/draw-block.webp" alt="A drawing block on grid paper in a document: three sketched app screens with arrows between them and a red note"></td>
+  </tr>
+  <tr>
+    <td><b>Write on PDFs</b> – highlighter and pen right in the viewer; every save is a version, and the PDF downloads with the annotations.</td>
+    <td><b>Drawing blocks</b> – <code>/draw</code> puts a sketch between the paragraphs of a document; strokes drawn at the same time are merged, not overwritten.</td>
+  </tr>
+</table>
+
+- Pen with pressure, highlighter, erasers for whole strokes or parts, lasso to move, resize and recolour, text and a laser pointer; three favourite pens
+- Hold the pen still at the end of a stroke and it snaps into a straight line, rectangle, ellipse, triangle or diamond
+- Once you write with a pen, only the pen draws: fingers scroll and zoom, a resting hand leaves no marks
+- In the iPhone and iPad app, handwriting is recognised on the device: search finds it, and **Convert to text** turns selected strokes into typed text
+
+See [Notebooks and handwriting](https://docs.flowplan.org/notebooks).
+
+## A home page of your own
+
+<p align="center"><img src=".github/assets/readme/home-customize.webp" alt="Customizing the home page: a forest gradient is chosen for the header, the scratchpad is dragged in front of the tasks and the agenda is set to full width" width="100%"></p>
+
+Arrange the home page from 20 widgets – tasks to tick off, agenda, journal today, focus timer, habits, counters, a scratchpad, a database view, links and more. Drag, resize and set them up per workspace, give the page a header colour, gradient or cover, an emoji, spacing and a background; workspace owners set the default for their members. See [Customize your home page](https://docs.flowplan.org/first-steps#customize-your-home-page).
+
 ## Together, everywhere
 
-Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Share a page with one person, with guests through links (optionally with **password and expiry date**), publish it on the web, or turn it into a form. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux are at [flowplan.org/download](https://flowplan.org/download).
+Live editing with cursors (Yjs/CRDT), comments and inline threads, mentions, reactions, suggested changes, an inbox, e-mail digests and Web Push. Share a page with one person, with guests through links (optionally with **password and expiry date**), publish it on the web, or turn it into a form. Flowplan installs as an app and works offline; desktop apps for macOS, Windows and Linux are at [flowplan.org/download](https://flowplan.org/download). Apps for iPhone, iPad and Android are in preparation – with widgets, notification buttons, Siri and Shortcuts, sharing from other apps, the Apple Pencil and windows on the iPad ([Apps](https://docs.flowplan.org/offline-and-apps#apps-for-iphone-ipad-and-android)). Their notifications travel through the open-source [Flowplan push relay](https://github.com/yannicschuller/flowplan-push), end-to-end encrypted: they show their text, while the relay, Apple and Google only handle ciphertext.
 
 <p align="center">
   <img src=".github/assets/readme/mobile-board.webp" alt="The board on a phone" width="32%">
