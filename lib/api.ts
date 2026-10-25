@@ -138,6 +138,7 @@ import { instanceSettings, saveInstanceSettings } from "./instance-settings";
 import { notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { setWeeklyDigest, weeklyDigestPrefs } from "./weekly-digest";
 import { saveShortcuts, userShortcuts } from "./user-shortcuts";
+import { homeLayout, resetHomeLayout, saveHomeLayout, saveHomeNote, setTeamDefault } from "./home-layout";
 import { sharePage, updatePageShare } from "./page-share";
 import { limitInviter, mailAllowed } from "./action-limits";
 import { templateCategoryIds } from "./template-categories";
@@ -299,6 +300,8 @@ export function bootstrap(user: Identity, wid?: string) {
     weeklyDigest: weeklyDigestPrefs(user),
     // Own keyboard shortcuts (lib/keymap.ts), only those that differ.
     shortcuts: userShortcuts(user),
+    // The start page of this workspace (lib/home-layout.ts).
+    home: homeLayout(user, workspace.id),
     instance: {
       name: instanceSettings().name,
       announcement: instanceSettings().announcement,
@@ -665,6 +668,19 @@ export function command(
       // Own keyboard shortcuts (lib/user-shortcuts.ts).
       case "shortcuts.save":
         result = saveShortcuts(user, b);
+        break;
+      // The personal start page (lib/home-layout.ts).
+      case "home.save":
+        result = saveHomeLayout(user, b);
+        break;
+      case "home.reset":
+        result = resetHomeLayout(user, b);
+        break;
+      case "home.note":
+        result = saveHomeNote(user, b);
+        break;
+      case "home.default":
+        result = setTeamDefault(user, b);
         break;
       case "profile.language":
         result = { language: setFixedLanguage(user.id, b.language) };

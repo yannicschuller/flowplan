@@ -122,9 +122,7 @@ import {
   Link as LinkIcon,
   SquaresFour,
   Flag,
-  Folder,
   ArrowUpRight,
-  Eye,
   ImageSquare,
   TextAa,
   Printer,
@@ -137,6 +135,7 @@ import {
   Keyboard,
   Presentation as PresentIcon,
   SquareSplitHorizontal,
+  SlidersHorizontal,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -174,6 +173,8 @@ import { LinkProtection, ProtectionChips } from "./link-protection";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
 import { MyTasks } from "./my-tasks";
+import HomeScreen from "./home/home";
+import { relativeTime } from "./home/format";
 import { FocusBar } from "./focus-bar";
 import { PageGraph } from "./page-graph";
 import { QuickCapture } from "./quick-capture";
@@ -367,6 +368,8 @@ export default function WorkspaceApp({
     [aiCreate, setAiCreate] = useState(false),
     [aiProposal, setAiProposal] = useState<DatabaseProposal | null>(null),
     [capture, setCapture] = useState(false),
+    // Raised to open the start page's editor (command palette).
+    [customizeHome, setCustomizeHome] = useState(0),
     [toRecord, setToRecord] = useState(false),
     [parent, setParent] = useState<string | null>(null),
     [spaceId, setSpaceId] = useState(initial.spaces[0]?.id || ""),
@@ -1790,6 +1793,15 @@ export default function WorkspaceApp({
     { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Sparkle, run: () => setOnboarding(true) },
     { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
     { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
+    {
+      label: t("Startseite anpassen", "Customize home page"),
+      keywords: t("widgets anordnen personalisieren dashboard", "widgets anordnen personalisieren dashboard arrange personalize customize home"),
+      icon: SlidersHorizontal,
+      run: () => {
+        go("home");
+        setCustomizeHome((n) => n + 1);
+      },
+    },
     { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
     { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks") },
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
@@ -2782,186 +2794,30 @@ export default function WorkspaceApp({
         )}
         <div className="main-scroll">
           {screen === "home" && (
-            <div className="home-content">
-              <div className="home-greeting">
-                <span className="eyebrow">{t("DEIN ARBEITSBEREICH", "YOUR WORKSPACE")}</span>
-                <h1>
-                  {greeting(clock, t)}, {boot.user.name.split(" ")[0]}
-                  <span className="greeting-dot">.</span>
-                </h1>
-                <p>
-                  {t("Gute Ideen beginnen hier. Mach dort weiter, wo du aufgehört hast.", "Good ideas start here. Pick up where you left off.")}
-                </p>
-              </div>
-              <section className="recent-section">
-                <div className="section-heading">
-                  <h2>
-                    <Clock size={19} />
-                    {t("Zuletzt bearbeitet", "Recently edited")}
-                  </h2>
-                  <span>
-                    {activePages.length} {t("Seiten in deinem Arbeitsbereich", "pages in your workspace")}
-                  </span>
-                </div>
-                <div className="recent-grid">
-                  {[...activePages]
-                    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-                    .slice(0, 4)
-                    .map((p, i) => (
-                      <button
-                        key={p.id}
-                        className="recent-card"
-                        onClick={() => openPage(p.id)}
-                      >
-                        <div
-                          className={`recent-illustration illustration-${i}`}
-                        >
-                          <PageIcon
-                            name={p.kind === "database" ? "table" : p.icon}
-                            size={38}
-                          />
-                          {p.kind === "database" ? (
-                            <div className="mini-board" aria-hidden>
-                              <i />
-                              <i />
-                              <i />
-                            </div>
-                          ) : (
-                            <div className="mini-document" aria-hidden>
-                              <i />
-                              <i />
-                              <i />
-                            </div>
-                          )}
-                        </div>
-                        <div className="recent-card-title">
-                          <PageIcon name={p.icon} />
-                          <strong>{p.title}</strong>
-                        </div>
-                        <small>
-                          {t("Bearbeitet", "Edited")}{" "}{relativeTime(p.updated_at, clock, locale)}
-                        </small>
-                      </button>
-                    ))}
-                </div>
-              </section>
-              {clock !== null &&
-                (boot.recentVisits || []).some((v) =>
-                activePages.some((p) => p.id === v.pageId),
-              ) && (
-                <section className="visited-section">
-                  <h2>
-                    <Eye size={17} />
-                    {t("Zuletzt angesehen", "Recently viewed")}
-                  </h2>
-                  <div className="visited-list">
-                    {(boot.recentVisits || []).flatMap((visit) => {
-                      const p = activePages.find((x) => x.id === visit.pageId);
-                      return p
-                        ? [
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => openPage(p.id)}
-                            >
-                              <PageIcon name={p.icon} size={16} />
-                              <span>{p.title || t("Ohne Titel", "Untitled")}</span>
-                              <small>{ago(visit.seenAt, clock ?? Date.now(), locale)}</small>
-                            </button>,
-                          ]
-                        : [];
-                    })}
-                  </div>
-                </section>
-              )}
-              <section className="quick-section">
-                <h2>{t("Was hast du heute vor?", "What are you up to today?")}</h2>
-                <div className="quick-actions">
-                  <button
-                    disabled={clock === null || !canCreate}
-                    onClick={() => addPage()}
-                  >
-                    <span className="quick-icon blue">
-                      <FileText size={25} />
-                    </span>
-                    <span>
-                      <strong>{t("Eine Idee festhalten", "Capture an idea")}</strong>
-                      <small>{t("Eine leere Seite voller Möglichkeiten", "A blank page full of possibilities")}</small>
-                    </span>
-                    <Plus size={20} />
-                  </button>
-                  <button
-                    disabled={clock === null || !canCreate}
-                    onClick={() => setCapture(true)}
-                  >
-                    <span className="quick-icon green">
-                      <Tray size={25} />
-                    </span>
-                    <span>
-                      <strong>{t("Schnell erfassen", "Quick capture")}</strong>
-                      <small>{t("Jetzt notieren, später sortieren", "Note it now, sort it later")}</small>
-                    </span>
-                    <Plus size={20} />
-                  </button>
-                  <button
-                    disabled={clock === null || !canCreate}
-                    onClick={() => addPage("database")}
-                  >
-                    <span className="quick-icon orange">
-                      <Table size={25} />
-                    </span>
-                    <span>
-                      <strong>{t("Ein Projekt planen", "Plan a project")}</strong>
-                      <small>{t("Aufgaben, Termine und Überblick", "Tasks, dates and an overview")}</small>
-                    </span>
-                    <Plus size={20} />
-                  </button>
-                </div>
-              </section>
-              <section className="workspace-pages">
-                <div className="section-heading">
-                  <h2>
-                    <Folder size={19} />
-                    {t("In deinem Arbeitsbereich", "In your workspace")}
-                  </h2>
-                  {canCreate && (
-                    <button
-                      className="text-button"
-                      disabled={clock === null}
-                      onClick={() => addPage()}
-                    >
-                      <Plus size={16} />
-                      {t("Neue Seite", "New page")}
-                    </button>
+            <HomeScreen
+              boot={boot}
+              pages={activePages}
+              clock={clock}
+              canCreate={canCreate}
+              customize={customizeHome}
+              openPage={(id, target) => void openPage(id, target)}
+              addPage={(kind) => addPage(kind)}
+              openCapture={() => setCapture(true)}
+              go={go}
+              mutate={mutate}
+              notify={notify}
+              notifyError={notifyError}
+              onHome={(home) => setBoot((b) => ({ ...b, home }))}
+              footnote={
+                <div className="home-footnote">
+                  <Stack size={16} />
+                  <span>{t("Weniger suchen. Mehr bewegen.", "Search less. Get more done.")}</span>
+                  {keyHints.visible && shortcutHint("search", mac) && (
+                    <span className="kbd-hint">{t(`${shortcutHint("search", mac)} zum schnellen Finden`, `${shortcutHint("search", mac)} to find things fast`)}</span>
                   )}
                 </div>
-                {activePages
-                  .filter((p) => !p.parent_id)
-                  .map((p) => (
-                    <button
-                      key={p.id}
-                      className="home-page-row"
-                      onClick={() => openPage(p.id)}
-                    >
-                      <span className="page-row-icon">
-                        <PageIcon name={p.icon} size={20} />
-                      </span>
-                      <strong>{p.title}</strong>
-                      <span>
-                        {p.kind === "database" ? t("Datenbank", "Database") : t("Dokument", "Document")}
-                      </span>
-                      <ArrowUpRight size={17} />
-                    </button>
-                  ))}
-              </section>
-              <div className="home-footnote">
-                <Stack size={16} />
-                <span>{t("Weniger suchen. Mehr bewegen.", "Search less. Get more done.")}</span>
-                {keyHints.visible && shortcutHint("search", mac) && (
-                  <span className="kbd-hint">{t(`${shortcutHint("search", mac)} zum schnellen Finden`, `${shortcutHint("search", mac)} to find things fast`)}</span>
-                )}
-              </div>
-            </div>
+              }
+            />
           )}
           {screen === "page" && (busy || !data) ? (
             busy ? (
@@ -5101,26 +4957,6 @@ function commentHitTitle(title: string, t: (de: string, en: string) => string) {
   const inline = title.match(/^Textkommentar von (.+)$/);
   if (inline) return t(`Textkommentar von ${inline[1]}`, `Text comment by ${inline[1]}`);
   return title;
-}
-function greeting(clock: number | null, t: (de: string, en: string) => string) {
-  if (clock === null) return t("Hallo", "Hello");
-  const hour = new Date(clock).getHours();
-  return hour < 11 ? t("Guten Morgen", "Good morning") : hour < 18 ? t("Hallo", "Hello") : t("Guten Abend", "Good evening");
-}
-function relativeTime(value: string, clock: number | null, locale: Locale = "de") {
-  const t = translate(locale);
-  const date = new Date(
-    /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
-      ? value
-      : value.replace(" ", "T") + "Z",
-  );
-  if (!Number.isFinite(date.getTime())) return value;
-  if (clock === null) return date.toISOString().slice(0, 10);
-  const diff = clock - date.getTime();
-  if (diff < 60000) return t("gerade eben", "just now");
-  if (diff < 3600000) return t(`vor ${Math.floor(diff / 60000)} Min.`, `${Math.floor(diff / 60000)} min ago`);
-  if (diff < 86400000) return t(`vor ${Math.floor(diff / 3600000)} Std.`, `${Math.floor(diff / 3600000)} h ago`);
-  return date.toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short" });
 }
 function InfoIcon() {
   return <Check size={18} />;

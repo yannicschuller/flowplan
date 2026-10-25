@@ -267,6 +267,8 @@ export type Bootstrap = {
   weeklyDigest?: import("./weekly-digest").WeeklyDigestPrefs;
   // Own keyboard shortcuts, only those that differ from the defaults.
   shortcuts?: import("./keymap").KeymapOverrides;
+  // The start page: layout, where it comes from, what "Reset" leads to.
+  home?: import("./home-layout").HomeState;
   myLimits?: { storageMb: number; workspaces: number; uploadMb: number; usedBytes: number; ownedWorkspaces: number } | null;
   // The language chosen in the profile (null = from the browser).
   language?: Locale | null;

@@ -97,6 +97,7 @@ import { hiddenFileIds } from "@/lib/row-files";
 import { pagePreview } from "@/lib/page-preview";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
+import { homeAction, homeData, homeOptions } from "@/lib/home-widgets";
 import { localAccountInfo, localLoginEnabled } from "@/lib/local-auth";
 import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
@@ -195,6 +196,12 @@ async function handleGET(
     const user = await requireUser();
     if (path.length === 1 && path[0] === "tokens")
       return NextResponse.json(listApiTokens(user));
+    // Choices for the start page's widget settings (lib/home-widgets.ts).
+    if (path.length === 2 && path[0] === "home" && path[1] === "options")
+      return NextResponse.json(
+        homeOptions(user, { workspaceId: url.searchParams.get("workspace"), kind: url.searchParams.get("kind"), pageId: url.searchParams.get("page") }),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     // Block extensions of a workspace (settings) or of a page's workspace (editor).
     if (path.length === 1 && path[0] === "plugins")
       return NextResponse.json(
@@ -957,7 +964,13 @@ async function handlePOST(
     const user = await requireUser();
     // Every POST here changes something; read tokens only read (the
     // Markdown export has a route of its own).
+    // The start page: data of its widgets (reads, but with the layout in
+    // the body) and what its widgets do (lib/home-widgets.ts).
+    if (path.length === 2 && path[0] === "home" && path[1] === "data")
+      return NextResponse.json(homeData(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+    if (path.length === 2 && path[0] === "home" && path[1] === "action")
+      return NextResponse.json(await homeAction(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
     // Block extensions: the manifest is fetched and checked (lib/plugins.ts).
     if (path.length === 1 && path[0] === "plugins")
       return NextResponse.json(await registerPlugin(user, await req.json()));

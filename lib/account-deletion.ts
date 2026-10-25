@@ -52,6 +52,8 @@ const PERSONAL = [
   "notifications",
   "notification_prefs",
   "user_shortcuts",
+  // Own start page layouts (lib/home-layout.ts).
+  "home_layouts",
   "page_follows",
   "page_visits",
   "presence",

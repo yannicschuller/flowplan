@@ -828,7 +828,7 @@ export type CommandResult = Record<string, unknown>;
 
 /** Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source. */
 export type CommandOther = {
-  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title";
+  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title";
   [key: string]: unknown;
 };
 
@@ -1630,11 +1630,229 @@ export type CommandShortcutsSaveResult = {
   bindings: Record<string, string[]>;
 };
 
+/** Save your start page layout. The widgets of your start page (kind, size, settings) and its look, versioned (`version: 1`, see lib/home-layout-schema.ts). `scope: "workspace"` keeps it for this workspace, `"personal"` makes it your default for every workspace without its own. At most 24 widgets and 24000 bytes. `home.reset` goes back one step, `home.note` saves the text of one note widget, `home.default` (owners) sets the layout members see by default. */
+export type CommandHomeSave = {
+  workspaceId: string;
+  scope?: "workspace" | "personal";
+  layout: {
+    version: 1;
+    widgets: ({
+      id: string;
+      kind: "greeting";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        showDate?: boolean;
+        showMessage?: boolean;
+        message?: string;
+      };
+    } | {
+      id: string;
+      kind: "recent";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        mode?: "edited" | "viewed";
+        style?: "cards" | "list";
+        max?: number;
+      };
+    } | {
+      id: string;
+      kind: "quick";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        actions?: ("page" | "capture" | "database" | "journal" | "whiteboard")[];
+      };
+    } | {
+      id: string;
+      kind: "pages";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        spaceId?: string;
+      };
+    } | {
+      id: string;
+      kind: "favorites";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        max?: number;
+      };
+    } | {
+      id: string;
+      kind: "tasks";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        source?: "mine" | "view";
+        pageId?: string;
+        viewId?: string;
+        filter?: "due" | "today" | "overdue" | "open";
+        max?: number;
+      };
+    } | {
+      id: string;
+      kind: "inbox";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        unreadOnly?: boolean;
+        max?: number;
+      };
+    } | {
+      id: string;
+      kind: "journal";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        journalId?: string;
+        quickWrite?: boolean;
+      };
+    } | {
+      id: string;
+      kind: "calendar";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        range?: "today" | "3days" | "week";
+        sources?: {
+          pageId: string;
+          viewId?: string;
+        }[];
+        tasks?: boolean;
+        max?: number;
+      };
+    } | {
+      id: string;
+      kind: "database";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        pageId?: string;
+        viewId?: string;
+        properties?: string[];
+        style?: "list" | "table" | "board";
+        max?: number;
+      };
+    } | {
+      id: string;
+      kind: "pinned";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        pageId?: string;
+        preview?: boolean;
+      };
+    } | {
+      id: string;
+      kind: "capture";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        targetId?: string;
+      };
+    } | {
+      id: string;
+      kind: "focus";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        minutes?: number;
+      };
+    } | {
+      id: string;
+      kind: "habits";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        pageId?: string;
+      };
+    } | {
+      id: string;
+      kind: "counter";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        pageId?: string;
+        viewId?: string;
+        aggregate?: "count" | "sum" | "average";
+        fieldId?: string;
+        history?: boolean;
+      };
+    } | {
+      id: string;
+      kind: "notes";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        text?: string;
+      };
+    } | {
+      id: string;
+      kind: "activity";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        max?: number;
+        records?: boolean;
+      };
+    } | {
+      id: string;
+      kind: "stats";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+      };
+    } | {
+      id: string;
+      kind: "links";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+        links?: {
+          title?: string;
+          url: string;
+        }[];
+      };
+    } | {
+      id: string;
+      kind: "instance";
+      size: "s" | "m" | "l" | "full";
+      config: {
+        title?: string;
+      };
+    })[];
+    appearance: {
+      header?: {
+        type?: "none" | "color" | "gradient" | "image";
+        value?: string;
+        position?: number;
+      };
+      density?: "comfortable" | "compact";
+      background?: "none" | "dots" | "grid" | "tint";
+      icon?: string;
+      width?: "normal" | "wide";
+    };
+  };
+  action: "home.save";
+};
+
+export type CommandHomeSaveResult = {
+  layout: unknown;
+  source: "workspace" | "personal" | "team" | "builtin";
+  fallback: unknown;
+  fallbackSource: string;
+  teamDefault: boolean;
+  updatedAt: number | null;
+};
+
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandPageCreate | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 
