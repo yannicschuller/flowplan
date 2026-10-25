@@ -3,6 +3,7 @@
 // setup with the recovery key, the unlock dialog, the page gate in front of
 // the encrypted editor, the members of a space and the key settings.
 import dynamic from "next/dynamic";
+import { loadView } from "@/components/view-fallback";
 import { useEffect, useMemo, useState } from "react";
 import { LockKey, LockKeyOpen, Printer, DownloadSimple, Warning } from "@phosphor-icons/react";
 import { Modal, download } from "./ui";
@@ -34,7 +35,7 @@ import {
   type SpaceInfo,
 } from "./e2ee-store";
 
-const EncryptedEditor = dynamic(() => import("./encrypted-editor"), { ssr: false });
+const EncryptedEditor = dynamic(() => loadView(() => import("./encrypted-editor")), { ssr: false });
 export const MIN_PASSPHRASE = 10;
 
 // ---- Setup: passphrase, then the recovery key ----

@@ -15,6 +15,7 @@ import {
 import * as Y from "yjs";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
+import { loadView } from "@/components/view-fallback";
 import {
   Eraser,
   ArrowCounterClockwise,
@@ -139,7 +140,7 @@ import {
   writingInField,
 } from "@/lib/stylus";
 
-const EmojiPicker = dynamic(() => import("../emoji-picker"), {
+const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
   loading: () => <EmojiLoading />,
 });

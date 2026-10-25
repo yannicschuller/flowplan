@@ -3,11 +3,12 @@
 // part comes with the editor and stays small; the ink engine loads with the
 // first drawing block shown (draw-block-editor.tsx).
 import { lazy, Suspense } from "react";
+import { loadView } from "@/components/view-fallback";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
 import { DrawBlock, DRAW_BLOCK_WIDTH, drawBlockHeight } from "@/lib/draw-block-node";
 import { useT } from "../i18n";
 
-const DrawBlockEditor = lazy(() => import("./draw-block-editor"));
+const DrawBlockEditor = lazy(() => loadView(() => import("./draw-block-editor")));
 
 function DrawBlockView(props: NodeViewProps) {
   const t = useT();

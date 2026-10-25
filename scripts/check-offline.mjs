@@ -89,6 +89,8 @@ try {
         body: JSON.stringify(body),
       })
     ).json();
+  // A new account skips the welcome dialog.
+  await post({ action: "profile.onboarded" });
   const workspace = await post({ action: "workspace.create", name: "Offline" });
   const boot = await (
     await fetch(`${origin}/api/bootstrap?workspace=${workspace.id}`, {
@@ -127,13 +129,19 @@ try {
     { name: "flowplan_session", value: token, url: origin, httpOnly: true },
   ]);
   const page = await context.newPage();
-  await page.goto(`${origin}/?w=${workspace.id}#settings`);
-  await page.getByRole("button", { name: "Daten", exact: true }).click();
+  await page.goto(`${origin}/?w=${workspace.id}#settings/devices`);
   await page
     .getByRole("button", { name: "Auf diesem Gerät offline verfügbar machen" })
     .click();
   await page.getByText(/offline verfügbar\./).waitFor({ timeout: 30000 });
   check("Offline-Nutzung aktiviert", true);
+  // setOffline alone leaves the service worker's own requests online in
+  // Chromium; aborting every request cuts those as well.
+  const offline = async (on) => {
+    if (on) await context.route("**/*", (route) => route.abort("internetdisconnected"));
+    else await context.unrouteAll();
+    await context.setOffline(on);
+  };
   let visit = 0;
   const open = (id) => page.goto(`${origin}/?v=${++visit}#page=${id}`);
   // One more online round so the worker stores every script it serves.
@@ -142,7 +150,7 @@ try {
   await open(table.id);
   await page.getByText("Reisepass").first().waitFor();
 
-  await context.setOffline(true);
+  await offline(true);
   await open(doc.id);
   const banner = await page
     .locator(".offline-banner")
@@ -171,10 +179,9 @@ try {
       () => false,
     );
   check("Datenbank offline lesbar", rowOk);
-  await context.setOffline(false);
+  await offline(false);
 
-  await page.goto(`${origin}/?v=${++visit}#settings`);
-  await page.getByRole("button", { name: "Daten", exact: true }).click();
+  await page.goto(`${origin}/?v=${++visit}#settings/devices`);
   await page.getByRole("button", { name: "Offline-Kopien entfernen" }).click();
   await page
     .getByText("Offline-Kopien auf diesem Gerät wurden entfernt.")
@@ -185,7 +192,7 @@ try {
     !keys.includes("flowplan-data-v1"),
     keys.join(", "),
   );
-  await context.setOffline(true);
+  await offline(true);
   // Without opt-in the worker passes requests through, so loading fails.
   const gone = await open(doc.id)
     .then(() =>

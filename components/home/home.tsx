@@ -5,6 +5,7 @@
 // and three or four on wide screens. Editing loads on demand
 // (components/home/home-editor.tsx).
 import dynamic from "next/dynamic";
+import { ViewBoundary, loadView } from "@/components/view-fallback";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SlidersHorizontal } from "@phosphor-icons/react";
 import { useLocale, useT } from "../i18n";
@@ -17,7 +18,7 @@ import { HomeEnvContext, WidgetBody, WidgetFrame, widgetHidden, type HomeEnv, ty
 import { localDay, localZone } from "./format";
 import { headerStyle } from "./look";
 
-const HomeEditor = dynamic(() => import("./home-editor"), { ssr: false });
+const HomeEditor = dynamic(() => loadView(() => import("./home-editor")), { ssr: false });
 
 export type HomeProps = {
   boot: Bootstrap;
@@ -183,6 +184,7 @@ export default function HomeScreen(props: HomeProps) {
       <div className={`home-screen bg-${look.background}`}>
         <div className={`home-content density-${look.density} width-${look.width}${editing ? " editing" : ""}`}>
           {editing && draft ? (
+            <ViewBoundary>
             <HomeEditor
               draft={draft}
               setDraft={setDraft}
@@ -194,6 +196,7 @@ export default function HomeScreen(props: HomeProps) {
               onDone={finish}
               onError={notifyError}
             />
+            </ViewBoundary>
           ) : (
             <>
               <div className="home-top">

@@ -70,6 +70,7 @@ import { anyOf, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, CrossFade, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
+import { ViewBoundary, loadView } from "@/components/view-fallback";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   Images,
@@ -225,18 +226,18 @@ function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
     />
   );
 }
-const EmojiPicker = dynamic(() => import("./emoji-picker"), {
+const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), {
   ssr: false,
   loading: () => <Loading what="emoji" />,
 });
-const DocumentEditor = dynamic(() => import("./editor"), {
+const DocumentEditor = dynamic(() => loadView(() => import("./editor")), {
   ssr: false,
   loading: () => <Loading what="document" />,
 });
-const DashboardView = dynamic(() => import("./dashboard-view"), { ssr: false });
+const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // Notebooks bring the ink engine: loaded with the first notebook.
-const NotebookView = dynamic(() => import("./notebook/notebook-view"), { ssr: false, loading: () => <PageSkeleton compact /> });
-const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), {
+const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
+const Whiteboard = dynamic(() => loadView(() => import("./whiteboard/whiteboard")), {
   ssr: false,
   loading: () => <Loading what="whiteboard" />,
 });
@@ -2939,6 +2940,9 @@ export default function WorkspaceApp({
                       }
                     />
                   )}
+                  {/* A part that fails (offline, not in the copy) shows a
+                      message instead of taking the app down (#47). */}
+                  <ViewBoundary key={`view-${data.page.id}`}>
                   {data.page.kind === "database" ? (
                     <>
                       {offlineQueue.queue.some(
@@ -3075,6 +3079,7 @@ export default function WorkspaceApp({
                     )}
                     </>
                   )}
+                  </ViewBoundary>
                   <div className="backlinks">
                     {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
                     {!data.locked && !data.encrypted && (

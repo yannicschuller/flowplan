@@ -2077,6 +2077,27 @@ export class FlowplanClient {
   }>("GET", `/api/offline/changes`, { query }, options);
   }
 
+  /** The app's files for an offline copy — Every file of the running client build under `/_next/static` (scripts, styles, fonts, workers) with its size, the build id and the version. A device that keeps an offline copy stores them in a cache named after the build, so parts of the app never opened online load offline as well. (GET /api/offline/assets) */
+  async offlineAssets(options?: RequestOptions): Promise<{
+    build: string;
+    version: string;
+    bytes: number;
+    files: {
+      path: string;
+      size: number;
+    }[];
+  }> {
+    return this.json<{
+    build: string;
+    version: string;
+    bytes: number;
+    files: {
+      path: string;
+      size: number;
+    }[];
+  }>("GET", `/api/offline/assets`, {}, options);
+  }
+
   /** Links between pages as a graph (GET /api/graph) */
   async graph(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/graph`, { query }, options);

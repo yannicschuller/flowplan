@@ -3,6 +3,7 @@ import { tr } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { loadView } from "@/components/view-fallback";
 import { ImageSquare, Smiley, Trash } from "@phosphor-icons/react";
 import { Modal, PageIcon } from "./ui";
 import {
@@ -11,7 +12,7 @@ import {
   workspaceLetterIcon,
 } from "@/lib/workspace-icon";
 
-const EmojiPicker = dynamic(() => import("./emoji-picker"), {
+const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), {
   ssr: false,
   loading: () => <p className="muted">{tr("Emojis werden geladen …", "Loading emojis …")}</p>,
 });

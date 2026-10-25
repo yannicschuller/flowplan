@@ -6,12 +6,13 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { loadView } from "@/components/view-fallback";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
 import { ArrowsClockwise, ArrowSquareOut, Trash } from "@phosphor-icons/react";
 import { SyncedBlock } from "@/lib/document-schema";
 import type { Page, User } from "@/lib/types";
 
-const DocumentEditor = dynamic(() => import("./editor"), { ssr: false });
+const DocumentEditor = dynamic(() => loadView(() => import("./editor")), { ssr: false });
 
 export type SyncedContext = {
   userId: string;

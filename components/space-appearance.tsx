@@ -3,10 +3,11 @@ import { tr } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { Select } from "./select";
 import dynamic from "next/dynamic";
+import { loadView } from "@/components/view-fallback";
 import { useState } from "react";
 import { spaceColors } from "@/lib/space-appearance";
 import { PageIcon } from "./ui";
-const EmojiPicker = dynamic(() => import("./emoji-picker"), {
+const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), {
   loading: () => <p>{tr("Emojis werden geladen …", "Loading emojis …")}</p>,
 });
 export function SpaceIcon({

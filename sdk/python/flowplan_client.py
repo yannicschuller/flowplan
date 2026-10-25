@@ -1542,6 +1542,10 @@ class FlowplanClient:
         """What changed for an offline copy — Every page you may read now (outside the trash, no journal behind a PIN) and, since `since`, the pages and visible records whose content changed. Without `since` (or one older than the change log) `full` is true and every page counts as changed. Pass `now` as the next `since`. (GET /api/offline/changes)"""
         return self._json("GET", "/api/offline/changes", query=dict(query) if query else None, headers=headers)
 
+    def offline_assets(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """The app's files for an offline copy — Every file of the running client build under `/_next/static` (scripts, styles, fonts, workers) with its size, the build id and the version. A device that keeps an offline copy stores them in a cache named after the build, so parts of the app never opened online load offline as well. (GET /api/offline/assets)"""
+        return self._json("GET", "/api/offline/assets", headers=headers)
+
     def graph(self, query: "GraphQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Links between pages as a graph (GET /api/graph)"""
         return self._json("GET", "/api/graph", query=dict(query) if query else None, headers=headers)

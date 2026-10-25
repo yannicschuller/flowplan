@@ -15,9 +15,17 @@ import {
   planRecords,
 } from "@/lib/offline-plan";
 import type { OfflineChanges } from "@/lib/offline-changes";
+import {
+  LEGACY_STATIC_CACHE,
+  fitsQuota,
+  isStaticCache,
+  missingAssets,
+  staleStaticCaches,
+  staticCacheName,
+  type OfflineAssets,
+} from "@/lib/offline-assets";
 
-const STATIC_CACHE = "flowplan-static-v1",
-  DATA_CACHE = "flowplan-data-v1",
+const DATA_CACHE = "flowplan-data-v1",
   SETTINGS_CACHE = "flowplan-settings",
   OFFLINE_MARKER = "/__flowplan-offline";
 // Record documents and files never opened here: at most this much.
@@ -38,6 +46,20 @@ export type OfflineMarker = {
   pages?: number;
   bytes?: number;
   includeRecords?: boolean;
+  // The app's own files (#47): build and version of the stored copy, how
+  // many of its files are stored, and whether "/" (the app's page) belongs
+  // to that build. "space": the device has no room for them.
+  app?: OfflineApp;
+};
+export type OfflineApp = {
+  build: string;
+  version: string;
+  stored: number;
+  total: number;
+  bytes: number;
+  complete: boolean;
+  shell?: boolean;
+  space?: boolean;
 };
 
 export const offlineSupported = () =>
@@ -84,6 +106,8 @@ export async function disableOffline() {
   generation++;
   await (await caches.open(SETTINGS_CACHE)).delete(OFFLINE_MARKER);
   await caches.delete(DATA_CACHE);
+  // The app's files are of no use without the copy: their room is freed.
+  for (const name of await caches.keys()) if (isStaticCache(name)) await caches.delete(name);
   await unregisterPeriodicSync().catch(() => undefined);
   await notifyWorker();
   window.dispatchEvent(new Event(OFFLINE_CHANGED));
@@ -109,18 +133,8 @@ export async function enableOffline(
     includeRecords: previous?.user === userId ? (previous.includeRecords ?? includeRecords) : includeRecords,
   });
   await notifyWorker();
-  // Scripts and styles already loaded by this page.
-  const assets = [
-    ...new Set(
-      performance
-        .getEntriesByType("resource")
-        .map((e) => new URL(e.name))
-        .filter((u) => u.origin === location.origin && u.pathname.startsWith("/_next/static/"))
-        .map((u) => u.pathname + u.search),
-    ),
-  ];
-  const statics = await caches.open(STATIC_CACHE);
-  await Promise.all(assets.map((asset) => statics.add(asset).catch(() => undefined)));
+  // The app's files follow with the refresh: all of them, not only the
+  // ones this page loaded (#47).
   const result = await refreshOffline({ full: true, onProgress });
   if (result.status !== "signed-out") void registerPeriodicSync();
   return result;
@@ -159,6 +173,79 @@ async function cacheBytes(cache: Cache) {
 }
 
 class SignedOut extends Error {}
+
+// Stores every file of the build in its own cache (flowplan-static-<build>).
+// Files an older build shares (unchanged chunks keep their names) are
+// copied from its cache; the others are fetched, four at a time. Once all
+// are there and the stored app's page belongs to this build, the caches of
+// older builds go.
+export async function storeApp(
+  assets: OfflineAssets,
+  {
+    shell,
+    live,
+    onStart,
+    onFile,
+  }: {
+    shell: boolean;
+    live: () => Promise<boolean>;
+    onStart?: (missing: number) => void;
+    onFile?: () => void;
+  },
+): Promise<OfflineApp> {
+  const cache = await caches.open(staticCacheName(assets.build));
+  const missing = missingAssets(assets.files, (await cache.keys()).map(keyOf));
+  const app: OfflineApp = {
+    build: assets.build,
+    version: assets.version,
+    stored: assets.files.length - missing.length,
+    total: assets.files.length,
+    bytes: assets.bytes,
+    complete: false,
+    shell,
+  };
+  onStart?.(missing.length);
+  const others = (await caches.keys()).filter((name) => isStaticCache(name) && name !== staticCacheName(assets.build));
+  const reused = async (path: string) => {
+    for (const name of others) {
+      const hit = await (await caches.open(name)).match(path);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  // Only what is neither stored nor available from an older build counts
+  // against the device's room.
+  let needed = 0;
+  for (const file of missing) if (!(await reused(file.path))) needed += file.size;
+  const estimate = await navigator.storage?.estimate?.().catch(() => null);
+  if (!fitsQuota(needed, estimate)) return { ...app, space: true };
+  await inQueue(
+    missing.map((file) => file.path),
+    async (path) => {
+      try {
+        if (!(await live())) return;
+        const old = await reused(path);
+        if (old) await cache.put(path, old);
+        else {
+          // Past the service worker (it would store the file a second time);
+          // the browser's HTTP cache may still answer.
+          const response = await fetch(path, { credentials: "same-origin", headers: { [OFFLINE_HEADER]: "1" } });
+          if (!response.ok) throw new Error(String(response.status));
+          await cache.put(path, response);
+        }
+        app.stored++;
+      } catch {
+        // Counted as missing; the next refresh tries again.
+      } finally {
+        onFile?.();
+      }
+    },
+  );
+  app.complete = app.stored >= app.total;
+  if (app.complete && shell)
+    for (const name of staleStaticCaches(await caches.keys(), assets.build)) await caches.delete(name);
+  return app;
+}
 // The answer only counts as JSON from a valid session: a 401 or a sign-in
 // page (an expired session) must never replace the stored copy.
 async function fetchJson(url: string) {
@@ -221,12 +308,13 @@ async function refreshNow({
   onProgress?: (done: number, total: number) => void;
 }): Promise<RefreshResult> {
   const result: RefreshResult = { status: "done", fetched: 0, dropped: 0 };
+  let incomplete = false;
   const marker = await offlineMarker();
   if (!marker) return { ...result, status: "disabled" };
   const started = generation;
   const live = async () => started === generation && (await offlineOwner()) === marker.user;
   let done = 0,
-    total = 2;
+    total = 3;
   const progress = () => onProgress?.(done, total);
   progress();
   try {
@@ -247,11 +335,22 @@ async function refreshNow({
     if (!changesAnswer.text) return { ...result, status: "incomplete" };
     const changes = JSON.parse(changesAnswer.text) as OfflineChanges;
     const everything = full || changes.full;
+    // The app's files of the running build (one small list).
+    const assetsAnswer = await fetchJson("/api/offline/assets").catch((error) => {
+      if (error instanceof SignedOut) throw error;
+      return null;
+    });
+    done++;
+    const assets = assetsAnswer?.text ? (JSON.parse(assetsAnswer.text) as OfflineAssets) : null;
+    // No list (an older server, a failed request): the copy is not complete.
+    // An empty one (a development server without a build) has nothing to store.
+    if (!assets) incomplete = true;
+    // A new release: the app's page is stored again with its new files.
+    const newBuild = !!assets?.files?.length && (marker.app?.build !== assets.build || !marker.app?.shell);
     if (!(await live())) return { ...result, status: "disabled" };
     const data = await caches.open(DATA_CACHE);
     await data.put(`/api/bootstrap?workspace=${workspaceId}`, stored(boot.response, boot.text));
     if (!workspace) await data.put("/api/bootstrap", stored(boot.response, boot.text));
-    let incomplete = false;
     const drop = async (key: string) => {
       if (await data.delete(key)) result.dropped++;
     };
@@ -280,17 +379,19 @@ async function refreshNow({
     if (!(await live())) return { ...result, status: "disabled" };
     // The app itself carries the page tree: stored again when pages changed,
     // with the scripts it needs. The sign-in page is never stored.
-    if (everything || pages.fetch.length || pages.drop.length) {
+    let shell = false;
+    if (everything || newBuild || pages.fetch.length || pages.drop.length) {
       total++;
       try {
         const response = await fetch("/", { cache: "no-store", credentials: "same-origin", headers: { [OFFLINE_HEADER]: "1" } });
         const html = response.ok ? await response.text() : "";
         if (html.includes('data-signed-out=""')) throw new SignedOut();
         if (html && (await live())) {
-          const statics = await caches.open(STATIC_CACHE);
-          const assets = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&")))];
-          for (const asset of assets) if (!(await statics.match(asset))) await statics.add(asset).catch(() => undefined);
+          const statics = await caches.open(assets ? staticCacheName(assets.build) : LEGACY_STATIC_CACHE);
+          const found = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&")))];
+          for (const asset of found) if (!(await statics.match(asset))) await statics.add(asset).catch(() => undefined);
           await data.put("/", stored(response, html));
+          shell = true;
         } else if (!html) incomplete = true;
       } catch (error) {
         if (error instanceof SignedOut) throw error;
@@ -298,6 +399,26 @@ async function refreshNow({
       }
       done++;
       progress();
+    }
+
+    // The app's own files: every file of the build, once per release.
+    let app = marker.app;
+    if (assets?.files?.length) {
+      app = await storeApp(assets, {
+        shell: shell || (marker.app?.build === assets.build && !!marker.app?.shell),
+        live,
+        onStart: (missing) => {
+          total += missing;
+          progress();
+        },
+        onFile: () => {
+          done++;
+          progress();
+        },
+      });
+      // Too little room is no reason to ask for the pages again and again.
+      if (!app.complete && !app.space) incomplete = true;
+      if (!(await live())) return { ...result, status: "disabled" };
     }
 
     // 2. Record documents of the stored databases.
@@ -393,6 +514,7 @@ async function refreshNow({
       workspace: workspaceId,
       pages: pageCount,
       bytes: await cacheBytes(data),
+      ...(app ? { app } : {}),
       // An incomplete run keeps the old position, so nothing is skipped.
       ...(incomplete ? {} : { lastRefresh: Date.now(), cursor: changes.now }),
     });
@@ -403,7 +525,10 @@ async function refreshNow({
     throw error;
   } finally {
     // Switched off meanwhile: nothing fetched may stay behind.
-    if (started !== generation || !(await offlineMarker())) await caches.delete(DATA_CACHE).catch(() => undefined);
+    if (started !== generation || !(await offlineMarker())) {
+      await caches.delete(DATA_CACHE).catch(() => undefined);
+      for (const name of await caches.keys().catch(() => [])) if (isStaticCache(name)) await caches.delete(name);
+    }
   }
 }
 

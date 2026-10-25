@@ -190,7 +190,8 @@ import {
 } from "@/lib/field-format";
 import { IconImagePicker } from "./icon-image-picker";
 import dynamic from "next/dynamic";
-const EmojiPicker = dynamic(() => import("./emoji-picker"), { ssr: false });
+import { loadView } from "@/components/view-fallback";
+const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), { ssr: false });
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import type {
   Database,

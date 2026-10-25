@@ -7,6 +7,7 @@
 // the arrow keys. components/workspace-app.tsx keeps which page is open in
 // the address (?split=<id>) and turns it off on narrow screens.
 import dynamic from "next/dynamic";
+import { ViewBoundary, loadView } from "@/components/view-fallback";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowSquareOut, X } from "@phosphor-icons/react";
 import { useStatusLabel, useT } from "./i18n";
@@ -16,10 +17,10 @@ import { readModeIds } from "@/lib/read-mode";
 import type { Page, Role, User } from "@/lib/types";
 import type { AiStatus } from "@/lib/ai/features";
 
-const DocumentEditor = dynamic(() => import("./editor"), { ssr: false, loading: () => <PageSkeleton compact /> });
-const DashboardView = dynamic(() => import("./dashboard-view"), { ssr: false });
-const NotebookView = dynamic(() => import("./notebook/notebook-view"), { ssr: false, loading: () => <PageSkeleton compact /> });
-const Whiteboard = dynamic(() => import("./whiteboard/whiteboard"), { ssr: false, loading: () => <PageSkeleton compact /> });
+const DocumentEditor = dynamic(() => loadView(() => import("./editor")), { ssr: false, loading: () => <PageSkeleton compact /> });
+const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
+const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
+const Whiteboard = dynamic(() => loadView(() => import("./whiteboard/whiteboard")), { ssr: false, loading: () => <PageSkeleton compact /> });
 
 type PaneData = DatabaseData & {
   page: Page;
@@ -288,7 +289,7 @@ export function SplitPane({
               <PageIcon name={data.page.icon} size={26} /> {data.page.title || t("Ohne Titel", "Untitled")}
             </h1>
           )}
-          {body}
+          <ViewBoundary key={pageId}>{body}</ViewBoundary>
         </article>
       </div>
     </section>

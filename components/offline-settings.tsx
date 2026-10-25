@@ -116,13 +116,28 @@ export function OfflineSettings({
     }
   }
   const updated = marker?.lastRefresh;
+  // The app's own files (#47): stored completely for this version or not yet.
+  const appState = ({ app }: OfflineMarker) =>
+    !app
+      ? t("App-Dateien werden beim nächsten Aktualisieren gespeichert.", "The app's files are stored with the next update.")
+      : app.complete
+        ? `${t(`Die App ist für die Offline-Nutzung gespeichert (Version ${app.version || "?"})`, `The app is stored for offline use (version ${app.version || "?"})`)} · ${bytes(app.bytes)}`
+        : app.space
+          ? t(
+              `Zu wenig Speicherplatz für die App (${bytes(app.bytes)}) – Teile, die du nie online geöffnet hast, fehlen offline.`,
+              `Not enough storage for the app (${bytes(app.bytes)}) – parts you never opened online are missing offline.`,
+            )
+          : t(
+              `App erst teilweise gespeichert: ${app.stored} von ${app.total} Dateien (Version ${app.version || "?"})`,
+              `App only partly stored: ${app.stored} of ${app.total} files (version ${app.version || "?"})`,
+            );
   return (
     <SettingGroup
       id="offline"
       title={t("Offline-Nutzung", "Offline use")}
       description={t(
-        "Speichert die App und die Seiten dieses Arbeitsbereichs auf diesem Gerät, damit du sie ohne Verbindung öffnen kannst. Solange die App geöffnet ist, hält sie die Kopie aktuell. Nur auf eigenen Geräten aktivieren: Die Kopien bleiben bis zum Abmelden oder Ausschalten erhalten.",
-        "Stores the app and this workspace's pages on this device so you can open them without a connection. While the app is open it keeps the copy current. Only enable on your own devices: the copies stay until you sign out or turn this off.",
+        "Speichert die ganze App (einmal je Version, etwa 15–20 MB) und die Seiten dieses Arbeitsbereichs auf diesem Gerät, damit du sie ohne Verbindung öffnen kannst. Solange die App geöffnet ist, hält sie die Kopie aktuell. Nur auf eigenen Geräten aktivieren: Die Kopien bleiben bis zum Abmelden oder Ausschalten erhalten.",
+        "Stores the whole app (once per version, about 15–20 MB) and this workspace's pages on this device so you can open them without a connection. While the app is open it keeps the copy current. Only enable on your own devices: the copies stay until you sign out or turn this off.",
       )}
     >
       {!supported ? (
@@ -138,6 +153,10 @@ export function OfflineSettings({
                 {updated ? t("Offline-Kopie aktualisiert", "Offline copy updated") + " " + ago(updated, Date.now(), locale) : t("Offline-Kopie noch nicht vollständig", "Offline copy not complete yet")}
                 {marker.pages !== undefined && ` · ${pagesText(marker.pages)}`}
                 {marker.bytes !== undefined && ` · ${bytes(marker.bytes)}`}
+                <br />
+                <span className="offline-app" data-testid="offline-app">
+                  {appState(marker)}
+                </span>
               </span>
             }
           >

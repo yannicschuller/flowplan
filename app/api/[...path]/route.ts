@@ -16,6 +16,7 @@ import { requireBodySize, sanitizeFileName, stripLocation, verifiedMime } from "
 import { boardCursors, moveCursor, watchBoard } from "@/lib/whiteboard-presence";
 import { storageOverview } from "@/lib/storage-overview";
 import { offlineChanges, parseSince } from "@/lib/offline-changes";
+import { offlineAssets } from "@/lib/offline-assets-server";
 import { notificationFeed } from "@/lib/notification-feed";
 import { avatarFor } from "@/lib/avatars";
 import { mediaLibrary } from "@/lib/media-library";
@@ -315,6 +316,10 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    // The app's own files for the offline copy (#47): every file of the
+    // client build, so parts never opened online load offline as well.
+    if (path.length === 2 && path[0] === "offline" && path[1] === "assets")
+      return NextResponse.json(offlineAssets(), { headers: { "Cache-Control": "no-store" } });
     // Openly licensed images (Openverse) for boards and documents.
     if (path.length === 2 && path[0] === "images" && path[1] === "search") {
       if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");

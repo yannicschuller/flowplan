@@ -8,11 +8,12 @@ import {
   type NodeViewProps,
 } from "@tiptap/react";
 import dynamic from "next/dynamic";
+import { loadView } from "@/components/view-fallback";
 import { LinkedDatabase } from "@/lib/document-schema";
 import type { Page, User, Role } from "@/lib/types";
 import type { DatabaseData } from "./database-view";
 import { api } from "./ui";
-const DatabaseView = dynamic(() => import("./database-view"), {
+const DatabaseView = dynamic(() => loadView(() => import("./database-view")), {
   ssr: false,
   loading: () => <p>{tr("Ansicht wird geöffnet …", "Opening view …")}</p>,
 });

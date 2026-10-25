@@ -6,6 +6,7 @@
 // default for all of them. Owners can make the layout the workspace's
 // default for members who have not set up their own.
 import dynamic from "next/dynamic";
+import { loadView } from "@/components/view-fallback";
 import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
@@ -49,7 +50,7 @@ import { groupNames, widgetIcon, widgetMeta, widgetName, type WidgetGroup } from
 import { WidgetBody, WidgetFrame } from "./widgets";
 import { GRADIENTS, headerStyle } from "./look";
 
-const EmojiPicker = dynamic(() => import("../emoji-picker"), { ssr: false });
+const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), { ssr: false });
 
 type T = (de: string, en: string) => string;
 const sizeName = (size: WidgetSize, t: T) =>

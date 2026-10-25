@@ -1,10 +1,44 @@
 /* Flowplan service worker: Web Push and, only after opting in on this
    device, offline copies of the app shell, workspace and page data. */
-const STATIC_CACHE = "flowplan-static-v1",
-  DATA_CACHE = "flowplan-data-v1",
+const DATA_CACHE = "flowplan-data-v1",
   SETTINGS_CACHE = "flowplan-settings",
   OFFLINE_MARKER = "/__flowplan-offline";
-let offlineEnabled;
+/* The app's own files live in one cache per build (flowplan-static-<build>,
+   #47): components/offline.ts stores every file of the build there and
+   removes the caches of older builds. Mirrors lib/offline-assets.ts
+   (tests/offline-assets.test.ts compares them). */
+const STATIC_PREFIX = "flowplan-static-",
+  LEGACY_STATIC_CACHE = "flowplan-static-v1",
+  STORAGE_RESERVE = 20 * 1024 * 1024;
+const offlineAssets = {
+  staticCacheName(build) {
+    return `${STATIC_PREFIX}${build}`;
+  },
+  isStaticCache(name) {
+    return name.startsWith(STATIC_PREFIX);
+  },
+  staleStaticCaches(names, build) {
+    const current = offlineAssets.staticCacheName(build);
+    return names.filter((name) => offlineAssets.isStaticCache(name) && name !== current);
+  },
+  missingAssets(files, keys) {
+    const stored = new Set(keys);
+    return files.filter((file) => !stored.has(file.path));
+  },
+  fitsQuota(bytes, estimate) {
+    if (!estimate?.quota) return true;
+    return estimate.quota - (estimate.usage || 0) - STORAGE_RESERVE >= bytes;
+  },
+};
+let offlineEnabled, staticCache;
+// The cache files loaded online go to: the build of the stored copy.
+async function currentStaticCache() {
+  if (staticCache === undefined) {
+    const build = (await offlineMarker())?.app?.build;
+    staticCache = build ? offlineAssets.staticCacheName(build) : LEGACY_STATIC_CACHE;
+  }
+  return staticCache;
+}
 async function offlineReady() {
   if (offlineEnabled === undefined)
     offlineEnabled = !!(await (await caches.open(SETTINGS_CACHE)).match(
@@ -14,7 +48,10 @@ async function offlineReady() {
 }
 // Pages post this after switching offline use on or off.
 self.addEventListener("message", (event) => {
-  if (event.data?.type === "flowplan-offline") offlineEnabled = undefined;
+  if (event.data?.type === "flowplan-offline") {
+    offlineEnabled = undefined;
+    staticCache = undefined;
+  }
 });
 function offlineKind(request, url) {
   if (request.method !== "GET" || url.origin !== self.location.origin)
@@ -43,8 +80,10 @@ async function signedOut(request, response) {
   if (request.mode !== "navigate") return false;
   return (await response.clone().text()).includes(SIGNED_OUT);
 }
-// Network first; the stored copy is used only when the network fails.
-async function networkFirst(request, cacheName, key) {
+// Network first; the stored copy is used only when the network fails. The
+// app's files are looked up in every build's cache: unchanged files keep
+// their names across releases.
+async function networkFirst(request, cacheName, key, anyCache = false) {
   try {
     const response = await fetch(request);
     if (response.ok && response.type === "basic" && !(await signedOut(request, response))) {
@@ -53,7 +92,7 @@ async function networkFirst(request, cacheName, key) {
     }
     return response;
   } catch (error) {
-    const cached = await (await caches.open(cacheName)).match(key);
+    const cached = anyCache ? await caches.match(key) : await (await caches.open(cacheName)).match(key);
     if (cached) return cached;
     throw error;
   }
@@ -67,8 +106,9 @@ self.addEventListener("fetch", (event) => {
       if (!(await offlineReady())) return fetch(event.request);
       return networkFirst(
         event.request,
-        kind === "static" ? STATIC_CACHE : DATA_CACHE,
+        kind === "static" ? await currentStaticCache() : DATA_CACHE,
         event.request.mode === "navigate" ? "/" : url.pathname + url.search,
+        kind === "static",
       );
     })(),
   );
@@ -186,6 +226,54 @@ async function offlineJson(url) {
   if (!(response.headers.get("content-type") || "").includes("application/json")) throw new Error("signed-out");
   return { response, text: await response.text() };
 }
+// Every file of the build in its cache (components/offline.ts storeApp).
+async function storeApp(assets, shell, owner) {
+  const name = offlineAssets.staticCacheName(assets.build);
+  const cache = await caches.open(name);
+  const missing = offlineAssets.missingAssets(assets.files, (await cache.keys()).map(cacheKey));
+  const app = {
+    build: assets.build,
+    version: assets.version,
+    stored: assets.files.length - missing.length,
+    total: assets.files.length,
+    bytes: assets.bytes,
+    complete: false,
+    shell,
+  };
+  const others = (await caches.keys()).filter((n) => offlineAssets.isStaticCache(n) && n !== name);
+  const reused = async (path) => {
+    for (const other of others) {
+      const hit = await (await caches.open(other)).match(path);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  let needed = 0;
+  for (const file of missing) if (!(await reused(file.path))) needed += file.size;
+  const estimate = await self.navigator.storage?.estimate?.().catch(() => null);
+  if (!offlineAssets.fitsQuota(needed, estimate)) return { ...app, space: true };
+  const list = missing.map((file) => file.path);
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    for (let path = list.shift(); path; path = list.shift()) {
+      try {
+        if (!(await owner())) return;
+        const old = await reused(path);
+        if (old) await cache.put(path, old);
+        else {
+          const response = await fetch(path, { credentials: "same-origin" });
+          if (!response.ok) throw new Error(String(response.status));
+          await cache.put(path, response);
+        }
+        app.stored++;
+      } catch {}
+    }
+  }));
+  app.complete = app.stored >= app.total;
+  if (app.complete && shell)
+    for (const stale of offlineAssets.staleStaticCaches(await caches.keys(), assets.build)) await caches.delete(stale);
+  staticCache = undefined;
+  return app;
+}
 async function backgroundRefresh() {
   const marker = await offlineMarker();
   if (!marker?.user || !marker.workspace) return;
@@ -218,23 +306,40 @@ async function backgroundRefresh() {
       for (let url = list.shift(); url; url = list.shift()) await fetchInto(url);
     }));
   };
+  // The app's files of the running build; a new release stores the app's
+  // page again with them.
+  const assets = await offlineJson("/api/offline/assets").then(
+    (result) => (result.text ? JSON.parse(result.text) : null),
+    (error) => {
+      if (error.message === "signed-out") throw error;
+      return null;
+    },
+  );
+  if (!assets) incomplete = true;
+  const newBuild = !!assets?.files?.length && (marker.app?.build !== assets.build || !marker.app?.shell);
   let keys = (await data.keys()).map(cacheKey);
   const pages = offlinePlan.planPages({ keys, readable: changes.pages, changed: changes.changed, full: changes.full });
   for (const key of pages.drop) await data.delete(key);
   await queue(pages.fetch);
   // The app itself carries the page tree.
-  if (pages.fetch.length || pages.drop.length) {
+  let shell = false;
+  if (newBuild || pages.fetch.length || pages.drop.length) {
     const response = await fetch("/", { cache: "no-store", credentials: "same-origin", headers: { "x-flowplan-offline": "1" } }).catch(() => null);
     const html = response?.ok ? await response.text() : "";
     if (html.includes(SIGNED_OUT)) throw new Error("signed-out");
     if (html && (await owner())) {
       // With the scripts and styles it needs (a new version of the app).
-      const statics = await caches.open(STATIC_CACHE);
-      const assets = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&")))];
-      for (const asset of assets) if (!(await statics.match(asset))) await statics.add(asset).catch(() => undefined);
+      const statics = await caches.open(assets ? offlineAssets.staticCacheName(assets.build) : LEGACY_STATIC_CACHE);
+      const found = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&")))];
+      for (const asset of found) if (!(await statics.match(asset))) await statics.add(asset).catch(() => undefined);
       await data.put("/", new Response(html, { headers: response.headers }));
+      shell = true;
     }
   }
+  const app = assets?.files?.length
+    ? await storeApp(assets, shell || (marker.app?.build === assets.build && !!marker.app?.shell), owner)
+    : marker.app;
+  if (app && !app.complete && !app.space) incomplete = true;
   keys = (await data.keys()).map(cacheKey);
   const rows = {};
   for (const key of keys.filter((k) => PAGE_EXACT.test(k))) {
@@ -267,6 +372,7 @@ async function backgroundRefresh() {
     ...current,
     pages: (await data.keys()).map(cacheKey).filter((k) => PAGE_EXACT.test(k)).length,
     bytes,
+    ...(app ? { app } : {}),
     ...(incomplete ? {} : { lastRefresh: Date.now(), cursor: changes.now }),
   };
   await (await caches.open(SETTINGS_CACHE)).put(OFFLINE_MARKER, new Response(JSON.stringify(next)));

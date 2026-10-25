@@ -5,6 +5,7 @@
 // only read.
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { ViewBoundary, loadView } from "@/components/view-fallback";
 import {
   ArrowDown,
   ArrowUp,
@@ -31,8 +32,8 @@ import type { DashboardSources } from "@/lib/dashboard";
 import type { DatabaseData } from "./database-view";
 import type { Field, Page, Role, Row, User, View } from "@/lib/types";
 
-const DatabaseView = dynamic(() => import("./database-view"), { ssr: false });
-const DatabaseChart = dynamic(() => import("./database-chart"), { ssr: false });
+const DatabaseView = dynamic(() => loadView(() => import("./database-view")), { ssr: false });
+const DatabaseChart = dynamic(() => loadView(() => import("./database-chart")), { ssr: false });
 
 export type DashboardPayload = {
   tiles: Tile[];
@@ -217,14 +218,17 @@ export default function DashboardView({
               )}
             </header>
             <div className="dashboard-tile-body">
-              <TileBody
-                tile={tile}
-                data={dashboard.data[tile.id]}
-                userId={userId}
-                members={members}
-                pages={pages}
-                onError={onError}
-              />
+              {/* One tile that fails leaves the others standing (#47). */}
+              <ViewBoundary>
+                <TileBody
+                  tile={tile}
+                  data={dashboard.data[tile.id]}
+                  userId={userId}
+                  members={members}
+                  pages={pages}
+                  onError={onError}
+                />
+              </ViewBoundary>
             </div>
           </section>
         ))}

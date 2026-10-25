@@ -3,12 +3,13 @@ import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "./i18n";
 import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { Clock, Plus, SquaresFour } from "@phosphor-icons/react";
+import { ViewBoundary, loadView } from "@/components/view-fallback";
+import { Clock, CloudSlash, Plus, SquaresFour } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
 import { VersionChanges } from "./version-changes";
 import type { Page, User } from "@/lib/types";
 import type { SaveStatus } from "@/lib/save-status";
-const DocumentEditor = dynamic(() => import("./editor"), { ssr: false });
+const DocumentEditor = dynamic(() => loadView(() => import("./editor")), { ssr: false });
 type RowDocumentData = {
   html: string;
   state: string;
@@ -42,7 +43,9 @@ export default function RowDocument({
     [history, setHistory] = useState(false),
     [changes, setChanges] = useState<string | null>(null),
     [saveTemplate, setSaveTemplate] = useState(false),
-    [name, setName] = useState("");
+    [name, setName] = useState(""),
+    // Offline and not in the device's copy (#47).
+    [unavailable, setUnavailable] = useState(false);
   const refresh = useCallback(async () => {
     const next = await api<RowDocumentData>(
       `/api/pages/${pageId}/rows/${rowId}`,
@@ -54,11 +57,26 @@ export default function RowDocument({
     );
   }, [pageId, rowId]);
   useEffect(() => {
-    void refresh().catch((e) => onError(e.message));
+    const load = () =>
+      refresh().then(
+        () => setUnavailable(false),
+        (e) => {
+          // No connection (fetch fails) and no stored copy of the record.
+          if (!navigator.onLine || e instanceof TypeError) setUnavailable(true);
+          else onError(e.message);
+        },
+      );
+    void load();
     const timer = setInterval(() => {
       if (navigator.onLine) void refresh().catch(() => {});
     }, 8000);
-    return () => clearInterval(timer);
+    // Back online: the record loads by itself.
+    const back = () => void load();
+    window.addEventListener("online", back);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", back);
+    };
   }, [refresh, onError]);
   const onHtml = useCallback(() => {}, []);
   async function act(action: string, extra: Record<string, unknown> = {}) {
@@ -97,6 +115,7 @@ export default function RowDocument({
         )}
       </div>
       {data ? (
+        <ViewBoundary key={rowId}>
         <DocumentEditor
           key={`${rowId}-${data.generation}`}
           pageId={pageId}
@@ -112,6 +131,13 @@ export default function RowDocument({
           onError={onError}
           onHtml={onHtml}
         />
+        </ViewBoundary>
+      ) : unavailable ? (
+        <div className="empty-state small row-document-offline" role="status">
+          <CloudSlash size={28} aria-hidden />
+          <p>{t("Dieser Eintrag ist offline nicht verfügbar.", "This record is not available offline.")}</p>
+          <p>{t("Er wird geladen, sobald du wieder online bist.", "It loads as soon as you are back online.")}</p>
+        </div>
       ) : (
         <p className="muted">{t("Dokument wird geladen …", "Loading document …")}</p>
       )}

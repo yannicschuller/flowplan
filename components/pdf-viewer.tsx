@@ -5,12 +5,13 @@
 // mounted once in the root layout and loads the viewer (pdf-viewer-dialog.tsx)
 // when a PDF is opened. PdfThumbnail draws the first page.
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { loadView } from "@/components/view-fallback";
 import { FilePdf } from "@phosphor-icons/react";
 import { canvasSize } from "@/lib/ink/coords";
 
 export type PdfDocument = import("pdfjs-dist").PDFDocumentProxy;
 // The viewer itself (pages, zoom, annotating) loads on first use.
-const PdfViewerDialog = lazy(() => import("./pdf-viewer-dialog"));
+const PdfViewerDialog = lazy(() => loadView(() => import("./pdf-viewer-dialog")));
 const EVENT = "flowplan:pdf";
 
 export function openPdf(src: string, title: string) {
