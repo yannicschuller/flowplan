@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 63) return;
+  if (globalDb.flowplanSchema === 64) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -882,7 +882,12 @@ function migrate(d: DatabaseSync) {
   // rows go once the result was read, at the latest after an hour.
   d.exec(`CREATE TABLE IF NOT EXISTS push_tests(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,subscription_id TEXT NOT NULL,created_at INTEGER NOT NULL,status TEXT,channel TEXT,detail TEXT,note TEXT);
     CREATE INDEX IF NOT EXISTS push_tests_run ON push_tests(run_id);`);
-  globalDb.flowplanSchema = 63;
+  // Schema 64 – push deliveries per hour, channel (relay, expo, web) and
+  // result (ok, gone, forbidden, invalid, rate_limited, error) for the push
+  // status in the administration (lib/metrics.ts, lib/push-status.ts).
+  // Counts only, kept as long as metrics_hour.
+  d.exec(`CREATE TABLE IF NOT EXISTS metrics_push(at INTEGER NOT NULL,channel TEXT NOT NULL,result TEXT NOT NULL,count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(at,channel,result));`);
+  globalDb.flowplanSchema = 64;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

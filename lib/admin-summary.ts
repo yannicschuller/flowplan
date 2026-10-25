@@ -18,6 +18,7 @@ import { instanceAiSettings } from "./ai/settings";
 import { activeAlerts, opsEventSummary, requireOpsAdmin, storedMaintenance, workerStatuses } from "./admin-ops";
 import { pendingRestore } from "./instance-backup";
 import { activeSeries, aiUsage, liveNumbers, requestSeries, storageTrend } from "./metrics";
+import { pushSummary } from "./push-status";
 import type { UpdateStatus } from "./update-check";
 import type { Identity } from "./types";
 
@@ -104,6 +105,9 @@ export function adminSummary(now = Date.now(), update: UpdateStatus | null = nul
     })(),
     export: { pages: exports.pages.length, lastAt: lastExport?.at ?? null, failed: !!lastExport?.error },
     mail: { configured: mail.configured, pending: mail.pending, failed: mail.failed },
+    // The push relay and the deliveries of 24 hours (lib/push-status.ts);
+    // the live check is what the route ran before (warmPushChecks).
+    push: pushSummary(now),
     ai: { ...ai, tokensToday: tokens.length ? tokens[tokens.length - 1].tokensIn + tokens[tokens.length - 1].tokensOut : 0 },
     security: { encrypted: key.enabled, problem: !!key.problem },
     audit: { day: count("SELECT COUNT(*) n FROM audit WHERE created_at>=?", sqliteTime(now - DAY)) },

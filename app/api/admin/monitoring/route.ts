@@ -13,6 +13,7 @@ import { requireOpsAdmin } from "@/lib/admin-ops";
 import { monitoringLive, monitoringOverview } from "@/lib/admin-monitoring";
 import { clearMetrics, metricsSetting, resetAiPing, saveMetricsSetting, REQUEST_RANGES, type RequestRange } from "@/lib/metrics";
 import { updateStatus } from "@/lib/update-check";
+import { warmPushChecks } from "@/lib/push-status";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     const url = new URL(req.url);
     const range = rangeOf(url.searchParams.get("range"));
     if (url.searchParams.get("view") === "live") return Response.json(monitoringLive(Date.now(), range), noStore);
-    const update = await updateStatus().catch(() => null);
+    const [update] = await Promise.all([updateStatus().catch(() => null), warmPushChecks(1000)]);
     return Response.json(monitoringOverview(Date.now(), range, update), noStore);
   } catch (e) {
     return failure(e);

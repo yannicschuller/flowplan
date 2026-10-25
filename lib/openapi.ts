@@ -1157,6 +1157,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/admin/operations/route.ts": "Administration only; tokens never administer",
   "app/api/admin/summary/route.ts": "Administration only; tokens never administer",
   "app/api/admin/monitoring/route.ts": "Administration only; tokens never administer",
+  "app/api/admin/push/route.ts": "Administration only; tokens never administer",
   "app/api/scim/v2/[...path]/route.ts": "SCIM 2.0 (RFC 7643/7644) is its own standard with its own bearer tokens; discovery at /api/scim/v2/ServiceProviderConfig",
   "app/api/ai/[...path]/route.ts": "AI features refuse API tokens",
   "app/api/auth/[action]/route.ts": "Browser sign-in and account settings",
