@@ -5,6 +5,7 @@
 // described by hand from the route handlers in app/api. Served at
 // /api/openapi.json, readable at /api/docs; tests/openapi.test.ts keeps the
 // routes, the command actions and the SDKs in step with it.
+import { MAX_HOME_WIDGETS, MAX_LAYOUT_BYTES, saveSchema } from "./home-layout-schema";
 import { MAX_TILES, tileSizes, tileTypes } from "./dashboard-schema";
 import { PAPER_COLORS, PAPER_ORIENTATIONS, PAPER_SIZES, PAPER_TEMPLATES } from "./notebook-paper";
 import { z } from "zod";
@@ -50,6 +51,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 export const commandActionNames = [
   "workspace.create", "workspace.update", "workspace.delete", "workspace.leave", "workspace.import",
   "profile.onboarded", "profile.language", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
+  "home.save", "home.reset", "home.note", "home.default",
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport",
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
@@ -550,6 +552,14 @@ export const commandActions: ActionDoc[] = [
       bindings: z.partialRecord(z.enum(SHORTCUT_ACTIONS), z.array(z.string().max(40)).max(MAX_COMBOS)),
     }),
     result: z.object({ bindings: z.record(z.string(), z.array(z.string())) }),
+  },
+  {
+    action: "home.save",
+    summary: "Save your start page layout",
+    description:
+      "The widgets of your start page (kind, size, settings) and its look, versioned (`version: 1`, see lib/home-layout-schema.ts). `scope: \"workspace\"` keeps it for this workspace, `\"personal\"` makes it your default for every workspace without its own. At most " + MAX_HOME_WIDGETS + " widgets and " + MAX_LAYOUT_BYTES + " bytes. `home.reset` goes back one step, `home.note` saves the text of one note widget, `home.default` (owners) sets the layout members see by default.",
+    input: saveSchema.extend({ action: z.literal("home.save") }),
+    result: z.object({ layout: z.unknown(), source: z.enum(["workspace", "personal", "team", "builtin"]), fallback: z.unknown(), fallbackSource: z.string(), teamDefault: z.boolean(), updatedAt: z.number().nullable() }),
   },
 ];
 const otherActions = commandActionNames.filter((name) => !commandActions.some((a) => a.action === name));

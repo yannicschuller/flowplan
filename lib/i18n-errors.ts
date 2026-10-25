@@ -18,6 +18,9 @@ const exact: Record<string, string> = {
   "Der Schlüssel für die Zwei-Faktor-Anmeldung fehlt auf dem Server. Ein Wiederherstellungscode funktioniert weiter; sonst kann die Administration sie zurücksetzen.":
     "The key for two-factor sign-in is missing on the server. A recovery code still works; otherwise the administrators can reset it.",
   "Ungültige Eingabe.": "Invalid input.",
+  // The start page (lib/home-layout.ts).
+  "Die Startseite ist zu groß – bitte weniger Inhalte.": "The home page is too large – please use less content.",
+  "Dieses Widget gibt es nicht mehr.": "This widget no longer exists.",
   "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.": "Not available in the demo. Sign up to use it.",
   "Kein Journal.": "Not a journal.",
   "Ansicht nicht gefunden.": "View not found.",

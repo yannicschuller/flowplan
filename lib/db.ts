@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 61) return;
+  if (globalDb.flowplanSchema === 62) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -868,7 +868,15 @@ function migrate(d: DatabaseSync) {
   // labels – lib/live-activity-push.ts); databases from before had none.
   if (!(d.prepare("PRAGMA table_info(mobile_live_activities)").all() as { name: string }[]).some((c) => c.name === "labels"))
     d.exec("ALTER TABLE mobile_live_activities ADD COLUMN labels TEXT");
-  globalDb.flowplanSchema = 61;
+  // Schema 62 – the personal start page (lib/home-layout.ts): a layout per
+  // person and workspace ('' = the person's default for every workspace)
+  // and a workspace's default for its members. Leaving a workspace or its
+  // deletion removes the layouts for it.
+  d.exec(`CREATE TABLE IF NOT EXISTS home_layouts(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL DEFAULT '',layout TEXT NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id));
+    CREATE TABLE IF NOT EXISTS home_defaults(workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,layout TEXT NOT NULL,updated_by TEXT,updated_at INTEGER NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS home_layouts_member_gone AFTER DELETE ON members BEGIN DELETE FROM home_layouts WHERE user_id=OLD.user_id AND workspace_id=OLD.workspace_id; END;
+    CREATE TRIGGER IF NOT EXISTS home_layouts_workspace_gone AFTER DELETE ON workspaces BEGIN DELETE FROM home_layouts WHERE workspace_id=OLD.id; END;`);
+  globalDb.flowplanSchema = 62;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

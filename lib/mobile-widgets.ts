@@ -241,17 +241,18 @@ const rowTitle = (loaded: Pick<Loaded, "fields" | "shown">, row: Row) => {
 // What an action sends back unchanged: links and identities are never cut.
 const KEEP_WHOLE = new Set(["url", "id", "pageId", "rowId", "fieldId", "viewId", "notificationId", "key", "source", "due", "day", "start", "end", "createdAt"]);
 // Makes an answer fit: the longest list loses its last entries, then texts
-// get shorter, until the JSON is at most MAX_WIDGET_BYTES.
-export function capped<T extends Record<string, unknown>>(data: T): T & { truncated?: true } {
+// get shorter, until the JSON is at most MAX_WIDGET_BYTES (the start page of
+// the web app, lib/home-widgets.ts, allows more).
+export function capped<T extends Record<string, unknown>>(data: T, limit = MAX_WIDGET_BYTES): T & { truncated?: true } {
   const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
-  if (size(data) <= MAX_WIDGET_BYTES) return data;
+  if (size(data) <= limit) return data;
   const copy = structuredClone(data) as Record<string, unknown>;
   const lists = () =>
     Object.entries(copy)
       .filter((e): e is [string, unknown[]] => Array.isArray(e[1]) && e[1].length > 0)
       .sort((a, b) => size(b[1]) - size(a[1]));
   let guard = 0;
-  while (size(copy) > MAX_WIDGET_BYTES && guard++ < 200) {
+  while (size(copy) > limit && guard++ < 200) {
     const longest = lists()[0];
     if (!longest || longest[1].length <= 1) break;
     longest[1].pop();
@@ -264,11 +265,11 @@ export function capped<T extends Record<string, unknown>>(data: T): T & { trunca
     return node;
   };
   for (const max of [60, 40, 24, 12]) {
-    if (size(copy) <= MAX_WIDGET_BYTES) break;
+    if (size(copy) <= limit) break;
     Object.assign(copy, shorten(copy, max) as object);
     copy.truncated = true;
   }
-  while (size(copy) > MAX_WIDGET_BYTES && lists()[0]) {
+  while (size(copy) > limit && lists()[0]) {
     lists()[0][1].pop();
     copy.truncated = true;
   }
@@ -1148,9 +1149,9 @@ const builders: { [K in WidgetKind]: (ctx: Context, config: WidgetConfig<K>) => 
   jobs: jobsData,
   incident: incidentData,
 };
-export function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown) {
+export function widgetData<K extends WidgetKind>(ctx: Context, kind: K, config: unknown, limit = MAX_WIDGET_BYTES) {
   const parsed = widgetConfigs[kind].parse(config ?? {}) as WidgetConfig<K>;
-  return capped(builders[kind](ctx, parsed));
+  return capped(builders[kind](ctx, parsed), limit);
 }
 
 // Each widget answers on its own: one that fails (a page gone, no access)

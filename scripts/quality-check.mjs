@@ -21,7 +21,8 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // Measured 2026-10-22 (gzip): sign-in and sign-up 375.3 KB, a document
 // 2017.5 KB, a database 1534.9 KB – the workspace loads the editor and the
 // database views with its first page. Settings and administration (landing
-// pages and a section, 2026-10-22): 1573.9 KB. LCP on localhost: sign-in 140–280 ms,
+// pages and a section, 2026-10-22): 1573.9 KB; the start page (2026-10-25)
+// 1652.4 KB, its editor (about 10 KB) loads only when customizing. LCP on localhost: sign-in 140–280 ms,
 // database 250–500 ms, document 1.0–1.7 s. The JS budgets are about 10 %
 // above the measured values.
 const PAGES = [
@@ -31,6 +32,9 @@ const PAGES = [
   { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1690 },
   // The landing pages of the settings and the administration (tiles), and a
   // settings section on a phone (components/settings/shell.tsx).
+  // The start page with its widgets; customizing loads on demand
+  // (components/home/home-editor.tsx).
+  { path: "/#home", name: "home", signedIn: true, jsKb: 1730, ready: ".home-grid" },
   { path: "/#settings", name: "settings", signedIn: true, jsKb: 1730, ready: ".settings-tile" },
   { path: "/#settings/account", name: "settings section", signedIn: true, jsKb: 1730, ready: ".settings-detail .setting-group" },
   { path: "/#admin", name: "administration", signedIn: true, jsKb: 1730, ready: ".live-strip .kpi-grid:not(.placeholder)" },
