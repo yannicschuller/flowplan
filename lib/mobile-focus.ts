@@ -77,3 +77,10 @@ export function focusSilences(subscriptionId: string, workspaceId: string | null
   if (!focus.workspace_id) return true;
   return !!workspaceId && workspaceId !== focus.workspace_id;
 }
+
+// Whether a Focus with a Flowplan filter is on for this app installation
+// right now (for the test notification in the settings, lib/push-test.ts).
+export function focusActive(deviceId: string, now = Date.now()) {
+  ensureTables();
+  return !!one("SELECT 1 FROM mobile_focus WHERE device_id=? AND until>?", deviceId, now);
+}

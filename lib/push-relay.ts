@@ -188,7 +188,13 @@ export type RelayMessage = {
   } | null;
 };
 export type RelayStatus = "ok" | "gone" | "forbidden" | "invalid" | "rate_limited" | "error";
-export type RelayResult = { status: RelayStatus; retryAfter?: number };
+// Why a request or a message failed ("error"), for the test notification in
+// the settings (lib/push-test.ts): unreachable (timeout, refused, redirect),
+// signature (401: the relay could not verify this instance's key), blocked
+// (403), rejected (another 4xx; httpStatus says which), upstream (APNs/FCM
+// failed, 502 or per message), response (an unexpected answer), off.
+export type RelayFailure = "unreachable" | "signature" | "blocked" | "rejected" | "upstream" | "response" | "off";
+export type RelayResult = { status: RelayStatus; retryAfter?: number; reason?: RelayFailure; httpStatus?: number };
 // Sends one batch (1–100 messages); results in message order. Never throws.
 export type RelaySender = (messages: RelayMessage[]) => Promise<RelayResult[]>;
 
@@ -239,8 +245,9 @@ async function readLimited(response: Response) {
 
 export const sendToRelay: RelaySender = async (messages) => {
   const config = relayConfig();
-  const failed = (status: RelayStatus, retryAfter?: number) => messages.map(() => (retryAfter ? { status, retryAfter } : { status }));
-  if (!config.enabled) return failed("error");
+  const failed = (status: RelayStatus, retryAfter?: number, reason?: RelayFailure, httpStatus?: number): RelayResult[] =>
+    messages.map(() => ({ status, ...(retryAfter ? { retryAfter } : {}), ...(reason ? { reason } : {}), ...(httpStatus ? { httpStatus } : {}) }));
+  if (!config.enabled) return failed("error", undefined, "off");
   try {
     const request = relayRequest(config, messages);
     const response = await fetch(request.url, {
@@ -272,17 +279,22 @@ export const sendToRelay: RelaySender = async (messages) => {
         502: "upstream push service failed",
       };
       warnOnce(`the relay answered HTTP ${response.status}${reasons[response.status] ? ` (${reasons[response.status]})` : ""}`);
-      return failed("error");
+      const reason: RelayFailure =
+        response.status === 401 ? "signature" : response.status === 403 ? "blocked" : response.status === 502 ? "upstream" : response.status >= 500 ? "unreachable" : "rejected";
+      return failed("error", undefined, reason, response.status);
     }
     const parsed = resultsSchema.safeParse(JSON.parse(await readLimited(response)));
     if (!parsed.success || parsed.data.results.length !== messages.length) {
       warnOnce("the relay answered with an unexpected document");
-      return failed("error");
+      return failed("error", undefined, "response");
     }
-    return parsed.data.results.map((r) => (r.status === "rate_limited" ? { status: r.status, retryAfter: retrySeconds(r.retryAfter) } : { status: r.status }));
-  } catch {
+    // "error" for one message: Apple or Google did not take it.
+    return parsed.data.results.map((r): RelayResult =>
+      r.status === "rate_limited" ? { status: r.status, retryAfter: retrySeconds(r.retryAfter) } : r.status === "error" ? { status: r.status, reason: "upstream" } : { status: r.status },
+    );
+  } catch (error) {
     // Timeouts, refused connections, redirects, broken answers: retried later.
-    return failed("error");
+    return failed("error", undefined, error instanceof SyntaxError ? "response" : "unreachable");
   }
 };
 
@@ -297,7 +309,7 @@ export async function sendBatched(messages: RelayMessage[], send: RelaySender = 
     } catch {
       answer = [];
     }
-    for (let j = 0; j < chunk.length; j++) results.push(answer[j] ?? { status: "error" });
+    for (let j = 0; j < chunk.length; j++) results.push(answer[j] ?? { status: "error", reason: "response" });
   }
   return results;
 }

@@ -13,7 +13,6 @@ const {
   validatePushSubscription,
   flushPushQueue,
   pushKeys,
-  testPush,
 } = await import("../lib/push");
 const { createWorkspace } = await import("../lib/seed");
 const { command, bootstrap } = await import("../lib/api");
@@ -136,8 +135,7 @@ test("push retries transient failures, removes expired devices and suppresses re
   const { user, token } = account("retry-user"),
     sub = subscription();
   subscribePush(user, token, sub);
-  testPush(user, token);
-  assert.throws(() => testPush(user, token), /Minute/);
+  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", id(), user.id, "Retry me");
   await flushPushQueue(async () => {
     throw { statusCode: 503 };
   });

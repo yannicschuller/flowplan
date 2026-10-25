@@ -32,9 +32,9 @@ import {
   pushKeys,
   subscribePush,
   unsubscribePush,
-  testPush,
   dispatchPush,
 } from "@/lib/push";
+import { sendTestPush } from "@/lib/push-test";
 import { listPageTemplates } from "@/lib/page-templates";
 import { fileResponse } from "@/lib/file-response";
 import { publicFile } from "@/lib/publication";
@@ -1137,7 +1137,8 @@ async function handlePOST(
         body.action === "unsubscribe"
           ? unsubscribePush(user, body.endpoint)
           : body.action === "test"
-            ? testPush(user, sessionToken)
+            ? // Waits (≤ 10 s) for the outcome per device (lib/push-test.ts).
+              await sendTestPush(user, sessionToken)
             : body.action === "subscribe"
               ? subscribePush(user, sessionToken, body.subscription)
               : (() => {

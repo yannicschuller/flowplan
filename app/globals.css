@@ -26762,3 +26762,99 @@ label.ws-search input {
     grid-column: 1 / -1;
   }
 }
+/* The test notification in Settings → Notifications → Push
+   (components/push-test.tsx): the button, then one line per device. */
+.push-test {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.push-test > .button {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+}
+.push-test-hint,
+.push-test-summary,
+.push-test-diagnostics {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.push-test-summary {
+  color: var(--secondary);
+  font-weight: 550;
+}
+.push-test-live {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.push-test-error {
+  margin: 0;
+  color: var(--danger, #a43c3f);
+  font-size: 13px;
+}
+.push-test-results {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.push-test-results > li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.push-test-results > li.ok > svg {
+  color: #3f6d52;
+}
+.push-test-results > li.problem > svg {
+  color: #b7791f;
+}
+.push-test-results > li > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.push-test-channel {
+  color: var(--muted);
+  font-size: 12px;
+}
+.push-test-status {
+  color: var(--text);
+}
+.push-test-note {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.push-test-note > svg {
+  flex: none;
+  transform: translateY(2px);
+}
+.push-test-diagnostics code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+[data-theme="dark"] .push-test-results > li.ok > svg {
+  color: #a8d8b9;
+}
+[data-theme="dark"] .push-test-results > li.problem > svg {
+  color: #f2c27a;
+}

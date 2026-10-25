@@ -11,7 +11,7 @@ const { id, one, run } = await import("../lib/db");
 const { command, bootstrap, database } = await import("../lib/api");
 const { createWorkspace } = await import("../lib/seed");
 const { htmlState } = await import("../lib/document-server");
-const { flushPushQueue, PushGoneError, testPush } = await import("../lib/push");
+const { flushPushQueue, PushGoneError } = await import("../lib/push");
 const { registerMobileDevice, unregisterMobileDevice, unregisterByDeviceToken, identityFromDeviceToken, mobileSummary } = await import(
   "../lib/mobile-devices"
 );
@@ -172,7 +172,7 @@ test("notifications reach the app through Expo, with the badge and without conte
   }
 
   // An uninstalled app: Expo answers DeviceNotRegistered, the subscription goes.
-  testPush(reader.user, reader.token);
+  run("INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)", randomUUID(), reader.user.id, "Ping");
   await flushPushQueue(
     async () => {},
     async () => {

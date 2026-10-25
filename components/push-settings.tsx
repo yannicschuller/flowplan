@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { api } from "./ui";
 import { desktopApp, inDesktopApp, nativeApp } from "@/lib/native-app";
 import { SettingGroup, SettingRow, StatusBadge } from "./settings-ui";
+import PushTest, { type ThisBrowser } from "./push-test";
 export default function PushSettings({ group = false }: { group?: boolean }) {
   const t = useT();
   // In the Flowplan app the app delivers push itself (flowplan-app).
@@ -143,27 +144,20 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
       setBusy(false);
     }
   }
-  const sendTest = async () => {
-    setBusy(true);
-    try {
-      await api("/api/push", { action: "test" });
-      setMessage(t("Testbenachrichtigung wurde zum Versand eingereiht.", "The test notification has been queued."));
-    } catch (e) {
-      setMessage((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  // What the test can tell about this browser beyond the server's list.
+  const thisBrowser: ThisBrowser =
+    desktop || app || installRequired || !supported
+      ? null
+      : subscribed
+        ? "subscribed"
+        : typeof Notification !== "undefined" && Notification.permission === "denied"
+          ? "denied"
+          : "off";
   const iosHint = t(
     "Auf iPhone und iPad: Flowplan in Safari über das Teilen-Menü zum Home-Bildschirm hinzufügen, von dort öffnen und Benachrichtigungen aktivieren. Benötigt iOS/iPadOS 16.4 oder neuer und HTTPS.",
     "On iPhone and iPad: add Flowplan to the Home Screen in Safari via the share menu, open it from there and enable notifications. Requires iOS/iPadOS 16.4 or newer and HTTPS.",
   );
   if (group) {
-    const testButton = (
-      <button className="button" disabled={busy} onClick={() => void sendTest()}>
-        {t("Testbenachrichtigung senden", "Send test notification")}
-      </button>
-    );
     return (
       <SettingGroup
         id="push"
@@ -212,7 +206,6 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
                 {t("App-Einstellungen öffnen", "Open app settings")}
               </button>
             )}
-            {subscribed && testButton}
           </SettingRow>
         ) : installRequired ? (
           <SettingRow label={t("Auf diesem Gerät", "On this device")} description={iosHint}>
@@ -231,7 +224,16 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
             <button className={`button${subscribed ? "" : " primary"}`} disabled={busy || !registration || !key} onClick={subscribed ? disable : enable}>
               {subscribed ? t("Push deaktivieren", "Disable push") : t("Push aktivieren", "Enable push")}
             </button>
-            {subscribed && testButton}
+          </SettingRow>
+        )}
+        {desktop !== "old" && (
+          <SettingRow
+            wide
+            anchor="push-test"
+            label={t("Testbenachrichtigung", "Test notification")}
+            description={t("Prüft, ob Benachrichtigungen auf deinen Geräten ankommen, und zeigt pro Gerät, was passiert ist.", "Checks whether notifications reach your devices and shows what happened for each one.")}
+          >
+            <PushTest thisBrowser={thisBrowser} />
           </SettingRow>
         )}
         {!desktop && !app && !installRequired && (
@@ -320,25 +322,6 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
                 {t("App-Einstellungen öffnen", "Open app settings")}
               </button>
             )}
-            {subscribed && (
-              <button
-                className="button"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await api("/api/push", { action: "test" });
-                    setMessage(t("Testbenachrichtigung wurde zum Versand eingereiht.", "The test notification has been queued."));
-                  } catch (e) {
-                    setMessage((e as Error).message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                {t("Testbenachrichtigung senden", "Send test notification")}
-              </button>
-            )}
           </div>
         </>
       ) : installRequired ? (
@@ -367,31 +350,11 @@ export default function PushSettings({ group = false }: { group?: boolean }) {
             >
               {subscribed ? t("Push deaktivieren", "Disable push") : t("Push aktivieren", "Enable push")}
             </button>
-            {subscribed && (
-              <button
-                className="button"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await api("/api/push", { action: "test" });
-                    setMessage(
-                      t("Testbenachrichtigung wurde zum Versand eingereiht.", "The test notification has been queued."),
-                    );
-                  } catch (e) {
-                    setMessage((e as Error).message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                {t("Testbenachrichtigung senden", "Send test notification")}
-              </button>
-            )}
           </div>
         </>
       )}
       {message && <p role="status">{message}</p>}
+      {!desktop && subscribed && <PushTest thisBrowser={thisBrowser} />}
       {!desktop && (
         <p className="muted">
           {t("Die Aktivierung gilt für die aktuelle Anmeldung auf diesem Gerät. Nach Abmeldung oder Ablauf der Sitzung ist eine erneute Aktivierung nötig.", "Enabling applies to the current sign-in on this device. After signing out or when the session expires, enable it again.")}

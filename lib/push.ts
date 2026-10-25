@@ -138,31 +138,6 @@ export function unsubscribePush(user: Identity, endpoint: unknown) {
   );
   return { ok: true };
 }
-export function testPush(user: Identity, sessionToken: string) {
-  if (
-    !one(
-      "SELECT id FROM push_subscriptions WHERE user_id=? AND session_token=?",
-      user.id,
-      sessionToken,
-    )
-  )
-    throw new HttpError(400, "Push zuerst aktivieren.");
-  if (
-    one(
-      "SELECT id FROM notifications WHERE user_id=? AND body=? AND created_at>datetime('now','-1 minute')",
-      user.id,
-      "Push-Testbenachrichtigung",
-    )
-  )
-    throw new HttpError(429, "Bitte vor dem nächsten Test eine Minute warten.");
-  run(
-    "INSERT INTO notifications(id,user_id,body) VALUES(?,?,?)",
-    id(),
-    user.id,
-    "Push-Testbenachrichtigung",
-  );
-  return { ok: true };
-}
 type Sender = (
   sub: webpush.PushSubscription,
   payload: string,
@@ -219,6 +194,18 @@ export async function sendExpoPush(message: ExpoMessage) {
   if (!response.ok || result.data?.status !== "ok")
     throw Object.assign(new Error(result.data?.details?.error || "Expo push failed"), { statusCode: response.status || 502 });
 }
+function webPushOptions(keys: { publicKey: string; privateKey: string }): webpush.RequestOptions {
+  return {
+    vapidDetails: {
+      ...keys,
+      subject: process.env.WEB_PUSH_SUBJECT || process.env.APP_URL || "https://flowplan.example.com",
+    },
+    TTL: 86400,
+    timeout: 5000,
+    contentEncoding: "aes128gcm",
+    urgency: "normal",
+  };
+}
 const unreadCount = (userId: string) =>
   Number(one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", userId)?.n || 0);
 const backoff = (attempts: number) => Math.min(600000, 30000 * 2 ** attempts);
@@ -259,6 +246,8 @@ export async function flushPushQueue(
     now,
   );
   const relay = relayConfig();
+  // Test notifications from the settings (lib/push-test.ts) go first.
+  await flushPushTests(send, sendExpo, sendRelay, relay);
   // Live Activities (lib/live-activity-push.ts) – loaded only when some exist.
   const live = relay.enabled && !!one("SELECT 1 FROM push_live_queue WHERE available_at<=? LIMIT 1", now);
   if (!jobs.length) {
@@ -370,19 +359,7 @@ export async function flushPushQueue(
             url: notificationUrl(job),
             tag: `flowplan-${job.notification_id}`,
           }),
-          {
-            vapidDetails: {
-              ...keys,
-              subject:
-                process.env.WEB_PUSH_SUBJECT ||
-                process.env.APP_URL ||
-                "https://flowplan.example.com",
-            },
-            TTL: 86400,
-            timeout: 5000,
-            contentEncoding: "aes128gcm",
-            urgency: "normal",
-          },
+          webPushOptions(keys),
         );
         run(
           "UPDATE push_deliveries SET delivered_at=?,last_error=NULL WHERE id=?",
@@ -465,11 +442,16 @@ function relayAlert(job: RelayJob, instance: string): RelayMessage {
 // opened: its relay part goes; with an Expo token the delivery is tried
 // again through Expo right away, otherwise the subscription goes.
 function dropRelay(job: RelayJob, status = "unreadable") {
+  if (dropRelayPart(job, status))
+    run("UPDATE push_deliveries SET available_at=?,attempts=MAX(0,attempts-1) WHERE id=?", Date.now(), job.id);
+}
+// The relay part of an installation goes; true when an Expo token remains.
+function dropRelayPart(job: { device_id: string | null; endpoint: string; subscription_id: string }, status: string) {
   console.warn(`push relay: removed the relay registration of an app installation (${status})`);
   run("DELETE FROM mobile_push_relay WHERE device_id=?", job.device_id);
-  if (job.endpoint.startsWith(EXPO_ENDPOINT))
-    run("UPDATE push_deliveries SET available_at=?,attempts=MAX(0,attempts-1) WHERE id=?", Date.now(), job.id);
-  else run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+  if (job.endpoint.startsWith(EXPO_ENDPOINT)) return true;
+  run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+  return false;
 }
 
 function relayOutcome(job: RelayJob, result: RelayResult) {
@@ -499,6 +481,168 @@ function relayOutcome(job: RelayJob, result: RelayResult) {
     default:
       run("UPDATE push_deliveries SET available_at=?,last_error=? WHERE id=?", Date.now() + backoff(job.attempts), "Relay: error", job.id);
   }
+}
+// ---- Test notifications (lib/push-test.ts) ----
+// Where a tapped test notification leads: the push part of the settings.
+export const PUSH_TEST_URL = "/#settings/notifications/push";
+export function pushTestText(userId: string) {
+  const say = translate(userLocale(userId));
+  return say("Testbenachrichtigung – alles funktioniert.", "Test notification – everything works.");
+}
+type TestJob = {
+  id: string;
+  user_id: string;
+  subscription_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  device_id: string | null;
+  relay_token: string | null;
+  public_key: string | null;
+};
+// The outcome of one target, as lib/push-test.ts reads it: never a token,
+// key or address – only codes, an HTTP status or Expo's error name.
+function testResult(job: TestJob, status: string, channel: string | null, detail: string | null = null, note: string | null = null) {
+  run("UPDATE push_tests SET status=?,channel=?,detail=?,note=COALESCE(?,note) WHERE id=?", status, channel, detail, note, job.id);
+}
+const expoErrorName = (error: unknown) => {
+  const message = (error as Error)?.message || "";
+  return /^[A-Za-z]{1,40}$/.test(message) ? message : null;
+};
+async function testViaExpo(job: TestJob, sendExpo: ExpoSender, note: string | null) {
+  try {
+    await sendExpo({
+      to: job.endpoint.slice(EXPO_ENDPOINT.length),
+      title: "Flowplan",
+      body: pushTestText(job.user_id),
+      data: { url: PUSH_TEST_URL },
+      sound: "default",
+      badge: unreadCount(job.user_id),
+      channelId: "inbox",
+      ttl: 600,
+      priority: "high",
+    });
+    testResult(job, "delivered", "expo", null, note);
+  } catch (error) {
+    if (error instanceof PushGoneError || Number((error as { statusCode?: number }).statusCode) === 410) {
+      // As for every notification: the app is not reachable through Expo any more.
+      run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+      testResult(job, "expo-gone", "expo", null, note);
+    } else testResult(job, "expo-error", "expo", expoErrorName(error), note);
+  }
+}
+// Sends the pending test notifications right away, through the same
+// channels and with the same consequences as flushPushQueue (a gone
+// subscription goes, a refused relay registration falls back to Expo), but
+// once: the outcome is reported, not retried. Notification settings, quiet
+// hours and Focus filters of the instance do not hold a test back; the
+// device's own permission and Focus still do.
+async function flushPushTests(send: Sender, sendExpo: ExpoSender, sendRelay: RelaySender, relay: ReturnType<typeof relayConfig>) {
+  run("DELETE FROM push_tests WHERE created_at<?", Date.now() - 3_600_000);
+  const tests = all<TestJob>(
+    "SELECT t.id,t.user_id,t.subscription_id,s.endpoint,s.p256dh,s.auth,md.id device_id,r.relay_token,r.public_key FROM push_tests t JOIN push_subscriptions s ON s.id=t.subscription_id AND s.user_id=t.user_id LEFT JOIN mobile_devices md ON md.push_subscription_id=s.id LEFT JOIN mobile_push_relay r ON r.device_id=md.id WHERE t.status IS NULL ORDER BY t.created_at LIMIT 50",
+  );
+  if (!tests.length) return;
+  const viaRelay: { job: TestJob; message: RelayMessage }[] = [];
+  let keys: ReturnType<typeof pushKeys> | undefined;
+  await Promise.all(
+    tests.map(async (job) => {
+      if (!run("UPDATE push_tests SET status='sending' WHERE id=? AND status IS NULL", job.id).changes) return;
+      if (relay.enabled && job.device_id && job.relay_token && job.public_key) {
+        try {
+          const token = openSecret(job.relay_token, relayTokenAad(job.device_id));
+          const plaintext = plaintextJson({
+            title: "Flowplan",
+            body: pushTestText(job.user_id),
+            url: new URL(PUSH_TEST_URL, `${relay.instance}/`).toString(),
+            id: `test-${job.id}`,
+            category: null,
+            data: { kind: "test" },
+            sentAt: Math.floor(Date.now() / 1000),
+          });
+          viaRelay.push({
+            job,
+            message: {
+              to: token,
+              type: "alert",
+              payload: encryptForDevice(job.public_key, relay.instance, plaintext),
+              category: "default",
+              collapseId: null,
+              badge: Math.min(9999, unreadCount(job.user_id)),
+              priority: "high",
+              ttl: 600,
+              liveActivity: null,
+            },
+          });
+        } catch {
+          if (dropRelayPart(job, "unreadable")) await testViaExpo(job, sendExpo, "relay-registration");
+          else testResult(job, "relay-registration", "relay", "unreadable");
+        }
+        return;
+      }
+      if (job.endpoint.startsWith(RELAY_ENDPOINT)) {
+        // Registered with the relay only, which is off (or never got a token).
+        testResult(job, relay.enabled ? "relay-registration" : "relay-off", "relay", relay.enabled ? "missing" : relay.reason);
+        return;
+      }
+      if (job.endpoint.startsWith(EXPO_ENDPOINT)) {
+        await testViaExpo(job, sendExpo, job.relay_token && !relay.enabled ? "relay-off" : null);
+        return;
+      }
+      try {
+        validatePushSubscription({ endpoint: job.endpoint, keys: { p256dh: job.p256dh, auth: job.auth } });
+        keys ??= pushKeys();
+        await send(
+          { endpoint: job.endpoint, keys: { p256dh: job.p256dh, auth: job.auth } },
+          JSON.stringify({ title: "Flowplan", body: pushTestText(job.user_id), url: PUSH_TEST_URL, tag: "flowplan-test" }),
+          { ...webPushOptions(keys), TTL: 600 },
+        );
+        testResult(job, "delivered", "web");
+      } catch (error) {
+        const status = Number((error as { statusCode?: number }).statusCode || 0);
+        if (status === 404 || status === 410) {
+          run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+          testResult(job, "web-gone", "web", `HTTP ${status}`);
+        } else if (status) testResult(job, "web-error", "web", `HTTP ${status}`);
+        else testResult(job, "web-unreachable", "web");
+      }
+    }),
+  );
+  if (!viaRelay.length) return;
+  const results = await sendBatched(
+    viaRelay.map((r) => r.message),
+    sendRelay,
+  );
+  await Promise.all(
+    viaRelay.map(async ({ job }, i) => {
+      const result = results[i];
+      switch (result.status) {
+        case "ok":
+          testResult(job, "delivered", "relay");
+          return;
+        case "gone":
+          // As for every notification: the installation goes.
+          run("DELETE FROM mobile_devices WHERE id=?", job.device_id);
+          run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
+          testResult(job, "relay-registration", "relay", "gone");
+          return;
+        case "forbidden":
+        case "invalid":
+          if (dropRelayPart(job, result.status)) await testViaExpo(job, sendExpo, "relay-registration");
+          else testResult(job, "relay-registration", "relay", result.status);
+          return;
+        case "rate_limited":
+          testResult(job, "relay-rate-limited", "relay", result.retryAfter ? String(result.retryAfter) : null);
+          return;
+        default: {
+          const reason = result.reason ?? "unreachable";
+          const status =
+            reason === "signature" ? "relay-signature" : reason === "blocked" ? "relay-blocked" : reason === "upstream" ? "relay-upstream" : reason === "rejected" ? "relay-rejected" : reason === "response" ? "relay-unexpected" : reason === "off" ? "relay-off" : "relay-unreachable";
+          testResult(job, status, "relay", result.httpStatus ? `HTTP ${result.httpStatus}` : null);
+        }
+      }
+    }),
+  );
 }
 export function dispatchPush() {
   if (!runtime.flowplanPushRun)

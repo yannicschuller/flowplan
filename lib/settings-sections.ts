@@ -92,6 +92,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Benachrichtigungsarten", en: "Notification kinds" }, keywords: { de: "posteingang push e-mail erwähnungen kommentare", en: "inbox push email mentions comments" }, anchor: "kinds" },
       { title: { de: "Wöchentliche Zusammenfassung", en: "Weekly digest" }, anchor: "weekly-digest" },
       { title: { de: "Push-Benachrichtigungen", en: "Push notifications" }, keywords: { de: "desktop-app mitteilungen", en: "desktop app notifications" }, anchor: "push" },
+      { title: { de: "Testbenachrichtigung", en: "Test notification" }, keywords: { de: "test push relay app gerät zustellung", en: "test push relay app device delivery" }, anchor: "push-test" },
     ],
   },
   {

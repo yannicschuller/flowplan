@@ -75,7 +75,8 @@ self.addEventListener("fetch", (event) => {
 });
 function notificationTarget(value) {
   if (typeof value !== "string" || !value.startsWith("/#")) return "/#inbox";
-  if (value === "/#inbox") return value;
+  // The test notification (lib/push-test.ts) opens the push settings.
+  if (value === "/#inbox" || value === "/#settings/notifications/push") return value;
   const params = new URLSearchParams(value.slice(2));
   const uuid =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

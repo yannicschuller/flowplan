@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 62) return;
+  if (globalDb.flowplanSchema === 63) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -876,7 +876,13 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS home_defaults(workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,layout TEXT NOT NULL,updated_by TEXT,updated_at INTEGER NOT NULL);
     CREATE TRIGGER IF NOT EXISTS home_layouts_member_gone AFTER DELETE ON members BEGIN DELETE FROM home_layouts WHERE user_id=OLD.user_id AND workspace_id=OLD.workspace_id; END;
     CREATE TRIGGER IF NOT EXISTS home_layouts_workspace_gone AFTER DELETE ON workspaces BEGIN DELETE FROM home_layouts WHERE workspace_id=OLD.id; END;`);
-  globalDb.flowplanSchema = 62;
+  // Schema 63 – test notifications from the settings (lib/push-test.ts):
+  // one row per push target of a test, sent by the push worker like any
+  // other delivery (lib/push.ts), with its outcome. Never an inbox entry;
+  // rows go once the result was read, at the latest after an hour.
+  d.exec(`CREATE TABLE IF NOT EXISTS push_tests(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,subscription_id TEXT NOT NULL,created_at INTEGER NOT NULL,status TEXT,channel TEXT,detail TEXT,note TEXT);
+    CREATE INDEX IF NOT EXISTS push_tests_run ON push_tests(run_id);`);
+  globalDb.flowplanSchema = 63;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
