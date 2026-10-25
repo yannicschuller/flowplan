@@ -11,6 +11,7 @@ import { all, audit, one, run } from "./db";
 import { HttpError } from "./auth";
 import { ct } from "./content-locale";
 import { flushOpsEvents, opsEventKinds, type OpsEventKind } from "./ops-events";
+import { sweepIdempotencyKeys } from "./idempotency";
 import { instanceMetrics, workspaceUsage } from "./instance-ops";
 import { mailStatus } from "./mail";
 import { scheduledBackupStatus } from "./scheduled-backup";
@@ -439,6 +440,8 @@ export function startOpsWorker() {
     const now = Date.now();
     try {
       flushOpsEvents();
+      // Idempotency keys live 24 hours (lib/idempotency.ts).
+      sweepIdempotencyKeys(now);
       if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {
         sweepOpsEvents(now);
         runtime.flowplanOpsSwept = now;

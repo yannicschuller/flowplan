@@ -7,6 +7,7 @@ import { pickLocale, type Locale } from "@/lib/i18n";
 import { limitWidgets, widgetKinds, widgetLocale, widgetOptions, widgetsData, widgetUser, type WidgetKind } from "@/lib/mobile-widgets";
 import { SHARE_MAX_FILES, widgetAction, type UploadFile } from "@/lib/mobile-widget-actions";
 import type { Identity } from "@/lib/types";
+import { withIdempotency } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +62,10 @@ async function jsonBody(req: Request) {
   return JSON.parse(text || "{}") as Record<string, unknown>;
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ action: string }> }) {
+// Widget actions with Idempotency-Key (the apps send one per tap and keep
+// it for retries, lib/idempotency.ts); the data refresh only reads.
+export const POST = withIdempotency(handlePOST, { skip: (req) => !new URL(req.url).pathname.endsWith("/action") });
+async function handlePOST(req: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
   const query = new URL(req.url).searchParams;
   return withDevice(req, query.get("lang"), async (user) => {

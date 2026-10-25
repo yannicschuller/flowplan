@@ -38,6 +38,7 @@ import { documentMarkdown, type JsonNode } from "@/lib/e2ee-markdown";
 import { exportName } from "@/lib/export-name";
 import type { SaveStatus } from "@/lib/save-status";
 import { beforeLock, openSpace, spaceKey } from "./e2ee-store";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
 
 type LogEntry = { seq: number; version: number; data: string };
 type Log = { keyVersion: number; snapshot: { upto: number; version: number; data: string } | null; updates: LogEntry[]; more: boolean; pending: number };
@@ -328,7 +329,7 @@ export default function EncryptedEditor({
       form.set("pageId", pageId);
       form.set("purpose", "e2ee");
       form.set("file", new Blob([sealed as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" }), "encrypted.bin");
-      const response = await fetch("/api/upload", { method: "POST", body: form });
+      const response = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || t("Hochladen fehlgeschlagen.", "Upload failed."));
       editor

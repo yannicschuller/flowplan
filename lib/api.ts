@@ -1,3 +1,4 @@
+import type { TransactionHook } from "./idempotency";
 import { teamReply } from "./service-desk";
 import { deletePlugin, updatePlugin } from "./plugins";
 import { addDomain, removeDomain, savePublicationTheme } from "./custom-domains";
@@ -589,6 +590,9 @@ export function command(
   user: Identity,
   input: unknown,
   withinTransaction = false,
+  // An Idempotency-Key, reserved and answered in the action's transaction
+  // (lib/idempotency.ts idempotencyHook).
+  keyed?: TransactionHook,
 ): unknown {
   const base = z.object({ action: str }).passthrough().parse(input);
   const action = base.action;
@@ -2938,7 +2942,13 @@ export function command(
   // Commands that may end the Git export of a space: its working copy goes
   // once the settings are gone.
   if (GIT_EXPORT_ENDS.has(action)) afterCommit.push(sweepSpaceGitCopies);
-  const result = withinTransaction ? checked() : transaction(checked, user);
+  const applied = () => {
+    keyed?.begin(action);
+    const value = checked();
+    keyed?.end(value, action);
+    return value;
+  };
+  const result = withinTransaction ? applied() : transaction(applied, user);
   try {
     commandWebhooks(action, b, result, user.name);
   } catch (error) {

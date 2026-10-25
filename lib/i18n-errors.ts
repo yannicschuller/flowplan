@@ -18,6 +18,11 @@ const exact: Record<string, string> = {
   "Der Schlüssel für die Zwei-Faktor-Anmeldung fehlt auf dem Server. Ein Wiederherstellungscode funktioniert weiter; sonst kann die Administration sie zurücksetzen.":
     "The key for two-factor sign-in is missing on the server. A recovery code still works; otherwise the administrators can reset it.",
   "Ungültige Eingabe.": "Invalid input.",
+  // Idempotency-Key (lib/idempotency.ts).
+  "Ungültiger Idempotency-Key (8–128 Zeichen: A–Z, a–z, 0–9, _ und -).": "Invalid Idempotency-Key (8–128 characters: A–Z, a–z, 0–9, _ and -).",
+  "Dieser Idempotency-Key wurde schon für eine andere Anfrage verwendet.": "This Idempotency-Key was already used for a different request.",
+  "Diese Anfrage wird noch bearbeitet. Bitte gleich erneut versuchen.": "This request is still being processed. Please try again shortly.",
+  "Diese Anfrage wurde bereits ausgeführt.": "This request has already been applied.",
   // The start page (lib/home-layout.ts).
   "Die Startseite ist zu groß – bitte weniger Inhalte.": "The home page is too large – please use less content.",
   "Dieses Widget gibt es nicht mehr.": "This widget no longer exists.",

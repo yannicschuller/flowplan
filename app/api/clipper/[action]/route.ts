@@ -7,6 +7,7 @@ import { HttpError } from "@/lib/auth";
 import { clipperCors, clipperTargets, clipperUser, saveClip } from "@/lib/clipper";
 import { localeOfRequest, withRequestLocale } from "@/lib/content-locale";
 import { localizedMessage } from "@/lib/i18n-errors";
+import { withIdempotency } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,16 +41,18 @@ export const GET = withRequestLocale(async (req: Request, { params }: { params: 
   }
 });
 
-export const POST = withRequestLocale(async (req: Request, { params }: { params: Promise<{ action: string }> }) => {
-  try {
-    const { action } = await params;
-    if (action !== "save") throw new HttpError(404, "Nicht gefunden.");
-    const user = clipperUser(req.headers.get("authorization"));
-    if (Number(req.headers.get("content-length") || 0) > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
-    const text = await req.text();
-    if (text.length > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
-    return answer(req, 200, saveClip(user, JSON.parse(text)));
-  } catch (e) {
-    return failure(req, e instanceof SyntaxError ? new HttpError(400, "Ungültige Eingabe.") : e);
-  }
-});
+export const POST = withRequestLocale(
+  withIdempotency(async (req: Request, { params }: { params: Promise<{ action: string }> }) => {
+    try {
+      const { action } = await params;
+      if (action !== "save") throw new HttpError(404, "Nicht gefunden.");
+      const user = clipperUser(req.headers.get("authorization"));
+      if (Number(req.headers.get("content-length") || 0) > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
+      const text = await req.text();
+      if (text.length > MAX_BODY) throw new HttpError(413, "Anfrage zu groß.");
+      return answer(req, 200, saveClip(user, JSON.parse(text)));
+    } catch (e) {
+      return failure(req, e instanceof SyntaxError ? new HttpError(400, "Ungültige Eingabe.") : e);
+    }
+  }, { headers: (req) => clipperCors(req.headers.get("origin")) }),
+);

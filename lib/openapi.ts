@@ -663,7 +663,15 @@ const schemas: Record<string, Json> = {
   ErrorResponse: {
     type: "object",
     description: "Every error answer. `error` is a sentence in the reader's language (German by default, English with Accept-Language).",
-    properties: { error: { type: "string" }, details: { type: "array", items: { type: "string" }, description: "Validation messages (400)" } },
+    properties: {
+      error: { type: "string" },
+      details: { type: "array", items: { type: "string" }, description: "Validation messages (400)" },
+      code: {
+        type: "string",
+        description:
+          "Set on refusals of the Idempotency-Key: `idempotency_key_invalid` (400), `idempotency_key_reused` (422, the key was used for another request), `idempotency_in_progress` (409, try again after `Retry-After`), `idempotency_already_applied` (409, the answer is not kept – it held a secret or was larger than 64 KB).",
+      },
+    },
     required: ["error"],
   },
   Ok: jsonSchema(okResult),
@@ -997,7 +1005,7 @@ schemas.Command = {
 
 // ---- Operations ----
 
-type Param = { name: string; in: "path" | "query"; required?: boolean; description?: string; schema: Json };
+type Param = { name: string; in: "path" | "query" | "header"; required?: boolean; description?: string; schema: Json };
 type Op = {
   id: string;
   summary: string;
@@ -1017,6 +1025,7 @@ const errorText: Record<number, string> = {
   404: "Not found",
   409: "Conflict: the page is locked, the version is stale or a limit is reached",
   413: "Request too large",
+  422: "The Idempotency-Key was already used for a different request",
   429: "Too many requests; wait for `Retry-After` seconds (MCP) or try again later",
   503: "Not healthy",
 };
@@ -1184,25 +1193,63 @@ export const routesOutsideSpec: Record<string, string> = {
 
 const appBase = () => (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
+// Operations that take an Idempotency-Key (lib/idempotency.ts): applied once
+// per key, retries answered from the store. The SDKs send one per call and
+// keep it when they retry.
+export const idempotentOperations = new Set([
+  "command",
+  "importMarkdownRecords",
+  "timeReportAction",
+  "uploadFile",
+  "importZip",
+  "importSource",
+  "importTracker",
+  "importTemplate",
+  "clipperSave",
+  "runSpaceGitExport",
+  "createWebhook",
+  "issueSyncAction",
+  "updateWebhook",
+  "testWebhook",
+  "registerPlugin",
+  "verifyPublicationDomain",
+  "widgetAction",
+  "intentFocus",
+  "mobileCaptureSave",
+]);
+const idempotencyKeyParam: Param = {
+  name: "Idempotency-Key",
+  in: "header",
+  description:
+    "Optional. One key per logical action (e.g. a UUID v4), 8–128 characters of `A–Z a–z 0–9 _ -`; send the same key again when retrying the same request. The first request is applied; a repeat with the same key and the same request (method, path, body) gets the stored status and body with `Idempotent-Replayed: true`, a repeat with another request 422, a repeat while the first still runs 409 with `Retry-After`. Answers that held a secret (a new token, a feed address) or were larger than 64 KB are not kept: a repeat gets 409 `idempotency_already_applied`. Keys belong to the token (or device) that sent them and expire after 24 hours.",
+  schema: { type: "string", pattern: "^[A-Za-z0-9_-]{8,128}$" },
+};
+
 function operation(o: Op): Json {
   const responses: Json = {};
   const ok = o.ok || { description: "OK" };
+  const idempotent = idempotentOperations.has(o.id);
   responses[String(ok.status || 200)] = {
     description: ok.description,
     ...(ok.schema || ok.content ? { content: { [ok.content || "application/json"]: ok.schema ? { schema: ok.schema } : {} } } : {}),
+    ...(idempotent
+      ? { headers: { "Idempotent-Replayed": { description: "`true` when the answer is the stored one of an earlier request with the same Idempotency-Key.", schema: { type: "string", enum: ["true"] } } } }
+      : {}),
   };
-  const errors = o.errors ?? [400, 401, 403, 404];
+  const errors = [...new Set([...(o.errors ?? [400, 401, 403, 404]), ...(idempotent ? [409, 422] : [])])];
+  const params = [...(o.params || []), ...(idempotent ? [idempotencyKeyParam] : [])];
   for (const status of [...errors].sort()) responses[String(status)] = { description: errorText[status] || "Error", content: { "application/json": { schema: ref("ErrorResponse") } } };
   return {
     operationId: o.id,
     tags: [o.tag],
     summary: o.summary,
     ...(o.description ? { description: o.description } : {}),
-    ...(o.params?.length ? { parameters: o.params.map((prm) => ({ name: prm.name, in: prm.in, required: !!prm.required, ...(prm.description ? { description: prm.description } : {}), schema: prm.schema })) } : {}),
+    ...(params.length ? { parameters: params.map((prm) => ({ name: prm.name, in: prm.in, required: !!prm.required, ...(prm.description ? { description: prm.description } : {}), schema: prm.schema })) } : {}),
     ...(o.body ? { requestBody: { required: o.body.required !== false, ...(o.body.description ? { description: o.body.description } : {}), content: { [o.body.content]: { schema: o.body.schema } } } } : {}),
     responses,
     security: o.security === "none" ? [] : o.security === "metrics" ? [{ metricsToken: [] }] : o.security === "device" ? [{ deviceToken: [] }] : [{ bearerAuth: [] }],
     ...(o.write ? { "x-write-token": true } : {}),
+    ...(idempotent ? { "x-idempotent": true } : {}),
   };
 }
 
@@ -1235,6 +1282,8 @@ export function openApiDocument(options: { exactVersion?: boolean } = {}): Json 
         "Every request carries a personal API token (`Authorization: Bearer fp_…`, created under Settings → API & AI assistants) and acts with the rights of the person who created it. Read tokens may only call GET endpoints and the Markdown export; write tokens also `POST /api/command`, uploads, imports and webhooks. Tokens never get administration rights and cannot create further tokens.",
         "",
         "Errors answer with JSON `{ \"error\": \"…\" }` and the status: 400 invalid input (with `details`), 401 no valid token, 403 not allowed, 404 not found, 409 conflict (locked page, stale version, a limit reached), 413 too large, 429 too many requests, 500 unexpected. Messages follow `Accept-Language` (German by default).",
+        "",
+        "Idempotency: changes (`POST /api/command`, uploads, imports, webhooks, widget actions) take an optional `Idempotency-Key` header – one key per logical action, sent again unchanged on every retry. The change is applied once; retries with the same key and request get the stored answer (`Idempotent-Replayed: true`), with another request 422, while the first still runs 409 with `Retry-After`. Keys belong to the token or device and expire after 24 hours. The generated SDKs send a key with every such call and keep it when they retry.",
         "",
         "Rate limits: the MCP endpoint allows 120 calls per person and minute (429 with `Retry-After: 60`); invitations and shares that send mail are limited to 40 per person and hour, each address to 5 mails per hour (429). Request bodies are limited (12 MB for JSON, more for archives; 413 beyond).",
         "",

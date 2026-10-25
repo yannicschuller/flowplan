@@ -69,6 +69,7 @@ import {
   inviteToken,
 } from "@/lib/auth";
 import { bootstrap, pageData, command, rows, database } from "@/lib/api";
+import { idempotencyHook, withIdempotency } from "@/lib/idempotency";
 import {
   requirePage,
   requireMember,
@@ -951,7 +952,20 @@ async function handleGET(
     return error(e);
   }
 }
-export const POST = withRequestLocale(handlePOST);
+// Idempotency-Key (lib/idempotency.ts): /api/command reserves the key in
+// the action's transaction; every other change around its handler. Reads
+// with a body, cursors and presence go without one.
+const readsWithBody = new Set(["home/data", "presence", "clip", "transcribe"]);
+export const POST = withRequestLocale(
+  withIdempotency(handlePOST, {
+    skip: (req) => {
+      const path = new URL(req.url).pathname.replace(/^\/api\//, "");
+      return readsWithBody.has(path) || /^whiteboards\/[^/]+\/cursor$/.test(path);
+    },
+    atomic: (req) => new URL(req.url).pathname === "/api/command",
+    check: checkOrigin,
+  }),
+);
 async function handlePOST(
   req: Request,
   { params }: { params: Promise<{ path: string[] }> },
@@ -1129,7 +1143,7 @@ async function handlePOST(
       const text = await req.text();
       if (text.length > 10_000_000)
         throw new HttpError(413, "Anfrage zu groß.");
-      const result = command(user, JSON.parse(text));
+      const result = command(user, JSON.parse(text), false, idempotencyHook());
       after(dispatchPush);
       return NextResponse.json(result);
     }

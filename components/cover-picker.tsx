@@ -13,6 +13,7 @@ import {
 } from "@/lib/page-appearance";
 import type { Page } from "@/lib/types";
 import { compressImage } from "@/lib/image-compress";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
 export function CoverPicker({
   page,
   images,
@@ -116,6 +117,7 @@ export function CoverPicker({
                 const response = await fetch("/api/upload", {
                   method: "POST",
                   body,
+                  headers: idempotencyHeaders(),
                 });
                 const result = await response.json();
                 if (!response.ok)

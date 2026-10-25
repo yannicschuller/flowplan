@@ -4,6 +4,7 @@ import { useT } from "./i18n";
 import { useState } from "react";
 import { imageAccept, type PageImage } from "@/lib/page-appearance";
 import { compressImage } from "@/lib/image-compress";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
 
 // Image icons are uploaded to (or chosen from) the images of a page; database
 // records use the images of their database page.
@@ -62,6 +63,7 @@ export function IconImagePicker({
               const response = await fetch("/api/upload", {
                 method: "POST",
                 body,
+                headers: idempotencyHeaders(),
               });
               const result = await response.json();
               if (!response.ok)

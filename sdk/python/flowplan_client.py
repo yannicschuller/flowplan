@@ -7,9 +7,10 @@ Only the standard library is used (urllib). Python 3.11 or newer.
 from __future__ import annotations
 
 import json as _json
+import time as _time
 import uuid as _uuid
 from typing import Any, Literal, Optional, Required, TypedDict, Union
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
@@ -234,6 +235,7 @@ WidgetAction = Union["WidgetActionCaptureNote", "WidgetActionCaptureTask", "Widg
 ErrorResponse = TypedDict("ErrorResponse", {
     "error": Required[str],
     "details": list[str],  # Validation messages (400)
+    "code": str,  # Set on refusals of the Idempotency-Key: `idempotency_key_invalid` (400), `idempotency_key_reused` (422, the key was used for another request), `idempotency_in_progress` (409, try again after `Retry-After`), `idempotency_already_applied` (409, the answer is not kept – it held a secret or was larger than 64 KB).
 }, total=False)
 
 Ok = TypedDict("Ok", {
@@ -1433,14 +1435,22 @@ def _p(value: Any) -> str:
     return quote(str(value), safe="")
 
 
+def _pause(attempt: int, retry_after: Optional[int]) -> None:
+    _time.sleep(min(retry_after, 30) if retry_after else 0.5 * 2**attempt)
+
+
 class FlowplanClient:
     """Calls a Flowplan instance with a personal API token (fp_…)."""
 
-    def __init__(self, base_url: str, token: Optional[str] = None, timeout: float = 60.0, headers: Optional[dict[str, str]] = None):
+    def __init__(self, base_url: str, token: Optional[str] = None, timeout: float = 60.0, headers: Optional[dict[str, str]] = None, retries: int = 2):
+        """`retries`: GET requests and changes with an Idempotency-Key are retried after a network error,
+        429, 502, 503, 504 or 409 while the first attempt still runs – changes with the same key, so they
+        are applied once."""
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
         self.headers = dict(headers or {})
+        self.retries = retries
 
     def request(
         self,
@@ -1452,8 +1462,14 @@ class FlowplanClient:
         raw: Optional[bytes] = None,
         content_type: Optional[str] = None,
         headers: Optional[dict[str, str]] = None,
+        idempotent: bool = False,
+        idempotency_key: Optional[str] = None,
+        retries: Optional[int] = None,
     ) -> tuple[int, dict[str, str], bytes]:
-        """Any request: status, headers and body. Raises FlowplanError outside 2xx."""
+        """Any request: status, headers and body. Raises FlowplanError outside 2xx.
+
+        Operations that take an Idempotency-Key get a new one per call (or `idempotency_key`),
+        kept on every retry of that call."""
         url = self.base_url + path
         params = {k: v for k, v in (query or {}).items() if v is not None}
         if params:
@@ -1475,21 +1491,39 @@ class FlowplanClient:
             if content_type:
                 send["Content-Type"] = content_type
             data = raw
-        try:
-            with urlopen(Request(url, data=data, method=method, headers=send), timeout=self.timeout) as response:
-                return response.status, dict(response.headers.items()), response.read()
-        except HTTPError as error:
-            body = error.read()
-            message = f"{error.code} {error.reason}".strip()
-            details: Optional[list[str]] = None
+        key = idempotency_key or (str(_uuid.uuid4()) if idempotent else None)
+        if key:
+            send["Idempotency-Key"] = key
+        attempts = (self.retries if retries is None else retries) if method == "GET" or key else 0
+        attempt = 0
+        while True:
             try:
-                parsed = _json.loads(body.decode("utf-8"))
-                message = parsed.get("error") or message
-                details = parsed.get("details")
-            except Exception:
-                pass
-            retry = error.headers.get("Retry-After")
-            raise FlowplanError(error.code, message, details, int(retry) if retry and retry.isdigit() else None) from None
+                with urlopen(Request(url, data=data, method=method, headers=send), timeout=self.timeout) as response:
+                    return response.status, dict(response.headers.items()), response.read()
+            except HTTPError as error:
+                body = error.read()
+                message = f"{error.code} {error.reason}".strip()
+                details: Optional[list[str]] = None
+                code: Optional[str] = None
+                try:
+                    parsed = _json.loads(body.decode("utf-8"))
+                    message = parsed.get("error") or message
+                    details = parsed.get("details")
+                    code = parsed.get("code")
+                except Exception:
+                    pass
+                retry = error.headers.get("Retry-After")
+                wait = int(retry) if retry and retry.isdigit() else None
+                if attempt < attempts and (error.code in (429, 502, 503, 504) or (error.code == 409 and code == "idempotency_in_progress")):
+                    _pause(attempt, wait)
+                    attempt += 1
+                    continue
+                raise FlowplanError(error.code, message, details, wait) from None
+            except URLError:
+                if attempt >= attempts:
+                    raise
+                _pause(attempt, None)
+                attempt += 1
 
     def _json(self, method: str, path: str, **kwargs: Any) -> Any:
         _, _, body = self.request(method, path, **kwargs)
@@ -1582,9 +1616,9 @@ class FlowplanClient:
         """Invitations, groups and grants of a workspace — Owners only. (GET /api/settings)"""
         return self._json("GET", "/api/settings", query=dict(query) if query else None, headers=headers)
 
-    def command(self, body: "Command", headers: Optional[dict[str, str]] = None) -> "CommandResult":
+    def command(self, body: "Command", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "CommandResult":
         """Change something — The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*` and `ai.*` are refused for every token. Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429). (POST /api/command)"""
-        return self._json("POST", "/api/command", json_body=body, headers=headers)
+        return self._json("POST", "/api/command", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def get_page(self, page_id: str, headers: Optional[dict[str, str]] = None) -> "PageData":
         """A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts). (GET /api/pages/{pageId})"""
@@ -1610,9 +1644,9 @@ class FlowplanClient:
         """A database embedded in a page (linked view) (GET /api/pages/{pageId}/linked/{databaseId})"""
         return self._json("GET", "/api/pages/" + _p(page_id) + "/linked/" + _p(database_id), headers=headers)
 
-    def import_markdown_records(self, page_id: str, form: "ImportMarkdownRecordsForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def import_markdown_records(self, page_id: str, form: "ImportMarkdownRecordsForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Markdown files as records of a database — One or more `.md` files or a ZIP (100 MB together); frontmatter becomes properties. `dryRun=1` only reports what would change. (POST /api/pages/{pageId}/import-markdown)"""
-        return self._json("POST", "/api/pages/" + _p(page_id) + "/import-markdown", form=dict(form), headers=headers)
+        return self._json("POST", "/api/pages/" + _p(page_id) + "/import-markdown", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def get_row(self, page_id: str, row_id: str, headers: Optional[dict[str, str]] = None) -> "RowDocument":
         """A record with its document (GET /api/pages/{pageId}/rows/{rowId})"""
@@ -1650,9 +1684,9 @@ class FlowplanClient:
         """Time report of a database or a workspace — Your own entries and those of records you may read (field permissions apply). Periods use the server's time zone, weeks start on Monday. `format=csv` returns comma-separated values, `format=excel` semicolons, decimal commas and a byte order mark. Amounts only for workspace members with edit rights. Answered with `Cache-Control: no-store`. (GET /api/time-reports)"""
         return self._json("GET", "/api/time-reports", query=dict(query) if query else None, headers=headers)
 
-    def time_report_action(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def time_report_action(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Billing status of time entries, hourly rates and currency — `{ action: "billing", status: open|billed|unbillable, ids, workspace }` or with `filter` (the GET parameters) for the whole filtered set – marking it billed leaves entries that are not billable as they are. Needs edit rights on the record and its time property; audit-logged. `{ action: "rate", workspace, kind: person|project, targetId, rate | null }` and `{ action: "currency", workspace, currency }` are for workspace owners. (POST /api/time-reports)"""
-        return self._json("POST", "/api/time-reports", json_body=body, headers=headers)
+        return self._json("POST", "/api/time-reports", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def maintenance_notice(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Scheduled maintenance announced by the administration — `notice` is null when none is announced or it has ended. Answered with `Cache-Control: no-store`. (GET /api/maintenance)"""
@@ -1726,9 +1760,9 @@ class FlowplanClient:
         """Download a file — Needs read access to the page the file belongs to. Supports `Range` requests. (GET /api/files/{fileId})"""
         return self._bytes("GET", "/api/files/" + _p(file_id), headers=headers)
 
-    def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None) -> "FileInfo":
+    def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "FileInfo":
         """Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload)"""
-        return self._json("POST", "/api/upload", form=dict(form), headers=headers)
+        return self._json("POST", "/api/upload", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def avatar(self, user_id: str, headers: Optional[dict[str, str]] = None) -> bytes:
         """Profile picture of a person you share a workspace with (GET /api/avatars/{userId})"""
@@ -1758,21 +1792,21 @@ class FlowplanClient:
         """Restore a workspace backup — Write tokens of an editor. The body is the ZIP itself, up to 2 GB. (POST /api/backup)"""
         return self._json("POST", "/api/backup", raw=body, content_type="application/zip", query=dict(query) if query else None, headers=headers)
 
-    def import_zip(self, form: "ImportZipForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def import_zip(self, form: "ImportZipForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Import a ZIP of Markdown, HTML or Notion pages into a space (POST /api/import/zip)"""
-        return self._json("POST", "/api/import/zip", form=dict(form), headers=headers)
+        return self._json("POST", "/api/import/zip", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
-    def import_source(self, form: "ImportSourceForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def import_source(self, form: "ImportSourceForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Import from Confluence, Evernote, Google Docs or Obsidian — Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source)"""
-        return self._json("POST", "/api/import/source", form=dict(form), headers=headers)
+        return self._json("POST", "/api/import/source", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
-    def import_tracker(self, form: "ImportTrackerForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def import_tracker(self, form: "ImportTrackerForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Jira (CSV) or Trello (JSON) into a new database (POST /api/import/tracker)"""
-        return self._json("POST", "/api/import/tracker", form=dict(form), headers=headers)
+        return self._json("POST", "/api/import/tracker", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
-    def import_template(self, form: "ImportTemplateForm", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def import_template(self, form: "ImportTemplateForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Import a template archive (POST /api/templates/import)"""
-        return self._json("POST", "/api/templates/import", form=dict(form), headers=headers)
+        return self._json("POST", "/api/templates/import", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def export_template(self, template_id: str, query: "ExportTemplateQuery", headers: Optional[dict[str, str]] = None) -> bytes:
         """Export a saved template as archive (GET /api/templates/{templateId}/export)"""
@@ -1786,9 +1820,9 @@ class FlowplanClient:
         """Where the browser extension may save — For `clipper` (or write) tokens: workspaces with the spaces and the documents and databases you may write to. Answers carry CORS headers for browser-extension origins only, without credentials. (GET /api/clipper/targets)"""
         return self._json("GET", "/api/clipper/targets", headers=headers)
 
-    def clipper_save(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def clipper_save(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Save a clip from the browser extension — For `clipper` (or write) tokens. `mode`: `page` or `selection` (HTML, sanitised on the server) as a new page in a space, a sub-page of a document or a record of a database; `bookmark` into the space's bookmarks database (title, URL, description, favicon, tags); `highlight` as a quote with a link to the source, appended to the target document (into a space: a new page for the source). Tags go into a property named Tags if the database has one. (POST /api/clipper/save)"""
-        return self._json("POST", "/api/clipper/save", json_body=body, headers=headers)
+        return self._json("POST", "/api/clipper/save", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def embed(self, query: "EmbedQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Link preview or player for a URL (GET /api/embed)"""
@@ -1798,9 +1832,9 @@ class FlowplanClient:
         """Git export settings of a space — Space owners only. (GET /api/spaces/{spaceId}/git-export)"""
         return self._json("GET", "/api/spaces/" + _p(space_id) + "/git-export", headers=headers)
 
-    def run_space_git_export(self, space_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def run_space_git_export(self, space_id: str, headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Run the Git export of a space now (POST /api/spaces/{spaceId}/git-export/run)"""
-        return self._json("POST", "/api/spaces/" + _p(space_id) + "/git-export/run", headers=headers)
+        return self._json("POST", "/api/spaces/" + _p(space_id) + "/git-export/run", headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def list_tokens(self, headers: Optional[dict[str, str]] = None) -> list["ApiToken"]:
         """Your API tokens — Tokens cannot create or revoke tokens (the settings do). (GET /api/tokens)"""
@@ -1810,9 +1844,9 @@ class FlowplanClient:
         """Webhooks of a workspace — Owners only. (GET /api/webhooks)"""
         return self._json("GET", "/api/webhooks", query=dict(query) if query else None, headers=headers)
 
-    def create_webhook(self, body: "WebhookCreate", headers: Optional[dict[str, str]] = None) -> "WebhookCreated":
+    def create_webhook(self, body: "WebhookCreate", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "WebhookCreated":
         """Register a webhook — Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command. (POST /api/webhooks)"""
-        return self._json("POST", "/api/webhooks", json_body=body, headers=headers)
+        return self._json("POST", "/api/webhooks", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def list_inbound_mail(self, query: "ListInboundMailQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Inbound e-mail addresses of a workspace — Owners only. Each address with its target, allowed senders, webhook URL, e-mail address (IMAP mode, when INBOUND_MAIL_DOMAIN is set) and the last delivery. Created, rotated and removed with `inbound.save`, `inbound.rotate` and `inbound.delete`. (GET /api/inbound-mail)"""
@@ -1826,17 +1860,17 @@ class FlowplanClient:
         """GitHub/GitLab issue sync: connections, a database's mapping or a record's issue — `workspace` lists the connections (owners and administrators); `page` the mapping and status of a database; `page` with `row` the linked issue or null. (GET /api/issue-sync)"""
         return self._json("GET", "/api/issue-sync", query=dict(query) if query else None, headers=headers)
 
-    def issue_sync_action(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def issue_sync_action(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Test a GitHub/GitLab connection or sync a database now — `{ op: "test", workspaceId, provider, baseUrl, repo, token | id }` makes one API call with the token; `{ op: "run", pageId }` pulls and pushes now. Rate limits of the provider (403/429) pause the connection until `Retry-After`. (POST /api/issue-sync)"""
-        return self._json("POST", "/api/issue-sync", json_body=body, headers=headers)
+        return self._json("POST", "/api/issue-sync", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
-    def update_webhook(self, body: "WebhookUpdate", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def update_webhook(self, body: "WebhookUpdate", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Change a webhook — Owners with a write token: events, database, format, templates, settings, credentials and (checked again) the address. The secret stays. (POST /api/webhooks/update)"""
-        return self._json("POST", "/api/webhooks/update", json_body=body, headers=headers)
+        return self._json("POST", "/api/webhooks/update", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
-    def test_webhook(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> "WebhookTestResult":
+    def test_webhook(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "WebhookTestResult":
         """Send a test message — Owners with a write token. Sends a sample message (event `test`) right away, without retries, and answers with the result. (POST /api/webhooks/test)"""
-        return self._json("POST", "/api/webhooks/test", json_body=body, headers=headers)
+        return self._json("POST", "/api/webhooks/test", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def calendar_feed_status(self, query: "CalendarFeedStatusQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Whether a calendar view has an iCalendar link or CalDAV access (GET /api/calendar-feed)"""
@@ -1850,9 +1884,9 @@ class FlowplanClient:
         """Block extensions of a workspace or of a page's workspace — With `workspace`: every member sees the enabled plugins, owners also switched-off ones. With `page`: the enabled plugins of that page's workspace. Each plugin with its blocks (absolute frame addresses), granted and requested permissions, frame size and settings. Changed with `plugin.update` and removed with `plugin.delete` via POST /api/command. (GET /api/plugins)"""
         return self._json("GET", "/api/plugins", query=dict(query) if query else None, headers=headers)
 
-    def register_plugin(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def register_plugin(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Register a block extension by its manifest address — Workspace owners, in the browser (API tokens are refused). The server fetches `flowplan-plugin.json` (HTTPS, an origin on PLUGIN_ALLOWED_ORIGINS unless the administration allows any), validates it and grants the permissions it requests; `databases` picks the databases for a bare `read:database`. Registering the same address again refreshes the manifest. (POST /api/plugins)"""
-        return self._json("POST", "/api/plugins", json_body=body, headers=headers)
+        return self._json("POST", "/api/plugins", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def query_plugin_database(self, plugin_id: str, query: "QueryPluginDatabaseQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Records of a database a plugin was granted — What a plugin frame's `query` message returns: at most `limit` (default 50, max 200) records with the caller's own rights – hidden records and properties stay hidden. (GET /api/plugins/{pluginId}/query)"""
@@ -1862,9 +1896,9 @@ class FlowplanClient:
         """Custom domain and look of a publication — The domain with its verification record (TXT `_flowplan-verify.<host>`) and file, and the publication's theme. Set with `domain.add`, `domain.remove` and `publication.theme` via POST /api/command. (GET /api/domains)"""
         return self._json("GET", "/api/domains", query=dict(query) if query else None, headers=headers)
 
-    def verify_publication_domain(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def verify_publication_domain(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Verify a publication's custom domain — Checks the TXT record `_flowplan-verify.<host>`, then `https://<host>/.well-known/flowplan-verify.txt`. Needs edit rights on the page. (POST /api/domains/verify)"""
-        return self._json("POST", "/api/domains/verify", json_body=body, headers=headers)
+        return self._json("POST", "/api/domains/verify", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def custom_domain_allowed(self, query: "CustomDomainAllowedQuery", headers: Optional[dict[str, str]] = None) -> bytes:
         """Whether a host is a verified custom domain — For the `ask` endpoint of Caddy's on-demand TLS: 200 for verified domains of active publications, 404 otherwise. No authentication. (GET /api/domains/allowed)"""
@@ -1878,9 +1912,9 @@ class FlowplanClient:
         """The data of all configured widgets in one request — Each widget answers on its own (`ok`, `data` or `status` and `error`), so one widget whose page is gone does not fail the others. Counters keep one value per configuration and day for their 14-day history. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (POST /api/mobile/widgets/data)"""
         return self._json("POST", "/api/mobile/widgets/data", json_body=body, headers=headers)
 
-    def widget_action(self, body: "WidgetAction", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def widget_action(self, body: "WidgetAction", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """What a widget, Live Activity or Shortcut does — Capture a note or task, upload a photo or voice memo (`capture.upload` as multipart/form-data with the fields and `file`), save what was shared from another app (`capture.share`: title, text and link, with up to 10 photos or PDFs as repeated `file` parts), tick off a task or habit, track the journal, start and stop the timer or a focus session, mark mentions read, create a meeting note. Goes through the same permission checks, versions and activity log as the web app. 30 actions per person and minute, 20 uploads per hour. (POST /api/mobile/widgets/action)"""
-        return self._json("POST", "/api/mobile/widgets/action", json_body=body, headers=headers)
+        return self._json("POST", "/api/mobile/widgets/action", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def intent_pages(self, query: Optional["IntentPagesQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Pages to open from Siri and Shortcuts — At most 20 readable pages across the person's workspaces: whose title contains `q`, the ones listed in `ids`, or – without either – favorites and recently opened pages. Nothing of end-to-end encrypted spaces. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/pages)"""
@@ -1894,17 +1928,17 @@ class FlowplanClient:
         """Workspaces for a Focus filter — The person's workspaces by name. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/workspaces)"""
         return self._json("GET", "/api/mobile/intents/workspaces", query=dict(query) if query else None, headers=headers)
 
-    def intent_focus(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def intent_focus(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Hold back push notifications during a Focus — While `hide` is true, push notifications to this device that belong to another workspace than `workspaceId` (all of them when it is null) are left out; they stay in the inbox. Ends after `hours` (default 24) or with `hide: false`. 30 requests per person and minute. (POST /api/mobile/intents/focus)"""
-        return self._json("POST", "/api/mobile/intents/focus", json_body=body, headers=headers)
+        return self._json("POST", "/api/mobile/intents/focus", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def mobile_capture_targets(self, query: Optional["MobileCaptureTargetsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Where the share extension can save — The inbox (the person's capture database, null when none is set) and every database and document the person may add to, with the upload limits. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/targets)"""
         return self._json("GET", "/api/mobile/capture/targets", query=dict(query) if query else None, headers=headers)
 
-    def mobile_capture_save(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    def mobile_capture_save(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
         """Save shared text, a link, images or PDFs — From the share extension and the document scanner: JSON, or multipart/form-data with the fields and up to 10 `file` parts (images and PDFs). Into a database as a record (files in its first files property), into a document as a sub page (`place: subpage`) or at its end (`place: append`; also a record's document with `rowId`). `targetId: inbox` uses the capture database. `recognized` is the text the phone read in a scanned PDF, stored as its search text. 30 saves per person and minute, 20 with files per hour. (POST /api/mobile/capture/save)"""
-        return self._json("POST", "/api/mobile/capture/save", json_body=body, headers=headers)
+        return self._json("POST", "/api/mobile/capture/save", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def mobile_spotlight(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Pages and open tasks for the phone's search — The 500 most recently changed pages the person may read (title, place, a short excerpt) and up to 200 open tasks, for the on-device search index (iOS Spotlight). Nothing of end-to-end encrypted spaces, pages behind a journal PIN or journal days. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/spotlight)"""

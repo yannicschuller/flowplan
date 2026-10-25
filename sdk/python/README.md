@@ -38,6 +38,16 @@ Binary answers (`get_file`, `markdown_export`, `export_backup`) return `bytes`.
 
 Answers outside 2xx raise `FlowplanError` with `status`, the server's `message` (in the reader's language), validation `details` (400) and `retry_after` seconds (429).
 
+Changes (`command`, uploads, imports, webhooks) carry an `Idempotency-Key`: a new UUID per call, kept when the client retries the call after a network error, 429, 502–504 or 409 while the first attempt still runs (`retries`, default 2). The server applies the change once. To repeat the same action later, pass its key yourself:
+
+```python
+import uuid
+key = str(uuid.uuid4())
+client.command({"action": "comment.create", "pageId": page_id, "body": "Done"}, idempotency_key=key)
+# Again with the same key: answered from the server's store, no second comment.
+client.command({"action": "comment.create", "pageId": page_id, "body": "Done"}, idempotency_key=key)
+```
+
 Anything not covered by a generated method goes through `client.request(method, path, query=…, json_body=…, form=…, raw=…)`, which returns `(status, headers, body)`.
 
 See `example.py` for a complete script, `/api/docs` on your instance for the reference and [docs.flowplan.org/api-and-webhooks](https://docs.flowplan.org/api-and-webhooks) for the guide.

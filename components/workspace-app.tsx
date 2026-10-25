@@ -20,6 +20,7 @@ import {
   OfflineConflicts,
 } from "./offline-queue";
 import { applyQueue } from "@/lib/offline-queue";
+import { draftKey, draftSent, keyed } from "@/lib/idempotency-key";
 import {
   parsePageLocation,
   pageLocationHash,
@@ -3177,12 +3178,15 @@ export default function WorkspaceApp({
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
-                        const r = await act({
-                          action: "comment.create",
-                          pageId,
-                          body: comment,
-                        });
-                        if (r) setComment("");
+                        // A double submit of the same draft posts it once.
+                        const draft = `comment:${pageId}`;
+                        const r = await act(
+                          keyed({ action: "comment.create", pageId, body: comment }, draftKey(draft, comment)),
+                        );
+                        if (r) {
+                          draftSent(draft);
+                          setComment("");
+                        }
                       }}
                     >
                       <textarea

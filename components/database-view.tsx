@@ -204,6 +204,7 @@ import type {
   Comment,
 } from "@/lib/types";
 import type { RelationPair } from "@/lib/relation-sync";
+import { draftKey, draftSent, idempotencyHeaders, idempotencyKeyOf, keyed } from "@/lib/idempotency-key";
 import {
   ARM_GRACE_MS,
   reminderLabel,
@@ -1023,7 +1024,10 @@ export default function DatabaseView({
       : undefined;
   const act = async (b: Record<string, unknown>) => {
     try {
-      return await mutate({ pageId: page.id, ...b });
+      // The action's Idempotency-Key stays with it (lib/idempotency-key.ts).
+      const key = idempotencyKeyOf(b);
+      const body = { pageId: page.id, ...b };
+      return await mutate(key ? keyed(body, key) : body);
     } catch (e) {
       onError((e as Error).message);
       return null;
@@ -1509,7 +1513,7 @@ export default function DatabaseView({
     const body = new FormData();
     body.set("pageId", page.id);
     body.set("file", file);
-    const response = await fetch("/api/upload", { method: "POST", body });
+    const response = await fetch("/api/upload", { method: "POST", body, headers: idempotencyHeaders() });
     const result = await response.json();
     if (!response.ok) throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
     return result.url as string;
@@ -3519,9 +3523,13 @@ export default function DatabaseView({
                 })
               : undefined
           }
-          onComment={(r, body) =>
-            act({ action: "comment.create", rowId: r.id, body })
-          }
+          onComment={async (r, body) => {
+            // A double submit of the same draft posts it once.
+            const draft = `comment:${r.id}`;
+            const result = await act(keyed({ action: "comment.create", rowId: r.id, body }, draftKey(draft, body)));
+            if (result) draftSent(draft);
+            return result;
+          }}
         />
       )}
       {view.type === "gallery" && (

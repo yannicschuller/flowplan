@@ -10,6 +10,7 @@ import type { UploadFile } from "@/lib/mobile-widget-actions";
 import { requireBodySize } from "@/lib/upload-safety";
 import { maxUploadMbFor } from "@/lib/user-limits";
 import type { Identity } from "@/lib/types";
+import { withIdempotency } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,7 +57,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ action: 
   });
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ action: string }> }) {
+// Saved once per Idempotency-Key (the share extension retries with the same one).
+export const POST = withIdempotency(handlePOST);
+async function handlePOST(req: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
   return withDevice(req, async (user) => {
     if (action !== "save") throw new HttpError(404, "Nicht gefunden");

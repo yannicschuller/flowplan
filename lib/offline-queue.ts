@@ -5,7 +5,10 @@
 // records deleted elsewhere become conflicts the person resolves.
 import type { Row } from "./types";
 
-export type QueuedChange =
+// `key`: the Idempotency-Key the change is sent with, also on every later
+// attempt (lib/idempotency-key.ts) – the one of the online attempt that
+// failed without an answer, so a change that did arrive is not applied twice.
+export type QueuedChange = { key?: string } & (
   | {
       id: string;
       kind: "update";
@@ -41,7 +44,8 @@ export type QueuedChange =
       title: string;
       text: string;
       at: number;
-    };
+    }
+);
 export type Conflict = {
   change: Extract<QueuedChange, { kind: "update" }>;
   // Fields changed on both sides with the current values, or null when the

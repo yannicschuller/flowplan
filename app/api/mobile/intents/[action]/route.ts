@@ -8,6 +8,7 @@ import { limitWidgets, widgetLocale, widgetUser } from "@/lib/mobile-widgets";
 import { intentPages, intentSearch, intentWorkspaces } from "@/lib/mobile-intents";
 import { setDeviceFocus } from "@/lib/mobile-focus";
 import type { Identity } from "@/lib/types";
+import { withIdempotency } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,7 +58,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ action: 
   });
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ action: string }> }) {
+export const POST = withIdempotency(handlePOST);
+async function handlePOST(req: Request, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
   return withDevice(req, async (user) => {
     if (action !== "focus") throw new HttpError(404, "Nicht gefunden");

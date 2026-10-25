@@ -48,6 +48,8 @@ function operationsOf(doc) {
         queryParams: params.filter((p) => p.in === "query"),
         body: bodyContent ? { content: bodyContent, schema: op.requestBody.content[bodyContent].schema, required: op.requestBody.required !== false } : null,
         response: okContent ? { content: okContent, schema: ok.content[okContent].schema } : null,
+        // Takes an Idempotency-Key: the clients send one and keep it on retries.
+        idempotent: !!op["x-idempotent"],
       });
     }
   return ops;
@@ -145,10 +147,20 @@ export interface ClientOptions {
   fetch?: typeof fetch;
   /** Headers sent with every request. */
   headers?: Record<string, string>;
+  /**
+   * Retries of GET requests and of changes that take an Idempotency-Key, after a network error,
+   * 429, 502, 503, 504 or 409 while the first attempt still runs (default 2). Changes are retried
+   * with the same key, so they are applied once.
+   */
+  retries?: number;
 }
 export interface RequestOptions {
   signal?: AbortSignal;
   headers?: Record<string, string>;
+  /** The Idempotency-Key of this call (default: a new UUID per call for operations that take one). Pass the same key to repeat the same action later. */
+  idempotencyKey?: string;
+  /** Retries of this call (default: the client's). */
+  retries?: number;
 }
 export type Query = Record<string, string | number | boolean | undefined | null>;
 
@@ -174,7 +186,7 @@ export class FlowplanClient {
   async request(
     method: string,
     path: string,
-    init: { query?: Query; json?: unknown; form?: Record<string, unknown>; raw?: BodyInit; contentType?: string } = {},
+    init: { query?: Query; json?: unknown; form?: Record<string, unknown>; raw?: BodyInit; contentType?: string; idempotent?: boolean } = {},
     options: RequestOptions = {},
   ): Promise<Response> {
     const url = new URL(this.options.baseUrl.replace(/\\/$/, "") + path);
@@ -199,9 +211,43 @@ export class FlowplanClient {
       if (init.contentType) headers.set("Content-Type", init.contentType);
       body = init.raw;
     }
-    const response = await (this.options.fetch || fetch)(url, { method, headers, body, signal: options.signal });
-    if (!response.ok) throw await FlowplanClient.error(response);
-    return response;
+    // One key per call, the same on every retry of it.
+    const key = options.idempotencyKey ?? (init.idempotent ? globalThis.crypto.randomUUID() : undefined);
+    if (key) headers.set("Idempotency-Key", key);
+    const retries = method === "GET" || key ? (options.retries ?? this.options.retries ?? 2) : 0;
+    for (let attempt = 0; ; attempt++) {
+      let response: Response;
+      try {
+        response = await (this.options.fetch || fetch)(url, { method, headers, body, signal: options.signal });
+      } catch (error) {
+        if (attempt >= retries || options.signal?.aborted) throw error;
+        await FlowplanClient.pause(attempt, null);
+        continue;
+      }
+      if (attempt < retries && (await FlowplanClient.retryable(response))) {
+        await response.body?.cancel();
+        await FlowplanClient.pause(attempt, response.headers.get("Retry-After"));
+        continue;
+      }
+      if (!response.ok) throw await FlowplanClient.error(response);
+      return response;
+    }
+  }
+
+  private static async retryable(response: Response) {
+    if ([429, 502, 503, 504].includes(response.status)) return true;
+    if (response.status !== 409) return false;
+    try {
+      return ((await response.clone().json()) as { code?: string })?.code === "idempotency_in_progress";
+    } catch {
+      return false;
+    }
+  }
+
+  private static pause(attempt: number, retryAfter: string | null) {
+    const seconds = Number(retryAfter);
+    const ms = seconds > 0 ? Math.min(seconds, 30) * 1000 : 500 * 2 ** attempt;
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async json<T>(method: string, path: string, init: Parameters<FlowplanClient["request"]>[2] = {}, options?: RequestOptions): Promise<T> {
@@ -246,6 +292,7 @@ export class FlowplanClient {
     }
     args.push("options?: RequestOptions");
     const path = "`" + op.path.replace(/\{([^}]+)\}/g, (_, name) => "${encodeURIComponent(" + camel(name) + ")}") + "`";
+    if (op.idempotent) callInit.push("idempotent: true");
     const initText = callInit.length ? `{ ${callInit.join(", ")} }` : "{}";
     const jsonAnswer = op.response && isJson(op.response.content);
     let returnType = jsonAnswer ? tsType(op.response.schema, "  ") : op.response ? "Response" : "void";
@@ -336,9 +383,10 @@ Only the standard library is used (urllib). Python 3.11 or newer.
 from __future__ import annotations
 
 import json as _json
+import time as _time
 import uuid as _uuid
 from typing import Any, Literal, Optional, Required, TypedDict, Union
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
@@ -385,14 +433,22 @@ def _p(value: Any) -> str:
     return quote(str(value), safe="")
 
 
+def _pause(attempt: int, retry_after: Optional[int]) -> None:
+    _time.sleep(min(retry_after, 30) if retry_after else 0.5 * 2**attempt)
+
+
 class FlowplanClient:
     """Calls a Flowplan instance with a personal API token (fp_…)."""
 
-    def __init__(self, base_url: str, token: Optional[str] = None, timeout: float = 60.0, headers: Optional[dict[str, str]] = None):
+    def __init__(self, base_url: str, token: Optional[str] = None, timeout: float = 60.0, headers: Optional[dict[str, str]] = None, retries: int = 2):
+        """\`retries\`: GET requests and changes with an Idempotency-Key are retried after a network error,
+        429, 502, 503, 504 or 409 while the first attempt still runs – changes with the same key, so they
+        are applied once."""
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
         self.headers = dict(headers or {})
+        self.retries = retries
 
     def request(
         self,
@@ -404,8 +460,14 @@ class FlowplanClient:
         raw: Optional[bytes] = None,
         content_type: Optional[str] = None,
         headers: Optional[dict[str, str]] = None,
+        idempotent: bool = False,
+        idempotency_key: Optional[str] = None,
+        retries: Optional[int] = None,
     ) -> tuple[int, dict[str, str], bytes]:
-        """Any request: status, headers and body. Raises FlowplanError outside 2xx."""
+        """Any request: status, headers and body. Raises FlowplanError outside 2xx.
+
+        Operations that take an Idempotency-Key get a new one per call (or \`idempotency_key\`),
+        kept on every retry of that call."""
         url = self.base_url + path
         params = {k: v for k, v in (query or {}).items() if v is not None}
         if params:
@@ -427,21 +489,39 @@ class FlowplanClient:
             if content_type:
                 send["Content-Type"] = content_type
             data = raw
-        try:
-            with urlopen(Request(url, data=data, method=method, headers=send), timeout=self.timeout) as response:
-                return response.status, dict(response.headers.items()), response.read()
-        except HTTPError as error:
-            body = error.read()
-            message = f"{error.code} {error.reason}".strip()
-            details: Optional[list[str]] = None
+        key = idempotency_key or (str(_uuid.uuid4()) if idempotent else None)
+        if key:
+            send["Idempotency-Key"] = key
+        attempts = (self.retries if retries is None else retries) if method == "GET" or key else 0
+        attempt = 0
+        while True:
             try:
-                parsed = _json.loads(body.decode("utf-8"))
-                message = parsed.get("error") or message
-                details = parsed.get("details")
-            except Exception:
-                pass
-            retry = error.headers.get("Retry-After")
-            raise FlowplanError(error.code, message, details, int(retry) if retry and retry.isdigit() else None) from None
+                with urlopen(Request(url, data=data, method=method, headers=send), timeout=self.timeout) as response:
+                    return response.status, dict(response.headers.items()), response.read()
+            except HTTPError as error:
+                body = error.read()
+                message = f"{error.code} {error.reason}".strip()
+                details: Optional[list[str]] = None
+                code: Optional[str] = None
+                try:
+                    parsed = _json.loads(body.decode("utf-8"))
+                    message = parsed.get("error") or message
+                    details = parsed.get("details")
+                    code = parsed.get("code")
+                except Exception:
+                    pass
+                retry = error.headers.get("Retry-After")
+                wait = int(retry) if retry and retry.isdigit() else None
+                if attempt < attempts and (error.code in (429, 502, 503, 504) or (error.code == 409 and code == "idempotency_in_progress")):
+                    _pause(attempt, wait)
+                    attempt += 1
+                    continue
+                raise FlowplanError(error.code, message, details, wait) from None
+            except URLError:
+                if attempt >= attempts:
+                    raise
+                _pause(attempt, None)
+                attempt += 1
 
     def _json(self, method: str, path: str, **kwargs: Any) -> Any:
         _, _, body = self.request(method, path, **kwargs)
@@ -473,6 +553,10 @@ class FlowplanClient:
     }
     args.push("headers: Optional[dict[str, str]] = None");
     call.push("headers=headers");
+    if (op.idempotent) {
+      args.push("idempotency_key: Optional[str] = None");
+      call.push("idempotent=True", "idempotency_key=idempotency_key");
+    }
     const path = op.path.split(/(\{[^}]+\})/).filter(Boolean).map((part) => (part.startsWith("{") ? `_p(${snake(part.slice(1, -1))})` : JSON.stringify(part))).join(" + ");
     const jsonAnswer = op.response && isJson(op.response.content);
     const returnType = jsonAnswer ? pyType(op.response.schema) : op.response ? "bytes" : "None";

@@ -30,7 +30,8 @@ export function clipperCors(origin: string | null): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin!,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
+    "Access-Control-Expose-Headers": "Idempotent-Replayed, Retry-After",
     "Access-Control-Max-Age": "600",
     Vary: "Origin",
   };

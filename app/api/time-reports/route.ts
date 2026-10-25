@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
+import { withIdempotency } from "@/lib/idempotency";
 import { setBilling, setCurrency, setRate, timeReportCsv, timeReportData } from "@/lib/time-reports";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,18 +39,20 @@ export const GET = withRequestLocale(async (req: Request) => {
   }
 });
 
-export const POST = withRequestLocale(async (req: Request) => {
-  try {
-    checkOrigin(req);
-    if (Number(req.headers.get("content-length") || 0) > 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
-    const user = await requireUser();
-    if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    if (body.action === "billing") return Response.json(setBilling(user, body));
-    if (body.action === "rate") return Response.json({ rates: setRate(user, body) });
-    if (body.action === "currency") return Response.json(setCurrency(user, body));
-    throw new HttpError(400, "Unbekannte Aktion.");
-  } catch (e) {
-    return failure(e);
-  }
-});
+export const POST = withRequestLocale(
+  withIdempotency(async (req: Request) => {
+    try {
+      checkOrigin(req);
+      if (Number(req.headers.get("content-length") || 0) > 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
+      const user = await requireUser();
+      if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
+      const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+      if (body.action === "billing") return Response.json(setBilling(user, body));
+      if (body.action === "rate") return Response.json({ rates: setRate(user, body) });
+      if (body.action === "currency") return Response.json(setCurrency(user, body));
+      throw new HttpError(400, "Unbekannte Aktion.");
+    } catch (e) {
+      return failure(e);
+    }
+  }, { check: checkOrigin }),
+);

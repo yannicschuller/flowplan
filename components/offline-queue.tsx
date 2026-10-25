@@ -12,6 +12,7 @@ import {
 } from "@/lib/offline-queue";
 import { cellText } from "@/lib/cell-text";
 import { friendlyError, Modal } from "./ui";
+import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf, newIdempotencyKey } from "@/lib/idempotency-key";
 import type { Field, Row } from "@/lib/types";
 
 class HttpFailure extends Error {
@@ -22,13 +23,17 @@ class HttpFailure extends Error {
     super(message);
   }
 }
-async function post(body: Record<string, unknown>) {
+// Without an answer, or while the server still works on the same key: sent
+// again on the next flush (the change stays in the queue).
+class NotYet extends Error {}
+async function post(body: Record<string, unknown>, key: string) {
   const response = await fetch("/api/command", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", [IDEMPOTENCY_HEADER]: key },
     body: JSON.stringify(body),
   });
   const result = await response.json().catch(() => ({}));
+  if (result?.code === IDEMPOTENCY_CODES.processing) throw new NotYet();
   if (!response.ok)
     throw new HttpFailure(serverMessage(result.error) || tr("Fehler", "Error"), response.status);
   return result;
@@ -106,7 +111,9 @@ export function useOfflineQueue({
     (b: Record<string, unknown>, rows: Row[]) => {
       const pageId = String(b.pageId),
         at = Date.now(),
-        id = crypto.randomUUID();
+        id = crypto.randomUUID(),
+        // The key of the attempt that failed (api() put it on the body).
+        key = idempotencyKeyOf(b, true);
       let change: QueuedChange;
       if (b.action === "row.create") {
         change = {
@@ -145,7 +152,7 @@ export function useOfflineQueue({
           at,
         };
       }
-      store([...queueRef.current, change]);
+      store([...queueRef.current, { ...change, key }]);
       return { id: change.rowId, offline: true };
     },
     [store],
@@ -159,6 +166,8 @@ export function useOfflineQueue({
     try {
       while (queueRef.current.length) {
         const change = queueRef.current[0];
+        // Changes queued before keys existed: their id is a UUID too.
+        const key = change.key || change.id;
         try {
           if (change.kind === "create")
             await post({
@@ -167,7 +176,7 @@ export function useOfflineQueue({
               rowId: change.rowId,
               cells: change.cells,
               templateId: null,
-            });
+            }, key);
           else if (change.kind === "capture")
             await post({
               action: "capture.record",
@@ -175,14 +184,14 @@ export function useOfflineQueue({
               rowId: change.rowId,
               title: change.title,
               text: change.text,
-            });
+            }, key);
           else if (change.kind === "delete") {
             try {
               await post({
                 action: "row.delete",
                 pageId: change.pageId,
                 rowId: change.rowId,
-              });
+              }, key);
             } catch (e) {
               if (!(e instanceof HttpFailure && e.status === 404)) throw e;
             }
@@ -194,7 +203,7 @@ export function useOfflineQueue({
                 rowId: change.rowId,
                 version: change.version,
                 cells: change.cells,
-              });
+              }, key);
             } catch (e) {
               if (!(e instanceof HttpFailure) || ![404, 409].includes(e.status))
                 throw e;
@@ -204,13 +213,14 @@ export function useOfflineQueue({
               const merged = mergeChange(change, current);
               if ("conflict" in merged) found.push(merged.conflict);
               else if ("send" in merged)
+                // Another request than the first: a key of its own.
                 await post({
                   action: "row.update",
                   pageId: change.pageId,
                   rowId: change.rowId,
                   version: merged.version,
                   cells: merged.send,
-                });
+                }, `${key.slice(0, 120)}-merged`);
             }
           }
         } catch (e) {
@@ -254,7 +264,7 @@ export function useOfflineQueue({
             rowId: change.rowId,
             version: current.version,
             cells: change.cells,
-          });
+          }, newIdempotencyKey());
         // Deleted elsewhere: the own version comes back as a new record.
         else
           await post({
@@ -262,7 +272,7 @@ export function useOfflineQueue({
             pageId: change.pageId,
             cells: { ...change.base, ...change.cells },
             templateId: null,
-          });
+          }, newIdempotencyKey());
       }
       storeConflicts(rest);
       await onSynced();

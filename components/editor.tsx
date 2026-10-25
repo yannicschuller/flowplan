@@ -184,6 +184,7 @@ import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/f
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import { ListTidy } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
 // The symbol a plugin's manifest names for a block type, as a menu icon.
 function emojiIcon(symbol: string) {
   function Icon({ size = 18 }: { size?: number }) {
@@ -1027,7 +1028,7 @@ export default function DocumentEditor({
     form.set("pageId", pageId);
     form.set("file", file);
     try {
-      const r = await fetch("/api/upload", { method: "POST", body: form });
+      const r = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
       const data = await r.json();
       if (!r.ok) throw new Error(serverMessage(data.error));
       if (file.type.startsWith("image/"))
@@ -1729,7 +1730,7 @@ export default function DocumentEditor({
     const form = new FormData();
     form.set("pageId", pageId);
     form.set("file", new File([result.blob], `${(current.attrs.alt || "bild").replace(/\.[a-z0-9]+$/i, "")}-markiert.${result.blob.type === "image/png" ? "png" : "jpg"}`, { type: result.blob.type }));
-    const response = await fetch("/api/upload", { method: "POST", body: form });
+    const response = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
     const data = await response.json();
     if (!response.ok) throw new Error(serverMessage(data.error));
     // Without markings the original comes back.

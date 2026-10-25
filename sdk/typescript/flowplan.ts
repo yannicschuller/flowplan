@@ -239,6 +239,8 @@ export type ErrorResponse = {
   error: string;
   /** Validation messages (400) */
   details?: string[];
+  /** Set on refusals of the Idempotency-Key: `idempotency_key_invalid` (400), `idempotency_key_reused` (422, the key was used for another request), `idempotency_in_progress` (409, try again after `Retry-After`), `idempotency_already_applied` (409, the answer is not kept – it held a secret or was larger than 64 KB). */
+  code?: string;
 };
 
 export type Ok = {
@@ -1899,10 +1901,20 @@ export interface ClientOptions {
   fetch?: typeof fetch;
   /** Headers sent with every request. */
   headers?: Record<string, string>;
+  /**
+   * Retries of GET requests and of changes that take an Idempotency-Key, after a network error,
+   * 429, 502, 503, 504 or 409 while the first attempt still runs (default 2). Changes are retried
+   * with the same key, so they are applied once.
+   */
+  retries?: number;
 }
 export interface RequestOptions {
   signal?: AbortSignal;
   headers?: Record<string, string>;
+  /** The Idempotency-Key of this call (default: a new UUID per call for operations that take one). Pass the same key to repeat the same action later. */
+  idempotencyKey?: string;
+  /** Retries of this call (default: the client's). */
+  retries?: number;
 }
 export type Query = Record<string, string | number | boolean | undefined | null>;
 
@@ -1928,7 +1940,7 @@ export class FlowplanClient {
   async request(
     method: string,
     path: string,
-    init: { query?: Query; json?: unknown; form?: Record<string, unknown>; raw?: BodyInit; contentType?: string } = {},
+    init: { query?: Query; json?: unknown; form?: Record<string, unknown>; raw?: BodyInit; contentType?: string; idempotent?: boolean } = {},
     options: RequestOptions = {},
   ): Promise<Response> {
     const url = new URL(this.options.baseUrl.replace(/\/$/, "") + path);
@@ -1953,9 +1965,43 @@ export class FlowplanClient {
       if (init.contentType) headers.set("Content-Type", init.contentType);
       body = init.raw;
     }
-    const response = await (this.options.fetch || fetch)(url, { method, headers, body, signal: options.signal });
-    if (!response.ok) throw await FlowplanClient.error(response);
-    return response;
+    // One key per call, the same on every retry of it.
+    const key = options.idempotencyKey ?? (init.idempotent ? globalThis.crypto.randomUUID() : undefined);
+    if (key) headers.set("Idempotency-Key", key);
+    const retries = method === "GET" || key ? (options.retries ?? this.options.retries ?? 2) : 0;
+    for (let attempt = 0; ; attempt++) {
+      let response: Response;
+      try {
+        response = await (this.options.fetch || fetch)(url, { method, headers, body, signal: options.signal });
+      } catch (error) {
+        if (attempt >= retries || options.signal?.aborted) throw error;
+        await FlowplanClient.pause(attempt, null);
+        continue;
+      }
+      if (attempt < retries && (await FlowplanClient.retryable(response))) {
+        await response.body?.cancel();
+        await FlowplanClient.pause(attempt, response.headers.get("Retry-After"));
+        continue;
+      }
+      if (!response.ok) throw await FlowplanClient.error(response);
+      return response;
+    }
+  }
+
+  private static async retryable(response: Response) {
+    if ([429, 502, 503, 504].includes(response.status)) return true;
+    if (response.status !== 409) return false;
+    try {
+      return ((await response.clone().json()) as { code?: string })?.code === "idempotency_in_progress";
+    } catch {
+      return false;
+    }
+  }
+
+  private static pause(attempt: number, retryAfter: string | null) {
+    const seconds = Number(retryAfter);
+    const ms = seconds > 0 ? Math.min(seconds, 30) * 1000 : 500 * 2 ** attempt;
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async json<T>(method: string, path: string, init: Parameters<FlowplanClient["request"]>[2] = {}, options?: RequestOptions): Promise<T> {
@@ -2153,7 +2199,7 @@ export class FlowplanClient {
 
   /** Change something — The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*` and `ai.*` are refused for every token. Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429). (POST /api/command) */
   async command<A extends Command>(body: A, options?: RequestOptions): Promise<CommandResultOf<A>> {
-    return this.json<CommandResultOf<A>>("POST", `/api/command`, { json: body }, options);
+    return this.json<CommandResultOf<A>>("POST", `/api/command`, { json: body, idempotent: true }, options);
   }
 
   /** A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts). (GET /api/pages/{pageId}) */
@@ -2197,7 +2243,7 @@ export class FlowplanClient {
     createMissing?: "0" | "1";
     updateExisting?: "0" | "1";
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/pages/${encodeURIComponent(pageId)}/import-markdown`, { form }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/pages/${encodeURIComponent(pageId)}/import-markdown`, { form, idempotent: true }, options);
   }
 
   /** A record with its document (GET /api/pages/{pageId}/rows/{rowId}) */
@@ -2261,7 +2307,7 @@ export class FlowplanClient {
     rate?: number | null;
     currency?: string;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/time-reports`, { json: body }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/time-reports`, { json: body, idempotent: true }, options);
   }
 
   /** Scheduled maintenance announced by the administration — `notice` is null when none is announced or it has ended. Answered with `Cache-Control: no-store`. (GET /api/maintenance) */
@@ -2376,7 +2422,7 @@ export class FlowplanClient {
     file: Blob;
     purpose?: "cover" | "e2ee";
   }, options?: RequestOptions): Promise<FileInfo> {
-    return this.json<FileInfo>("POST", `/api/upload`, { form }, options);
+    return this.json<FileInfo>("POST", `/api/upload`, { form, idempotent: true }, options);
   }
 
   /** Profile picture of a person you share a workspace with (GET /api/avatars/{userId}) */
@@ -2420,7 +2466,7 @@ export class FlowplanClient {
     spaceId: string;
     file: Blob;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/import/zip`, { form }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/import/zip`, { form, idempotent: true }, options);
   }
 
   /** Import from Confluence, Evernote, Google Docs or Obsidian — Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source) */
@@ -2432,7 +2478,7 @@ export class FlowplanClient {
     mode?: "pages" | "database";
     dryRun?: "0" | "1";
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/import/source`, { form }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/import/source`, { form, idempotent: true }, options);
   }
 
   /** Jira (CSV) or Trello (JSON) into a new database (POST /api/import/tracker) */
@@ -2441,7 +2487,7 @@ export class FlowplanClient {
     spaceId: string;
     file: Blob;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/import/tracker`, { form }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/import/tracker`, { form, idempotent: true }, options);
   }
 
   /** Import a template archive (POST /api/templates/import) */
@@ -2450,7 +2496,7 @@ export class FlowplanClient {
     file: Blob;
     private?: "true" | "false";
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/templates/import`, { form }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/templates/import`, { form, idempotent: true }, options);
   }
 
   /** Export a saved template as archive (GET /api/templates/{templateId}/export) */
@@ -2494,7 +2540,7 @@ export class FlowplanClient {
     pageId: string;
     rowId?: string;
     url: string;
-  }>("POST", `/api/clipper/save`, { json: body }, options);
+  }>("POST", `/api/clipper/save`, { json: body, idempotent: true }, options);
   }
 
   /** Link preview or player for a URL (GET /api/embed) */
@@ -2509,7 +2555,7 @@ export class FlowplanClient {
 
   /** Run the Git export of a space now (POST /api/spaces/{spaceId}/git-export/run) */
   async runSpaceGitExport(spaceId: string, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/spaces/${encodeURIComponent(spaceId)}/git-export/run`, {}, options);
+    return this.json<Record<string, unknown>>("POST", `/api/spaces/${encodeURIComponent(spaceId)}/git-export/run`, { idempotent: true }, options);
   }
 
   /** Your API tokens — Tokens cannot create or revoke tokens (the settings do). (GET /api/tokens) */
@@ -2532,7 +2578,7 @@ export class FlowplanClient {
 
   /** Register a webhook — Owners with a write token. At most 20 per workspace. Deliveries are signed and retried up to six times; see the WebhookDelivery schema. Removing: `webhook.delete` via POST /api/command. (POST /api/webhooks) */
   async createWebhook(body: WebhookCreate, options?: RequestOptions): Promise<WebhookCreated> {
-    return this.json<WebhookCreated>("POST", `/api/webhooks`, { json: body }, options);
+    return this.json<WebhookCreated>("POST", `/api/webhooks`, { json: body, idempotent: true }, options);
   }
 
   /** Inbound e-mail addresses of a workspace — Owners only. Each address with its target, allowed senders, webhook URL, e-mail address (IMAP mode, when INBOUND_MAIL_DOMAIN is set) and the last delivery. Created, rotated and removed with `inbound.save`, `inbound.rotate` and `inbound.delete`. (GET /api/inbound-mail) */
@@ -2557,7 +2603,7 @@ export class FlowplanClient {
     workspaceId?: string;
     [key: string]: unknown;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/issue-sync`, { json: body }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/issue-sync`, { json: body, idempotent: true }, options);
   }
 
   /** Change a webhook — Owners with a write token: events, database, format, templates, settings, credentials and (checked again) the address. The secret stays. (POST /api/webhooks/update) */
@@ -2566,7 +2612,7 @@ export class FlowplanClient {
   }> {
     return this.json<{
     ok: boolean;
-  }>("POST", `/api/webhooks/update`, { json: body }, options);
+  }>("POST", `/api/webhooks/update`, { json: body, idempotent: true }, options);
   }
 
   /** Send a test message — Owners with a write token. Sends a sample message (event `test`) right away, without retries, and answers with the result. (POST /api/webhooks/test) */
@@ -2574,7 +2620,7 @@ export class FlowplanClient {
     workspaceId: string;
     id: string;
   }, options?: RequestOptions): Promise<WebhookTestResult> {
-    return this.json<WebhookTestResult>("POST", `/api/webhooks/test`, { json: body }, options);
+    return this.json<WebhookTestResult>("POST", `/api/webhooks/test`, { json: body, idempotent: true }, options);
   }
 
   /** Whether a calendar view has an iCalendar link or CalDAV access (GET /api/calendar-feed) */
@@ -2610,7 +2656,7 @@ export class FlowplanClient {
     url: string;
     databases?: string[];
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/plugins`, { json: body }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/plugins`, { json: body, idempotent: true }, options);
   }
 
   /** Records of a database a plugin was granted — What a plugin frame's `query` message returns: at most `limit` (default 50, max 200) records with the caller's own rights – hidden records and properties stay hidden. (GET /api/plugins/{pluginId}/query) */
@@ -2627,7 +2673,7 @@ export class FlowplanClient {
   async verifyPublicationDomain(body: {
     pageId: string;
   }, options?: RequestOptions): Promise<Record<string, unknown>> {
-    return this.json<Record<string, unknown>>("POST", `/api/domains/verify`, { json: body }, options);
+    return this.json<Record<string, unknown>>("POST", `/api/domains/verify`, { json: body, idempotent: true }, options);
   }
 
   /** Whether a host is a verified custom domain — For the `ask` endpoint of Caddy's on-demand TLS: 200 for verified domains of active publications, 404 otherwise. No authentication. (GET /api/domains/allowed) */
@@ -2661,7 +2707,7 @@ export class FlowplanClient {
     ok: boolean;
     action: string;
     [key: string]: unknown;
-  }>("POST", `/api/mobile/widgets/action`, { json: body }, options);
+  }>("POST", `/api/mobile/widgets/action`, { json: body, idempotent: true }, options);
   }
 
   /** Pages to open from Siri and Shortcuts — At most 20 readable pages across the person's workspaces: whose title contains `q`, the ones listed in `ids`, or – without either – favorites and recently opened pages. Nothing of end-to-end encrypted spaces. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/intents/pages) */
@@ -2711,7 +2757,7 @@ export class FlowplanClient {
     return this.json<{
     ok: boolean;
     focus?: Record<string, unknown> | null;
-  }>("POST", `/api/mobile/intents/focus`, { json: body }, options);
+  }>("POST", `/api/mobile/intents/focus`, { json: body, idempotent: true }, options);
   }
 
   /** Where the share extension can save — The inbox (the person's capture database, null when none is set) and every database and document the person may add to, with the upload limits. 60 requests per person and minute. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/targets) */
@@ -2756,7 +2802,7 @@ export class FlowplanClient {
     url: string;
     files?: string[];
     [key: string]: unknown;
-  }>("POST", `/api/mobile/capture/save`, { json: body }, options);
+  }>("POST", `/api/mobile/capture/save`, { json: body, idempotent: true }, options);
   }
 
   /** Pages and open tasks for the phone's search — The 500 most recently changed pages the person may read (title, place, a short excerpt) and up to 200 open tasks, for the on-device search index (iOS Spotlight). Nothing of end-to-end encrypted spaces, pages behind a journal PIN or journal days. Answered with `Cache-Control: no-store`. (GET /api/mobile/capture/spotlight) */

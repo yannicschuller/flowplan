@@ -7,6 +7,7 @@ import { pickLocale, type Locale } from "@/lib/i18n";
 import { identityFromDeviceToken } from "@/lib/mobile-devices";
 import { notificationAction } from "@/lib/notification-actions";
 import { widgetLocale } from "@/lib/mobile-widgets";
+import { withIdempotency } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,9 @@ function failure(e: unknown, locale: Locale) {
   return NextResponse.json({ error: localizedMessage(message, locale) }, { status, headers });
 }
 
-export async function POST(req: Request) {
+// A notification button tapped twice (or retried) acts once per Idempotency-Key.
+export const POST = withIdempotency(handlePOST);
+async function handlePOST(req: Request) {
   const query = new URL(req.url).searchParams;
   const fallback = pickLocale(null, req.headers.get("accept-language"));
   // Browsers never send this header by themselves: no origin check needed.

@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 64) return;
+  if (globalDb.flowplanSchema === 65) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -887,7 +887,14 @@ function migrate(d: DatabaseSync) {
   // status in the administration (lib/metrics.ts, lib/push-status.ts).
   // Counts only, kept as long as metrics_hour.
   d.exec(`CREATE TABLE IF NOT EXISTS metrics_push(at INTEGER NOT NULL,channel TEXT NOT NULL,result TEXT NOT NULL,count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(at,channel,result));`);
-  globalDb.flowplanSchema = 64;
+  // Schema 65 – idempotency keys of state-changing requests (lib/idempotency.ts):
+  // per principal (scope "u:<user>", "t:<API token>", "d:<device>") and key
+  // the hash of the request, its state and the answer (JSON up to 64 KB;
+  // 'secret' and 'large' keep only the status). Kept 24 hours.
+  d.exec(`CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT NOT NULL,key TEXT NOT NULL,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,request_hash TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('processing','done')),http_status INTEGER,response TEXT,stored TEXT NOT NULL DEFAULT 'body' CHECK(stored IN ('body','secret','large')),created_at INTEGER NOT NULL,PRIMARY KEY(scope,key));
+    CREATE INDEX IF NOT EXISTS idempotency_keys_created ON idempotency_keys(created_at);
+    CREATE INDEX IF NOT EXISTS idempotency_keys_user ON idempotency_keys(user_id);`);
+  globalDb.flowplanSchema = 65;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

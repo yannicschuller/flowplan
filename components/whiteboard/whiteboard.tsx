@@ -139,6 +139,7 @@ import {
   stillWriting,
   writingInField,
 } from "@/lib/stylus";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -2146,7 +2147,7 @@ export default function Whiteboard({
     const body = new FormData();
     body.set("pageId", pageId);
     body.set("file", file);
-    const response = await fetch("/api/upload", { method: "POST", body });
+    const response = await fetch("/api/upload", { method: "POST", body, headers: idempotencyHeaders() });
     const result = await response.json();
     if (!response.ok) throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
     return result.url as string;

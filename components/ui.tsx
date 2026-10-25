@@ -1,5 +1,6 @@
 "use client";
 import { serverMessage } from "@/lib/i18n-errors";
+import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf } from "@/lib/idempotency-key";
 import {
   classifyError,
   describeError,
@@ -455,21 +456,37 @@ export function friendlyError(error: unknown) {
   const { title, detail } = describeError(classifyError(error), tr);
   return detail ? `${title} ${detail}` : title;
 }
+// While the server still works on the same Idempotency-Key (a retry that
+// overtook the first attempt), wait as it asks and send again.
+async function stillProcessing(r: Response) {
+  if (r.status !== 409) return false;
+  try {
+    return (await r.clone().json())?.code === IDEMPOTENCY_CODES.processing;
+  } catch {
+    return false;
+  }
+}
 export async function api<T = Record<string, unknown>>(
   url: string,
   body?: unknown,
   headers: Record<string, string> = {},
 ): Promise<T> {
-  const r = await fetch(
-    url,
-    body
-      ? {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...headers },
-          body: JSON.stringify(body),
-        }
-      : { cache: "no-store", headers },
-  );
+  // Every change carries an Idempotency-Key (lib/idempotency-key.ts): the
+  // body's own when the action already has one (retries, the offline queue).
+  const key = body && !headers[IDEMPOTENCY_HEADER] ? idempotencyKeyOf(body, true) : undefined;
+  const init: RequestInit = body
+    ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(key ? { [IDEMPOTENCY_HEADER]: key } : {}), ...headers },
+        body: JSON.stringify(body),
+      }
+    : { cache: "no-store", headers };
+  let r = await fetch(url, init);
+  for (let attempt = 0; body && attempt < 5 && (await stillProcessing(r)); attempt++) {
+    const wait = Math.min(Number(r.headers.get("Retry-After")) || 1, 5);
+    await new Promise((done) => setTimeout(done, wait * 1000));
+    r = await fetch(url, init);
+  }
   let data;
   try {
     data = await r.json();

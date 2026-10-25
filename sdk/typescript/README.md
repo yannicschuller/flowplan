@@ -40,6 +40,15 @@ Binary answers (`getFile`, `markdownExport`, `exportBackup`) return the `Respons
 
 Errors outside 2xx throw `FlowplanError` with `status`, the server's `message` (in the reader's language), validation `details` (400) and `retryAfter` seconds (429).
 
+Changes (`command`, uploads, imports, webhooks) carry an `Idempotency-Key`: a new UUID per call, kept when the client retries the call after a network error, 429, 502–504 or 409 while the first attempt still runs (`retries`, default 2). The server applies the change once. To repeat the same action later – after a crash, from a queue – pass its key yourself:
+
+```ts
+const key = crypto.randomUUID();
+await client.command({ action: "comment.create", pageId, body: "Done" }, { idempotencyKey: key });
+// Again with the same key: answered from the server's store, no second comment.
+await client.command({ action: "comment.create", pageId, body: "Done" }, { idempotencyKey: key });
+```
+
 Anything not covered by a generated method goes through `client.request(method, path, { query, json, form, raw })`.
 
 See `example.ts` for a complete script, `/api/docs` on your instance for the reference and [docs.flowplan.org/api-and-webhooks](https://docs.flowplan.org/api-and-webhooks) for the guide.

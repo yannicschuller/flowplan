@@ -50,6 +50,7 @@ import {
   type PaperOverride,
 } from "@/lib/notebook-paper";
 import type { NotebookPayload, NotebookSheet } from "@/lib/notebook";
+import { idempotencyHeaders } from "@/lib/idempotency-key";
 
 export type { NotebookPayload };
 type CommandAnswer = { paper: Paper; sheets: NotebookSheet[]; created?: string[]; ink?: Record<string, { doc: InkDoc; version: number }> };
@@ -269,7 +270,7 @@ export default function NotebookView({
         const form = new FormData();
         form.append("pageId", pageId);
         form.append("file", file);
-        const response = await fetch("/api/upload", { method: "POST", body: form });
+        const response = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
         const uploaded = await response.json();
         if (!response.ok) throw new Error(uploaded.error || t("Das PDF konnte nicht hochgeladen werden.", "The PDF could not be uploaded."));
         if (uploaded.mime !== "application/pdf") throw new Error(t("Bitte ein PDF wählen.", "Please choose a PDF."));
