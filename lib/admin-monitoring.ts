@@ -39,6 +39,7 @@ import {
   storageTrend,
   type RequestRange,
 } from "./metrics";
+import { pushSummary } from "./push-status";
 import type { UpdateStatus } from "./update-check";
 import type { Identity } from "./types";
 
@@ -99,6 +100,8 @@ export function monitoringHealth(now = Date.now(), update: UpdateStatus | null =
     backup: { enabled: backup.enabled, hourly: backup.hourly, target: backup.target, lastAt: backup.last?.at ?? null, error: backup.last?.error ?? null },
     mail: { configured: mail.configured, pending: mail.pending, failed: mail.failed, lastError: mail.lastError },
     ai: aiHealth(now),
+    // The push relay (lib/push-status.ts), as last checked.
+    push: pushSummary(now),
     workers: { active: workers.filter((w) => w.active).length, failing: failing.map((w) => w.key) },
     update: { version: buildInfo().version, latest: update?.latest ?? null, url: update?.url ?? null },
     restorePending: !!pendingRestore(),

@@ -1,10 +1,13 @@
 // The tiles of the administration's landing page: the facts of
 // /api/admin/summary (lib/admin-summary.ts) as a status line, a tone and a
-// badge, in the reader's language. "ok" shows no badge (nothing to say).
+// badge, in the reader's language. "ok" shows no badge (nothing to say) –
+// except for push, whose badge is the relay's reachability (green, amber,
+// red).
 import type { AdminSummary } from "@/lib/admin-summary";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { TileSummary } from "../shell";
 import { compact, num, percent } from "./monitoring-format";
+import { pushTile } from "./push-format";
 
 type T = (de: string, en: string) => string;
 const size = (bytes: number) =>
@@ -115,6 +118,16 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       line: s.mail.configured ? t(`${s.mail.pending} in der Warteschlange`, `${s.mail.pending} queued`) : t("Nicht eingerichtet – Einladungen per Link", "Not set up – invitations by link"),
       tone: !s.mail.configured ? "warn" : s.mail.failed ? "error" : undefined,
       badge: s.mail.failed ? t(`${s.mail.failed} aufgegeben`, `${s.mail.failed} given up`) : undefined,
+    },
+    push: {
+      ...pushTile(s.push, t),
+      ...(s.push.enabled
+        ? {
+            value: num(s.push.delivered24h),
+            valueLabel: t("zugestellt (24 Std.)", "delivered (24 h)"),
+            ...(s.push.hourly ? { spark: s.push.hourly, sparkLabel: t("Zugestellte Push-Benachrichtigungen je Stunde, letzte 24 Stunden", "Delivered push notifications per hour, last 24 hours") } : {}),
+          }
+        : {}),
     },
     ai: {
       ...(s.ai.enabled

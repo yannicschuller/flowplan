@@ -82,7 +82,7 @@ Administration (`#admin/…`):
 |---|---|
 | Personen | `users` Benutzer · `signin` Anmeldung & SSO · `workspaces` Arbeitsbereiche |
 | Daten | `storage` Speicher & Sicherung · `limits` Grenzen & Aufbewahrung · `export` Markdown- & Git-Export |
-| Dienste | `mail` E-Mail · `ai` KI · `extensions` Erweiterungen & Domains |
+| Dienste | `mail` E-Mail · `push` Push-Benachrichtigungen · `ai` KI · `extensions` Erweiterungen & Domains |
 | Sicherheit | `security` Verschlüsselung · `audit` Aktivitätsprotokoll |
 | Betrieb | `monitoring` Überwachung · `maintenance` Wartung & Hinweise · `general` Instanz |
 
@@ -111,6 +111,17 @@ live charts go above the tiles (`status` slot of the shell).
   data from `lib/admin-monitoring.ts`): health, KPIs, charts, queues, events
   with filters, quick actions, workers, alerts by webhook and the
   statistics switch. It takes the full width (no rail).
+- `#admin/push` (`components/settings/admin/push.tsx`, `/api/admin/push`,
+  `lib/push-status.ts`): the push relay in use (official or
+  `PUSH_RELAY_URL`), on/off with the reason, `APP_URL`, whether
+  `/.well-known/flowplan-push` is published, the signing keys (rotation with
+  confirmation), live checks cached a minute (`GET <relay>/healthz` and the
+  instance's own key document at `APP_URL` – 5 s, no redirects, a few KB;
+  unreachable from inside is a warning), the Expo fallback, Web Push and the
+  deliveries of 24 hours (`metrics_push`, schema 64, via `notePushResult` in
+  `lib/metrics.ts`). The landing page's tile and the monitoring's health
+  tile show the last check without making one (`pushSummary`); the summary
+  route warms it for at most 1.5 s.
 - Charts: `components/charts.tsx` (line/area with crosshair, stacked columns,
   donut, legend, `ChartTable`) and `components/sparkline.tsx` – plain SVG,
   colours `--chart-1…5`/`--chart-other`, axis text `--chart-text` (light and

@@ -13,6 +13,7 @@ import { localizedMessage } from "./i18n-errors";
 import { translate } from "./i18n";
 import { focusSilences } from "./mobile-focus";
 import { openSecret } from "./secret-box";
+import { notePushResult, type PushResult } from "./metrics";
 import { NOTIFICATION_CATEGORIES, notificationCategory, type NotificationCategory } from "./notification-targets";
 import { encryptForDevice, plaintextJson, pushContent, relayConfig, relayTokenAad, sendBatched, sendToRelay, type RelayCategory, type RelayMessage, type RelayResult, type RelaySender } from "./push-relay";
 const runtime = globalThis as unknown as {
@@ -209,6 +210,19 @@ function webPushOptions(keys: { publicKey: string; privateKey: string }): webpus
 const unreadCount = (userId: string) =>
   Number(one<{ n: number }>("SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read_at IS NULL", userId)?.n || 0);
 const backoff = (attempts: number) => Math.min(600000, 30000 * 2 ** attempts);
+// Counts a Web Push or Expo answer for the push status (lib/metrics.ts):
+// ok, or the failure by HTTP status (404/410 gone, 403 forbidden, 429
+// rate limited) with the status or Expo's error name as its code.
+function countPush(channel: "web" | "expo", error?: unknown) {
+  try {
+    if (error === undefined) return notePushResult(channel, "ok");
+    const status = Number((error as { statusCode?: number })?.statusCode || 0);
+    const result: PushResult =
+      error instanceof PushGoneError || status === 404 || status === 410 ? "gone" : status === 403 ? "forbidden" : status === 429 ? "rate_limited" : "error";
+    const name = channel === "expo" ? expoErrorName(error) : null;
+    notePushResult(channel, result, name || (status ? `HTTP ${status}` : "unreachable"));
+  } catch {}
+}
 
 export async function flushPushQueue(
   send: Sender = webpush.sendNotification,
@@ -337,6 +351,7 @@ export async function flushPushQueue(
             ttl: 86400,
             priority: "high",
           });
+          countPush("expo");
           run(
             "UPDATE push_deliveries SET delivered_at=?,last_error=NULL WHERE id=?",
             Date.now(),
@@ -361,12 +376,14 @@ export async function flushPushQueue(
           }),
           webPushOptions(keys),
         );
+        countPush("web");
         run(
           "UPDATE push_deliveries SET delivered_at=?,last_error=NULL WHERE id=?",
           Date.now(),
           job.id,
         );
       } catch (error) {
+        countPush(job.endpoint.startsWith(EXPO_ENDPOINT) ? "expo" : "web", error);
         const status = Number(
           (error as { statusCode?: number }).statusCode || 0,
         );
@@ -522,8 +539,10 @@ async function testViaExpo(job: TestJob, sendExpo: ExpoSender, note: string | nu
       ttl: 600,
       priority: "high",
     });
+    countPush("expo");
     testResult(job, "delivered", "expo", null, note);
   } catch (error) {
+    countPush("expo", error);
     if (error instanceof PushGoneError || Number((error as { statusCode?: number }).statusCode) === 410) {
       // As for every notification: the app is not reachable through Expo any more.
       run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);
@@ -597,8 +616,10 @@ async function flushPushTests(send: Sender, sendExpo: ExpoSender, sendRelay: Rel
           JSON.stringify({ title: "Flowplan", body: pushTestText(job.user_id), url: PUSH_TEST_URL, tag: "flowplan-test" }),
           { ...webPushOptions(keys), TTL: 600 },
         );
+        countPush("web");
         testResult(job, "delivered", "web");
       } catch (error) {
+        countPush("web", error);
         const status = Number((error as { statusCode?: number }).statusCode || 0);
         if (status === 404 || status === 410) {
           run("DELETE FROM push_subscriptions WHERE id=?", job.subscription_id);

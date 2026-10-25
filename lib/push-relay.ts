@@ -17,6 +17,7 @@
 import { createCipheriv, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync, randomBytes, type KeyObject } from "node:crypto";
 import { z } from "zod";
 import { signRelayRequest } from "./push-identity";
+import { notePushResult } from "./metrics";
 
 export const DEFAULT_PUSH_RELAY = "https://push.flowplan.org";
 export const PUSH_CONTEXT = "flowplan-push-v1";
@@ -298,7 +299,12 @@ export const sendToRelay: RelaySender = async (messages) => {
   }
 };
 
-// Sends any number of messages in batches of at most 100.
+// The code a failed relay result is counted with (lib/metrics.ts): the
+// reason and the HTTP status, never more.
+export const relayFailureCode = (r: RelayResult) => [r.reason, r.httpStatus ? `HTTP ${r.httpStatus}` : null].filter(Boolean).join(" ") || null;
+
+// Sends any number of messages in batches of at most 100; every result is
+// counted for the push status of the administration.
 export async function sendBatched(messages: RelayMessage[], send: RelaySender = sendToRelay): Promise<RelayResult[]> {
   const results: RelayResult[] = [];
   for (let i = 0; i < messages.length; i += MAX_BATCH) {
@@ -309,7 +315,13 @@ export async function sendBatched(messages: RelayMessage[], send: RelaySender = 
     } catch {
       answer = [];
     }
-    for (let j = 0; j < chunk.length; j++) results.push(answer[j] ?? { status: "error", reason: "response" });
+    for (let j = 0; j < chunk.length; j++) {
+      const result = answer[j] ?? { status: "error", reason: "response" };
+      results.push(result);
+      try {
+        notePushResult("relay", result.status, result.status === "ok" ? null : relayFailureCode(result));
+      } catch {}
+    }
   }
   return results;
 }

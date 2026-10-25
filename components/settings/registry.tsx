@@ -4,6 +4,7 @@
 // (one file per section in ./user or ./admin). docs/settings-architecture.md
 import type { ComponentType } from "react";
 import {
+  BellRinging,
   BellSimple,
   BookmarkSimple,
   CalendarBlank,
@@ -56,6 +57,7 @@ import WorkspacesSection from "./admin/workspaces";
 import StorageSection from "./admin/storage";
 import ExportSection from "./admin/export";
 import MailSection from "./admin/mail";
+import PushSection from "./admin/push";
 import AdminAiSection from "./admin/ai";
 import SecuritySection from "./admin/security";
 import AuditSection from "./admin/audit";
@@ -66,6 +68,7 @@ import AdminExtensionsSection from "./admin/extensions";
 import MaintenanceSection from "./admin/maintenance";
 
 export const ICONS: Record<string, Icon> = {
+  BellRinging,
   BellSimple,
   BookmarkSimple,
   CalendarBlank,
@@ -121,6 +124,7 @@ const ADMIN_COMPONENTS: Record<string, ComponentType> = {
   storage: StorageSection,
   export: ExportSection,
   mail: MailSection,
+  push: PushSection,
   ai: AdminAiSection,
   security: SecuritySection,
   audit: AuditSection,

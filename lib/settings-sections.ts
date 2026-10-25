@@ -340,6 +340,24 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     entries: [{ title: { de: "Test-E-Mail senden", en: "Send test email" }, anchor: "test" }],
   },
   {
+    id: "push",
+    area: "admin",
+    group: "services",
+    icon: "BellRinging",
+    title: { de: "Push-Benachrichtigungen", en: "Push notifications" },
+    description: { de: "Push-Relay für die Apps, Erreichbarkeit, Expo, Web Push und Zustellungen.", en: "Push relay for the apps, reachability, Expo, Web Push and deliveries." },
+    keywords: {
+      de: "push relay push-relay push.flowplan.org apps iphone android erreichbarkeit healthz well-known signaturschlüssel schlüssel wechseln rotieren expo web push vapid zustellung testbenachrichtigung",
+      en: "push relay push.flowplan.org apps iphone android reachability healthz well-known signing key rotate expo web push vapid delivery test notification",
+    },
+    entries: [
+      { title: { de: "Push-Relay", en: "Push relay" }, keywords: { de: "erreichbar app_url", en: "reachable app_url" }, anchor: "relay" },
+      { title: { de: "Signaturschlüssel wechseln", en: "Rotate the signing key" }, keywords: { de: "rotieren", en: "rotation" }, anchor: "keys" },
+      { title: { de: "Zustellungen der letzten 24 Stunden", en: "Deliveries of the last 24 hours" }, anchor: "deliveries" },
+      { title: { de: "Expo und Web Push", en: "Expo and Web Push" }, keywords: { de: "vapid mobile_push", en: "vapid mobile_push" }, anchor: "channels" },
+    ],
+  },
+  {
     id: "ai",
     area: "admin",
     group: "services",

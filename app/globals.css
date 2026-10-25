@@ -11389,6 +11389,17 @@ textarea {
   background: #fbf1dc;
   color: #6f5b22;
 }
+/* The global .error (a red message box) must not reach the strip's head:
+   it would put red text on red (an error tile, e.g. the push relay). */
+.live-strip-head.error {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
 .live-strip-head.error .live-strip-icon {
   background: #fbecec;
   color: #a43c3f;
@@ -24376,6 +24387,50 @@ html.split-resizing * {
 }
 .admin-details[open] > summary {
   margin-bottom: 8px;
+}
+/* Administration → Push-Benachrichtigungen (components/settings/admin/push.tsx). */
+.push-status-value,
+.push-status-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.push-status-spark {
+  display: block;
+  width: min(220px, 100%);
+}
+.push-status-note {
+  padding: 10px 16px 12px;
+}
+.push-rotate p {
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.push-rotate-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  color: var(--secondary);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.push-rotate-option input {
+  flex: none;
+  margin-top: 3px;
+}
+@media (max-width: 720px) {
+  .push-status-value,
+  .push-status-links {
+    justify-content: flex-start;
+  }
+  .push-status-spark {
+    width: 100%;
+  }
 }
 .admin-counts {
   display: grid;

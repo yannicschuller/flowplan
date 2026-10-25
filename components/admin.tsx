@@ -41,8 +41,9 @@ function AdminShell() {
   const section = useSettingsRoute("admin").section;
   const onHome = section === null;
   // Sections that refresh themselves (the live dashboard, the storage check
-  // with its own button) get no second "Aktualisieren".
-  const ownRefresh = section === "monitoring" || section === "storage";
+  // and the push relay check with their own button) get no second
+  // "Aktualisieren".
+  const ownRefresh = section === "monitoring" || section === "storage" || section === "push";
   useEffect(() => {
     if (onHome) void loadSummary();
   }, [onHome, loadSummary]);

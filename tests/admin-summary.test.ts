@@ -58,11 +58,15 @@ test("services, monitoring and the activity of the last day", () => {
   assert.deepEqual(s.monitoring.failingWorkers, []);
   assert.ok(Array.isArray(s.monitoring.alerts));
   assert.equal(s.mail.configured, false);
+  // The push relay as last checked – the summary itself makes no request.
+  assert.equal(s.push.enabled, true);
+  assert.equal(s.push.health, null);
+  assert.equal(s.push.tone, "info");
   assert.equal(s.signin.oidc, false);
   assert.equal(typeof s.general.version, "string");
   assert.equal(s.general.update, null);
   assert.equal(adminSummary(Date.now(), { current: "0.1.0", latest: "9.9.9", url: "" }).general.update, "9.9.9");
-  assert.deepEqual(Object.keys(s).sort(), ["ai", "audit", "charts", "export", "extensions", "general", "limits", "mail", "maintenance", "monitoring", "security", "signin", "storage", "users", "workspaces"]);
+  assert.deepEqual(Object.keys(s).sort(), ["ai", "audit", "charts", "export", "extensions", "general", "limits", "mail", "maintenance", "monitoring", "push", "security", "signin", "storage", "users", "workspaces"]);
 });
 
 test("limits, extensions and the maintenance notice", async () => {

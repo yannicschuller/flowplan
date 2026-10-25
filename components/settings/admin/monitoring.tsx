@@ -12,6 +12,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowClockwise,
   ArrowCircleUp,
+  BellRinging,
   CheckCircle,
   CloudArrowUp,
   Database,
@@ -42,6 +43,7 @@ import { AdminLoading } from "../shell";
 import { LiveBadge, Kpi, RequestsChart, rangeLabel } from "./live";
 import { useLive } from "./use-live";
 import { ago, bytes, clock, compact, dateTime, dayAt, longDay, ms, num, percent, shortDay, uptime, weekday } from "./monitoring-format";
+import { pushTile, relayHost } from "./push-format";
 
 type T = (de: string, en: string) => string;
 type Range = "1h" | "24h" | "7d";
@@ -248,6 +250,16 @@ function Health({ d }: { d: MonitoringOverview }) {
               : `${aiName} · ${h.ai.ping.error || t("nicht erreichbar", "not reachable")}`,
       href: settingsHash({ area: "admin", section: "ai" }),
       icon: Sparkle,
+    },
+    {
+      key: "push",
+      title: t("Push-Relay", "Push relay"),
+      ...(() => {
+        const p = pushTile(h.push, t);
+        return { tone: p.tone, detail: h.push.enabled ? `${relayHost(h.push.url)} · ${p.badge}` : p.badge };
+      })(),
+      href: settingsHash({ area: "admin", section: "push" }),
+      icon: BellRinging,
     },
     {
       key: "workers",

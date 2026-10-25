@@ -40,6 +40,8 @@ const PAGES = [
   { path: "/#admin", name: "administration", signedIn: true, jsKb: 1730, ready: ".live-strip .kpi-grid:not(.placeholder)" },
   // The live dashboard with every chart (components/settings/admin/monitoring.tsx).
   { path: "/#admin/monitoring", name: "monitoring", signedIn: true, jsKb: 1730, ready: ".mon-health" },
+  // The push relay's state (components/settings/admin/push.tsx).
+  { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 1730, ready: "#relay" },
 ];
 const BUDGET = { jsKb: 410, lcpMs: 2500 };
 const LOCALE = "de-DE";

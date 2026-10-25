@@ -22,7 +22,8 @@ import { ct } from "./content-locale";
 import { deviceName } from "./my-sessions";
 import { focusActive } from "./mobile-focus";
 import { mobilePushEnabled } from "./mobile-devices";
-import { DEFAULT_PUSH_RELAY, relayConfig, strictOrigin } from "./push-relay";
+import { relayConfig } from "./push-relay";
+import { relaySetup } from "./push-status";
 import { dispatchPush, EXPO_ENDPOINT, RELAY_ENDPOINT } from "./push";
 import type { Identity } from "./types";
 
@@ -196,17 +197,9 @@ export async function sendTestPush(user: Identity, sessionToken: string, options
     relay: { enabled: relay.enabled, reason: relay.enabled ? null : relay.reason, instance: relay.enabled ? relay.instance : null },
   };
   if (!user.demo && user.groups.includes(adminGroup())) {
-    let instance: string | null = null;
-    try {
-      instance = new URL(process.env.APP_URL || "http://localhost:3000").origin;
-    } catch {}
-    report.diagnostics = {
-      relayUrl: relay.enabled ? relay.relay : strictOrigin(process.env.PUSH_RELAY_URL?.trim() || DEFAULT_PUSH_RELAY),
-      // app/.well-known/flowplan-push answers exactly while the relay is on.
-      wellKnown: relay.enabled,
-      instance: relay.enabled ? relay.instance : instance,
-      mobilePush,
-    };
+    // The same facts as Administration → Push (lib/push-status.ts).
+    const setup = relaySetup();
+    report.diagnostics = { relayUrl: setup.url, wellKnown: setup.wellKnown, instance: setup.instance, mobilePush };
   }
   return report;
 }

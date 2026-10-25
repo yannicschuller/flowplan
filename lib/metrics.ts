@@ -1,6 +1,7 @@
 // Usage statistics of the instance for the monitoring (lib/admin-monitoring.ts):
 // requests, 5xx answers and latency per minute, the people active per hour,
-// AI tokens per day and feature, storage and disk per day.
+// AI tokens per day and feature, storage and disk per day, push deliveries
+// per hour, channel and result (lib/push-status.ts).
 //
 // Cheap by design: a request only increments counters in memory (no
 // database write per request, lib/request-metrics.ts); once a minute the
@@ -46,6 +47,12 @@ type State = {
   // The previous hour's count until it is written.
   lastHour: { at: number; people: number } | null;
   ai: Map<string, AiCount>;
+  // Push deliveries: "hour|channel|result" → count, until written.
+  push: Map<string, number>;
+  // The last success per channel and the last failure – kept even with the
+  // statistics off (diagnostics, no personal data), written with the counts.
+  pushLast?: PushLast;
+  pushLastSaved?: string;
   timer?: ReturnType<typeof setInterval>;
   sweptAt?: number;
   snapshotAt?: number;
@@ -68,6 +75,7 @@ function state(): State {
     hour: { at: 0, people: new Map() },
     lastHour: null,
     ai: new Map(),
+    push: new Map(),
   });
 }
 function forget(s: State) {
@@ -76,6 +84,7 @@ function forget(s: State) {
   s.hour = { at: 0, people: new Map() };
   s.lastHour = null;
   s.ai.clear();
+  s.push.clear();
 }
 
 /* ---------- Switch ---------- */
@@ -110,6 +119,7 @@ export function clearMetrics() {
   run("DELETE FROM metrics_hour");
   run("DELETE FROM metrics_day");
   run("DELETE FROM metrics_ai");
+  run("DELETE FROM metrics_push");
   run("DELETE FROM ops_events WHERE kind='login_success'");
   forget(state());
 }
@@ -299,6 +309,7 @@ export function snapshotStorage(m: Sizes, now = Date.now()) {
 export function sweepMetrics(now = Date.now()) {
   run("DELETE FROM metrics_minute WHERE at<?", now - METRICS_KEEP.minutesMs);
   run("DELETE FROM metrics_hour WHERE at<?", now - METRICS_KEEP.hoursMs);
+  run("DELETE FROM metrics_push WHERE at<?", now - METRICS_KEEP.hoursMs);
   const oldest = localDay(now - METRICS_KEEP.days * DAY);
   run("DELETE FROM metrics_day WHERE day<?", oldest);
   run("DELETE FROM metrics_ai WHERE day<?", oldest);
@@ -309,6 +320,7 @@ export function sweepMetrics(now = Date.now()) {
 // (`sizes` measures it) and sweeps daily.
 export function flushMetrics(now = Date.now(), sizes?: () => Sizes) {
   const s = state();
+  savePushLast();
   if (!s.enabled) return;
   if (s.current && s.current.at < floorTo(now, MINUTE)) {
     s.done.push(s.current);
@@ -334,6 +346,7 @@ export function flushMetrics(now = Date.now(), sizes?: () => Sizes) {
     writeActive(hour.at, hour.people.size);
   } catch {}
   flushAi();
+  flushPush();
   if (sizes && now - (s.snapshotAt ?? 0) >= HOUR) {
     try {
       snapshotStorage(sizes(), now);
@@ -539,3 +552,112 @@ export function aiProviderPing(check: () => Promise<unknown>, now = Date.now()):
 export function resetAiPing() {
   delete state().aiPing;
 }
+
+/* ---------- Push deliveries ---------- */
+
+// Every answer of a push service the push worker (lib/push.ts) got: the
+// relay (also test notifications and Live Activities), Expo and Web Push.
+export type PushChannel = "relay" | "expo" | "web";
+export type PushResult = "ok" | "gone" | "forbidden" | "invalid" | "rate_limited" | "error";
+export const PUSH_CHANNELS: PushChannel[] = ["relay", "expo", "web"];
+export const PUSH_RESULTS: PushResult[] = ["ok", "gone", "forbidden", "invalid", "rate_limited", "error"];
+// A failure as a code only: a relay reason ("signature", "unreachable" …),
+// "HTTP 502" or Expo's error name – never a token, address or message text.
+export type PushFailure = { channel: PushChannel; result: PushResult; code: string | null; at: number };
+export type PushLast = { ok: Record<PushChannel, number | null>; error: PushFailure | null };
+const PUSH_LAST_KEY = "push-delivery";
+const safeCode = (code: string | null | undefined) => (code && /^[A-Za-z0-9 _.:-]{1,60}$/.test(code) ? code : null);
+
+function pushLast(s: State): PushLast {
+  if (!s.pushLast) {
+    let stored: Partial<PushLast> = {};
+    try {
+      const row = one<{ value: string }>("SELECT value FROM instance_settings WHERE key=?", PUSH_LAST_KEY);
+      if (row) stored = JSON.parse(row.value) || {};
+    } catch {}
+    const ok = (c: PushChannel) => (typeof stored.ok?.[c] === "number" ? stored.ok[c] : null);
+    const e = stored.error;
+    s.pushLast = {
+      ok: { relay: ok("relay"), expo: ok("expo"), web: ok("web") },
+      error:
+        e && PUSH_CHANNELS.includes(e.channel) && PUSH_RESULTS.includes(e.result) && typeof e.at === "number"
+          ? { channel: e.channel, result: e.result, code: safeCode(e.code), at: e.at }
+          : null,
+    };
+    s.pushLastSaved = JSON.stringify(s.pushLast);
+  }
+  return s.pushLast;
+}
+
+// One delivery's outcome. "gone" (the device is no longer registered) is
+// counted, but it is no failure of the instance.
+export function notePushResult(channel: PushChannel, result: PushResult, code: string | null = null, now = Date.now()) {
+  const s = state();
+  const last = pushLast(s);
+  if (result === "ok") last.ok[channel] = Math.max(last.ok[channel] ?? 0, now);
+  else if (result !== "gone") last.error = { channel, result, code: safeCode(code), at: now };
+  if (!s.enabled) return;
+  const key = `${floorTo(now, HOUR)}|${channel}|${result}`;
+  if (s.push.size < 1000 || s.push.has(key)) s.push.set(key, (s.push.get(key) || 0) + 1);
+}
+
+function flushPush() {
+  const s = state();
+  for (const [key, n] of [...s.push]) {
+    s.push.delete(key);
+    const [at, channel, result] = key.split("|");
+    try {
+      run(
+        "INSERT INTO metrics_push(at,channel,result,count) VALUES(?,?,?,?) ON CONFLICT(at,channel,result) DO UPDATE SET count=count+excluded.count",
+        Number(at),
+        channel,
+        result,
+        n,
+      );
+    } catch {}
+  }
+}
+function savePushLast() {
+  const s = state();
+  if (!s.pushLast) return;
+  const text = JSON.stringify(s.pushLast);
+  if (text === s.pushLastSaved) return;
+  try {
+    run("INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", PUSH_LAST_KEY, text);
+    s.pushLastSaved = text;
+  } catch {}
+}
+
+type PushCounts = Record<PushChannel, Record<PushResult, number>>;
+const emptyPushCounts = (): PushCounts =>
+  Object.fromEntries(PUSH_CHANNELS.map((c) => [c, Object.fromEntries(PUSH_RESULTS.map((r) => [r, 0]))])) as PushCounts;
+
+// Deliveries of the last `hours` (24 by default): per channel and result,
+// and per hour delivered/failed (oldest first, for a sparkline). Failed:
+// everything but ok and gone. With the statistics off, only the last
+// success and failure are known.
+export function pushDeliveries(now = Date.now(), hours = 24) {
+  const s = state();
+  flushPush();
+  savePushLast();
+  const end = floorTo(now, HOUR);
+  const start = end - (hours - 1) * HOUR;
+  const totals = emptyPushCounts();
+  const perHour = new Map<number, { ok: number; failed: number }>();
+  for (const r of all<{ at: number; channel: PushChannel; result: PushResult; count: number }>(
+    "SELECT at,channel,result,count FROM metrics_push WHERE at>=?",
+    start,
+  )) {
+    if (!totals[r.channel] || totals[r.channel][r.result] === undefined) continue;
+    totals[r.channel][r.result] += r.count;
+    const h = perHour.get(r.at) || { ok: 0, failed: 0 };
+    if (r.result === "ok") h.ok += r.count;
+    else if (r.result !== "gone") h.failed += r.count;
+    perHour.set(r.at, h);
+  }
+  const hourly: { at: number; ok: number; failed: number }[] = [];
+  for (let at = start; at <= end; at += HOUR) hourly.push({ at, ...(perHour.get(at) || { ok: 0, failed: 0 }) });
+  const last = pushLast(s);
+  return { collecting: s.enabled, hours, totals, hourly, lastOk: { ...last.ok }, lastError: last.error ? { ...last.error } : null };
+}
+export type PushDeliveries = ReturnType<typeof pushDeliveries>;
