@@ -70,6 +70,9 @@ const captureSchema = z.object({
   url: z.string().max(2000).optional(),
   // Clipped article text (HTML from /api/clip).
   article: z.string().max(250_000).optional(),
+  // A record template of the database instead of its default one
+  // (the desktop app's quick actions, e.g. a meeting note); null: none.
+  templateId: z.uuid().nullable().optional(),
 });
 
 // A captured item as a record: title, text and link; the link goes into the
@@ -85,7 +88,7 @@ export function captureRecord(user: Identity, raw: unknown) {
     if (existing || one("SELECT 1 FROM row_trash WHERE id=?", input.rowId)) throw new HttpError(409, "Diese Kennung ist bereits vergeben.");
   }
   const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[];
-  const template = selectedRowTemplate(page.id, undefined);
+  const template = selectedRowTemplate(page.id, input.templateId);
   const cells: Record<string, unknown> = template ? JSON.parse(template.cells) : {};
   const link = /^https?:\/\/\S+$/i.test(input.url?.trim() || "") ? input.url!.trim() : input.text?.match(/https?:\/\/\S+/)?.[0] || "";
   const text = (input.text || "").replace(link, "").trim();

@@ -2187,6 +2187,110 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("GET", `/api/capture`, { query }, options);
   }
 
+  /** Where quick capture can save — For the desktop app's quick capture: the inbox (null when none is set), every database and document you may add to and the journals you may write in (today's entry), with what the shorthand fills in a database and its record templates. Pages of end-to-end encrypted spaces are never targets (`encryptedExcluded` counts them). `voice`: the instance transcribes voice notes; `suggest`: AI suggestions on the server and/or the device. Answered with `Cache-Control: no-store`. (GET /api/capture/targets) */
+  async desktopCaptureTargets(options?: RequestOptions): Promise<{
+    inbox: Record<string, unknown> | null;
+    targets: Record<string, unknown>[];
+    encryptedExcluded?: number;
+    voice?: boolean;
+    suggest?: Record<string, unknown> | null;
+    maxFiles?: number;
+    maxUploadMb?: number;
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    inbox: Record<string, unknown> | null;
+    targets: Record<string, unknown>[];
+    encryptedExcluded?: number;
+    voice?: boolean;
+    suggest?: Record<string, unknown> | null;
+    maxFiles?: number;
+    maxUploadMb?: number;
+    [key: string]: unknown;
+  }>("GET", `/api/capture/targets`, {}, options);
+  }
+
+  /** Quick capture shorthand as chips — Reads a text like `Angebot schreiben morgen 15 Uhr #kunde @anna !hoch` (German, English, French) for a target: a due date with time, tags, a person and a priority – each mapped to a property the target database has, or left as text. Chip ids in `literal` stay text. Nothing is saved. (POST /api/capture/preview) */
+  async capturePreview(body: {
+    targetId?: string;
+    text: string;
+    today: string;
+    literal?: string[];
+    task?: boolean;
+    locale?: "de" | "en" | "fr";
+  }, options?: RequestOptions): Promise<{
+    title?: string;
+    text?: string;
+    chips: Record<string, unknown>[];
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    title?: string;
+    text?: string;
+    chips: Record<string, unknown>[];
+    [key: string]: unknown;
+  }>("POST", `/api/capture/preview`, { json: body }, options);
+  }
+
+  /** Save a quick capture — JSON, or multipart/form-data with the fields and up to 10 `file` parts (images, PDFs, Markdown or text files – their text –, a voice note with `transcribe`). The shorthand is read again (`parse`, `literal`) with the capturing computer's `today` and `timeZone`. Into a database as a record (properties from the shorthand, `templateId` for a record template, accepted AI values in `cells`), appended to a page, or to today's journal entry (a journal's id). Send an `Idempotency-Key`: a retry saves nothing twice. (POST /api/capture/save) */
+  async captureSave(body: {
+    targetId?: string;
+    text?: string;
+    parse?: boolean;
+    literal?: string[];
+    task?: boolean;
+    today: string;
+    timeZone?: string;
+    locale?: "de" | "en" | "fr";
+    url?: string;
+    linkTitle?: string;
+    linkDescription?: string;
+    linkProvider?: string;
+    linkImage?: string;
+    templateId?: string;
+    transcribe?: boolean;
+    cells?: Record<string, unknown>;
+  }, options?: RequestOptions): Promise<{
+    ok: boolean;
+    kind: "record" | "append";
+    pageId: string;
+    rowId?: string;
+    url: string;
+    title?: string;
+    undo?: Record<string, unknown>;
+    files?: string[];
+    [key: string]: unknown;
+  }> {
+    return this.json<{
+    ok: boolean;
+    kind: "record" | "append";
+    pageId: string;
+    rowId?: string;
+    url: string;
+    title?: string;
+    undo?: Record<string, unknown>;
+    files?: string[];
+    [key: string]: unknown;
+  }>("POST", `/api/capture/save`, { json: body }, options);
+  }
+
+  /** Take a quick capture back — A captured record goes to the trash (your own only); appended blocks are removed while they are still the last ones, unchanged (`undo` from the save's answer). (POST /api/capture/undo) */
+  async captureUndo(body: {
+    kind: "record" | "append";
+    pageId: string;
+    rowId?: string;
+    blocks?: number;
+    digest?: string;
+  }, options?: RequestOptions): Promise<{
+    undone: boolean;
+    reason?: string;
+  }> {
+    return this.json<{
+    undone: boolean;
+    reason?: string;
+  }>("POST", `/api/capture/undo`, { json: body }, options);
+  }
+
   /** Synced blocks of a workspace (GET /api/synced) */
   async syncedBlocks(query: { workspace: string }, options?: RequestOptions): Promise<{
     blocks: Record<string, unknown>[];
