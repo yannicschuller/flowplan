@@ -5,7 +5,7 @@ import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { parseSettingsHash } from "@/lib/settings-sections";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
-import { desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow } from "@/lib/native-app";
+import { desktopApp, desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow } from "@/lib/native-app";
 import { currentOS } from "@/lib/device-os";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
@@ -2778,7 +2778,7 @@ export default function WorkspaceApp({
                     {/* The desktop app: from a browser on a computer, the page
                         opens there (flowplan://open); inside the app, in a
                         window of its own. */}
-                    {offerDesktopApp(currentOS(), inDesktopApp(), nativeApp()) ? (
+                    {offerDesktopApp(currentOS(), inDesktopApp() || !!desktopApp(), nativeApp()) ? (
                       <Dropdown.Item className="dropdown-item" onSelect={() => void (location.href = desktopPageLink(location.origin, data.page.id))}>
                         <Desktop />
                         {t("In Desktop-App öffnen", "Open in desktop app")}

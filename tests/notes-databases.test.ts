@@ -141,7 +141,7 @@ test("records are exported with frontmatter and come back with their properties"
   for (const key of ["title", "para", "tags", "area"]) assert.deepEqual(second[key], first[key], key);
 });
 
-test("captured items become records in the chosen or default database", () => {
+test("captured items become records in the chosen or default database", async () => {
   const inbox = newDatabase("Eingang", "documents");
   const inboxFields = schema(inbox).fields;
   inboxFields.push({ id: "link", name: "Link", type: "url" });
@@ -184,6 +184,21 @@ test("captured items become records in the chosen or default database", () => {
   assert.match(sharedRow.content, /href="https:\/\/example.org\/b"/);
   assert.match(sharedRow.content, /Volltext/);
   assert.throws(() => act(ben, { action: "capture.record", pageId: inbox, title: "x" }), /Berechtigung|erfasst/);
+
+  // A task captured by the desktop app ("As a task for today", assigned to
+  // the person): under "My tasks" right away, without opening the record.
+  const { myTasks } = await import("../lib/doc-tasks");
+  act(anna, {
+    action: "capture.record",
+    pageId: inbox,
+    rowId: id(),
+    title: "Anrufen",
+    article: `<ul data-type="taskList"><li data-type="taskItem" data-checked="false" data-due="2026-10-26"><p>Anrufen <span data-mention="${anna.id}" class="mention">@Anna</span></p></li></ul>`,
+  });
+  const task = myTasks(anna, wid).find((t) => t.text.startsWith("Anrufen"));
+  assert.ok(task, "the captured task is listed");
+  assert.equal(task.due, "2026-10-26");
+  assert.equal(task.pageId, inbox);
 });
 
 test("one record is exported with frontmatter, and a re-import updates it", async () => {

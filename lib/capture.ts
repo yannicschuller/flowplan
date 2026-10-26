@@ -10,6 +10,7 @@ import { journalLocked, lockedPageIds } from "./journal-extras";
 import { cleanHtml } from "./document-server";
 import { replaceRowDocument, selectedRowTemplate } from "./row-documents";
 import { rowCreated } from "./automations";
+import { indexRowTasks } from "./doc-tasks";
 import { autoDatabaseSnapshot } from "./database-operations";
 import { ct } from "./content-locale";
 import type { Field, Identity, Page } from "./types";
@@ -110,7 +111,11 @@ export function captureRecord(user: Identity, raw: unknown) {
     user.id,
   );
   const html = [template?.html || "", parts].filter(Boolean).join("");
-  if (html) replaceRowDocument(rid, html, user.id);
+  if (html) {
+    replaceRowDocument(rid, html, user.id);
+    // A captured task (the desktop app's "As a task for today") counts at once.
+    if (html.includes('data-type="taskItem"')) indexRowTasks(user, page, rid);
+  }
   rowCreated(user, page, rid);
   return { id: page.id, rowId: rid };
 }

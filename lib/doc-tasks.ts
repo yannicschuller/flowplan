@@ -341,6 +341,20 @@ export function indexPageTasks(pageId: string, notify = true) {
     ydoc.destroy();
   }
 }
+// The tasks of a record's document written without the editor (quick
+// capture of the desktop app, share and clipper as a record): collected at
+// once, so they show under "My tasks" before anyone opens the record.
+export function indexRowTasks(user: Identity, page: Page, rowId: string) {
+  const doc = one<{ state: Uint8Array | null; html: string }>("SELECT state,html FROM row_documents WHERE row_id=?", rowId);
+  if (!doc) return;
+  const ydoc = new Y.Doc();
+  try {
+    Y.applyUpdate(ydoc, doc.state || htmlState(doc.html));
+    syncDocTasks(user, page, rowId, ydoc);
+  } finally {
+    ydoc.destroy();
+  }
+}
 // Documents written before tasks were collected: indexed once.
 export function backfillDocTasks() {
   if (one("SELECT 1 FROM instance_state WHERE key='doc_tasks_indexed'")) return;
