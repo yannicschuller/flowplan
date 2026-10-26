@@ -181,6 +181,8 @@ export function writeWhiteboard(
   state: Uint8Array,
   pageIds?: Map<string, string>,
   rewrite: (value: string) => string = (value) => value,
+  // Records on cards (archives give their records new ids).
+  rowIds?: Map<string, string>,
 ) {
   const from = new Y.Doc(),
     to = new Y.Doc();
@@ -195,9 +197,11 @@ export function writeWhiteboard(
             key,
             key === "pageId" && typeof value === "string"
               ? pageIds?.get(value) || value
-              : key === "src" && typeof value === "string"
-                ? rewrite(value)
-                : value,
+              : key === "rowId" && typeof value === "string"
+                ? rowIds?.get(value) || value
+                : key === "src" && typeof value === "string"
+                  ? rewrite(value)
+                  : value,
           );
       items.set(item.id, map);
     }

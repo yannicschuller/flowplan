@@ -39,6 +39,23 @@ import {
   validateRelationGraph,
 } from "./relation-sync";
 import { formConfigSchema } from "./form-settings";
+import { indexPageTasks } from "./doc-tasks";
+import {
+  databaseExtrasShape,
+  exportDatabaseExtras,
+  exportFileInk,
+  exportHomeLayout,
+  exportPageExtras,
+  fileInkSchema,
+  importDatabaseHistory,
+  importDatabaseSettings,
+  importFileInk,
+  importHomeLayout,
+  importPageExtras,
+  pageExtrasShape,
+  remapBlockAttributes,
+  rowAccessSchema,
+} from "./archive-extras";
 import { fromBuffer, open as openZip, type Entry } from "yauzl";
 import { ZipFile } from "yazl";
 import { Readable } from "node:stream";
@@ -124,6 +141,8 @@ const rowSchema = z.object({
     .max(500)
     .default("")
     .refine((v) => !v || !!parseRepeat(v), "Ungültige Wiederholung."),
+  // Who may see the record (lib/row-access.ts); grants stay behind.
+  access: rowAccessSchema,
   created_at: str,
   updated_at: str,
   snapshots: z
@@ -139,6 +158,8 @@ const databaseSchema = z.object({
   templates: z
     .array(
       z.object({
+        // Referred to by scheduled automations (lib/archive-extras.ts).
+        id: z.string().max(100).optional(),
         name: str,
         cells,
         html,
@@ -147,6 +168,7 @@ const databaseSchema = z.object({
     )
     .max(500)
     .default([]),
+  ...databaseExtrasShape,
 });
 // The handwriting of a document's drawing blocks still in it.
 function inkBlocksArchive(pageId: string) {
@@ -161,8 +183,12 @@ export const archiveSchema = z.object({
   format: z.literal("flowplan-2"),
   relationPairs: z.array(relationPairSchema).max(20000).default([]),
   exportedAt: str,
+  // Who exported: their assignments and mentions become the importer's.
+  exportedBy: uid.optional(),
   workspace: z.object({ name: str, icon: str }),
   favorites: z.array(uid).max(500).default([]),
+  // The exporter's start page of the workspace (lib/home-layout-schema.ts).
+  home: z.unknown().optional(),
   templates: z
     .array(
       z.object({
@@ -256,6 +282,7 @@ export const archiveSchema = z.object({
           })
           .nullable()
           .optional(),
+        ...pageExtrasShape,
         snapshots: z.array(snapshot).max(1000).default([]),
         inlineThreads: archivedThreadsSchema.default([]),
         comments: z
@@ -286,6 +313,8 @@ export const archiveSchema = z.object({
           .min(0)
           .max(1024 * 1024 * 1024),
         sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        // Handwriting and highlights on a PDF (lib/ink-store.ts).
+        ink: fileInkSchema.optional(),
       }),
     )
     .max(MAX_ARCHIVE_FILES),
@@ -316,7 +345,9 @@ function snapshotFor(user: Identity, wid: string) {
       (p) => pageIds.has(p.left_page) && pageIds.has(p.right_page),
     ),
     exportedAt: new Date().toISOString(),
+    exportedBy: user.id,
     workspace: one("SELECT name,icon FROM workspaces WHERE id=?", wid),
+    ...exportHomeLayout(user.id, wid),
     favorites: all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
@@ -388,6 +419,8 @@ function snapshotFor(user: Identity, wid: string) {
         cover: p.cover,
         cover_position: p.cover_position ?? 50,
         kind: p.kind,
+        journal_date: p.journal_date ?? null,
+        ...exportPageExtras(p),
         position: p.position,
         deleted_at: p.deleted_at,
         updated_at: p.updated_at,
@@ -438,7 +471,6 @@ function snapshotFor(user: Identity, wid: string) {
                   ),
                 ).map(
                   ({
-                    access: _access,
                     created_by: _by,
                     role: _role,
                     ...r
@@ -452,14 +484,16 @@ function snapshotFor(user: Identity, wid: string) {
                   }),
                 ),
                 templates: all<{
+                  id: string;
                   name: string;
                   cells: string;
                   html: string;
                   is_default: number;
                 }>(
-                  "SELECT name,cells,html,is_default FROM row_templates WHERE page_id=?",
+                  "SELECT id,name,cells,html,is_default FROM row_templates WHERE page_id=?",
                   p.id,
                 ).map((t) => ({ ...t, cells: JSON.parse(t.cells) })),
+                ...exportDatabaseExtras(p.id, new Set(visibleRows(user, p, all<{ id: string; access: string; created_by: string }>("SELECT id,access,created_by FROM rows WHERE page_id=?", p.id)).map((r) => r.id))),
               },
             }
           : {
@@ -529,7 +563,7 @@ function snapshotFor(user: Identity, wid: string) {
         // Files are streamed into the ZIP; only their checksum is computed here.
         const data: Spooled = { path, size, sha256: fileDigest(path) };
         binaries.set(`files/${f.id}`, data);
-        return { ...f, size: data.size, sha256: data.sha256 };
+        return { ...f, size: data.size, sha256: data.sha256, ...exportFileInk(f.id) };
       }),
     ),
   };
@@ -1025,6 +1059,12 @@ async function importEntries(
           wid,
         ).map((m) => m.user_id),
       );
+      // An archive from elsewhere: the exporter's own references (their
+      // assignments, mentions) become the importer's. Within the same
+      // workspace they stay with the exporter.
+      const foreign = data.exportedBy && !members.has(data.exportedBy) ? data.exportedBy : null;
+      if (foreign) members.add(foreign);
+      const person = (value: string) => (value === foreign ? user.id : value);
       let omittedRelations = 0;
       const rewriteUrl = (value: string) =>
         value
@@ -1033,6 +1073,10 @@ async function importEntries(
           )
           .replace(/(\/?#page=)([\w-]+)/g, (match, prefix, pid) =>
             pageMap.has(pid) ? prefix + pageMap.get(pid) : match,
+          )
+          // Links to a record: "#page=…&row=…".
+          .replace(/(#page=[\w-]+&(?:amp;)?row=)([\w-]+)/g, (match, prefix, rid) =>
+            rowMap.has(rid) ? prefix + rowMap.get(rid) : match,
           );
       const rewriteHtml = (value: string) =>
         cleanHtml(value, (tagName, attribs) => {
@@ -1044,8 +1088,10 @@ async function importEntries(
           );
           for (const key of ["href", "src", "data-pdf"])
             if (attrs[key]) attrs[key] = rewriteUrl(attrs[key]);
+          remapBlockAttributes(attrs, pageMap);
           if (attrs["data-mention"] && !members.has(attrs["data-mention"]))
             delete attrs["data-mention"];
+          else if (attrs["data-mention"]) attrs["data-mention"] = person(attrs["data-mention"]);
           return { tagName, attribs: attrs };
         });
       const rewriteFields = (fields: Field[]) =>
@@ -1074,7 +1120,7 @@ async function importEntries(
             if (f?.type === "person")
               return [
                 key,
-                typeof value === "string" && members.has(value) ? value : "",
+                typeof value === "string" && members.has(value) ? person(value) : "",
               ];
             if (f?.type === "files")
               return [key, mapFileCell(value, rewriteUrl)];
@@ -1156,7 +1202,7 @@ async function importEntries(
             const rid = rowMap.get(r.id)!,
               content = rewriteHtml(r.content);
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,repeat) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO rows(id,page_id,cells,position,created_at,updated_at,created_by,updated_by,content,icon,cover,recurrence,repeat,access) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               rid,
               pid,
               JSON.stringify(rewriteCells(r.cells, d.fields)),
@@ -1170,6 +1216,7 @@ async function importEntries(
               rewriteUrl(r.cover),
               r.recurrence,
               r.repeat,
+              r.access,
             );
             run(
               "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
@@ -1192,10 +1239,13 @@ async function importEntries(
               );
             }
           }
-          for (const t of d.templates)
+          const templateIds = new Map<string, string>();
+          for (const t of d.templates) {
+            const tid = id();
+            if (t.id) templateIds.set(t.id, tid);
             run(
               "INSERT INTO row_templates(id,page_id,name,cells,html,is_default,created_by) VALUES(?,?,?,?,?,?,?)",
-              id(),
+              tid,
               pid,
               t.name,
               JSON.stringify(rewriteCells(t.cells, d.fields)),
@@ -1203,12 +1253,16 @@ async function importEntries(
               t.is_default,
               user.id,
             );
+          }
+          importDatabaseSettings(pid, d.settings, { user: user.id, fields: d.fields, members, templates: templateIds, person });
+          importDatabaseHistory(pid, d, { user: user.id, rows: rowMap, fields: d.fields });
         } else if (p.kind === "whiteboard") {
           writeWhiteboard(
             pid,
             Buffer.from(p.whiteboard!, "base64"),
             pageMap,
             rewriteUrl,
+            rowMap,
           );
         } else {
           const html = rewriteHtml(p.html!);
@@ -1219,6 +1273,8 @@ async function importEntries(
             html,
             id(),
           );
+          // Tasks in the text show up in "My tasks" right away.
+          if ((p.kind === "document" || p.kind === "journal") && !p.deleted_at && html.includes('data-type="taskItem"')) indexPageTasks(pid, false);
           if (p.kind === "dashboard")
             copyDashboard(parseTiles(JSON.stringify(p.dashboard || [])), pid, pageMap);
           if (p.kind === "notebook") importNotebook(pid, p.notebook!, fileMap, user.id);
@@ -1227,6 +1283,7 @@ async function importEntries(
             if (items.length) writeSurface(pid, block, { ...emptyInk(), pages: { [block]: items } }, entry.recognized || "", user.id);
           }
         }
+        importPageExtras(pid, p, rewriteHtml);
         importInlineComments(pid, p.inlineThreads, rowMap, user.id);
         for (const c of p.comments)
           run(
@@ -1355,6 +1412,7 @@ async function importEntries(
           f.size,
           user.id,
         );
+      for (const f of data.files) importFileInk(fileMap.get(f.id)!, f.ink, user.id);
       for (const p of data.pages) {
         validateCover(pageMap.get(p.id)!, rewriteUrl(p.cover));
         validateIcon(pageMap.get(p.id)!, rewriteUrl(p.icon));
@@ -1484,6 +1542,7 @@ async function importEntries(
       }
       for (const pair of remapPairs(data.relationPairs))
         insertRelationPair(pair);
+      importHomeLayout(user.id, wid, data.home, { pages: pageMap, rows: rowMap, spaces: spaceMap, rewriteUrl });
       audit(
         user.id,
         "workspace.archive.import",
