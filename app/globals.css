@@ -9241,6 +9241,55 @@ textarea {
     translate: 0 4px;
   }
 }
+/* Opening a page or another screen, a record (lib/view-transition.ts): the
+   main pane fades and rises a little; the page's icon and title from the
+   tree and a board card fly to their place. The page below stays usable –
+   a tap ends the transition. */
+::view-transition {
+  pointer-events: none;
+}
+html[data-view-transition="page"] .split-primary > .main-scroll {
+  view-transition-name: fp-main;
+}
+::view-transition-old(fp-main) {
+  animation: fade-out 0.12s ease both;
+}
+::view-transition-new(fp-main) {
+  animation: fp-main-in 0.22s var(--ease-out) both;
+}
+@keyframes fp-main-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+::view-transition-group(fp-page-icon),
+::view-transition-group(fp-page-title),
+::view-transition-group(fp-record) {
+  animation-duration: 0.24s;
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(fp-page-title),
+::view-transition-new(fp-page-title) {
+  /* Text of different sizes: scaled as a whole, never stretched. */
+  height: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+/* The card's picture gives way early, the record's comes in while the
+   box grows (scaled pictures of text look odd for long). */
+::view-transition-old(fp-record),
+::view-transition-new(fp-record) {
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+::view-transition-old(fp-record) {
+  animation: fade-out 0.1s ease both;
+}
+::view-transition-new(fp-record) {
+  animation: fade-in 0.18s ease both;
+}
 @keyframes fade-out {
   to {
     opacity: 0;

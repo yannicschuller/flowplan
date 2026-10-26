@@ -65,6 +65,7 @@ import { defaultGallery, galleryImage } from "@/lib/database-gallery";
 import { GalleryCover } from "./gallery-cover";
 import { CoverFrame } from "./cover-frame";
 import { primePlaceholder } from "./image-placeholder";
+import { transitionView } from "@/lib/view-transition";
 import { ScrollFade } from "./scroll-fade";
 import type { PageImage } from "@/lib/page-appearance";
 import {
@@ -172,7 +173,7 @@ import {
   ArrowRight,
 } from "@phosphor-icons/react";
 import Papa from "papaparse";
-import { Modal, viewIcons, download, Avatar, api, PageIcon } from "./ui";
+import { Modal, viewIcons, download, Avatar, api, PageIcon, SHEET_MEDIA } from "./ui";
 import { CoverPicker } from "./cover-picker";
 import { fileLabel, fileUrls } from "@/lib/file-cells";
 import type { Backlink } from "@/lib/relation-backlinks";
@@ -420,6 +421,26 @@ export default function DatabaseView({
       ownHash.current = hash;
       location.hash = hash;
     }
+  }
+  // Board and gallery cards grow into the record and back (a view
+  // transition, lib/view-transition.ts). Phones keep their bottom sheet.
+  const recordDialog = () => document.querySelector<HTMLElement>(".modal.record-dialog");
+  const morphsRecords = () => !window.matchMedia(SHEET_MEDIA).matches;
+  function openRecordFrom(card: HTMLElement, id: string) {
+    if (!morphsRecords()) return setRowId(id);
+    transitionView(() => setRowId(id), {
+      kind: "record",
+      // The dialog's own rise would run on top of the morph.
+      morph: [{ name: "fp-record", from: card, to: recordDialog, onTarget: (dialog) => (dialog.style.animation = "none") }],
+    });
+  }
+  function closeRecord() {
+    const card = lastOpened.current
+      ? boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"] .record-card`)
+      : null;
+    const box = card?.getBoundingClientRect();
+    if (!card || !box || box.bottom < 0 || box.top > window.innerHeight || !morphsRecords()) return setRowId(null);
+    transitionView(() => setRowId(null), { kind: "record", morph: [{ name: "fp-record", from: recordDialog(), to: () => card }] });
   }
   const ownHash = useRef("");
   useEffect(() => {
@@ -1687,13 +1708,13 @@ export default function DatabaseView({
             if (plainBoard && groupKey !== undefined && e.pointerType === "mouse")
               beginCardDrag(e, r, groupKey, 4);
           }}
-          onClick={() => {
+          onClick={(e) => {
             // The end of a drag is not a click.
             if (suppressClick.current === r.id) {
               suppressClick.current = null;
               return;
             }
-            setRowId(r.id);
+            openRecordFrom(e.currentTarget, r.id);
           }}
         >
           {galleryCovers && (
@@ -5185,7 +5206,7 @@ export default function DatabaseView({
       <AiSummaryDialog target={aiSummary} onClose={() => setAiSummary(null)} />
       <Modal
         open={!!selected}
-        onClose={() => setRowId(null)}
+        onClose={closeRecord}
         // Back to the record's row or card, so the keyboard stays in the view.
         onCloseAutoFocus={(event) => {
           const row = lastOpened.current && boardRef.current?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(lastOpened.current)}"]`);
@@ -5199,7 +5220,7 @@ export default function DatabaseView({
         // Centred records are bottom sheets on phones.
         sheet={recordMode !== "full" && recordMode !== "side"}
         actions={selected && recordActions(selected)}
-        className={
+        className={`record-dialog ${
           recordMode === "full"
             ? `modal-full${recordWide ? " modal-full-wide" : ""}`
             : recordMode === "side"
@@ -5207,7 +5228,7 @@ export default function DatabaseView({
               : recordLayout.properties === "side"
                 ? "modal-record-wide"
                 : ""
-        }
+        }`}
       >
         {selected && (
           <div className="row-detail">

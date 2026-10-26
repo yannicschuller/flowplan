@@ -13,6 +13,7 @@ import { localeTag, translate, type Locale } from "@/lib/i18n";
 import { BrandMark } from "./brand-mark";
 import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
+import { transitionView, withoutViewTransition, type Morph } from "@/lib/view-transition";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
 import { WorkspaceIcon } from "./workspace-icon";
@@ -326,6 +327,17 @@ type Screen =
   | "media"
   | "settings"
   | "admin";
+// Page tree → page header: the icon and the title of the page opened fly
+// to their place (lib/view-transition.ts). Without a header yet (the page
+// is still loading) they simply fade.
+function pageMorph(source: { icon: Element | null; title: Element | null } | null): Morph[] {
+  if (!source) return [];
+  const header = () => document.querySelector(".split-primary .document-header");
+  return [
+    { name: "fp-page-icon", from: source.icon, to: () => header()?.querySelector(".large-page-icon") },
+    { name: "fp-page-title", from: source.title, to: () => header()?.querySelector(".page-title") },
+  ];
+}
 export default function WorkspaceApp({
   initial,
   useTemplate,
@@ -604,9 +616,14 @@ export default function WorkspaceApp({
     currentWorkspace = useRef(boot.workspace.id),
     screenRef = useRef(screen),
     html = useRef("");
-  currentId.current = pageId;
+  // The page and screen being opened run ahead of the state while a view
+  // transition waits to show them (lib/view-transition.ts): the refs follow
+  // the state when it changes, not on every render.
+  const followed = useRef({ pageId, screen });
+  if (followed.current.pageId !== pageId) currentId.current = pageId;
+  if (followed.current.screen !== screen) screenRef.current = screen;
+  followed.current = { pageId, screen };
   currentWorkspace.current = boot.workspace.id;
-  screenRef.current = screen;
   // Confirmations, errors and undo offers: one toast (components/toast.tsx).
   const notify = useCallback((s: string, error = false) => {
     showToast({ text: s, tone: error ? "error" : "info" });
@@ -980,19 +997,16 @@ export default function WorkspaceApp({
         : { pageId: data.page.id, value: data.sinceVisit || null },
     );
   }, [data]);
+  // The page tree entry a page is opened from (its icon and title fly).
+  const navigationSource = useRef<{ icon: Element | null; title: Element | null } | null>(null);
   // For "Retry" on a page that failed to open.
   const openPageRef = useRef<(id: string, target?: PageLocation) => Promise<void>>(async () => {});
   const openPage = useCallback(
     async (id: string, target?: PageLocation) => {
       const version = ++navigationVersion.current;
       navigationPending.current = true;
-      setMobile(false);
-      setScreen("page");
       screenRef.current = "page";
-      setPageId(id);
       currentId.current = id;
-      setComments(false);
-      setAiSummary(null);
       // Stale-while-revalidate (lib/swr-cache.ts): a page opened recently
       // shows its kept copy at once while the fresh one loads; the editor's
       // sync and the reload below bring it up to date.
@@ -1006,21 +1020,34 @@ export default function WorkspaceApp({
         setRevalidating(true);
         return true;
       };
-      const shown = showKept(appCache().get<PageData>(pageKey(id))?.value);
-      if (!shown) {
-        setData(null);
-        setBusy(true);
-        // Loaded ahead a moment ago (hover, touch): shown as soon as it is there.
-        void pendingPrefetch(pageKey(id))?.then(() => {
-          if (busyRef.current) showKept(appCache().get<PageData>(pageKey(id))?.value);
-        });
-      }
+      // The new page comes in with a view transition (lib/view-transition.ts);
+      // opened from the page tree, its icon and title fly to their place.
+      const source = navigationSource.current;
+      navigationSource.current = null;
+      const view = transitionView(
+        () => {
+          setMobile(false);
+          setScreen("page");
+          setPageId(id);
+          setComments(false);
+          setAiSummary(null);
+          if (showKept(appCache().get<PageData>(pageKey(id))?.value)) return;
+          setData(null);
+          setBusy(true);
+          // Loaded ahead a moment ago (hover, touch): shown as soon as it is there.
+          void pendingPrefetch(pageKey(id))?.then(() => {
+            if (busyRef.current) showKept(appCache().get<PageData>(pageKey(id))?.value);
+          });
+        },
+        { kind: "page", morph: pageMorph(source) },
+      );
       const hash = pageLocationHash(target || { pageId: id });
       if (location.hash !== hash) location.hash = hash;
       try {
         const p = await api<PageData>(`/api/pages/${id}`, undefined, {
           "X-Flowplan-Visit": "1",
         });
+        view.flush();
         if (
           version !== navigationVersion.current ||
           screenRef.current !== "page"
@@ -1045,6 +1072,7 @@ export default function WorkspaceApp({
           setStatus("Gespeichert");
         }
       } catch (e) {
+        view.flush();
         // Gone or no longer allowed: the kept copy goes too.
         if (e instanceof ApiError && [403, 404, 423].includes(e.status)) {
           appCache().delete(pageKey(id));
@@ -1087,9 +1115,14 @@ export default function WorkspaceApp({
     return () => window.removeEventListener("flowplan:open-split", open);
   }, [openSplit]);
   function go(s: Screen) {
-    setScreen(s);
     screenRef.current = s;
-    setMobile(false);
+    transitionView(
+      () => {
+        setScreen(s);
+        setMobile(false);
+      },
+      { kind: "page" },
+    );
     location.hash = s;
   }
   useEffect(() => {
@@ -1120,9 +1153,16 @@ export default function WorkspaceApp({
         parseSettingsHash(fragment)
       ) {
         const base = fragment.split("/")[0] as Screen;
-        setScreen(base);
-        screenRef.current = base;
-        setMobile(false);
+        if (screenRef.current !== base) {
+          screenRef.current = base;
+          transitionView(
+            () => {
+              setScreen(base);
+              setMobile(false);
+            },
+            { kind: "page" },
+          );
+        } else setMobile(false);
         // The start page shows recently opened and edited pages: current.
         if (fragment === "home") void refresh().catch(() => {});
       } else if (fragment === "search" || fragment === "new" || fragment === "capture") {
@@ -1150,7 +1190,8 @@ export default function WorkspaceApp({
         }
       }
     };
-    navigate();
+    // What the app opens with comes without a transition.
+    withoutViewTransition(navigate);
     window.addEventListener("hashchange", navigate);
     // The global shortcuts, as the keymap says (lib/keymap.ts; own
     // combinations in the shortcut overlay). Combinations without Ctrl, ⌘ or
@@ -1859,6 +1900,8 @@ export default function WorkspaceApp({
                     toggleSelected(p.id, e.shiftKey);
                     return;
                   }
+                  const entry = e.currentTarget;
+                  navigationSource.current = { icon: entry.firstElementChild, title: entry.querySelector(".page-nav-label") };
                   void openPage(p.id);
                 }}
               >
@@ -1866,7 +1909,7 @@ export default function WorkspaceApp({
                   name={p.kind === "database" ? "table" : p.icon}
                   size={17}
                 />
-                <span>{p.title}</span>
+                <span className="page-nav-label">{p.title}</span>
                 {p.locked === 1 && <Lock size={12} />}
               </button>
               {canCreate && (
