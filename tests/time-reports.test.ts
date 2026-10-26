@@ -48,7 +48,7 @@ add(design, 60, editor, "Entwurf");
 add(build, 30, editor);
 add(secret, 45);
 // An entry of the viewer on the private record (e.g. from before it became private).
-run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end,note) VALUES(?,?,?,?,?,?,?,?)", id(), tasks, secret, "spent", viewer.id, Date.now() - 3600_000, Date.now() - 1800_000, "");
+run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end,note) VALUES(?,?,?,?,?,?,?,?)", id(), tasks, secret, "spent", viewer.id, new Date().setHours(0, 0, 0, 0), new Date().setHours(0, 30, 0, 0), "");
 
 test("periods: presets and custom ranges", () => {
   const now = new Date(2026, 9, 22, 12).getTime(); // Thursday

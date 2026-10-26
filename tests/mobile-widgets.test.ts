@@ -20,6 +20,8 @@ const { trackJob, jobProgress } = await import("../lib/background-jobs");
 const route = await import("../app/api/mobile/widgets/[action]/route");
 
 const NOW = Date.now();
+// Monday 00:00 of this week: just after midnight on a Monday an hour ago is last week.
+const WEEK_START = new Date(NOW).setHours(0, 0, 0, 0) - ((new Date(NOW).getDay() + 6) % 7) * 86_400_000;
 const TODAY = new Date(NOW).toISOString().slice(0, 10);
 const day = (offset: number) => new Date(Date.parse(`${TODAY}T12:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
 
@@ -648,9 +650,10 @@ test("time this week, the timer and a focus session that records its time", asyn
     { id: "spent", name: "Time", type: "time" },
   ]);
   const offer = addRow(owner.user, work, { title: "Write offer" });
-  run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end) VALUES(?,?,?,?,?,?,?)", id(), work, offer, "spent", O.id, NOW - 2 * 3_600_000, NOW - 3_600_000);
+  run("INSERT INTO time_entries(id,page_id,row_id,field_id,user_id,start,end) VALUES(?,?,?,?,?,?,?)", id(), work, offer, "spent", O.id, NOW - 3_600_000, NOW);
   const time = one_(O, "time");
-  assert.ok(time.week >= 0.99 && time.week <= 1.01, String(time.week));
+  const hours = Math.min(3_600_000, NOW - WEEK_START) / 3_600_000;
+  assert.ok(Math.abs(time.week - hours) <= 0.01, String(time.week));
   assert.equal(time.days.length, 7);
   assert.equal(time.timer, null);
   assert.equal(time.recent[0].title, "Write offer");
