@@ -1616,6 +1616,22 @@ class FlowplanClient:
         """Databases to capture into, and your default (GET /api/capture)"""
         return self._json("GET", "/api/capture", query=dict(query) if query else None, headers=headers)
 
+    def desktop_capture_targets(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Where quick capture can save — For the desktop app's quick capture: the inbox (null when none is set), every database and document you may add to and the journals you may write in (today's entry), with what the shorthand fills in a database and its record templates. Pages of end-to-end encrypted spaces are never targets (`encryptedExcluded` counts them). `voice`: the instance transcribes voice notes; `suggest`: AI suggestions on the server and/or the device. Answered with `Cache-Control: no-store`. (GET /api/capture/targets)"""
+        return self._json("GET", "/api/capture/targets", headers=headers)
+
+    def capture_preview(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Quick capture shorthand as chips — Reads a text like `Angebot schreiben morgen 15 Uhr #kunde @anna !hoch` (German, English, French) for a target: a due date with time, tags, a person and a priority – each mapped to a property the target database has, or left as text. Chip ids in `literal` stay text. Nothing is saved. (POST /api/capture/preview)"""
+        return self._json("POST", "/api/capture/preview", json_body=body, headers=headers)
+
+    def capture_save(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Save a quick capture — JSON, or multipart/form-data with the fields and up to 10 `file` parts (images, PDFs, Markdown or text files – their text –, a voice note with `transcribe`). The shorthand is read again (`parse`, `literal`) with the capturing computer's `today` and `timeZone`. Into a database as a record (properties from the shorthand, `templateId` for a record template, accepted AI values in `cells`), appended to a page, or to today's journal entry (a journal's id). Send an `Idempotency-Key`: a retry saves nothing twice. (POST /api/capture/save)"""
+        return self._json("POST", "/api/capture/save", json_body=body, headers=headers)
+
+    def capture_undo(self, body: dict[str, Any], headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Take a quick capture back — A captured record goes to the trash (your own only); appended blocks are removed while they are still the last ones, unchanged (`undo` from the save's answer). (POST /api/capture/undo)"""
+        return self._json("POST", "/api/capture/undo", json_body=body, headers=headers)
+
     def synced_blocks(self, query: "SyncedBlocksQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Synced blocks of a workspace (GET /api/synced)"""
         return self._json("GET", "/api/synced", query=dict(query) if query else None, headers=headers)

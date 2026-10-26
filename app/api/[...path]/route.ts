@@ -89,6 +89,8 @@ import { transaction } from "@/lib/db";
 import { BOARD_IMPORT_LIMITS } from "@/lib/whiteboard-import";
 import { importMarkdownRecords, markdownEntries } from "@/lib/markdown-records";
 import { captureTargets } from "@/lib/capture";
+import { captureUndo, capturePreview, desktopCaptureSave, desktopCaptureTargets } from "@/lib/desktop-capture";
+import { MAX_CAPTURE_FILES } from "@/lib/mobile-capture";
 import { listInboundAddresses } from "@/lib/inbound-mail";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
 import { pageToRecordPlan } from "@/lib/page-to-record";
@@ -396,6 +398,10 @@ async function handleGET(
     // E-mail inbound addresses of a workspace (owners, lib/inbound-mail.ts).
     if (path.length === 1 && path[0] === "inbound-mail")
       return NextResponse.json(listInboundAddresses(user, z.uuid().parse(url.searchParams.get("workspace"))), { headers: { "Cache-Control": "no-store" } });
+    // Quick capture of the desktop app: targets with what the shorthand can
+    // fill there (lib/desktop-capture.ts).
+    if (path.length === 2 && path[0] === "capture" && path[1] === "targets")
+      return NextResponse.json(desktopCaptureTargets(user), { headers: { "Cache-Control": "no-store" } });
     // Databases to capture into, and the person's default.
     if (path.length === 1 && path[0] === "capture") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
@@ -967,7 +973,7 @@ async function handleGET(
 // Idempotency-Key (lib/idempotency.ts): /api/command reserves the key in
 // the action's transaction; every other change around its handler. Reads
 // with a body, cursors and presence go without one.
-const readsWithBody = new Set(["home/data", "presence", "clip", "transcribe"]);
+const readsWithBody = new Set(["home/data", "presence", "clip", "transcribe", "capture/preview"]);
 export const POST = withRequestLocale(
   withIdempotency(handlePOST, {
     skip: (req) => {
@@ -987,7 +993,12 @@ async function handlePOST(
     const { path } = await params;
     // ZIP imports may be as large as content archives. File uploads must
     // state their size, so the limit holds before anything is read.
-    const maxBody = path[0] === "import" || path[1] === "import" || path[2] === "import-markdown" ? ARCHIVE_LIMIT + 1_000_000 : 12_000_000;
+    const maxBody =
+      path[0] === "import" || path[1] === "import" || path[2] === "import-markdown"
+        ? ARCHIVE_LIMIT + 1_000_000
+        : path[0] === "capture" && path[1] === "save"
+          ? 100 * 1024 * 1024 + 1_000_000
+          : 12_000_000;
     if (req.headers.get("content-type")?.startsWith("multipart/form-data"))
       requireBodySize(req, maxBody, "Anfrage zu groß.");
     else if (Number(req.headers.get("content-length") || 0) > maxBody)
@@ -1151,6 +1162,35 @@ async function handlePOST(
         throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
       const body = z.object({ url: z.string().max(2000) }).parse(await req.json());
       return NextResponse.json(await clipArticle(body.url));
+    }
+    // Quick capture of the desktop app (lib/desktop-capture.ts): the
+    // shorthand as chips, saving (JSON, or multipart with up to 10 "file"),
+    // and taking a capture back.
+    if (path.length === 2 && path[0] === "capture") {
+      if (path[1] === "preview") {
+        const text = await req.text();
+        if (text.length > 100_000) throw new HttpError(413, "Anfrage zu groß.");
+        return NextResponse.json(capturePreview(user, JSON.parse(text || "{}")), { headers: { "Cache-Control": "no-store" } });
+      }
+      if (path[1] === "undo") return NextResponse.json(captureUndo(user, await req.json()));
+      if (path[1] === "save") {
+        if (!(req.headers.get("content-type") || "").startsWith("multipart/form-data")) {
+          const text = await req.text();
+          if (text.length > 150_000) throw new HttpError(413, "Anfrage zu groß.");
+          const saved = await desktopCaptureSave(user, JSON.parse(text || "{}"));
+          after(dispatchPush);
+          return NextResponse.json(saved);
+        }
+        requireBodySize(req, Math.min(100 * 1024 * 1024, maxUploadMbFor(user) * 1024 * 1024 * MAX_CAPTURE_FILES) + 1_000_000, "Anfrage zu groß.");
+        const form = await req.formData();
+        const files = [];
+        for (const file of form.getAll("file"))
+          if (file instanceof File) files.push({ name: file.name, type: file.type, bytes: Buffer.from(await file.arrayBuffer()) });
+        const fields = Object.fromEntries([...form.entries()].filter(([key, value]) => key !== "file" && typeof value === "string"));
+        const saved = await desktopCaptureSave(user, fields, files);
+        after(dispatchPush);
+        return NextResponse.json(saved);
+      }
     }
     if (path[0] === "command") {
       const text = await req.text();

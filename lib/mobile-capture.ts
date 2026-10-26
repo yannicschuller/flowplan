@@ -84,17 +84,27 @@ export const captureSaveSchema = z.object({
 });
 export type CaptureSave = z.input<typeof captureSaveSchema>;
 
-type Prepared = { id: string; name: string; mime: string; content: Buffer; url: string; pdf: boolean };
+export type Prepared = { id: string; name: string; mime: string; content: Buffer; url: string; pdf: boolean; audio?: boolean };
+const AUDIO = /^audio\/(webm|ogg|mp4|mpeg|aac|wav|x-wav|x-m4a|m4a)$/;
 
-function prepare(user: Identity, files: UploadFile[]): Prepared[] {
+// Checked files: images and PDFs (and, for the desktop app's voice notes,
+// recordings): the type from the content, photos without their location.
+export function prepareCaptureFiles(user: Identity, files: UploadFile[], options: { audio?: boolean } = {}): Prepared[] {
   if (files.length > MAX_CAPTURE_FILES) throw new HttpError(413, ct(`Höchstens ${MAX_CAPTURE_FILES} Dateien auf einmal.`, `At most ${MAX_CAPTURE_FILES} files at once.`));
   const maxMb = maxUploadMbFor(user);
   return files.map((file, index) => {
     if (!file.bytes.length) throw new HttpError(400, ct("Datei fehlt.", "File missing."));
     if (file.bytes.length > maxMb * 1024 * 1024) throw new HttpError(413, ct(`Maximal ${maxMb} MB pro Datei.`, `At most ${maxMb} MB per file.`));
+    const claimed = (file.type || "").split(";")[0].trim().toLowerCase();
+    // Recordings: the browser's own type (MediaRecorder), checked by its start.
+    if (options.audio && AUDIO.test(claimed) && audioLooksRight(file.bytes)) {
+      const fileId = id();
+      return { id: fileId, name: sanitizeFileName(file.name || "sprachnotiz.webm"), mime: claimed, content: file.bytes, url: `/api/files/${fileId}`, pdf: false, audio: true };
+    }
     const mime = verifiedMime(file.type, file.bytes);
     const pdf = mime === "application/pdf";
-    if (!pdf && !IMAGE.test(mime)) throw new HttpError(400, ct("Nur Bilder und PDFs können geteilt werden.", "Only images and PDFs can be shared."));
+    if (!pdf && !IMAGE.test(mime))
+      throw new HttpError(400, options.audio ? ct("Nur Bilder, PDFs und Sprachnotizen können erfasst werden.", "Only images, PDFs and voice notes can be captured.") : ct("Nur Bilder und PDFs können geteilt werden.", "Only images and PDFs can be shared."));
     const fileId = id();
     return {
       id: fileId,
@@ -105,6 +115,13 @@ function prepare(user: Identity, files: UploadFile[]): Prepared[] {
       pdf,
     };
   });
+}
+// WebM/Matroska, Ogg, MP4/M4A, MP3 (ID3 or a frame), WAV.
+function audioLooksRight(bytes: Buffer) {
+  const head = bytes.subarray(0, 12);
+  if (head.readUInt32BE(0) === 0x1a45dfa3) return true;
+  const ascii = head.toString("latin1");
+  return ascii.startsWith("OggS") || ascii.slice(4, 8) === "ftyp" || ascii.startsWith("ID3") || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) || (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WAVE");
 }
 
 // The link of a share: the url field, else the first link in the text.
@@ -117,11 +134,19 @@ const paragraphs = (text: string) =>
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
-const mediaHtml = (files: Prepared[]) =>
-  files.map((f) => (f.pdf ? `<div data-pdf="${f.url}" data-title="${escaped(f.name)}"></div>` : `<p><img src="${f.url}" alt="${escaped(f.name)}"></p>`)).join("");
+export const mediaHtml = (files: Prepared[]) =>
+  files
+    .map((f) =>
+      f.audio
+        ? `<audio src="${f.url}" controls></audio>`
+        : f.pdf
+          ? `<div data-pdf="${f.url}" data-title="${escaped(f.name)}"></div>`
+          : `<p><img src="${f.url}" alt="${escaped(f.name)}"></p>`,
+    )
+    .join("");
 
 // The same content as nodes, for appending to a stored document.
-function contentNodes(text: string, link: string, files: Prepared[]): PMNode[] {
+export function contentNodes(text: string, link: string, files: Prepared[]): PMNode[] {
   const schema = rewriteSchema();
   const nodes: Record<string, unknown>[] = paragraphs(text).map((p) => ({
     type: "paragraph",
@@ -129,7 +154,13 @@ function contentNodes(text: string, link: string, files: Prepared[]): PMNode[] {
   }));
   if (link) nodes.push({ type: "paragraph", content: [{ type: "text", text: link, marks: [{ type: "link", attrs: { href: link } }] }] });
   for (const f of files)
-    nodes.push(f.pdf ? { type: "media", attrs: { src: f.url, kind: "pdf", title: f.name } } : { type: "image", attrs: { src: f.url, alt: f.name } });
+    nodes.push(
+      f.audio
+        ? { type: "media", attrs: { src: f.url, kind: "audio", title: f.name } }
+        : f.pdf
+          ? { type: "media", attrs: { src: f.url, kind: "pdf", title: f.name } }
+          : { type: "image", attrs: { src: f.url, alt: f.name } },
+    );
   return nodes.map((node) => schema.nodeFromJSON(node));
 }
 
@@ -143,13 +174,35 @@ function titleOf(input: z.infer<typeof captureSaveSchema>, text: string, link: s
   return ct("Geteilt", "Shared");
 }
 
+// Writes checked files to the uploads and registers them with their page
+// (inside the transaction: a rollback removes them again).
+export function storeCaptureFiles(user: Identity, prepared: Prepared[], ownerId: string, recognized = "") {
+  if (!prepared.length) return;
+  const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
+  mkdirSync(dir, { recursive: true });
+  let textStored = false;
+  for (const file of prepared) {
+    const path = resolve(dir, file.id);
+    writeFileSync(path, file.content);
+    onTransactionRollback(() => unlinkSync(path));
+    run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file.id, ownerId, file.name, file.mime, file.content.length, user.id);
+    audit(user.id, "file.upload", ownerId, file.name);
+    // The scan's text, recognised on the phone: the search finds it at
+    // once, and the server's extraction skips the file.
+    if (file.pdf && recognized && !textStored) {
+      run("INSERT OR REPLACE INTO file_texts(file_id,text,status) VALUES(?,?,?)", file.id, recognized.slice(0, MAX_PDF_TEXT), "device-ocr");
+      textStored = true;
+    }
+  }
+}
+
 export async function saveCapture(user: Identity, raw: unknown, files: UploadFile[] = []) {
   const input = captureSaveSchema.parse(raw);
   const writer = writerOf(user);
   const targetId = input.targetId === "inbox" ? inboxTarget(user)?.id : input.targetId;
   if (!targetId) throw new HttpError(409, ct("Kein Eingang festgelegt. Bitte wähle, wohin.", "No inbox set. Please choose where to save."));
   const { page } = captureTarget(user, targetId);
-  const prepared = prepare(user, files);
+  const prepared = prepareCaptureFiles(user, files);
   const link = sharedLink(input);
   const text = (input.text || "").replace(link, "").trim();
   if (!prepared.length && !text && !link && !input.title)
@@ -161,25 +214,8 @@ export async function saveCapture(user: Identity, raw: unknown, files: UploadFil
   }
   const title = titleOf(input, text, link, prepared);
   const recognized = input.recognized?.trim() || "";
-  const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
-  if (prepared.length) mkdirSync(dir, { recursive: true });
   // Files of records belong to their database (like e-mail capture).
-  const store = (ownerId: string) => {
-    let textStored = false;
-    for (const file of prepared) {
-      const path = resolve(dir, file.id);
-      writeFileSync(path, file.content);
-      onTransactionRollback(() => unlinkSync(path));
-      run("INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)", file.id, ownerId, file.name, file.mime, file.content.length, user.id);
-      audit(user.id, "file.upload", ownerId, file.name);
-      // The scan's text, recognised on the phone: the search finds it at
-      // once, and the server's extraction skips the file.
-      if (file.pdf && recognized && !textStored) {
-        run("INSERT OR REPLACE INTO file_texts(file_id,text,status) VALUES(?,?,?)", file.id, recognized.slice(0, MAX_PDF_TEXT), "device-ocr");
-        textStored = true;
-      }
-    }
-  };
+  const store = (ownerId: string) => storeCaptureFiles(user, prepared, ownerId, recognized);
   let publish: () => void = () => {};
   const result = transaction(() => {
     const append = (pageId: string, rowId: string | null) => {
