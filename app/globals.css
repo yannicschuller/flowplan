@@ -15619,6 +15619,16 @@ h3 .block-reactions {
   color: var(--secondary);
   text-align: left;
 }
+/* The desktop app's spelling suggestions, first in the right-click menu. */
+.text-menu-spelling {
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+.text-menu-note {
+  padding: 5px 9px;
+  font-size: 13px;
+  color: var(--secondary);
+}
 .text-menu-calc button:hover {
   background: var(--hover);
   color: var(--text);

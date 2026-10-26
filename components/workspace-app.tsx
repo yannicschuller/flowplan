@@ -5,7 +5,8 @@ import { readModeIds, toggleReadMode } from "@/lib/read-mode";
 import { parseSettingsHash } from "@/lib/settings-sections";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
-import { nativeApp } from "@/lib/native-app";
+import { desktopPageLink, inDesktopApp, nativeApp, offerDesktopApp, openInWindow } from "@/lib/native-app";
+import { currentOS } from "@/lib/device-os";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
@@ -105,6 +106,8 @@ import {
   SidebarSimple,
   DotsThree,
   ArrowSquareOut,
+  AppWindow,
+  Desktop,
   ShareNetwork,
   ChatCircle,
   Check,
@@ -2772,6 +2775,23 @@ export default function WorkspaceApp({
                 </Dropdown.Trigger>
                 <Dropdown.Portal>
                   <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
+                    {/* The desktop app: from a browser on a computer, the page
+                        opens there (flowplan://open); inside the app, in a
+                        window of its own. */}
+                    {offerDesktopApp(currentOS(), inDesktopApp(), nativeApp()) ? (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => void (location.href = desktopPageLink(location.origin, data.page.id))}>
+                        <Desktop />
+                        {t("In Desktop-App öffnen", "Open in desktop app")}
+                      </Dropdown.Item>
+                    ) : openInWindow() ? (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() => openInWindow()?.(`${location.origin}${location.pathname}${pageLocationHash({ pageId: data.page.id })}`)}
+                      >
+                        <AppWindow />
+                        {t("In neuem Fenster öffnen", "Open in new window")}
+                      </Dropdown.Item>
+                    ) : null}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() => {
@@ -4938,9 +4958,9 @@ export default function WorkspaceApp({
                 const starred = boot.favorites.includes(target.id);
                 return (
                   <>
-                    {/* The iPad app opens the page in a window of its own. */}
-                    {nativeApp()?.openWindow ? (
-                      <Dropdown.Item className="dropdown-item" onSelect={() => nativeApp()?.openWindow?.(url())}>
+                    {/* The iPad app and the desktop app open the page in a window of its own. */}
+                    {openInWindow() ? (
+                      <Dropdown.Item className="dropdown-item" onSelect={() => openInWindow()?.(url())}>
                         <ArrowSquareOut />
                         {t("In neuem Fenster öffnen", "Open in new window")}
                       </Dropdown.Item>

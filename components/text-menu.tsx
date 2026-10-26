@@ -4,8 +4,12 @@
 // own menu). Reactions for the paragraph, formatting, calculating a
 // selected expression, a comment, copying. "Umwandeln in" changes the type
 // of the line (text, heading, list, quote, code) and keeps its text; it is
-// offered on right-click, so the menu over a selection stays small.
+// offered on right-click, so the menu over a selection stays small. In the
+// desktop app a right click on a misspelled word adds the spell checker's
+// suggestions at the top (the app's own menu does not appear over this one).
 import { useKeyboardHints } from "@/lib/keyboard-hints";
+import { desktopApp } from "@/lib/native-app";
+import { wordAt } from "@/lib/spelling-word";
 import { useLocale, useT } from "./i18n";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
@@ -34,6 +38,8 @@ import {
   MathOperations,
   Note,
   Sparkle,
+  TextAa,
+  BookOpen,
 } from "@phosphor-icons/react";
 import type { AiAvailability } from "./ai-context";
 import { hasLatexText } from "@/lib/chat-paste";
@@ -44,6 +50,8 @@ import type { MathAction } from "@/lib/math-solve";
 
 const reactions = ["👍", "❤️", "🎉", "😄", "👀", "✅", "🙏", "🔥"];
 type Place = { x: number; y: number; mode: "selection" | "context" };
+// A misspelled word under the pointer and what the spell checker suggests.
+type Spelling = { word: string; from: number; to: number; suggestions: string[] };
 
 export function TextMenu({
   editor,
@@ -76,6 +84,9 @@ export function TextMenu({
   const [arrows, setArrows] = useState<string[] | null>(null);
   // Formulas written as text in the selection (\[ … \], \( … \)).
   const [latex, setLatex] = useState(false);
+  const [spelling, setSpelling] = useState<Spelling | null>(null);
+  const editableRef = useRef(editable);
+  editableRef.current = editable;
   const menu = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPlace(null), []);
   useEffect(() => {
@@ -117,6 +128,25 @@ export function TextMenu({
     const onKeyUp = (event: KeyboardEvent) => {
       if (inEditor(event) && event.shiftKey && event.key.startsWith("Arrow")) later();
     };
+    // The desktop app's spell checker: the word at a position, if misspelled.
+    const misspelledAt = (pos: number): Spelling | null => {
+      const checker = desktopApp()?.spelling;
+      if (!checker) return null;
+      const $pos = editor.state.doc.resolve(pos);
+      if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) return null;
+      // One character for every inline node, so offsets stay positions.
+      const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "\ufffc");
+      const found = wordAt(text, $pos.parentOffset);
+      if (!found) return null;
+      try {
+        const result = checker.check(found.word);
+        if (!result?.misspelled) return null;
+        const start = $pos.start();
+        return { word: found.word, from: start + found.start, to: start + found.end, suggestions: (result.suggestions || []).slice(0, 5) };
+      } catch {
+        return null;
+      }
+    };
     const onContext = (event: MouseEvent) => {
       if (event.shiftKey || !inEditor(event)) return;
       // Images, videos and embedded files keep the browser's own menu
@@ -127,6 +157,7 @@ export function TextMenu({
       const at = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
       const { from, to } = editor.state.selection;
       if (at && (at.pos < from || at.pos > to)) editor.commands.setTextSelection(at.pos);
+      setSpelling(at && editableRef.current ? misspelledAt(at.pos) : null);
       setPlace({ x: event.clientX, y: event.clientY, mode: "context" });
     };
     const onSelection = () => {
@@ -304,6 +335,36 @@ export function TextMenu({
         if (!(e.target as HTMLElement).closest("input")) e.preventDefault();
       }}
     >
+      {editable && place.mode === "context" && spelling && (
+        <div className="text-menu-calc text-menu-spelling" role="group" aria-label={t("Rechtschreibung", "Spelling")}>
+          {spelling.suggestions.length ? (
+            spelling.suggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                role="menuitem"
+                title={t(`„${spelling.word}“ ersetzen`, `Replace “${spelling.word}”`)}
+                onClick={run(() => {
+                  // Only if the word is still there (the text may have changed).
+                  if (editor.state.doc.textBetween(spelling.from, spelling.to) !== spelling.word) return;
+                  // Typed over the word: its marks (bold, a link) stay.
+                  editor.view.dispatch(editor.state.tr.insertText(suggestion, spelling.from, spelling.to));
+                  editor.commands.focus();
+                })}
+              >
+                <TextAa size={15} />
+                <strong>{suggestion}</strong>
+              </button>
+            ))
+          ) : (
+            <span className="text-menu-note">{t("Keine Vorschläge", "No suggestions")}</span>
+          )}
+          <button type="button" role="menuitem" onClick={run(() => void desktopApp()?.spelling?.addWord(spelling.word))}>
+            <BookOpen size={15} />
+            <span>{t("Zum Wörterbuch hinzufügen", "Add to dictionary")}</span>
+          </button>
+        </div>
+      )}
       {editable && block !== null && userId && (
         <div className="text-menu-reactions" role="group" aria-label={t("Auf den Absatz reagieren", "React to the paragraph")}>
           {reactions.map((emoji) => (

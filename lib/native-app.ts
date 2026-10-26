@@ -1,3 +1,5 @@
+import type { DeviceOS } from "./device-os";
+
 // The apps for iPhone, iPad and Android (flowplan-app) put `window.FlowplanApp`
 // into their web view. The page tells the app when something changed, so its
 // widgets, badge and Live Activity follow at once, and hands files to it,
@@ -58,12 +60,44 @@ type FlowplanDesktop = {
     // Asks again at once (the badge after reading notifications).
     refresh?: () => void;
   };
+  // The app's spell checker (Electron's, in the languages chosen in the
+  // app): the text menu offers its suggestions for a misspelled word – the
+  // editor keeps its own right-click menu, so the app's native one with the
+  // suggestions does not appear there (desktop 1.1 and newer).
+  spelling?: {
+    check: (word: string) => { misspelled: boolean; suggestions: string[] };
+    addWord: (word: string) => Promise<boolean>;
+  };
+  // A page of this instance in a window of its own (desktop 1.1 and newer).
+  openWindow?: (url: string) => void;
 };
 export function desktopApp(): FlowplanDesktop | undefined {
   if (typeof window === "undefined") return undefined;
   return (window as unknown as { FlowplanDesktop?: FlowplanDesktop }).FlowplanDesktop;
 }
 export const inDesktopApp = () => typeof navigator !== "undefined" && /FlowplanDesktop\//.test(navigator.userAgent);
+
+// A page in a window of its own: the iPad app and the desktop app can.
+export function openInWindow(): ((url: string) => void) | undefined {
+  const app = nativeApp()?.openWindow;
+  if (app) return app;
+  const desktop = desktopApp()?.openWindow;
+  return desktop ? (url) => desktop(url) : undefined;
+}
+
+// "Open in desktop app": the page as a flowplan://open link, which the
+// desktop app (installed on macOS, Windows or Linux) opens in the profile of
+// this instance – or asks before adding the instance. Offered in a browser
+// on a computer only: not inside the desktop app itself, not in the mobile
+// apps, not on phones and tablets.
+export function desktopPageLink(origin: string, pageId: string, rowId?: string | null) {
+  const params = new URLSearchParams({ instance: origin, page: pageId });
+  if (rowId) params.set("row", rowId);
+  return `flowplan://open?${params}`;
+}
+export function offerDesktopApp(os: DeviceOS, inDesktop: boolean, app: { platform?: string } | undefined) {
+  return !inDesktop && !app && (os === "macos" || os === "windows" || os === "linux");
+}
 
 // Why this device cannot keep an offline copy: the iPhone and iPad app's
 // web view (WKWebView) runs no service worker for an instance's address –
