@@ -19431,6 +19431,22 @@ h3 .block-reactions {
 .focus-bar {
   bottom: calc(18px + var(--safe-bottom));
 }
+/* A banner above the top bar (demo, announcement, offline, signed out) takes
+   the status bar's room instead, and the top bar under it needs none. */
+.main > .demo-banner:first-child {
+  padding-top: calc(10px + var(--safe-top));
+}
+.main > :is(.instance-announcement, .offline-banner):first-child {
+  padding-top: calc(8px + var(--safe-top));
+}
+.main > .offline-copy-age:first-child {
+  padding-top: calc(4px + var(--safe-top));
+}
+.main > :is(.demo-banner, .instance-announcement, .offline-banner, .offline-copy-age) ~ .topbar {
+  height: 57px;
+  min-height: 57px;
+  padding-top: 0;
+}
 @media (max-width: 767px) {
   .main {
     padding-left: var(--safe-left);
@@ -19438,6 +19454,10 @@ h3 .block-reactions {
   .topbar {
     height: calc(55px + var(--safe-top));
     min-height: calc(55px + var(--safe-top));
+  }
+  .main > :is(.demo-banner, .instance-announcement, .offline-banner, .offline-copy-age) ~ .topbar {
+    height: 55px;
+    min-height: 55px;
   }
   .comments-panel {
     top: calc(55px + var(--safe-top));
