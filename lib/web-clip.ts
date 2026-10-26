@@ -10,15 +10,16 @@ import { safeFetch } from "./safe-fetch";
 import type { Field, View } from "./types";
 
 const ARTICLE_LIMIT = 200_000;
+// &amp; last, so "&amp;lt;" stays the text "&lt;".
 const decode = (text: string) =>
   text
     .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, "&");
 
 // The main text of a page: <article> or <main> if present, else the body,
 // without navigation, ads and scripts; only simple text markup remains.

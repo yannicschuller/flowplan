@@ -40,7 +40,7 @@ test("syntax rendering handles registered languages and aliases, escapes executa
     "bash",
   ]) {
     const output = renderCode(source, language);
-    assert.doesNotMatch(output, /<script>|<img/);
+    assert.doesNotMatch(output, /<script|<img/i);
     assert.equal(output.replace(/<\/?span[^>]*>/g, ""), escaped(source));
   }
   assert.match(renderCode(source, "javascript"), /hljs-keyword/);
@@ -74,7 +74,7 @@ test("Markdown fenced imports preserve language, tabs and literal fences, includ
   const result = markdownHtml("```javascript\n" + source + "```");
   assert.match(result, /class="language-javascript"/);
   assert.match(result, /  \/\/ \/path @member/);
-  assert.doesNotMatch(result, /<script>/);
+  assert.doesNotMatch(result, /<script/i);
   assert.equal(
     markdownHtml('~~~python\n\tprint("x")\n~~~'),
     '<pre><code class="language-python">\tprint("x")\n</code></pre>',
@@ -202,5 +202,5 @@ test("code and display preferences survive page/record copies, templates, ZIP an
   mutateSharedContent(token, change);
   assert.match(sharedContent(read).html, /language-typescript/);
   assert.match(sharedContent(read).html, /data-code-wrap="true"/);
-  assert.doesNotMatch(sharedContent(read).html, /<script>/);
+  assert.doesNotMatch(sharedContent(read).html, /<script/i);
 });

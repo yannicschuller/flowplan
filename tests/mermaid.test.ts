@@ -60,7 +60,7 @@ test("Mermaid nodes roundtrip through HTML/Yjs and Markdown without storing gene
     canonical(
       `<div data-mermaid="${escaped(unsafe)}">${escaped(unsafe)}</div>`,
     ),
-    /<script>/,
+    /<script/i,
   );
 });
 process.env.FLOWPLAN_DATA_DIR = mkdtempSync(

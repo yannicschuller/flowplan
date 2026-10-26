@@ -81,7 +81,7 @@ const serviceOf = (endpoint: string) => {
   try {
     host = new URL(endpoint).hostname;
   } catch {}
-  return host === "web.push.apple.com" ? "apple" : host === "fcm.googleapis.com" ? "google" : host.endsWith("mozilla.com") ? "mozilla" : host.endsWith(".notify.windows.com") ? "microsoft" : null;
+  return host === "web.push.apple.com" ? "apple" : host === "fcm.googleapis.com" ? "google" : host.endsWith(".mozilla.com") ? "mozilla" : host.endsWith(".notify.windows.com") ? "microsoft" : null;
 };
 const browserLabel = (agent: string) => {
   const d = deviceName(agent || "");

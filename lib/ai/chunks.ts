@@ -10,6 +10,16 @@ export const CHUNK_MAX = 1400;
 const ENTITIES: Record<string, string> = { nbsp: " ", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'", amp: "&" };
 const decode = (text: string) => text.replace(/&(nbsp|lt|gt|quot|#39|apos|amp);/g, (_, e: string) => ENTITIES[e]);
 
+// Without the cell separators (" · ") and spaces at both ends; a loop, as a
+// pattern for this backtracks exponentially on rows of empty cells.
+function trimCells(text: string) {
+  let start = 0,
+    end = text.length;
+  while (start < end && (text[start] === "·" || /\s/.test(text[start]))) start++;
+  while (end > start && (text[end - 1] === "·" || /\s/.test(text[end - 1]))) end--;
+  return text.slice(start, end);
+}
+
 // The paragraphs of an HTML document as plain text: block elements end a
 // paragraph, headings are kept as their own paragraphs (marked), scripts,
 // styles and tags disappear.
@@ -25,10 +35,7 @@ export function htmlParagraphs(html: string): { text: string; heading: boolean }
     .split("\u0001")
     .map((part) => {
       const heading = part.startsWith("H");
-      const text = decode(heading ? part.slice(1) : part)
-        .replace(/\s+/g, " ")
-        .replace(/^(\s*·\s*)+|(\s*·\s*)+$/g, "")
-        .trim();
+      const text = trimCells(decode(heading ? part.slice(1) : part).replace(/\s+/g, " "));
       return { text, heading };
     })
     .filter((p) => p.text);

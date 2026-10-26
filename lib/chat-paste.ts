@@ -42,9 +42,10 @@ export function chatTextToHtml(text: string): string {
       continue;
     }
     // Tab-separated rows (copied tables): a Markdown table, first row as header.
+    // Backslashes are escaped too, so "a\|b" does not end the cell early.
     if (line.includes("\t") && lines[i + 1]?.includes("\t")) {
       const rows: string[][] = [];
-      while (i < lines.length && lines[i].includes("\t")) rows.push(lines[i++].split("\t").map((c) => c.trim().replace(/\|/g, "\\|")));
+      while (i < lines.length && lines[i].includes("\t")) rows.push(lines[i++].split("\t").map((c) => c.trim().replace(/[\\|]/g, "\\$&")));
       i--;
       const width = Math.max(...rows.map((r) => r.length));
       const row = (r: string[]) => `| ${Array.from({ length: width }, (_, k) => r[k] || "").join(" | ")} |`;
