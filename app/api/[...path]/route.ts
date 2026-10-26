@@ -853,9 +853,10 @@ async function handleGET(
         markdownExport: markdownExportStatus(),
         spaceGitExport: spaceGitOverview(),
         encryption: encryptionOverview(),
-        workspaces: all(
-          "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages FROM workspaces w",
-        ),
+        // With the people who own each workspace (owner role; usually one).
+        workspaces: all<{ id: string; name: string; members: number; pages: number; owners: string }>(
+          "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages,(SELECT json_group_array(json_object('id',u.id,'name',u.name,'email',u.email)) FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=w.id AND m.role='owner') owners FROM workspaces w ORDER BY w.name COLLATE NOCASE",
+        ).map((w) => ({ ...w, owners: JSON.parse(w.owners || "[]") as { id: string; name: string; email: string | null }[] })),
         sessions: one(
           "SELECT count(*) count FROM sessions WHERE expires>?",
           Date.now(),

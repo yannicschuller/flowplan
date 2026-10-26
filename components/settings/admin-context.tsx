@@ -14,7 +14,7 @@ import { api } from "../ui";
 
 export type AdminData = {
   users: User[];
-  workspaces: { id: string; name: string; members: number; pages: number }[];
+  workspaces: { id: string; name: string; members: number; pages: number; owners: { id: string; name: string; email: string | null }[] }[];
   sessions: number;
   audit: { id: string; name: string; action: string; resource_id: string; created_at: string }[];
   adminGroup: string;

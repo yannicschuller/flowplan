@@ -1,9 +1,9 @@
 "use client";
-// Administration → Arbeitsbereiche: every workspace with members, pages,
-// storage used and its own quota (saved when the field is left). A table on
-// wide screens, a list on phones.
+// Administration → Arbeitsbereiche: every workspace with its owners, members,
+// pages, storage used and its own quota (saved when the field is left). A
+// table on wide screens, a list on phones; PAGE_SIZE rows at a time.
 import { useState } from "react";
-import { MagnifyingGlass, Stack } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, MagnifyingGlass, Stack } from "@phosphor-icons/react";
 import { useT } from "../../i18n";
 import { EmptyState, ResponsiveTable, SaveState, useSaveState } from "../../settings-ui";
 import { useAdminData, type AdminData } from "../admin-context";
@@ -14,6 +14,7 @@ import { mb } from "./format";
 // From this share of its quota a workspace counts as nearly full (as the
 // tile and the storage alert).
 const NEARLY_FULL = 0.9;
+const PAGE_SIZE = 25;
 type Row = AdminData["workspaces"][number] & {
   bytes: number;
   quotaMb: number | null;
@@ -25,6 +26,7 @@ export default function WorkspacesSection() {
   const t = useT();
   const { data } = useAdminData();
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
   if (!data) return <AdminLoading />;
   const rows: Row[] = data.workspaces.map((w) => {
     const usage = data.usage.find((u) => u.id === w.id);
@@ -40,7 +42,16 @@ export default function WorkspacesSection() {
   });
   const full = rows.filter((r) => r.share >= NEARLY_FULL).length;
   const needle = query.trim().toLocaleLowerCase();
-  const shown = rows.filter((w) => !needle || w.name.toLocaleLowerCase().includes(needle));
+  // By name or by an owner's name or address.
+  const found = rows.filter(
+    (w) =>
+      !needle ||
+      w.name.toLocaleLowerCase().includes(needle) ||
+      w.owners.some((o) => o.name.toLocaleLowerCase().includes(needle) || (o.email || "").toLocaleLowerCase().includes(needle)),
+  );
+  const pages = Math.max(1, Math.ceil(found.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const shown = found.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
   const quota = data.metrics.defaultQuotaMb;
   return (
     <>
@@ -78,9 +89,12 @@ export default function WorkspacesSection() {
             <input
               type="search"
               aria-label={t("Arbeitsbereiche suchen", "Search workspaces")}
-              placeholder={t("Arbeitsbereich suchen …", "Search workspace …")}
+              placeholder={t("Arbeitsbereich oder Besitzer suchen …", "Search workspace or owner …")}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(0);
+              }}
             />
           </span>
         </header>
@@ -95,6 +109,23 @@ export default function WorkspacesSection() {
               header: t("Arbeitsbereich", "Workspace"),
               primary: true,
               render: (w) => w.name,
+            },
+            {
+              key: "owners",
+              header: t("Besitzer", "Owner"),
+              render: (w) =>
+                w.owners.length ? (
+                  <span className="admin-owners">
+                    {w.owners.map((o) => (
+                      <span key={o.id} className="admin-owner" title={o.email ? `${o.name} · ${o.email}` : o.name}>
+                        <span>{o.name}</span>
+                        {o.email && <span className="muted">{o.email}</span>}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="muted">{t("Kein Besitzer", "No owner")}</span>
+                ),
             },
             {
               key: "members",
@@ -144,6 +175,23 @@ export default function WorkspacesSection() {
             },
           ]}
         />
+        {pages > 1 && (
+          <nav className="admin-pager" aria-label={t("Seiten der Arbeitsbereiche", "Workspace pages")}>
+            <span className="muted">
+              {t(
+                `${current * PAGE_SIZE + 1}–${current * PAGE_SIZE + shown.length} von ${found.length}`,
+                `${current * PAGE_SIZE + 1}–${current * PAGE_SIZE + shown.length} of ${found.length}`,
+              )}
+            </span>
+            <button type="button" className="button" disabled={current === 0} onClick={() => setPage(current - 1)} aria-label={t("Vorherige Seite", "Previous page")}>
+              <CaretLeft size={14} aria-hidden />
+            </button>
+            <span className="admin-pager-page">{t(`Seite ${current + 1} von ${pages}`, `Page ${current + 1} of ${pages}`)}</span>
+            <button type="button" className="button" disabled={current >= pages - 1} onClick={() => setPage(current + 1)} aria-label={t("Nächste Seite", "Next page")}>
+              <CaretRight size={14} aria-hidden />
+            </button>
+          </nav>
+        )}
       </section>
     </>
   );
