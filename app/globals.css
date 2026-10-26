@@ -1268,19 +1268,28 @@ kbd,
 .document-editor ul[data-type="taskList"] li > div {
   flex: 1;
 }
-/* Only the done task's own text: its subtasks show their own state. The
-   strike-through is always there, transparent while open, so ticking off
+/* Only the done task's own text: its subtasks show their own state. An open
+   task has no strike-through at all – not even a transparent one: Chrome and
+   Edge paint the decorations of a word the spell checker marks in the text
+   colour, which struck through misspelled words of open tasks. Ticking off
    fades it in once the drawn line (lib/motion.ts) has crossed the text. */
 .document-editor ul[data-type="taskList"] li > div > :not(ul, ol) {
-  text-decoration: line-through transparent;
-  transition:
-    color 0.2s ease,
-    text-decoration-color 0.15s ease 0.2s;
+  transition: color 0.2s ease;
 }
 .document-editor li[data-checked="true"] > div > :not(ul, ol),
 .document-editor ul[data-type="taskList"] li[data-checked="true"] > div > :not(ul, ol) {
   color: var(--muted);
   text-decoration: line-through;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .document-editor ul[data-type="taskList"] li[data-checked="true"] > div > :not(ul, ol) {
+    animation: strike-in 0.15s ease 0.2s backwards;
+  }
+}
+@keyframes strike-in {
+  from {
+    text-decoration-color: transparent;
+  }
 }
 .document-editor table {
   border-collapse: collapse;
