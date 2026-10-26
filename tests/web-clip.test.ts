@@ -34,6 +34,14 @@ test("the article text is taken without navigation, scripts and ads", () => {
   assert.equal(article.words, 9);
 });
 
+test("escaped entities in titles are decoded once", () => {
+  const article = extractArticle(`<title>Use &amp;lt;b&amp;gt; &amp;amp; more</title><p>Text</p>`, "https://example.com/");
+  assert.equal(article.title, "Use &lt;b&gt; &amp; more");
+  const [item] = parseBookmarksHtml(`<DL><p><DT><A HREF="https://example.com/?a=1&amp;amp;b=2">&amp;lt;tag&amp;gt;</A></DL>`);
+  assert.equal(item.title, "&lt;tag&gt;");
+  assert.equal(item.url, "https://example.com/?a=1&amp;b=2");
+});
+
 test("browser bookmark files keep folders and dates", () => {
   const items = parseBookmarksHtml(`<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <DL><p>

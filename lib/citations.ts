@@ -177,7 +177,7 @@ const SYMBOLS: Record<string, string> = {
 // LaTeX in BibTeX values as plain Unicode text.
 export function latexText(value: string) {
   let text = value
-    .replace(/\\([cvuHkr])\s*\{\s*(\\?[A-Za-z])\s*\}/g, (_, mark, ch) => ch.replace("\\", "") + COMBINING[mark])
+    .replace(/\\([cvuHkr])\s*\{\s*(\\?[A-Za-z])\s*\}/g, (_, mark, ch) => ch.replace(/^\\/, "") + COMBINING[mark])
     .replace(/\\([cvuHkr])\s+([A-Za-z])/g, (_, mark, ch) => ch + COMBINING[mark])
     .replace(/\{?\\(["'`^~=.])\s*\{?\s*\\?([A-Za-z])\s*\}?\}?/g, (_, mark, ch) => (ch === "i" ? "i" : ch) + COMBINING[mark])
     .replace(/\\(ss|o|O|ae|AE|oe|OE|aa|AA|l|L|i|textendash|textemdash|textquoteright|textquoteleft|euro|S|TeX|LaTeX)(?![A-Za-z])\s*(\{\})?/g, (_, name) => SYMBOLS[name])

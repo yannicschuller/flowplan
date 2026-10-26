@@ -48,3 +48,9 @@ test("Markdown from the copy button and dollar formulas", () => {
   // Raw HTML is shown, never interpreted.
   assert.match(chatTextToHtml("**a**\n<img src=x onerror=alert(1)>"), /&lt;img/);
 });
+
+test("copied table cells keep backslashes and pipes", () => {
+  const html = chatTextToHtml("Pfad\tZeichen\nC:\\Daten\\\ta\\|b\nx\ty");
+  assert.match(html, /<td>C:\\Daten\\<\/td>\s*<td>a\\\|b<\/td>/);
+  assert.equal(html.match(/<td>/g)?.length, 4);
+});

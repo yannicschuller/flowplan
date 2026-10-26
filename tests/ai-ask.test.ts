@@ -99,6 +99,14 @@ test("documents are split into paragraphs and chunks with their heading", () => 
   assert.ok(huge.length > 2 && huge.every((c) => c.length <= CHUNK_MAX));
 });
 
+test("table rows lose the separators of empty cells, quickly", () => {
+  const cells = (texts: string[]) => `<tr>${texts.map((t) => `<td>${t}</td>`).join("")}</tr>`;
+  const started = performance.now();
+  const paragraphs = htmlParagraphs(`<table>${cells(["", "", "A", "", "B", ""])}${cells(["x", ...Array(30).fill(""), "y"])}</table>`);
+  assert.deepEqual(paragraphs.map((p) => p.text), ["A · · B", "x " + "· ".repeat(31) + "y"]);
+  assert.ok(performance.now() - started < 1000);
+});
+
 test("question terms skip stop words and short words; FTS queries are quoted", () => {
   assert.deepEqual(questionTerms("Wann ist der Betriebsausflug in Hamburg?"), ["betriebsausflug", "hamburg"]);
   assert.deepEqual(questionTerms("What is the budget for Café Müller?"), ["budget", "cafe", "muller"]);

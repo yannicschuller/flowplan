@@ -31,8 +31,9 @@ const commits = git("log", range, "--no-merges", "--format=%H%x09%s")
   })
   .filter((c) => !/^Release v\d/.test(c.subject));
 
-// Square brackets would turn into links in Markdown.
-const escape = (text) => text.replace(/([[\]])/g, "\\$1");
+// Square brackets would turn into links in Markdown; a backslash before
+// one would undo its escape.
+const escape = (text) => text.replace(/([\\[\]])/g, "\\$1");
 const lines = commits.map((c) => `- ${escape(c.subject)} ([${c.sha.slice(0, 7)}](${url}/commit/${c.sha}))`);
 const notes = [
   "## Changes",
