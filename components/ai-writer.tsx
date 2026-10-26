@@ -4,7 +4,9 @@
 // prompt at the caret (/ki, ⌘J on an empty line) or the summary of a voice
 // note. The answer streams into a preview – never straight into the
 // document – and is then inserted as blocks in one step: replacing the text,
-// below it, or discarded.
+// below it, or discarded. In the Flowplan apps on Apple devices it runs on
+// the device where it can (lib/ai/device.ts), with the server as fallback
+// where the person may use it – in end-to-end encrypted spaces only there.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMParser as ProseMirrorDOMParser, type Schema } from "@tiptap/pm/model";
@@ -14,9 +16,12 @@ import { aiInsertTransaction, aiMarkdownToHtml, selectionText, type AiInsertMode
 import { defaultTranslateTarget, WRITE_ACTIONS, WRITE_LANGUAGES, WRITE_TONES, type WriteAction, type WriteLanguage, type WriteTone } from "@/lib/ai/prompts";
 import { aiTarget, setAiTarget } from "@/lib/ai/target";
 import { useLocale, useT } from "./i18n";
-import { AiProviderFooter, useAi } from "./ai-context";
+import { AiProviderFooter, DeviceAiChip, useAi, useAiRoute } from "./ai-context";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
-import { aiUsable } from "@/lib/ai/client";
+import { aiPageReadable, aiUsable } from "@/lib/ai/client";
+import { DeviceAiError, deviceErrorText, deviceSummary, deviceSummaryFits, runOnDevice, runRouted } from "@/lib/ai/device";
+import { DEVICE_LIMITS, deviceWriteFits, deviceWritePrompt } from "@/lib/ai/device-prompts";
+import type { WriteRequest } from "@/lib/ai/prompts";
 import { Lightning } from "@phosphor-icons/react";
 import { Select } from "./select";
 
@@ -28,7 +33,8 @@ export type AiWriterRequest =
   // The summary of a voice note's transcript, inserted below it.
   | { kind: "transcript"; from: number; to: number; text: string };
 
-type Job = { url: string; body: Record<string, unknown>; label: string };
+// The same request for the server (url, body) and for the device.
+type Job = { url: string; body: Record<string, unknown>; label: string; device: { kind: "write"; request: WriteRequest } | { kind: "summary"; text: string } };
 
 // The answer's HTML as editor blocks, parsed in a document of its own (no
 // resources load while parsing).
@@ -45,12 +51,15 @@ export function AiWriter({
   rowId,
   request,
   onClose,
+  encrypted = false,
 }: {
   editor: Editor;
   pageId: string;
   rowId?: string;
   request: AiWriterRequest;
   onClose: () => void;
+  // A page of an end-to-end encrypted space: the device only.
+  encrypted?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -77,7 +86,13 @@ export function AiWriter({
   const atCaret = request.kind === "prompt";
   // AI actions from the answer (pages, tasks, records): a preview first.
   const ai = useAi();
-  const actionsUsable = aiUsable(ai.status, "actions") && !!ai.workspaceId && !rowId;
+  const actionsUsable = !encrypted && aiUsable(ai.status, "actions") && aiPageReadable(ai.status, pageId) && !!ai.workspaceId && !rowId;
+  // Where it runs: on this device (Apple) or on the server.
+  const writeRoute = useAiRoute("write", pageId, { encrypted });
+  const summaryRoute = useAiRoute("summarize", pageId, { encrypted });
+  const routes = useRef({ write: writeRoute, summary: summaryRoute });
+  routes.current = { write: writeRoute, summary: summaryRoute };
+  const [ranOn, setRanOn] = useState<"device" | "server" | null>(null);
   const [actions, setActions] = useState<AiActionsRequest | null>(null);
 
   // Mark the text in the editor while the panel is open.
@@ -127,9 +142,30 @@ export function AiWriter({
       setJob(next);
       setAnswer("");
       setError("");
+      setRanOn(null);
       setPhase("running");
+      const onText = (all: string) => {
+        if (controller.current === abort) setAnswer(all);
+      };
       try {
-        const text = await streamAiFrom(next.url, next.body, { signal: abort.signal, onText: (_piece, all) => setAnswer(all) });
+        const route = next.device.kind === "summary" ? routes.current.summary : routes.current.write;
+        const { result: text } = await runRouted(route, {
+          device: async () => {
+            setRanOn("device");
+            const work = next.device;
+            if (work.kind === "summary") {
+              if (!deviceSummaryFits(work.text)) throw new DeviceAiError("context-too-long");
+              return (await deviceSummary(work.text, { locale, signal: abort.signal })).markdown;
+            }
+            if (!deviceWriteFits(work.request)) throw new DeviceAiError("context-too-long");
+            return String(await runOnDevice(deviceWritePrompt(work.request), { signal: abort.signal, onText }));
+          },
+          server: () => {
+            setRanOn("server");
+            setAnswer("");
+            return streamAiFrom(next.url, next.body, { signal: abort.signal, onText: (_piece, all) => onText(all) });
+          },
+        });
         if (controller.current !== abort) return;
         setAnswer(text);
         setPhase(text.trim() ? "done" : "error");
@@ -137,22 +173,38 @@ export function AiWriter({
       } catch (e) {
         if (controller.current !== abort) return;
         if ((e as Error).name === "AbortError") return setPhase("done");
-        setError((e as Error).message);
+        setError(e instanceof DeviceAiError ? deviceErrorText(e, t) : (e as Error).message);
         setPhase("error");
       }
     },
-    [t],
+    [t, locale],
   );
-  const write = (action: WriteAction, extra: Record<string, unknown> = {}, label = "") =>
+  // The page as context of the free prompt on the device: from the open
+  // editor, cut to what the model takes.
+  const pageContext = () => {
+    const markdown = selectionText(editor.state.doc, 0, editor.state.doc.content.size);
+    return markdown.length > DEVICE_LIMITS.contextChars ? markdown.slice(0, DEVICE_LIMITS.contextChars) + "\n\n[…]" : markdown;
+  };
+  const write = (action: WriteAction, extra: Partial<Omit<WriteRequest, "action" | "locale">> & { context?: boolean } = {}, label = "") => {
+    const { context: withPage, ...choices } = extra;
+    const request: WriteRequest = { action, text: source, locale, ...choices };
+    if (withPage && action === "prompt") request.page = { title: "", markdown: pageContext() };
     void run({
       url: "/api/ai/write",
       label,
       body: { pageId, ...(rowId ? { rowId } : {}), action, text: source, locale, ...extra },
+      device: { kind: "write", request },
     });
+  };
   // The voice note's summary starts right away.
   useEffect(() => {
     if (request.kind === "transcript")
-      void run({ url: "/api/ai/summarize", label: t("Sprachnotiz zusammenfassen", "Summarise voice note"), body: { pageId, ...(rowId ? { rowId } : {}), text: request.text, locale } });
+      void run({
+        url: "/api/ai/summarize",
+        label: t("Sprachnotiz zusammenfassen", "Summarise voice note"),
+        body: { pageId, ...(rowId ? { rowId } : {}), text: request.text, locale },
+        device: { kind: "summary", text: request.text },
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // The prompt takes the focus once the panel is placed (hidden until then,
@@ -250,7 +302,11 @@ export function AiWriter({
             <label className="ai-writer-context">
               <input type="checkbox" checked={context} onChange={(event) => setContext(event.target.checked)} />
               {t("Seite als Kontext", "Page as context")}
-              <small>{t("Der Inhalt dieser Seite geht mit an die KI.", "The content of this page is sent to the AI as well.")}</small>
+              <small>
+                {writeRoute.primary === "device"
+                  ? t("Der Inhalt dieser Seite bleibt auf diesem Gerät.", "The content of this page stays on this device.")
+                  : t("Der Inhalt dieser Seite geht mit an die KI.", "The content of this page is sent to the AI as well.")}
+              </small>
             </label>
           ) : (
             <div className="ai-writer-actions" role="menu" aria-label={t("KI-Aktionen", "AI actions")}>
@@ -301,13 +357,14 @@ export function AiWriter({
           {job?.label && (
             <p className="ai-writer-job">
               <Sparkle size={14} weight="fill" aria-hidden /> <span>{job.label}</span>
+              {ranOn === "device" && <DeviceAiChip />}
             </p>
           )}
           <div className={`ai-preview${phase === "running" ? " streaming" : ""}`} aria-live="polite" aria-busy={phase === "running"}>
             {answer ? (
               <div dangerouslySetInnerHTML={{ __html: preview }} />
             ) : phase === "running" ? (
-              <p className="muted">{t("Die KI schreibt …", "The AI is writing …")}</p>
+              <p className="muted">{ranOn === "device" ? t("Die KI auf diesem Gerät schreibt …", "The on-device AI is writing …") : t("Die KI schreibt …", "The AI is writing …")}</p>
             ) : null}
             {error && (
               <p className="error" role="alert">
@@ -366,7 +423,7 @@ export function AiWriter({
           </div>
         </>
       )}
-      <AiProviderFooter />
+      <AiProviderFooter device={ranOn ? ranOn === "device" : (request.kind === "transcript" ? summaryRoute : writeRoute).primary === "device"} />
       {ai.workspaceId && <AiActionsPanel workspaceId={ai.workspaceId} request={actions} onClose={() => setActions(null)} />}
     </div>
   );

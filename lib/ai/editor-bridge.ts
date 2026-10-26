@@ -18,6 +18,25 @@ export function registerAiInserter(pageId: string, rowId: string | null | undefi
 }
 // Whether an editable editor is open for it.
 export const aiCanInsert = (pageId: string, rowId?: string | null) => !!inserters.get(keyOf(pageId, rowId))?.size;
+// Summaries on the device (lib/ai/device.ts) read the open document from
+// its editor – the server's copy is not there to read (end-to-end
+// encrypted) and must not be asked.
+type Reader = () => string;
+const readers = new Map<string, Set<Reader>>();
+export function registerAiReader(pageId: string, rowId: string | null | undefined, read: Reader) {
+  const key = keyOf(pageId, rowId);
+  if (!readers.has(key)) readers.set(key, new Set());
+  readers.get(key)!.add(read);
+  return () => {
+    readers.get(key)?.delete(read);
+    if (!readers.get(key)?.size) readers.delete(key);
+  };
+}
+// The open document as Markdown, or null when no editor has it open.
+export function aiReadOpen(pageId: string, rowId?: string | null): string | null {
+  for (const read of readers.get(keyOf(pageId, rowId)) || []) return read();
+  return null;
+}
 // Inserts into the (first) open editor; false when none took it.
 export function aiInsertInto(pageId: string, rowId: string | null | undefined, markdown: string, place: AiInsertPlace) {
   for (const insert of inserters.get(keyOf(pageId, rowId)) || []) if (insert(markdown, place)) return true;

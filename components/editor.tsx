@@ -31,8 +31,8 @@ import { transcriptHtml, transcriptText } from "@/lib/transcript";
 import { canRecordInApp, recordInApp } from "@/lib/native-voice";
 import type { Transcript } from "@/lib/transcribe";
 import { aiTargetPlugin } from "@/lib/ai/target";
-import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml } from "@/lib/ai/insert";
-import { registerAiInserter } from "@/lib/ai/editor-bridge";
+import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml, selectionText } from "@/lib/ai/insert";
+import { registerAiInserter, registerAiReader } from "@/lib/ai/editor-bridge";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { drawBlockNode } from "./ink/draw-block";
@@ -315,8 +315,8 @@ export default function DocumentEditor({
   // works on. Hidden without the feature, disabled on pages the AI may not
   // read.
   const [aiRequest, setAiRequest] = useState<AiWriterRequest | null>(null);
-  const aiWrite = useAiAvailability("write", pageId);
-  const aiSummarize = useAiAvailability("summarize", pageId);
+  const aiWrite = useAiAvailability("write", pageId, { device: true });
+  const aiSummarize = useAiAvailability("summarize", pageId, { device: true });
   // Tasks and summary from a meeting transcript (components/ai-actions.tsx).
   const aiActions = useAiAvailability("actions", pageId);
   const aiWorkspace = useAi().workspaceId;
@@ -1009,6 +1009,11 @@ export default function DocumentEditor({
       return setAiRequest({ kind: "selection", from: $from.start(), to: $from.end() });
     setAiRequest({ kind: "prompt", from, to: from });
   };
+  // On-device summaries read the document from here.
+  useEffect(() => {
+    if (!editor || embedded) return;
+    return registerAiReader(pageId, rowId, () => (editor.isDestroyed ? "" : selectionText(editor.state.doc, 0, editor.state.doc.content.size)));
+  }, [editor, pageId, rowId, embedded]);
   // Summaries from the side panel or a record's dialog land here.
   useEffect(() => {
     if (!editor || !editable || embedded) return;

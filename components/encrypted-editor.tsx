@@ -5,7 +5,10 @@
 // updates of others arrive as ciphertext (live channel or poll) and are
 // decrypted here. From time to time the browser stores the encrypted full
 // state as a snapshot so the log stays short. Nothing is cached on the
-// device: no IndexedDB copy, no HTML to the server, no AI, no comments.
+// device: no IndexedDB copy, no HTML to the server, no AI of the server, no
+// comments. In the Flowplan apps on Apple devices the writing assistant and
+// the summary run on the device (lib/ai/device.ts) – the decrypted text
+// never leaves it.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -15,7 +18,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import Collaboration from "@tiptap/extension-collaboration";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Extension, Node, mergeAttributes } from "@tiptap/core";
 import * as Y from "yjs";
 import {
   CheckSquare,
@@ -26,6 +29,7 @@ import {
   ListNumbers,
   LockKey,
   Quotes,
+  Sparkle,
   TextB,
   TextHOne,
   TextHTwo,
@@ -39,6 +43,11 @@ import { exportName } from "@/lib/export-name";
 import type { SaveStatus } from "@/lib/save-status";
 import { beforeLock, openSpace, spaceKey } from "./e2ee-store";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { aiTargetPlugin } from "@/lib/ai/target";
+import { aiInsertedPlugin, selectionText } from "@/lib/ai/insert";
+import { registerAiReader } from "@/lib/ai/editor-bridge";
+import { AiWriter, type AiWriterRequest } from "./ai-writer";
+import { useAiAvailability } from "./ai-context";
 
 type LogEntry = { seq: number; version: number; data: string };
 type Log = { keyVersion: number; snapshot: { upto: number; version: number; data: string } | null; updates: LogEntry[]; more: boolean; pending: number };
@@ -162,6 +171,7 @@ export default function EncryptedEditor({
         TableCell,
         Placeholder.configure({ placeholder: t("Schreibe etwas – nur Mitglieder mit Schlüssel können es lesen …", "Write something – only members with the key can read it …") }),
         fileNode,
+        Extension.create({ name: "aiTarget", addProseMirrorPlugins: () => [aiTargetPlugin, aiInsertedPlugin] }),
         Collaboration.configure({ document: doc }),
       ],
       editorProps: { attributes: { class: "document-editor e2ee-editor", "aria-label": t("Verschlüsselter Dokumentinhalt", "Encrypted document content") } },
@@ -169,6 +179,21 @@ export default function EncryptedEditor({
     [doc, editable],
   );
   useEffect(() => () => doc.destroy(), [doc]);
+  // The writing assistant on the device only (never the server's: encrypted).
+  const aiWrite = useAiAvailability("write", pageId, { device: true, encrypted: true });
+  const [aiRequest, setAiRequest] = useState<AiWriterRequest | null>(null);
+  const openAi = () => {
+    if (!editor) return;
+    const { from, to, empty, $from } = editor.state.selection;
+    if (!empty) return setAiRequest({ kind: "selection", from, to });
+    if ($from.parent.textContent.trim()) return setAiRequest({ kind: "selection", from: $from.start(), to: $from.end() });
+    setAiRequest({ kind: "prompt", from, to: from });
+  };
+  // The summary in the page menu reads the decrypted text here.
+  useEffect(() => {
+    if (!editor) return;
+    return registerAiReader(pageId, null, () => (editor.isDestroyed ? "" : selectionText(editor.state.doc, 0, editor.state.doc.content.size)));
+  }, [editor, pageId]);
 
   const decrypt = useCallback(
     async (purpose: e2ee.Purpose, version: number, data: string) => {
@@ -385,6 +410,7 @@ export default function EncryptedEditor({
             {button(t("Aufgabenliste", "Task list"), state.task, () => chain().toggleTaskList().run(), <CheckSquare size={16} />)}
             {button(t("Zitat", "Quote"), state.quote, () => chain().toggleBlockquote().run(), <Quotes size={16} />)}
             {button(t("Codeblock", "Code block"), state.code, () => chain().toggleCodeBlock().run(), <Code size={16} />)}
+            {aiWrite === "ok" && button(t("KI auf diesem Gerät", "AI on this device"), !!aiRequest, openAi, <Sparkle size={16} weight="fill" />)}
             {button(
               uploading ? t("Wird verschlüsselt hochgeladen …", "Uploading encrypted …") : t("Datei oder Bild verschlüsselt hinzufügen", "Add an encrypted file or image"),
               false,
@@ -420,6 +446,9 @@ export default function EncryptedEditor({
       </div>
       {!loaded && <p className="muted">{t("Wird entschlüsselt …", "Decrypting …")}</p>}
       <EditorContent editor={editor} />
+      {aiRequest && editor && (
+        <AiWriter key={`${aiRequest.kind}-${aiRequest.from}-${aiRequest.to}`} editor={editor} pageId={pageId} request={aiRequest} encrypted onClose={() => setAiRequest(null)} />
+      )}
     </div>
   );
 }

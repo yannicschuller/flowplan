@@ -115,7 +115,27 @@ export type AiStatus = {
   scope: "all" | "selected";
   // Pages of this workspace (visible to the person) the AI may not read.
   excludedPages: string[];
+  // Apple's on-device model in the Flowplan apps (lib/ai/device.ts): the
+  // features that may run there for this person, how they want it, and the
+  // pages it may not read (end-to-end encrypted ones it may: nothing leaves
+  // the device). null: not at all – switched off by the administration or
+  // the person.
+  device: {
+    // "prefer": on the device whenever it can; "fallback": only when the
+    // server's AI is not available.
+    mode: "prefer" | "fallback";
+    features: Partial<Record<AiFeature, boolean>>;
+    excludedPages: string[];
+  } | null;
 };
+
+// How a person wants the on-device model: "prefer" (the default), only as
+// a "fallback" when the server has no AI, or "off" – then nothing ever asks
+// the device.
+export const DEVICE_AI_MODES = ["prefer", "fallback", "off"] as const;
+export type DeviceAiMode = (typeof DEVICE_AI_MODES)[number];
+// The features with a path on the device (light actions on an open page).
+export const DEVICE_AI_FEATURES: readonly AiFeature[] = ["write", "summarize"];
 
 // "Ollama · llama3.1 (lokal)" / "OpenAI-kompatibel · gpt-4.1 (api.openai.com)"
 export function aiProviderLabel(

@@ -99,6 +99,19 @@
 //     (semanticNeighbours, lib/related-pages.ts – no provider call) and the
 //     AI summary of the weekly digest (lib/weekly-digest.ts, "summarize").
 //
+// ON THE DEVICE (lib/ai/device.ts, lib/ai/device-prompts.ts): Apple's model
+//   in the Flowplan apps – window.FlowplanApp.ai (iPhone, iPad) and
+//   window.FlowplanDesktop.ai (Mac), one contract. Optional: the
+//   administration's switch (instance setting `device`, FLOWPLAN_AI_DEVICE),
+//   independent of the master switch, and each person's mode ("prefer" |
+//   "fallback" | "off"); the feature switches, the policy, guests and the
+//   pages closed to the AI apply (deviceGate in resolve.ts → AiStatus.device,
+//   aiDeviceExcludedPages in access.ts – end-to-end encrypted spaces are open
+//   to it). Light features only ("write", "summarize" of an open page or a
+//   voice note); aiRoute decides device / server / hidden per action,
+//   runRouted lets the server take over where the person may use it – never
+//   for encrypted pages. Nothing of it reaches this server.
+//
 // KEYS are sealed (lib/ai/secrets.ts), write-only and never returned by any
 // view, export, log or error (lib/ai/redact.ts). Features never see them
 // except inside the AiConfig they pass straight to lib/ai/providers.ts.

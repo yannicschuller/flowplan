@@ -2,10 +2,12 @@
 // AI settings: Administration → KI (instance provider, who may use it,
 // features), Settings → KI (own switches, own provider, what the AI may
 // read), the per-person switch in Administration → Benutzer and "Für KI
-// gesperrt" for pages and spaces. API keys are only ever sent, never shown:
+// gesperrt" for pages and spaces, and Apple's on-device model in the apps
+// (lib/ai/device.ts: optional, the administration's and each person's
+// switch). API keys are only ever sent, never shown:
 // the server answers with "stored · ends in …abcd" at most (lib/ai).
 import { useEffect, useMemo, useState } from "react";
-import { useT } from "./i18n";
+import { useLocale, useT } from "./i18n";
 import { api } from "./ui";
 import { Select } from "./select";
 import { EmptyState, SaveBar, SaveState, SettingGroup, SettingRow, Switch, SwitchRow, useSaveState } from "./settings-ui";
@@ -23,6 +25,9 @@ import {
   type AiStatus,
 } from "@/lib/ai/features";
 import { aiReasonText } from "@/lib/ai/client";
+import { DEVICE_REASON_TEXT, deviceReason } from "@/lib/ai/device";
+import type { DeviceAiMode } from "@/lib/ai/features";
+import { useDeviceAi } from "./ai-context";
 import type { Bootstrap } from "@/lib/types";
 
 type Provider = { kind: AiProviderKind; baseUrl: string; model: string; embeddingModel: string };
@@ -35,6 +40,8 @@ type InstanceAi = {
   userProviders: boolean;
   features: Partial<Record<AiFeature, boolean>>;
   semanticSearch?: boolean;
+  // Apple's on-device model in the apps (on unless switched off).
+  device?: boolean;
 };
 type AdminView = {
   settings: InstanceAi;
@@ -349,6 +356,7 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
     if (view.key.unreadable) items.push({ tone: "error", label: t("Schlüssel nicht lesbar", "Key unreadable") });
     if (saved.semanticSearch) items.push({ tone: "ok", label: t("Suche nach Bedeutung", "Semantic search") });
   }
+  items.push(saved.device !== false ? { tone: "info", label: t("Auf Apple-Geräten erlaubt", "Allowed on Apple devices") } : { tone: "off", label: t("Auf Apple-Geräten aus", "Off on Apple devices") });
   const mb = (bytes: number) => (bytes / 1_048_576).toLocaleString(undefined, { maximumFractionDigits: 1 });
   const set = (patch: Partial<InstanceAi>) => setDraft({ ...draft, ...patch });
   const provider = draft.provider;
@@ -382,17 +390,30 @@ export function AdminAi({ onError, onChange }: { onError: (message: string) => v
               : saved.userProviders
                 ? t("Personen nutzen nur eigene Anbieter.", "People only use their own providers.")
                 : t("Ohne Anbieter gibt es keine KI-Funktionen.", "Without a provider there are no AI features.")
-          : t("Nirgends gibt es KI-Funktionen.", "There are no AI features anywhere.")}
+          : saved.device !== false
+            ? t("Keine KI über den Server. In den Apps auf Apple-Geräten laufen leichte KI-Aktionen auf dem Gerät (unten abschaltbar).", "No AI through the server. In the apps on Apple devices light AI actions run on the device (can be switched off below).")
+            : t("Nirgends gibt es KI-Funktionen.", "There are no AI features anywhere.")}
       </AdminStatus>
       <SettingGroup
         id="ai-switch"
         title={t("Künstliche Intelligenz", "Artificial intelligence")}
         description={t(
-          "Ausgeschaltet gibt es nirgends KI-Funktionen. Eingeschaltet gehen Texte, mit denen jemand eine KI-Funktion nutzt, an den gewählten Anbieter. Mit Ollama bleibt alles auf deinem Server.",
-          "When off, there are no AI features anywhere. When on, text someone uses an AI feature with goes to the chosen provider. With Ollama everything stays on your server.",
+          "Ausgeschaltet gibt es keine KI über den Server (die KI auf Apple-Geräten hat ihren eigenen Schalter, unten). Eingeschaltet gehen Texte, mit denen jemand eine KI-Funktion nutzt, an den gewählten Anbieter. Mit Ollama bleibt alles auf deinem Server.",
+          "When off, there is no AI through the server (AI on Apple devices has its own switch, below). When on, text someone uses an AI feature with goes to the chosen provider. With Ollama everything stays on your server.",
         )}
       >
         <SwitchRow label={t("KI einschalten", "Turn on AI")} checked={draft.enabled} onChange={(enabled) => set({ enabled })} />
+      </SettingGroup>
+
+      <SettingGroup
+        id="ai-device"
+        title={t("KI auf dem Gerät (Apple)", "On-device AI (Apple)")}
+        description={t(
+          "Optional und standardmäßig erlaubt: In den Flowplan-Apps für iPhone, iPad und Mac mit Apple Intelligence laufen der Schreibassistent und Zusammenfassungen offener Seiten auf dem Gerät – ohne Anbieter, der Text verlässt das Gerät nicht. Jede Person kann es für sich ausschalten; für die KI gesperrte Seiten und Bereiche bleiben gesperrt, die Schalter der Funktionen und „Wer darf KI nutzen“ gelten auch hier. Ausgeschaltet fragt Flowplan die Geräte nie.",
+          "Optional and allowed by default: in the Flowplan apps for iPhone, iPad and Mac with Apple Intelligence the writing assistant and summaries of open pages run on the device – no provider, the text does not leave the device. Everyone can switch it off for themselves; pages and spaces closed to the AI stay closed, the feature switches and “Who may use AI” apply here too. When off, Flowplan never asks the devices.",
+        )}
+      >
+        <SwitchRow label={t("KI auf Apple-Geräten erlauben", "Allow AI on Apple devices")} checked={draft.device !== false} onChange={(device) => set({ device })} />
       </SettingGroup>
 
       <SettingGroup
@@ -574,11 +595,11 @@ export function AiUserSwitch({ userId, name, allowed, onChange }: { userId: stri
 // ---- Settings → KI ----
 
 type UserView = {
-  settings: { enabled: boolean; features: Partial<Record<AiFeature, boolean>>; source: "instance" | "user"; scope: "all" | "selected"; provider: Provider | null };
+  settings: { enabled: boolean; features: Partial<Record<AiFeature, boolean>>; source: "instance" | "user"; scope: "all" | "selected"; provider: Provider | null; device: DeviceAiMode };
   key: KeyInfo;
   rules: { targetId: string; kind: "workspace" | "space" | "page"; mode: "include" | "exclude"; title: string }[];
   status: AiStatus;
-  instance: { enabled: boolean; userProviders: boolean; provider: boolean; features: Record<AiFeature, boolean> };
+  instance: { enabled: boolean; userProviders: boolean; provider: boolean; features: Record<AiFeature, boolean>; device: boolean };
 };
 
 export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; onError: (message: string) => void; onRefresh: () => Promise<unknown> }) {
@@ -603,7 +624,13 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
       void onRefresh().catch(() => {});
       return true;
     })) ?? false;
-  if (boot.user.demo) return <p className="muted">{t("KI ist in der Demo nicht verfügbar.", "AI is not available in the demo.")}</p>;
+  if (boot.user.demo)
+    return (
+      <>
+        <p className="muted">{t("KI über den Server ist in der Demo nicht verfügbar.", "AI through the server is not available in the demo.")}</p>
+        {view && <DeviceAiSettings view={view} command={command} saving={saving} readOnly />}
+      </>
+    );
   if (!view)
     return (
       <p className="settings-loading" role="status">
@@ -613,11 +640,15 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
   const { status, settings, instance } = view;
   if (!instance.enabled)
     return (
-      <SettingGroup title={t("Künstliche Intelligenz", "Artificial intelligence")}>
-        <SettingRow label={t("Status", "Status")} description={t("Die Administration hat KI auf dieser Instanz nicht eingeschaltet.", "The administration has not turned on AI on this instance.")}>
-          <span className="setting-value">{t("aus", "off")}</span>
-        </SettingRow>
-      </SettingGroup>
+      <>
+        <SettingGroup title={t("Künstliche Intelligenz", "Artificial intelligence")}>
+          <SettingRow label={t("Status", "Status")} description={t("Die Administration hat KI über den Server auf dieser Instanz nicht eingeschaltet.", "The administration has not turned on AI through the server on this instance.")}>
+            <span className="setting-value">{t("aus", "off")}</span>
+          </SettingRow>
+          {!settings.enabled && <SwitchRow label={t("KI-Funktionen verwenden", "Use AI features")} checked={false} onChange={(enabled) => void command({ action: "ai.settings", enabled })} />}
+        </SettingGroup>
+        <DeviceAiSettings view={view} command={command} saving={saving} />
+      </>
     );
   const blocked = Object.values(status.features).find((f) => !f.ok && f.reason && !["user-off", "user-feature-off", "feature-off", "no-provider", "key-unreadable"].includes(f.reason));
   return (
@@ -658,9 +689,79 @@ export function UserAiSettings({ boot, onError, onRefresh }: { boot: Bootstrap; 
             />
           ))}
       </SettingGroup>
+      <DeviceAiSettings view={view} command={command} saving={saving} />
       {(instance.userProviders || settings.provider) && <OwnProvider key={`${JSON.stringify(settings.provider)}:${view.key.stored}:${view.key.hint}`} view={view} command={command} onError={onError} />}
       <AiAccessRules boot={boot} view={view} command={command} saving={saving} />
     </>
+  );
+}
+
+// "Auf diesem Gerät (Apple)": whether Apple Intelligence runs here (asked
+// from the app's bridge) and how the person wants it – optional, "when
+// possible" by default, off means the page never asks the device.
+function DeviceAiSettings({
+  view,
+  command,
+  saving,
+  readOnly = false,
+}: {
+  view: UserView;
+  command: (b: Record<string, unknown>) => Promise<boolean>;
+  saving: ReturnType<typeof useSaveState>[0];
+  readOnly?: boolean;
+}) {
+  const t = useT();
+  const locale = useLocale();
+  const state = useDeviceAi(view.instance.device);
+  const reason = view.instance.device ? deviceReason(state, locale === "en" || locale === "fr" ? locale : "de") : null;
+  const [lineDe, lineEn] = DEVICE_REASON_TEXT[reason || "available"];
+  const off = !view.settings.enabled;
+  const mode: DeviceAiMode = off ? "off" : view.settings.device;
+  return (
+    <SettingGroup
+      id="ai-device"
+      title={t("Auf diesem Gerät (Apple)", "On this device (Apple)")}
+      actions={readOnly ? undefined : <SaveState status={saving} />}
+      description={t(
+        "Optional: In den Flowplan-Apps für iPhone, iPad und Mac kann Apple Intelligence den Schreibassistenten und Zusammenfassungen offener Seiten direkt auf dem Gerät ausführen – der Text verlässt das Gerät nicht, auch nicht in verschlüsselten Bereichen. Fragen an den Arbeitsbereich, KI in Datenbanken und KI-Aktionen laufen weiter auf dem Server.",
+        "Optional: in the Flowplan apps for iPhone, iPad and Mac, Apple Intelligence can run the writing assistant and summaries of open pages right on the device – the text does not leave the device, also in encrypted spaces. Asking the workspace, AI in databases and AI actions keep running on the server.",
+      )}
+    >
+      {!view.instance.device ? (
+        <SettingRow label={t("Status", "Status")} description={t("Die Administration hat KI auf dem Gerät für diese Instanz ausgeschaltet.", "The administration has switched off on-device AI for this instance.")}>
+          <span className="setting-value">{t("aus", "off")}</span>
+        </SettingRow>
+      ) : (
+        <>
+          <SettingRow label={t("Apple Intelligence auf diesem Gerät", "Apple Intelligence on this device")}>
+            <span className="setting-value" data-device-ai={reason || "available"}>
+              {t(lineDe, lineEn)}
+            </span>
+          </SettingRow>
+          <SettingRow
+            id="ai-device-mode"
+            label={t("KI auf dem Gerät verwenden", "Use on-device AI")}
+            description={
+              readOnly
+                ? t("In der Demo gilt die Standardeinstellung.", "The demo uses the default.")
+                : off
+                  ? t("KI-Funktionen sind oben ausgeschaltet – auch auf dem Gerät.", "AI features are switched off above – on the device too.")
+                  : mode === "prefer"
+                    ? t("Standard. Schreibassistent und Zusammenfassungen laufen auf dem Gerät, wenn es kann – sonst auf dem Server, falls dort KI verfügbar ist.", "Default. The writing assistant and summaries run on the device when it can – otherwise on the server, if AI is available there.")
+                    : mode === "fallback"
+                      ? t("Auf dem Gerät nur, wenn der Server keine KI anbietet (und in verschlüsselten Bereichen).", "On the device only when the server offers no AI (and in encrypted spaces).")
+                      : t("Aus: Flowplan fragt das Gerät nie nach KI.", "Off: Flowplan never asks the device for AI.")
+            }
+          >
+            <Select id="ai-device-mode" value={mode} disabled={readOnly || off} onChange={(e) => void command({ action: "ai.settings", device: e.target.value })}>
+              <option value="prefer">{t("Wenn möglich (Standard)", "When possible (default)")}</option>
+              <option value="fallback">{t("Nur ohne KI auf dem Server", "Only without AI on the server")}</option>
+              <option value="off">{t("Aus", "Off")}</option>
+            </Select>
+          </SettingRow>
+        </>
+      )}
+    </SettingGroup>
   );
 }
 

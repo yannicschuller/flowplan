@@ -73,6 +73,7 @@ function settingsView(user: Identity, workspaceId: string | null) {
       userProviders: instance.userProviders,
       provider: !!instance.provider,
       features: Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, instance.features[id] !== false])),
+      device: instance.device,
     },
   };
 }

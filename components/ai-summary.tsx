@@ -3,16 +3,21 @@
 // a record or the records of a database view. The content is loaded and
 // checked on the server (lib/ai/summarize.ts); the answer streams in here
 // and can be copied or – into an open document – inserted as a callout at
-// the top or its tasks as a checklist.
+// the top or its tasks as a checklist. In the Flowplan apps on Apple
+// devices an open page or record is summarised on the device where it can
+// (lib/ai/device.ts: its text from the open editor, open tasks by guided
+// generation), the server taking over where the person may use it – in
+// end-to-end encrypted spaces only on the device.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, CheckSquare, Copy, Info, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { streamAiFrom } from "@/lib/ai/client";
 import { aiMarkdownToHtml } from "@/lib/ai/insert";
 import { cleanAnswer, parseSummary } from "@/lib/ai/prompts";
-import { aiCanInsert, aiInsertInto } from "@/lib/ai/editor-bridge";
+import { aiCanInsert, aiInsertInto, aiReadOpen } from "@/lib/ai/editor-bridge";
+import { DeviceAiError, deviceErrorText, deviceSummary, deviceSummaryFits, runRouted } from "@/lib/ai/device";
 import { flushOpenDocuments } from "@/lib/document-flush";
 import { useLocale, useT } from "./i18n";
-import { AiProviderFooter } from "./ai-context";
+import { AiProviderFooter, DeviceAiChip, useAiRoute } from "./ai-context";
 import { Modal } from "./ui";
 
 export type AiSummaryTarget = {
@@ -22,6 +27,8 @@ export type AiSummaryTarget = {
   rowIds?: string[];
   title: string;
   kind: "page" | "record" | "database";
+  // A page of an end-to-end encrypted space: the device only.
+  encrypted?: boolean;
 };
 
 // The callout for the top of the page: the summary and the key points.
@@ -45,6 +52,15 @@ function AiSummaryBody({ target }: { target: AiSummaryTarget }) {
   const [error, setError] = useState("");
   const [info, setInfo] = useState<{ included?: number; total?: number; parts: number; truncated: boolean }>({ parts: 1, truncated: false });
   const [status, setStatus] = useState("");
+  // Database views always on the server; pages and records on the device
+  // where it can.
+  const route = useAiRoute("summarize", target.pageId, { encrypted: target.encrypted, enabled: target.kind !== "database" });
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  const [ranOn, setRanOn] = useState<"device" | "server" | null>(null);
+  // The texts of the moment, without restarting the summary.
+  const tRef = useRef(t);
+  tRef.current = t;
   const run = useCallback(async () => {
     controller.current?.abort();
     const abort = new AbortController();
@@ -52,37 +68,55 @@ function AiSummaryBody({ target }: { target: AiSummaryTarget }) {
     setAnswer("");
     setError("");
     setStatus("");
+    setRanOn(null);
+    setInfo({ parts: 1, truncated: false });
     setPhase("running");
     try {
-      // The server reads the stored page: unsaved changes go first.
-      await flushOpenDocuments().catch(() => {});
-      const text = await streamAiFrom(
-        "/api/ai/summarize",
-        { pageId: target.pageId, ...(target.rowId ? { rowId: target.rowId } : {}), ...(target.rowIds ? { rowIds: target.rowIds } : {}), locale },
-        {
-          signal: abort.signal,
-          onText: (_piece, all) => setAnswer(all),
-          onResponse: (response) => {
-            const number = (name: string) => {
-              const value = response.headers.get(name);
-              return value === null ? undefined : Number(value);
-            };
-            setInfo({
-              included: number("X-Flowplan-AI-Included"),
-              total: number("X-Flowplan-AI-Total"),
-              parts: number("X-Flowplan-AI-Parts") || 1,
-              truncated: response.headers.get("X-Flowplan-AI-Truncated") === "1",
-            });
-          },
+      const { result: text } = await runRouted(routeRef.current, {
+        device: async () => {
+          setRanOn("device");
+          const content = aiReadOpen(target.pageId, target.rowId);
+          if (content === null) throw new DeviceAiError("unavailable", "not open");
+          if (!content.trim()) throw new DeviceAiError("error", "empty");
+          // Too long for the device: the server when it may, else the beginning.
+          if (!deviceSummaryFits(content) && routeRef.current.fallback) throw new DeviceAiError("context-too-long");
+          const summary = await deviceSummary(content, { title: target.title, locale, signal: abort.signal, onPart: (_part, parts) => setInfo({ parts, truncated: false }) });
+          if (controller.current === abort) setInfo({ parts: summary.parts, truncated: summary.truncated });
+          return summary.markdown;
         },
-      );
+        server: async () => {
+          setRanOn("server");
+          // The server reads the stored page: unsaved changes go first.
+          await flushOpenDocuments().catch(() => {});
+          return await streamAiFrom(
+            "/api/ai/summarize",
+            { pageId: target.pageId, ...(target.rowId ? { rowId: target.rowId } : {}), ...(target.rowIds ? { rowIds: target.rowIds } : {}), locale },
+            {
+              signal: abort.signal,
+              onText: (_piece, all) => setAnswer(all),
+              onResponse: (response) => {
+                const number = (name: string) => {
+                  const value = response.headers.get(name);
+                  return value === null ? undefined : Number(value);
+                };
+                setInfo({
+                  included: number("X-Flowplan-AI-Included"),
+                  total: number("X-Flowplan-AI-Total"),
+                  parts: number("X-Flowplan-AI-Parts") || 1,
+                  truncated: response.headers.get("X-Flowplan-AI-Truncated") === "1",
+                });
+              },
+            },
+          );
+        },
+      });
       if (controller.current !== abort) return;
       setAnswer(text);
       setPhase("done");
     } catch (e) {
       if (controller.current !== abort) return;
       if ((e as Error).name === "AbortError") return setPhase("done");
-      setError((e as Error).message);
+      setError(e instanceof DeviceAiError ? deviceErrorText(e, tRef.current) : (e as Error).message);
       setPhase("error");
     }
   }, [target, locale]);
@@ -99,6 +133,11 @@ function AiSummaryBody({ target }: { target: AiSummaryTarget }) {
   };
   return (
     <div className="ai-summary">
+      {ranOn === "device" && (
+        <p className="ai-summary-source">
+          <DeviceAiChip />
+        </p>
+      )}
       {(info.included !== undefined || info.parts > 1 || info.truncated) && (
         <p className="ai-summary-note">
           <Info size={14} aria-hidden />
@@ -117,7 +156,13 @@ function AiSummaryBody({ target }: { target: AiSummaryTarget }) {
         {answer ? (
           <div dangerouslySetInnerHTML={{ __html: preview }} />
         ) : phase === "running" ? (
-          <p className="muted">{info.parts > 1 ? t("Lange Inhalte werden in Teilen gelesen …", "Long content is read in parts …") : t("Die KI liest …", "The AI is reading …")}</p>
+          <p className="muted">
+            {info.parts > 1
+              ? t("Lange Inhalte werden in Teilen gelesen …", "Long content is read in parts …")
+              : ranOn === "device"
+                ? t("Die KI auf diesem Gerät liest …", "The on-device AI is reading …")
+                : t("Die KI liest …", "The AI is reading …")}
+          </p>
         ) : null}
         {error && (
           <p className="error" role="alert">
@@ -167,7 +212,7 @@ function AiSummaryBody({ target }: { target: AiSummaryTarget }) {
           {status}
         </p>
       )}
-      <AiProviderFooter />
+      <AiProviderFooter device={ranOn ? ranOn === "device" : route.primary === "device"} />
     </div>
   );
 }

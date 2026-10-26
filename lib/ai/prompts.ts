@@ -308,6 +308,40 @@ export function combineSummaryPrompt(request: { kind: SummaryKind; content: stri
   };
 }
 
+// Splits text into parts of at most `size` characters, at headings and
+// paragraphs where possible, then at lines and sentences, else hard.
+export function chunkText(text: string, size: number): string[] {
+  const clean = text.trim();
+  if (!clean) return [];
+  if (clean.length <= size) return [clean];
+  const pieces: string[] = [];
+  // Pieces stay a little smaller than a part, so a heading fits in front.
+  const piece = Math.max(1, Math.min(size, Math.max(Math.floor(size * 0.9), size - 200)));
+  const split = (part: string, separators: RegExp[]) => {
+    if (part.length <= piece) return void pieces.push(part);
+    const [separator, ...rest] = separators;
+    if (!separator) {
+      for (let i = 0; i < part.length; i += piece) pieces.push(part.slice(i, i + piece));
+      return;
+    }
+    for (const piece of part.split(separator)) if (piece.trim()) split(piece, rest);
+  };
+  // Before headings, between paragraphs, between lines, after sentences.
+  split(clean, [/\n(?=#{1,6} )/, /\n{2,}/, /\n/, /(?<=[.!?])\s+/]);
+  const chunks: string[] = [];
+  let current = "";
+  for (const next of pieces) {
+    // A new part when this one is full – or at a heading once it is half full.
+    if (current && (current.length + next.length + 2 > size || (/^#{1,6} /.test(next) && current.length > size / 2))) {
+      chunks.push(current);
+      current = "";
+    }
+    current = current ? `${current}\n\n${next}` : next;
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 // ---- Reading answers ----
 
 // Removes what models add despite the rules: an introduction line ("Hier

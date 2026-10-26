@@ -47,9 +47,9 @@ import { openPageAliases, AliasIcon } from "./page-aliases";
 import { AiBlockToggle } from "./ai-settings";
 import { AskPanel } from "./ai-ask";
 import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
-import { AiProvider } from "./ai-context";
+import { AiProvider, useAiRoute } from "./ai-context";
 import { AiSummaryPanel, type AiSummaryTarget } from "./ai-summary";
-import { aiPageReadable, aiUsable } from "@/lib/ai/client";
+import { aiUsable } from "@/lib/ai/client";
 import {
   imageAccept,
   imageFileId,
@@ -474,6 +474,9 @@ export default function WorkspaceApp({
     () => (dataState ? layers.reduce((d, layer) => (layer.page ? safeLayer(layer.page, d) : d), dataState) : null),
     [dataState, layers],
   );
+  // "Mit KI zusammenfassen" in the page menu: on the server, or in the apps
+  // on Apple devices on the device – there also in encrypted spaces.
+  const summaryRoute = useAiRoute("summarize", data?.page.id, { status: boot.ai || null, encrypted: !!data?.encrypted });
   const [treeDrop, setTreeDrop] = useState<{
     id: string;
     // "records": records from a database dropped onto another database.
@@ -2888,19 +2891,19 @@ export default function WorkspaceApp({
                         {t("Exportieren", "Export")}
                       </Dropdown.Item>
                     )}
-                    {data.page.kind === "document" && !data.locked && !data.encrypted && aiUsable(boot.ai, "summarize") && (
+                    {data.page.kind === "document" && !data.locked && summaryRoute.availability !== "hidden" && (
                       <Dropdown.Item
                         className="dropdown-item"
-                        disabled={!aiPageReadable(boot.ai, data.page.id)}
-                        title={aiPageReadable(boot.ai, data.page.id) ? undefined : t("KI hat keinen Zugriff auf diese Seite", "The AI has no access to this page")}
+                        disabled={summaryRoute.availability === "blocked"}
+                        title={summaryRoute.availability === "blocked" ? t("KI hat keinen Zugriff auf diese Seite", "The AI has no access to this page") : undefined}
                         onSelect={() => {
                           setComments(false);
-                          setAiSummary({ pageId: data.page.id, title: data.page.title, kind: "page" });
+                          setAiSummary({ pageId: data.page.id, title: data.page.title, kind: "page", encrypted: !!data.encrypted });
                         }}
                       >
                         <Sparkle />
                         {t("Mit KI zusammenfassen", "Summarise with AI")}
-                        {!aiPageReadable(boot.ai, data.page.id) && (
+                        {summaryRoute.availability === "blocked" && (
                           <small className="dropdown-hint">{t("KI hat keinen Zugriff auf diese Seite", "The AI has no access to this page")}</small>
                         )}
                       </Dropdown.Item>

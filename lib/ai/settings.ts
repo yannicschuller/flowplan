@@ -15,13 +15,15 @@
 //   FLOWPLAN_AI_USER_PROVIDERS=on, FLOWPLAN_AI_FEATURES=write,summarize,…
 //   FLOWPLAN_AI_SEMANTIC_SEARCH=on      semantic search ("ask") with the
 //                                       instance's embedding model
+//   FLOWPLAN_AI_DEVICE=off              no on-device AI in the apps (Apple's
+//                                       model; on unless switched off)
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { all, audit, one, run } from "../db";
 import { requireAdmin } from "../permissions";
 import type { Identity } from "../types";
-import { AI_DEFAULTS, AI_FEATURE_IDS, AI_PROVIDER_KINDS, type AiFeature, type AiProviderKind } from "./features";
+import { AI_DEFAULTS, AI_FEATURE_IDS, AI_PROVIDER_KINDS, DEVICE_AI_MODES, type AiFeature, type AiProviderKind } from "./features";
 import { keyHint, openSecret, sealSecret, secretsKeySource } from "./secrets";
 import { checkAiUrl } from "./transport";
 
@@ -43,6 +45,10 @@ const instanceSchema = z.object({
   // Semantic search for "ask": embeddings of the workspace content with the
   // instance's embedding model (lib/ai/semantic.ts). Off unless switched on.
   semanticSearch: z.boolean().default(false),
+  // Apple's on-device model in the apps for the light actions (lib/ai/
+  // device.ts): independent of the switch above – nothing reaches this
+  // server or a provider. On unless switched off.
+  device: z.boolean().default(true),
 });
 export type AiInstanceSettings = z.infer<typeof instanceSchema>;
 const userSchema = z.object({
@@ -51,6 +57,8 @@ const userSchema = z.object({
   source: z.enum(["instance", "user"]),
   scope: z.enum(["all", "selected"]),
   provider: providerSchema.nullable(),
+  // The on-device model (features.ts DEVICE_AI_MODES).
+  device: z.enum(DEVICE_AI_MODES).default("prefer"),
 });
 export type AiUserSettings = z.infer<typeof userSchema>;
 
@@ -95,6 +103,7 @@ function envDefaults(): AiInstanceSettings {
     guests: on(process.env.FLOWPLAN_AI_GUESTS),
     userProviders: on(process.env.FLOWPLAN_AI_USER_PROVIDERS),
     semanticSearch: on(process.env.FLOWPLAN_AI_SEMANTIC_SEARCH),
+    device: !/^(0|off|false|no)$/i.test(process.env.FLOWPLAN_AI_DEVICE?.trim() || ""),
     features: Object.fromEntries(AI_FEATURE_IDS.map((id) => [id, features.includes(id)])) as Record<AiFeature, boolean>,
   };
 }
@@ -175,7 +184,7 @@ export function saveInstanceAi(user: Identity, raw: unknown) {
     hint = keyHint(b.apiKey);
   }
   saveInstanceRow(next, cipher, hint);
-  audit(user.id, "admin.ai", "instance", JSON.stringify({ enabled: next.enabled, provider: next.provider?.kind || null, key: typeof b.apiKey === "string" ? "replaced" : moved || b.apiKey === null ? "removed" : "kept" }));
+  audit(user.id, "admin.ai", "instance", JSON.stringify({ enabled: next.enabled, device: next.device, provider: next.provider?.kind || null, key: typeof b.apiKey === "string" ? "replaced" : moved || b.apiKey === null ? "removed" : "kept" }));
   return adminAiView();
 }
 
@@ -222,6 +231,7 @@ const defaultUser = (): AiUserSettings => ({
   source: "instance",
   scope: "all",
   provider: null,
+  device: "prefer",
 });
 type UserRow = Row & { user_id: string };
 const userRow = (userId: string) => one<UserRow>("SELECT user_id,config,key_cipher,key_hint FROM ai_user_settings WHERE user_id=?", userId);
@@ -266,6 +276,7 @@ const prefsInput = z.object({
   features: featureFlags.optional(),
   source: z.enum(["instance", "user"]).optional(),
   scope: z.enum(["all", "selected"]).optional(),
+  device: z.enum(DEVICE_AI_MODES).optional(),
 });
 export function saveUserAiPrefs(user: Identity, raw: unknown) {
   assertSettingsCaller(user);

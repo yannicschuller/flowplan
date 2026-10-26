@@ -6,8 +6,8 @@
 import { all, one } from "../db";
 import { isGuest } from "../permissions";
 import type { Identity } from "../types";
-import { AI_DEFAULTS, AI_FEATURE_IDS, isAiFeature, type AiFeature, type AiReason, type AiStatus } from "./features";
-import { aiExcludedPages } from "./access";
+import { AI_DEFAULTS, AI_FEATURE_IDS, DEVICE_AI_FEATURES, isAiFeature, type AiFeature, type AiReason, type AiStatus } from "./features";
+import { aiDeviceExcludedPages, aiExcludedPages } from "./access";
 import type { AiConfig } from "./providers";
 import { featureAllowed, instanceAiSettings, instanceKey, userAiSettings, userAllowedByPolicy, userKey, type AiProviderSettings } from "./settings";
 import { privateAddress } from "../safe-fetch";
@@ -42,6 +42,25 @@ function gate(user: Identity, feature: string, options: Options): AiReason | nul
   if (!instance.guests && guestHere(user, options.workspaceId)) return "guest";
   const own = userAiSettings(user.id);
   if (!own.enabled) return "user-off";
+  if (own.features[feature] === false) return "user-feature-off";
+  return null;
+}
+
+// The on-device model in the apps (lib/ai/device.ts): no provider, nothing
+// reaches the server – so neither the master switch nor a demo counts, but
+// the administration's own switch for it, the feature switches, the
+// "selected people" policy, guests and every switch of the person (AI off,
+// the feature off, on-device AI off) do.
+export function deviceGate(user: Identity, feature: string, options: Options = {}): AiReason | null {
+  if (!isAiFeature(feature) || !DEVICE_AI_FEATURES.includes(feature)) return "unknown-feature";
+  if (user.apiScope) return "api-token";
+  const instance = instanceAiSettings();
+  if (!instance.device) return "off";
+  if (!featureAllowed(instance, feature)) return "feature-off";
+  if (!userAllowedByPolicy(user.id, instance)) return "not-allowed";
+  if (!instance.guests && guestHere(user, options.workspaceId)) return "guest";
+  const own = userAiSettings(user.id);
+  if (!own.enabled || own.device === "off") return "user-off";
   if (own.features[feature] === false) return "user-feature-off";
   return null;
 }
@@ -115,6 +134,11 @@ export function aiStatus(user: Identity, workspaceId?: string, visiblePages: { i
     features[id] = resolved.ok ? { ok: true } : { ok: false, reason: resolved.reason };
   }
   const enabled = AI_FEATURE_IDS.some((id) => features[id].ok);
+  const deviceFeatures = Object.fromEntries(DEVICE_AI_FEATURES.map((id) => [id, !deviceGate(user, id, { workspaceId })])) as Partial<Record<AiFeature, boolean>>;
+  const device = Object.values(deviceFeatures).some(Boolean);
+  // One pass for both: what the device may not read is a part of what the
+  // server's AI may not.
+  const excluded = (enabled || device) && workspaceId ? aiExcludedPages(user, visiblePages) : [];
   const config = resolved?.ok ? resolved.config : null;
   let host = "";
   try {
@@ -126,6 +150,7 @@ export function aiStatus(user: Identity, workspaceId?: string, visiblePages: { i
     provider: config && resolved?.ok ? { kind: config.kind, model: config.model, host, source: resolved.source, local: isLocalProvider(config) } : null,
     userProviders: !user.demo && !user.apiScope && instance.enabled && instance.userProviders,
     scope: own.scope,
-    excludedPages: enabled && workspaceId ? aiExcludedPages(user, visiblePages) : [],
+    excludedPages: enabled ? excluded : [],
+    device: device ? { mode: own.device === "fallback" ? "fallback" : "prefer", features: deviceFeatures, excludedPages: aiDeviceExcludedPages(user, excluded) } : null,
   };
 }

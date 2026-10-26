@@ -14,6 +14,9 @@
 //      (page → parent pages → space → workspace), an exclusion beats an
 //      inclusion on the same level; without a rule, scope "all" allows and
 //      scope "selected" excludes.
+// For Apple's on-device model in the apps (lib/ai/device.ts) the same
+// rules apply but 3. only in part: end-to-end encrypted spaces are open to
+// it – the decrypted text never leaves the device.
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { all, audit, one, run } from "../db";
@@ -39,7 +42,11 @@ class AccessContext {
   private blocks = allAiBlocks();
   private scope: "all" | "selected";
   private roles = new Map<string, boolean>();
-  constructor(private user: Identity) {
+  constructor(
+    private user: Identity,
+    // On-device AI: end-to-end encrypted spaces are readable.
+    private device = false,
+  ) {
     this.rules = new Map(
       all<{ target_id: string; mode: "include" | "exclude" }>("SELECT target_id,mode FROM ai_access_rules WHERE user_id=?", user.id).map((r) => [r.target_id, r.mode]),
     );
@@ -92,7 +99,7 @@ class AccessContext {
     if (page.deleted_at || !space || space.deleted) return "trash";
     if (!this.visible(page)) return "hidden";
     // End-to-end encrypted: the server has no plaintext to give the AI.
-    if (space.encrypted) return "blocked";
+    if (space.encrypted && !this.device) return "blocked";
     if (this.blocks.has(page.space_id)) return "blocked";
     // The page and everything above it.
     const chain: PageLite[] = [];
@@ -171,6 +178,16 @@ export function aiExcludedPages(user: Identity, visiblePages: { id: string }[]):
   const context = new AccessContext(user);
   context.markVisible(visiblePages.map((p) => p.id));
   return visiblePages.filter((p) => context.pageVerdict(p.id) !== null).map((p) => p.id);
+}
+
+// The same for the on-device model: only what is closed to it as well
+// (encrypted spaces are not). Checks only the given pages again – those the
+// server's AI may not read (device ⊆ server).
+export function aiDeviceExcludedPages(user: Identity, serverExcluded: string[]): string[] {
+  if (!serverExcluded.length) return [];
+  const context = new AccessContext(user, true);
+  context.markVisible(serverExcluded);
+  return serverExcluded.filter((id) => context.pageVerdict(id) !== null);
 }
 
 // Why the AI cannot read a page – for a hint in the interface.

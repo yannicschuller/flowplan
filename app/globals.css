@@ -21455,6 +21455,31 @@ h3 .block-reactions {
 .ai-footer.external svg {
   color: var(--signal);
 }
+.ai-footer.device svg {
+  color: var(--blue);
+}
+/* "Auf diesem Gerät": the result came from Apple's model on this device
+   (lib/ai/device.ts). */
+.ai-device-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--blue-light);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.ai-writer-job .ai-device-chip {
+  margin-left: auto;
+}
+.ai-summary-source {
+  margin: 0 0 6px;
+}
 /* The text the assistant works on, and what it has just inserted (a soft
    accent background fading out; decorations only, lib/ai/insert.ts). */
 .ProseMirror .ai-target {
