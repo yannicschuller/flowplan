@@ -171,6 +171,7 @@ export default function GroupsSection() {
       </SettingGroup>
       <Modal
         open={!!groupId}
+        sheet
         className="ws-sheet"
         onClose={() => {
           setGroupId(null);

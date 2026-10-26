@@ -4060,7 +4060,7 @@ export default function WorkspaceApp({
           }}
         />
       )}
-      <Modal open={create} onClose={() => setCreate(false)} title={t("Neue Seite", "New page")}>
+      <Modal open={create} sheet onClose={() => setCreate(false)} title={t("Neue Seite", "New page")}>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -4286,7 +4286,7 @@ export default function WorkspaceApp({
         }
         resolve={offlineQueue.resolve}
       />
-      <Modal open={share} onClose={() => setShare(false)} title={t("Seite teilen", "Share page")}>
+      <Modal open={share} sheet onClose={() => setShare(false)} title={t("Seite teilen", "Share page")}>
         {data && (
           <>
             <PagePeople
@@ -4512,6 +4512,7 @@ export default function WorkspaceApp({
       )}
       <Modal
         open={iconPicker}
+        sheet
         onClose={() => setIconPicker(false)}
         title={t("Seiten-Icon", "Page icon")}
       >

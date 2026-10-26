@@ -57,7 +57,7 @@ export function QuickCapture({
   };
   const offlineFallback = targets && !targets.databases.length && database;
   return (
-    <Modal open onClose={onClose} title={t("Erfassen", "Capture")}>
+    <Modal open sheet onClose={onClose} title={t("Erfassen", "Capture")}>
       <form
         className="quick-capture"
         onSubmit={(e) => {

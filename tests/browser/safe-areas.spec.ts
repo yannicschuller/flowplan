@@ -54,7 +54,10 @@ test("dialogs stay clear of the status bar and home indicator; related pages fit
   await page.waitForTimeout(400); // the dialog rises in
   const dialog = await box(page, ".modal");
   expect(dialog.top).toBeGreaterThanOrEqual(47 + 8);
-  expect(dialog.bottom).toBeGreaterThanOrEqual(34 + 8);
+  // On a phone the record is a bottom sheet (components/sheet-drag.ts): it
+  // stands on the bottom edge and keeps its content above the home indicator.
+  expect(dialog.bottom).toBe(0);
+  expect(await entry.evaluate((d) => parseFloat(getComputedStyle(d).paddingBottom))).toBeGreaterThanOrEqual(34 + 8);
   expect(await entry.evaluate((d) => d.scrollWidth - d.clientWidth)).toBeLessThanOrEqual(1);
   const title = entry.locator(".related-title");
   expect(await title.evaluate((t) => getComputedStyle(t).fontSize)).toBe("13px");

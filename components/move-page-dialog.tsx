@@ -76,7 +76,7 @@ export function MovePageDialog({
     (p) => p.space_id === spaceId && !p.deleted_at && !excluded.has(p.id) && !p.journal_date,
   );
   return (
-    <Modal open={open} onClose={onClose} title={t("Seite verschieben", "Move page")}>
+    <Modal open={open} sheet onClose={onClose} title={t("Seite verschieben", "Move page")}>
       <div className="move-page-dialog">
         {writable.length > 1 && (
           <label>

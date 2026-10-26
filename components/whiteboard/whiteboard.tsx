@@ -71,6 +71,7 @@ import {
   DotsThree,
 } from "@phosphor-icons/react";
 import { Modal, api } from "../ui";
+import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
 import {
   BOARD_IMPORT_LIMITS,
   boardFileName,
@@ -2908,6 +2909,9 @@ export default function Whiteboard({
     </button>
   );
   const closeMore = () => setMoreOpen(false);
+  // The tools sheet goes away with a swipe down as well.
+  const [moreSheet, setMoreSheet] = useState<HTMLDivElement | null>(null);
+  useSheetDrag(moreSheet, moreOpen, { onDismiss: closeMore });
   const closeActions = () => setActionsOpen(false);
 
   const cardPages = pages
@@ -3758,11 +3762,13 @@ export default function Whiteboard({
       )}
       {layout.dock && moreOpen && (
         <div
+          ref={setMoreSheet}
           className="wb-sheet"
           role="dialog"
           aria-label={t("Weitere Werkzeuge", "More tools")}
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <div className={SHEET_HANDLE} aria-hidden />
           {moreTools.length > 0 && (
             <section>
               <h3>{t("Werkzeuge", "Tools")}</h3>
