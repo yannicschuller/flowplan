@@ -572,7 +572,8 @@ export default function DatabaseView({
   const recordMode: RecordOpenMode = openAsPage ? "full" : viewRecordMode;
   // The first column (and the selection cell before it) stays in place while
   // the table scrolls sideways.
-  const stickyOffset = editable ? 76 : 0;
+  // Next to the selection column (wider on touch screens: --selection-column).
+  const stickyOffset = editable ? "var(--selection-column, 76px)" : 0;
   const stickyCell = (field: Field, index: number) =>
     index === 0
       ? { className: "sticky-col sticky-col-end", style: { left: stickyOffset } }
@@ -2355,13 +2356,16 @@ export default function DatabaseView({
           <td role="gridcell" className="selection-cell sticky-col" style={{ left: 0 }}>
             <div className="row-selection-controls">
               {orderHandle(r, groupKey)}
-              <input
-                type="checkbox"
-                aria-label={t(`${title} auswählen`, `Select ${title}`)}
-                disabled={bulkBusy}
-                checked={selection.has(r.id)}
-                onChange={(e) => selectRow(r, e.target.checked)}
-              />
+              {/* The label is the checkbox's larger touch area (app/mobile-ux.css). */}
+              <label className="hit-check">
+                <input
+                  type="checkbox"
+                  aria-label={t(`${title} auswählen`, `Select ${title}`)}
+                  disabled={bulkBusy}
+                  checked={selection.has(r.id)}
+                  onChange={(e) => selectRow(r, e.target.checked)}
+                />
+              </label>
             </div>
           </td>
         )}
@@ -2828,14 +2832,15 @@ export default function DatabaseView({
             aria-label={t(`${view.name} – Tabelle`, `${view.name} – table`)}
             className="data-table configurable-table"
             style={{
-              width: visibleFields.reduce(
-                (sum, f) => sum + columnWidth(f),
-                editable ? 118 : 0,
-              ),
+              // The selection column is wider on touch screens
+              // (--selection-column, app/mobile-ux.css).
+              width: editable
+                ? `calc(${visibleFields.reduce((sum, f) => sum + columnWidth(f), 42)}px + var(--selection-column, 76px))`
+                : visibleFields.reduce((sum, f) => sum + columnWidth(f), 0),
             }}
           >
             <colgroup>
-              {editable && <col style={{ width: 76 }} />}
+              {editable && <col style={{ width: "var(--selection-column, 76px)" }} />}
               {visibleFields.map((f) => (
                 <col key={f.id} style={{ width: columnWidth(f) }} />
               ))}
@@ -2845,24 +2850,26 @@ export default function DatabaseView({
               <tr>
                 {editable && (
                   <th className="selection-cell sticky-col" style={{ left: 0 }}>
-                    <input
-                      type="checkbox"
-                      aria-label={t("Alle sichtbaren Einträge auswählen", "Select all visible records")}
-                      disabled={bulkBusy}
-                      checked={
-                        selectableRows.length > 0 &&
-                        selectableRows.every((r) => selection.has(r.id))
-                      }
-                      onChange={(e) =>
-                        setSelection(
-                          e.target.checked
-                            ? new Map(
-                                selectableRows.map((r) => [r.id, r.version]),
-                              )
-                            : new Map(),
-                        )
-                      }
-                    />
+                    <label className="hit-check">
+                      <input
+                        type="checkbox"
+                        aria-label={t("Alle sichtbaren Einträge auswählen", "Select all visible records")}
+                        disabled={bulkBusy}
+                        checked={
+                          selectableRows.length > 0 &&
+                          selectableRows.every((r) => selection.has(r.id))
+                        }
+                        onChange={(e) =>
+                          setSelection(
+                            e.target.checked
+                              ? new Map(
+                                  selectableRows.map((r) => [r.id, r.version]),
+                                )
+                              : new Map(),
+                          )
+                        }
+                      />
+                    </label>
                   </th>
                 )}
                 {visibleFields.map((f, index) => (
@@ -5165,6 +5172,8 @@ export default function DatabaseView({
         }}
         title={t("Eintrag", "Record")}
         wide
+        // Centred records are bottom sheets on phones.
+        sheet={recordMode !== "full" && recordMode !== "side"}
         actions={selected && recordActions(selected)}
         className={
           recordMode === "full"

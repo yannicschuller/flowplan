@@ -175,7 +175,7 @@ function InviteSheet({ onClose }: { onClose: () => void }) {
     [guest, setGuest] = useState(false),
     [busy, setBusy] = useState(false);
   return (
-    <Modal open className="ws-sheet" title={t("Mitglied einladen", "Invite member")} onClose={() => !busy && onClose()}>
+    <Modal open sheet className="ws-sheet" title={t("Mitglied einladen", "Invite member")} onClose={() => !busy && onClose()}>
       <form
         className="ws-form"
         onSubmit={async (e) => {

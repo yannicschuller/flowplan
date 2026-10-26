@@ -12,6 +12,7 @@ import { tr } from "@/lib/locale-tag";
 import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
+import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -120,6 +121,8 @@ export const viewIcons = {
   feed: Article,
   sprint: Flag,
 };
+// Where a Modal with `sheet` is a bottom sheet (app/mobile-ux.css, "Sheets").
+export const SHEET_MEDIA = "(max-width: 600px)";
 export function Modal({
   open,
   onClose,
@@ -130,9 +133,13 @@ export function Modal({
   onOpenAutoFocus,
   className = "",
   actions,
+  sheet = false,
 }: {
   className?: string;
   actions?: ReactNode;
+  // Phones (up to 600 px): a bottom sheet with a grab handle that is
+  // dragged down to close (components/sheet-drag.ts).
+  sheet?: boolean;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -147,7 +154,15 @@ export function Modal({
   // behind it (see showError below).
   const [alert, setAlert] = useState<ShownError | null>(null),
     content = useRef<HTMLDivElement>(null),
-    alertRef = useRef<HTMLDivElement>(null);
+    alertRef = useRef<HTMLDivElement>(null),
+    overlay = useRef<HTMLDivElement>(null);
+  // The content element as state too: the drag attaches once it is there.
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  const contentRef = useCallback((node: HTMLDivElement | null) => {
+    content.current = node;
+    setElement(node);
+  }, []);
+  useSheetDrag(element, sheet && open, { onDismiss: onClose, media: SHEET_MEDIA, backdrop: () => overlay.current });
   useEffect(() => {
     if (!open) return;
     const sink: DialogSink = { el: () => content.current, show: setAlert };
@@ -165,17 +180,18 @@ export function Modal({
     <DialogErrorContext.Provider value={setAlert}>
     <Dialog.Root open={open} onOpenChange={(v) => !v && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="modal-overlay" />
+        <Dialog.Overlay className="modal-overlay" ref={overlay} />
         <Dialog.Content
-          className={`modal ${wide ? "modal-wide" : ""} ${className}`}
+          className={`modal ${wide ? "modal-wide" : ""}${sheet ? " modal-sheet" : ""} ${className}`}
           aria-describedby={undefined}
           aria-labelledby={undefined}
           aria-label={title}
           aria-modal="true"
           onCloseAutoFocus={onCloseAutoFocus}
           onOpenAutoFocus={onOpenAutoFocus}
-          ref={content}
+          ref={contentRef}
         >
+          {sheet && <div className={SHEET_HANDLE} aria-hidden />}
           <div className="modal-heading">
             <Dialog.Title>{title}</Dialog.Title>
             <Dialog.Close className="icon-button" aria-label={t("Schließen", "Close")}>

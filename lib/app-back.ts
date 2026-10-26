@@ -15,9 +15,13 @@
 // back() is false on the start page with nothing open: the app may then
 // leave (Android). The page tells the app whether there is a step back
 // (`FlowplanApp.backState`), so the iOS gesture is only there when it does
-// something.
+// something. backProgress() previews the step while Android's predictive
+// back gesture is under way (lib/back-preview.ts). Sheets dragged down to
+// close (components/sheet-drag.ts) close through the dialog's own close, as
+// Escape does, so what back reports follows them.
 import { parsePageLocation, pageLocationHash } from "./page-location";
 import { parseSettingsHash, settingsHash } from "./settings-sections";
+import { createBackPreview, type BackEdge, type BackPhase, type BackTarget } from "./back-preview";
 
 const TOP_SCREENS = ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin"];
 const MAX_STACK = 50;
@@ -100,7 +104,31 @@ export function addBackCloser(close: () => void) {
   };
 }
 
-type Navigation = { back: () => boolean; canGoBack: () => boolean };
+// What back would close, for the preview of Android's predictive back
+// (lib/back-preview.ts): the drawer, the top sheet or dialog, else the page.
+function backTarget(stack: readonly string[]): BackTarget {
+  if (closers.length) {
+    const drawer = document.querySelector<HTMLElement>(".nav-open .sidebar");
+    return drawer ? { kind: "drawer", el: drawer } : null;
+  }
+  const layer = topLayer();
+  if (layer) {
+    // A sheet (components/sheet-drag.ts) while it stands on the bottom edge.
+    const sheet = layer.hasAttribute("data-sheet-drag") && Math.abs(layer.getBoundingClientRect().bottom - innerHeight) < 2;
+    return { kind: sheet ? "sheet" : "dialog", el: layer };
+  }
+  if (!parentLocation(location.hash, stack)) return null;
+  const page = document.querySelector<HTMLElement>(".main");
+  return page ? { kind: "page", el: page } : null;
+}
+
+type Navigation = {
+  back: () => boolean;
+  canGoBack: () => boolean;
+  // The back gesture's progress (Android 14+): "start", "progress" (0–1),
+  // then "commit" (back() follows) or "cancel". True when something shows it.
+  backProgress: (phase: BackPhase, progress?: number, edge?: BackEdge) => boolean;
+};
 type BackApp = { backState?: (canGoBack: boolean) => void };
 
 // Installs window.FlowplanNavigation (once per page); returns the uninstall.
@@ -167,7 +195,15 @@ export function installAppBack(): () => void {
     states = new MutationObserver(changed);
   portals.observe(document.body, { childList: true });
   states.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-state", "aria-modal"] });
-  const navigation: Navigation = { back, canGoBack };
+  const preview = createBackPreview(() => backTarget(stack));
+  const backProgress = (phase: BackPhase, progress?: number, edge?: BackEdge) => {
+    try {
+      return preview(phase, Number(progress) || 0, edge === "right" ? "right" : "left");
+    } catch {
+      return false;
+    }
+  };
+  const navigation: Navigation = { back, canGoBack, backProgress };
   (window as unknown as { FlowplanNavigation?: Navigation }).FlowplanNavigation = navigation;
   changed();
   return () => {

@@ -1,0 +1,453 @@
+/* Phones and touch: sheets that are dragged down to close, hit areas of at
+   least 44 × 44 px, figures that keep their width and headlines that wrap
+   in balance. Kept apart from globals.css (loaded after it, app/layout.tsx),
+   so the rules are found in one place. */
+
+/* ===== Sheets (components/sheet-drag.ts, Modal `sheet` in components/ui.tsx).
+   Up to 600 px a dialog with `sheet` rises from the bottom edge with a grab
+   handle; it follows the finger down and closes when let go far or fast
+   enough. The handle stays at the top while the content scrolls. ===== */
+.sheet-handle {
+  display: none;
+}
+@media (max-width: 600px) {
+  .modal.modal-sheet {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    max-height: min(92dvh, calc(100dvh - var(--safe-top) - 12px));
+    transform: none;
+    border-bottom-width: 0;
+    border-radius: 16px 16px 0 0;
+    padding: 0 calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(20px + var(--safe-left));
+    overscroll-behavior-y: contain;
+    animation: sheet-in 0.34s cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+  .modal.modal-sheet > .sheet-handle {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: 18px;
+    margin: 0 calc(-20px - var(--safe-right)) 0 calc(-20px - var(--safe-left));
+    background: var(--bg);
+    touch-action: none;
+    cursor: grab;
+  }
+  .modal.modal-sheet > .sheet-handle::before {
+    content: "";
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 36px;
+    height: 5px;
+    margin-left: -18px;
+    border-radius: 3px;
+    background: var(--muted);
+    opacity: 0.45;
+  }
+  /* Room for the close button's focus ring below the handle. */
+  .modal.modal-sheet > .sheet-handle + .modal-heading {
+    padding-top: 4px;
+  }
+  .modal.modal-sheet[data-sheet-dragging] > .sheet-handle {
+    cursor: grabbing;
+  }
+}
+/* The tools sheet of the whiteboard on phones has a handle as well. */
+.wb-sheet > .sheet-handle {
+  display: block;
+  position: sticky;
+  top: -10px;
+  z-index: 1;
+  height: 18px;
+  margin: -10px -8px 0;
+  background: var(--bg);
+  touch-action: none;
+}
+.wb-sheet > .sheet-handle::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 36px;
+  height: 5px;
+  margin-left: -18px;
+  border-radius: 3px;
+  background: var(--muted);
+  opacity: 0.45;
+}
+/* While a finger holds a sheet nothing in it reacts to hovering. */
+[data-sheet-dragging] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+@keyframes sheet-in {
+  from {
+    translate: 0 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal.modal-sheet {
+    animation: fade-in 0.01s both;
+  }
+}
+
+/* ===== Figures keep their width (tabular-nums) where they line up in
+   columns or change while one looks at them: counters, clocks, dates in
+   lists, statistics and the push relay's state. Prose keeps proportional
+   figures. ===== */
+:is(
+  .push-status-value,
+  .push-status-spark,
+  .offline-copy-age,
+  .suggestion-count,
+  .settings-results-count,
+  .settings-tile-value,
+  .graph-count,
+  .feed-count,
+  .table-count,
+  .dashboard-number,
+  .journal-day-number,
+  .public-calendar-date,
+  .public-calendar-weekday,
+  .survey-rank,
+  .live-strip-state,
+  .home-agenda-day,
+  .home-progress,
+  .calendar-hour,
+  .calendar-hours-heading,
+  .calendar-day > button:first-child,
+  .timeline-axis,
+  .time-report-entries,
+  .record-time-entries,
+  time,
+  .kpi-grid,
+  .admin-list-card td,
+  .responsive-table td,
+  .mobile-tab-badge,
+  .status-badge,
+  .live-badge
+) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Headlines wrap in balance (no last line with a single word);
+   short descriptions avoid a lonely last word. Browsers without text-wrap
+   (Safari before 17.5, Firefox before 121 for balance; pretty: Chromium
+   117+, Safari 26) wrap as before. Editable titles (inputs) are left alone:
+   balancing while typing makes lines jump. ===== */
+:is(
+  .modal-heading h2,
+  .settings-home-head h1,
+  .settings-detail-head h1,
+  .settings-tile-group h2,
+  .settings-tile-text strong,
+  .home-greeting h1,
+  .home-widget-head h2,
+  .home-agenda-day h3,
+  .home-board-column h3,
+  .home-gallery h3,
+  .empty-state :is(h2, h3),
+  .login-card h1,
+  .public-page h1,
+  .onboarding-body h2,
+  .onboarding-feature h3,
+  .template-grid strong,
+  .record-card > strong,
+  .not-found h1
+) {
+  text-wrap: balance;
+}
+:is(
+  .empty-state p,
+  .modal p.muted,
+  .settings-home-head p,
+  .settings-detail-head p,
+  .settings-tile-text small,
+  .setting-text small,
+  .login-card > p,
+  .onboarding-body > section > p,
+  .onboarding-feature p,
+  .onboarding-tip,
+  .home-unconfigured
+) {
+  text-wrap: pretty;
+}
+
+/* ===== Hit areas: on touch screens every button, link, tab, checkbox and
+   handle can be hit in at least 44 × 44 px (tests/browser/hit-areas.spec.ts
+   measures it at 390 px). Where there is room the area grows invisibly (an
+   ::after around the element); where neighbours stand closer than that,
+   phones give them the room. ===== */
+/* A label around a lone checkbox (its touch area): none of a form label's
+   own spacing. */
+label.hit-check {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  font-weight: inherit;
+  vertical-align: middle;
+}
+@media (pointer: coarse) {
+  /* An invisible area around small targets that have room around them. */
+  :where(
+      .document-block-handle,
+      .hit-check,
+      .home-customize,
+      .inline-comment-tools > .button,
+      .row-document-heading > :is(.icon-button, .button),
+      .document-editor ul[data-type="taskList"] li > label
+    )::after {
+    content: "";
+    position: absolute;
+    inset: min(0px, calc((100% - 44px) / 2));
+  }
+  :where(
+      .hit-check,
+      .home-customize,
+      .inline-comment-tools > .button,
+      .row-document-heading > :is(.icon-button, .button),
+      .document-editor ul[data-type="taskList"] li > label
+    ) {
+    position: relative;
+  }
+  /* Around a checkbox, not over it: the box itself stays the target. */
+  :where(.hit-check, .document-editor ul[data-type="taskList"] li > label) {
+    z-index: 0;
+  }
+  :where(.hit-check, .document-editor ul[data-type="taskList"] li > label)::after {
+    z-index: -1;
+  }
+  /* Block handles reach out into the margin left of the text, not over it. */
+  .document-block-handle::after {
+    inset: -8px 0 -8px -20px;
+  }
+  /* Text buttons and the title links of table rows: 44 px high to hit,
+     the layout stays as it is. */
+  :where(.text-button:not(.add-cover), .row-title-link) {
+    position: relative;
+  }
+  :where(.text-button, .row-title-link)::after {
+    content: "";
+    position: absolute;
+    inset: min(0px, calc((100% - 44px) / 2)) 0;
+  }
+}
+@media (pointer: coarse) and (max-width: 767px) {
+  /* The page bar: 44 px per tool; the saving state keeps its icon. */
+  .page-top-actions {
+    gap: 0;
+  }
+  .page-top-actions > :is(.icon-button, .share-button, .follow-button, .readers-button) {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+  .save-status > span > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* Headings leave room between their handle and the next block's. */
+  .document-editor :is(h1, h2, h3) {
+    padding-bottom: 6px;
+  }
+  /* The taller tools leave the end of the page visible above them. */
+  .page-layout .editor-wrapper {
+    padding-bottom: 68px;
+  }
+  .page-layout .page-content {
+    padding-bottom: 66px;
+  }
+  /* Recently visited pages: pills 38 px high, 44 px to hit. */
+  .visited-list {
+    gap: 8px;
+  }
+  .visited-list button {
+    position: relative;
+    min-height: 38px;
+  }
+  .visited-list button::after {
+    content: "";
+    position: absolute;
+    /* From the padding box: 1 px border, 3 px around it. */
+    inset: -4px;
+  }
+  /* Lists of the start page's widgets. */
+  .home-list li > :is(button, a, label) {
+    min-height: 44px;
+  }
+  /* "Manage blocks" keeps clear of the first block's handle. */
+  .block-manager-trigger {
+    min-height: 44px;
+    margin: 0 0 14px;
+  }
+  .subpages > .text-button {
+    min-height: 44px;
+    margin-top: 0;
+  }
+  /* A record: icon and cover above the title, the time of a date. */
+  .row-title-tools {
+    margin-bottom: 10px;
+  }
+  .row-title-tools .text-button {
+    min-height: 44px;
+  }
+  label.checkbox-label {
+    min-height: 44px;
+  }
+  .row-document-heading > .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .row-detail > .button.danger {
+    min-height: 44px;
+  }
+  /* The formatting tools along the bottom edge. */
+  .page-layout .editor-toolbar button {
+    width: 44px;
+    height: 44px;
+  }
+  /* Lists in documents: a row per finger, so the checkbox and the block
+     handle of each item have their 44 px; the text keeps clear of the
+     checkbox's area. */
+  .document-editor li {
+    min-height: 44px;
+  }
+  .document-editor ul[data-type="taskList"] li {
+    gap: 20px;
+  }
+  .document-editor ul[data-type="taskList"] li > label::after {
+    inset: -11px -22px -11px -11px;
+  }
+  /* A quote's handle and the one of the text in it stand side by side. */
+  .document-editor blockquote {
+    padding-left: 42px;
+  }
+  /* Database: views, tools and chips. */
+  .database-tabs > button {
+    min-height: 44px;
+  }
+  .database-tabs > .icon-button {
+    width: 44px;
+  }
+  /* Chips: 38 px to see, 44 px to hit (rows 8 px apart). */
+  .toolbar-chip {
+    position: relative;
+    height: 38px;
+  }
+  .toolbar-chip:not(.toolbar-chip-search)::after {
+    content: "";
+    position: absolute;
+    /* From the padding box: 1 px border, 3 px around it. */
+    inset: -4px;
+  }
+  .toolbar-chip-icon {
+    width: 38px;
+  }
+  .toolbar-left {
+    gap: 8px;
+  }
+  .toolbar-right button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* Selection and the drag handle of each row. */
+  .configurable-table {
+    --selection-column: 92px;
+  }
+  .configurable-table .selection-cell {
+    width: 92px;
+    min-width: 92px;
+    padding: 0;
+  }
+  .row-selection-controls {
+    gap: 0;
+  }
+  .row-order-handle {
+    width: 44px;
+    min-height: 44px;
+  }
+  /* "Select all" stands above the rows' checkboxes. */
+  .configurable-table th.selection-cell {
+    text-align: right;
+    padding-inline-end: 2px;
+  }
+  .row-selection-controls .hit-check,
+  .selection-cell > .hit-check {
+    width: 44px;
+    height: 44px;
+    justify-content: center;
+    align-items: center;
+  }
+  .configurable-table th {
+    height: 44px;
+    padding-block: 0;
+  }
+  .configurable-table th > button {
+    min-height: 44px;
+  }
+  /* Dialogs: close and the tools in the heading. */
+  .modal-heading > .icon-button,
+  .modal-heading-actions .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .modal-heading-actions {
+    gap: 0;
+  }
+  /* The navigation drawer: rows and their tools. */
+  .main-nav > button {
+    min-height: 44px;
+  }
+  .page-nav {
+    height: 44px;
+  }
+  .page-nav .page-nav-title {
+    align-self: stretch;
+  }
+  .tree-toggle,
+  .nav-add,
+  .nav-drag,
+  .nav-section-title .nav-section-tools .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .tree-toggle {
+    margin: 0 0 0 -14px;
+  }
+  .nav-add,
+  .nav-drag {
+    margin: 0;
+  }
+  .nav-section-title {
+    min-height: 44px;
+  }
+  .sidebar-top .brand,
+  .add-space {
+    min-height: 44px;
+  }
+  .sidebar-hide,
+  .sidebar-bottom .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+  .sidebar-tools > button {
+    height: 44px;
+    max-width: none;
+  }
+  .sidebar-tools {
+    gap: 0;
+  }
+  .sidebar-bottom {
+    padding-inline: 4px;
+  }
+}
