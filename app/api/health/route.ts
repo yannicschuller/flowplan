@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildInfo } from "@/lib/build-info";
 import { accessSync, constants, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { sessionIdentityFromRequest } from "@/lib/auth";
@@ -60,6 +61,7 @@ export async function GET(request: Request) {
   // Lets clients such as the desktop and mobile apps recognise a Flowplan instance.
   const verdict = { service: "flowplan", status: healthy ? "ok" : "error" } as const;
   if (!detailsAllowed(request)) return NextResponse.json(verdict, init);
+  const build = buildInfo();
   let mirror: ReturnType<typeof storageStatus> = { enabled: false };
   try {
     mirror = storageStatus();
@@ -76,6 +78,10 @@ export async function GET(request: Request) {
         ? { pending: mirror.pending, retrying: mirror.failing }
         : "off",
       uptimeSeconds: Math.round(process.uptime()),
+      // What runs here, for deployment checks (only with the details).
+      version: build.version || null,
+      commit: build.commit || null,
+      builtAt: build.builtAt || null,
     },
     init,
   );

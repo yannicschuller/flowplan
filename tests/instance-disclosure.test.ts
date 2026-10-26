@@ -102,7 +102,7 @@ test("the public health check answers only what the apps need", async () => {
 });
 
 test("details with the metrics token or for a signed-in administrator", async () => {
-  const details = ["service", "status", "checks", "searchBacklog", "failedPushDeliveries", "objectStorage", "uptimeSeconds"];
+  const details = ["service", "status", "checks", "searchBacklog", "failedPushDeliveries", "objectStorage", "uptimeSeconds", "version", "commit", "builtAt"];
   // Without FLOWPLAN_METRICS_TOKEN no bearer value unlocks them.
   assert.deepEqual(Object.keys((await health({ authorization: "Bearer " })).body), ["service", "status"]);
   process.env.FLOWPLAN_METRICS_TOKEN = "metrics-token-0123456789";
