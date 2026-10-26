@@ -710,6 +710,15 @@ kbd,
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Color emoji glyphs are wider and taller than their 1em box; the breadcrumb
+   clips its overflow, so give the icon its natural size and a little room. */
+.breadcrumb .page-emoji {
+  width: auto !important;
+  height: auto !important;
+  min-width: 1.25em;
+  padding: 2px 1px;
+  line-height: 1.15;
+}
 .breadcrumb-workspace {
   color: var(--muted);
 }
