@@ -26950,3 +26950,197 @@ label.ws-search input {
 [data-theme="dark"] .push-test-results > li.problem > svg {
   color: #f2c27a;
 }
+/* ==========================================================================
+   Feeling instant (components/toast.tsx, components/skeleton.tsx)
+   - .toast-live: the two live regions of the toast (polite / assertive);
+     they take no room, the toast inside is fixed as before.
+   - .toast-undo: "… gelöscht · Rückgängig" with the shortcut on the button.
+   - .skeleton and .sk-*: placeholders in the shape of what loads; the
+     shimmer is the .sk animation above (still with reduced motion).
+   ========================================================================== */
+.toast-live {
+  display: contents;
+}
+.toast-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast .toast-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+}
+.toast .toast-action:focus-visible,
+.toast .icon-button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.toast-kbd {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.skeleton {
+  display: grid;
+  gap: 12px;
+  padding: 8px 0;
+  animation: fade-in 0.25s ease both;
+}
+.skeleton > div {
+  display: grid;
+  gap: 12px;
+}
+.sk-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  overflow: hidden;
+}
+.sk-board-column {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--hover) 30%, transparent);
+}
+.sk-card {
+  height: 64px;
+  border-radius: 8px;
+}
+.sk-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--border);
+}
+.sk-day {
+  display: grid;
+  align-content: start;
+  min-height: 64px;
+  padding: 8px 6px;
+  background: var(--bg);
+}
+.sk-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+.sk-gallery-card {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.sk-gallery-card > .sk:not(.sk-cover) {
+  margin-inline: 10px;
+}
+.sk-cover {
+  height: 96px;
+  border-radius: 0;
+}
+.sk-timeline {
+  display: grid;
+  gap: 10px;
+}
+.sk-timeline-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 160px) 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.sk-timeline-track {
+  display: block;
+}
+.sk-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 200px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sk-chart .sk {
+  flex: 1;
+  border-radius: 6px 6px 0 0;
+}
+.sk-form {
+  display: grid;
+  gap: 16px;
+  max-width: 560px;
+}
+.sk-form-field,
+.sk-line-text,
+.sk-property {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.sk-lines {
+  display: grid;
+  gap: 4px;
+}
+.sk-line-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+}
+.sk-line-item .sk-line-text {
+  flex: 1;
+}
+.sk-avatar {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+.sk-properties {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.sk-document {
+  display: grid;
+  gap: 12px;
+}
+.sk-setting-group {
+  display: grid;
+  gap: 2px;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.sk-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+.sk-setting .sk-line-text {
+  flex: 1;
+}
+.sk-setting > .sk {
+  flex: none;
+  border-radius: 999px;
+}
+@media (max-width: 767px) {
+  .sk-board {
+    grid-template-columns: repeat(4, 72vw);
+  }
+  .sk-properties {
+    grid-template-columns: 1fr;
+  }
+}

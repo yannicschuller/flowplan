@@ -242,7 +242,17 @@ export default function DocumentEditor({
   const t = useT();
   const keyHints = useKeyboardHints();
   const locale = useLocale();
-  const doc = useMemo(() => new Y.Doc(), [pageId, rowId]);
+  // The text the page came with shows at once (also a kept copy, see
+  // lib/swr-cache.ts); the device's stored changes and the server's newer
+  // ones merge into it as they arrive (applying a state twice is harmless).
+  const doc = useMemo(() => {
+    const created = new Y.Doc();
+    try {
+      if (state) Y.applyUpdate(created, from64(state), "remote");
+    } catch {}
+    return created;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageId, rowId]);
   // One id per open editor: the live channel does not echo its own changes
   // and cursor moves back to it.
   const liveId = useMemo(() => crypto.randomUUID(), [pageId, rowId, generation]);

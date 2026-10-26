@@ -7,8 +7,10 @@ import { useT } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DURATION, EASE_OUT, prefersReducedMotion } from "@/lib/motion";
 import { CheckSquare, X } from "@phosphor-icons/react";
+import { optimistic } from "@/lib/optimistic";
 import { api, PageIcon } from "./ui";
 import { MyRecords } from "./my-records";
+import { ListSkeleton } from "./skeleton";
 import { dueLabel, dueState, localToday } from "@/lib/task-due-plugin";
 
 type Task = {
@@ -102,28 +104,45 @@ export function MyTasks({
     setBusy(key);
     const leaving = patch.checked === true && !done && !task.checked;
     if (leaving) setSettling((s) => new Set(s).add(key));
-    // Show the change at once; the reload below brings the stored state.
     const same = (t: Task) =>
       t.pageId === task.pageId && t.rowId === task.rowId && t.index === task.index;
-    setTasks((list) => list?.map((t) => (same(t) ? { ...t, ...patch } : t)) || null);
-    setOthers((list) =>
-      list.map((w) => ({ ...w, tasks: w.tasks.map((t) => (same(t) ? { ...t, ...patch } : t)) })),
-    );
+    const put = (value: Partial<Task>) => {
+      setTasks((list) => list?.map((t) => (same(t) ? { ...t, ...value } : t)) || null);
+      setOthers((list) =>
+        list.map((w) => ({ ...w, tasks: w.tasks.map((t) => (same(t) ? { ...t, ...value } : t)) })),
+      );
+    };
+    // Shown at once (lib/optimistic.ts); a refusal puts the task back as it
+    // was and the toast shows the server's message.
+    const sent = await optimistic({
+      key: `task:${key}`,
+      apply: () => put(patch),
+      commit: () =>
+        api("/api/command", {
+          action: "task.update",
+          pageId: task.pageId,
+          rowId: task.rowId,
+          index: task.index,
+          text: task.text,
+          ...patch,
+        }),
+      rollback: () => {
+        put({ checked: task.checked, due: task.due });
+        if (leaving)
+          setSettling((s) => {
+            const n = new Set(s);
+            n.delete(key);
+            return n;
+          });
+      },
+      onError: (e) => onError((e as Error).message),
+    });
     try {
-      await api("/api/command", {
-        action: "task.update",
-        pageId: task.pageId,
-        rowId: task.rowId,
-        index: task.index,
-        text: task.text,
-        ...patch,
-      });
-      if (leaving) await foldAway(key);
-      await load();
-      onChanged();
-    } catch (e) {
-      onError((e as Error).message);
-      await load();
+      if (sent) {
+        if (leaving) await foldAway(key);
+        await load();
+        onChanged();
+      }
     } finally {
       setBusy("");
       if (leaving)
@@ -219,7 +238,7 @@ export function MyTasks({
         {t("Erledigte zeigen", "Show completed")}
       </label>
       {!tasks ? (
-        <p className="muted">{t("Aufgaben werden geladen …", "Loading tasks …")}</p>
+        <ListSkeleton rows={4} label={t("Aufgaben werden geladen …", "Loading tasks …")} />
       ) : !tasks.length ? (
         <div className="empty-state">
           <CheckSquare size={28} />

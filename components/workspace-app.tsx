@@ -67,7 +67,13 @@ import {
 import { useOfflineRefresh } from "./offline-refresh";
 import { appCopyUnreachable } from "@/lib/offline-store";
 import SavedTemplates from "./saved-templates";
-import { useState, useEffect, useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toast";
+import { commandOverlay } from "@/lib/optimistic-commands";
+import type { UndoPlan } from "@/lib/undo";
+import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
+import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
+import { ListSkeleton, viewShapeOf } from "./skeleton";
 import { anyOf, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, CrossFade, useLeaving } from "./motion";
@@ -353,10 +359,12 @@ export default function WorkspaceApp({
       document.removeEventListener("visibilitychange", update);
     };
   }, []);
-  const [boot, setBoot] = useState(initial),
+  // What the server sent last; the shown `boot` and `data` add the changes
+  // still on their way (optimistic layers, see `mutate` below).
+  const [bootState, setBoot] = useState(initial),
     [pageId, setPageId] = useState<string | null>(null),
     [screen, setScreen] = useState<Screen>("home"),
-    [data, setData] = useState<PageData | null>(null),
+    [dataState, setData] = useState<PageData | null>(null),
     [mobile, setMobile] = useState(false),
     [search, setSearch] = useState(false),
     // The keyboard shortcut overlay ("?", ⌘/, command, sidebar).
@@ -389,7 +397,7 @@ export default function WorkspaceApp({
     // The page shown as Markdown ("Als Markdown bearbeiten").
     [sourcePage, setSourcePage] = useState<string | null>(null),
     [spaceExport, setSpaceExport] = useState<string | null>(null),
-    [onboarding, setOnboarding] = useState(!!boot.onboarding),
+    [onboarding, setOnboarding] = useState(!!initial.onboarding),
     [spaceManager, setSpaceManager] = useState<{
       space: Space;
       purge?: boolean;
@@ -403,15 +411,11 @@ export default function WorkspaceApp({
     [readPages, setReadPages] = useState<string[]>([]),
     [comment, setComment] = useState(""),
     [status, setStatus] = useState("Gespeichert"),
-    [toast, setToast] = useState<{
-      text: string;
-      error: boolean;
-      detail?: string;
-      retry?: () => void;
-    } | null>(null),
     // The session ended while the app was open: a banner until the reader signs in again.
     [signedOut, setSignedOut] = useState(false),
     [busy, setBusy] = useState(false),
+    // A kept copy is shown while the fresh one loads (stale-while-revalidate).
+    [revalidating, setRevalidating] = useState(false),
     [dark, setDark] = useState(false),
     [theme, setTheme] = useState<ThemeChoice>("system"),
     [iconPicker, setIconPicker] = useState(false),
@@ -438,6 +442,21 @@ export default function WorkspaceApp({
     [pageMenu, setPageMenu] = useState<{ page: Page; x: number; y: number } | null>(null),
     [templateName, setTemplateName] = useState(false),
     [templateTitle, setTemplateTitle] = useState("");
+  // The tab's cache of recent pages belongs to this person (another one
+  // empties it) – before the first page opens.
+  useState(() => {
+    if (typeof window !== "undefined") appCache().scope(initial.user.id);
+  });
+  // Changes shown before the server answered (lib/optimistic.ts): each
+  // request's layer over the workspace and the open page, dropped once the
+  // reloaded state is there – or when the server refused (the old state
+  // comes back by itself, the error toast says why).
+  const [layers, setLayers] = useState<Layer[]>([]);
+  const boot = useMemo(() => layers.reduce((b, layer) => (layer.boot ? safeLayer(layer.boot, b) : b), bootState), [bootState, layers]);
+  const data = useMemo(
+    () => (dataState ? layers.reduce((d, layer) => (layer.page ? safeLayer(layer.page, d) : d), dataState) : null),
+    [dataState, layers],
+  );
   const [treeDrop, setTreeDrop] = useState<{
     id: string;
     // "records": records from a database dropped onto another database.
@@ -549,9 +568,12 @@ export default function WorkspaceApp({
     setQuery("");
     setSearchName(null);
   };
+  // A search is on its way: placeholders instead of "Nothing found".
+  const [searching, setSearching] = useState(false);
   useEffect(() => {
     if (!search) return;
     const controller = new AbortController();
+    setSearching(!!query.trim());
     const timer = setTimeout(() => {
       fetch(
         `/api/search?${new URLSearchParams({
@@ -563,8 +585,13 @@ export default function WorkspaceApp({
         { signal: controller.signal },
       )
         .then((r) => (r.ok ? r.json() : []))
-        .then(setSearchResults)
-        .catch(() => {});
+        .then((results) => {
+          setSearchResults(results);
+          setSearching(false);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setSearching(false);
+        });
     }, 200);
     return () => {
       clearTimeout(timer);
@@ -574,25 +601,28 @@ export default function WorkspaceApp({
   const currentId = useRef(pageId),
     currentWorkspace = useRef(boot.workspace.id),
     screenRef = useRef(screen),
-    html = useRef(""),
-    toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    html = useRef("");
   currentId.current = pageId;
   currentWorkspace.current = boot.workspace.id;
   screenRef.current = screen;
+  // Confirmations, errors and undo offers: one toast (components/toast.tsx).
   const notify = useCallback((s: string, error = false) => {
-    setToast({ text: s, error });
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 5000);
+    showToast({ text: s, tone: error ? "error" : "info" });
   }, []);
   // Every failure goes through showError()/reportError() in components/ui.tsx:
   // friendly copy per kind, inline in an open dialog, otherwise this toast.
   useEffect(
     () =>
       setErrorToaster((view) => {
-        setToast({ text: view.title, detail: view.detail, error: true, retry: view.retry });
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        // Errors stay a little longer; one with a retry until it is used.
-        toastTimer.current = setTimeout(() => setToast(null), view.retry ? 12000 : 8000);
+        const retry = view.retry;
+        showToast({
+          text: view.title,
+          detail: view.detail,
+          tone: "error",
+          // Errors stay a little longer; one with a retry until it is used.
+          duration: retry ? 12000 : 8000,
+          ...(retry ? { action: { label: tr("Erneut versuchen", "Retry"), run: retry } } : {}),
+        });
       }),
     [],
   );
@@ -675,9 +705,64 @@ export default function WorkspaceApp({
   });
   const dataRef = useRef(data);
   dataRef.current = data;
-  const [pendingCells, setPendingCells] = useState<
-    { pageId: string; rowId: string; cells: Record<string, unknown> }[]
-  >([]);
+  const bootRef = useRef(boot);
+  bootRef.current = boot;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  // How a page may be kept: never for journals (a PIN may guard them), only
+  // in memory for end-to-end encrypted spaces (lib/swr-cache.ts).
+  const cachePolicy = useCallback(
+    (value: unknown) =>
+      pageCachePolicy(
+        value as PageData,
+        bootRef.current.pages,
+        bootRef.current.spaces.filter((s) => (s as { encrypted?: number }).encrypted).map((s) => s.id),
+      ),
+    [],
+  );
+  // Every state of the open page the server sent (opening, the reload after
+  // a change, live refreshes) is the kept copy for the next visit.
+  useEffect(() => {
+    if (!dataState || dataState.page.id !== currentId.current) return;
+    const cache = appCache();
+    cache.set(pageKey(dataState.page.id), dataState, { version: dataState.page.updated_at, policy: cachePolicy(dataState) });
+    // Records that are gone leave the cache too.
+    if (dataState.page.kind === "database") {
+      const rows = new Set(dataState.rows?.map((r) => r.id));
+      cache.invalidate((key) => key.startsWith(`row:${dataState.page.id}:`) && !rows.has(key.split(":")[2]));
+    }
+  }, [dataState, cachePolicy]);
+  // Pages that are gone (trash, permissions) leave the cache; the current
+  // workspace's bootstrap is kept for switching back to it.
+  useEffect(() => {
+    const cache = appCache();
+    const live = new Set(bootState.pages.filter((p) => !p.deleted_at).map((p) => p.id));
+    cache.invalidate((key) => {
+      const [kind, id] = key.split(":");
+      return (kind === "page" || kind === "row") && !live.has(id);
+    });
+    cache.set(bootKey(bootState.workspace.id), bootState, { policy: "memory" });
+  }, [bootState]);
+  // Loading ahead on hover, touch and focus (components/prefetch.ts).
+  useEffect(() => {
+    configurePrefetch({
+      policy: cachePolicy,
+      page: (id) => {
+        const page = bootRef.current.pages.find((p) => p.id === id && !p.deleted_at);
+        return page ? { version: page.updated_at, kind: page.kind } : null;
+      },
+      // The code of the view loads ahead too (the chunks next/dynamic loads).
+      preload: (kind) => {
+        const load = kind === "whiteboard" ? () => import("./whiteboard/whiteboard") : kind === "dashboard" ? () => import("./dashboard-view") : kind === "document" ? () => import("./editor") : null;
+        void load?.().catch(() => {});
+      },
+    });
+    const stop = installPrefetch();
+    return () => {
+      stop();
+      configurePrefetch(null);
+    };
+  }, [cachePolicy]);
   // Requests that do not go through api() (uploads, exports …) notice an
   // ended session too.
   useEffect(() => {
@@ -747,6 +832,12 @@ export default function WorkspaceApp({
       window.removeEventListener("flowplan:shortcuts", keys);
     };
   }, []);
+  // Runs a command: its result shows at once where it is known in advance
+  // (lib/optimistic-commands.ts) and stays until the reloaded state is
+  // there; a refusal of the server takes it back and the error toast shows
+  // the server's message. Destructive and bulk changes then offer
+  // "Rückgängig" (lib/undo.ts), unless the command is itself an undo.
+  const undoRef = useRef<(plan: UndoPlan) => Promise<void>>(async () => {});
   const mutate = useCallback(
     async (b: Record<string, unknown>) => {
       const rows = () =>
@@ -757,20 +848,16 @@ export default function WorkspaceApp({
         );
       if (isQueueable(b) && !navigator.onLine)
         return offlineQueue.enqueue(b, rows());
-      // Changed cells show at once; the reloaded page replaces them (or
-      // the old values come back when the change fails).
-      const shown =
-        b.action === "row.update" &&
-        typeof b.rowId === "string" &&
-        b.cells &&
-        typeof b.cells === "object"
-          ? {
-              pageId: String(b.pageId),
-              rowId: b.rowId,
-              cells: b.cells as Record<string, unknown>,
-            }
-          : null;
-      if (shown) setPendingCells((list) => [...list, shown]);
+      // Taken before the first await: callers may leave the page right after.
+      const before = { boot: bootRef.current, data: dataRef.current };
+      const openBefore = screenRef.current === "page" ? currentId.current : null;
+      const overlay = commandOverlay<PageData>(b, {
+        userId: before.boot.user.id,
+        userName: before.boot.user.name,
+        data: before.data,
+      });
+      const layer: Layer | null = overlay ? { boot: overlay.boot, page: overlay.page } : null;
+      if (layer) setLayers((list) => [...list, layer]);
       try {
         let result;
         try {
@@ -781,10 +868,13 @@ export default function WorkspaceApp({
             return offlineQueue.enqueue(b, rows());
           throw e;
         }
+        // lib/undo.ts loads with the first change (not with the app).
+        const plan = undoing.has(b) || !UNDOABLE.has(String(b.action)) ? null : (await import("@/lib/undo")).undoFor(b, before, openBefore);
+        if (plan) showUndo(plan.message, () => undoRef.current(plan));
         await refresh();
         return result;
       } finally {
-        if (shown) setPendingCells((list) => list.filter((x) => x !== shown));
+        if (layer) setLayers((list) => list.filter((x) => x !== layer));
       }
     },
     [refresh, offlineQueue],
@@ -841,6 +931,20 @@ export default function WorkspaceApp({
     },
     [mutate, notifyError],
   );
+  // "Rückgängig" in the toast (or Mod+Z while it shows): the inverse
+  // commands, built from the current state, one after the other.
+  undoRef.current = async (plan: UndoPlan) => {
+    try {
+      for (const command of plan.commands({ boot: bootRef.current, data: dataRef.current })) {
+        undoing.add(command);
+        await mutate(command);
+      }
+      showToast({ text: tr("Rückgängig gemacht", "Undone") });
+      if (plan.reopen) void openPageRef.current(plan.reopen);
+    } catch (e) {
+      notifyError(e);
+    }
+  };
   // "Zuletzt angesehen" on the start page follows along without a reload.
   const shownPage = data?.page.id;
   // A page just created from the dialog: the caret goes into its title.
@@ -885,10 +989,30 @@ export default function WorkspaceApp({
       screenRef.current = "page";
       setPageId(id);
       currentId.current = id;
-      setData(null);
       setComments(false);
       setAiSummary(null);
-      setBusy(true);
+      // Stale-while-revalidate (lib/swr-cache.ts): a page opened recently
+      // shows its kept copy at once while the fresh one loads; the editor's
+      // sync and the reload below bring it up to date.
+      const showKept = (kept: PageData | undefined) => {
+        if (!kept || kept.page.workspace_id !== currentWorkspace.current) return false;
+        if (version !== navigationVersion.current || currentId.current !== id) return false;
+        setData(kept);
+        html.current = kept.html || "";
+        setStatus("Gespeichert");
+        setBusy(false);
+        setRevalidating(true);
+        return true;
+      };
+      const shown = showKept(appCache().get<PageData>(pageKey(id))?.value);
+      if (!shown) {
+        setData(null);
+        setBusy(true);
+        // Loaded ahead a moment ago (hover, touch): shown as soon as it is there.
+        void pendingPrefetch(pageKey(id))?.then(() => {
+          if (busyRef.current) showKept(appCache().get<PageData>(pageKey(id))?.value);
+        });
+      }
       const hash = pageLocationHash(target || { pageId: id });
       if (location.hash !== hash) location.hash = hash;
       try {
@@ -919,12 +1043,18 @@ export default function WorkspaceApp({
           setStatus("Gespeichert");
         }
       } catch (e) {
+        // Gone or no longer allowed: the kept copy goes too.
+        if (e instanceof ApiError && [403, 404, 423].includes(e.status)) {
+          appCache().delete(pageKey(id));
+          if (version === navigationVersion.current && currentId.current === id) setData(null);
+        }
         if (version === navigationVersion.current)
           notifyError(e, () => void openPageRef.current(id, target));
       } finally {
         if (version === navigationVersion.current) {
           navigationPending.current = false;
           setBusy(false);
+          setRevalidating(false);
         }
       }
     },
@@ -1039,6 +1169,8 @@ export default function WorkspaceApp({
     // A 401 while working: the banner instead of a reload (components/ui.tsx).
     const signedOut = (e: Event) => {
       e.preventDefault();
+      // Nothing of this person stays in the tab's cache.
+      clearAppCache();
       setSignedOut(true);
     };
     window.addEventListener("keydown", key);
@@ -1248,6 +1380,17 @@ export default function WorkspaceApp({
     latestSwitch.current = version;
     navigationPending.current = true;
     setSwitching(true);
+    // Been there in this tab: its sidebar and start page show at once (the
+    // shell stays inert until the fresh state is there).
+    const previous = bootRef.current;
+    const kept = appCache().get<Bootstrap>(bootKey(id))?.value;
+    if (kept && kept.user.id === previous.user.id) {
+      setBoot(kept);
+      setPageId(null);
+      currentId.current = null;
+      setData(null);
+      go("home");
+    }
     try {
       const b = await api<Bootstrap>(`/api/bootstrap?workspace=${id}`);
       if (version !== navigationVersion.current) return;
@@ -1259,6 +1402,7 @@ export default function WorkspaceApp({
       go("home");
       setSpaceId(b.spaces[0]?.id || "");
     } catch (e) {
+      if (kept && version === navigationVersion.current) setBoot(previous);
       if (version === navigationVersion.current) notifyError(e, () => void switchWorkspace(id));
     } finally {
       if (version === navigationVersion.current)
@@ -1324,6 +1468,7 @@ export default function WorkspaceApp({
     destination?: string,
   ) {
     setBulkBusy(true);
+    const since = toastSerial();
     try {
       const result = await act({
         action: "pages.bulk",
@@ -1339,7 +1484,9 @@ export default function WorkspaceApp({
       if (result) {
         setBulkDialog(null);
         clearSelection();
-        notify(
+        // Deleting and moving offer "Rückgängig" instead (lib/undo.ts).
+        if (!undoShownSince(since))
+          notify(
           operation === "delete"
             ? t("Seiten in den Papierkorb verschoben.", "Pages moved to the trash.")
             : operation === "duplicate"
@@ -1558,6 +1705,7 @@ export default function WorkspaceApp({
             <div
               className={`page-nav ${screen === "page" && pageId === p.id ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
               data-page-id={p.id}
+              data-prefetch-page={p.id}
               role="treeitem"
               aria-level={level + 1}
               aria-selected={screen === "page" && pageId === p.id}
@@ -1938,9 +2086,27 @@ export default function WorkspaceApp({
     if (hit) jumpTo({ pageId: p.id, rowId: p.rowId }, byText(hit));
     void openPage(p.id, p.rowId ? { pageId: p.id, rowId: p.rowId } : undefined);
   };
+  // Hovering or highlighting a hit loads its page ahead (components/prefetch.ts).
+  const prefetchOf = (item: PaletteItem) =>
+    item.kind === "recent"
+      ? { "data-prefetch-page": item.page.id }
+      : item.kind === "result"
+        ? { "data-prefetch-page": item.result.id, ...(item.result.rowId ? { "data-prefetch-row": item.result.rowId } : {}) }
+        : {};
+  useEffect(() => {
+    if (!search || !activeItem || activeItem.kind === "command") return;
+    const timer = setTimeout(() => {
+      const target = activeItem.kind === "recent" ? { id: activeItem.page.id } : { id: activeItem.result.id, row: activeItem.result.rowId };
+      if (target.row) prefetchRecord(target.id, target.row);
+      else prefetchPage(target.id);
+    }, INTENT_DELAY);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, activeItem?.id]);
   const paletteOption = (item: PaletteItem, index: number, content: React.ReactNode) => (
     <div
       key={item.id}
+      {...prefetchOf(item)}
       id={`palette-${item.id}`}
       role="option"
       aria-selected={index === activeIndex}
@@ -2122,6 +2288,7 @@ export default function WorkspaceApp({
                 <button
                   className={`favorite-nav ${pageId === p.id && screen === "page" ? "selected" : ""}`}
                   key={p.id}
+                  data-prefetch-page={p.id}
                   onClick={(e) => ((e.metaKey || e.ctrlKey) && wide ? openSplit(p.id) : void openPage(p.id))}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -2360,6 +2527,7 @@ export default function WorkspaceApp({
                     className="dropdown-item"
                     onSelect={async () => {
                       await disableOffline().catch(() => undefined);
+                      clearAppCache();
                       await fetch("/api/auth/logout", { method: "POST" });
                       location.href = "/";
                     }}
@@ -2753,11 +2921,12 @@ export default function WorkspaceApp({
                     <Dropdown.Item
                       className="dropdown-item danger"
                       onSelect={async () => {
-                        const r = await act({ action: "page.delete", pageId });
-                        if (r) {
-                          go("trash");
-                          setPageId(null);
-                        }
+                        // Gone at once; a refusal opens the page again.
+                        const deleted = pageId;
+                        const pending = act({ action: "page.delete", pageId: deleted });
+                        go("trash");
+                        setPageId(null);
+                        if (!(await pending) && deleted) void openPage(deleted);
                       }}
                     >
                       <Trash />
@@ -2840,6 +3009,7 @@ export default function WorkspaceApp({
                       ? "database"
                       : "document"
                   }
+                  view={viewShapeOf(pageId)}
                 />
               </div>
             ) : (
@@ -2850,6 +3020,7 @@ export default function WorkspaceApp({
             data && (
               <div className={`page-layout ${comments ? "with-comments" : ""}`}>
                 <article
+                  data-revalidating={revalidating ? "true" : undefined}
                   className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
                 >
                   {data.page.cover && (
@@ -2971,13 +3142,9 @@ export default function WorkspaceApp({
                         onRefresh={refresh}
                         data={{
                           ...data,
-                          rows: withPendingCells(
-                            applyQueue(
-                              data.rows,
-                              offlineQueue.queue,
-                              data.page.id,
-                            ),
-                            pendingCells,
+                          rows: applyQueue(
+                            data.rows,
+                            offlineQueue.queue,
                             data.page.id,
                           ),
                         }}
@@ -3180,15 +3347,15 @@ export default function WorkspaceApp({
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
-                        // A double submit of the same draft posts it once.
+                        // The comment shows at once and the field empties; a
+                        // refusal brings the text back into the field. A
+                        // double submit of the same draft posts it once.
+                        const body = comment;
                         const draft = `comment:${pageId}`;
-                        const r = await act(
-                          keyed({ action: "comment.create", pageId, body: comment }, draftKey(draft, comment)),
-                        );
-                        if (r) {
-                          draftSent(draft);
-                          setComment("");
-                        }
+                        setComment("");
+                        const r = await act(keyed({ action: "comment.create", pageId, body }, draftKey(draft, body)));
+                        if (r) draftSent(draft);
+                        else setComment((now) => now || body);
                       }}
                     >
                       <textarea
@@ -3866,7 +4033,10 @@ export default function WorkspaceApp({
               )}
             </div>
           )}
-          {!paletteItems.length && (
+          {searching && !paletteResults.length && !commandsOnly && (
+            <ListSkeleton rows={4} label={t("Suche läuft …", "Searching …")} />
+          )}
+          {!paletteItems.length && !searching && (
             <div className="empty-state small">
               {query.trim()
                 ? t("Nichts gefunden.", "Nothing found.")
@@ -4840,11 +5010,13 @@ export default function WorkspaceApp({
                         <Dropdown.Item
                           className="dropdown-item danger"
                           onSelect={async () => {
-                            const r = await act({ action: "page.delete", pageId: target.id });
-                            if (r && pageId === target.id) {
+                            const open = screen === "page" && pageId === target.id;
+                            const pending = act({ action: "page.delete", pageId: target.id });
+                            if (open) {
                               go("trash");
                               setPageId(null);
                             }
+                            if (!(await pending) && open) void openPage(target.id);
                           }}
                         >
                           <Trash />
@@ -4940,39 +5112,7 @@ export default function WorkspaceApp({
           setMobile((open) => !open);
         }}
       />
-      {toast && (
-        <div className={`toast${toast.error ? " toast-error" : ""}`} role={toast.error ? "alert" : "status"}>
-          {toast.error ? <WarningCircle size={18} weight="fill" aria-hidden="true" /> : <InfoIcon />}
-          {toast.detail ? (
-            <span className="toast-text">
-              <strong>{toast.text}</strong>
-              <span>{toast.detail}</span>
-            </span>
-          ) : (
-            toast.text
-          )}
-          {toast.retry && (
-            <button
-              type="button"
-              className="toast-action"
-              onClick={() => {
-                const retry = toast.retry;
-                setToast(null);
-                retry?.();
-              }}
-            >
-              {t("Erneut versuchen", "Retry")}
-            </button>
-          )}
-          <button
-            className="icon-button"
-            aria-label={t("Meldung schließen", "Close message")}
-            onClick={() => setToast(null)}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
+      <Toaster />
     </div>
     {presenting && (
       <Presentation
@@ -4995,9 +5135,6 @@ function commentHitTitle(title: string, t: (de: string, en: string) => string) {
   const inline = title.match(/^Textkommentar von (.+)$/);
   if (inline) return t(`Textkommentar von ${inline[1]}`, `Text comment by ${inline[1]}`);
   return title;
-}
-function InfoIcon() {
-  return <Check size={18} />;
 }
 // Who else has the page open: avatars pop in when someone arrives and
 // shrink away when they leave.
@@ -5101,17 +5238,21 @@ function RowTrash({
 }
 
 // Cell changes on their way to the server, shown in the views meanwhile.
-function withPendingCells(
-  rows: Row[],
-  pending: { pageId: string; rowId: string; cells: Record<string, unknown> }[],
-  pageId: string,
-) {
-  const mine = pending.filter((p) => p.pageId === pageId);
-  if (!mine.length) return rows;
-  return rows.map((r) => {
-    const changes = mine.filter((p) => p.rowId === r.id);
-    return changes.length
-      ? { ...r, cells: Object.assign({}, r.cells, ...changes.map((c) => c.cells)) }
-      : r;
-  });
+// One optimistic layer (see `mutate`).
+type Layer = {
+  boot?: (boot: Bootstrap) => Bootstrap;
+  page?: (data: PageData) => PageData;
+};
+// A layer that no longer fits (the record is gone) shows nothing instead of
+// breaking the app.
+function safeLayer<T>(apply: (value: T) => T, value: T): T {
+  try {
+    return apply(value);
+  } catch {
+    return value;
+  }
 }
+// Commands sent by "Rückgängig": they offer no undo of their own.
+const undoing = new WeakSet<object>();
+// The commands lib/undo.ts may offer to take back.
+const UNDOABLE = new Set(["page.delete", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve"]);

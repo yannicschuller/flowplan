@@ -191,6 +191,8 @@ import {
 import { IconImagePicker } from "./icon-image-picker";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
+import { rememberViewShape } from "./skeleton";
+import { toastSerial, undoShownSince } from "./toast";
 const EmojiPicker = dynamic(() => loadView(() => import("./emoji-picker")), { ssr: false });
 import { cellText, computedCells, queryRows } from "@/lib/database";
 import type {
@@ -596,6 +598,8 @@ export default function DatabaseView({
     () => setSelection(new Map()),
     [view.id, query, JSON.stringify(effectiveFilterGroup(view))],
   );
+  // The next placeholder of this database has the shape of this view.
+  useEffect(() => rememberViewShape(page.id, view.type), [page.id, view.type]);
   const activeFilterCount = filterCount(effectiveFilterGroup(view));
   const selectionRows = data.rows.filter((r) => selection.has(r.id));
   function selectRow(row: Row, enabled: boolean) {
@@ -621,10 +625,13 @@ export default function DatabaseView({
   async function recordsAction(rowIds: string[], operation: "duplicate" | "delete") {
     const list = data.rows.filter((r) => rowIds.includes(r.id));
     if (operation === "delete" && list.length > 1 && !window.confirm(t(`${list.length} Einträge löschen?`, `Delete ${list.length} records?`))) return;
+    const since = toastSerial();
+    if (operation === "delete") setSelection(new Map());
     const result = await act({ action: "rows.bulk", operation, rows: list.map((r) => ({ id: r.id, version: r.version })) });
     if (result) {
       setSelection(new Map());
-      if (list.length > 1 || operation === "delete")
+      // The workspace offers "Rückgängig" for the deletion itself.
+      if ((list.length > 1 || operation === "delete") && !undoShownSince(since))
         onError(
           operation === "delete"
             ? t(`${list.length} ${list.length === 1 ? "Eintrag" : "Einträge"} in den Papierkorb gelegt.`, `${list.length} ${list.length === 1 ? "record" : "records"} moved to the trash.`)
@@ -634,6 +641,7 @@ export default function DatabaseView({
   }
   async function bulkAction(operation: "update" | "duplicate" | "delete") {
     setBulkBusy(true);
+    const since = toastSerial();
     const result = await act({
       action: "rows.bulk",
       operation,
@@ -647,7 +655,8 @@ export default function DatabaseView({
     if (result) {
       setSelection(new Map());
       setBulk(null);
-      onError(
+      if (!undoShownSince(since))
+        onError(
         t(`${selectionRows.length} Einträge ${operation === "update" ? "aktualisiert" : operation === "duplicate" ? "dupliziert" : "gelöscht"}. Vorheriger Stand im Versionsverlauf gesichert.`, `${selectionRows.length} records ${operation === "update" ? "updated" : operation === "duplicate" ? "duplicated" : "deleted"}. The previous state was saved in the version history.`),
       );
     }
@@ -2492,6 +2501,7 @@ export default function DatabaseView({
     <div
       className="database"
       ref={boardRef}
+      data-database-page={page.id}
       onContextMenu={(e) => {
         // Records (rows, cards, list items) get their own menu; fields
         // being edited keep the browser's.
@@ -4977,17 +4987,20 @@ export default function DatabaseView({
                     className="button danger"
                     disabled={schemaBusy}
                     onClick={async () => {
+                      // Closes at once; a refusal opens the draft again.
+                      setNewField(false);
                       const result = await updateSchema(
                         fields.filter((f) => f.id !== fieldDraft.id),
                         undefined,
                         undefined,
                         fieldVersion,
                       );
-                      if (result) setNewField(false);
-                      else
+                      if (!result) {
+                        setNewField(true);
                         setFieldError(
                           t("Die Eigenschaft konnte nicht gelöscht werden. Dein Entwurf bleibt erhalten.", "The property could not be deleted. Your draft is kept."),
                         );
+                      }
                     }}
                   >
                     {t("Löschen", "Delete")}
@@ -5492,12 +5505,15 @@ export default function DatabaseView({
                     onSubmit={async (e) => {
                       e.preventDefault();
                       if (comment.trim()) {
-                        await act({
+                        // Shows at once; a refusal brings the text back.
+                        const body = comment;
+                        setComment("");
+                        const sent = await act({
                           action: "comment.create",
                           rowId: selected.id,
-                          body: comment,
+                          body,
                         });
-                        setComment("");
+                        if (!sent) setComment((now) => now || body);
                       }
                     }}
                   >
@@ -5514,9 +5530,11 @@ export default function DatabaseView({
             {selectedEditable && (
               <button
                 className="button danger"
-                onClick={async () => {
-                  await act({ action: "row.delete", rowId: selected.id });
+                onClick={() => {
+                  // Gone at once; "Rückgängig" in the toast brings it back.
+                  const id = selected.id;
                   setRowId(null);
+                  void act({ action: "row.delete", rowId: id });
                 }}
               >
                 <Trash />

@@ -5,6 +5,7 @@ import { useT, useLocale } from "./i18n";
 import { localeTag } from "@/lib/i18n";
 import { Select } from "./select";
 import { api, PageIcon } from "./ui";
+import { ListSkeleton } from "./skeleton";
 import type { CrossFilter } from "@/lib/cross-records";
 
 type Record_ = { pageId: string; database: string; icon: string; rowId: string; key: string; title: string; status: string; due: string | null; done: boolean };
@@ -129,7 +130,7 @@ export function MyRecords({
         )}
       </div>
       {!result ? (
-        <p className="muted">{t("Wird geladen …", "Loading …")}</p>
+        <ListSkeleton rows={4} />
       ) : !result.records.length ? (
         <p className="muted empty-state">
           {filter.mine
