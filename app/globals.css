@@ -19600,6 +19600,27 @@ h3 .block-reactions {
 .document-outline {
   right: calc(20px + var(--safe-right));
 }
+/* A side panel (comments, AI summary) sits at the right edge: the table of
+   contents moves left of it instead of covering it; on phones the panel
+   covers the page, so the table of contents gives way. */
+.page-layout:has(> .comments-panel) .document-outline {
+  right: calc(300px + 20px + var(--safe-right));
+  /* Less room beside the text: a card over it, as on narrower screens. */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+@media (max-width: 1000px) {
+  .page-layout:has(> .comments-panel) .document-outline {
+    right: calc(270px + 20px + var(--safe-right));
+  }
+}
+@media (max-width: 767px) {
+  .page-layout:has(> .comments-panel) .document-outline {
+    display: none;
+  }
+}
 .pdf-viewer,
 .presentation {
   padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);

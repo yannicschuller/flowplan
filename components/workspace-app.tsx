@@ -512,6 +512,34 @@ export default function WorkspaceApp({
     // A page from the tree is being dragged: the drop zone at the right edge shows.
     [pageDrag, setPageDrag] = useState(false),
     [splitDropOver, setSplitDropOver] = useState(false);
+  // The drag of a tree entry ended (its dragend), even before pageDrag was set.
+  const pageDragEnded = useRef(true);
+  // The tree entry's dragend does not arrive when the entry is re-rendered or
+  // removed during the drag (moved in the tree, list refreshed): any end of
+  // a drag on the page – or the pointer moving again without a button,
+  // which only happens once no drag is running – hides the drop zone.
+  useEffect(() => {
+    if (!pageDrag) return;
+    const end = () => {
+      pageDragEnded.current = true;
+      setPageDrag(false);
+      setSplitDropOver(false);
+    };
+    const moved = (e: MouseEvent) => {
+      if (e.buttons === 0) end();
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && end();
+    document.addEventListener("dragend", end, true);
+    document.addEventListener("drop", end);
+    document.addEventListener("mousemove", moved, true);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("dragend", end, true);
+      document.removeEventListener("drop", end);
+      document.removeEventListener("mousemove", moved, true);
+      document.removeEventListener("keydown", key, true);
+    };
+  }, [pageDrag]);
   // Shortcut hints: only with a keyboard, written for this device's system
   // (⌘ on Apple devices, Ctrl elsewhere) – lib/keyboard-hints.ts.
   const keyHints = useKeyboardHints(),
@@ -1783,10 +1811,15 @@ export default function WorkspaceApp({
                 e.dataTransfer.setData("text/uri-list", `${location.origin}${href}`);
                 e.dataTransfer.effectAllowed = "copyMove";
                 // After the drag has begun: changing the page during
-                // dragstart can cancel it.
-                setTimeout(() => setPageDrag(true));
+                // dragstart can cancel it – and not when a short drag has
+                // already ended by then.
+                pageDragEnded.current = false;
+                setTimeout(() => {
+                  if (!pageDragEnded.current) setPageDrag(true);
+                });
               }}
               onDragEnd={() => {
+                pageDragEnded.current = true;
                 setTreeDrop(null);
                 setPageDrag(false);
               }}
