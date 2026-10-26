@@ -26,6 +26,7 @@
     "sdk": "node --import tsx scripts/generate-sdk.mjs",
     "extension:zip": "node scripts/extension-zip.mjs",
     "quality": "node scripts/quality-check.mjs",
+    "showcase": "node --import tsx scripts/showcase-workspace.mts",
     "test:visual": "playwright test --config playwright.visual.config.ts",
     "test:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots"
   },
