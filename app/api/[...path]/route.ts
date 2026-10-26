@@ -516,8 +516,11 @@ async function handleGET(
       return NextResponse.json(
         withActivity(
           user,
-          // Offline refreshes (X-Flowplan-Offline) do not count as presence.
-          pageData(user, path[1], { presence: req.headers.get("x-flowplan-offline") !== "1" }),
+          // Offline refreshes (X-Flowplan-Offline) and loading ahead on hover
+          // (X-Flowplan-Prefetch, components/prefetch.ts) do not count as presence.
+          pageData(user, path[1], {
+            presence: req.headers.get("x-flowplan-offline") !== "1" && req.headers.get("x-flowplan-prefetch") !== "1",
+          }),
           req.headers.get("x-flowplan-visit") === "1",
         ),
       );

@@ -1,5 +1,4 @@
 "use client";
-import { tr } from "@/lib/locale-tag";
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -13,9 +12,10 @@ import { LinkedDatabase } from "@/lib/document-schema";
 import type { Page, User, Role } from "@/lib/types";
 import type { DatabaseData } from "./database-view";
 import { api } from "./ui";
+import { ViewSkeleton } from "./skeleton";
 const DatabaseView = dynamic(() => loadView(() => import("./database-view")), {
   ssr: false,
-  loading: () => <p>{tr("Ansicht wird geöffnet …", "Opening view …")}</p>,
+  loading: () => <ViewSkeleton />,
 });
 export type LinkedEditorContext = {
   pageId: string;
@@ -146,7 +146,7 @@ function LinkedDatabaseView({
           </button>
         </div>
       )}
-      {!data && !error && <p>{t("Einbettung wird gespeichert und geladen …", "Saving and loading embed …")}</p>}
+      {!data && !error && <ViewSkeleton />}
       {data && (
         <div className="linked-database-body">
           <DatabaseView

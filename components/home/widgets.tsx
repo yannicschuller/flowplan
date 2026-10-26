@@ -23,6 +23,7 @@ import {
   Play,
 } from "@phosphor-icons/react";
 import { useLocale, useT } from "../i18n";
+import { WidgetSkeleton } from "../skeleton";
 import { PageIcon } from "../ui";
 import { Sparkline } from "../sparkline";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -168,15 +169,9 @@ function More({ onClick, children }: { onClick: () => void; children: ReactNode 
 function useResult(widget: HomeWidget) {
   return useEnv().data[widget.id];
 }
+// In the shape of a widget's list (components/skeleton.tsx).
 function Loading() {
-  const t = useT();
-  return (
-    <div className="home-loading" role="status" aria-label={t("Wird geladen …", "Loading …")}>
-      <i />
-      <i />
-      <i />
-    </div>
-  );
+  return <WidgetSkeleton />;
 }
 function Failed({ result }: { result: Extract<WidgetResult, { ok: false }> }) {
   const t = useT();
@@ -329,7 +324,7 @@ function RecentWidget({ widget, config }: Props<"recent">) {
       {config.style === "cards" ? (
         <div className="recent-grid">
           {shown.map(({ page: p, at }, i) => (
-            <button key={p.id} type="button" className="recent-card" onClick={() => env.openPage(p.id)}>
+            <button key={p.id} type="button" className="recent-card" data-prefetch-page={p.id} onClick={() => env.openPage(p.id)}>
               <div className={`recent-illustration illustration-${i % 4}`}>
                 <PageIcon name={p.kind === "database" ? "table" : p.icon} size={38} />
                 {p.kind === "database" ? (
@@ -359,7 +354,7 @@ function RecentWidget({ widget, config }: Props<"recent">) {
       ) : (
         <div className="visited-list">
           {shown.map(({ page: p, at }) => (
-            <button key={p.id} type="button" onClick={() => env.openPage(p.id)}>
+            <button key={p.id} type="button" data-prefetch-page={p.id} onClick={() => env.openPage(p.id)}>
               <PageIcon name={p.icon} size={16} />
               <span>{p.title || t("Ohne Titel", "Untitled")}</span>
               <small>{when(at)}</small>
@@ -425,7 +420,7 @@ function PagesWidget({ widget, config }: Props<"pages">) {
       />
       {!top.length && <Empty>{t("Hier gibt es noch keine Seiten.", "There are no pages here yet.")}</Empty>}
       {top.map((p) => (
-        <button key={p.id} type="button" className="home-page-row" onClick={() => env.openPage(p.id)}>
+        <button key={p.id} type="button" className="home-page-row" data-prefetch-page={p.id} onClick={() => env.openPage(p.id)}>
           <span className="page-row-icon">
             <PageIcon name={p.icon} size={20} />
           </span>
@@ -451,7 +446,7 @@ function FavoritesWidget({ widget, config }: Props<"favorites">) {
       <ul className="home-list">
         {pages.slice(0, config.max).map((p) => (
           <li key={p.id}>
-            <button type="button" onClick={() => env.openPage(p.id)}>
+            <button type="button" data-prefetch-page={p.id} onClick={() => env.openPage(p.id)}>
               <PageIcon name={p.icon} size={16} />
               <span>{p.title || t("Ohne Titel", "Untitled")}</span>
             </button>

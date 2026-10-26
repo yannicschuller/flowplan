@@ -7,6 +7,8 @@ import { ViewBoundary, loadView } from "@/components/view-fallback";
 import { Clock, CloudSlash, Plus, SquaresFour } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
 import { VersionChanges } from "./version-changes";
+import { RecordSkeleton } from "./skeleton";
+import { appCache, recordCachePolicy, rowKey } from "@/lib/swr-cache";
 import type { Page, User } from "@/lib/types";
 import type { SaveStatus } from "@/lib/save-status";
 const DocumentEditor = dynamic(() => loadView(() => import("./editor")), { ssr: false });
@@ -38,7 +40,11 @@ export default function RowDocument({
   const t = useT();
   const statusLabel = useStatusLabel();
   // Saving state as a key (lib/save-status.ts), put into words where shown.
-  const [data, setData] = useState<RowDocumentData | null>(null),
+  // A record opened (or loaded ahead) recently shows at once; the editor's
+  // sync and the reload below bring it up to date (lib/swr-cache.ts).
+  const [data, setData] = useState<RowDocumentData | null>(
+      () => (typeof window === "undefined" ? null : appCache().get<RowDocumentData>(rowKey(pageId, rowId))?.value ?? null),
+    ),
     [status, setStatus] = useState<SaveStatus>("loading"),
     [history, setHistory] = useState(false),
     [changes, setChanges] = useState<string | null>(null),
@@ -50,6 +56,8 @@ export default function RowDocument({
     const next = await api<RowDocumentData>(
       `/api/pages/${pageId}/rows/${rowId}`,
     );
+    const cache = appCache();
+    cache.set(rowKey(pageId, rowId), next, { policy: recordCachePolicy(cache, pageId) });
     setData((previous) =>
       previous?.generation === next.generation
         ? { ...previous, snapshots: next.snapshots }
@@ -139,7 +147,7 @@ export default function RowDocument({
           <p>{t("Er wird geladen, sobald du wieder online bist.", "It loads as soon as you are back online.")}</p>
         </div>
       ) : (
-        <p className="muted">{t("Dokument wird geladen …", "Loading document …")}</p>
+        <RecordSkeleton properties={false} />
       )}
       <Modal
         open={history}

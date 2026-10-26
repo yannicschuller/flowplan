@@ -12,6 +12,7 @@ import { tr } from "@/lib/locale-tag";
 import { nativeApp, nativeRefresh, nativeSaveFile } from "@/lib/native-app";
 import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
+import { ViewShapeBody, type ViewShape } from "./skeleton";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -296,14 +297,17 @@ export function ErrorAlert({
 }
 // Placeholder while a page opens: the outline of a document or a table
 // with a soft shimmer (still for reduced motion).
+// A database shows the shape of the view it opens with (the one seen last).
 export function PageSkeleton({
   kind = "document",
   label,
   compact = false,
+  view,
 }: {
   kind?: "document" | "database";
   label?: string;
   compact?: boolean;
+  view?: ViewShape;
 }) {
   const t = useT();
   return (
@@ -328,16 +332,10 @@ export function PageSkeleton({
           </>
         )}
         {kind === "database" ? (
-          <div className="sk-table">
+          <>
             <span className="sk sk-tabs" />
-            {Array.from({ length: 6 }, (_, i) => (
-              <div className="sk-row" key={i}>
-                <span className="sk" />
-                <span className="sk" />
-                <span className="sk" />
-              </div>
-            ))}
-          </div>
+            <ViewShapeBody type={view} />
+          </>
         ) : (
           [92, 100, 84, 96, 60, 0, 88, 72].map((w, i) =>
             w ? (

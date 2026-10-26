@@ -81,6 +81,14 @@ export default function Login({
       {t("Angemeldet bleiben", "Stay signed in")}
     </label>
   );
+  // Signed out (or the session ended): nothing of the last person stays in
+  // the tab's cache of recent pages (lib/swr-cache.ts).
+  useEffect(() => {
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--)
+        if (sessionStorage.key(i)?.startsWith("flowplan:swr:")) sessionStorage.removeItem(sessionStorage.key(i)!);
+    } catch {}
+  }, []);
   useEffect(() => {
     const request = new URLSearchParams(location.search).get("desktop") || "";
     const desktopReturn = /^[A-Za-z0-9_-]{43}$/.test(request) ? `/api/auth/desktop?challenge=${request}` : "";

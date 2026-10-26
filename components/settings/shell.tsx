@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { ArrowLeft, CaretRight, MagnifyingGlass, type Icon } from "@phosphor-icons/react";
 import { parseSettingsHash, settingsHash, matchesQuery, type GroupMeta, type SettingsArea, type SettingsRoute, type Text } from "@/lib/settings-sections";
+import { SettingsSkeleton } from "../skeleton";
 import { useT } from "../i18n";
 import { StatusBadge, type Tone } from "../settings-ui";
 import { Sparkline } from "../sparkline";
@@ -58,12 +59,12 @@ export function useSettingsRoute(area: SettingsArea): SettingsRoute {
   return route;
 }
 
+// A section loads: its outline (heading, groups of settings).
 export function AdminLoading() {
-  const t = useT();
   return (
-    <p className="settings-loading" role="status">
-      {t("Wird geladen …", "Loading …")}
-    </p>
+    <div className="settings-loading">
+      <SettingsSkeleton />
+    </div>
   );
 }
 
