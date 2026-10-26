@@ -38,6 +38,7 @@ import {
 import { sendTestPush } from "@/lib/push-test";
 import { listPageTemplates } from "@/lib/page-templates";
 import { fileResponse } from "@/lib/file-response";
+import { MAX_PLACEHOLDER_IDS, placeholderForUpload, placeholdersFor, storePlaceholder } from "@/lib/image-placeholders";
 import { publicFile } from "@/lib/publication";
 import { withShareRequest } from "@/lib/share-access";
 import { requireRow, rowDocumentData } from "@/lib/row-documents";
@@ -905,6 +906,13 @@ async function handleGET(
         },
       });
     }
+    // Image placeholders (size and ThumbHash) of files and profile pictures
+    // this person may see: ?ids=<file id>,avatar:<user id>,…
+    if (path.length === 2 && path[0] === "files" && path[1] === "placeholders") {
+      const ids = (url.searchParams.get("ids") || "").split(",").filter(Boolean);
+      if (ids.length > MAX_PLACEHOLDER_IDS) throw new HttpError(400, "Ungültige Eingabe.");
+      return NextResponse.json({ placeholders: await placeholdersFor(user, ids) }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (path[0] === "files" && path[1]) {
       const file = one<{
         id: string;
@@ -1121,7 +1129,8 @@ async function handlePOST(
         user.id,
       );
       audit(user.id, "file.upload", p.id, name);
-      return NextResponse.json({ id: fid, url: `/api/files/${fid}`, name, mime: image.type });
+      const placeholder = await placeholderForUpload(fid, image.type, p.id, image.data);
+      return NextResponse.json({ id: fid, url: `/api/files/${fid}`, name, mime: image.type, ...(placeholder ? { placeholder } : {}) });
     }
     // Voice notes: the recording goes to the local Whisper service.
     if (path.length === 1 && path[0] === "transcribe") {
@@ -1340,11 +1349,17 @@ async function handlePOST(
         user.id,
       );
       audit(user.id, "file.upload", pageId, name);
+      // The size and blurred picture shown while the image loads; encrypted
+      // files are never looked into.
+      let placeholder = null;
+      if (encrypted) storePlaceholder(fid, null);
+      else placeholder = await placeholderForUpload(fid, mime, pageId, content);
       return NextResponse.json({
         id: fid,
         url: `/api/files/${fid}`,
         name,
         mime,
+        ...(placeholder ? { placeholder } : {}),
       });
     }
     throw new HttpError(404, "Nicht gefunden.");

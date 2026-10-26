@@ -1,6 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { useState } from "react";
+import { useImagePlaceholder } from "./image-placeholder";
 export function GalleryCover({
   url,
   fit,
@@ -12,6 +13,8 @@ export function GalleryCover({
 }) {
   const t = useT();
   const [failed, setFailed] = useState(false);
+  // Uploaded images: their blurred placeholder until they have loaded.
+  const placeholder = useImagePlaceholder(url && !failed ? url : null, { fit });
   return (
     <span
       className="gallery-cover"
@@ -19,7 +22,7 @@ export function GalleryCover({
       style={
         !url && color && /^#[0-9a-f]{6}$/i.test(color)
           ? { background: color }
-          : undefined
+          : placeholder.frameStyle
       }
     >
       {url && !failed ? (
@@ -30,6 +33,7 @@ export function GalleryCover({
           draggable={false}
           style={{ objectFit: fit }}
           onError={() => setFailed(true)}
+          {...placeholder.imgProps}
         />
       ) : (
         !color && <span className="muted">{t("Kein Bild", "No image")}</span>

@@ -2,7 +2,8 @@
 import { useT } from "../i18n";
 import { pressureOutline } from "@/lib/whiteboard-tools";
 import { LibraryIcon } from "../library-icons";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { placeholderKey, usePlaceholder } from "../image-placeholder";
 import { safeImageSource, type Point, type WhiteboardItem } from "@/lib/whiteboard-model";
 import { connectorGeometry, contentBounds, shapePath } from "@/lib/whiteboard-geometry";
 import { displayText } from "@/lib/field-format";
@@ -259,12 +260,7 @@ export function WhiteboardShape({
         <g transform={transform}>
           {item.credit && <title>{item.credit}</title>}
           {safeImageSource(item.src) ? (
-            <image
-              href={item.src}
-              width={item.w}
-              height={item.h}
-              preserveAspectRatio="xMidYMid meet"
-            />
+            <BoardImage src={item.src!} w={item.w} h={item.h} />
           ) : (
             <rect width={item.w} height={item.h} fill="#f1f3f5" />
           )}
@@ -492,5 +488,40 @@ export function WhiteboardStatic({
           </g>
         ))}
     </svg>
+  );
+}
+
+// An uploaded image on the board: its blurred placeholder in the same box
+// until the image has faded in (components/image-placeholder.ts). Images
+// from the browser's cache appear at once.
+function BoardImage({ src, w, h }: { src: string; w: number; h: number }) {
+  const entry = usePlaceholder(src);
+  const [state, setState] = useState<{ src: string; phase: "loaded" | "instant" | "settled" } | null>(null);
+  const mounted = useRef(0);
+  useEffect(() => {
+    mounted.current = performance.now();
+  }, [src]);
+  useEffect(() => {
+    if (state?.src !== src || state.phase !== "loaded") return;
+    const timer = setTimeout(() => setState({ src, phase: "settled" }), 340);
+    return () => clearTimeout(timer);
+  }, [state, src]);
+  const phase = state?.src === src ? state.phase : null;
+  const fades = !!placeholderKey(src);
+  return (
+    <>
+      {entry?.url && (!phase || phase === "loaded") && (
+        <image href={entry.url} width={w} height={h} preserveAspectRatio="xMidYMid meet" aria-hidden="true" />
+      )}
+      <image
+        href={src}
+        width={w}
+        height={h}
+        preserveAspectRatio="xMidYMid meet"
+        className={fades ? `fp-fade${phase ? " is-loaded" : ""}${phase === "instant" ? " fp-instant" : ""}` : undefined}
+        onLoad={() => setState({ src, phase: performance.now() - mounted.current < 60 ? "instant" : "loaded" })}
+        onError={() => setState({ src, phase: "settled" })}
+      />
+    </>
   );
 }

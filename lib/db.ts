@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 65) return;
+  if (globalDb.flowplanSchema === 66) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -894,7 +894,16 @@ function migrate(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT NOT NULL,key TEXT NOT NULL,user_id TEXT REFERENCES users(id) ON DELETE CASCADE,request_hash TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('processing','done')),http_status INTEGER,response TEXT,stored TEXT NOT NULL DEFAULT 'body' CHECK(stored IN ('body','secret','large')),created_at INTEGER NOT NULL,PRIMARY KEY(scope,key));
     CREATE INDEX IF NOT EXISTS idempotency_keys_created ON idempotency_keys(created_at);
     CREATE INDEX IF NOT EXISTS idempotency_keys_user ON idempotency_keys(user_id);`);
-  globalDb.flowplanSchema = 65;
+  // Schema 66 – placeholders of uploaded images (lib/image-placeholders.ts):
+  // the size they are shown in and a ThumbHash (base64), for files and
+  // profile pictures. thumbhash NULL: not computed yet (filled in when first
+  // asked for); '': nothing to show (no image we read, encrypted space).
+  for (const table of ["files", "user_avatars"]) {
+    const columns = (d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+    for (const [column, type] of [["width", "INTEGER"], ["height", "INTEGER"], ["thumbhash", "TEXT"]])
+      if (!columns.includes(column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+  globalDb.flowplanSchema = 66;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

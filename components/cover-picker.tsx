@@ -14,6 +14,7 @@ import {
 import type { Page } from "@/lib/types";
 import { compressImage } from "@/lib/image-compress";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { primePlaceholder } from "./image-placeholder";
 export function CoverPicker({
   page,
   images,
@@ -122,6 +123,7 @@ export function CoverPicker({
                 const result = await response.json();
                 if (!response.ok)
                   throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
+                primePlaceholder(result.url, result.placeholder);
                 setUploads((prior) => [...prior, result]);
                 setCover(result.url);
                 setPosition(50);

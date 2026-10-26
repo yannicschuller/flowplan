@@ -15,6 +15,7 @@ import { useT } from "./i18n";
 import { LibraryIcon } from "./library-icons";
 import { ViewShapeBody, type ViewShape } from "./skeleton";
 import { SHEET_HANDLE, useSheetDrag } from "./sheet-drag";
+import { useImagePlaceholder } from "./image-placeholder";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -402,6 +403,8 @@ export function Avatar({
   const src =
     (userId && pictures.byId.get(userId)) || pictures.byName.get(name);
   const [broken, setBroken] = useState<string | null>(null);
+  // The picture's blurred placeholder until it has loaded.
+  const placeholder = useImagePlaceholder(src && broken !== src ? src : null);
   const initials = name
     .split(" ")
     .map((n) => n[0])
@@ -413,14 +416,15 @@ export function Avatar({
       title={name}
       className={`avatar ${small ? "small" : ""} ${src && broken !== src ? "has-picture" : ""}`}
       style={{
-        background: ["#e5edff", "#f1e8fb", "#e6f2ed", "#fcebcf"][
+        backgroundColor: ["#e5edff", "#f1e8fb", "#e6f2ed", "#fcebcf"][
           name.charCodeAt(0) % 4
         ],
+        ...placeholder.frameStyle,
       }}
     >
       {src && broken !== src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" loading="lazy" onError={() => setBroken(src)} />
+        <img src={src} alt="" loading="lazy" onError={() => setBroken(src)} {...placeholder.imgProps} />
       ) : (
         initials
       )}

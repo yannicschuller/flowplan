@@ -141,6 +141,7 @@ import {
   writingInField,
 } from "@/lib/stylus";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
+import { primePlaceholder, type PlaceholderInfo } from "../image-placeholder";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -2151,7 +2152,8 @@ export default function Whiteboard({
     const response = await fetch("/api/upload", { method: "POST", body, headers: idempotencyHeaders() });
     const result = await response.json();
     if (!response.ok) throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
-    return result.url as string;
+    primePlaceholder(result.url, result.placeholder);
+    return { url: result.url as string, placeholder: result.placeholder as PlaceholderInfo | undefined };
   }
   const center = () => {
     const rect = svg.current!.getBoundingClientRect();
@@ -2162,8 +2164,9 @@ export default function Whiteboard({
       return onError(t("Nur Bilder können auf das Whiteboard gelegt werden.", "Only images can be placed on the whiteboard."));
     try {
       setStatus(t("Bild wird hochgeladen …", "Uploading image …"));
-      const url = await upload(file);
-      const size = await new Promise<{ w: number; h: number }>((resolve) => {
+      const { url, placeholder } = await upload(file);
+      // The server knows the size; otherwise the browser measures it.
+      const size = placeholder || await new Promise<{ w: number; h: number }>((resolve) => {
         const img = new Image();
         img.onload = () =>
           resolve({ w: img.naturalWidth, h: img.naturalHeight });

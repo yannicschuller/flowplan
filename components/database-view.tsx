@@ -63,6 +63,8 @@ import {
 } from "@/lib/date-values";
 import { defaultGallery, galleryImage } from "@/lib/database-gallery";
 import { GalleryCover } from "./gallery-cover";
+import { CoverFrame } from "./cover-frame";
+import { primePlaceholder } from "./image-placeholder";
 import { ScrollFade } from "./scroll-fade";
 import type { PageImage } from "@/lib/page-appearance";
 import {
@@ -1526,6 +1528,7 @@ export default function DatabaseView({
     const response = await fetch("/api/upload", { method: "POST", body, headers: idempotencyHeaders() });
     const result = await response.json();
     if (!response.ok) throw new Error(serverMessage(result.error) || t("Upload fehlgeschlagen.", "Upload failed."));
+    primePlaceholder(result.url, result.placeholder);
     return result.url as string;
   }
   function display(r: Row, f: Field) {
@@ -5262,18 +5265,7 @@ export default function DatabaseView({
                 </div>
               )}
             {selected.cover && (
-              <div
-                className="row-cover"
-                style={
-                  /^#[0-9a-f]{6}$/i.test(selected.cover)
-                    ? { background: selected.cover }
-                    : undefined
-                }
-              >
-                {!selected.cover.startsWith("#") && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={selected.cover} alt="" />
-                )}
+              <CoverFrame className="row-cover" cover={selected.cover} image={!selected.cover.startsWith("#")}>
                 {selectedEditable && (
                   <button
                     className="button compact cover-change"
@@ -5282,7 +5274,7 @@ export default function DatabaseView({
                     {t("Cover ändern", "Change cover")}
                   </button>
                 )}
-              </div>
+              </CoverFrame>
             )}
             {layoutOpen && editable && allowFieldChanges && (
               <RecordLayoutEditor

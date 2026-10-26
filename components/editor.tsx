@@ -175,6 +175,8 @@ import {
   AnnotatedImage,
 } from "@/lib/document-schema";
 import { compressImage } from "@/lib/image-compress";
+import { primePlaceholder } from "./image-placeholder";
+import { imagePlaceholderView } from "./image-placeholder-view";
 import { boardFileName } from "@/lib/whiteboard-import";
 import { Authorship, authorshipKey, type AuthorShares } from "@/lib/authorship-plugin";
 import { authorColor } from "@/lib/authorship";
@@ -478,10 +480,11 @@ export default function DocumentEditor({
         TableCell,
         TableHeader,
         // Images are resized by their side handles, keeping proportions.
+        // Uploaded images show their blurred placeholder while they load.
         AnnotatedImage.extend({
           addNodeView() {
             const render = this.parent?.();
-            return render ? commentMarkedNodeView(render, "img") : null;
+            return imagePlaceholderView(render ? commentMarkedNodeView(render, "img") : null);
           },
         }).configure({
           allowBase64: false,
@@ -1041,6 +1044,7 @@ export default function DocumentEditor({
       const r = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
       const data = await r.json();
       if (!r.ok) throw new Error(serverMessage(data.error));
+      primePlaceholder(data.url, data.placeholder);
       if (file.type.startsWith("image/"))
         editor
           ?.chain()
@@ -1743,6 +1747,7 @@ export default function DocumentEditor({
     const response = await fetch("/api/upload", { method: "POST", body: form, headers: idempotencyHeaders() });
     const data = await response.json();
     if (!response.ok) throw new Error(serverMessage(data.error));
+    primePlaceholder(data.url, data.placeholder);
     // Without markings the original comes back.
     const attrs = result.shapes
       ? { ...current.attrs, src: data.url, original: result.original, annotations: result.shapes }

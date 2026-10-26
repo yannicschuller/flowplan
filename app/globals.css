@@ -9185,6 +9185,40 @@ textarea {
   }
 }
 
+/* Uploaded images fade in over their blurred placeholder, which already
+   holds their place (components/image-placeholder.ts). */
+.fp-fade {
+  opacity: 0;
+  transition: opacity 0.28s var(--ease-out);
+}
+.fp-fade.is-loaded {
+  opacity: 1;
+}
+.fp-fade.fp-instant {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-fade {
+    transition: none;
+  }
+}
+@media print {
+  .fp-fade {
+    opacity: 1;
+  }
+}
+.document-editor [data-resize-wrapper] {
+  border-radius: 7px;
+}
+/* Images of read-only documents sit in a frame for the placeholder. */
+.fp-image-frame {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  line-height: 0;
+  border-radius: 7px;
+}
+
 /* Switching database views cross-fades (React <ViewTransition>). The rest
    of the page swaps without its own fade. */
 ::view-transition-old(root),

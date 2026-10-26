@@ -11,6 +11,8 @@ import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useLocale, useStatusLabel, useT, writeLocaleCookie } from "./i18n";
 import { localeTag, translate, type Locale } from "@/lib/i18n";
 import { BrandMark } from "./brand-mark";
+import { CoverFrame } from "./cover-frame";
+import { clearPlaceholders } from "./image-placeholder";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
 import { WorkspaceIcon } from "./workspace-icon";
@@ -1171,6 +1173,7 @@ export default function WorkspaceApp({
       e.preventDefault();
       // Nothing of this person stays in the tab's cache.
       clearAppCache();
+      clearPlaceholders();
       setSignedOut(true);
     };
     window.addEventListener("keydown", key);
@@ -3024,23 +3027,13 @@ export default function WorkspaceApp({
                   className={`page-content ${data.page.kind === "database" ? "database-page" : ""} ${data.page.kind === "whiteboard" ? "whiteboard-page" : ""} ${data.page.kind === "notebook" ? "notebook-page" : ""} ${data.page.full_width ? "full-width" : ""} font-${data.page.font}`}
                 >
                   {data.page.cover && (
-                    <div
+                    <CoverFrame
                       className="page-cover"
-                      style={{
-                        background: data.page.cover.startsWith("#")
-                          ? data.page.cover
-                          : undefined,
-                      }}
+                      cover={data.page.cover}
+                      image={!!imageFileId(data.page.cover)}
+                      alt={t("Seiten-Cover", "Page cover")}
+                      position={`50% ${data.page.cover_position ?? 50}%`}
                     >
-                      {imageFileId(data.page.cover) && (
-                        <img
-                          src={data.page.cover}
-                          alt={t("Seiten-Cover", "Page cover")}
-                          style={{
-                            objectPosition: `50% ${data.page.cover_position ?? 50}%`,
-                          }}
-                        />
-                      )}
                       {editable && (
                         <button
                           className="button cover-change"
@@ -3049,7 +3042,7 @@ export default function WorkspaceApp({
                           {t("Cover ändern", "Change cover")}
                         </button>
                       )}
-                    </div>
+                    </CoverFrame>
                   )}
                   <div className="document-header">
                     <button

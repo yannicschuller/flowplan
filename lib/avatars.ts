@@ -55,7 +55,9 @@ export async function syncAvatar(userId: string, picture: unknown) {
     const version = createHash("sha256").update(data).digest("hex").slice(0, 16);
     if (one("SELECT 1 FROM users WHERE id=? AND avatar=?", userId, version)) return;
     run(
-      "INSERT INTO user_avatars(user_id,mime,data) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET mime=excluded.mime,data=excluded.data",
+      // A new picture gets its placeholder when first asked for
+      // (lib/image-placeholders.ts).
+      "INSERT INTO user_avatars(user_id,mime,data) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET mime=excluded.mime,data=excluded.data,width=NULL,height=NULL,thumbhash=NULL",
       userId,
       mime,
       data,

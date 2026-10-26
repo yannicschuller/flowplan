@@ -436,6 +436,14 @@ FileInfo = TypedDict("FileInfo", {
     "name": Required[str],
     "mime": Required[str],
     "size": int,
+    "placeholder": "ImagePlaceholder",
+}, total=False)
+
+# Uploaded images: the size they are shown in and a ThumbHash (https://evanw.github.io/thumbhash/, base64) of a blurred preview. Never for files of end-to-end encrypted spaces.
+ImagePlaceholder = TypedDict("ImagePlaceholder", {
+    "w": Required[int],
+    "h": Required[int],
+    "hash": str,  # Missing for types without a preview (AVIF, HEIC)
 }, total=False)
 
 SearchResult = TypedDict("SearchResult", {
@@ -1294,6 +1302,10 @@ UploadFileForm = TypedDict("UploadFileForm", {
     "purpose": Literal["cover", "e2ee"],
 }, total=False)
 
+ImagePlaceholdersQuery = TypedDict("ImagePlaceholdersQuery", {
+    "ids": Required[str],  # Comma-separated file IDs and `avatar:<user ID>` entries
+}, total=False)
+
 ExportDocxQuery = TypedDict("ExportDocxQuery", {
     "page": Required[str],  # Page ID
     "row": str,  # Record ID (one record of the database)
@@ -1763,6 +1775,10 @@ class FlowplanClient:
     def upload_file(self, form: "UploadFileForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> "FileInfo":
         """Upload a file to a page — The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`. (POST /api/upload)"""
         return self._json("POST", "/api/upload", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
+
+    def image_placeholders(self, query: "ImagePlaceholdersQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Placeholders of images — Size and ThumbHash of uploaded images, for showing a blurred preview in the right proportions while the image loads. `ids` lists up to 100 file IDs and `avatar:<user ID>` entries. Only files you may download and profile pictures you may see are answered; anything else is left out, as are files without a placeholder. Placeholders of older files are computed on the first request. (GET /api/files/placeholders)"""
+        return self._json("GET", "/api/files/placeholders", query=dict(query) if query else None, headers=headers)
 
     def avatar(self, user_id: str, headers: Optional[dict[str, str]] = None) -> bytes:
         """Profile picture of a person you share a workspace with (GET /api/avatars/{userId})"""

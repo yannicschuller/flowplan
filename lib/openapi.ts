@@ -842,8 +842,19 @@ const schemas: Record<string, Json> = {
       name: { type: "string" },
       mime: { type: "string" },
       size: { type: "integer" },
+      placeholder: ref("ImagePlaceholder"),
     },
     required: ["id", "url", "name", "mime"],
+  },
+  ImagePlaceholder: {
+    type: "object",
+    description: "Uploaded images: the size they are shown in and a ThumbHash (https://evanw.github.io/thumbhash/, base64) of a blurred preview. Never for files of end-to-end encrypted spaces.",
+    properties: {
+      w: { type: "integer", minimum: 1 },
+      h: { type: "integer", minimum: 1 },
+      hash: { type: "string", description: "Missing for types without a preview (AVIF, HEIC)" },
+    },
+    required: ["w", "h"],
   },
   SearchResult: {
     type: "object",
@@ -1100,6 +1111,7 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   // Files
   { path: "/api/files/{fileId}", method: "get", op: { id: "getFile", tag: "Files", summary: "Download a file", description: "Needs read access to the page the file belongs to. Supports `Range` requests.", params: [p("fileId", "File ID")], ok: { content: "application/octet-stream", description: "The file with its own content type" }, errors: [401, 403, 404] } },
   { path: "/api/upload", method: "post", op: { id: "uploadFile", tag: "Files", summary: "Upload a file to a page", description: "The size limit is the person's upload limit (default 50 MB). Photos lose their location data. `purpose=cover` requires an image. Pages of encrypted spaces take only client-encrypted files with `purpose=e2ee`.", write: true, body: { content: "multipart/form-data", schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, file: { type: "string", format: "binary" }, purpose: { type: "string", enum: ["cover", "e2ee"] } }, required: ["pageId", "file"] }, required: true }, ok: { schema: ref("FileInfo"), description: "The stored file" }, errors: [400, 401, 403, 404, 409, 413] } },
+  { path: "/api/files/placeholders", method: "get", op: { id: "imagePlaceholders", tag: "Files", summary: "Placeholders of images", description: "Size and ThumbHash of uploaded images, for showing a blurred preview in the right proportions while the image loads. `ids` lists up to 100 file IDs and `avatar:<user ID>` entries. Only files you may download and profile pictures you may see are answered; anything else is left out, as are files without a placeholder. Placeholders of older files are computed on the first request.", params: [q("ids", "Comma-separated file IDs and `avatar:<user ID>` entries", { type: "string" }, true)], ok: { schema: { type: "object", properties: { placeholders: { type: "object", additionalProperties: ref("ImagePlaceholder") } }, required: ["placeholders"] }, description: "Placeholders by ID" }, errors: [400, 401] } },
   { path: "/api/avatars/{userId}", method: "get", op: { id: "avatar", tag: "Files", summary: "Profile picture of a person you share a workspace with", params: [p("userId", "User ID")], ok: { content: "image/*", description: "The picture" }, errors: [401, 404] } },
   // Import and export
   { path: "/api/export/docx", method: "get", op: { id: "exportDocx", tag: "Import and export", summary: "A page or record as a Word file", description: "Reads only, so read tokens may use it. `row` picks one record of the database `page`.", params: [q("page", "Page ID", { type: "string", format: "uuid" }, true), q("row", "Record ID (one record of the database)", { type: "string", format: "uuid" })], ok: { content: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", description: "The DOCX file (Content-Disposition: attachment)" }, errors: [400, 401, 403, 404, 413] } },

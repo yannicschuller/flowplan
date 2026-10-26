@@ -597,6 +597,15 @@ export type FileInfo = {
   name: string;
   mime: string;
   size?: number;
+  placeholder?: ImagePlaceholder;
+};
+
+/** Uploaded images: the size they are shown in and a ThumbHash (https://evanw.github.io/thumbhash/, base64) of a blurred preview. Never for files of end-to-end encrypted spaces. */
+export type ImagePlaceholder = {
+  w: number;
+  h: number;
+  /** Missing for types without a preview (AVIF, HEIC) */
+  hash?: string;
 };
 
 export type SearchResult = {
@@ -2423,6 +2432,15 @@ export class FlowplanClient {
     purpose?: "cover" | "e2ee";
   }, options?: RequestOptions): Promise<FileInfo> {
     return this.json<FileInfo>("POST", `/api/upload`, { form, idempotent: true }, options);
+  }
+
+  /** Placeholders of images — Size and ThumbHash of uploaded images, for showing a blurred preview in the right proportions while the image loads. `ids` lists up to 100 file IDs and `avatar:<user ID>` entries. Only files you may download and profile pictures you may see are answered; anything else is left out, as are files without a placeholder. Placeholders of older files are computed on the first request. (GET /api/files/placeholders) */
+  async imagePlaceholders(query: { ids: string }, options?: RequestOptions): Promise<{
+    placeholders: Record<string, ImagePlaceholder>;
+  }> {
+    return this.json<{
+    placeholders: Record<string, ImagePlaceholder>;
+  }>("GET", `/api/files/placeholders`, { query }, options);
   }
 
   /** Profile picture of a person you share a workspace with (GET /api/avatars/{userId}) */
