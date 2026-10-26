@@ -15617,6 +15617,14 @@ h3 .block-reactions {
     border-bottom: 1px solid var(--border);
     padding: 0 0 4px;
   }
+  /* A phone is narrower than the rows: they wrap instead of leaving the
+     screen. */
+  .text-menu.selection .text-menu-reactions,
+  .text-menu.selection .text-menu-format,
+  .text-menu.selection .text-menu-actions {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
 }
 
 /* Record header: how it opens, favorite, permissions and layout as quiet

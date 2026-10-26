@@ -7,7 +7,7 @@
 // offered on right-click, so the menu over a selection stays small.
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { useLocale, useT } from "./i18n";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
   CalendarBlank,
@@ -132,6 +132,24 @@ export function TextMenu({
     const onSelection = () => {
       if (editor.state.selection.empty) setPlace((p) => (p?.mode === "selection" ? null : p));
     };
+    // Touch: selecting by long press or dragging the handles sends no
+    // mouseup; follow the document's selection once it settles.
+    // Only a selection that changed: after an action the same one stays.
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches;
+    let shown = "";
+    const onSelectionChange = () => {
+      const sel = document.getSelection();
+      if (!sel || sel.isCollapsed || !mounted() || !editor.view.dom.contains(sel.anchorNode)) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!mounted()) return;
+        const { from, to } = editor.state.selection;
+        if (`${from}-${to}` === shown) return;
+        shown = `${from}-${to}`;
+        showForSelection();
+      }, 250);
+    };
+    if (coarse) document.addEventListener("selectionchange", onSelectionChange);
     // On the document: layers over the text (block handles) may take the event.
     document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("mouseup", onMouseUp);
@@ -145,6 +163,7 @@ export function TextMenu({
       document.removeEventListener("keyup", onKeyUp);
       document.removeEventListener("contextmenu", onContext);
       editor.off("selectionUpdate", onSelection);
+      if (coarse) document.removeEventListener("selectionchange", onSelectionChange);
     };
   }, [editor]);
   useEffect(() => {
@@ -202,14 +221,46 @@ export function TextMenu({
       current = false;
     };
   }, [place, editor, editable, locale]);
-  // Keep the menu on screen.
+  // Keep the menu on screen – the visible part of it, above the keyboard –
+  // also when its content grows (calculations, a narrow phone).
   const [shift, setShift] = useState({ x: 0, y: 0 });
-  useEffect(() => {
-    if (!place || !menu.current) return setShift({ x: 0, y: 0 });
-    const rect = menu.current.getBoundingClientRect();
-    const x = rect.left < 8 ? 8 - rect.left : rect.right > window.innerWidth - 8 ? window.innerWidth - 8 - rect.right : 0;
-    const y = rect.top < 8 ? (place.mode === "selection" ? rect.height + 44 : 8 - rect.top) : rect.bottom > window.innerHeight - 8 ? window.innerHeight - 8 - rect.bottom : 0;
-    setShift({ x, y });
+  const shiftRef = useRef(shift);
+  shiftRef.current = shift;
+  useLayoutEffect(() => {
+    const el = menu.current;
+    if (!place || !el) {
+      setShift((s) => (s.x || s.y ? { x: 0, y: 0 } : s));
+      return;
+    }
+    const measure = () => {
+      // Where the menu sits without a shift, from its layout size: the
+      // opening animation scales it, so its on-screen box would mislead.
+      const rect = { width: el.offsetWidth, height: el.offsetHeight };
+      const left = place.mode === "selection" ? place.x - rect.width / 2 : place.x + 2;
+      const top = place.mode === "selection" ? place.y - rect.height - 10 : place.y + 2;
+      const vv = window.visualViewport;
+      const minY = (vv?.offsetTop ?? 0) + 8;
+      const maxX = (vv?.width ?? window.innerWidth) - 8;
+      const maxY = (vv ? vv.offsetTop + vv.height : window.innerHeight) - 8;
+      const x = left < 8 || rect.width > maxX - 8 ? 8 - left : left + rect.width > maxX ? maxX - left - rect.width : 0;
+      const y =
+        top < minY
+          ? place.mode === "selection"
+            ? rect.height + 44
+            : minY - top
+          : top + rect.height > maxY
+          ? maxY - top - rect.height
+          : 0;
+      if (x !== shiftRef.current.x || y !== shiftRef.current.y) setShift({ x, y });
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(el);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
   }, [place]);
   if (!editor || !place) return null;
   const { from, to, empty } = editor.state.selection;
