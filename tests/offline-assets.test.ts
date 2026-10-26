@@ -268,3 +268,29 @@ for (const [name, store] of [
     assert.deepEqual(fetched, []);
   });
 }
+
+test("the public fonts and icons the app's page loads are listed after the build's files", (t) => {
+  const dir = fakeBuild("Bld123");
+  const pub = mkdtempSync(join(tmpdir(), "offline-public-"));
+  t.after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(pub, { recursive: true, force: true });
+  });
+  mkdirSync(join(pub, "fonts"));
+  mkdirSync(join(pub, "icons"));
+  writeFileSync(join(pub, "fonts.css"), "x".repeat(7));
+  writeFileSync(join(pub, "fonts", "sans normal.woff2"), "x".repeat(11));
+  writeFileSync(join(pub, "fonts", "LICENSE.txt"), "x");
+  writeFileSync(join(pub, "icons", "icon-192.png"), "x".repeat(13));
+  writeFileSync(join(pub, "sw.js"), "x");
+  const list = buildOfflineAssets(dir, "0.6.0", pub);
+  assert.deepEqual(list.files.slice(-3), [
+    { path: "/fonts.css", size: 7 },
+    { path: "/fonts/sans%20normal.woff2", size: 11 },
+    { path: "/icons/icon-192.png", size: 13 },
+  ]);
+  // The build id stays the build's.
+  assert.equal(list.build, "Bld123");
+  assert.equal(list.bytes, 5 + 100 + 20 + 30 + 60 + 70 + 7 + 11 + 13);
+  assert.deepEqual(buildOfflineAssets(dir, "0.6.0", join(pub, "missing")).files.length, 6);
+});

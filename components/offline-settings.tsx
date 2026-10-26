@@ -16,6 +16,8 @@ import {
   setOfflineRecords,
   type OfflineMarker,
 } from "./offline";
+import { offlineUnsupportedReason } from "@/lib/native-app";
+import { appOfflineBridge } from "@/lib/offline-store";
 
 // Settings → Offline & Geräte. Opt-in per device: the copies contain the
 // workspace's private content.
@@ -32,7 +34,9 @@ export function OfflineSettings({
     [marker, setMarker] = useState<OfflineMarker | null>(null),
     [busy, setBusy] = useState(false),
     [progress, setProgress] = useState<[number, number] | null>(null),
-    [message, setMessage] = useState("");
+    [message, setMessage] = useState(""),
+    // The iPhone and iPad app keeps the copy (lib/offline-store.ts).
+    [inApp, setInApp] = useState(false);
   const load = useCallback(
     () => void offlineMarker().then((m) => setMarker(m?.user === userId ? m : null)),
     [userId],
@@ -42,11 +46,13 @@ export function OfflineSettings({
       setSupported(false);
       return;
     }
+    setInApp(!!appOfflineBridge());
     load();
     window.addEventListener(OFFLINE_CHANGED, load);
     return () => window.removeEventListener(OFFLINE_CHANGED, load);
   }, [load]);
   const enabled = !!marker;
+
   const pagesText = (n: number) =>
     t(`${n} ${n === 1 ? "Seite" : "Seiten"}`, `${n} ${n === 1 ? "page" : "pages"}`);
   async function enable() {
@@ -141,9 +147,21 @@ export function OfflineSettings({
       )}
     >
       {!supported ? (
-        <SettingRow label={t("Auf diesem Gerät", "On this device")} description={t("Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).", "This browser does not support offline use (secure connection and service worker required).")}>
-          <StatusBadge tone="off">{t("Nicht unterstützt", "Not supported")}</StatusBadge>
-        </SettingRow>
+        offlineUnsupportedReason() === "ios-app" ? (
+          <SettingRow
+            label={t("In der App", "In the app")}
+            description={t(
+              "Diese Version der Flowplan-App für iPhone und iPad kann Inhalte noch nicht offline speichern. Aktualisiere die App, um Seiten und Datenbanken auch ohne Verbindung zu öffnen.",
+              "This version of the Flowplan app for iPhone and iPad cannot store content offline yet. Update the app to open pages and databases without a connection.",
+            )}
+          >
+            <StatusBadge tone="off">{t("App aktualisieren", "Update the app")}</StatusBadge>
+          </SettingRow>
+        ) : (
+          <SettingRow label={t("Auf diesem Gerät", "On this device")} description={t("Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).", "This browser does not support offline use (secure connection and service worker required).")}>
+            <StatusBadge tone="off">{t("Nicht unterstützt", "Not supported")}</StatusBadge>
+          </SettingRow>
+        )
       ) : enabled ? (
         <>
           <SettingRow
@@ -157,6 +175,17 @@ export function OfflineSettings({
                 <span className="offline-app" data-testid="offline-app">
                   {appState(marker)}
                 </span>
+                {inApp && (
+                  <>
+                    <br />
+                    <span className="offline-in-app" data-testid="offline-in-app">
+                      {t(
+                        "In der Flowplan-App gespeichert: Ohne Verbindung öffnet die App diese Kopie, Änderungen werden danach abgeglichen.",
+                        "Stored in the Flowplan app: without a connection the app opens this copy, changes are synced afterwards.",
+                      )}
+                    </span>
+                  </>
+                )}
               </span>
             }
           >

@@ -1,5 +1,7 @@
-// Offline use on this device: the service worker keeps copies of the app,
-// the workspace and pages once enabled. Copies are private data, so they are
+// Offline use on this device: copies of the app, the workspace and pages
+// once enabled – in the browser's Cache Storage, served by the service
+// worker, or in the iPhone and iPad app's own storage (lib/offline-store.ts),
+// served by the app and lib/offline-app.ts. Copies are private data, so they are
 // removed when offline use is switched off, on logout and for another user.
 // While the app is open the copy follows the workspace (refreshOffline):
 // only pages and records that changed are fetched again, pages that are
@@ -24,10 +26,9 @@ import {
   staticCacheName,
   type OfflineAssets,
 } from "@/lib/offline-assets";
+import { installAppOffline } from "@/lib/offline-app";
+import { DATA_CACHE, OFFLINE_CHANGED, OFFLINE_MARKER, SETTINGS_CACHE, appOfflineBridge, offlineStore, type OfflineCache, type OfflineStore } from "@/lib/offline-store";
 
-const DATA_CACHE = "flowplan-data-v1",
-  SETTINGS_CACHE = "flowplan-settings",
-  OFFLINE_MARKER = "/__flowplan-offline";
 // Record documents and files never opened here: at most this much.
 export const RECORD_LIMIT = 200 * 1024 * 1024;
 export const PERIODIC_SYNC_TAG = "flowplan-offline";
@@ -62,25 +63,33 @@ export type OfflineApp = {
   space?: boolean;
 };
 
-export const offlineSupported = () =>
+// In the iPhone and iPad app the page answers from the app's copy itself.
+installAppOffline();
+
+const browserSupported = () =>
   typeof window !== "undefined" &&
   window.isSecureContext &&
   "serviceWorker" in navigator &&
   "caches" in window;
+export const offlineSupported = () => !!appOfflineBridge() || browserSupported();
+// The copy's storage; supported() first.
+const store = () => offlineStore() as OfflineStore;
 
 export async function registerServiceWorker() {
-  if (!offlineSupported()) return null;
+  // The app serves its copy itself (and its web view has no service worker).
+  if (appOfflineBridge() || !browserSupported()) return null;
   await navigator.serviceWorker.register("/sw.js", { scope: "/" });
   return navigator.serviceWorker.ready;
 }
 async function notifyWorker() {
+  if (!browserSupported()) return;
   const registration = await navigator.serviceWorker.getRegistration();
   registration?.active?.postMessage({ type: "flowplan-offline" });
   navigator.serviceWorker.controller?.postMessage({ type: "flowplan-offline" });
 }
 export async function offlineMarker(): Promise<OfflineMarker | null> {
   if (!offlineSupported()) return null;
-  const marker = await (await caches.open(SETTINGS_CACHE)).match(OFFLINE_MARKER);
+  const marker = await (await store().open(SETTINGS_CACHE)).match(OFFLINE_MARKER);
   if (!marker) return null;
   try {
     const value = (await marker.json()) as OfflineMarker;
@@ -90,11 +99,14 @@ export async function offlineMarker(): Promise<OfflineMarker | null> {
   }
 }
 async function writeMarker(marker: OfflineMarker) {
-  await (await caches.open(SETTINGS_CACHE)).put(OFFLINE_MARKER, new Response(JSON.stringify(marker)));
+  await (await store().open(SETTINGS_CACHE)).put(
+    OFFLINE_MARKER,
+    new Response(JSON.stringify(marker), { headers: { "Content-Type": "application/json" } }),
+  );
   window.dispatchEvent(new Event(OFFLINE_CHANGED));
 }
 // Fired on window after the marker changed (state line in the settings).
-export const OFFLINE_CHANGED = "flowplan:offline-changed";
+export { OFFLINE_CHANGED };
 export async function offlineOwner(): Promise<string | null> {
   return (await offlineMarker())?.user || null;
 }
@@ -104,10 +116,11 @@ let generation = 0;
 export async function disableOffline() {
   if (!offlineSupported()) return;
   generation++;
-  await (await caches.open(SETTINGS_CACHE)).delete(OFFLINE_MARKER);
-  await caches.delete(DATA_CACHE);
+  const copies = store();
+  await (await copies.open(SETTINGS_CACHE)).delete(OFFLINE_MARKER);
+  await copies.remove(DATA_CACHE);
   // The app's files are of no use without the copy: their room is freed.
-  for (const name of await caches.keys()) if (isStaticCache(name)) await caches.delete(name);
+  for (const name of await copies.names()) if (isStaticCache(name)) await copies.remove(name);
   await unregisterPeriodicSync().catch(() => undefined);
   await notifyWorker();
   window.dispatchEvent(new Event(OFFLINE_CHANGED));
@@ -147,28 +160,21 @@ export async function setOfflineRecords(on: boolean) {
   if (!marker) return;
   await writeMarker({ ...marker, includeRecords: on });
   if (!on) {
-    const data = await caches.open(DATA_CACHE);
-    for (const request of await data.keys()) {
-      const key = keyOf(request);
-      if (isRowKey(key) || isFileKey(key)) await data.delete(request);
-    }
+    const data = await store().open(DATA_CACHE);
+    for (const key of await data.keys()) if (isRowKey(key) || isFileKey(key)) await data.delete(key);
     await writeMarker({ ...marker, includeRecords: false, bytes: await cacheBytes(data) });
   }
 }
 
-const keyOf = (request: Request) => {
-  const url = new URL(request.url);
-  return url.pathname + url.search;
-};
 async function entryBytes(response: Response | undefined) {
   if (!response) return 0;
   const length = Number(response.headers.get("content-length"));
   if (Number.isFinite(length) && length > 0) return length;
   return (await response.blob()).size;
 }
-async function cacheBytes(cache: Cache) {
+async function cacheBytes(cache: OfflineCache) {
   let total = 0;
-  for (const request of await cache.keys()) total += await entryBytes(await cache.match(request));
+  for (const key of await cache.keys()) total += await entryBytes(await cache.match(key));
   return total;
 }
 
@@ -193,8 +199,9 @@ export async function storeApp(
     onFile?: () => void;
   },
 ): Promise<OfflineApp> {
-  const cache = await caches.open(staticCacheName(assets.build));
-  const missing = missingAssets(assets.files, (await cache.keys()).map(keyOf));
+  const copies = store();
+  const cache = await copies.open(staticCacheName(assets.build));
+  const missing = missingAssets(assets.files, await cache.keys());
   const app: OfflineApp = {
     build: assets.build,
     version: assets.version,
@@ -205,10 +212,10 @@ export async function storeApp(
     shell,
   };
   onStart?.(missing.length);
-  const others = (await caches.keys()).filter((name) => isStaticCache(name) && name !== staticCacheName(assets.build));
+  const others = (await copies.names()).filter((name) => isStaticCache(name) && name !== staticCacheName(assets.build));
   const reused = async (path: string) => {
     for (const name of others) {
-      const hit = await (await caches.open(name)).match(path);
+      const hit = await (await copies.open(name)).match(path);
       if (hit) return hit;
     }
     return null;
@@ -217,7 +224,7 @@ export async function storeApp(
   // against the device's room.
   let needed = 0;
   for (const file of missing) if (!(await reused(file.path))) needed += file.size;
-  const estimate = await navigator.storage?.estimate?.().catch(() => null);
+  const estimate = await copies.estimate();
   if (!fitsQuota(needed, estimate)) return { ...app, space: true };
   await inQueue(
     missing.map((file) => file.path),
@@ -243,7 +250,7 @@ export async function storeApp(
   );
   app.complete = app.stored >= app.total;
   if (app.complete && shell)
-    for (const name of staleStaticCaches(await caches.keys(), assets.build)) await caches.delete(name);
+    for (const name of staleStaticCaches(await copies.names(), assets.build)) await copies.remove(name);
   return app;
 }
 // The answer only counts as JSON from a valid session: a 401 or a sign-in
@@ -348,14 +355,15 @@ async function refreshNow({
     // A new release: the app's page is stored again with its new files.
     const newBuild = !!assets?.files?.length && (marker.app?.build !== assets.build || !marker.app?.shell);
     if (!(await live())) return { ...result, status: "disabled" };
-    const data = await caches.open(DATA_CACHE);
+    const copies = store();
+    const data = await copies.open(DATA_CACHE);
     await data.put(`/api/bootstrap?workspace=${workspaceId}`, stored(boot.response, boot.text));
     if (!workspace) await data.put("/api/bootstrap", stored(boot.response, boot.text));
     const drop = async (key: string) => {
       if (await data.delete(key)) result.dropped++;
     };
     // 1. Pages: new and changed ones, drop the ones gone.
-    let keys = (await data.keys()).map(keyOf);
+    let keys = await data.keys();
     const pages = planPages({ keys, readable: changes.pages, changed: changes.changed, full: everything });
     for (const key of pages.drop) await drop(key);
     total += pages.fetch.length;
@@ -387,9 +395,13 @@ async function refreshNow({
         const html = response.ok ? await response.text() : "";
         if (html.includes('data-signed-out=""')) throw new SignedOut();
         if (html && (await live())) {
-          const statics = await caches.open(assets ? staticCacheName(assets.build) : LEGACY_STATIC_CACHE);
+          const statics = await copies.open(assets ? staticCacheName(assets.build) : LEGACY_STATIC_CACHE);
           const found = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&")))];
-          for (const asset of found) if (!(await statics.match(asset))) await statics.add(asset).catch(() => undefined);
+          for (const asset of found)
+            if (!(await statics.match(asset)))
+              await fetch(asset, { credentials: "same-origin", headers: { [OFFLINE_HEADER]: "1" } })
+                .then((answer) => (answer.ok ? statics.put(asset, answer) : undefined))
+                .catch(() => undefined);
           await data.put("/", stored(response, html));
           shell = true;
         } else if (!html) incomplete = true;
@@ -422,7 +434,7 @@ async function refreshNow({
     }
 
     // 2. Record documents of the stored databases.
-    keys = (await data.keys()).map(keyOf);
+    keys = await data.keys();
     const rows: Record<string, string[]> = {};
     for (const key of keys.filter(isPageKey)) {
       const id = key.slice("/api/pages/".length);
@@ -447,7 +459,7 @@ async function refreshNow({
     // Records never opened, within the limit.
     const fits = async (size: number) => {
       if (extraBytes + size > RECORD_LIMIT) return false;
-      const estimate = await navigator.storage?.estimate?.().catch(() => null);
+      const estimate = await copies.estimate();
       return !estimate?.quota || estimate.quota - (estimate.usage || 0) > size + 20 * 1024 * 1024;
     };
     if (includeRecords && records.add.length) {
@@ -466,7 +478,7 @@ async function refreshNow({
     }
 
     // 3. Files: drop the ones no stored page refers to, add the others.
-    keys = (await data.keys()).map(keyOf);
+    keys = await data.keys();
     const referenced = new Set<string>();
     for (const key of keys) {
       if (!key.startsWith("/api/pages/") && !key.startsWith("/api/bootstrap")) continue;
@@ -507,7 +519,7 @@ async function refreshNow({
       });
     }
     if (!(await live())) return { ...result, status: "disabled" };
-    const pageCount = (await data.keys()).map(keyOf).filter(isPageKey).length;
+    const pageCount = (await data.keys()).filter(isPageKey).length;
     const current = (await offlineMarker()) || marker;
     await writeMarker({
       ...current,
@@ -525,9 +537,10 @@ async function refreshNow({
     throw error;
   } finally {
     // Switched off meanwhile: nothing fetched may stay behind.
-    if (started !== generation || !(await offlineMarker())) {
-      await caches.delete(DATA_CACHE).catch(() => undefined);
-      for (const name of await caches.keys().catch(() => [])) if (isStaticCache(name)) await caches.delete(name);
+    if (started !== generation || !(await offlineMarker().catch(() => null))) {
+      const copies = store();
+      await copies.remove(DATA_CACHE).catch(() => undefined);
+      for (const name of await copies.names().catch(() => [])) if (isStaticCache(name)) await copies.remove(name).catch(() => undefined);
     }
   }
 }
@@ -541,6 +554,7 @@ type PeriodicSyncRegistration = ServiceWorkerRegistration & {
   };
 };
 export async function registerPeriodicSync() {
+  if (!browserSupported() || appOfflineBridge()) return false;
   try {
     const registration = (await navigator.serviceWorker.ready) as PeriodicSyncRegistration;
     if (!registration.periodicSync) return false;
@@ -553,6 +567,7 @@ export async function registerPeriodicSync() {
   }
 }
 async function unregisterPeriodicSync() {
+  if (!browserSupported()) return;
   const registration = (await navigator.serviceWorker.getRegistration()) as PeriodicSyncRegistration | undefined;
   await registration?.periodicSync?.unregister(PERIODIC_SYNC_TAG);
 }
