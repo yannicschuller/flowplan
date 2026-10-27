@@ -69,6 +69,11 @@ import {
   UploadSimple,
   DotsNine,
   DotsThree,
+  Books,
+  ChartBarHorizontal,
+  Code,
+  ClipboardText,
+  PlayCircle,
 } from "@phosphor-icons/react";
 import { Modal, api } from "../ui";
 import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
@@ -142,6 +147,12 @@ import {
 } from "@/lib/stylus";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { primePlaceholder, type PlaceholderInfo } from "../image-placeholder";
+// Diagrams: shape library, Mermaid/PlantUML import, prototypes, timelines.
+import { BoardContext, type BoardApi, type DiagramPanel } from "./board-context";
+import { DIAGRAM_FILE, DiagramPanels, DiagramStyleControls, copyMermaid, dropDiagramFile, pasteDiagram } from "./diagram-panels";
+import { LIBRARY_DRAG_TYPE, dropLibraryShape, insertLibraryShape } from "./shape-library";
+import { PrototypeBadges } from "./prototype-player";
+import { remapLink } from "@/lib/whiteboard-diagram-model";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -375,6 +386,7 @@ export default function Whiteboard({
     [layout, setLayout] = useState<{ dock: boolean; menu: boolean }>({ dock: false, menu: false }),
     [moreOpen, setMoreOpen] = useState(false),
     [actionsOpen, setActionsOpen] = useState(false);
+  const [diagram, setDiagram] = useState<DiagramPanel | null>(null);
   const container = useRef<HTMLDivElement>(null),
     svg = useRef<SVGSVGElement>(null),
     gesture = useRef<Gesture | null>(null),
@@ -1158,6 +1170,8 @@ export default function Whiteboard({
                   ? { ...e, id: ids.get(e.id) }
                   : { x: e.x + offset, y: e.y + offset };
           }
+        // Click links to frames copied along point to the copies.
+        Object.assign(copy, remapLink(copy, ids));
         delete copy.id;
         for (const [key, value] of Object.entries(copy))
           if (value !== undefined) map.set(key, value);
@@ -1925,6 +1939,7 @@ export default function Whiteboard({
     }
     if (item?.type === "card" && item.pageId) return onOpenPage(item.pageId);
     if (!editable) return;
+    if (item?.type === "timeline" && !item.locked) return setDiagram({ kind: "timeline", id: item.id });
     if (item?.type === "table" && !item.locked) {
       const cells = item.cells?.length ? item.cells : [[""]];
       const cols = Math.max(1, ...cells.map((r) => r.length));
@@ -2201,6 +2216,11 @@ export default function Whiteboard({
       return;
     }
     const text = e.clipboardData.getData("text/plain").trim();
+    // Mermaid and PlantUML become editable diagrams.
+    if (text && pasteDiagram(boardApi, text, t)) {
+      e.preventDefault();
+      return;
+    }
     if (text && !clipboard.length) {
       e.preventDefault();
       const at = center();
@@ -2303,6 +2323,33 @@ export default function Whiteboard({
       onPointerDown={(e) => onHandleDown(e, item, name)}
     />
   );
+  const boardApi: BoardApi = {
+    pageId,
+    editable,
+    zoom: view.zoom,
+    dock: layout.dock,
+    items,
+    byId,
+    live: (id) => {
+      const map = itemsMap.get(id);
+      return map instanceof Y.Map ? ({ ...(map.toJSON() as WhiteboardItem), id }) : undefined;
+    },
+    selection,
+    select: (ids) => setSelection(new Set(ids)),
+    transact: change,
+    setProps,
+    stopCapturing: () => undo.stopCapturing(),
+    insertDrafts: (drafts, at) => insertDrafts(drafts, at),
+    fit: (list) => fitToContent(list),
+    center,
+    pages,
+    onError,
+    open: setDiagram,
+    close: () => {
+      setDiagram(null);
+      requestAnimationFrame(() => container.current?.focus({ preventScroll: true }));
+    },
+  };
   const stylePanel =
     editable &&
     selected.length > 0 &&
@@ -2533,6 +2580,7 @@ export default function Whiteboard({
                 </button>
               </>
             )}
+          <DiagramStyleControls board={boardApi} selected={selected} />
           <span className="wb-sep" />
           <button
             aria-label={t("Nach vorne", "Bring forward")}
@@ -2745,6 +2793,8 @@ export default function Whiteboard({
         { key: "media", label: t("Bilder und Symbole suchen", "Search images and icons"), title: t("Bilder (Openverse) und Symbole", "Images (Openverse) and icons"), icon: <MagnifyingGlass size={18} />, run: () => setImagesOpen(true) },
         { key: "emoji", label: t("Emoji", "Emoji"), title: t("Emoji oder Sticker", "Emoji or sticker"), icon: <Smiley size={18} />, run: () => setEmojiOpen(true) },
         { key: "card", label: t("Seite verknüpfen", "Link page"), title: t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard"), icon: <FileText size={18} />, run: () => setCardOpen(true) },
+        { key: "library", label: t("Formenbibliothek", "Shape library"), title: t("Formenbibliothek: Flussdiagramm, BPMN, UML, ER, Organigramm, Netzwerk, Cloud, Wireframes", "Shape library: flowchart, BPMN, UML, ER, org chart, network, cloud, wireframes"), icon: <Books size={18} />, active: diagram?.kind === "library", run: () => setDiagram((d) => (d?.kind === "library" ? null : { kind: "library" })) },
+        { key: "timeline", label: t("Zeitleiste", "Timeline"), title: t("Zeitleiste (Roadmap) einfügen", "Insert timeline (roadmap)"), icon: <ChartBarHorizontal size={18} />, run: () => void insertLibraryShape(boardApi, "timeline", t) },
         { key: "templates", label: t("Vorlagen", "Templates"), title: t("Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm", "Templates: retro, kanban, mind map, SWOT, flowchart"), icon: <SquaresFour size={18} />, run: () => setTemplatesOpen(true) },
       ]
     : [];
@@ -2799,6 +2849,17 @@ export default function Whiteboard({
           },
         ]
       : []),
+    ...(items.some((i) => i.type === "frame")
+      ? [
+          {
+            key: "prototype",
+            label: t("Prototyp abspielen", "Play prototype"),
+            title: t("Prototyp abspielen: Rahmen als Bildschirme, Klicks folgen den Verknüpfungen", "Play prototype: frames as screens, clicks follow the links"),
+            icon: <PlayCircle size={16} />,
+            run: () => setDiagram({ kind: "player" }),
+          },
+        ]
+      : []),
     {
       key: "fit",
       label: t("Alles anzeigen", "Show everything"),
@@ -2834,14 +2895,17 @@ export default function Whiteboard({
             icon: <UploadSimple size={16} />,
             run: () => importInput.current?.click(),
           },
+          { key: "diagram", label: t("Mermaid/PlantUML importieren …", "Import Mermaid/PlantUML …"), title: t("Mermaid- oder PlantUML-Text als bearbeitbares Diagramm importieren", "Import Mermaid or PlantUML text as an editable diagram"), icon: <Code size={16} />, run: () => setDiagram({ kind: "import" }) },
         ]
       : []),
+    { key: "mermaid", label: t("Als Mermaid kopieren", "Copy as Mermaid"), title: t("Formen und Verbindungen (Auswahl oder alles) als Mermaid-Flussdiagramm kopieren", "Copy shapes and connectors (selection or everything) as a Mermaid flowchart"), icon: <ClipboardText size={16} />, run: () => void copyMermaid(boardApi, t) },
     { key: "svg", label: t("Als SVG exportieren", "Export as SVG"), title: t("Als SVG exportieren", "Export as SVG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("svg") },
     { key: "png", label: t("Als PNG exportieren", "Export as PNG"), title: t("Als PNG exportieren", "Export as PNG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("png") },
   ];
   const importFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
+    if (file && DIAGRAM_FILE.test(file.name)) return void dropDiagramFile(boardApi, file, t);
     if (file) void importBoardFile(file);
   };
   const undoButtons = editable && (
@@ -2927,6 +2991,7 @@ export default function Whiteboard({
     )
     .slice(0, 60);
   const board = (
+    <BoardContext.Provider value={boardApi}>
     <div
       ref={container}
       className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}${layout.dock ? " wb-layout-dock" : ""}${layout.menu ? " wb-layout-menu" : ""}`}
@@ -2936,10 +3001,17 @@ export default function Whiteboard({
       onKeyUp={(e) => e.key === " " && setSpace(false)}
       onPaste={onPaste}
       onDragOver={(e) =>
-        editable && e.dataTransfer.types.includes("Files") && e.preventDefault()
+        editable && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(LIBRARY_DRAG_TYPE)) && e.preventDefault()
       }
       onDrop={(e) => {
+        if (editable && dropLibraryShape(boardApi, e, toWorld(e.clientX, e.clientY), t)) return;
         const files = [...e.dataTransfer.files];
+        const diagramFile = files.find((f) => DIAGRAM_FILE.test(f.name));
+        if (editable && diagramFile) {
+          e.preventDefault();
+          void dropDiagramFile(boardApi, diagramFile, t, toWorld(e.clientX, e.clientY));
+          return;
+        }
         const board =
           files.find((f) => boardFileName(f.name)) ||
           files.find((f) => /\.(xml|svg)$/i.test(f.name));
@@ -3011,6 +3083,7 @@ export default function Whiteboard({
                 />
               </g>
             ))}
+          <PrototypeBadges items={items} zoom={view.zoom} />
           {selectionBox && (
             <rect
               data-ui
@@ -3742,7 +3815,7 @@ export default function Whiteboard({
             ref={importInput}
             type="file"
             hidden
-            accept=".excalidraw,.drawio,.xml,.svg,.json,application/json"
+            accept=".excalidraw,.drawio,.xml,.svg,.json,application/json,.mmd,.mermaid,.puml,.plantuml"
             aria-label={t("Excalidraw- oder draw.io-Datei importieren", "Import an Excalidraw or draw.io file")}
             onChange={importFile}
           />
@@ -3858,6 +3931,18 @@ export default function Whiteboard({
               </svg>
             </button>
           ))}
+          <button
+            role="menuitem"
+            title={t("Formenbibliothek", "Shape library")}
+            aria-label={t("Weitere Formen …", "More shapes …")}
+            onClick={() => {
+              setShapeMenu(false);
+              setTool("select");
+              setDiagram({ kind: "library" });
+            }}
+          >
+            <Books size={20} />
+          </button>
         </div>
       )}
       {editable && tool === "sticky" && (
@@ -3970,7 +4055,7 @@ export default function Whiteboard({
                   <input
                     type="file"
                     hidden
-                    accept=".excalidraw,.drawio,.xml,.svg,.json,application/json"
+                    accept=".excalidraw,.drawio,.xml,.svg,.json,application/json,.mmd,.mermaid,.puml,.plantuml"
                     aria-label={t("Excalidraw- oder draw.io-Datei importieren", "Import an Excalidraw or draw.io file")}
                     onChange={importFile}
                   />
@@ -3980,7 +4065,7 @@ export default function Whiteboard({
                 .filter((a) => a.key !== "import")
                 .map((a) => (
                   <button key={a.key} aria-label={a.label} title={a.title} onClick={a.run}>
-                    {a.icon} {a.key.toUpperCase()}
+                    {a.icon} {a.key === "svg" || a.key === "png" ? a.key.toUpperCase() : null}
                   </button>
                 ))}
             </>
@@ -4260,7 +4345,9 @@ export default function Whiteboard({
         </div>
         )}
       </Modal>
+      <DiagramPanels board={boardApi} panel={diagram} />
     </div>
+    </BoardContext.Provider>
   );
   // In full screen the board is rendered into the page body, so no parent
   // (scrolling, transforms) can hold it back.

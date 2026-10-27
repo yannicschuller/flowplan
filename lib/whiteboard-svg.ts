@@ -6,8 +6,13 @@
 // covered; comment pins are left out (they belong to the conversation, not
 // the drawing).
 import { pressureOutline } from "./whiteboard-tools";
-import { safeImageSource, type Point, type WhiteboardItem } from "./whiteboard-model";
+import { safeImageSource, type WhiteboardItem } from "./whiteboard-model";
 import { connectorGeometry, contentBounds, shapePath } from "./whiteboard-geometry";
+// Diagrams: library shapes, connector ends, timelines.
+import { cleanDiagramFields, publicTimeline } from "./whiteboard-diagram-model";
+import { connectorEnds, markerSvg } from "./whiteboard-connector-markers";
+import { libraryShapeSvg } from "./whiteboard-shapes-library";
+import { timelineSvg } from "./whiteboard-timeline";
 
 export type WhiteboardSvgContext = {
   // A file or image source as used in the export (relative path, https URL),
@@ -52,15 +57,6 @@ function textBox(item: WhiteboardItem, padding = 10, align?: string) {
   ].join(";");
   return html(item.w, item.h, `<div class="wb-text" style="${attr(style)}">${text(item.text || "")}</div>`);
 }
-function arrowHead(at: Point, dir: Point, size: number, fill: string) {
-  const len = Math.hypot(dir.x, dir.y) || 1,
-    ux = dir.x / len,
-    uy = dir.y / len;
-  const back = { x: at.x - ux * size, y: at.y - uy * size };
-  const left = { x: back.x - uy * size * 0.55, y: back.y + ux * size * 0.55 },
-    right = { x: back.x + uy * size * 0.55, y: back.y - ux * size * 0.55 };
-  return `<path d="M ${at.x} ${at.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z" fill="${attr(fill)}"/>`;
-}
 
 function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: WhiteboardSvgContext): string {
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${num(item.rotation)} ${item.w / 2} ${item.h / 2})` : ""}`;
@@ -74,10 +70,15 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
       return g(`<rect width="${item.w}" height="${item.h}" rx="4" fill="${attr(color(item.fill, "#fff6b6"))}" filter="url(#wb-shadow)"/>${textBox(item)}`);
     case "text":
       return g(textBox(item, 2, item.align && ALIGN.has(item.align) ? item.align : "left"));
-    case "shape":
+    case "shape": {
+      const drawn = libraryShapeSvg(item);
+      if (drawn) return g(drawn);
       return g(
         `<path d="${shapePath(item.shape, item.w, item.h)}" fill="${attr(color(item.fill, "#ffffff"))}" stroke="${attr(color(item.stroke, "#1f2937"))}" stroke-width="${num(item.strokeWidth, 2)}"${item.dashed ? ' stroke-dasharray="8 6"' : ""}/>${textBox(item)}`,
       );
+    }
+    case "timeline":
+      return item.timeline ? g(timelineSvg(item, publicTimeline(item.timeline)!, { today: new Date().toISOString().slice(0, 10), weekLabel: ctx.label("KW", "W") })) : "";
     case "frame":
       return `<g transform="translate(${item.x} ${item.y})"><rect width="${item.w}" height="${item.h}" fill="${attr(item.fill && item.fill !== "transparent" ? color(item.fill, "#ffffff") : "#ffffff")}" stroke="#ced4da" stroke-width="1" rx="6"/>${html(item.w, 26, `<div class="wb-frame-title">${text(item.text || ctx.label("Rahmen", "Frame"))}</div>`, 0, -28)}</g>`;
     case "pen": {
@@ -96,8 +97,8 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
       const stroke = color(item.stroke, "#1f2937"),
         width = num(item.strokeWidth, 2);
       return `<g><path d="${d}" fill="none" stroke="${attr(stroke)}" stroke-width="${width}"${item.dashed ? ' stroke-dasharray="8 6"' : ""} stroke-linecap="round"/>${
-        item.endArrow !== false ? arrowHead(b, endDir, 8 + width * 2, stroke) : ""
-      }${item.startArrow ? arrowHead(a, startDir, 8 + width * 2, stroke) : ""}${
+        markerSvg(connectorEnds(item).end, b, endDir, width, stroke) + markerSvg(connectorEnds(item).start, a, startDir, width, stroke)
+      }${
         item.text ? html(160, 28, `<div class="wb-connector-label"><span>${text(item.text)}</span></div>`, (a.x + b.x) / 2 - 80, (a.y + b.y) / 2 - 14) : ""
       }</g>`;
     }
@@ -152,7 +153,7 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
 // is a finite number, every list a list of them.
 const end = (e: WhiteboardItem["from"]) => (e ? { ...e, x: num(e.x), y: num(e.y) } : e);
 function clean(item: WhiteboardItem): WhiteboardItem {
-  return {
+  return cleanDiagramFields({
     ...item,
     x: num(item.x),
     y: num(item.y),
@@ -167,7 +168,7 @@ function clean(item: WhiteboardItem): WhiteboardItem {
     from: end(item.from),
     to: end(item.to),
     text: item.text === undefined ? undefined : String(item.text),
-  };
+  });
 }
 
 // The SVG, or null for a board without anything to show.

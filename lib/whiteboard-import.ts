@@ -5,6 +5,7 @@
 // notes. Every text is plain text (HTML labels lose their markup), every
 // number finite and bounded, and the amount of everything is limited.
 import type { ShapeKind, WhiteboardItem } from "./whiteboard-model";
+import { remapLink } from "./whiteboard-diagram-model";
 
 export type BoardDraft = Omit<WhiteboardItem, "z"> & { z?: number };
 export type ImportedImage = { id: string; mime: string; data: Uint8Array };
@@ -813,6 +814,8 @@ export function placeDrafts(
     if (d.to) item.to = { ...d.to, x: d.to.x + dx, y: d.to.y + dy, ...(d.to.id ? { id: ids.get(d.to.id) } : {}) };
     if (item.from && !item.from.id) delete item.from.id;
     if (item.to && !item.to.id) delete item.to.id;
+    // Prototype links to frames placed along point to them.
+    item = remapLink(item, ids);
     if (options.image) [item] = resolveImages([item], options.image) as WhiteboardItem[];
     return item as WhiteboardItem & { id: string };
   });
