@@ -24,6 +24,7 @@ import { aiWriteResponse, WRITE_LIMITS } from "@/lib/ai/write";
 import { aiSummaryResponse, SUMMARY_LIMITS } from "@/lib/ai/summarize";
 import { ACTION_LIMITS, proposeActions, runActions, type ProposeInput } from "@/lib/ai/actions";
 import { checkDeviceSuggestion, suggestCapture, SUGGEST_LIMITS } from "@/lib/ai/capture-suggest";
+import { clusterNotes, generateStructure, splitNotes, summarizeBoard } from "@/lib/ai/whiteboard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -178,6 +179,15 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
     if (path.length === 2 && path[0] === "capture") {
       if (path[1] === "suggest") return NextResponse.json(await suggestCapture(user, await body(req, SUGGEST_LIMITS.text * 4 + 10_000), req.signal), noStore);
       if (path[1] === "check") return NextResponse.json(await checkDeviceSuggestion(user, await body(req, 50_000)), noStore);
+    }
+    // AI on whiteboards (lib/ai/whiteboard.ts): themes for notes, a summary
+    // page, a mind map or flowchart from a description, notes → properties.
+    if (path.length === 2 && path[0] === "whiteboard") {
+      const b = await body(req, 200_000);
+      if (path[1] === "cluster") return NextResponse.json(await clusterNotes(user, b, req.signal), noStore);
+      if (path[1] === "summarize") return NextResponse.json(await summarizeBoard(user, b, req.signal), noStore);
+      if (path[1] === "generate") return NextResponse.json(await generateStructure(user, b, req.signal), noStore);
+      if (path[1] === "split") return NextResponse.json(await splitNotes(user, b, req.signal), noStore);
     }
     // AI in databases.
     if (path.length === 2 && path[0] === "database") {

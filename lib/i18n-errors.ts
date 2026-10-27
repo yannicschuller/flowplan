@@ -654,6 +654,12 @@ const exact: Record<string, string> = {
   "Die KI hat keine verwertbare Antwort geliefert. Bitte erneut versuchen.": "The AI did not give a usable answer. Please try again.",
   "Ein KI-Vorschlag gilt nur für eine neue, leere Datenbank.": "An AI proposal only applies to a new, empty database.",
   "Dazu habe ich nichts gefunden.": "I found nothing about that.",
+  // AI on whiteboards (lib/ai/whiteboard.ts)
+  "Zu wenige Notizzettel mit Text zum Gruppieren.": "Too few sticky notes with text to group.",
+  "Auf dem Whiteboard steht noch nichts, das sich zusammenfassen ließe.": "There is nothing on the whiteboard to summarise yet.",
+  "Keine Notizzettel mit Text ausgewählt.": "No sticky notes with text selected.",
+  "Diese Datenbank hat keine Eigenschaften, die die KI ausfüllen kann.": "This database has no properties the AI can fill in.",
+  "Abgebrochen.": "Cancelled.",
   "Keine Embeddings": "No embeddings",
   // stored secrets, encryption, sign-in codes
   "Kein Schlüssel für gespeicherte Geheimnisse.": "No key for stored secrets.",

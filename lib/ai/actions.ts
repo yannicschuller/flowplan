@@ -129,7 +129,7 @@ const members = (workspaceId: string) =>
 
 // Property types the AI may fill: plain values a person types.
 const FILLABLE: Field["type"][] = ["text", "number", "date", "select", "multiselect", "checkbox", "url", "email", "phone", "person", "checklist"];
-function writableFields(user: Identity, page: Page) {
+export function writableFields(user: Identity, page: Page) {
   const fields = readableDatabase(user, page, database(page.id)).fields;
   const readOnly = readOnlyFieldIds(user, page, fields);
   return fields.filter((f) => FILLABLE.includes(f.type) && !readOnly.includes(f.id) && !f.ai);
@@ -273,7 +273,7 @@ function memberBy(list: Member[], value: unknown): Member | undefined {
 // The model's values as property values (by property id), then the same
 // validation as every edit (validateCellPatch: types, options, field
 // permissions).
-function cellPatch(user: Identity, page: Page, input: Record<string, unknown>) {
+export function cellPatch(user: Identity, page: Page, input: Record<string, unknown>) {
   const fields = readableDatabase(user, page, database(page.id)).fields;
   const fillable = new Set(writableFields(user, page).map((f) => f.id));
   const people = members(page.workspace_id);

@@ -102,6 +102,7 @@ import { rewriteFormulaReferences } from "./formula";
 import { validateCalculations } from "./database-summary";
 import { spaceColorSchema, spaceIconSchema } from "./space-appearance";
 import { mutateLinkedDatabase } from "./linked-databases";
+import { notesToRecords } from "./whiteboard-to-records";
 import {
   manageSpace,
   duplicateSpace,
@@ -2138,6 +2139,10 @@ export function command(
       }
       case "whiteboard.sync":
         result = syncWhiteboard(user, b);
+        break;
+      // Sticky notes → database records (lib/whiteboard-to-records.ts).
+      case "whiteboard.toRecords":
+        result = notesToRecords(user, b);
         break;
       case "dashboard.save":
         result = saveDashboard(write(), b.tiles);

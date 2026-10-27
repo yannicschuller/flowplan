@@ -9,7 +9,7 @@
 // AI may read.
 //
 // FEATURE IDS (lib/ai/features.ts): "write" | "summarize" | "ask" | "database"
-// | "actions".
+// | "actions" | "whiteboard".
 // Add new ones there; administration and settings pick them up.
 //
 // SERVER

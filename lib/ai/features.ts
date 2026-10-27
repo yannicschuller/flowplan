@@ -36,6 +36,14 @@ export const AI_FEATURES = [
       "Propose pages, tasks and records from answers and transcripts – nothing is created before you confirm.",
     ],
   },
+  {
+    id: "whiteboard",
+    label: ["KI auf Whiteboards", "AI on whiteboards"],
+    description: [
+      "Zettel nach Thema gruppieren, ein Board als Seite zusammenfassen, Mindmaps und Diagramme aus einer Beschreibung erzeugen.",
+      "Group notes by theme, summarise a board into a page, create mind maps and diagrams from a description.",
+    ],
+  },
 ] as const;
 
 export type AiFeature = (typeof AI_FEATURES)[number]["id"];

@@ -114,6 +114,7 @@ import {
 import { compressImage } from "@/lib/image-compress";
 import { DURATION, interpolateCamera, tween } from "@/lib/motion";
 import { MediaSearch } from "./media-search";
+import { useBoardAi } from "./ai-panel";
 import {
   alignItems,
   boundsOf,
@@ -2174,6 +2175,14 @@ export default function Whiteboard({
     const rect = svg.current!.getBoundingClientRect();
     return toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
   };
+  // AI and notes → records (components/whiteboard/ai-panel.tsx).
+  const boardAi = useBoardAi({
+    pageId, editable, selection, read, itemsMap, change, addItem, setProps, undo, visibleRect, center, setSelection, onOpenPage,
+    fit: (list) => fitToContent(list),
+    flush: async () => {
+      for (let i = 0; i < 30 && (dirty.current || inflight.current); i++) await (inflight.current ? new Promise((r) => setTimeout(r, 100)) : sync());
+    },
+  });
   async function addImage(file: File, at = center()) {
     if (!file.type.startsWith("image/"))
       return onError(t("Nur Bilder können auf das Whiteboard gelegt werden.", "Only images can be placed on the whiteboard."));
@@ -2566,6 +2575,7 @@ export default function Whiteboard({
                     <button role="menuitem" onClick={() => arrange("author")}>{t("Nach Person gruppieren", "Group by person")}</button>
                     <button role="menuitem" onClick={() => arrange("votes")}>{t("Nach Stimmen sortieren", "Sort by votes")}</button>
                     <button role="menuitem" onClick={() => arrange("grid")}>{t("Als Raster anordnen", "Arrange as a grid")}</button>
+                    {boardAi.arrangeItem(selected, () => setArrangeOpen(false))}
                   </span>
                 )}
               </span>
@@ -2582,6 +2592,7 @@ export default function Whiteboard({
             )}
           <DiagramStyleControls board={boardApi} selected={selected} />
           <span className="wb-sep" />
+          {boardAi.recordsButton(selected)}
           <button
             aria-label={t("Nach vorne", "Bring forward")}
             title={t("Nach vorne", "Bring forward")}
@@ -2796,6 +2807,7 @@ export default function Whiteboard({
         { key: "library", label: t("Formenbibliothek", "Shape library"), title: t("Formenbibliothek: Flussdiagramm, BPMN, UML, ER, Organigramm, Netzwerk, Cloud, Wireframes", "Shape library: flowchart, BPMN, UML, ER, org chart, network, cloud, wireframes"), icon: <Books size={18} />, active: diagram?.kind === "library", run: () => setDiagram((d) => (d?.kind === "library" ? null : { kind: "library" })) },
         { key: "timeline", label: t("Zeitleiste", "Timeline"), title: t("Zeitleiste (Roadmap) einfügen", "Insert timeline (roadmap)"), icon: <ChartBarHorizontal size={18} />, run: () => void insertLibraryShape(boardApi, "timeline", t) },
         { key: "templates", label: t("Vorlagen", "Templates"), title: t("Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm", "Templates: retro, kanban, mind map, SWOT, flowchart"), icon: <SquaresFour size={18} />, run: () => setTemplatesOpen(true) },
+        ...(boardAi.entry ? [boardAi.entry] : []),
       ]
     : [];
   const meetingActions: BoardAction[] = editable
@@ -4120,6 +4132,7 @@ export default function Whiteboard({
           </button>
         )
       )}
+      {boardAi.dialogs}
       <Modal
         open={templatesOpen}
         onClose={() => setTemplatesOpen(false)}
