@@ -172,7 +172,9 @@ test("Anthropic: message events, x-api-key and version header, no embeddings", a
   assert.equal(request.headers.authorization, undefined);
   const sent = JSON.parse(request.body);
   assert.equal(sent.system, "Sei knapp.");
-  assert.equal(sent.max_tokens, 50);
+  // Claude Sonnet 5.5 always thinks: room for the thinking on top, no sampling settings.
+  assert.equal(sent.max_tokens, 50 + 16_000);
+  assert.equal(sent.temperature, undefined);
   assert.equal(await embed({ ...config, embeddingModel: "x" }, ["a"]), null);
   assert.deepEqual(await listModels(config), ["claude-sonnet-5-5", "gpt-test"]);
 });

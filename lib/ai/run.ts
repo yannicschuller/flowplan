@@ -93,6 +93,9 @@ export async function aiComplete(user: Identity, feature: AiFeature, input: AiRu
 
 // Separates the answer from a late error in the plain-text stream.
 export const AI_STREAM_ERROR_MARK = "\u001e";
+// How long a streaming response waits for the first piece of the answer
+// before it starts anyway (see aiStreamResponse).
+const FIRST_PIECE_WAIT_MS = 8_000;
 
 // A streaming HTTP response: plain UTF-8 text. Errors before the first
 // piece answer with JSON { error } and a status like every other route; an
@@ -109,34 +112,49 @@ export async function aiStreamResponse(
   const abort = () => controller.abort();
   options.signal.addEventListener("abort", abort, { once: true });
   const iterator = aiStream(user, feature, input, { ...options, signal: controller.signal })[Symbol.asyncIterator]();
-  let first: IteratorResult<string>;
+  // Errors before the first piece answer with a status. But a model that
+  // thinks first (or is still loading) may write nothing for a minute, and a
+  // reverse proxy closes a request without response headers long before: so
+  // after a few seconds the response starts anyway, and a later error ends
+  // the text with the error mark.
+  const pending = iterator.next();
+  let first: IteratorResult<string> | null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    first = await iterator.next();
+    first = await Promise.race([pending, new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), FIRST_PIECE_WAIT_MS)))]);
   } catch (error) {
     options.signal.removeEventListener("abort", abort);
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
+  if (!first) pending.catch(() => {});
   const encoder = new TextEncoder();
   const clean = (text: string) => text.replaceAll(AI_STREAM_ERROR_MARK, "");
+  let done = !!first?.done;
+  let waiting: Promise<IteratorResult<string>> | null = first ? null : pending;
   const stream = new ReadableStream<Uint8Array>({
     start(c) {
-      if (!first.done && first.value) c.enqueue(encoder.encode(clean(first.value)));
-      if (first.done) {
+      if (first && !first.done && first.value) c.enqueue(encoder.encode(clean(first.value)));
+      if (done) {
         options.signal.removeEventListener("abort", abort);
         c.close();
       }
     },
     async pull(c) {
-      if (first.done) return;
+      if (done) return;
       try {
-        const next = await iterator.next();
+        const next = await (waiting ?? iterator.next());
+        waiting = null;
         if (next.done) {
+          done = true;
           options.signal.removeEventListener("abort", abort);
           c.close();
           return;
         }
         if (next.value) c.enqueue(encoder.encode(clean(next.value)));
       } catch (error) {
+        done = true;
         options.signal.removeEventListener("abort", abort);
         if (controller.signal.aborted) {
           try {

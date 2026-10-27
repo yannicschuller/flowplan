@@ -21795,6 +21795,67 @@ h3 .block-reactions {
   flex: 1 1 200px;
   min-width: 0;
 }
+/* The ask window's head: where to look, the provider, a fresh start – one
+   row, wrapping on narrow screens. */
+.ai-ask .ai-ask-bar {
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.ai-ask-scope {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 420px;
+}
+.ai-ask-scope > svg {
+  position: absolute;
+  left: 11px;
+  z-index: 1;
+  color: var(--muted);
+  pointer-events: none;
+}
+.ai-ask-scope .fp-select {
+  width: 100%;
+  padding-left: 32px;
+}
+.ai-ask .ai-provider-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 11px;
+  background: var(--surface);
+}
+.ai-ask .ai-provider-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ai-ask-new {
+  margin-left: auto;
+}
+@media (max-width: 560px) {
+  .ai-ask .ai-ask-scope {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+  .ai-ask .ai-provider-chip {
+    flex: 1 1 0;
+  }
+  .ai-ask-composer textarea {
+    width: 100%;
+    flex: none;
+  }
+  .ai-ask-new {
+    flex: none;
+  }
+  .ai-ask-composer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ai-ask-composer > .button {
+    align-self: flex-end;
+  }
+}
 .ai-provider-chip {
   display: inline-flex;
   align-items: center;
@@ -24648,6 +24709,11 @@ html.split-resizing * {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
+}
+/* The AI settings are one form: the status keeps the distance of the
+   groups below it. */
+.ai-admin > .admin-status {
+  margin-bottom: 22px;
 }
 .admin-status-badges {
   grid-column: 1 / -1;

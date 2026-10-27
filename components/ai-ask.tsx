@@ -3,7 +3,7 @@
 // (lib/ai/ask.ts). The conversation is kept in this browser tab only
 // (sessionStorage) – the server stores none of it.
 import { Fragment, useEffect, useRef, useState } from "react";
-import { ArrowSquareOut, Lightning, PaperPlaneRight, Sparkle, Stop, Trash } from "@phosphor-icons/react";
+import { ArrowSquareOut, ChatCircleDots, Lightning, MagnifyingGlass, PaperPlaneRight, Sparkle, Stop } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon } from "./ui";
 import { Select } from "./select";
@@ -119,32 +119,44 @@ export function AskPanel({
   return (
     <Modal open={open} onClose={onClose} title={t("KI fragen", "Ask AI")} wide className="ai-ask">
       <div className="ai-ask-bar">
-        <Select aria-label={t("Wo soll gesucht werden?", "Where to look?")} value={scope} onChange={(e) => setScope(e.target.value)} disabled={busy || across}>
-          <option value="workspace">{t("Ganzer Arbeitsbereich", "Whole workspace")}</option>
-          {currentPage && <option value={`page:${currentPage.id}`}>{t(`„${currentPage.title}“ und Unterseiten`, `“${currentPage.title}” and sub-pages`)}</option>}
-          {spaces.map((s) => (
-            <option key={s.id} value={`space:${s.id}`}>
-              {t(`Bereich: ${s.name}`, `Space: ${s.name}`)}
-            </option>
-          ))}
-        </Select>
-        <label className="ai-ask-across" title={t("Sucht in allen Arbeitsbereichen, in denen du Mitglied bist – mit den KI-Regeln jedes Arbeitsbereichs.", "Searches every workspace you belong to – with the AI rules of each workspace.")}>
-          <input type="checkbox" checked={across} disabled={busy} onChange={(e) => setAcross(e.target.checked)} />
-          {t("Alle Arbeitsbereiche", "All workspaces")}
-        </label>
-        <span className={`ai-provider-chip${provider?.local ? " local" : ""}`} title={provider?.local ? t("Texte bleiben auf diesem Server.", "Text stays on this server.") : t("Texte gehen an diesen Anbieter.", "Text goes to this provider.")}>
-          <Sparkle size={13} /> {aiProviderLabel(provider ?? null, t)}
+        <div className="ai-ask-scope">
+          <MagnifyingGlass size={15} aria-hidden="true" />
+          <Select
+            aria-label={t("Wo soll gesucht werden?", "Where to look?")}
+            value={across ? "all" : scope}
+            onChange={(e) => {
+              const value = e.target.value;
+              setAcross(value === "all");
+              if (value !== "all") setScope(value);
+            }}
+            disabled={busy}
+          >
+            <option value="workspace">{t("Ganzer Arbeitsbereich", "Whole workspace")}</option>
+            {currentPage && <option value={`page:${currentPage.id}`}>{t(`„${currentPage.title}“ und Unterseiten`, `“${currentPage.title}” and sub-pages`)}</option>}
+            {spaces.map((s) => (
+              <option key={s.id} value={`space:${s.id}`}>
+                {t(`Bereich: ${s.name}`, `Space: ${s.name}`)}
+              </option>
+            ))}
+            <option value="all">{t("Alle meine Arbeitsbereiche", "All my workspaces")}</option>
+          </Select>
+        </div>
+        <span
+          className={`ai-provider-chip${provider?.local ? " local" : ""}`}
+          title={provider?.local ? t("Texte bleiben auf diesem Server.", "Text stays on this server.") : t("Texte gehen an diesen Anbieter.", "Text goes to this provider.")}
+        >
+          <Sparkle size={13} aria-hidden="true" /> <span>{aiProviderLabel(provider ?? null, t)}</span>
         </span>
         <button
           type="button"
-          className="button compact"
+          className="button compact ai-ask-new"
           disabled={busy || !messages.length}
           onClick={() => {
             setMessages([]);
             setQuestion("");
           }}
         >
-          <Trash size={14} /> {t("Neues Gespräch", "New conversation")}
+          <ChatCircleDots size={15} aria-hidden="true" /> {t("Neues Gespräch", "New conversation")}
         </button>
       </div>
       <div className="ai-ask-log" aria-live="polite" aria-busy={busy}>

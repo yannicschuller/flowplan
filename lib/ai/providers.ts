@@ -86,6 +86,9 @@ const parse = (config: AiConfig, text: string) => {
   }
 };
 
+// Claude models that think on every request (adaptive thinking by default).
+const THINKING_CLAUDE = /^claude-(opus-5|sonnet-5-5|haiku-5|fable|mythos)/;
+
 function chatRequest(config: AiConfig, input: ChatInput): { url: string; body: unknown } {
   const maxTokens = Math.max(1, Math.min(16_384, Math.round(input.maxTokens ?? 1024)));
   const temperature = input.temperature === undefined ? undefined : Math.max(0, Math.min(config.kind === "anthropic" ? 1 : 2, input.temperature));
@@ -121,10 +124,14 @@ function chatRequest(config: AiConfig, input: ChatInput): { url: string; body: u
         body: {
           model: config.model,
           stream: true,
-          max_tokens: maxTokens,
+          // Models that always think count their thinking in max_tokens:
+          // room for it, so the answer is not cut off (only what is
+          // written is billed).
+          max_tokens: THINKING_CLAUDE.test(config.model) ? maxTokens + 16_000 : maxTokens,
           ...(input.system ? { system: input.system } : {}),
           messages,
-          ...(temperature === undefined ? {} : { temperature }),
+          // Current Claude models refuse sampling settings (HTTP 400), and
+          // the API drops them for every model: never sent.
         },
       };
     case "gemini":
