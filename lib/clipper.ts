@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { parseDocument, DomUtils } from "htmlparser2";
 import { all, audit, one, run, transaction } from "./db";
+import { SPACE_ORDER } from "./space-order";
 import { HttpError, appUrl } from "./auth";
 import { identityFromApiToken } from "./api-tokens";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
@@ -64,7 +65,7 @@ export function clipperTargets(user: Identity) {
     workspaces: workspaces.map((w) => {
       // End-to-end encrypted spaces are left out: the server never writes
       // plaintext into them.
-      const spaces = all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY rowid", w.id).filter(
+      const spaces = all<Space>(`SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY ${SPACE_ORDER}`, w.id).filter(
         (s) => ["editor", "owner"].includes(spaceRole(user, s) || "") && !encryptedSpace(s.id),
       );
       const names = new Map(spaces.map((s) => [s.id, s.name]));

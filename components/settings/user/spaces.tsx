@@ -1,9 +1,11 @@
 "use client";
-// Settings → Arbeitsbereich → Bereiche: the spaces one may manage; each
-// opens the space dialog (name, visibility, appearance, AI, Git export,
-// duplicate, delete).
+// Settings → Arbeitsbereich → Bereiche: the spaces one may manage, in the
+// sidebar's order; each opens the space dialog (name, visibility,
+// appearance, AI, Git export, duplicate, delete). Workspace owners move the
+// spaces they see in the sidebar up and down (issue #48, lib/space-order.ts).
 import { useState } from "react";
-import { FolderSimple } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, FolderSimple } from "@phosphor-icons/react";
+import { moveSpaceBy } from "@/lib/space-moves";
 import type { Space } from "@/lib/types";
 import { useT } from "../../i18n";
 import { SpaceIcon } from "../../space-appearance";
@@ -13,15 +15,39 @@ import { useUserSettings } from "../user-context";
 
 export default function SpacesSection() {
   const t = useT();
-  const { boot, onRefresh, reload } = useUserSettings();
-  const [editingSpace, setEditingSpace] = useState<Space | null>(null);
+  const { boot, onRefresh, reload, mutate, onError, owner } = useUserSettings();
+  const [editingSpace, setEditingSpace] = useState<Space | null>(null),
+    [busy, setBusy] = useState(false),
+    [note, setNote] = useState("");
   const spaces = boot.managedSpaces || [];
+  // Only spaces shown in the sidebar move; private spaces of others keep
+  // their place and are never sent.
+  const order = boot.spaces.filter((s) => !s.deleted_at).map((s) => s.id),
+    reorderable = owner && !boot.workspace.guest && order.length > 1;
+  async function move(space: Space, delta: -1 | 1) {
+    const next = moveSpaceBy(order, space.id, delta);
+    if (!next || busy) return;
+    setBusy(true);
+    try {
+      await mutate({ action: "space.reorder", workspaceId: boot.workspace.id, order: next });
+      const at = next.indexOf(space.id) + 1;
+      setNote(t(`„${space.name}“ steht jetzt an Position ${at} von ${next.length}.`, `“${space.name}” is now at position ${at} of ${next.length}.`));
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <>
       <SettingGroup
         id="spaces"
         title={t(`Bereiche verwalten · ${spaces.length}`, `Manage spaces · ${spaces.length}`)}
-        description={t("Bereichseigentümer verwalten ihre eigenen Bereiche. Arbeitsbereichseigentümer können alle Bereiche verwalten; private Seiten bleiben an ihre Leserechte gebunden.", "Space owners manage their own spaces. Workspace owners can manage all spaces; private pages stay bound to their read permissions.")}
+        description={
+          reorderable
+            ? t("Bereichseigentümer verwalten ihre eigenen Bereiche. Arbeitsbereichseigentümer können alle Bereiche verwalten und ihre Reihenfolge in der Seitenleiste für alle festlegen; private Seiten bleiben an ihre Leserechte gebunden.", "Space owners manage their own spaces. Workspace owners can manage all spaces and set their order in the sidebar for everyone; private pages stay bound to their read permissions.")
+            : t("Bereichseigentümer verwalten ihre eigenen Bereiche. Arbeitsbereichseigentümer können alle Bereiche verwalten; private Seiten bleiben an ihre Leserechte gebunden.", "Space owners manage their own spaces. Workspace owners can manage all spaces; private pages stay bound to their read permissions.")
+        }
       >
         {spaces.length ? (
           <ul className="ws-list" aria-label={t("Bereiche", "Spaces")}>
@@ -38,6 +64,30 @@ export default function SpacesSection() {
                     </span>
                   </div>
                   <div className="ws-item-controls">
+                    {reorderable && order.includes(space.id) && (
+                      <span className="ws-order-buttons">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={t(`${space.name} nach oben`, `Move ${space.name} up`)}
+                          title={t("Nach oben", "Move up")}
+                          disabled={busy || order.indexOf(space.id) === 0}
+                          onClick={() => void move(space, -1)}
+                        >
+                          <ArrowUp size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={t(`${space.name} nach unten`, `Move ${space.name} down`)}
+                          title={t("Nach unten", "Move down")}
+                          disabled={busy || order.indexOf(space.id) === order.length - 1}
+                          onClick={() => void move(space, 1)}
+                        >
+                          <ArrowDown size={16} />
+                        </button>
+                      </span>
+                    )}
                     <button className="button" aria-label={t(`${space.name} verwalten`, `Manage ${space.name}`)} onClick={() => setEditingSpace(space)}>
                       {t("Verwalten", "Manage")}
                     </button>
@@ -53,6 +103,9 @@ export default function SpacesSection() {
             </EmptyState>
           </div>
         )}
+        <p className="sr-only" role="status" aria-live="polite">
+          {note}
+        </p>
       </SettingGroup>
       {editingSpace && (
         <SpaceManager

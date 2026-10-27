@@ -488,6 +488,57 @@ kbd,
   width: 22px;
   height: 22px;
 }
+/* Space header (issue #48): the name folds the space; owners drag the
+   header to reorder, the drop line shows like in the page tree. */
+.nav-section-title > .space-toggle {
+  min-width: 72px;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.space-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.space-toggle > svg {
+  flex-shrink: 0;
+}
+.space-toggle .space-caret {
+  margin-left: -13px;
+  opacity: 0.7;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+.space-collapsed .space-toggle .space-caret {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .space-toggle .space-caret {
+    transition: none;
+  }
+}
+.nav-section-title[draggable="true"] {
+  cursor: grab;
+}
+.nav-section-title[draggable="true"]:active {
+  cursor: grabbing;
+}
+.nav-section.space-drop-before {
+  box-shadow: 0 -2px 0 var(--blue);
+}
+.nav-section.space-drop-after {
+  box-shadow: 0 2px 0 var(--blue);
+}
 .page-nav {
   display: flex;
   align-items: center;
@@ -25156,6 +25207,21 @@ html.split-resizing * {
   color: var(--secondary);
   font-size: 11.5px;
   font-weight: 500;
+}
+/* Up and down of a space in Settings → Bereiche (issue #48). */
+.ws-order-buttons {
+  display: inline-flex;
+  gap: 2px;
+}
+.ws-order-buttons .icon-button {
+  width: 32px;
+  height: 32px;
+}
+@media (max-width: 767px) {
+  .ws-order-buttons .icon-button {
+    width: 44px;
+    height: 44px;
+  }
 }
 .ws-item-controls {
   display: flex;

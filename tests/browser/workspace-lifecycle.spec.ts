@@ -89,6 +89,10 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
     await page
       .getByRole("button", { name: `Bereich ${name} verwalten`, exact: true })
       .click();
+    // The "…" menu: the dialog is its first item.
+    await page
+      .getByRole("menuitem", { name: "Bereich bearbeiten …", exact: true })
+      .click();
     let dialog = page.getByRole("dialog", {
       name: "Bereich verwalten",
       exact: true,
@@ -123,6 +127,10 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
         name: `Bereich ${name} remote verwalten`,
         exact: true,
       })
+      .click();
+    // The "…" menu: the dialog is its first item.
+    await page
+      .getByRole("menuitem", { name: "Bereich bearbeiten …", exact: true })
       .click();
     await dialog.getByLabel("Name", { exact: true }).fill(name);
     await dialog
@@ -162,6 +170,10 @@ test("space owners rename, trash, restore and purge with stale-draft protection 
         .click();
     await page
       .getByRole("button", { name: `Bereich ${name} verwalten`, exact: true })
+      .click();
+    // The "…" menu: the dialog is its first item.
+    await page
+      .getByRole("menuitem", { name: "Bereich bearbeiten …", exact: true })
       .click();
     await dialog
       .getByRole("button", { name: "Bereich löschen", exact: true })

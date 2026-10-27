@@ -148,6 +148,10 @@ test("create and edit searchable space icons, persist color, and duplicate saved
     await page
       .getByRole("button", { name: `Bereich ${name} verwalten`, exact: true })
       .click();
+    // The "…" menu: the dialog is its first item.
+    await page
+      .getByRole("menuitem", { name: "Bereich bearbeiten …", exact: true })
+      .click();
     dialog = page.getByRole("dialog", {
       name: "Bereich verwalten",
       exact: true,
@@ -194,6 +198,10 @@ test("create and edit searchable space icons, persist color, and duplicate saved
     await navigation(page, mobile);
     await page
       .getByRole("button", { name: `Bereich ${name} verwalten`, exact: true })
+      .click();
+    // The "…" menu: the dialog is its first item.
+    await page
+      .getByRole("menuitem", { name: "Bereich bearbeiten …", exact: true })
       .click();
     dialog = page.getByRole("dialog", {
       name: "Bereich verwalten",
@@ -274,6 +282,10 @@ test("space copy conflicts retain the chosen name and visibility; cancel creates
     await navigation(page, mobile);
     await page
       .getByRole("button", { name: `Bereich ${name} verwalten`, exact: true })
+      .click();
+    // The "…" menu: the dialog is its first item.
+    await page
+      .getByRole("menuitem", { name: "Bereich bearbeiten …", exact: true })
       .click();
     await page
       .getByRole("dialog", { name: "Bereich verwalten", exact: true })

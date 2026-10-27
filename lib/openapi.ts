@@ -53,7 +53,7 @@ export const commandActionNames = [
   "profile.onboarded", "profile.language", "notification.reset", "notification.email", "notification.weekly", "shortcuts.save",
   "home.save", "home.reset", "home.note", "home.default",
   "account.deletePlan", "account.delete",
-  "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport",
+  "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
   "pages.bulk", "page.follow", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
@@ -115,6 +115,18 @@ export const commandActions: ActionDoc[] = [
       iconColor: z.string().max(40).optional(),
     }),
     result: idResult,
+  },
+  {
+    action: "space.reorder",
+    summary: "Change the order of the spaces in a workspace",
+    description:
+      "Needs the owner role in the workspace. `order` lists the spaces the caller sees in the sidebar in their new order; only those move, between their new neighbours, so spaces the caller cannot see keep their place. Visible spaces left out keep theirs too; an unknown or hidden space answers 404. Sending the same order again changes nothing. The answer lists the visible spaces in their new order.",
+    input: z.object({
+      action: z.literal("space.reorder"),
+      workspaceId: uuid,
+      order: z.array(uuid).min(1).max(1000).describe("Space IDs in the new order"),
+    }),
+    result: z.object({ ok: z.literal(true), order: z.array(uuid) }),
   },
   {
     action: "page.create",

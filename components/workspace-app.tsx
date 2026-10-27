@@ -74,6 +74,7 @@ import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toast";
 import { commandOverlay } from "@/lib/optimistic-commands";
+import { dropSpace, moveSpaceBy, readCollapsedSpaces, writeCollapsedSpaces } from "@/lib/space-moves";
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
@@ -90,6 +91,8 @@ import {
   Stack,
   CaretDown,
   CaretRight,
+  ArrowUp,
+  ArrowDown,
   CheckSquare,
   DotsSixVertical,
   Plus,
@@ -1427,6 +1430,42 @@ export default function WorkspaceApp({
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id));
+  // The order of the spaces (issue #48, lib/space-order.ts): workspace
+  // owners drag a space by its header or use "Nach oben"/"Nach unten" in its
+  // "…" menu. Only the spaces shown here are sent; the others keep their place.
+  const canReorderSpaces = boot.workspace.role === "owner" && !boot.workspace.guest && boot.spaces.length > 1,
+    [spaceDrop, setSpaceDrop] = useState<{ id: string; placement: "before" | "after" } | null>(null),
+    [spaceMoveNote, setSpaceMoveNote] = useState("");
+  async function reorderSpaces(order: string[] | null, moved: string) {
+    if (!order) return;
+    const space = boot.spaces.find((s) => s.id === moved);
+    const result = await act({ action: "space.reorder", workspaceId: boot.workspace.id, order });
+    if (!result || !space) return;
+    // Screen readers hear where the space went (the menu closes on select).
+    const at = order.indexOf(moved) + 1;
+    setSpaceMoveNote(
+      t(`„${space.name}“ steht jetzt an Position ${at} von ${order.length}.`, `“${space.name}” is now at position ${at} of ${order.length}.`),
+    );
+  }
+  // Folded spaces, remembered per device (lib/space-moves.ts); read after
+  // the first render, so the server's HTML and the first client render match.
+  const [collapsedSpaces, setCollapsedSpaces] = useState<Set<string>>(new Set());
+  useEffect(() => setCollapsedSpaces(readCollapsedSpaces()), []);
+  const foldSpace = (id: string, fold: boolean) =>
+    setCollapsedSpaces((current) => {
+      if (current.has(id) === fold) return current;
+      const next = new Set(current);
+      if (fold) next.add(id);
+      else next.delete(id);
+      writeCollapsedSpaces(next);
+      return next;
+    });
+  // Opening a page unfolds its space.
+  const openSpaceId = screen === "page" && pageId ? boot.pages.find((p) => p.id === pageId)?.space_id : undefined;
+  useEffect(() => {
+    if (openSpaceId) foldSpace(openSpaceId, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSpaceId]);
   function addPage(
     kind: PageKind = "document",
     parentId: string | null = null,
@@ -1850,6 +1889,8 @@ export default function WorkspaceApp({
                   setTreeDrop(null);
               }}
               onDrop={(e) => {
+                // A space dropped onto one of its pages: its section handles it.
+                if (e.dataTransfer.types.includes("application/x-flowplan-space")) return;
                 e.preventDefault();
                 e.stopPropagation();
                 const record = e.dataTransfer.getData("application/x-flowplan-row-order");
@@ -2442,10 +2483,59 @@ export default function WorkspaceApp({
                 !filterMatches ||
                 activePages.some((p) => p.space_id === space.id && filterMatches.has(p.id)),
             )
-            .map((space) => (
-            <section className="nav-section" key={space.id}>
-              <div className="nav-section-title">
-                <span>
+            .map((space, spaceIndex, shownSpaces) => {
+              // While filtering every space with a match stays open.
+              const spaceClosed = !filterMatches && collapsedSpaces.has(space.id),
+                spaceOrder = boot.spaces.map((s) => s.id),
+                reorderable = canReorderSpaces && !filterMatches;
+              return (
+            <section
+              className={`nav-section${spaceDrop?.id === space.id ? ` space-drop-${spaceDrop.placement}` : ""}${spaceClosed ? " space-collapsed" : ""}`}
+              key={space.id}
+              data-space-id={space.id}
+              onDragOver={(e) => {
+                if (!reorderable || !e.dataTransfer.types.includes("application/x-flowplan-space")) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                const rect = e.currentTarget.getBoundingClientRect();
+                const placement = e.clientY - rect.top < rect.height / 2 ? "before" : "after";
+                if (spaceDrop?.id !== space.id || spaceDrop.placement !== placement) setSpaceDrop({ id: space.id, placement });
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setSpaceDrop((d) => (d?.id === space.id ? null : d));
+              }}
+              onDrop={(e) => {
+                const source = e.dataTransfer.getData("application/x-flowplan-space");
+                if (!source) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const placement = spaceDrop?.id === space.id ? spaceDrop.placement : "before";
+                setSpaceDrop(null);
+                void reorderSpaces(dropSpace(spaceOrder, source, space.id, placement), source);
+              }}
+            >
+              <div
+                className="nav-section-title"
+                draggable={reorderable}
+                onDragStart={(e) => {
+                  if (!reorderable || (e.target as HTMLElement).closest(".nav-section-tools")) {
+                    e.preventDefault();
+                    return;
+                  }
+                  e.dataTransfer.setData("application/x-flowplan-space", space.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragEnd={() => setSpaceDrop(null)}
+              >
+                <button
+                  type="button"
+                  className="space-toggle"
+                  aria-expanded={!spaceClosed}
+                  aria-controls={`space-tree-${space.id}`}
+                  title={spaceClosed ? t(`${space.name} aufklappen`, `Expand ${space.name}`) : t(`${space.name} zuklappen`, `Collapse ${space.name}`)}
+                  onClick={() => foldSpace(space.id, !collapsedSpaces.has(space.id))}
+                >
+                  <CaretRight size={10} className="space-caret" aria-hidden="true" />
                   <SpaceIcon icon={space.icon} color={space.icon_color} />
                   {(space as { encrypted?: number }).encrypted ? (
                     <LockKey size={12} weight="fill" className="e2ee-space-icon" aria-label={t("Verschlüsselter Bereich", "Encrypted space")} />
@@ -2455,18 +2545,48 @@ export default function WorkspaceApp({
                   <span className="space-name" title={space.name}>
                     {space.name}
                   </span>
-                </span>
+                </button>
                 {/* The tools wrap under a long name instead of squeezing it. */}
                 <span className="nav-section-tools">
                   {(boot.workspace.role === "owner" ||
                     (canCreate && space.owner_id === boot.user.id)) && (
-                    <button
-                      className="icon-button"
-                      aria-label={t(`Bereich ${space.name} verwalten`, `Manage space ${space.name}`)}
-                      onClick={() => setSpaceManager({ space })}
-                    >
-                      <DotsThree size={16} />
-                    </button>
+                    <Dropdown.Root>
+                      <Dropdown.Trigger
+                        className="icon-button"
+                        aria-label={t(`Bereich ${space.name} verwalten`, `Manage space ${space.name}`)}
+                      >
+                        <DotsThree size={16} />
+                      </Dropdown.Trigger>
+                      <Dropdown.Portal>
+                        <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
+                          <Dropdown.Item className="dropdown-item" onSelect={() => setSpaceManager({ space })}>
+                            <GearSix />
+                            {t("Bereich bearbeiten …", "Edit space …")}
+                          </Dropdown.Item>
+                          {reorderable && (
+                            <>
+                              <Dropdown.Separator className="dropdown-separator" />
+                              <Dropdown.Item
+                                className="dropdown-item"
+                                disabled={spaceIndex === 0}
+                                onSelect={() => void reorderSpaces(moveSpaceBy(spaceOrder, space.id, -1), space.id)}
+                              >
+                                <ArrowUp />
+                                {t("Nach oben", "Move up")}
+                              </Dropdown.Item>
+                              <Dropdown.Item
+                                className="dropdown-item"
+                                disabled={spaceIndex === shownSpaces.length - 1}
+                                onSelect={() => void reorderSpaces(moveSpaceBy(spaceOrder, space.id, 1), space.id)}
+                              >
+                                <ArrowDown />
+                                {t("Nach unten", "Move down")}
+                              </Dropdown.Item>
+                            </>
+                          )}
+                        </Dropdown.Content>
+                      </Dropdown.Portal>
+                    </Dropdown.Root>
                   )}
                   {(space as { encrypted?: number }).encrypted ? (
                     <button
@@ -2510,14 +2630,25 @@ export default function WorkspaceApp({
                   )}
                 </span>
               </div>
-              <div role="tree" aria-label={t(`Seiten in ${space.name}`, `Pages in ${space.name}`)}>
-                {tree(null, space.id, 0, treeStop(space.id))}
-              </div>
-              {!activePages.some((p) => p.space_id === space.id) && (
-                <span className="sidebar-empty">{t("Noch keine Seiten", "No pages yet")}</span>
-              )}
+              {/* Folding keeps the tree mounted only while open. */}
+              <Collapse open={!spaceClosed} className="space-tree">
+                {!spaceClosed ? (
+                  <div id={`space-tree-${space.id}`}>
+                    <div role="tree" aria-label={t(`Seiten in ${space.name}`, `Pages in ${space.name}`)}>
+                      {tree(null, space.id, 0, treeStop(space.id))}
+                    </div>
+                    {!activePages.some((p) => p.space_id === space.id) && (
+                      <span className="sidebar-empty">{t("Noch keine Seiten", "No pages yet")}</span>
+                    )}
+                  </div>
+                ) : null}
+              </Collapse>
             </section>
-          ))}
+              );
+            })}
+          <p className="sr-only" role="status" aria-live="polite">
+            {spaceMoveNote}
+          </p>
           {canCreate && (
             <button className="add-space" onClick={() => setNewSpace(true)}>
               <Plus size={15} />

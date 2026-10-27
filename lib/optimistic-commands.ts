@@ -171,6 +171,15 @@ export function applyRowMove<D extends PageLike>(data: D, move: RowMoveInput): D
   };
 }
 
+// A list after space.reorder: the listed items take the places the listed
+// ones held, in the new order; the others stay where they are.
+export function reorderList<T extends { id: string }>(list: T[], order: string[]): T[] {
+  const byId = new Map(list.map((item) => [item.id, item]));
+  const queue = order.filter((id) => byId.has(id)).map((id) => byId.get(id)!);
+  const listed = new Set(queue.map((item) => item.id));
+  return list.map((item) => (listed.has(item.id) ? queue.shift()! : item));
+}
+
 // The layers of one command; null when its result is not known beforehand.
 export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandContext): CommandOverlay<D> | null {
   const now = ctx.now || new Date();
@@ -210,6 +219,17 @@ export function commandOverlay<D extends PageLike>(b: Command, ctx: CommandConte
       return {
         boot: (boot) => ({ ...boot, pages: boot.pages.map((p) => (p.id === pageId ? { ...p, ...patch } : p)) }),
         page: onPage((data) => ({ ...data, page: { ...data.page, ...patch } })),
+      };
+    }
+    case "space.reorder": {
+      const order = Array.isArray(b.order) ? b.order.filter((x): x is string => typeof x === "string") : [];
+      if (!order.length) return null;
+      return {
+        boot: (boot) => ({
+          ...boot,
+          spaces: reorderList(boot.spaces, order),
+          ...(boot.managedSpaces ? { managedSpaces: reorderList(boot.managedSpaces, order) } : {}),
+        }),
       };
     }
     case "page.delete":

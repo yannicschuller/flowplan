@@ -615,6 +615,18 @@ CommandSpaceCreateResult = TypedDict("CommandSpaceCreateResult", {
     "id": Required[str],
 }, total=False)
 
+# Change the order of the spaces in a workspace. Needs the owner role in the workspace. `order` lists the spaces the caller sees in the sidebar in their new order; only those move, between their new neighbours, so spaces the caller cannot see keep their place. Visible spaces left out keep theirs too; an unknown or hidden space answers 404. Sending the same order again changes nothing. The answer lists the visible spaces in their new order.
+CommandSpaceReorder = TypedDict("CommandSpaceReorder", {
+    "action": Required[Literal["space.reorder"]],
+    "workspaceId": Required[str],
+    "order": Required[list[str]],  # Space IDs in the new order
+}, total=False)
+
+CommandSpaceReorderResult = TypedDict("CommandSpaceReorderResult", {
+    "ok": Required[Literal[True]],
+    "order": Required[list[str]],
+}, total=False)
+
 # Create a page. Needs editor rights on the space. Databases start with the `tasks` setup unless `databaseKind` says otherwise.
 CommandPageCreate = TypedDict("CommandPageCreate", {
     "action": Required[Literal["page.create"]],
@@ -1101,7 +1113,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

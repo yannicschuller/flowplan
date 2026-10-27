@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { generateJSON } from "@tiptap/html/server";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { all, id, one, onTransactionRollback, run } from "./db";
+import { SPACE_ORDER } from "./space-order";
 import { HttpError } from "./auth";
 import { quotaCheckpoint } from "./instance-ops";
 import { pageRole, requireMember, requirePage, spaceRole } from "./permissions";
@@ -41,7 +42,7 @@ export type PageTarget = { spaceId: string; parentId: string | null; title: stri
 // Where a new page may go: the top level of a space or below a page, both
 // with write access.
 function pageTargets(user: Identity, workspaceId: string): PageTarget[] {
-  const spaces = all<Space>("SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY name COLLATE NOCASE", workspaceId);
+  const spaces = all<Space>(`SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY ${SPACE_ORDER}`, workspaceId);
   const names = new Map(spaces.map((s) => [s.id, s.name]));
   const locked = lockedPageIds(user, workspaceId);
   const pages = all<Page>(

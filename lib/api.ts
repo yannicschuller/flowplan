@@ -108,6 +108,7 @@ import {
   removeFromWorkspace,
 } from "./workspace-lifecycle";
 import { saveSpaceGitExport, sweepSpaceGitCopies } from "./space-git-export";
+import { reorderSpaces, SPACE_ORDER, visibleSpaces } from "./space-order";
 import {
   coverSchema,
   appearanceSchema,
@@ -278,16 +279,14 @@ export function bootstrap(user: Identity, wid?: string) {
     pages,
     // Pages owned by me whose review date has passed (lib/page-review.ts).
     reviewsDue: reviewsDue(user, pages),
-    spaces: all<Space>(
-      "SELECT * FROM spaces WHERE workspace_id=?",
-      workspace.id,
-    ).filter((s) => spaceRole(user, s) || visibleSpaceIds.has(s.id)),
+    // In the workspace's order (lib/space-order.ts).
+    spaces: visibleSpaces(user, workspace.id, visibleSpaceIds),
     trashedSpaces: all<Space>(
-      "SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NOT NULL",
+      `SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NOT NULL ORDER BY ${SPACE_ORDER}`,
       workspace.id,
     ).filter((s) => canManageSpace(user, s)),
     managedSpaces: all<Space>(
-      "SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL",
+      `SELECT * FROM spaces WHERE workspace_id=? AND deleted_at IS NULL ORDER BY ${SPACE_ORDER}`,
       workspace.id,
     ).filter((s) => canManageSpace(user, s)),
     favorites: all<{ page_id: string }>(
@@ -971,6 +970,10 @@ export function command(
       }
       case "space.duplicate":
         result = duplicateSpace(user, b);
+        break;
+      // The order of the spaces in the sidebar (lib/space-order.ts).
+      case "space.reorder":
+        result = reorderSpaces(user, b);
         break;
       // Git export of the space, by its owner (lib/space-git-export.ts).
       case "space.gitExport":

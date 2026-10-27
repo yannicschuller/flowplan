@@ -194,6 +194,9 @@ const exact: Record<string, string> = {
   "Mitglied fehlt": "Member missing",
   "Vorlage zu groß.": "Template too large.",
   "Bereich nicht gefunden.": "Space not found.",
+  // The order of spaces (lib/space-order.ts).
+  "Ein Bereich steht mehrfach in der Reihenfolge.": "A space appears more than once in the order.",
+  "Die Reihenfolge ließ sich nicht speichern. Bitte neu laden.": "The order could not be saved. Please reload.",
   "Dieser Link ist schon unter den Lesezeichen.": "This link is already among the bookmarks.",
   "In der Datei wurden keine Lesezeichen gefunden.": "No bookmarks were found in the file.",
   "Eigenes Konto kann nicht deaktiviert werden.": "You cannot disable your own account.",

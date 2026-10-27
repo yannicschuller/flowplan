@@ -1,4 +1,5 @@
 import { duplicatePages } from "./page-tree";
+import { placeAfter } from "./space-order";
 import { z } from "zod";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
@@ -307,6 +308,8 @@ export function duplicateSpace(user: Identity, input: Record<string, unknown>) {
     visibility,
     user.id,
   );
+  // Right after the original in the sidebar.
+  placeAfter(target, space.id);
   const copied = duplicatePages(user, pages, space.workspace_id, target);
   return { id: target, pages: copied.pages };
 }
