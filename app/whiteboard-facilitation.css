@@ -6,13 +6,12 @@
 .wb-fac-stack {
   position: absolute;
   top: 52px;
-  left: 50%;
-  translate: -50% 0;
+  left: 64px;
+  right: 64px;
   z-index: 5;
   display: grid;
   justify-items: center;
   gap: 6px;
-  max-width: calc(100% - 24px);
   pointer-events: none;
 }
 .wb-fac-stack > * {
@@ -42,6 +41,10 @@
 }
 .wb-private-count {
   color: var(--secondary);
+}
+.wb-private-banner > span,
+.wb-fac-notice > span {
+  white-space: nowrap;
 }
 .wb-private-banner button,
 .wb-fac-notice button {
@@ -278,6 +281,8 @@
 /* ---- phones and narrow panes ---- */
 .whiteboard.wb-layout-dock .wb-fac-stack {
   top: calc(96px + var(--wb-inset-top));
+  left: calc(8px + var(--wb-inset-left));
+  right: calc(8px + var(--wb-inset-right));
 }
 .whiteboard.wb-layout-dock .wb-private-banner,
 .whiteboard.wb-layout-dock .wb-fac-notice {

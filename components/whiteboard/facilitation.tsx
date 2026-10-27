@@ -10,6 +10,7 @@ import { Cards, EyeSlash, Eye, MagnetStraight, SpeakerHigh, SpeakerSlash, X, Arr
 import { api } from "../ui";
 import { Select } from "../select";
 import { useT } from "../i18n";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 import type { Point, WhiteboardItem, WhiteboardMeta } from "@/lib/whiteboard-model";
 import type { RowCard } from "./render";
 import {
@@ -603,12 +604,13 @@ export function useFacilitation(o: FacilitationOptions) {
                   <p className="wb-poker-summary">
                     {estimation.stats.average !== null && (
                       <span>
-                        Ø {estimation.stats.average.toLocaleString()}
+                        Ø {estimation.stats.average.toLocaleString(LOCALE_TAG)}
                       </span>
                     )}
                     {estimation.stats.median !== null && (
                       <span>
-                        {t("Median", "Median")} {estimation.stats.median}
+                        {t("Median", "Median")}{" "}
+                        {Number.isFinite(Number(estimation.stats.median)) ? Number(estimation.stats.median).toLocaleString(LOCALE_TAG) : estimation.stats.median}
                       </span>
                     )}
                     {estimation.stats.consensus ? (
