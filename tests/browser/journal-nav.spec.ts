@@ -155,7 +155,7 @@ test("grouped by year and month: folders, keys and the open day", async ({ page 
   else {
     // The setting in the journal's settings.
     await page.getByRole("button", { name: "Journal einrichten" }).click();
-    await page.getByRole("tab", { name: "Tage" }).click();
+    await page.getByRole("tab", { name: "Tage", exact: true }).click();
     await page.getByRole("radio", { name: /Nach Jahr und Monat gruppiert/ }).check();
     await expect(page.getByRole("radio", { name: /Nach Jahr und Monat gruppiert/ })).toBeChecked();
     await page.keyboard.press("Escape");
