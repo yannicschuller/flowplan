@@ -24,6 +24,7 @@ import { deleteRecordView, saveRecordView } from "./cross-records";
 import { createCalDavAccess, revokeCalDavAccess } from "./caldav";
 import { deleteCalendarMapping, disconnectCalendar, saveCalendarMapping } from "./calendar-sync";
 import { createMeetingNote } from "./meeting-notes";
+import { createMonthSummary } from "./journal-summary";
 import { restoreBlock } from "./restore-block";
 import { saveSurvey } from "./survey-server";
 import { transferRows } from "./row-transfer";
@@ -54,6 +55,7 @@ import {
   journalLocked,
   journalOf,
   journalSettings,
+  journalSidebarModes,
   lockJournalNow,
   pinSchema,
   requireUnlocked,
@@ -279,6 +281,8 @@ export function bootstrap(user: Identity, wid?: string) {
     workspace,
     pages,
     pageCounts: pageCounts(user, workspace.id, pages),
+    // "Tage in der Seitenleiste" of journals that differ from the default.
+    journalSidebar: journalSidebarModes(workspace.id),
     // Pages owned by me whose review date has passed (lib/page-review.ts).
     reviewsDue: reviewsDue(user, pages),
     // In the workspace's order (lib/space-order.ts).
@@ -1360,6 +1364,11 @@ export function command(
         if (!journal || day.kind === "journal")
           throw new HttpError(400, "Diese Seite ist kein Journaltag.");
         result = saveDayEntry(journal, day, b.entry);
+        break;
+      }
+      case "journal.summary": {
+        // A normal sub page with the month's review (lib/journal-summary.ts).
+        result = createMonthSummary(user, write(), b);
         break;
       }
       case "journal.roll": {

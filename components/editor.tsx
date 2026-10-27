@@ -1858,8 +1858,11 @@ export default function DocumentEditor({
   });
   // The mention dialog: what matches the typed text.
   const referenceTerm = referenceQuery.trim().toLowerCase();
-  // Pages match by title or by an alias ("Chauffage · PAC").
-  const referencePages = pages
+  // Pages match by title or by an alias ("Chauffage · PAC"). Only while the
+  // dialog is open: a workspace with years of journal days has thousands.
+  const referencePages = !references
+    ? []
+    : pages
     .flatMap((p): { page: Page; alias?: string }[] => {
       if (p.id === pageId) return [];
       if (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)) return [{ page: p, alias: undefined }];
@@ -1870,7 +1873,7 @@ export default function DocumentEditor({
     .sort((a, b) => Number(!!a.page.journal_date) - Number(!!b.page.journal_date));
   // "@heute", "@gestern", "@2026-10-27": a link to that day of the journal.
   const referenceDay = journalDayQuery(referenceTerm);
-  const journalDays = new Set(pages.filter((p) => p.journal_date).map((p) => p.journal_date));
+  const journalDays = new Set(references ? pages.filter((p) => p.journal_date).map((p) => p.journal_date) : []);
   async function insertDayLink(date: string) {
     try {
       const link = await api<{ dayId: string; title: string }>("/api/command", {

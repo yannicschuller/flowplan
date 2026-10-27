@@ -25,6 +25,7 @@ import {
 import { Temporal, validZone } from "./date-values";
 import { safeFetch } from "./safe-fetch";
 import type { Field, Identity, Page, Row, View } from "./types";
+import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, sidebarMode, type SidebarMode } from "./journal-nav";
 
 let cachedSchema: ReturnType<typeof documentSchema> | undefined;
 const schema = () => (cachedSchema ??= documentSchema());
@@ -57,6 +58,8 @@ export const journalOptionsSchema = z.object({
   // "Seite des Tages anlegen": when the day starts (auto) or with the first
   // keystroke, ticked task, tracker value or file (write; lib/journal-days.ts).
   create: z.enum(["auto", "write"]).default("auto"),
+  // How the days appear in the page tree (lib/journal-nav.ts).
+  sidebar: z.enum(SIDEBAR_MODES).default(DEFAULT_SIDEBAR_MODE),
 });
 export type JournalOptions = z.infer<typeof journalOptionsSchema>;
 function settingsRow(journalId: string) {
@@ -71,7 +74,7 @@ export function journalSettings(journalId: string) {
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers));
   } catch {}
-  let options: JournalOptions = { place: true, events: true, create: "auto" };
+  let options: JournalOptions = { place: true, events: true, create: "auto", sidebar: DEFAULT_SIDEBAR_MODE };
   try {
     options = journalOptionsSchema.parse(JSON.parse(row?.options || "{}"));
   } catch {}
@@ -94,6 +97,21 @@ function ensureSettings(journalId: string) {
     journalId,
     JSON.stringify(defaultTrackers),
   );
+}
+// "Tage in der Seitenleiste" of every journal of a workspace, for the page
+// tree (sent with the bootstrap). Journals without settings use the default.
+export function journalSidebarModes(workspaceId: string): Record<string, SidebarMode> {
+  const modes: Record<string, SidebarMode> = {};
+  for (const row of all<{ page_id: string; options: string }>(
+    "SELECT s.page_id,s.options FROM journal_settings s JOIN pages p ON p.id=s.page_id WHERE p.workspace_id=? AND p.kind='journal'",
+    workspaceId,
+  )) {
+    try {
+      const mode = sidebarMode(JSON.parse(row.options || "{}").sidebar);
+      if (mode !== DEFAULT_SIDEBAR_MODE) modes[row.page_id] = mode;
+    } catch {}
+  }
+  return modes;
 }
 // The journal a page belongs to: the journal itself or the one of a day.
 export function journalOf(page: Page) {
@@ -317,7 +335,7 @@ export function saveDayEntry(journal: Page, day: Page, input: unknown) {
 // ---- Overview ----
 
 const imagePattern = /<img[^>]*\ssrc="(\/api\/files\/[0-9a-f-]{36})"/i;
-function plainText(html: string) {
+export function plainText(html: string) {
   return html
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;|&#39;/g, " ")

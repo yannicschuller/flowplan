@@ -119,6 +119,8 @@ import {
   requireUnlocked,
   lockedPageIds,
 } from "@/lib/journal-extras";
+import { existingSummary } from "@/lib/journal-summary";
+import { wholeMonth } from "@/lib/journal-nav";
 import { visibleRows } from "@/lib/row-access";
 import { readableDatabase } from "@/lib/field-access";
 import { listRowTrash } from "@/lib/row-trash";
@@ -431,12 +433,12 @@ async function handleGET(
       const journal = requirePage(user, z.uuid().parse(path[1]));
       if (journal.kind !== "journal") throw new HttpError(400, "Kein Journal.");
       requireUnlocked(user, journal);
+      const from = journalDate.parse(url.searchParams.get("from"));
+      const to = journalDate.parse(url.searchParams.get("to"));
+      // A whole month: its summary page, when there is one (lib/journal-summary.ts).
+      const month = wholeMonth(from, to);
       return NextResponse.json(
-        journalReview(
-          journal,
-          journalDate.parse(url.searchParams.get("from")),
-          journalDate.parse(url.searchParams.get("to")),
-        ),
+        { ...journalReview(journal, from, to), ...(month ? { summaryId: existingSummary(user, journal, month) } : {}) },
         { headers: { "Cache-Control": "no-store" } },
       );
     }

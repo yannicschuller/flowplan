@@ -155,6 +155,10 @@ import {
   Presentation as PresentIcon,
   SquareSplitHorizontal,
   SlidersHorizontal,
+  CalendarBlank,
+  CalendarCheck,
+  CalendarDots,
+  FolderSimple,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -192,6 +196,16 @@ import { PublicationDomain } from "./publication-domain";
 import { LinkProtection, ProtectionChips } from "./link-protection";
 import { MovePageDialog } from "./move-page-dialog";
 import { JournalView, localDay, type JournalDay } from "./journal-view";
+import { JournalDayNav, JournalTreeItem, monthLabel } from "./journal-nav";
+import {
+  allDaysKey,
+  DEFAULT_SIDEBAR_MODE,
+  isFolderKey,
+  journalSidebar,
+  shownTreeIds,
+  todayKey,
+  type SidebarEntry,
+} from "@/lib/journal-nav";
 import { MyTasks } from "./my-tasks";
 import HomeScreen from "./home/home";
 import { relativeTime } from "./home/format";
@@ -457,6 +471,10 @@ export default function WorkspaceApp({
     [spaceKeys, setSpaceKeys] = useState<string | null>(null),
     [epoch, setEpoch] = useState(0),
     [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
+    // Year and month folders of journals opened or closed by hand (#49).
+    [journalFolders, setJournalFolders] = useState<{ open: Set<string>; closed: Set<string> }>(() => ({ open: new Set(), closed: new Set() })),
+    // "Alle Tage …" in the tree: the journal to show at its list of days.
+    [revealJournalDays, setRevealJournalDays] = useState<string | null>(null),
     // Quick filter above the page tree.
     [treeFilter, setTreeFilter] = useState(""),
     [online, setOnline] = useState(true),
@@ -1461,6 +1479,9 @@ export default function WorkspaceApp({
       case "present":
         startPresentation();
         break;
+      case "journalToday":
+        openLastJournalToday();
+        break;
     }
   };
   shortcutRef.current = runShortcut;
@@ -1473,6 +1494,14 @@ export default function WorkspaceApp({
   useEffect(() => {
     if (split && screen === "page" && pageId === split) setSplit(null);
   }, [split, screen, pageId]);
+  // The journal used last ("Journal: Heute", its shortcut).
+  const usedJournal = data?.page.kind === "journal" ? data.page.id : data?.journalDay?.journalId || null;
+  useEffect(() => {
+    if (!usedJournal) return;
+    try {
+      localStorage.setItem(LAST_JOURNAL, usedJournal);
+    } catch {}
+  }, [usedJournal]);
   // Phones: the bottom bar steps aside while the keyboard is open.
   const keyboardOpen = useSoftKeyboard();
   // Only the panes scroll, never the document (no rubber band under the bars).
@@ -1480,7 +1509,20 @@ export default function WorkspaceApp({
   // Encrypted titles are decrypted here, in the browser, once unlocked.
   const titledPages = useDecryptedTitles(boot.pages, boot.spaces);
   const e2eeState = useE2ee();
-  const activePages = titledPages.filter((p) => !p.deleted_at),
+  const activePages = useMemo(() => titledPages.filter((p) => !p.deleted_at), [titledPages]),
+    // The tree's levels in one pass: sub pages per parent, top-level pages
+    // per space ("space:<id>") – no search through all pages per row.
+    treeIndex = useMemo(() => {
+      const ids = new Set(activePages.map((p) => p.id));
+      const index = new Map<string, Page[]>();
+      for (const p of activePages) {
+        const key = p.parent_id && ids.has(p.parent_id) ? p.parent_id : `space:${p.space_id}`;
+        const list = index.get(key);
+        if (list) list.push(p);
+        else index.set(key, [p]);
+      }
+      return index;
+    }, [activePages]),
     editable = mayEdit && !reading,
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
@@ -1589,14 +1631,8 @@ export default function WorkspaceApp({
     level = 0,
   ): { page: Page; level: number }[] {
     if (level > 20) return [];
-    return activePages
-      .filter(
-        (p) =>
-          p.space_id === sid &&
-          (parentId
-            ? p.parent_id === parentId
-            : !p.parent_id || !activePages.some((x) => x.id === p.parent_id)),
-      )
+    return (treeIndex.get(parentId ?? `space:${sid}`) || [])
+      .filter((p) => p.space_id === sid)
       .flatMap((p) => [{ page: p, level }, ...flatPages(p.id, sid, level + 1)]);
   }
   function ancestorsOf(pid: string) {
@@ -1789,24 +1825,66 @@ export default function WorkspaceApp({
   });
   // The pages of a level of the tree, in order.
   const treeLevel = (parentId: string | null, sid: string) =>
-    activePages.filter(
-      (p) =>
-        p.space_id === sid &&
-        (parentId
-          ? p.parent_id === parentId
-          : !p.parent_id || !activePages.some((x) => x.id === p.parent_id)) &&
-        (!filterMatches || filterMatches.has(p.id)),
+    (treeIndex.get(parentId ?? `space:${sid}`) || []).filter(
+      (p) => p.space_id === sid && (!filterMatches || filterMatches.has(p.id)),
     );
+  // Below a journal the days do not all show (#49): today, the last days and
+  // folders per year and month, as the journal's setting says
+  // (lib/journal-nav.ts). Computed once per journal and render; hidden days
+  // are never rendered. While filtering, matching days show as they are.
+  const journalTrees = new Map<string, { entries: SidebarEntry<Page>[]; others: Page[]; shown: Set<string> }>();
+  const journalTree = (journal: Page) => {
+    let found = journalTrees.get(journal.id);
+    if (!found) {
+      const kids = treeIndex.get(journal.id) || [];
+      const entries = journalSidebar(
+        kids.filter((x) => x.journal_date),
+        {
+          journalId: journal.id,
+          mode: boot.journalSidebar?.[journal.id] || DEFAULT_SIDEBAR_MODE,
+          today: localDay(),
+          openId: screen === "page" ? pageId : null,
+          expanded: journalFolders.open,
+          collapsed: journalFolders.closed,
+        },
+      );
+      found = { entries, others: kids.filter((x) => !x.journal_date), shown: shownTreeIds(entries, journal.id) };
+      journalTrees.set(journal.id, found);
+    }
+    return found;
+  };
+  const toggleJournalFolder = (key: string, open: boolean) =>
+    setJournalFolders((f) => {
+      const next = { open: new Set(f.open), closed: new Set(f.closed) };
+      if (open) {
+        next.open.add(key);
+        next.closed.delete(key);
+      } else {
+        next.open.delete(key);
+        next.closed.add(key);
+      }
+      return next;
+    });
   // Each space's tree has one Tab stop: the item focused last, else the open
   // page, else the first page – as long as it is shown (parents unfolded).
   function treeStop(sid: string): string | null {
     const byId = new Map(activePages.map((p) => [p.id, p]));
-    const shown = (id: string | null) => {
-      const page = id ? byId.get(id) : undefined;
+    const shownPage = (page: Page | undefined): boolean => {
       if (!page || page.space_id !== sid || (filterMatches && !filterMatches.has(page.id))) return false;
-      for (let parent = page.parent_id ? byId.get(page.parent_id) : undefined; parent; parent = parent.parent_id ? byId.get(parent.parent_id) : undefined)
+      for (let child = page, parent = page.parent_id ? byId.get(page.parent_id) : undefined; parent; child = parent, parent = parent.parent_id ? byId.get(parent.parent_id) : undefined) {
         if (!filterMatches && collapsed.has(parent.id)) return false;
+        // A day of a journal: only while the journal shows it.
+        if (!filterMatches && parent.kind === "journal" && child.journal_date && !journalTree(parent).shown.has(child.id)) return false;
+      }
       return true;
+    };
+    const shown = (id: string | null) => {
+      if (id && isFolderKey(id)) {
+        // A virtual item of a journal (today, a folder, "Alle Tage").
+        const journal = byId.get(id.split(":")[1]);
+        return !filterMatches && !!journal && shownPage(journal) && !collapsed.has(journal.id) && journalTree(journal).shown.has(id);
+      }
+      return shownPage(id ? byId.get(id) : undefined);
     };
     if (shown(treeFocus)) return treeFocus;
     if (screen === "page" && shown(pageId)) return pageId;
@@ -1814,17 +1892,28 @@ export default function WorkspaceApp({
   }
   // Arrow keys in the tree (WAI-ARIA tree pattern): up and down move, right
   // unfolds or enters, left folds or goes to the parent, Enter opens.
-  function treeKey(e: React.KeyboardEvent<HTMLDivElement>, p: Page, children: boolean, closed: boolean) {
+  function treeKey(e: React.KeyboardEvent<HTMLDivElement>, p: Page, children: boolean, closed: boolean, parentTree = p.parent_id) {
+    treeNavKey(e, {
+      children,
+      closed,
+      parentTree,
+      fold: (fold) =>
+        setCollapsed((s) => {
+          const n = new Set(s);
+          fold ? n.add(p.id) : n.delete(p.id);
+          return n;
+        }),
+      activate: () => void openPage(p.id),
+    });
+  }
+  function treeNavKey(
+    e: React.KeyboardEvent<HTMLDivElement>,
+    item: { children: boolean; closed: boolean; parentTree?: string | null; fold: (fold: boolean) => void; activate: () => void },
+  ) {
     const row = e.currentTarget,
       items = [...(row.closest('[role="tree"]')?.querySelectorAll<HTMLElement>('[role="treeitem"]') || [])],
       at = items.indexOf(row);
     const focusItem = (el?: HTMLElement) => el?.focus();
-    const fold = (fold: boolean) =>
-      setCollapsed((s) => {
-        const n = new Set(s);
-        fold ? n.add(p.id) : n.delete(p.id);
-        return n;
-      });
     switch (e.key) {
       case "ArrowDown":
         focusItem(items[at + 1]);
@@ -1839,18 +1928,18 @@ export default function WorkspaceApp({
         focusItem(items[items.length - 1]);
         break;
       case "ArrowRight":
-        if (!children) return;
-        if (closed) fold(false);
+        if (!item.children) return;
+        if (item.closed) item.fold(false);
         else focusItem(items[at + 1]);
         break;
       case "ArrowLeft":
-        if (children && !closed) fold(true);
-        else focusItem(items.find((el) => el.dataset.pageId === p.parent_id));
+        if (item.children && !item.closed) item.fold(true);
+        else focusItem(items.find((el) => el.dataset.treeId === item.parentTree));
         break;
       case "Enter":
         // A button inside the row (title, chevron, +) handles its own Enter.
         if (e.target !== row) return;
-        void openPage(p.id);
+        item.activate();
         break;
       default:
         return;
@@ -1865,11 +1954,107 @@ export default function WorkspaceApp({
     stop: string | null = null,
   ): React.ReactNode {
     if (level > 20) return null;
-    return treeLevel(parentId, sid)
-      .map((p) => {
-        const children = activePages.some(
-            (x) => x.parent_id === p.id && (!filterMatches || filterMatches.has(x.id)),
-          ),
+    return treeLevel(parentId, sid).map((p) => treeRow(p, sid, level, stop));
+  }
+  // The entries below a journal: its days as page rows (dragging, menus and
+  // keys as everywhere) and virtual items – "Heute" while today has no page,
+  // folders per year and month, "Alle Tage …" – then its other sub pages.
+  function journalBranch(journal: Page, sid: string, level: number, stop: string | null): React.ReactNode {
+    if (level > 20) return null;
+    const { entries, others } = journalTree(journal);
+    const dayRow = (day: Page, at: number, parentTree: string, today = false) => treeRow(day, sid, at, stop, { parentTree, today });
+    return (
+      <>
+        {entries.map((entry) => {
+          if (entry.kind === "today")
+            return entry.day ? (
+              dayRow(entry.day, level, journal.id, true)
+            ) : (
+              <JournalTreeItem
+                key={todayKey(journal.id)}
+                id={todayKey(journal.id)}
+                parentTree={journal.id}
+                level={level}
+                stop={stop}
+                icon={<CalendarCheck size={17} />}
+                label={t("Heute", "Today")}
+                onFocus={setTreeFocus}
+                onKey={treeNavKey}
+                onActivate={() => void openJournalToday(journal.id)}
+              />
+            );
+          if (entry.kind === "day") return dayRow(entry.day, level, journal.id);
+          if (entry.kind === "all")
+            return (
+              <JournalTreeItem
+                key={allDaysKey(journal.id)}
+                id={allDaysKey(journal.id)}
+                parentTree={journal.id}
+                level={level}
+                stop={stop}
+                icon={<CalendarDots size={17} />}
+                label={t("Alle Tage …", "All days …")}
+                count={entry.count}
+                muted
+                onFocus={setTreeFocus}
+                onKey={treeNavKey}
+                onActivate={() => {
+                  setRevealJournalDays(journal.id);
+                  void openPage(journal.id);
+                }}
+              />
+            );
+          return (
+            <JournalTreeItem
+              key={entry.key}
+              id={entry.key}
+              parentTree={journal.id}
+              level={level}
+              stop={stop}
+              icon={<FolderSimple size={17} />}
+              label={entry.year}
+              count={entry.count}
+              open={entry.open}
+              onToggle={(open) => toggleJournalFolder(entry.key, open)}
+              onFocus={setTreeFocus}
+              onKey={treeNavKey}
+            >
+              {entry.months.map((month) => (
+                <JournalTreeItem
+                  key={month.key}
+                  id={month.key}
+                  parentTree={entry.key}
+                  level={level + 1}
+                  stop={stop}
+                  icon={<CalendarBlank size={17} />}
+                  label={monthLabel.format(new Date(`${month.month}-01T00:00:00Z`))}
+                  count={month.count}
+                  open={month.open}
+                  onToggle={(open) => toggleJournalFolder(month.key, open)}
+                  onFocus={setTreeFocus}
+                  onKey={treeNavKey}
+                >
+                  {month.days.map((day) => dayRow(day, level + 2, month.key))}
+                </JournalTreeItem>
+              ))}
+            </JournalTreeItem>
+          );
+        })}
+        {others.filter((x) => x.space_id === sid).map((p) => treeRow(p, sid, level, stop))}
+      </>
+    );
+  }
+  function treeRow(
+    p: Page,
+    sid: string,
+    level: number,
+    stop: string | null,
+    place: { parentTree?: string; today?: boolean } = {},
+  ): React.ReactNode {
+        const journal = p.kind === "journal" && !filterMatches ? journalTree(p) : null;
+        const children = journal
+            ? journal.entries.length > 0 || journal.others.some((x) => x.space_id === sid)
+            : (treeIndex.get(p.id) || []).some((x) => !filterMatches || filterMatches.has(x.id)),
           // While filtering, the way to every match stays open.
           closed = !filterMatches && collapsed.has(p.id);
         return (
@@ -1877,6 +2062,7 @@ export default function WorkspaceApp({
             <div
               className={`page-nav ${screen === "page" && pageId === p.id ? "selected" : ""} ${selectedPages.includes(p.id) ? "multi-selected" : ""} ${treeDrop?.id === p.id ? `drop-${treeDrop.placement}` : ""}`}
               data-page-id={p.id}
+              data-tree-id={p.id}
               data-prefetch-page={p.id}
               role="treeitem"
               aria-level={level + 1}
@@ -1885,7 +2071,7 @@ export default function WorkspaceApp({
               aria-owns={children && !closed ? `tree-group-${p.id}` : undefined}
               tabIndex={stop === p.id ? 0 : -1}
               onFocus={() => setTreeFocus(p.id)}
-              onKeyDown={(e) => treeKey(e, p, children, closed)}
+              onKeyDown={(e) => treeKey(e, p, children, closed, place.parentTree)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setPageMenu({ page: p, x: e.clientX, y: e.clientY });
@@ -2045,6 +2231,7 @@ export default function WorkspaceApp({
                   size={17}
                 />
                 <span className="page-nav-label">{p.title}</span>
+                {place.today && <span className="nav-badge">{t("Heute", "Today")}</span>}
                 {p.locked === 1 && <Lock size={12} />}
               </button>
               {canCreate && (
@@ -2105,13 +2292,43 @@ export default function WorkspaceApp({
             <Collapse open={children && !closed} className="nav-children">
               {children && !closed ? (
                 <div role="group" id={`tree-group-${p.id}`}>
-                  {tree(p.id, sid, level + 1, stop)}
+                  {journal ? journalBranch(p, sid, level + 1, stop) : tree(p.id, sid, level + 1, stop)}
                 </div>
               ) : null}
             </Collapse>
           </div>
         );
-      });
+  }
+  // Journals by the last one used (opened or one of its days), for "Journal:
+  // Heute" in the command palette and its shortcut.
+  const journalsByUse = () => {
+    let last: string | null = null;
+    try {
+      last = localStorage.getItem(LAST_JOURNAL);
+    } catch {}
+    const journals = activePages.filter((p) => p.kind === "journal");
+    return [...journals.filter((p) => p.id === last), ...journals.filter((p) => p.id !== last)];
+  };
+  // Today's day of a journal, through the journal's own way of making the
+  // day (journal.roll, as the journal page does): opens the day when there is
+  // one, else the journal itself (no page yet, read-only, today in the trash).
+  async function openJournalToday(journalId: string) {
+    const today = localDay();
+    const day = activePages.find((p) => p.parent_id === journalId && p.journal_date === today);
+    if (day) return openPage(day.id);
+    const journal = activePages.find((p) => p.id === journalId);
+    if (journal && canCreate && !journal.locked) {
+      try {
+        const result = (await rollJournal(journalId, today)) as { dayId?: string; trashed?: boolean } | null;
+        if (result?.dayId && !result.trashed) return openPage(result.dayId);
+      } catch {}
+    }
+    return openPage(journalId);
+  }
+  function openLastJournalToday() {
+    const journal = journalsByUse()[0];
+    if (journal) void openJournalToday(journal.id);
+    else notify(t("Es gibt noch kein Journal.", "There is no journal yet."));
   }
   // The command switches to the other look and keeps it.
   function toggleTheme() {
@@ -2129,6 +2346,13 @@ export default function WorkspaceApp({
     { label: t("Neue Datenbank", "New database"), keywords: t("tabelle projekt anlegen", "tabelle projekt anlegen table project create database"), icon: Table, run: () => addPage("database") },
     { label: t("Neues Whiteboard", "New whiteboard"), keywords: "board canvas zeichnen", icon: PresentationChart, run: () => addPage("whiteboard") },
     { label: t("Neues Journal", "New journal"), keywords: t("tagebuch tag", "tagebuch tag diary day journal"), icon: Notebook, run: () => addPage("journal") },
+    // "Journal: Heute" – with several journals one per journal, the last used first.
+    ...journalsByUse().map((journal, _, list) => ({
+      label: list.length > 1 ? t(`Journal: Heute – ${journal.title || "Ohne Titel"}`, `Journal: Today – ${journal.title || "Untitled"}`) : t("Journal: Heute", "Journal: Today"),
+      keywords: `${t("tagebuch tag heute eintrag", "tagebuch tag heute diary day today entry journal")} ${journal.title}`,
+      icon: CalendarCheck,
+      run: () => void openJournalToday(journal.id),
+    })),
     { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook") },
     { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard") },
     { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Sparkle, run: () => setOnboarding(true) },
@@ -3334,6 +3558,16 @@ export default function WorkspaceApp({
                       )}
                     </CoverFrame>
                   )}
+                  {data.journalDay && !data.locked && (
+                    // A day page: previous and next entry, today, a month picker (#49).
+                    <JournalDayNav
+                      date={data.journalDay.date}
+                      today={localDay()}
+                      days={(treeIndex.get(data.journalDay.journalId) || []).filter((p) => p.journal_date)}
+                      onOpen={(id) => void openPage(id)}
+                      onToday={() => void openJournalToday(data.journalDay!.journalId)}
+                    />
+                  )}
                   <div className="document-header">
                     <button
                       className="large-page-icon"
@@ -3462,6 +3696,8 @@ export default function WorkspaceApp({
                       editable={editable}
                       onOpen={(id) => void openPage(id)}
                       onRoll={rollJournal}
+                      revealDays={revealJournalDays === data.page.id}
+                      onRevealed={() => setRevealJournalDays(null)}
                       onChanged={refresh}
                       onError={notifyError}
                     />
@@ -4012,9 +4248,13 @@ export default function WorkspaceApp({
                   <option value={`space:${sp.id}`}>
                     {sp.name} (oberste Ebene)
                   </option>
-                  {flatPages(null, sp.id)
+                  {/* Built only while the dialog is open: thousands of
+                      journal days would cost every render (#49). Days are
+                      no destinations (as in the move dialog). */}
+                  {bulkDialog === "move" && flatPages(null, sp.id)
                     .filter(
                       ({ page }) =>
+                        !page.journal_date &&
                         !selectedPages.some(
                           (sel) =>
                             sel === page.id ||
@@ -5563,4 +5803,6 @@ function safeLayer<T>(apply: (value: T) => T, value: T): T {
 // Commands sent by "Rückgängig": they offer no undo of their own.
 const undoing = new WeakSet<object>();
 // The commands lib/undo.ts may offer to take back.
+// The journal used last on this device ("Journal: Heute").
+const LAST_JOURNAL = "flowplan:last-journal";
 const UNDOABLE = new Set(["page.delete", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve"]);

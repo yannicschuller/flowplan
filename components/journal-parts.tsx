@@ -14,12 +14,15 @@ import {
   Check,
   Copy,
   Crosshair,
+  ArrowSquareOut,
+  FileText,
   LockKey,
   MapPin,
   Plus,
   Trash,
 } from "@phosphor-icons/react";
 import { api, Modal } from "./ui";
+import { DEFAULT_SIDEBAR_MODE, SIDEBAR_MODES, type SidebarMode } from "@/lib/journal-nav";
 
 export const moodFaces = ["😞", "🙁", "😐", "🙂", "😄"];
 const moodNames = [tr("Schlecht", "Bad"), tr("Mäßig", "Poor"), "Okay", tr("Gut", "Good"), tr("Großartig", "Great")];
@@ -35,7 +38,7 @@ export type JournalSettings = {
   locked: boolean;
   icsUrl?: string;
   // create: "Seite des Tages anlegen" – when the day starts or on the first write.
-  options?: { place: boolean; events: boolean; create?: "auto" | "write" };
+  options?: { place: boolean; events: boolean; create?: "auto" | "write"; sidebar?: SidebarMode };
 };
 export type DayEntry = {
   values: Record<string, number | boolean>;
@@ -161,6 +164,19 @@ export function JournalSettingsDialog({
     const before = current;
     setCurrent({ ...current, options: { ...options, [key]: value } });
     if (!(await save({ options: { [key]: value } }))) setCurrent(before);
+  };
+  // "Tage in der Seitenleiste" (#49): how the days show in the page tree.
+  const sidebar = options.sidebar || DEFAULT_SIDEBAR_MODE;
+  const setSidebar = async (value: SidebarMode) => {
+    const before = current;
+    setCurrent({ ...current, options: { ...options, sidebar: value } });
+    if (!(await save({ options: { sidebar: value } }))) setCurrent(before);
+  };
+  const sidebarChoices: Record<SidebarMode, [string, string]> = {
+    none: [t("Keine", "None"), t("Das Journal zeigt in der Seitenleiste keine Tage.", "The journal shows no days in the sidebar.")],
+    recent: [t("Letzte 7 Tage", "Last 7 days"), t("Heute und die letzten sieben Tage, dazu „Alle Tage …“. Voreinstellung.", "Today and the last seven days, plus “All days …”. The default.")],
+    grouped: [t("Nach Jahr und Monat gruppiert", "Grouped by year and month"), t("Wie „Letzte 7 Tage“, ältere Tage in Ordnern nach Jahr und Monat.", "Like “Last 7 days”, older days in folders by year and month.")],
+    all: [t("Alle", "All"), t("Jeder Tag einzeln – bei vielen Tagen eine lange Liste.", "Every single day – a long list once there are many.")],
   };
   const lock = async (next: string | null) => {
     if (next !== null && next !== pinAgain) return onError(t("Die PINs stimmen nicht überein.", "The PINs do not match."));
@@ -407,6 +423,19 @@ export function JournalSettingsDialog({
 
       {tab === "days" && (
         <section className="js-panel" role="tabpanel" aria-label={t("Tage", "Days")}>
+          <fieldset className="js-choices">
+            <legend className="js-label">{t("Tage in der Seitenleiste", "Days in the sidebar")}</legend>
+            <p className="js-intro">{t("Wie viele Tage unter dem Journal in der Seitenleiste stehen. Ein geöffneter Tag ist dort immer zu sehen.", "How many days appear below the journal in the sidebar. An open day always shows there.")}</p>
+            {SIDEBAR_MODES.map((mode) => (
+              <label key={mode} className="js-choice">
+                <input type="radio" name="journal-sidebar" value={mode} checked={sidebar === mode} disabled={busy} onChange={() => void setSidebar(mode)} />
+                <span>
+                  <strong>{sidebarChoices[mode][0]}</strong>
+                  <small>{sidebarChoices[mode][1]}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           <JournalDaysPanel
             pageId={pageId}
             mode={options.create || "auto"}
@@ -492,6 +521,9 @@ type Review = {
   words: number;
   done: { text: string; date: string; dayId: string }[];
   open: number;
+  openTasks?: { text: string; date: string; dayId: string }[];
+  // A whole month: its summary page, when one was made (lib/journal-summary.ts).
+  summaryId?: string | null;
   images: { src: string; date: string; dayId: string }[];
   places: string[];
   trackers: (Tracker & {
@@ -540,12 +572,17 @@ export function reviewText(review: Review, label: string) {
 export function JournalReview({
   pageId,
   today,
+  editable = false,
+  onChanged,
   onClose,
   onOpen,
   onError,
 }: {
   pageId: string;
   today: string;
+  // May create the month summary (a page below the journal).
+  editable?: boolean;
+  onChanged?: () => Promise<unknown> | void;
   onClose: () => void;
   onOpen: (id: string) => void;
   onError: (message: string) => void;
@@ -554,7 +591,31 @@ export function JournalReview({
   const [mode, setMode] = useState<"week" | "month">("week");
   const [anchor, setAnchor] = useState(today);
   const [review, setReview] = useState<Review | null>(null);
+  const [creating, setCreating] = useState(false);
   const range = period(mode, anchor);
+  // "Monatszusammenfassung erstellen" (#49): once per month; asked again it
+  // offers the page that is there (or, on purpose, a fresh one).
+  const summarize = async (again = false) => {
+    setCreating(true);
+    try {
+      const result = await api<{ id: string; existing: boolean }>("/api/command", {
+        action: "journal.summary",
+        pageId,
+        month: range.from.slice(0, 7),
+        ...(again ? { again: true } : {}),
+      });
+      if (result.existing) {
+        setReview((r) => (r ? { ...r, summaryId: result.id } : r));
+        return;
+      }
+      await onChanged?.();
+      onOpen(result.id);
+    } catch (e) {
+      onError(message(e));
+    } finally {
+      setCreating(false);
+    }
+  };
   useEffect(() => {
     let live = true;
     setReview(null);
@@ -675,7 +736,27 @@ export function JournalReview({
               ))}
             </div>
           </section>
+          {mode === "month" && editable && review.summaryId && (
+            <p className="journal-summary-exists" role="status">
+              {t(`Für ${label} gibt es schon eine Monatszusammenfassung.`, `There already is a monthly summary for ${label}.`)}
+              <button type="button" className="text-button" disabled={creating} onClick={() => void summarize(true)}>
+                {t("Trotzdem neu erstellen", "Create a new one anyway")}
+              </button>
+            </p>
+          )}
           <div className="modal-actions">
+            {mode === "month" &&
+              (review.summaryId ? (
+                <button type="button" className="button primary" onClick={() => onOpen(review.summaryId!)}>
+                  <ArrowSquareOut size={16} /> {t("Monatszusammenfassung öffnen", "Open monthly summary")}
+                </button>
+              ) : (
+                editable && (
+                  <button type="button" className="button primary" disabled={creating} onClick={() => void summarize()}>
+                    <FileText size={16} /> {creating ? t("Wird erstellt …", "Creating …") : t("Monatszusammenfassung erstellen", "Create monthly summary")}
+                  </button>
+                )
+              ))}
             <button
               type="button"
               className="button"

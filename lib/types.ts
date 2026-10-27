@@ -266,6 +266,8 @@ export type Bootstrap = {
   // Journaltage"), in the workspace and per space; days behind a journal
   // PIN not entered yet are not counted.
   pageCounts?: PageCounts;
+  // Journals whose days show differently in the page tree (lib/journal-nav.ts).
+  journalSidebar?: Record<string, import("./journal-nav").SidebarMode>;
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
   savedSearches?: import("./saved-searches").SavedSearch[];
