@@ -840,6 +840,21 @@ CommandRowDeleteResult = TypedDict("CommandRowDeleteResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
+# Turn sticky notes of a whiteboard into database records. Needs edit rights on the whiteboard and the database (same workspace). Each note becomes a record: its first line the title, further lines the record's document; optionally its colour a select option (`colorField`, `colorOptions`) and its author a person (`personField`). Values are checked like every edit. At most 100 records per call; `rowId` makes it idempotent (an existing record answers `created: false`). The whiteboard itself is not changed – the app replaces or links the notes with record cards.
+CommandWhiteboardToRecords = TypedDict("CommandWhiteboardToRecords", {
+    "action": Required[Literal["whiteboard.toRecords"]],
+    "pageId": Required[str],  # Page ID of the whiteboard
+    "databaseId": Required[str],  # Page ID of the database the records go to
+    "colorField": Optional[str],  # A select property for the note colour (property ID)
+    "colorOptions": dict[str, str],  # Note colour (hex) → option of `colorField`
+    "personField": Optional[str],  # A person property for the note's author (property ID)
+    "records": Required[list[dict[str, Any]]],
+}, total=False)
+
+CommandWhiteboardToRecordsResult = TypedDict("CommandWhiteboardToRecordsResult", {
+    "records": Required[list[dict[str, Any]]],
+}, total=False)
+
 # Add several records at once
 CommandRowsImport = TypedDict("CommandRowsImport", {
     "action": Required[Literal["rows.import"]],
@@ -1115,7 +1130,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 

@@ -17,6 +17,7 @@ import { repeatSchema } from "./recurrence";
 import { settingsSchema } from "./database-settings-schema";
 import { chatFormats, hookConfigSchema, noticeEvents, templatesSchema } from "./notification-templates";
 import { MAX_COMBOS, SHORTCUT_ACTIONS } from "./keymap";
+import { toRecordsInput } from "./whiteboard-ai";
 import { actionSchemas, dataRequestSchema, MAX_ITEMS, MAX_WIDGET_BYTES, MAX_WIDGETS, widgetActions, widgetConfigs, widgetKinds } from "./mobile-widget-schema";
 
 type Json = Record<string, unknown>;
@@ -65,7 +66,7 @@ export const commandActionNames = [
   "row.recurrence", "row.repeat", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore",
   "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge",
   "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
-  "citation.import", "citation.remove", "whiteboard.sync", "dashboard.save",
+  "citation.import", "citation.remove", "whiteboard.sync", "whiteboard.toRecords", "dashboard.save",
   "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete",
   "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react",
   "comment.create", "comment.resolve", "comment.react", "reminder.set",
@@ -327,6 +328,14 @@ export const commandActions: ActionDoc[] = [
     summary: "Move a record to the trash of its database",
     input: z.object({ action: z.literal("row.delete"), pageId: uuid, rowId: uuid }),
     result: okResult,
+  },
+  {
+    action: "whiteboard.toRecords",
+    summary: "Turn sticky notes of a whiteboard into database records",
+    description:
+      "Needs edit rights on the whiteboard and the database (same workspace). Each note becomes a record: its first line the title, further lines the record's document; optionally its colour a select option (`colorField`, `colorOptions`) and its author a person (`personField`). Values are checked like every edit. At most 100 records per call; `rowId` makes it idempotent (an existing record answers `created: false`). The whiteboard itself is not changed – the app replaces or links the notes with record cards.",
+    input: toRecordsInput,
+    result: z.object({ records: z.array(z.object({ itemId: z.string(), rowId: uuid, created: z.boolean() })) }),
   },
   {
     action: "rows.import",

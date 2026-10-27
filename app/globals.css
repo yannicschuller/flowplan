@@ -9568,6 +9568,8 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   height: 100%;
   font-size: 14px;
   overflow: hidden;
+  /* The card is always white, in dark mode too. */
+  color: #212529;
 }
 .wb-card-body small {
   color: #868e96;
@@ -27732,5 +27734,184 @@ label.ws-search input {
   }
   .journal-daynav button {
     padding: 0 8px;
+  }
+}
+/* AI on whiteboards and notes → records (components/whiteboard/ai-panel.tsx). */
+.wb-ai-dialog .wb-ai-body,
+.wb-ai-dialog .wb-ai-body form {
+  display: grid;
+  gap: 12px;
+}
+.wb-ai-dialog .wb-ai-body p {
+  margin: 0;
+}
+.wb-ai-menu {
+  display: grid;
+  gap: 6px;
+}
+.wb-ai-menu > button {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+}
+.wb-ai-menu > button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.wb-ai-menu > button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.wb-ai-menu > button > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--blue);
+}
+.wb-ai-menu > button span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.wb-ai-menu > button small {
+  color: var(--secondary);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.wb-ai-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.wb-ai-progress > span:nth-child(2) {
+  flex: 1;
+  min-width: 140px;
+}
+.wb-ai-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-ai-spinner {
+    animation-duration: 2.4s;
+  }
+}
+.wb-ai-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--signal) 12%, var(--bg));
+  color: var(--text);
+  font-size: 13px;
+}
+.wb-ai-error > svg {
+  flex-shrink: 0;
+  color: var(--signal);
+}
+.wb-ai-error > span {
+  flex: 1;
+  min-width: 160px;
+}
+.wb-ai-field {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wb-ai-field textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font-weight: 400;
+}
+.wb-ai-targets {
+  max-height: 200px;
+}
+.wb-ai-mapping {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.wb-ai-mapping legend {
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--secondary);
+}
+.wb-ai-map-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) auto minmax(0, 1.4fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+}
+.wb-ai-map-row > span:nth-child(2) {
+  color: var(--muted);
+}
+.wb-ai-color > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.wb-ai-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid #0000001f;
+}
+.wb-ai-preview {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.wb-ai-preview li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+.wb-ai-problem {
+  color: var(--signal);
+}
+.wb-arrange-menu > button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (max-width: 600px) {
+  /* Phones: the mapping stacks, the arrow drops. */
+  .wb-ai-map-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .wb-ai-map-row > span:nth-child(2) {
+    display: none;
   }
 }
