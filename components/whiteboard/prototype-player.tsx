@@ -107,7 +107,7 @@ export function PrototypePlayer({
           <rect x={current.x} y={current.y} width={current.w} height={current.h} fill={current.fill && current.fill !== "transparent" ? current.fill : "#ffffff"} />
           {content.map((item) => (
             <g key={item.id} className={`wb-${item.type}`}>
-              <WhiteboardShape item={{ ...item, link: undefined }} items={map} pages={pages} />
+              <WhiteboardShape item={{ ...item, proto: undefined }} items={map} pages={pages} />
             </g>
           ))}
           {spots.map((spot) => {
@@ -161,7 +161,7 @@ export function PrototypeLinkSelect({
   const t = useT();
   const frames = prototypeFrames(items);
   const own = new Set(selected.map((i) => i.id));
-  const value = selected[0]?.link && linkTarget(selected[0].link) ? selected[0].link : "";
+  const value = selected[0]?.proto && linkTarget(selected[0].proto) ? selected[0].proto : "";
   if (!frames.length) return null;
   return (
     <Select aria-label={t("Bei Klick", "On click")} title={t("Prototyp: wohin ein Klick führt", "Prototype: where a click leads")} value={value} onChange={(e) => onChange(e.target.value || undefined)}>
@@ -180,7 +180,7 @@ export function PrototypeLinkSelect({
 
 // Small link badges at the elements with a click link (not exported).
 export function PrototypeBadges({ items, zoom }: { items: WhiteboardItem[]; zoom: number }) {
-  const linked = items.filter((i) => i.link && i.type !== "connector" && linkTarget(i.link));
+  const linked = items.filter((i) => i.proto && i.type !== "connector" && linkTarget(i.proto));
   if (!linked.length) return null;
   const r = 8 / zoom;
   return (

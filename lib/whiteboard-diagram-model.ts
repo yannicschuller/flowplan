@@ -149,7 +149,7 @@ export function cleanDiagramFields<T extends Partial<WhiteboardItem>>(item: T): 
   if (out.lib !== undefined && !libraryIdSchema.safeParse(out.lib).success) delete out.lib;
   for (const key of ["startMarker", "endMarker"] as const)
     if (out[key] !== undefined && !markerSchema.safeParse(out[key]).success) delete out[key];
-  if (out.link !== undefined && !linkSchema.safeParse(out.link).success) delete out.link;
+  if (out.proto !== undefined && !linkSchema.safeParse(out.proto).success) delete out.proto;
   if (out.timeline !== undefined) {
     const timeline = parseTimeline(out.timeline);
     if (timeline) out.timeline = timeline;
@@ -161,10 +161,10 @@ export function cleanDiagramFields<T extends Partial<WhiteboardItem>>(item: T): 
 // Copies get new ids: links to frames that were copied along point to the
 // copies, links to other frames stay as they are.
 export function remapLink<T extends Partial<WhiteboardItem>>(item: T, ids: Map<string, string>): T {
-  const target = linkTarget(item.link);
+  const target = linkTarget(item.proto);
   if (!target || !("frame" in target)) return item;
   const next = ids.get(target.frame);
-  return next ? { ...item, link: `frame:${next}` } : item;
+  return next ? { ...item, proto: `frame:${next}` } : item;
 }
 
 // Words of the diagram properties for search and previews.

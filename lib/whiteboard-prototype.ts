@@ -37,9 +37,9 @@ export type Hotspot = { id: string; x: number; y: number; w: number; h: number; 
 export function hotspots(frame: WhiteboardItem, items: WhiteboardItem[]): Hotspot[] {
   const frames = new Set(items.filter((i) => i.type === "frame").map((i) => i.id));
   return frameContents(frame, items)
-    .filter((i) => i.type !== "connector" && i.link)
+    .filter((i) => i.type !== "connector" && i.proto)
     .flatMap((i) => {
-      const target = linkTarget(i.link);
+      const target = linkTarget(i.proto);
       if (!target) return [];
       return [{ id: i.id, x: i.x, y: i.y, w: i.w, h: i.h, target, valid: "back" in target || frames.has(target.frame) }];
     });

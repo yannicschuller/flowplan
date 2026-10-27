@@ -357,7 +357,7 @@ export function DiagramStyleControls({ board, selected }: { board: BoardApi; sel
           <span className="wb-sep" />
           <span className="wb-link-select">
             <FlowArrow size={16} aria-hidden="true" />
-            <PrototypeLinkSelect items={board.items} selected={linkable} onChange={(link) => set({ link }, linkable)} />
+            <PrototypeLinkSelect items={board.items} selected={linkable} onChange={(proto) => set({ proto }, linkable)} />
           </span>
         </>
       )}

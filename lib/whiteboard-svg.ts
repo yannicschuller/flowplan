@@ -13,6 +13,9 @@ import { cleanDiagramFields, publicTimeline } from "./whiteboard-diagram-model";
 import { connectorEnds, markerSvg } from "./whiteboard-connector-markers";
 import { libraryShapeSvg } from "./whiteboard-shapes-library";
 import { timelineSvg } from "./whiteboard-timeline";
+import { hasRichText, richTextHtml } from "./whiteboard-richtext";
+import { boardEmbed, withValidExtras } from "./whiteboard-embeds";
+import { itemTags, tagColor } from "./whiteboard-tags";
 
 export type WhiteboardSvgContext = {
   // A file or image source as used in the export (relative path, https URL),
@@ -54,8 +57,23 @@ function textBox(item: WhiteboardItem, padding = 10, align?: string) {
     `text-align:${[align, item.align].find((a) => a && ALIGN.has(a)) || "center"}`,
     `color:${color(item.textColor, "#1f2937")}`,
     `justify-content:${item.type === "text" ? "flex-start" : "center"}`,
+    ...(item.italic ? ["font-style:italic"] : []),
+    ...(item.underline ? ["text-decoration:underline"] : []),
   ].join(";");
-  return html(item.w, item.h, `<div class="wb-text" style="${attr(style)}">${text(item.text || "")}</div>`);
+  const body = hasRichText(item.text) ? `<div style="white-space:normal">${richTextHtml(item.text || "")}</div>` : text(item.text || "");
+  return html(item.w, item.h, `<div class="wb-text" style="${attr(style)}">${body}</div>`);
+}
+// Tags of a note as chips along its bottom edge.
+function tagChips(item: WhiteboardItem) {
+  const tags = itemTags(item);
+  if (!tags.length) return "";
+  const chips = tags
+    .map((tag) => {
+      const [bg, fg] = tagColor(tag);
+      return `<span style="background:${bg};color:${fg};border-radius:9px;padding:1px 7px;font:600 11px system-ui,sans-serif;white-space:nowrap">${text(tag)}</span>`;
+    })
+    .join("");
+  return html(item.w - 12, 24, `<div style="display:flex;gap:4px;overflow:hidden">${chips}</div>`, 6, item.h - 28);
 }
 
 function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: WhiteboardSvgContext): string {
@@ -67,7 +85,7 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
     );
   switch (item.type) {
     case "sticky":
-      return g(`<rect width="${item.w}" height="${item.h}" rx="4" fill="${attr(color(item.fill, "#fff6b6"))}" filter="url(#wb-shadow)"/>${textBox(item)}`);
+      return g(`<rect width="${item.w}" height="${item.h}" rx="4" fill="${attr(color(item.fill, "#fff6b6"))}" filter="url(#wb-shadow)"/>${textBox(item)}${tagChips(item)}`);
     case "text":
       return g(textBox(item, 2, item.align && ALIGN.has(item.align) ? item.align : "left"));
     case "shape": {
@@ -104,11 +122,33 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
     }
     case "image": {
       const href = safeImageSource(item.src) ? ctx.image(item.src!) : null;
+      // Cropped pictures: the whole picture, moved and clipped to the part.
+      const crop = item.crop;
+      const full = crop ? { w: item.w / crop.w, h: item.h / crop.h } : null;
       return g(
         (item.credit ? `<title>${text(item.credit)}</title>` : "") +
-          (href
-            ? `<image href="${attr(href)}" width="${item.w}" height="${item.h}" preserveAspectRatio="xMidYMid meet"/>`
-            : `<rect width="${item.w}" height="${item.h}" fill="#f1f3f5"/>`),
+          (href && crop && full
+            ? `<svg width="${item.w}" height="${item.h}" overflow="hidden"><image href="${attr(href)}" x="${-crop.x * full.w}" y="${-crop.y * full.h}" width="${full.w}" height="${full.h}" preserveAspectRatio="none"/></svg>`
+            : href
+              ? `<image href="${attr(href)}" width="${item.w}" height="${item.h}" preserveAspectRatio="xMidYMid meet"/>`
+              : `<rect width="${item.w}" height="${item.h}" fill="#f1f3f5"/>`),
+      );
+    }
+    case "embed": {
+      // The export never loads players: a card with the provider and link.
+      const embed = boardEmbed(item);
+      if (!embed) return "";
+      const link = embed.kind === "player" ? item.url || embed.src : "";
+      const title = item.text || (embed.kind === "pdf" ? "PDF" : embed.provider);
+      return g(
+        `<rect width="${item.w}" height="${item.h}" rx="10" fill="#1f2937"/>` +
+          html(
+            item.w,
+            item.h,
+            `<div class="wb-card-body" style="align-items:center;text-align:center;color:#ffffff;padding:12px;box-sizing:border-box"><small style="color:#ced4da">${text(
+              embed.kind === "pdf" ? ctx.label("PDF-Dokument", "PDF document") : embed.provider,
+            )}</small><strong>${text(title)}</strong>${link ? `<a href="${attr(link)}" style="color:#a5d8ff;font-size:12px;word-break:break-all">${text(link)}</a>` : ""}</div>`,
+          ),
       );
     }
     case "card": {
@@ -152,7 +192,8 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
 // Board data comes from clients: every number that ends up in an attribute
 // is a finite number, every list a list of them.
 const end = (e: WhiteboardItem["from"]) => (e ? { ...e, x: num(e.x), y: num(e.y) } : e);
-function clean(item: WhiteboardItem): WhiteboardItem {
+function clean(raw: WhiteboardItem): WhiteboardItem {
+  const item = withValidExtras(raw);
   return cleanDiagramFields({
     ...item,
     x: num(item.x),

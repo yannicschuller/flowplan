@@ -108,6 +108,8 @@ import { listSyncedBlocks } from "@/lib/synced-blocks";
 import { pageGraph, unlinkedMentions } from "@/lib/page-graph";
 import { clipArticle } from "@/lib/web-clip";
 import { downloadImage, searchImages } from "@/lib/image-search";
+import { GIF_MAX_BYTES, gifProvider, searchGifs } from "@/lib/gif-search";
+import { deleteBoardTemplate, listBoardTemplates, saveBoardTemplate } from "@/lib/whiteboard-user-templates";
 import { whiteboardRowCards } from "@/lib/whiteboard-cards";
 import { transcribe } from "@/lib/transcribe";
 import { journalDate } from "@/lib/journal";
@@ -335,6 +337,16 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    // GIFs for boards (GIPHY or Tenor, only with a key; lib/gif-search.ts).
+    if (path.length === 2 && path[0] === "images" && path[1] === "gifs") {
+      const q = url.searchParams.get("q");
+      if (q === null) return NextResponse.json({ enabled: !user.demo && !!gifProvider() }, { headers: { "Cache-Control": "no-store" } });
+      if (user.demo) throw new HttpError(403, "In der Demo nicht verfügbar. Registriere dich, um das zu nutzen.");
+      return NextResponse.json({ results: await searchGifs(q) }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // Own whiteboard templates of the board's workspace.
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "templates")
+      return NextResponse.json({ templates: listBoardTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
     // Live data of database records shown as cards on a whiteboard.
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cards") {
       requirePage(user, z.uuid().parse(path[1]));
@@ -1088,6 +1100,14 @@ async function handlePOST(
       const backup = await runScheduledBackup();
       return NextResponse.json({ ...backup, exports: await runMarkdownExports() });
     }
+    // Saving or deleting an own whiteboard template.
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "templates") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z.object({ action: z.enum(["save", "delete"]) }).passthrough().parse(await req.json());
+      return NextResponse.json(
+        body.action === "save" ? saveBoardTemplate(user, path[1], body) : deleteBoardTemplate(user, path[1], body.templateId),
+      );
+    }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
       if (Number(req.headers.get("content-length") || 0) > 512)
         throw new HttpError(413, "Cursoranfrage zu groß.");
@@ -1154,13 +1174,13 @@ async function handlePOST(
     if (path.length === 2 && path[0] === "images" && path[1] === "import") {
       if (user.demo || user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
       const body = z
-        .object({ pageId: z.uuid(), url: z.string().max(2000), credit: z.string().max(500).optional() })
+        .object({ pageId: z.uuid(), url: z.string().max(2000), credit: z.string().max(500).optional(), gif: z.boolean().optional() })
         .parse(await req.json());
       const p = requirePage(user, body.pageId, true);
       if (p.locked) throw new HttpError(409, "Seite ist gesperrt");
       requirePlaintext(p);
       const maxUpload = maxUploadMbFor(user);
-      const image = await downloadImage(body.url, Math.min(maxUpload, 15) * 1024 * 1024);
+      const image = await downloadImage(body.url, Math.min(maxUpload * 1024 * 1024, body.gif ? GIF_MAX_BYTES : 15 * 1024 * 1024));
       enforceQuota(p.workspace_id, image.data.length);
       enforceUserStorage(user, image.data.length);
       const fid = id(),

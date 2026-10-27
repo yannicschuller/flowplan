@@ -12,6 +12,11 @@ import { connectorEnds, markerSvg } from "@/lib/whiteboard-connector-markers";
 import { isLibraryShape } from "@/lib/whiteboard-shapes-library";
 import { LibraryShapeView } from "./library-shape";
 import { TimelineItemView } from "./timeline-item";
+import { hasRichText } from "@/lib/whiteboard-richtext";
+import { cleanCrop } from "@/lib/whiteboard-embeds";
+import { LinkBadge, RichText, TagChips } from "./rich-text";
+import { EmbedShape } from "./embed-item";
+import { CardExcerpt } from "./card-preview";
 
 export type PageRef = {
   id: string;
@@ -50,10 +55,12 @@ function TextBox({
           textAlign: item.align || "center",
           color: item.textColor || "#1f2937",
           justifyContent: item.type === "text" ? "flex-start" : "center",
+          fontStyle: item.italic ? "italic" : undefined,
+          textDecoration: item.underline ? "underline" : undefined,
           ...style,
         }}
       >
-        {children ?? item.text}
+        {children ?? (hasRichText(item.text) ? <RichText text={item.text || ""} /> : item.text)}
       </div>
     </foreignObject>
   );
@@ -98,7 +105,7 @@ function rowCardValue(prop: RowCardProp) {
   if (prop.raw === undefined || !prop.format) return prop.value;
   return displayText(prop.format, prop.raw).slice(0, 60) || prop.value;
 }
-export function WhiteboardShape({
+function ShapeBody({
   item,
   items,
   pages,
@@ -253,7 +260,9 @@ export function WhiteboardShape({
       return (
         <g transform={transform}>
           {item.credit && <title>{item.credit}</title>}
-          {safeImageSource(item.src) ? (
+          {safeImageSource(item.src) && cleanCrop(item.crop) ? (
+            <CroppedImage src={item.src!} w={item.w} h={item.h} crop={cleanCrop(item.crop)!} />
+          ) : safeImageSource(item.src) ? (
             <BoardImage src={item.src!} w={item.w} h={item.h} />
           ) : (
             <rect width={item.w} height={item.h} fill="#f1f3f5" />
@@ -316,6 +325,7 @@ export function WhiteboardShape({
                     : t("Seite", "Page")}
               </small>
               <strong>{page?.title || t("Seite nicht verfügbar", "Page not available")}</strong>
+              {page?.kind === "document" && item.h >= 130 && <CardExcerpt pageId={page.id} />}
             </div>
           </foreignObject>
         </g>
@@ -390,6 +400,8 @@ export function WhiteboardShape({
     }
     case "timeline":
       return <TimelineItemView item={item} transform={transform} />;
+    case "embed":
+      return <EmbedShape item={item} transform={transform} interactive={!!cards} />;
     case "emoji":
       return (
         <g transform={transform}>
@@ -413,6 +425,34 @@ export function WhiteboardShape({
         </g>
       );
   }
+}
+// An element with what every kind can carry: tags on notes, a link badge.
+export function WhiteboardShape(props: Parameters<typeof ShapeBody>[0]) {
+  const { item } = props;
+  const decorated = !item.covered && (item.link || (item.type === "sticky" && item.tags?.length));
+  if (!decorated) return <ShapeBody {...props} />;
+  const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${item.rotation} ${item.w / 2} ${item.h / 2})` : ""}`;
+  return (
+    <>
+      <ShapeBody {...props} />
+      <g transform={transform}>
+        {item.type === "sticky" && <TagChips item={item} />}
+        <LinkBadge item={item} />
+      </g>
+    </>
+  );
+}
+// A cropped picture: the whole picture moved and clipped to the part.
+function CroppedImage({ src, w, h, crop }: { src: string; w: number; h: number; crop: { x: number; y: number; w: number; h: number } }) {
+  const fw = w / crop.w,
+    fh = h / crop.h;
+  return (
+    <svg width={Math.max(1, w)} height={Math.max(1, h)} overflow="hidden">
+      <g transform={`translate(${-crop.x * fw} ${-crop.y * fh})`}>
+        <BoardImage src={src} w={fw} h={fh} />
+      </g>
+    </svg>
+  );
 }
 // Shared definitions (shadow) for every rendering of a board.
 export function WhiteboardDefs() {

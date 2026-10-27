@@ -3,6 +3,7 @@
 // JSON value, so moving, resizing and editing text of the same item by
 // different people merge property by property.
 import { diagramText, type MarkerKind, type TimelineData } from "./whiteboard-diagram-model";
+import { plainText } from "./whiteboard-richtext";
 export const whiteboardItemTypes = [
   "sticky",
   "text",
@@ -16,6 +17,8 @@ export const whiteboardItemTypes = [
   "comment",
   "table",
   "timeline",
+  // Videos and pages of the embed allowlist, PDFs from the board's files.
+  "embed",
 ] as const;
 export type WhiteboardItemType = (typeof whiteboardItemTypes)[number];
 export const shapeKinds = [
@@ -83,13 +86,32 @@ export type WhiteboardItem = {
   // Images from the image search: author and licence.
   credit?: string;
   // Diagrams (lib/whiteboard-diagram-model.ts): a shape of a library
-  // ("flow:decision"), connector ends, a prototype link ("frame:<id>" or
+  // ("flow:decision"), connector ends, a prototype click link ("frame:<id>" or
   // "back") and the data of a timeline element.
   lib?: string;
   startMarker?: MarkerKind;
   endMarker?: MarkerKind;
-  link?: string;
+  proto?: string;
   timeline?: TimelineData;
+  // Groups, outermost first (lib/whiteboard-groups.ts).
+  groups?: string[];
+  italic?: boolean;
+  underline?: boolean;
+  // Stickies: tags shown as coloured chips (lib/whiteboard-tags.ts).
+  tags?: string[];
+  // A link on the element: http(s), mailto or "#item=<id>" on this board.
+  link?: string;
+  // Images: the part shown, as fractions of the whole picture (0–1).
+  crop?: { x: number; y: number; w: number; h: number };
+  // Frames: place in the presentation (frames panel; frames without one
+  // follow in reading order), speaker notes, and whether the presentation
+  // skips the frame.
+  slide?: number;
+  notes?: string;
+  presentHidden?: boolean;
+  // Embeds: the link as pasted, and the PDF page shown.
+  url?: string;
+  page?: number;
 };
 export type WhiteboardMessage = {
   id: string;
@@ -147,7 +169,9 @@ export const safeImageSource = (src?: string) =>
     /^https:\/\//i.test(src));
 export function itemText(item: Partial<WhiteboardItem>) {
   return [
-    item.text,
+    typeof item.text === "string" ? plainText(item.text) : item.text,
+    ...(Array.isArray(item.tags) ? item.tags.filter((tag) => typeof tag === "string") : []),
+    item.type === "embed" && typeof item.url === "string" ? item.url : undefined,
     item.emoji,
     ...(item.cells || []).flat(),
     ...(item.messages || []).map((m) => m.text),

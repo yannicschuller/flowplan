@@ -326,15 +326,15 @@ test("board templates and presenting frames", async ({ page }, testInfo) => {
   };
   await templates();
   await page
-    .getByRole("dialog", { name: "Vorlage einfügen" })
-    .getByRole("button", { name: "Mindmap" })
+    .getByRole("dialog", { name: "Vorlagen" })
+    .locator('[data-template="mindmap"]')
     .click();
   await expect(wb.locator(".wb-shape")).toHaveCount(5);
   await expect(wb.locator(".wb-connector")).toHaveCount(4);
   await templates();
   await page
-    .getByRole("dialog", { name: "Vorlage einfügen" })
-    .getByRole("button", { name: "Retrospektive" })
+    .getByRole("dialog", { name: "Vorlagen" })
+    .locator('[data-template="retro"]')
     .click();
   await expect(wb.locator(".wb-frame")).toHaveCount(3);
   await expect

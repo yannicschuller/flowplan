@@ -304,10 +304,10 @@ test("prototype links: validation, hotspots and following them", () => {
   const items = [
     item({ id: "f2", type: "frame", x: 0, y: 1000, w: 400, h: 800 }),
     item({ id: "f1", type: "frame", x: 0, y: 0, w: 400, h: 800 }),
-    item({ id: "btn", type: "shape", lib: "wf:button", x: 20, y: 20, link: "frame:f2" }),
-    item({ id: "back", type: "text", x: 20, y: 1020, link: "back" }),
-    item({ id: "dead", type: "text", x: 20, y: 100, link: "frame:gone" }),
-    item({ id: "outside", type: "text", x: 600, y: 20, link: "frame:f2" }),
+    item({ id: "btn", type: "shape", lib: "wf:button", x: 20, y: 20, proto: "frame:f2" }),
+    item({ id: "back", type: "text", x: 20, y: 1020, proto: "back" }),
+    item({ id: "dead", type: "text", x: 20, y: 100, proto: "frame:gone" }),
+    item({ id: "outside", type: "text", x: 600, y: 20, proto: "frame:f2" }),
   ];
   assert.deepEqual(prototypeFrames(items).map((f) => f.id), ["f1", "f2"]);
   assert.deepEqual(frameContents(items[1], items).map((i) => i.id).sort(), ["btn", "dead"]);
@@ -328,23 +328,23 @@ test("prototype links: validation, hotspots and following them", () => {
 
 test("prototype links: copies, duplicates and imports remap their targets", () => {
   const ids = new Map([["f1", "F1"], ["btn", "BTN"]]);
-  assert.equal(remapLink({ link: "frame:f1" }, ids).link, "frame:F1");
-  assert.equal(remapLink({ link: "frame:other" }, ids).link, "frame:other");
-  assert.equal(remapLink({ link: "back" }, ids).link, "back");
-  assert.equal(remapLink({ text: "x" } as Partial<WhiteboardItem>, ids).link, undefined);
+  assert.equal(remapLink({ proto: "frame:f1" }, ids).proto, "frame:F1");
+  assert.equal(remapLink({ proto: "frame:other" }, ids).proto, "frame:other");
+  assert.equal(remapLink({ proto: "back" }, ids).proto, "back");
+  assert.equal(remapLink({ text: "x" } as Partial<WhiteboardItem>, ids).proto, undefined);
   let n = 0;
   const placed = placeDrafts(
     [
       { id: "f1", type: "frame", x: 0, y: 0, w: 300, h: 600 },
       { id: "f2", type: "frame", x: 400, y: 0, w: 300, h: 600 },
-      { id: "b", type: "shape", x: 10, y: 10, w: 80, h: 30, link: "frame:f2" },
-      { id: "c", type: "shape", x: 410, y: 10, w: 80, h: 30, link: "back" },
+      { id: "b", type: "shape", x: 10, y: 10, w: 80, h: 30, proto: "frame:f2" },
+      { id: "c", type: "shape", x: 410, y: 10, w: 80, h: 30, proto: "back" },
     ],
     { newId: () => `new${++n}`, dx: 100 },
   );
   const f2 = placed.find((p) => p.x === 500)!;
-  assert.equal(placed.find((p) => p.type === "shape" && p.x === 110)!.link, `frame:${f2.id}`);
-  assert.equal(placed.find((p) => p.type === "shape" && p.x === 510)!.link, "back");
+  assert.equal(placed.find((p) => p.type === "shape" && p.x === 110)!.proto, `frame:${f2.id}`);
+  assert.equal(placed.find((p) => p.type === "shape" && p.x === 510)!.proto, "back");
 });
 
 // ---- timelines ----
@@ -371,8 +371,8 @@ test("timeline: validation drops what is broken, old boards still load", () => {
   const long = parseTimeline({ scale: "quarter", start: "2020-01-01", end: "2040-01-01", lanes: [], bars: [] })!;
   assert.ok(dateDay(long.end)! - dateDay(long.start)! <= 3 * 366);
   // Cleaning a whole item.
-  const cleaned = cleanDiagramFields({ type: "shape", lib: "../evil", link: "http://x", endMarker: "bomb" as never, startMarker: "diamond" } as Partial<WhiteboardItem>);
-  assert.deepEqual([cleaned.lib, cleaned.link, cleaned.endMarker, cleaned.startMarker], [undefined, undefined, undefined, "diamond"]);
+  const cleaned = cleanDiagramFields({ type: "shape", lib: "../evil", proto: "http://x", endMarker: "bomb" as never, startMarker: "diamond" } as Partial<WhiteboardItem>);
+  assert.deepEqual([cleaned.lib, cleaned.proto, cleaned.endMarker, cleaned.startMarker], [undefined, undefined, undefined, "diamond"]);
 });
 
 test("timeline: ISO weeks, columns of each scale and the layout", () => {
