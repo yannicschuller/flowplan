@@ -530,7 +530,7 @@ export function SurveyBuilder({
               <>
                 <input aria-label={t("Titel der Begrüßung", "Welcome title")} placeholder={formTexts.title || pageTitle} value={survey.welcome.title} maxLength={200} onChange={(e) => (setSurvey({ ...survey, welcome: { ...survey.welcome, title: e.target.value } }), setDirty(true))} />
                 <textarea aria-label={t("Text der Begrüßung", "Welcome text")} rows={2} value={survey.welcome.text} maxLength={3000} onChange={(e) => (setSurvey({ ...survey, welcome: { ...survey.welcome, text: e.target.value } }), setDirty(true))} />
-                <input aria-label={t("Knopf der Begrüßung", "Welcome button")} placeholder={t("Los geht's", "Start")} value={survey.welcome.button} maxLength={60} onChange={(e) => (setSurvey({ ...survey, welcome: { ...survey.welcome, button: e.target.value } }), setDirty(true))} />
+                <input aria-label={t("Knopf der Begrüßung", "Welcome button")} placeholder={t("Los geht's", "Start||survey")} value={survey.welcome.button} maxLength={60} onChange={(e) => (setSurvey({ ...survey, welcome: { ...survey.welcome, button: e.target.value } }), setDirty(true))} />
               </>
             )}
             <label className="checkbox-label">

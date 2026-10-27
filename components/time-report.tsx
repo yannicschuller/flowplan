@@ -263,7 +263,7 @@ export function TimeReport({ pageId, workspaceId, title }: { pageId?: string; wo
               <small>{t(`${report.total.entries} Zeiteinträge`, `${report.total.entries} time entries`)}</small>
             </div>
             <div>
-              <span>{t("Offen", "Open")}</span>
+              <span>{t("Offen", "Open||status")}</span>
               <strong>{t(`${decimal(report.byStatus.open)} Std.`, `${decimal(report.byStatus.open)} h`)}</strong>
             </div>
             <div>

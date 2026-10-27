@@ -143,7 +143,7 @@ export default function PushSection() {
             description={
               r.health
                 ? [
-                    `GET /healthz · ${t("geprüft", "checked")} ${ago(r.health.at, t, status.at)}`,
+                    `GET /healthz · ${t("geprüft", "checked||health")} ${ago(r.health.at, t, status.at)}`,
                     r.health.version ? t(`Version ${r.health.version}`, `version ${r.health.version}`) : null,
                     !r.health.ok && r.health.error === "redirect" ? t("Das Relay muss ohne Weiterleitung antworten.", "The relay must answer without a redirect.") : null,
                   ]
@@ -332,7 +332,7 @@ export default function PushSection() {
           </StatusBadge>
         </SettingRow>
         <SettingRow label={t("Kontakt für die Push-Dienste", "Contact for the push services")} description="WEB_PUSH_SUBJECT">
-          <StatusBadge tone={status.web.subject ? "ok" : "info"}>{status.web.subject ? t("Gesetzt", "Set") : t("APP_URL wird verwendet", "APP_URL is used")}</StatusBadge>
+          <StatusBadge tone={status.web.subject ? "ok" : "info"}>{status.web.subject ? t("Gesetzt", "Set||status") : t("APP_URL wird verwendet", "APP_URL is used")}</StatusBadge>
         </SettingRow>
       </SettingGroup>
 

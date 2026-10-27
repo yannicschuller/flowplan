@@ -52,7 +52,7 @@ export function SsoMappings({
       : r === "editor"
         ? t("Bearbeiten", "Edit")
         : r === "viewer"
-          ? t("Ansehen", "View")
+          ? t("Ansehen", "View||role")
           : "";
   const groupsOf = (ws: string) =>
     groups.filter((g) => !g.workspace_id || g.workspace_id === ws);
@@ -162,7 +162,7 @@ export function SsoMappings({
               <label htmlFor="sso-map-role">{t("Rolle im Arbeitsbereich", "Role in the workspace")}</label>
               <Select id="sso-map-role" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="">{t("Keine Mitgliedschaft", "No membership")}</option>
-                <option value="viewer">{t("Ansehen", "View")}</option>
+                <option value="viewer">{t("Ansehen", "View||role")}</option>
                 <option value="editor">{t("Bearbeiten", "Edit")}</option>
                 <option value="owner">{t("Eigentümer", "Owner")}</option>
               </Select>
@@ -181,7 +181,7 @@ export function SsoMappings({
             <div className="ws-form-actions">
               <button className="button primary" disabled={!ssoGroup.trim() || (!role && !groupId)}>
                 <Plus aria-hidden />
-                {t("Zuordnen", "Map")}
+                {t("Zuordnen", "Map||action")}
               </button>
             </div>
           </div>

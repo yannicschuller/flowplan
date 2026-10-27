@@ -245,7 +245,7 @@ const fieldNames: Record<FieldType, [string, string]> = {
   text: ["Text", "Text"],
   number: ["Zahl", "Number"],
   date: ["Datum", "Date"],
-  select: ["Auswahl", "Select"],
+  select: ["Auswahl", "Select||property type"],
   multiselect: ["Mehrfachauswahl", "Multi-select"],
   checkbox: ["Checkbox", "Checkbox"],
   url: ["URL", "URL"],

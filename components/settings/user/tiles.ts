@@ -14,7 +14,7 @@ export function userTiles(boot: Bootstrap, theme: ThemeChoice, t: T): Record<str
   const guests = boot.members.filter((m) => m.guest).length;
   const owner = boot.workspace.role === "owner";
   const privateSpaces = (boot.managedSpaces || []).filter((s) => s.visibility === "private").length;
-  const roleName = owner ? t("Eigentümer", "Owner") : boot.workspace.role === "viewer" ? t("Ansehen", "View") : t("Bearbeiten", "Edit");
+  const roleName = owner ? t("Eigentümer", "Owner") : boot.workspace.role === "viewer" ? t("Ansehen", "View||role") : t("Bearbeiten", "Edit");
   // Notifications: how many kinds differ from the defaults, and the digest.
   const prefs = boot.notificationPrefs;
   const custom = prefs ? (Object.keys(notificationDefaults) as NotificationKind[]).filter((k) => prefs[k] && (["inbox", "push", "email"] as const).some((c) => prefs[k][c] !== notificationDefaults[k][c])).length : 0;

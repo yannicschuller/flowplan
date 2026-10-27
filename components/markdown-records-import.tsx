@@ -61,7 +61,7 @@ export function MarkdownRecordsImport({
     number: t("Zahl", "Number"),
     date: t("Datum", "Date"),
     checkbox: t("Kontrollkästchen", "Checkbox"),
-    select: t("Auswahl", "Select"),
+    select: t("Auswahl", "Select||property type"),
     multiselect: t("Mehrfachauswahl", "Multi-select"),
     url: "URL",
     aliases: t("Aliasse", "Aliases"),

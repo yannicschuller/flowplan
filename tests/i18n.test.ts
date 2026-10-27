@@ -134,3 +134,16 @@ test("short patterns do not rewrite whole sentences", () => {
   assert.equal(t("3 von 5", "3 of 5"), "3 sur 5");
   assert.equal(t("x", "Name and appearance of the space, your profile"), "Name and appearance of the space, your profile");
 });
+
+test("an English word with two meanings gets a context and two translations", () => {
+  // "Open" as a state and as an action: English shows the word, French both meanings.
+  assert.equal(translate("en")("Offen", "Open||status"), "Open");
+  assert.equal(translate("en")("Öffnen", "Open"), "Open");
+  assert.equal(translate("fr")("Offen", "Open||status"), "Ouvert");
+  assert.equal(translate("fr")("Öffnen", "Open"), "Ouvrir");
+  assert.equal(translate("fr")("Ansehen", "View||role"), "Lecture");
+  assert.equal(translate("fr")("Ansicht", "View"), "Vue");
+  // Without a translation the English word shows, never the context.
+  assert.equal(translate("fr")("Etwas", "Something new||context"), "Something new");
+  assert.equal(translate("de")("Offen", "Open||status"), "Offen");
+});

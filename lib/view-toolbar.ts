@@ -54,7 +54,7 @@ export function groupChipLabel(
   fields: Pick<Field, "id" | "name">[],
   t: Translate,
 ): ChipLabel {
-  if (!view.groupBy) return { label: t("Gruppieren", "Group"), active: false };
+  if (!view.groupBy) return { label: t("Gruppieren", "Group||action"), active: false };
   const name = fieldName(fields, view.groupBy, t);
   return { label: t(`Nach ${name}`, `By ${name}`), active: true };
 }

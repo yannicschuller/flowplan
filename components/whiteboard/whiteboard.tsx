@@ -2714,7 +2714,7 @@ export default function Whiteboard({
           ["eraser", t("Radierer", "Eraser"), <Eraser key="x" size={18} />, "X"],
           ["frame", t("Rahmen", "Frame"), <FrameCorners key="f" size={18} />, "F"],
           ["table", t("Tabelle", "Table"), <Table key="g" size={18} />, "G"],
-          ["comment", t("Kommentar", "Comment"), <ChatCircle key="c" size={18} />, "C"],
+          ["comment", t("Kommentar", "Comment||noun"), <ChatCircle key="c" size={18} />, "C"],
           ["stamp", t("Stempel", "Stamp"), <Seal key="e" size={18} />, "E"],
         ] as [Tool, string, React.ReactNode, string][])
       : []),
@@ -3277,7 +3277,7 @@ export default function Whiteboard({
             <div
               className="wb-comment-popover"
               role="dialog"
-              aria-label={t("Kommentar", "Comment")}
+              aria-label={t("Kommentar", "Comment||noun")}
               style={{ left: Math.max(8, left), top: Math.max(8, s.y) }}
               onPointerDown={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
@@ -3287,7 +3287,7 @@ export default function Whiteboard({
             >
               <div className="wb-comment-head">
                 <strong>
-                  {item.resolved ? t("Erledigter Kommentar", "Resolved comment") : t("Kommentar", "Comment")}
+                  {item.resolved ? t("Erledigter Kommentar", "Resolved comment") : t("Kommentar", "Comment||noun")}
                 </strong>
                 {editable && !!item.messages?.length && (
                   <button
@@ -3664,7 +3664,7 @@ export default function Whiteboard({
                 aria-label={t("Minuten", "Minutes")}
               />
             </label>
-            <button className="button primary">{t("Starten", "Start")}</button>
+            <button className="button primary">{t("Starten", "Start||action")}</button>
           </form>
         </div>
       )}

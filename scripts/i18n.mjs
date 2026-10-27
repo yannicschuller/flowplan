@@ -7,7 +7,8 @@
 //
 // The English text of t(de, en), tr(de, en), ct(de, en), translate(…)(…),
 // tr(…)(…) and (await serverT())(…) calls is the key; texts with variables get numbered placeholders
-// (`Group ${name}` → "Group {0}"). The tables of lib/i18n-errors.ts,
+// (`Group ${name}` → "Group {0}"). A context after "||" ("Open||status")
+// keeps two meanings of one English word apart. The tables of lib/i18n-errors.ts,
 // lib/i18n-labels.ts and the saving states in components/i18n.tsx count as
 // well. locales/en.json lists all keys (the source for translation tools);
 // every other locales/<code>.json maps them to its language, "" meaning not
@@ -110,7 +111,8 @@ if (added && !/^[a-z]{2}(-[A-Z]{2})?$/.test(added)) {
   process.exit(1);
 }
 const write = (path, data) => writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
-if (!check) write(join(localesDir, "en.json"), Object.fromEntries(sorted.map((k) => [k, k])));
+// "Open||status": the English text is the part before "||" (lib/i18n.ts).
+if (!check) write(join(localesDir, "en.json"), Object.fromEntries(sorted.map((k) => [k, k.split("||")[0]])));
 if (added && !existsSync(join(localesDir, `${added}.json`))) write(join(localesDir, `${added}.json`), {});
 
 const catalogs = readdirSync(localesDir).filter((f) => f.endsWith(".json") && f !== "en.json");

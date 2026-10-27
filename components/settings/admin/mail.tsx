@@ -72,7 +72,7 @@ export default function MailSection() {
           </>
         ) : (
           <SettingRow
-            label={t("Einrichten", "Set up")}
+            label={t("Einrichten", "Set up||action")}
             description={
               <>
                 {t("In der Umgebung setzen:", "Set in the environment:")} <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code> {t("und", "and")}{" "}

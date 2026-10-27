@@ -87,7 +87,7 @@ export function RecordTime({
             </button>
           ) : (
             <button className="button compact primary" disabled={busy} onClick={() => void send({ action: "time.start" })}>
-              <Play weight="fill" /> {t("Start", "Start")}
+              <Play weight="fill" /> {t("Start", "Start||action")}
             </button>
           ))}
       </div>

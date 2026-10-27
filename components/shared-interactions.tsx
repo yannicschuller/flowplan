@@ -330,9 +330,9 @@ export function SharedInteractions({
             />
           </label>
           <label>
-            {t("Kommentar", "Comment")}
+            {t("Kommentar", "Comment||noun")}
             <textarea
-              aria-label={t("Kommentar", "Comment")}
+              aria-label={t("Kommentar", "Comment||noun")}
               required
               maxLength={5000}
               value={body}

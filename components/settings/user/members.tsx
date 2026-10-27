@@ -18,7 +18,7 @@ type Invite = WorkspaceSettingsData["invites"][number];
 
 function useRoleName() {
   const t = useT();
-  return (role: string) => (role === "owner" ? t("Eigentümer", "Owner") : role === "editor" ? t("Bearbeiten", "Edit") : role === "viewer" ? t("Ansehen", "View") : role);
+  return (role: string) => (role === "owner" ? t("Eigentümer", "Owner") : role === "editor" ? t("Bearbeiten", "Edit") : role === "viewer" ? t("Ansehen", "View||role") : role);
 }
 
 function MemberItem({ member: m }: { member: Member }) {
@@ -78,7 +78,7 @@ function MemberItem({ member: m }: { member: Member }) {
           >
             <option value="owner">{t("Eigentümer", "Owner")}</option>
             <option value="editor">{t("Bearbeiten", "Edit")}</option>
-            <option value="viewer">{t("Ansehen", "View")}</option>
+            <option value="viewer">{t("Ansehen", "View||role")}</option>
             <option value="remove">{t("Entfernen", "Remove")}</option>
           </Select>
           {m.role !== "owner" && (
@@ -194,7 +194,7 @@ function InviteSheet({ onClose }: { onClose: () => void }) {
           <label htmlFor="invite-role">{t("Rolle", "Role")}</label>
           <Select id="invite-role" value={role} onChange={(e) => setRole(e.target.value)} disabled={busy}>
             <option value="editor">{t("Bearbeiten", "Edit")}</option>
-            <option value="viewer">{t("Ansehen", "View")}</option>
+            <option value="viewer">{t("Ansehen", "View||role")}</option>
           </Select>
         </div>
         <label className="ws-check">

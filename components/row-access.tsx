@@ -114,7 +114,7 @@ export function RowAccess({
                       )
                     }
                   >
-                    <option value="viewer">{t("Ansehen", "View")}</option>
+                    <option value="viewer">{t("Ansehen", "View||role")}</option>
                     <option value="editor">{t("Bearbeiten", "Edit")}</option>
                   </Select>
                   <button

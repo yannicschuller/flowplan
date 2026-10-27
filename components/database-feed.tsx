@@ -149,7 +149,7 @@ function FeedEntry({
             aria-label={t(`${comments} Kommentare zu ${title}`, `${comments} comments on ${title}`)}
           >
             <ChatCircle size={17} />
-            {comments} {comments === 1 ? t("Kommentar", "Comment") : t("Kommentare", "Comments")}
+            {comments} {comments === 1 ? t("Kommentar", "Comment||noun") : t("Kommentare", "Comments")}
           </button>
         )}
         {onEdit && (

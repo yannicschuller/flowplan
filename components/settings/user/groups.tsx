@@ -56,7 +56,7 @@ function SpaceAccess({ space: s }: { space: Space }) {
               onChange={(e) => void save({ action: "grant.set", resourceId: s.id, groupId: g.id, role: e.target.value })}
             >
               <option value="remove">{t("Keine zusätzlichen Rechte", "No additional permissions")}</option>
-              <option value="viewer">{t("Ansehen", "View")}</option>
+              <option value="viewer">{t("Ansehen", "View||role")}</option>
               <option value="editor">{t("Bearbeiten", "Edit")}</option>
             </Select>
           </div>

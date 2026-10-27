@@ -96,7 +96,7 @@ export function CommentHub({
           value={status}
           onChange={(e) => setStatus(e.target.value as typeof status)}
         >
-          <option value="open">{t("Offen", "Open")}</option>
+          <option value="open">{t("Offen", "Open||status")}</option>
           <option value="resolved">{t("Erledigt", "Resolved")}</option>
           <option value="all">{t("Alle", "All")}</option>
         </Select>

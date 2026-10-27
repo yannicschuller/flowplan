@@ -83,7 +83,7 @@ export function UnlinkedMentions({
                     }
                   }}
                 >
-                  <LinkSimple size={14} /> {t("Verlinken", "Link")}
+                  <LinkSimple size={14} /> {t("Verlinken", "Link||action")}
                 </button>
               )}
             </li>

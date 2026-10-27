@@ -42,5 +42,14 @@ export function pickLocale(cookie?: string | null, acceptLanguage?: string | nul
   return "en";
 }
 
+// An English text may carry a context after "||" ("Open||status"): English
+// shows the part before it, the catalogues use the whole text as the key. So
+// one English word with two meanings ("Open" as a state and as an action)
+// gets two translations.
+export const englishText = (en: string) => {
+  const at = en.indexOf("||");
+  return at < 0 ? en : en.slice(0, at);
+};
+
 export const translate = (locale: Locale) => (de: string, en: string) =>
-  locale === "de" ? de : locale === "en" ? en : translateCatalog(locale, en);
+  locale === "de" ? de : englishText(locale === "en" ? en : translateCatalog(locale, en));

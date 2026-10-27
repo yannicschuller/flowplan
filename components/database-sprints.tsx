@@ -191,7 +191,7 @@ export function DatabaseSprints({
                 <div className="sprint-actions">
                   {s.state === "planned" && (
                     <button className="button compact" disabled={busy || sprints.some((x) => x.state === "active")} onClick={() => void run({ action: "sprint.start", sprintId: s.id })}>
-                      <Play /> {t("Starten", "Start")}
+                      <Play /> {t("Starten", "Start||action")}
                     </button>
                   )}
                   {s.state === "active" && (

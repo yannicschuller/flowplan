@@ -68,7 +68,7 @@ export function InkToolbar({
   const widthLabel = (i: number) =>
     editor.tool === "text"
       ? [t("Kleine Schrift", "Small text"), t("Mittlere Schrift", "Medium text"), t("Große Schrift", "Large text")][i]
-      : [t("Fein", "Fine"), t("Mittel", "Medium"), t("Breit", "Bold")][i];
+      : [t("Fein", "Fine||pen width"), t("Mittel", "Medium"), t("Breit", "Bold||pen width")][i];
   return (
     <div className="ink-toolbar" role="toolbar" aria-label={label || t("Werkzeuge zum Anmerken", "Annotation tools")}>
       <div role="radiogroup" aria-label={t("Werkzeug", "Tool")} className="ink-group">

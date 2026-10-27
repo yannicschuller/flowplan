@@ -484,7 +484,7 @@ export function EncryptedSpaceMembers({ spaceId, userId, open, onClose, onChange
                     {t("Rolle", "Role")}
                     <select value={role} onChange={(e) => setRole(e.target.value as "editor" | "viewer")}>
                       <option value="editor">{t("Bearbeiten", "Edit")}</option>
-                      <option value="viewer">{t("Ansehen", "View")}</option>
+                      <option value="viewer">{t("Ansehen", "View||role")}</option>
                     </select>
                   </label>
                   <ul className="e2ee-members">

@@ -58,7 +58,7 @@ export function PagePeople({
   const roleSelect = (value: string, label: string, onChange: (value: string) => void) => (
     <Select aria-label={label} value={value} disabled={busy} onChange={(e) => onChange(e.target.value)}>
       <option value="editor">{t("Bearbeiten", "Edit")}</option>
-      <option value="viewer">{t("Ansehen", "View")}</option>
+      <option value="viewer">{t("Ansehen", "View||role")}</option>
       <option value="remove">{t("Entfernen", "Remove")}</option>
     </Select>
   );
@@ -106,7 +106,7 @@ export function PagePeople({
             ))}
           </datalist>
           <Select aria-label={t("Rolle", "Role")} value={role} onChange={(e) => setRole(e.target.value as "viewer" | "editor")}>
-            <option value="viewer">{t("Ansehen", "View")}</option>
+            <option value="viewer">{t("Ansehen", "View||role")}</option>
             <option value="editor">{t("Bearbeiten", "Edit")}</option>
           </Select>
           <button className="button primary" disabled={busy || !email.trim()}>
@@ -133,7 +133,7 @@ export function PagePeople({
           {shares.manage ? (
             roleSelect(p.role, t(`Seitenrechte für ${p.name}`, `Page permissions for ${p.name}`), (value) => void command({ action: "page.shareUpdate", userId: p.id, role: value }))
           ) : (
-            <small>{p.role === "editor" ? t("Bearbeiten", "Edit") : t("Ansehen", "View")}</small>
+            <small>{p.role === "editor" ? t("Bearbeiten", "Edit") : t("Ansehen", "View||role")}</small>
           )}
         </div>
       ))}

@@ -119,7 +119,7 @@ export function DatabaseToolbarChips({
         <ChipPopover
           icon={<Rows size={15} />}
           label={group.label}
-          name={name(t("Gruppieren", "Group"), group)}
+          name={name(t("Gruppieren", "Group||action"), group)}
           active={group.active}
           panelLabel={t("Gruppierung", "Grouping")}
         >

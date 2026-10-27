@@ -116,7 +116,7 @@ export function SurveyRunner({
           <h2>{survey.welcome.title || texts.title}</h2>
           {(survey.welcome.text || texts.description) && <p>{survey.welcome.text || texts.description}</p>}
           <button className="button primary survey-primary" onClick={() => setStarted(true)}>
-            {survey.welcome.button || t("Los geht's", "Start")} <ArrowRight />
+            {survey.welcome.button || t("Los geht's", "Start||survey")} <ArrowRight />
           </button>
         </div>
       ) : done ? (
