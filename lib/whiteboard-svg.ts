@@ -76,6 +76,13 @@ function tagChips(item: WhiteboardItem) {
   return html(item.w - 12, 24, `<div style="display:flex;gap:4px;overflow:hidden">${chips}</div>`, 6, item.h - 28);
 }
 
+// Planning poker: the value taken over, as in render.tsx.
+function estimateTag(item: WhiteboardItem) {
+  if (!item.estimate) return "";
+  const value = String(item.estimate).slice(0, 12),
+    w = 14 + value.length * 9;
+  return `<g transform="translate(${item.w - w - 6} 6)"><rect width="${w}" height="22" rx="11" fill="#1f2937"/><text x="${w / 2}" y="15.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#ffffff">${text(value)}</text></g>`;
+}
 function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: WhiteboardSvgContext): string {
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${num(item.rotation)} ${item.w / 2} ${item.h / 2})` : ""}`;
   const g = (inner: string) => `<g transform="${transform}">${inner}</g>`;
@@ -85,7 +92,7 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
     );
   switch (item.type) {
     case "sticky":
-      return g(`<rect width="${item.w}" height="${item.h}" rx="4" fill="${attr(color(item.fill, "#fff6b6"))}" filter="url(#wb-shadow)"/>${textBox(item)}${tagChips(item)}`);
+      return g(`<rect width="${item.w}" height="${item.h}" rx="4" fill="${attr(color(item.fill, "#fff6b6"))}" filter="url(#wb-shadow)"/>${textBox(item)}${tagChips(item)}${estimateTag(item)}`);
     case "text":
       return g(textBox(item, 2, item.align && ALIGN.has(item.align) ? item.align : "left"));
     case "shape": {

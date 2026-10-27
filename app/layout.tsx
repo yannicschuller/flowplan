@@ -3,6 +3,7 @@ import "./globals.css";
 import "./mobile-ux.css";
 import "./whiteboard-diagrams.css";
 import "./whiteboard-board.css";
+import "./whiteboard-facilitation.css";
 import "katex/dist/katex.min.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";

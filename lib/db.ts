@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 71) return;
+  if (globalDb.flowplanSchema === 72) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -928,7 +928,18 @@ function migrate(d: DatabaseSync) {
   // or only for the person who saved it.
   d.exec(`CREATE TABLE IF NOT EXISTS whiteboard_templates(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,items TEXT NOT NULL,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,visibility TEXT NOT NULL DEFAULT 'workspace' CHECK(visibility IN ('workspace','private')),created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS whiteboard_templates_workspace ON whiteboard_templates(workspace_id);`);
-  globalDb.flowplanSchema = 71;
+  // Schema 72 – workshop facilitation on whiteboards (lib/whiteboard-
+  // facilitation.ts): private mode sessions (optionally one frame), each
+  // person's private changes until they are revealed (Yjs updates, never
+  // part of the board) and the private writer ids of their browser tabs;
+  // planning poker per board with the hidden votes of the current round.
+  d.exec(`CREATE TABLE IF NOT EXISTS whiteboard_private(id TEXT PRIMARY KEY,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,frame_id TEXT,started_by TEXT,started_name TEXT NOT NULL DEFAULT '',started_at INTEGER NOT NULL,revealed_at INTEGER,revealed_count INTEGER);
+    CREATE INDEX IF NOT EXISTS whiteboard_private_page ON whiteboard_private(page_id,revealed_at);
+    CREATE TABLE IF NOT EXISTS whiteboard_private_parts(session_id TEXT NOT NULL REFERENCES whiteboard_private(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,state BLOB,items INTEGER NOT NULL DEFAULT 0,rev INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(session_id,user_id));
+    CREATE TABLE IF NOT EXISTS whiteboard_private_clients(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,client INTEGER NOT NULL,session_id TEXT NOT NULL REFERENCES whiteboard_private(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(page_id,client));
+    CREATE TABLE IF NOT EXISTS whiteboard_estimation(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,data TEXT NOT NULL,updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS whiteboard_estimate_votes(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,round TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,value TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(page_id,round,user_id));`);
+  globalDb.flowplanSchema = 72;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

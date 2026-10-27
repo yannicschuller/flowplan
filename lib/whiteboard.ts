@@ -6,6 +6,8 @@ import { requirePage } from "./permissions";
 import { escaped } from "./document-server";
 import { itemText, type WhiteboardItem } from "./whiteboard-model";
 import type { Identity, Page } from "./types";
+// Private mode: private writers' changes stay out of the shared board.
+import { assertNoPrivateGap, withoutPrivateChanges } from "./whiteboard-private-guard";
 
 // Whiteboards: the board is a Yjs document (see whiteboard-model.ts) that
 // clients exchange like documents. The texts on the board are kept as a
@@ -92,7 +94,8 @@ export function syncWhiteboard(user: Identity, raw: unknown) {
     if (b.update) {
       if (page.locked) throw new HttpError(409, "Diese Seite ist gesperrt.");
       const before = Y.encodeStateVector(doc);
-      Y.applyUpdate(doc, Buffer.from(b.update, "base64"));
+      Y.applyUpdate(doc, withoutPrivateChanges(page.id, Buffer.from(b.update, "base64")));
+      assertNoPrivateGap(page.id, doc);
       const changed = Y.encodeStateAsUpdate(doc, before).length > 2;
       if (changed) {
         const items = whiteboardItems(doc);

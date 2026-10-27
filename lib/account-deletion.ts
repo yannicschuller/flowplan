@@ -24,6 +24,10 @@ type Plan = {
 // Personal data of the account, removed in any case.
 const PERSONAL = [
   "sessions",
+  // Whiteboard private mode and planning poker (lib/whiteboard-facilitation.ts).
+  "whiteboard_private_parts",
+  "whiteboard_private_clients",
+  "whiteboard_estimate_votes",
   // AI settings with a sealed key, rules on what the AI may read.
   "ai_user_settings",
   "ai_user_policy",
