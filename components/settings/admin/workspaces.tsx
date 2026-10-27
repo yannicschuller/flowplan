@@ -137,7 +137,15 @@ export default function WorkspacesSection() {
               key: "pages",
               header: t("Seiten", "Pages"),
               align: "end",
-              render: (w) => w.pages,
+              render: (w) =>
+                w.days ? (
+                  <span title={t(`${w.pages} Seiten · ${w.days} Journaltage`, `${w.pages} pages · ${w.days} journal days`)}>
+                    {w.pages}
+                    <small className="muted admin-day-count">{t(`${w.days} Journaltage`, `${w.days} journal days`)}</small>
+                  </span>
+                ) : (
+                  w.pages
+                ),
             },
             {
               key: "usage",

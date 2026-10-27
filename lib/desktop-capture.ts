@@ -118,7 +118,7 @@ function resolveTarget(user: Identity, targetId: string, today: string, create: 
     if (access.locked) throw new HttpError(423, ct("Dieses Journal ist gesperrt.", "This journal is locked."));
     if (!writableJournals(user).some((j) => j.id === access.page.id)) throw new HttpError(403, ct("Keine Berechtigung für diese Seite.", "No permission for this page."));
     if (!create) return { page: access.page, journal: access.page, properties: [] };
-    const { dayId } = command(writerOf(user), { action: "journal.roll", pageId: access.page.id, date: today }, true) as { dayId: string };
+    const { dayId } = command(writerOf(user), { action: "journal.roll", pageId: access.page.id, date: today, write: true }, true) as { dayId: string };
     return { page: captureTarget(user, dayId).page, journal: access.page, properties: [] };
   }
   const { page } = captureTarget(user, targetId);

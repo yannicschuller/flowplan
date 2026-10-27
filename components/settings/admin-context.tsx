@@ -14,7 +14,8 @@ import { api } from "../ui";
 
 export type AdminData = {
   users: User[];
-  workspaces: { id: string; name: string; members: number; pages: number; owners: { id: string; name: string; email: string | null }[] }[];
+  // pages without journal days; days counted apart (#49).
+  workspaces: { id: string; name: string; members: number; pages: number; days?: number; owners: { id: string; name: string; email: string | null }[] }[];
   sessions: number;
   audit: { id: string; name: string; action: string; resource_id: string; created_at: string }[];
   adminGroup: string;
@@ -38,6 +39,7 @@ export type AdminData = {
     files: number;
     pages: number;
     trashedPages: number;
+    journalDays?: number;
     rows: number;
     snapshots: number;
     pushPending: number;

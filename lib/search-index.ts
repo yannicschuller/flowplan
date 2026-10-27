@@ -223,6 +223,8 @@ export type SearchResult = {
   snippet: string;
   // The alias the query matched when the title did not ("Title · alias").
   alias?: string;
+  // A hit on a journal day (its date): ranked after other pages.
+  journalDate?: string;
 };
 // Snippet markers; the client renders text between them highlighted.
 export const MARK_START = "\u0002",
@@ -232,7 +234,8 @@ export function searchWorkspace(
   user: Identity,
   workspaceId: string,
   rawQuery: string,
-  options: { kind?: SearchKind; spaceId?: string } = {},
+  // excludeDays: "Ohne Journaltage" – no hits on journal days at all.
+  options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean } = {},
 ): SearchResult[] {
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
@@ -277,7 +280,11 @@ export function searchWorkspace(
         : key.startsWith("f:")
           ? undefined
           : key || undefined;
-  const results: SearchResult[] = [];
+  // Journal days come after everything else (a journal has hundreds).
+  const results: SearchResult[] = [],
+    days: SearchResult[] = [];
+  const done = () => results.length >= SEARCH_LIMIT;
+  const finish = () => [...results, ...days].slice(0, SEARCH_LIMIT);
   const hidden = new Map<string, Set<string>>(),
     hiddenFiles = new Map<string, Set<string>>();
   const push = (hit: Page, key: string, column: string, snippet: string) => {
@@ -307,7 +314,10 @@ export function searchWorkspace(
       if (hiddenFiles.get(page.id)!.has(key.slice(2))) return;
     }
     const alias = matchedAlias(key ? title : page.title, aliases, query);
-    results.push({
+    const day = page.journal_date || null;
+    if (day && options.excludeDays) return;
+    if (day && days.length >= SEARCH_LIMIT) return;
+    (day ? days : results).push({
       id: page.id,
       ...(rowId ? { rowId } : {}),
       ...(key ? { pageTitle: page.title } : {}),
@@ -317,6 +327,7 @@ export function searchWorkspace(
       kind: type,
       snippet,
       ...(alias ? { alias } : {}),
+      ...(day ? { journalDate: day } : {}),
     });
   };
   const scope =
@@ -333,9 +344,9 @@ export function searchWorkspace(
     )) {
       if (page.synced || !allowed(page) || !matchesKind(page, "")) continue;
       push(page, "", page.title, "");
-      if (results.length >= SEARCH_LIMIT) break;
+      if (done()) break;
     }
-    return results;
+    return finish();
   }
   // Trigram matching finds parts of compound words and ignores case and
   // diacritics; shorter queries fall back to a title/body scan.
@@ -366,9 +377,9 @@ export function searchWorkspace(
       hit.hit_title,
       hit.snippet.includes(MARK_START) ? hit.snippet : "",
     );
-    if (results.length >= SEARCH_LIMIT) break;
+    if (done()) break;
   }
-  return results;
+  return finish();
 }
 
 const runtime = globalThis as typeof globalThis & {

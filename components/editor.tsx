@@ -8,6 +8,8 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { reveal } from "@/lib/motion";
 import { nativeScan, nativeScanAvailable } from "@/lib/native-app";
 import { useLocale, useT } from "./i18n";
+import { LOCALE_TAG } from "@/lib/locale-tag";
+import { journalDayQuery, localDate as todayLocal } from "@/lib/journal-links";
 import { TaskDue, pickTaskDue } from "@/lib/task-due-plugin";
 import { CalcHint, calcHintShown } from "@/lib/calc-hint-plugin";
 import { ImageAnnotator, type AnnotationResult } from "./image-annotator";
@@ -216,7 +218,12 @@ export default function DocumentEditor({
   source = false,
   sourceNotice,
   onSourceClose,
+  draft,
 }: {
+  // A journal day that is only a draft (lib/journal-days.ts): nothing is
+  // stored until the person changes something; then ensure() creates the
+  // day under this page id and generation (false: it opens another page).
+  draft?: { ensure: () => Promise<boolean> };
   // "Als Markdown bearbeiten": the page as Markdown instead of the editor.
   source?: boolean;
   // Why the source can only be read (locked page …), if so.
@@ -271,7 +278,35 @@ export default function DocumentEditor({
     saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
     lastHtml = useRef(html),
     initial = useRef({ state, html }),
+    // Draft days: whether the day exists, whether the person did something
+    // (a key, a click, a paste …) and whether that changed the document.
+    created = useRef(!draft),
+    touched = useRef(false),
+    changedByUser = useRef(false),
+    creating = useRef<Promise<boolean> | null>(null),
+    draftRef = useRef(draft),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  draftRef.current = draft;
+  // The push channel and polling start once the day exists.
+  const [liveOn, setLiveOn] = useState(!draft);
+  // Creates the draft day once (several callers may ask at the same time).
+  const ensureCreated = useCallback(async () => {
+    if (created.current || !draftRef.current) return true;
+    creating.current ??= draftRef.current.ensure().then(
+      (ok) => {
+        if (ok) {
+          created.current = true;
+          setLiveOn(true);
+        } else creating.current = null;
+        return ok;
+      },
+      (error) => {
+        creating.current = null;
+        throw error;
+      },
+    );
+    return creating.current;
+  }, []);
   // "/" menu: typed in the text (inline) or opened from the toolbar (button,
   // with its own search field). `from` is where the "/" sits; `sub` is the
   // entry whose second level (the callout kinds) is open.
@@ -397,13 +432,13 @@ export default function DocumentEditor({
   // Block extensions of the workspace (lib/plugins.ts) for the block menu.
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   useEffect(() => {
-    if (!editable || !pageId) return;
+    if (!editable || !pageId || !liveOn) return;
     let live = true;
     void pagePlugins(pageId).then((list) => live && setPlugins(list));
     return () => {
       live = false;
     };
-  }, [pageId, editable]);
+  }, [pageId, editable, liveOn]);
   const pluginCommands = useMemo(
     () =>
       plugins.flatMap((plugin) =>
@@ -754,8 +789,14 @@ export default function DocumentEditor({
   const sync = useCallback(async () => {
     if (!editor || !ready.current || inflight.current || !navigator.onLine)
       return;
+    // A draft day: nothing to poll; created by the first change the person made.
+    if (!created.current && !(dirty.current && editable && changedByUser.current)) return;
     inflight.current = true;
     try {
+      if (!created.current) {
+        if (!(await ensureCreated())) return;
+        sendAll.current = true;
+      }
       if (dirty.current && editable) {
         dirty.current = false;
         // Normally only the changes since the last save; the whole state
@@ -814,7 +855,7 @@ export default function DocumentEditor({
       if (dirty.current && editable && navigator.onLine && !sendAll.current)
         saveSoon.current();
     }
-  }, [doc, editor, editable, pageId, rowId, generation, liveId, applyRemote, onStatus, onError]);
+  }, [doc, editor, editable, pageId, rowId, generation, liveId, applyRemote, onStatus, onError, ensureCreated]);
   // Changes go out shortly after typing instead of on the next interval.
   const saveSoon = useRef(() => {});
   saveSoon.current = () => {
@@ -827,7 +868,7 @@ export default function DocumentEditor({
   useEffect(() => () => clearTimeout(saveTimer.current), []);
   // Push channel: changes and cursor moves of the others arrive at once.
   useEffect(() => {
-    if (typeof EventSource === "undefined") return;
+    if (typeof EventSource === "undefined" || !liveOn) return;
     const params = new URLSearchParams({ page: pageId, generation, client: liveId });
     if (rowId) params.set("row", rowId);
     const source = new EventSource(`/api/documents/live?${params}`);
@@ -864,11 +905,11 @@ export default function DocumentEditor({
       live.current = false;
       source.close();
     };
-  }, [doc, pageId, rowId, generation, liveId, sync, applyRemote]);
+  }, [doc, pageId, rowId, generation, liveId, sync, applyRemote, liveOn]);
   useEffect(
     () =>
       registerDocumentFlush(async () => {
-        if (!editable) return;
+        if (!editable || !created.current) return;
         if (!ready.current)
           throw new Error(t("Das Dokument wird noch geladen. Bitte kurz warten.", "The document is still loading. Please wait a moment."));
         if (!navigator.onLine)
@@ -888,7 +929,8 @@ export default function DocumentEditor({
     [doc, editable, pageId, rowId, generation],
   );
   const persistOnLeave = useCallback(() => {
-    if (!editable || !ready.current || !dirty.current || !navigator.onLine)
+    // A draft keeps its text on this device (IndexedDB) until it is created.
+    if (!editable || !ready.current || !dirty.current || !navigator.onLine || !created.current)
       return;
     const body = JSON.stringify({
       action: rowId ? "row.document.sync" : "document.sync",
@@ -931,6 +973,7 @@ export default function DocumentEditor({
     });
     const update = (change: Uint8Array, origin: unknown) => {
       if (origin === "remote" || origin === persistence || !editable) return;
+      if (touched.current) changedByUser.current = true;
       // Kept even before loading finished: the first save sends everything.
       pending.current.push(change);
       if (ready.current) {
@@ -978,6 +1021,36 @@ export default function DocumentEditor({
   useEffect(() => {
     editor?.setEditable(editable);
   }, [editable, editor]);
+  // A draft day counts as written only after the person did something:
+  // typing, pasting, dropping, ticking a task or a toolbar button.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !draft) return;
+    const dom = editor.view.dom;
+    const wrapper = dom.closest(".editor-wrapper") || dom;
+    const mark = () => {
+      touched.current = true;
+    };
+    const key = (event: Event) => {
+      const { key: name, ctrlKey, metaKey } = event as KeyboardEvent;
+      if (name.length === 1 || ["Enter", "Backspace", "Delete", "Tab"].includes(name) || ctrlKey || metaKey) mark();
+    };
+    const press = (event: Event) => {
+      if ((event.target as Element | null)?.closest?.("button, input, [role=menuitem], [role=option]")) mark();
+    };
+    const events: [EventTarget, string, EventListener][] = [
+      [dom, "keydown", key],
+      [dom, "beforeinput", mark],
+      [dom, "paste", mark],
+      [dom, "drop", mark],
+      [dom, "change", mark],
+      [wrapper, "pointerdown", press],
+    ];
+    for (const [target, name, listener] of events) target.addEventListener(name, listener, true);
+    return () => {
+      for (const [target, name, listener] of events) target.removeEventListener(name, listener, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, !!draft]);
   uploadFile.current = (file: File) => upload(file);
   async function importDrawing(file: File) {
     const host = pages.find((p) => p.id === pageId);
@@ -1040,6 +1113,13 @@ export default function DocumentEditor({
         /mxfile|mxGraphModel/.test(await original.slice(0, 1_000_000).text()))
     )
       return importDrawing(original);
+    // A file in a draft day creates the day first.
+    try {
+      if (!(await ensureCreated())) return;
+    } catch (error) {
+      onError((error as Error).message);
+      return;
+    }
     // Photos shrink before upload; the alt text keeps the original name.
     const file = await compressImage(original);
     const form = new FormData();
@@ -1779,12 +1859,38 @@ export default function DocumentEditor({
   // The mention dialog: what matches the typed text.
   const referenceTerm = referenceQuery.trim().toLowerCase();
   // Pages match by title or by an alias ("Chauffage · PAC").
-  const referencePages = pages.flatMap((p): { page: Page; alias?: string }[] => {
-    if (p.id === pageId) return [];
-    if (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)) return [{ page: p, alias: undefined }];
-    const alias = matchedAlias(p.title, pageAliases(p), referenceTerm);
-    return alias ? [{ page: p, alias }] : [];
-  });
+  const referencePages = pages
+    .flatMap((p): { page: Page; alias?: string }[] => {
+      if (p.id === pageId) return [];
+      if (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)) return [{ page: p, alias: undefined }];
+      const alias = matchedAlias(p.title, pageAliases(p), referenceTerm);
+      return alias ? [{ page: p, alias }] : [];
+    })
+    // Journal days after all other pages (a journal has hundreds).
+    .sort((a, b) => Number(!!a.page.journal_date) - Number(!!b.page.journal_date));
+  // "@heute", "@gestern", "@2026-10-27": a link to that day of the journal.
+  const referenceDay = journalDayQuery(referenceTerm);
+  const journalDays = new Set(pages.filter((p) => p.journal_date).map((p) => p.journal_date));
+  async function insertDayLink(date: string) {
+    try {
+      const link = await api<{ dayId: string; title: string }>("/api/command", {
+        action: "journal.link",
+        workspaceId: pages.find((p) => p.id === pageId)?.workspace_id || pages[0]?.workspace_id,
+        fromPageId: pageId,
+        date,
+        today: todayLocal(),
+      });
+      editor
+        ?.chain()
+        .focus()
+        .insertContent({ type: "text", text: link.title, marks: [{ type: "link", attrs: { href: `/#page=${link.dayId}` } }] })
+        .run();
+      setReferences(false);
+      setReferenceQuery("");
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  }
   const referenceMembers = members.filter((u) => !referenceTerm || u.name.toLowerCase().includes(referenceTerm));
   return (
     <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
@@ -2562,6 +2668,29 @@ export default function DocumentEditor({
             placeholder={t("Suchen …", "Search …")}
             aria-label={t("Seiten, Einträge und Personen suchen", "Search pages, records and people")}
           />
+          {referenceDay && (
+            <>
+              <h3>{t("Journal", "Journal")}</h3>
+              <button
+                className="reference-day"
+                disabled={referenceDay.date !== todayLocal() && !journalDays.has(referenceDay.date)}
+                onClick={() => void insertDayLink(referenceDay.date)}
+              >
+                <CalendarBlank />
+                <span>
+                  {referenceDay.label === "today"
+                    ? t("Heute", "Today")
+                    : referenceDay.label === "yesterday"
+                      ? t("Gestern", "Yesterday")
+                      : referenceDay.date}
+                  <small className="muted"> · {dayLabel(referenceDay.date)}</small>
+                  {referenceDay.date !== todayLocal() && !journalDays.has(referenceDay.date) && (
+                    <small className="muted"> · {t("kein Eintrag", "no entry")}</small>
+                  )}
+                </span>
+              </button>
+            </>
+          )}
           {referencePages.length > 0 && <h3>{t("Seiten", "Pages")}</h3>}
           {referencePages.map(({ page: p, alias }) => (
               <button
@@ -2804,6 +2933,9 @@ function bytesTo64(bytes: Uint8Array) {
 function from64(value: string) {
   return Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
 }
+
+const dayFormat = new Intl.DateTimeFormat(LOCALE_TAG, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const dayLabel = (date: string) => dayFormat.format(new Date(`${date}T00:00:00Z`));
 
 type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string; alias?: string };
 // Records for the mention dialog: the workspace search (kind "row") finds

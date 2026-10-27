@@ -11,11 +11,14 @@ import { api, Modal } from "./ui";
 export function SpaceManager({
   space,
   purge = false,
+  counts,
   onClose,
   onDone,
 }: {
   space: Space;
   purge?: boolean;
+  // Pages and journal days of the space (bootstrap pageCounts).
+  counts?: { pages: number; days: number };
   onClose: () => void;
   onDone: () => Promise<unknown>;
 }) {
@@ -80,6 +83,15 @@ export function SpaceManager({
           void submit();
         }}
       >
+        {counts && (
+          <p className="space-page-count muted" role="note">
+            {counts.days
+              ? t(`${counts.pages} Seiten · ${counts.days} Journaltage`, `${counts.pages} pages · ${counts.days} journal days`)
+              : counts.pages === 1
+                ? t("1 Seite", "1 page")
+                : t(`${counts.pages} Seiten`, `${counts.pages} pages`)}
+          </p>
+        )}
         {removing ? (
           <>
             <p>

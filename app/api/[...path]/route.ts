@@ -111,6 +111,7 @@ import { downloadImage, searchImages } from "@/lib/image-search";
 import { whiteboardRowCards } from "@/lib/whiteboard-cards";
 import { transcribe } from "@/lib/transcribe";
 import { journalDate } from "@/lib/journal";
+import { dayOrDraft, emptyJournalDays, journalDraftPage } from "@/lib/journal-days";
 import {
   calendarEvents,
   databaseEvents,
@@ -349,7 +350,9 @@ async function handleGET(
     if (path.length === 1 && path[0] === "graph") {
       const wid = z.uuid().parse(url.searchParams.get("workspace"));
       requireMember(user, wid);
-      return NextResponse.json(pageGraph(user, wid), { headers: { "Cache-Control": "no-store" } });
+      // Journal days: hidden, one dot per month or each day.
+      const days = z.enum(["hide", "month", "show"]).catch("hide").parse(url.searchParams.get("days") || "hide");
+      return NextResponse.json(pageGraph(user, wid, { days }), { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 3 && path[0] === "pages" && path[2] === "unlinked") {
       const page = requirePage(user, z.uuid().parse(path[1]));
@@ -437,7 +440,31 @@ async function handleGET(
         { headers: { "Cache-Control": "no-store" } },
       );
     }
+    // "Leere Tage entfernen": the preview of what would go to the trash.
+    if (path.length === 3 && path[0] === "journals" && path[2] === "empty") {
+      const journal = requirePage(user, z.uuid().parse(path[1]), true);
+      requireUnlocked(user, journal);
+      return NextResponse.json(
+        { days: emptyJournalDays(journal, journalDate.parse(url.searchParams.get("today"))) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
     if (path.length === 3 && path[0] === "journals" && path[2] === "events") {
+      // A draft day (not stored yet) shows the appointments of its date too.
+      const draft = dayOrDraft(user, z.uuid().parse(path[1]));
+      if (draft) {
+        requireUnlocked(user, draft.journal);
+        const zone = z.string().max(100).catch("UTC").parse(url.searchParams.get("zone") || "UTC");
+        const events = databaseEvents(user, draft.journal.workspace_id, draft.date, zone);
+        let calendarError = "";
+        try {
+          if (!user.demo) events.push(...(await calendarEvents(draft.journal.id, draft.date, zone)));
+        } catch (e) {
+          calendarError = e instanceof HttpError ? e.message : "Der Kalender konnte nicht geladen werden.";
+        }
+        events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
+        return NextResponse.json({ events, calendarError }, { headers: { "Cache-Control": "no-store" } });
+      }
       const day = requirePage(user, z.uuid().parse(path[1]));
       if (!day.journal_date || !day.parent_id) throw new HttpError(400, "Kein Journaltag.");
       requireUnlocked(user, day);
@@ -520,6 +547,12 @@ async function handleGET(
       return NextResponse.json(rowDocumentData(user, path[1], path[3]));
     // Opening a page (header X-Flowplan-Visit) records the visit: read
     // receipts and changes since then. Reloads and embeds do not.
+    // Today's journal day while it is a draft (lib/journal-days.ts).
+    if (path[0] === "pages" && path[1] && path.length === 2 && z.uuid().safeParse(path[1]).success && !one("SELECT 1 FROM pages WHERE id=?", path[1])) {
+      const draft = journalDraftPage(user, path[1]);
+      if (draft && "existing" in draft) return NextResponse.json(pageData(user, draft.existing, { presence: false }), { headers: { "Cache-Control": "no-store" } });
+      if (draft) return NextResponse.json(draft.data, { headers: { "Cache-Control": "no-store" } });
+    }
     if (path[0] === "pages" && path[1])
       return NextResponse.json(
         withActivity(
@@ -576,6 +609,8 @@ async function handleGET(
           spaceId: url.searchParams.get("space")
             ? z.uuid().parse(url.searchParams.get("space"))
             : undefined,
+          // "Ohne Journaltage"
+          excludeDays: url.searchParams.get("days") === "0",
         }),
         { headers: { "Cache-Control": "no-store" } },
       );
@@ -861,7 +896,7 @@ async function handleGET(
         encryption: encryptionOverview(),
         // With the people who own each workspace (owner role; usually one).
         workspaces: all<{ id: string; name: string; members: number; pages: number; owners: string }>(
-          "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL) pages,(SELECT json_group_array(json_object('id',u.id,'name',u.name,'email',u.email)) FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=w.id AND m.role='owner') owners FROM workspaces w ORDER BY w.name COLLATE NOCASE",
+          "SELECT w.id,w.name,(SELECT count(*) FROM members WHERE workspace_id=w.id) members,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NULL) pages,(SELECT count(*) FROM pages WHERE workspace_id=w.id AND deleted_at IS NULL AND journal_date IS NOT NULL) days,(SELECT json_group_array(json_object('id',u.id,'name',u.name,'email',u.email)) FROM members m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=w.id AND m.role='owner') owners FROM workspaces w ORDER BY w.name COLLATE NOCASE",
         ).map((w) => ({ ...w, owners: JSON.parse(w.owners || "[]") as { id: string; name: string; email: string | null }[] })),
         sessions: one(
           "SELECT count(*) count FROM sessions WHERE expires>?",

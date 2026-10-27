@@ -227,7 +227,7 @@ import { templateCategories } from "@/lib/template-categories";
 import { E2eeSetupDialog, E2eeUnlockDialog, EncryptedPage, EncryptedSpaceMembers, EncryptedTitleInput, useDecryptedTitles } from "./e2ee";
 import { createEncryptedSpace, encryptTitle, loadIdentity, openSpace, useE2ee } from "./e2ee-store";
 import { ENCRYPTED_TITLE } from "@/lib/e2ee";
-import { LockKey } from "@phosphor-icons/react";
+import { CalendarX, LockKey } from "@phosphor-icons/react";
 // Shown while the parts load (they use the reader's language).
 function Loading({ what }: { what: "emoji" | "document" | "whiteboard" }) {
   const t = useT();
@@ -269,6 +269,9 @@ type PageData = DatabaseData & {
   };
   // Behind a journal PIN that was not entered yet.
   locked?: { journalId: string };
+  // Today's journal day before it exists (lib/journal-days.ts): created by
+  // the first change, until then nothing is stored.
+  draft?: { journalId: string; date: string };
   // A page of an end-to-end encrypted space (components/e2ee.tsx).
   encrypted?: { spaceId: string; keyVersion: number; encryptTitles: boolean };
   sinceVisit?: SinceVisit | null;
@@ -598,6 +601,20 @@ export default function WorkspaceApp({
     label: string;
   } | null>(null);
   const [searchSpace, setSearchSpace] = useState("");
+  // "Ohne Journaltage": hits on journal days left out (remembered here).
+  const [searchNoDays, setSearchNoDays] = useState(false);
+  useEffect(() => {
+    try {
+      setSearchNoDays(localStorage.getItem("flowplan:search-no-days") === "1");
+    } catch {}
+  }, []);
+  const toggleSearchNoDays = () =>
+    setSearchNoDays((on) => {
+      try {
+        localStorage.setItem("flowplan:search-no-days", on ? "0" : "1");
+      } catch {}
+      return !on;
+    });
   const [inboxFilter, setInboxFilter] = useState<"all" | "unread">("all");
   const [searchName, setSearchName] = useState<string | null>(null);
   // The element that opened the quick search gets the focus back when it
@@ -629,6 +646,7 @@ export default function WorkspaceApp({
           q: query,
           kind: searchKind,
           ...(searchSpace ? { space: searchSpace } : {}),
+          ...(searchNoDays ? { days: "0" } : {}),
         })}`,
         { signal: controller.signal },
       )
@@ -645,7 +663,7 @@ export default function WorkspaceApp({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, search, boot.workspace.id, searchKind, searchSpace]);
+  }, [query, search, boot.workspace.id, searchKind, searchSpace, searchNoDays]);
   const currentId = useRef(pageId),
     currentWorkspace = useRef(boot.workspace.id),
     screenRef = useRef(screen),
@@ -718,6 +736,7 @@ export default function WorkspaceApp({
     if (
       result.workspace.id !== currentWorkspace.current ||
       (screenRef.current === "page" &&
+        !(dataRef.current?.draft && dataRef.current.page.id === currentId.current) &&
         !result.pages.some(
           (page) => page.id === currentId.current && !page.deleted_at,
         ))
@@ -951,6 +970,37 @@ export default function WorkspaceApp({
     },
     [boot.workspace.id, refresh],
   );
+  // The first change in a draft day creates it (journal.roll with write).
+  // The same id and generation: the editor goes on as if nothing happened;
+  // otherwise the day was created differently meanwhile (another device,
+  // other carried tasks) and opens as it is stored.
+  const draftCreations = useRef(new Map<string, Promise<boolean>>());
+  const ensureDraftDay = useCallback(
+    (draftData: PageData) => {
+      const key = draftData.page.id;
+      const known = draftCreations.current.get(key);
+      if (known) return known;
+      const promise = (async () => {
+        const result = await api<{ dayId: string; generation?: string }>("/api/command", {
+          action: "journal.roll",
+          workspaceId: boot.workspace.id,
+          pageId: draftData.draft!.journalId,
+          date: draftData.draft!.date,
+          write: true,
+        });
+        const same = result.dayId === draftData.page.id && result.generation === draftData.generation;
+        if (!same) {
+          notify(t("Die Seite für heute wurde inzwischen angelegt und wird geöffnet.", "Today's page was created meanwhile and opens now."));
+          void openPageRef.current(result.dayId);
+        } else void refresh();
+        return same;
+      })();
+      draftCreations.current.set(key, promise);
+      promise.catch(() => draftCreations.current.delete(key));
+      return promise;
+    },
+    [boot.workspace.id, refresh, notify, t],
+  );
   useEffect(() => {
     if (!hasJournal) return;
     let rolled = "";
@@ -1099,6 +1149,11 @@ export default function WorkspaceApp({
           currentWorkspace.current = next.workspace.id;
           setBoot(next);
           setSpaceId(next.spaces[0]?.id || "");
+        }
+        // A draft day that exists by now answers with the day itself.
+        if (currentId.current === id && p.page.id !== id) {
+          void openPageRef.current(p.page.id, target);
+          return;
         }
         if (currentId.current === id) {
           setData(p);
@@ -2154,7 +2209,7 @@ export default function WorkspaceApp({
   // The highlight starts at the top whenever the rows change.
   useEffect(() => {
     setPaletteActive(0);
-  }, [query, searchResults, searchKind, searchSpace]);
+  }, [query, searchResults, searchKind, searchSpace, searchNoDays]);
   useEffect(() => {
     if (search && activeItem) document.getElementById(`palette-${activeItem.id}`)?.scrollIntoView({ block: "nearest" });
   }, [search, activeItem]);
@@ -2727,7 +2782,12 @@ export default function WorkspaceApp({
               </span>
             )}
           </div>
-          {screen === "page" && data ? (
+          {screen === "page" && data?.draft ? (
+            <span className="topbar-note journal-draft-note" role="status">
+              <span className="subtle-dot" />
+              {t("Entwurf – wird beim ersten Schreiben angelegt", "Draft – created when you start writing")}
+            </span>
+          ) : screen === "page" && data ? (
             <div className="page-top-actions">
               {/* Saving and offline states cross-fade instead of switching hard. */}
               <CrossFade className="save-status" value={`${online}:${statusLabel(status)}`}>
@@ -3147,14 +3207,14 @@ export default function WorkspaceApp({
                     <button
                       className="large-page-icon"
                       title={t("Seiten-Icon ändern", "Change page icon")}
-                      onClick={() => editable && setIconPicker(true)}
+                      onClick={() => editable && !data.draft && setIconPicker(true)}
                     >
                       <PageIcon
                         name={data.page.icon}
                         size={iconPixels[data.page.icon_size || ""]}
                       />
                     </button>
-                    {editable && !data.page.cover && !data.encrypted && (
+                    {editable && !data.page.cover && !data.encrypted && !data.draft && (
                       <button
                         className="add-cover text-button"
                         onClick={() => setCoverPicker(true)}
@@ -3176,7 +3236,7 @@ export default function WorkspaceApp({
                       className="page-title"
                       aria-label={t("Seitentitel", "Page title")}
                       defaultValue={data.page.title}
-                      readOnly={!editable}
+                      readOnly={!editable || !!data.draft}
                       onBlur={(e) => {
                         if (
                           e.target.value.trim() &&
@@ -3197,7 +3257,16 @@ export default function WorkspaceApp({
                       </div>
                     )}
                   </div>
-                  <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
+                  {data.draft ? (
+                    <p className="journal-draft-hint" role="note">
+                      {t(
+                        "Noch nicht gespeichert: Die Seite für heute wird angelegt, sobald du etwas schreibst, eine Aufgabe abhakst, einen Wert einträgst oder eine Datei hinzufügst.",
+                        "Not saved yet: today's page is created as soon as you write something, tick a task, enter a value or add a file.",
+                      )}
+                    </p>
+                  ) : (
+                    <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
+                  )}
                   {since?.pageId === data.page.id && since.value && (
                     <SinceVisitBanner
                       since={since.value}
@@ -3295,6 +3364,7 @@ export default function WorkspaceApp({
                       <JournalDayBar
                         key={data.page.id}
                         pageId={data.page.id}
+                        ensure={data.draft ? () => ensureDraftDay(data) : undefined}
                         trackers={data.journalDay.trackers}
                         entry={data.journalDay.entry}
                         options={data.journalDay.options}
@@ -3316,6 +3386,7 @@ export default function WorkspaceApp({
                     ) : (
                     <DocumentEditor
                       key={`${data.page.id}-${data.generation}-${epoch}`}
+                      draft={data.draft ? { ensure: () => ensureDraftDay(data) } : undefined}
                       generation={data.generation}
                       pageId={data.page.id}
                       userId={boot.user.id}
@@ -3342,6 +3413,7 @@ export default function WorkspaceApp({
                     </>
                   )}
                   </ViewBoundary>
+                  {!data.draft && (<>
                   <div className="backlinks">
                     {!data.locked && !data.encrypted && <RelatedPages key={`related-${data.page.id}`} pageId={data.page.id} />}
                     {!data.locked && !data.encrypted && (
@@ -3411,6 +3483,7 @@ export default function WorkspaceApp({
                       </button>
                     )}
                   </div>
+                  </>)}
                 </article>
                 {aiSummary?.pageId === data.page.id && !comments && (
                   <AiSummaryPanel target={aiSummary} onClose={() => setAiSummary(null)} />
@@ -3779,6 +3852,7 @@ export default function WorkspaceApp({
         <SpaceManager
           space={spaceManager.space}
           purge={spaceManager.purge}
+          counts={boot.pageCounts?.spaces[spaceManager.space.id] || (boot.pageCounts ? { pages: 0, days: 0 } : undefined)}
           onClose={() => setSpaceManager(null)}
           onDone={refresh}
         />
@@ -3942,6 +4016,16 @@ export default function WorkspaceApp({
               </button>
             ))}
           </div>
+          {boot.pages.some((p) => p.kind === "journal" && !p.deleted_at) && (
+            <button
+              type="button"
+              className={`chip${searchNoDays ? " active" : ""}`}
+              aria-pressed={searchNoDays}
+              onClick={toggleSearchNoDays}
+            >
+              <CalendarX size={13} /> {t("Ohne Journaltage", "Without journal days")}
+            </button>
+          )}
           <Select
             aria-label={t("Bereich", "Space")}
             value={searchSpace}

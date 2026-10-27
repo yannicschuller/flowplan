@@ -161,6 +161,8 @@ const exact: Record<string, string> = {
   "Keine Schreibrechte im Zielbereich.": "No write access in the target space.",
   "Diese Seite ist kein Journal.": "This page is not a journal.",
   "Diese Seite ist kein Journaltag.": "This page is not a journal day.",
+  "Für diesen Tag gibt es keinen Eintrag.": "There is no entry for this day.",
+  "Kein Journal gefunden.": "No journal found.",
   "Eine neue Dokumentversion ist verfügbar. Die Seite wird neu geladen.": "A new document version is available. The page is reloading.",
   "Version nicht gefunden.": "Version not found.",
   "Anmerkungen gibt es nur für PDFs.": "Annotations are only available for PDFs.",

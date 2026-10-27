@@ -321,7 +321,7 @@ function checkHabit(user: Identity, input: z.infer<(typeof actionSchemas)["habit
 
 function trackJournal(user: Identity, input: z.infer<(typeof actionSchemas)["journal.track"]>) {
   const writer = writerOf(user);
-  const { dayId } = command(writer, { action: "journal.roll", pageId: input.journalId, date: input.today }) as { dayId: string };
+  const { dayId } = command(writer, { action: "journal.roll", pageId: input.journalId, date: input.today, write: true }) as { dayId: string };
   const entry = command(writer, { action: "journal.entry", pageId: dayId, entry: { values: { [input.trackerId]: input.value } } }) as { values: Record<string, unknown> };
   return { dayId, value: entry.values[input.trackerId] ?? null };
 }
@@ -408,7 +408,7 @@ function meetingNote(user: Identity, input: z.infer<(typeof actionSchemas)["meet
   const journals = writableJournals(user, page.workspace_id);
   const journal = input.journalId ? journals.find((j) => j.id === input.journalId) : journals.find((j) => j.created_by === user.id) || journals[0];
   if (!journal) throw new HttpError(404, ct("Kein Journal, in dem die Notiz entstehen kann.", "No journal to create the note in."));
-  const { dayId } = command(writer, { action: "journal.roll", pageId: journal.id, date: input.date }) as { dayId: string };
+  const { dayId } = command(writer, { action: "journal.roll", pageId: journal.id, date: input.date, write: true }) as { dayId: string };
   const note = command(writer, {
     action: "meeting.note",
     pageId: dayId,

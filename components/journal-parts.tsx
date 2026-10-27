@@ -3,6 +3,7 @@
 // the review of a week or month, the bar above a day page (trackers, place,
 // appointments) and the lock screen.
 import { MeetingNoteButton } from "./meeting-note-button";
+import { JournalDaysPanel } from "./journal-days-settings";
 import { useT } from "./i18n";
 import { LOCALE_TAG, tr } from "@/lib/locale-tag";
 import { useCallback, useEffect, useState } from "react";
@@ -33,7 +34,8 @@ export type JournalSettings = {
   trackers: Tracker[];
   locked: boolean;
   icsUrl?: string;
-  options?: { place: boolean; events: boolean };
+  // create: "Seite des Tages anlegen" – when the day starts or on the first write.
+  options?: { place: boolean; events: boolean; create?: "auto" | "write" };
 };
 export type DayEntry = {
   values: Record<string, number | boolean>;
@@ -98,7 +100,7 @@ export const templatePresets: { name: string; description: string; html: string 
 
 // ---- Settings ----
 
-type SettingsTab = "template" | "trackers" | "bar" | "lock";
+type SettingsTab = "template" | "trackers" | "bar" | "days" | "lock";
 const trackerSuggestions: Omit<Tracker, "id">[] = [
   { name: tr("Stimmung", "Mood"), kind: "mood" },
   { name: tr("Schlaf", "Sleep"), kind: "number", unit: "h" },
@@ -193,6 +195,7 @@ export function JournalSettingsDialog({
     ["template", t("Vorlage", "Template")],
     ["trackers", t("Tracker", "Trackers")],
     ["bar", t("Tagesleiste", "Day bar")],
+    ["days", t("Tage", "Days")],
     ["lock", t("Sperre", "Lock")],
   ];
   return (
@@ -399,6 +402,23 @@ export function JournalSettingsDialog({
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {tab === "days" && (
+        <section className="js-panel" role="tabpanel" aria-label={t("Tage", "Days")}>
+          <JournalDaysPanel
+            pageId={pageId}
+            mode={options.create || "auto"}
+            busy={busy}
+            onMode={(create) => {
+              const before = current;
+              setCurrent({ ...current, options: { ...options, create } });
+              void save({ options: { create } }).then((ok) => !ok && setCurrent(before));
+            }}
+            onChanged={onChanged}
+            onError={onError}
+          />
         </section>
       )}
 
@@ -699,9 +719,13 @@ export function JournalDayBar({
   editable,
   onError,
   options = { place: true, events: true },
+  ensure,
 }: {
   // Which parts the journal shows (set up in the journal's settings).
   options?: { place: boolean; events: boolean };
+  // A draft day: a tracker value or place creates it first (false: the
+  // day opens elsewhere and the value is not stored here).
+  ensure?: () => Promise<boolean>;
   pageId: string;
   trackers: Tracker[];
   entry: DayEntry;
@@ -741,12 +765,13 @@ export function JournalDayBar({
   const save = useCallback(
     async (patch: Partial<Omit<DayEntry, "values">> & { values?: Record<string, number | boolean | null> }) => {
       try {
+        if (ensure && !(await ensure())) return;
         await api("/api/command", { action: "journal.entry", pageId, entry: patch });
       } catch (e) {
         onError(message(e));
       }
     },
-    [pageId, onError],
+    [pageId, onError, ensure],
   );
   const setValue = (id: string, value: number | boolean | null) => {
     const next = { ...values };
@@ -893,7 +918,7 @@ export function JournalDayBar({
                   <span>{event.title}</span>
                 )}
                 <small>{event.source}</small>
-                <MeetingNoteButton dayId={pageId} event={event} editable={editable} onError={onError} />
+                {!ensure && <MeetingNoteButton dayId={pageId} event={event} editable={editable} onError={onError} />}
               </li>
             ))}
             {calendarError && <li className="muted">{calendarError}</li>}

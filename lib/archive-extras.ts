@@ -90,7 +90,7 @@ export function exportPageExtras(page: { id: string; kind: string; synced?: numb
       out.journal = {
         template: row.template || "",
         trackers: z.array(trackerSchema).max(12).catch([]).parse(safeJson(row.trackers, [])),
-        options: journalOptionsSchema.catch({ place: true, events: true }).parse(safeJson(row.options, {})),
+        options: journalOptionsSchema.catch({ place: true, events: true, create: "auto" }).parse(safeJson(row.options, {})),
       };
   }
   if (page.journal_date) {
