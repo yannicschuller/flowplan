@@ -27322,3 +27322,213 @@ label.ws-search input {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Journals in the page tree and on a day page (#49) ---- */
+.nav-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--blue-light);
+  color: var(--accent-strong);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 17px;
+}
+.nav-count {
+  flex: none;
+  margin-left: auto;
+  padding-right: 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.journal-tree-item.muted .page-nav-title {
+  color: var(--muted);
+}
+.journal-tree-item:focus-visible,
+.journal-days:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.journal-days {
+  display: grid;
+  gap: 22px;
+  scroll-margin-top: 16px;
+  border-radius: 10px;
+}
+.journal-daynav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.journal-daynav button {
+  width: auto;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--secondary);
+  white-space: nowrap;
+}
+.journal-daynav button:not(:disabled):hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.journal-daynav button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.journal-daynav-middle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.journal-daynav .journal-daynav-today:not(:disabled) {
+  color: var(--blue);
+  font-weight: 600;
+}
+.journal-daynav .journal-daynav-month {
+  font-weight: 600;
+  color: var(--text);
+}
+.journal-daynav .journal-daynav-month[aria-expanded="true"] {
+  background: var(--hover);
+}
+.journal-month-picker {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 50%;
+  translate: -50% 0;
+  width: min(300px, calc(100vw - 32px));
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.journal-month-picker header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.journal-month-picker header strong {
+  display: grid;
+  text-align: center;
+  font-size: 14px;
+}
+.journal-month-picker header small {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.journal-month-picker [role="row"] {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 3px;
+}
+.journal-month-picker-head span {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.journal-month-picker [role="gridcell"] button {
+  width: 100%;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.journal-month-picker [role="gridcell"] button[aria-disabled="true"] {
+  cursor: default;
+}
+.journal-month-picker [role="gridcell"] button.has-entry {
+  background: var(--blue-light);
+  color: var(--text);
+  font-weight: 600;
+}
+.journal-month-picker [role="gridcell"] button.has-entry:hover {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border));
+}
+.journal-month-picker [role="gridcell"] button.today {
+  border-color: var(--blue);
+}
+.journal-month-picker [role="gridcell"] button.current {
+  background: var(--blue);
+  color: var(--on-accent);
+}
+.journal-month-picker [role="gridcell"] button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.js-choices {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.js-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 400;
+}
+.js-choice:has(input:checked) {
+  border-color: color-mix(in srgb, var(--blue) 50%, var(--border));
+  background: var(--blue-light);
+}
+.js-choice input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--blue);
+}
+.js-choice span {
+  display: grid;
+  gap: 1px;
+}
+.js-choice small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.journal-summary-exists {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  /* Phones: the steps as arrows; their names stay as labels. */
+  .journal-daynav-step span {
+    display: none;
+  }
+  .journal-daynav button {
+    padding: 0 8px;
+  }
+}

@@ -4,6 +4,7 @@
 // the others get their data from POST /api/home/data (lib/home-widgets.ts),
 // already limited to what the person may see. The editing tools live in
 // components/home/home-editor.tsx and load only when needed.
+import { oneDayPerJournal } from "@/lib/journal-nav";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUpRight,
@@ -307,7 +308,8 @@ function RecentWidget({ widget, config }: Props<"recent">) {
         const page = env.pages.find((p) => p.id === v.pageId);
         return page ? [{ page, at: v.seenAt }] : [];
       })
-    : [...env.pages].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map((page) => ({ page, at: page.updated_at }));
+    : // One entry per journal (its latest day), not a run of days (#49).
+      oneDayPerJournal([...env.pages].sort((a, b) => b.updated_at.localeCompare(a.updated_at))).map((page) => ({ page, at: page.updated_at }));
   const shown = list.slice(0, config.max);
   const when = (at: string | number) =>
     typeof at === "number" ? relativeTime(new Date(at).toISOString(), env.clock, env.locale) : relativeTime(at, env.clock, env.locale);

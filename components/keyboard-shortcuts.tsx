@@ -52,6 +52,8 @@ export function actionLabel(action: ShortcutAction, t: T): string {
       return t("Geteilte Ansicht öffnen oder schließen", "Open or close the split view");
     case "present":
       return t("Dokument präsentieren", "Present the document");
+    case "journalToday":
+      return t("Journal: heutigen Tag öffnen", "Journal: open today");
   }
 }
 

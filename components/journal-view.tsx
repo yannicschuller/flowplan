@@ -135,11 +135,16 @@ export function JournalView({
   onRoll,
   onChanged,
   onError,
+  revealDays,
+  onRevealed,
 }: {
   pageId: string;
   days: JournalDay[];
   settings?: JournalSettings;
   editable: boolean;
+  // "Alle Tage …" in the page tree: scroll to the days and focus them.
+  revealDays?: boolean;
+  onRevealed?: () => void;
   onOpen: (id: string) => void;
   onRoll: (pageId: string, date: string, recreate?: boolean) => Promise<unknown>;
   onChanged: () => Promise<unknown> | void;
@@ -176,6 +181,13 @@ export function JournalView({
     } catch {}
   };
   const [review, setReview] = useState(false);
+  const daysRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!revealDays) return;
+    daysRef.current?.scrollIntoView({ block: "start" });
+    daysRef.current?.focus({ preventScroll: true });
+    onRevealed?.();
+  }, [revealDays, onRevealed]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const trackers = settings?.trackers || [];
   const mood = trackers.find((t) => t.kind === "mood");
@@ -371,6 +383,7 @@ export function JournalView({
 
       <TrackerTrends days={days} today={today} trackers={trackers} />
 
+      <div ref={daysRef} className="journal-days" tabIndex={-1} aria-label={t("Alle Tage", "All days")} role="region">
       {layout === "calendar" ? (
         <JournalCalendar days={days} today={today} mood={mood?.id} onOpen={onOpen} />
       ) : past.length ? (
@@ -421,6 +434,7 @@ export function JournalView({
           {t("Frühere Tage erscheinen hier, sobald du an ihnen etwas eingetragen hast.", "Earlier days appear here once you have written something on them.")}
         </p>
       )}
+      </div>
       <p className="journal-hint">
         <Notebook size={16} />
         {t("Jeden Tag entsteht hier eine neue Seite. Offene Aufgaben wandern automatisch in den nächsten Tag; Tage ohne eigenen Eintrag verschwinden wieder.", "A new page is created here every day. Open tasks move to the next day automatically; days without an entry of their own disappear again.")}
@@ -429,6 +443,8 @@ export function JournalView({
         <JournalReview
           pageId={pageId}
           today={today}
+          editable={editable}
+          onChanged={onChanged}
           onClose={() => setReview(false)}
           onOpen={(id) => {
             setReview(false);

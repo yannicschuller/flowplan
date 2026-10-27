@@ -24,6 +24,7 @@ export const SHORTCUT_ACTIONS = [
   "theme",
   "splitView",
   "present",
+  "journalToday",
 ] as const;
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
 export type Keymap = Record<ShortcutAction, string[]>;
@@ -42,6 +43,9 @@ export const DEFAULT_KEYMAP: Keymap = {
   theme: [],
   splitView: ["Mod+Alt+S"],
   present: ["Mod+Alt+P"],
+  // Today's page of the journal used last (#49). Not Mod+Alt+J/T/D: the
+  // browser console on the Mac, a terminal on Linux, the Dock on the Mac.
+  journalToday: ["Mod+Alt+Y"],
 };
 // At most this many combinations per action.
 export const MAX_COMBOS = 3;

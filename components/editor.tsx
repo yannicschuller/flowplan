@@ -1778,8 +1778,9 @@ export default function DocumentEditor({
   });
   // The mention dialog: what matches the typed text.
   const referenceTerm = referenceQuery.trim().toLowerCase();
-  // Pages match by title or by an alias ("Chauffage · PAC").
-  const referencePages = pages.flatMap((p): { page: Page; alias?: string }[] => {
+  // Pages match by title or by an alias ("Chauffage · PAC"). Only while the
+  // dialog is open: a workspace with years of journal days has thousands.
+  const referencePages = !references ? [] : pages.flatMap((p): { page: Page; alias?: string }[] => {
     if (p.id === pageId) return [];
     if (!referenceTerm || p.title.toLowerCase().includes(referenceTerm)) return [{ page: p, alias: undefined }];
     const alias = matchedAlias(p.title, pageAliases(p), referenceTerm);
