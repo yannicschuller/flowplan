@@ -8,6 +8,7 @@ import { useT } from "./i18n";
 import { Modal, PageIcon } from "./ui";
 import { Select } from "./select";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
+import { AiMarkdown } from "./ai-markdown";
 import { askAi, aiProviderLabel, aiUsable, citationParts, type AskScope, type AskSource } from "@/lib/ai/client";
 import type { AiStatus } from "@/lib/ai/features";
 import type { Space } from "@/lib/types";
@@ -266,26 +267,23 @@ export function AskPanel({
   );
 }
 
-// The answer with [n] as clickable chips (only for sources that exist).
+// The answer as Markdown, with [n] as clickable chips (only for sources
+// that exist).
 function AnswerText({ text, sources, onOpen, streaming }: { text: string; sources: AskSource[]; onOpen: (pageId: string, rowId?: string) => void; streaming: boolean }) {
   const t = useT();
-  const paragraphs = text.split(/\n{2,}/);
+  const withCitations = (part: string, key: string) =>
+    citationParts(part, sources).map((piece, j) => {
+      if ("text" in piece) return <Fragment key={`${key}:${j}`}>{piece.text}</Fragment>;
+      const source = sources.find((s) => s.n === piece.cite)!;
+      return (
+        <button key={`${key}:${j}`} type="button" className="ai-cite" title={source.title} aria-label={t(`Quelle ${piece.cite}: ${source.title}`, `Source ${piece.cite}: ${source.title}`)} onClick={() => onOpen(source.pageId, source.rowId)}>
+          {piece.cite}
+        </button>
+      );
+    });
   return (
     <div className="ai-ask-text">
-      {paragraphs.map((p, i) => (
-        <p key={i}>
-          {citationParts(p, sources).map((part, j) => {
-            if ("text" in part) return <Fragment key={j}>{part.text}</Fragment>;
-            const source = sources.find((s) => s.n === part.cite)!;
-            return (
-              <button key={j} type="button" className="ai-cite" title={source.title} aria-label={t(`Quelle ${part.cite}: ${source.title}`, `Source ${part.cite}: ${source.title}`)} onClick={() => onOpen(source.pageId, source.rowId)}>
-                {part.cite}
-              </button>
-            );
-          })}
-          {streaming && i === paragraphs.length - 1 && <span className="ai-ask-caret" aria-hidden />}
-        </p>
-      ))}
+      <AiMarkdown text={text} renderText={withCitations} after={streaming ? <span className="ai-ask-caret" aria-hidden /> : null} />
     </div>
   );
 }

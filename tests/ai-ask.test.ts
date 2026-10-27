@@ -357,3 +357,28 @@ test("switching semantic search off removes all vectors", async () => {
   assert.equal(one<{ n: number }>("SELECT count(*) n FROM ai_embeddings")!.n, 0);
   assert.equal(semanticFor(ben, wid), null);
 });
+
+test("the last lesson with a person: the newest journal day, with its date", async () => {
+  setAi({ enabled: true, semanticSearch: false, provider: { kind: "ollama", baseUrl: mock.base, model: "chat", embeddingModel: "" } });
+  // Pages that say "Nachhilfe" a lot – they must not crowd out the days.
+  for (const name of ["Henry", "Sophie", "Lea", "Tom", "Mia", "Ole", "Ida", "Paul", "Emma"])
+    html(createPage(wid, space, admin.id, `Nachhilfe ${name}`), `<p>Nachhilfe Nachhilfe Nachhilfe mit ${name}: Termine, Nachhilfe-Plan, Nachhilfe-Material.</p>`);
+  const journal = createPage(wid, space, admin.id, "Tagebuch", "journal");
+  const day = (date: string, body: string) => {
+    const pageId = createPage(wid, space, admin.id, date, "document", journal);
+    run("UPDATE pages SET journal_date=? WHERE id=?", date, pageId);
+    html(pageId, body);
+    return pageId;
+  };
+  for (let m = 1; m <= 9; m++) day(`2026-0${m}-10`, `<p>Heute mit Batu Nachhilfe gemacht: Thema ${m}.</p>`);
+  const newest = day("2026-10-20", "<p>Mit Batu Nachhilfe: quadratische Gleichungen und die pq-Formel.</p>");
+  day("2026-10-22", "<p>Einkaufen und Sport.</p>");
+  const prepared = await ask(admin, "Was war das letzte was ich mit Batu in der Nachhilfe hatte?");
+  assert.ok(prepared.sources.some((s) => s.pageId === newest), "the newest day with Batu is a source");
+  const prompt = prepared.messages.at(-1)!.content;
+  assert.match(prompt, /datum="2026-10-20"/);
+  assert.match(prepared.system, /Heute ist \d{4}-\d{2}-\d{2}\./);
+  // Newest first among the days that were read.
+  const days = prepared.sources.filter((s) => /^2026-/.test(s.title)).map((s) => s.title);
+  assert.equal(days[0], "2026-10-20");
+});

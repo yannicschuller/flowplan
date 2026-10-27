@@ -21912,7 +21912,104 @@ h3 .block-reactions {
 }
 .ai-ask-text p {
   margin: 0 0 8px;
-  white-space: pre-wrap;
+}
+/* AI answers as Markdown (components/ai-markdown.tsx). */
+.ai-md {
+  line-height: 1.55;
+}
+.ai-md > :last-child,
+.ai-md li > :last-child {
+  margin-bottom: 0;
+}
+.ai-md h3,
+.ai-md h4,
+.ai-md h5 {
+  margin: 14px 0 6px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.ai-md h3 {
+  font-size: 1.08em;
+}
+.ai-md h4,
+.ai-md h5 {
+  font-size: 1em;
+}
+.ai-md > :first-child {
+  margin-top: 0;
+}
+.ai-md ul,
+.ai-md ol {
+  margin: 0 0 8px;
+  padding-left: 1.4em;
+}
+.ai-md li {
+  margin: 2px 0;
+}
+.ai-md li > p {
+  margin: 0;
+}
+.ai-md li > ul,
+.ai-md li > ol {
+  margin: 2px 0 4px;
+}
+.ai-md li > input[type="checkbox"] {
+  width: auto;
+  margin: 0 6px 0 0;
+  vertical-align: -1px;
+}
+.ai-md code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+.ai-md pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+.ai-md pre code {
+  padding: 0;
+  background: none;
+}
+.ai-md blockquote {
+  margin: 0 0 8px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--border);
+  color: var(--secondary);
+}
+.ai-md hr {
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.ai-md a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ai-md-table {
+  margin: 0 0 8px;
+  overflow-x: auto;
+}
+.ai-md table {
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+.ai-md th,
+.ai-md td {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.ai-md th {
+  background: var(--surface);
+  font-weight: 600;
 }
 .ai-cite {
   display: inline-flex;
