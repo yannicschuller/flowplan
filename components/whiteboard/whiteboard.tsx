@@ -260,6 +260,17 @@ const colorFor = (id: string) =>
   ];
 let clipboard: WhiteboardItem[] = [];
 
+// The actions menu scrolls within what is visible of the board: on phones
+// the board can reach below the tab bar, which would hide its last entries.
+function fitActionsMenu(menu: HTMLDivElement | null) {
+  if (!menu) return;
+  const board = menu.closest(".whiteboard")?.getBoundingClientRect();
+  const bar = document.querySelector(".mobile-tab-bar");
+  const barTop = bar && getComputedStyle(bar).display !== "none" && !menu.closest(".wb-fullscreen") ? bar.getBoundingClientRect().top : innerHeight;
+  const bottom = Math.min(board?.bottom ?? innerHeight, barTop, innerHeight) - 8;
+  menu.style.maxHeight = `${Math.max(160, bottom - menu.getBoundingClientRect().top)}px`;
+}
+
 export default function Whiteboard({
   pageId,
   state,
@@ -3969,6 +3980,7 @@ export default function Whiteboard({
           role="dialog"
           aria-label={t("Ansicht und Aktionen", "View and actions")}
           onPointerDown={(e) => e.stopPropagation()}
+          ref={fitActionsMenu}
         >
           {layout.dock && (
             <div className="wb-actions-zoom">
