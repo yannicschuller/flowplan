@@ -3,22 +3,26 @@ export type PageLocation = {
   pageId: string;
   rowId?: string;
   threadId?: string;
+  // An element of a whiteboard (element links, lib/whiteboard-links.ts).
+  itemId?: string;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parsePageLocation(hash: string): PageLocation | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   if (
-    [...params.keys()].some((key) => !["page", "row", "thread"].includes(key))
+    [...params.keys()].some((key) => !["page", "row", "thread", "item"].includes(key))
   )
     return null;
-  if (["page", "row", "thread"].some((key) => params.getAll(key).length > 1))
+  if (["page", "row", "thread", "item"].some((key) => params.getAll(key).length > 1))
     return null;
   const pageId = params.get("page"),
     rowId = params.get("row"),
-    threadId = params.get("thread");
+    threadId = params.get("thread"),
+    itemId = params.get("item");
   if (
     !pageId ||
     !uuid.test(pageId) ||
+    (itemId !== null && !/^[\w-]{1,64}$/.test(itemId)) ||
     (rowId !== null && !uuid.test(rowId)) ||
     (threadId !== null && !uuid.test(threadId))
   )
@@ -27,12 +31,14 @@ export function parsePageLocation(hash: string): PageLocation | null {
     pageId,
     ...(rowId ? { rowId } : {}),
     ...(threadId ? { threadId } : {}),
+    ...(itemId ? { itemId } : {}),
   };
 }
 export function pageLocationHash(target: PageLocation): string {
   const params = new URLSearchParams({ page: target.pageId });
   if (target.rowId) params.set("row", target.rowId);
   if (target.threadId) params.set("thread", target.threadId);
+  if (target.itemId) params.set("item", target.itemId);
   const hash = `#${params}`;
   return parsePageLocation(hash) ? hash : "#inbox";
 }

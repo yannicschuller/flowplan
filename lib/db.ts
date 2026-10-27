@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 68) return;
+  if (globalDb.flowplanSchema === 71) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -923,7 +923,12 @@ function migrate(d: DatabaseSync) {
   d.exec(`CREATE TABLE IF NOT EXISTS journal_drafts(id TEXT PRIMARY KEY,journal_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,date TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(journal_id,date));
     CREATE TABLE IF NOT EXISTS journal_day_meta(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,journal_id TEXT NOT NULL,template_hash TEXT NOT NULL DEFAULT '',base_hash TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS journal_templates(journal_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,hash TEXT NOT NULL,html TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(journal_id,hash));`);
-  globalDb.flowplanSchema = 68;
+  // Schema 71 – own whiteboard templates (lib/whiteboard-user-templates.ts):
+  // a board or a selection as template elements (JSON), for the workspace
+  // or only for the person who saved it.
+  d.exec(`CREATE TABLE IF NOT EXISTS whiteboard_templates(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,items TEXT NOT NULL,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,visibility TEXT NOT NULL DEFAULT 'workspace' CHECK(visibility IN ('workspace','private')),created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS whiteboard_templates_workspace ON whiteboard_templates(workspace_id);`);
+  globalDb.flowplanSchema = 71;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

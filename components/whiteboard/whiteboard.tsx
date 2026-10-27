@@ -142,6 +142,8 @@ import {
 } from "@/lib/stylus";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 import { primePlaceholder, type PlaceholderInfo } from "../image-placeholder";
+import { useBoardExtras } from "./board-extras";
+import { presentationSlides } from "@/lib/whiteboard-frames";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -706,10 +708,9 @@ export default function Whiteboard({
       onError((e as Error).message);
     }
   }
-  // Presentation: frames in reading order, one at a time.
-  const slides = items
-    .filter((i) => i.type === "frame")
-    .sort((a, b) => a.y - b.y || a.x - b.x);
+  // Presentation: frames in the order of the frames panel (reading order
+  // until someone changes it), without hidden ones, one at a time.
+  const slides = presentationSlides(items);
   function showSlide(index: number) {
     const frame = slides[index];
     const rect = container.current?.getBoundingClientRect();
@@ -1135,7 +1136,9 @@ export default function Whiteboard({
           }
       }
     });
-  const duplicate = (list = selected, offset = 24) => {
+  const duplicate = (original = selected, offset = 24) => {
+    // Copies of groups are groups of their own.
+    const list = extras.remapForCopy(original);
     const ids = new Map(list.map((i) => [i.id, crypto.randomUUID()]));
     const created: string[] = [];
     change(() => {
@@ -1290,6 +1293,8 @@ export default function Whiteboard({
   // Runs before every pointer-down on the board (items, handles, background).
   function onDownCapture(e: ReactPointerEvent<SVGSVGElement>) {
     notePenActivity(e);
+    // Links, embed and PDF buttons inside elements (board-extras.tsx).
+    if (extras.onPointerDownCapture(e)) return;
     // Handwriting into the open text field (Scribble) past its edges.
     if (writingInField(e)) {
       e.stopPropagation();
@@ -1328,6 +1333,7 @@ export default function Whiteboard({
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
     container.current?.focus({ preventScroll: true });
     if (editing) setEditing(null);
+    extras.resetGroup();
     const p = toWorld(e.clientX, e.clientY);
     if (e.button === 1 || tool === "hand" || space) return beginPan(e);
     // A hand on the screen while drawing with a pen moves the board; so does
@@ -1533,11 +1539,13 @@ export default function Whiteboard({
     svg.current?.setPointerCapture(e.pointerId);
     container.current?.focus({ preventScroll: true });
     const next = new Set(selection);
+    // Grouped elements are selected as their group (board-extras.tsx).
+    const unit = extras.unitFor(item);
     if (e.shiftKey)
-      next.has(item.id) ? next.delete(item.id) : next.add(item.id);
+      next.has(item.id) ? unit.forEach((id) => next.delete(id)) : unit.forEach((id) => next.add(id));
     else if (!next.has(item.id)) {
       next.clear();
-      next.add(item.id);
+      unit.forEach((id) => next.add(id));
     }
     setSelection(next);
     if (editing && editing !== item.id) setEditing(null);
@@ -1613,6 +1621,7 @@ export default function Whiteboard({
     if (foreign(e)) return;
     const p = toWorld(e.clientX, e.clientY);
     lastPointer.current = p;
+    if (extras.onMove(e)) return;
     if (editable && (tool === "pen" || tool === "eraser") && isHovering(e)) showHover(p);
     else if (hover) showHover(null);
     const laser = tool === "laser";
@@ -1796,6 +1805,7 @@ export default function Whiteboard({
   function onUp(e: ReactPointerEvent<SVGSVGElement>) {
     notePenActivity(e);
     pointers.current.delete(e.pointerId);
+    if (extras.onUp()) return;
     if (foreign(e)) return;
     if (pointers.current.size < 2) pinch.current = null;
     const g = gesture.current;
@@ -1878,7 +1888,7 @@ export default function Whiteboard({
         );
       });
       setSelection(
-        (s) => new Set([...(g.add ? s : []), ...inside.map((i) => i.id)]),
+        (s) => new Set([...(g.add ? s : []), ...extras.expand(inside.map((i) => i.id))]),
       );
     } else if (g.kind === "create") {
       const item = byId.get(g.id);
@@ -1919,6 +1929,7 @@ export default function Whiteboard({
       .find(Boolean)
       ?.getAttribute("data-item");
     const item = target ? byId.get(target) : undefined;
+    if (extras.onDoubleClickItem(item)) return;
     if (item?.type === "card" && item.pageId && item.rowId) {
       location.hash = `page=${item.pageId}&row=${item.rowId}`;
       return;
@@ -1997,6 +2008,7 @@ export default function Whiteboard({
       } else if (e.key === "Escape") setPresenting(null);
       return;
     }
+    if (extras.onKeyDown(e)) return;
     const mod = e.metaKey || e.ctrlKey;
     if (e.key === " ") {
       setSpace(true);
@@ -2276,6 +2288,41 @@ export default function Whiteboard({
     img.src = URL.createObjectURL(blob);
   }
 
+  const extras = useBoardExtras({
+    pageId,
+    title: pages.find((p) => p.id === pageId)?.title || t("Whiteboard", "Whiteboard"),
+    editable,
+    items,
+    byId,
+    itemsMap,
+    change,
+    setProps,
+    addItem,
+    selection,
+    setSelection,
+    editing,
+    view,
+    setView,
+    moveCamera,
+    fitToContent,
+    toScreen,
+    toWorld,
+    center,
+    svg,
+    container,
+    pages,
+    rowCards,
+    presenting,
+    slides,
+    showSlide,
+    insertDrafts,
+    upload,
+    onError,
+    dock: layout.dock,
+    templatesOpen,
+    setTemplatesOpen,
+  });
+
   // ---- rendering ----
   const frames = items.filter((i) => i.type === "frame"),
     others = items.filter((i) => i.type !== "frame");
@@ -2533,6 +2580,7 @@ export default function Whiteboard({
                 </button>
               </>
             )}
+          {extras.styleButtons}
           <span className="wb-sep" />
           <button
             aria-label={t("Nach vorne", "Bring forward")}
@@ -2682,6 +2730,8 @@ export default function Whiteboard({
             setEditing(null);
           }}
           onKeyDown={(e) => {
+            // Lists, bold/italic/underline marks (board-extras.tsx).
+            if (extras.onEditorKey(e, it.id)) return e.stopPropagation();
             if (
               e.key === "Escape" ||
               (e.key === "Enter" && (e.metaKey || e.ctrlKey))
@@ -2745,7 +2795,8 @@ export default function Whiteboard({
         { key: "media", label: t("Bilder und Symbole suchen", "Search images and icons"), title: t("Bilder (Openverse) und Symbole", "Images (Openverse) and icons"), icon: <MagnifyingGlass size={18} />, run: () => setImagesOpen(true) },
         { key: "emoji", label: t("Emoji", "Emoji"), title: t("Emoji oder Sticker", "Emoji or sticker"), icon: <Smiley size={18} />, run: () => setEmojiOpen(true) },
         { key: "card", label: t("Seite verknüpfen", "Link page"), title: t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard"), icon: <FileText size={18} />, run: () => setCardOpen(true) },
-        { key: "templates", label: t("Vorlagen", "Templates"), title: t("Vorlagen: Retro, Kanban, Mindmap, SWOT, Flussdiagramm", "Templates: retro, kanban, mind map, SWOT, flowchart"), icon: <SquaresFour size={18} />, run: () => setTemplatesOpen(true) },
+        { key: "templates", label: t("Vorlagen", "Templates"), title: t("Vorlagen: Galerie und eigene Vorlagen", "Templates: gallery and own templates"), icon: <SquaresFour size={18} />, run: () => setTemplatesOpen(true) },
+        ...extras.insertActions,
       ]
     : [];
   const meetingActions: BoardAction[] = editable
@@ -2823,6 +2874,7 @@ export default function Whiteboard({
       keepOpen: true,
       run: () => setShowComments((v) => !v),
     },
+    ...extras.viewActions,
   ];
   const exportActions: BoardAction[] = [
     ...(editable
@@ -2838,6 +2890,7 @@ export default function Whiteboard({
       : []),
     { key: "svg", label: t("Als SVG exportieren", "Export as SVG"), title: t("Als SVG exportieren", "Export as SVG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("svg") },
     { key: "png", label: t("Als PNG exportieren", "Export as PNG"), title: t("Als PNG exportieren", "Export as PNG"), icon: <DownloadSimple size={16} />, run: () => exportBoard("png") },
+    ...extras.exportActions,
   ];
   const importFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2954,6 +3007,12 @@ export default function Whiteboard({
           })();
           return;
         }
+        const pdf = files.find((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+        if (editable && pdf) {
+          e.preventDefault();
+          void extras.addPdf(pdf, toWorld(e.clientX, e.clientY));
+          return;
+        }
         const file = files.find((f) => f.type.startsWith("image/"));
         if (!editable || !file) return;
         e.preventDefault();
@@ -2999,7 +3058,7 @@ export default function Whiteboard({
               <g
                 key={item.id}
                 data-item={item.id}
-                className={`wb-item wb-${item.type}${selection.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}`}
+                className={`wb-item wb-${item.type}${selection.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${extras.itemClass(item)}`}
                 onPointerDown={(e) => onItemDown(e, item)}
               >
                 <WhiteboardShape
@@ -3134,6 +3193,7 @@ export default function Whiteboard({
               </g>
             );
           })}
+          {extras.worldLayer}
         </g>
       </svg>
       {presence.map((p) => {
@@ -3669,6 +3729,7 @@ export default function Whiteboard({
         </div>
       )}
       {stylePanel}
+      {extras.overlays}
       <div
         className={`wb-toolbar${layout.dock ? " wb-dock" : ""}`}
         role="toolbar"
@@ -4014,6 +4075,7 @@ export default function Whiteboard({
           >
             <CaretRight size={18} />
           </button>
+          {extras.presentControls}
           <button
             aria-label={t("Präsentation beenden", "End presentation")}
             onClick={() => setPresenting(null)}
@@ -4035,28 +4097,6 @@ export default function Whiteboard({
           </button>
         )
       )}
-      <Modal
-        open={templatesOpen}
-        onClose={() => setTemplatesOpen(false)}
-        title={t("Vorlage einfügen", "Insert template")}
-      >
-        <div className="wb-template-list">
-          {(
-            Object.entries(whiteboardTemplates) as [
-              WhiteboardTemplate,
-              string,
-            ][]
-          ).map(([kind, name]) => (
-            <button
-              key={kind}
-              className="button"
-              onClick={() => insertTemplate(kind)}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-      </Modal>
       {/* Phones: once a tool is chosen its options take the hint's place. */}
       {!items.length && !(layout.dock && tool !== "select" && tool !== "hand") && (
         <div className="wb-empty" aria-hidden="true">
@@ -4113,6 +4153,7 @@ export default function Whiteboard({
               pageId,
               url: result.url,
               credit: result.credit,
+              ...(result.gif ? { gif: true } : {}),
             });
             const at = center();
             const ratio = result.width && result.height ? result.width / result.height : 4 / 3;
