@@ -369,3 +369,23 @@ test("OpenAPI: every operation that takes the key documents the header, 409/422 
     }
   assert.deepEqual([...found].sort(), [...idempotentOperations].sort());
 });
+
+test("space.reorder with a key: a retry answers from the store, the order is applied once", async () => {
+  const second = (command(owner.user, { action: "space.create", workspaceId: wid, name: "Second" }) as { id: string }).id;
+  const order = [second, sid];
+  const key = K.newIdempotencyKey();
+  const first = await post({ action: "space.reorder", workspaceId: wid, order }, owner.auth, key);
+  assert.equal(first.status, 200);
+  const answer = await first.text();
+  assert.deepEqual(JSON.parse(answer).order, order);
+  const positions = () => all<{ id: string; position: number }>("SELECT id,position FROM spaces WHERE workspace_id=? ORDER BY id", wid);
+  const before = positions();
+  const retry = await post({ action: "space.reorder", workspaceId: wid, order }, owner.auth, key);
+  assert.equal(retry.headers.get("Idempotent-Replayed"), "true");
+  assert.equal(await retry.text(), answer);
+  assert.deepEqual(positions(), before);
+  // Another order with the same key is refused.
+  assert.equal((await post({ action: "space.reorder", workspaceId: wid, order: [sid, second] }, owner.auth, key)).status, 422);
+  // Editors may not reorder.
+  assert.equal((await post({ action: "space.reorder", workspaceId: wid, order: [sid, second] }, other.auth)).status, 403);
+});

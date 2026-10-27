@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 66) return;
+  if (globalDb.flowplanSchema === 67) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -903,7 +903,20 @@ function migrate(d: DatabaseSync) {
     for (const [column, type] of [["width", "INTEGER"], ["height", "INTEGER"], ["thumbhash", "TEXT"]])
       if (!columns.includes(column)) d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
   }
-  globalDb.flowplanSchema = 66;
+  // Schema 67 – order of spaces (lib/space-order.ts): spaces.position, a
+  // fractional sort key per workspace like pages.position. Filled once in
+  // the order so far (creation, rowid); every list of spaces shown to people
+  // sorts by position, rowid.
+  if (!(d.prepare("PRAGMA table_info(spaces)").all() as { name: string }[]).some((c) => c.name === "position")) {
+    d.exec("ALTER TABLE spaces ADD COLUMN position REAL");
+    d.exec("UPDATE spaces SET position=(SELECT COUNT(*) FROM spaces o WHERE o.workspace_id IS spaces.workspace_id AND o.rowid<spaces.rowid)+1");
+  }
+  // New spaces (created, imported, duplicated, seeded) go to the end.
+  d.exec(`CREATE INDEX IF NOT EXISTS spaces_order ON spaces(workspace_id,position);
+    CREATE TRIGGER IF NOT EXISTS spaces_position_insert AFTER INSERT ON spaces WHEN NEW.position IS NULL BEGIN
+      UPDATE spaces SET position=COALESCE((SELECT MAX(position) FROM spaces WHERE workspace_id IS NEW.workspace_id AND rowid!=NEW.rowid),0)+1 WHERE rowid=NEW.rowid;
+    END;`);
+  globalDb.flowplanSchema = 67;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

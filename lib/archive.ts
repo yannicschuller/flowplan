@@ -77,6 +77,7 @@ import {
 import { resolve } from "node:path";
 import { z } from "zod";
 import { all, one, run, id, transaction, audit } from "./db";
+import { SPACE_ORDER } from "./space-order";
 import { requireMember, pageRole, spaceRole, isGuest } from "./permissions";
 import { HttpError } from "./auth";
 import { field, view } from "./database-schema";
@@ -225,6 +226,8 @@ export const archiveSchema = z.object({
         icon: str,
         icon_color: spaceColorSchema.default("none"),
         visibility: z.enum(["team", "private"]),
+        // Archives from before schema 67 have none: their list order counts.
+        position: z.number().finite().optional(),
       }),
     )
     .max(500),
@@ -393,14 +396,16 @@ function snapshotFor(user: Identity, wid: string) {
         };
       }),
     })),
-    spaces: all<Space>("SELECT * FROM spaces WHERE workspace_id=?", wid)
+    // In the workspace's order; `position` keeps it on import.
+    spaces: all<Space & { position: number | null }>(`SELECT * FROM spaces WHERE workspace_id=? ORDER BY ${SPACE_ORDER}`, wid)
       .filter((s) => spaceRole(user, s) || spaceIds.has(s.id))
-      .map((s) => ({
+      .map((s, i) => ({
         id: s.id,
         name: s.name,
         icon: s.icon,
         icon_color: s.icon_color || "none",
         visibility: s.visibility,
+        position: i + 1,
       })),
     pages: pages.map((p) => {
       const db =
@@ -1136,7 +1141,12 @@ async function importEntries(
         else copyFileSync(entry.path, path, fsConstants.COPYFILE_EXCL);
         written.push(path);
       }
-      for (const s of data.spaces)
+      // Imported spaces go to the end of the workspace in the archive's
+      // order (lib/space-order.ts; the insert trigger places each last).
+      const spacesInOrder = data.spaces.every((s) => s.position !== undefined)
+        ? [...data.spaces].sort((a, b) => a.position! - b.position!)
+        : data.spaces;
+      for (const s of spacesInOrder)
         run(
           "INSERT INTO spaces(id,workspace_id,name,icon,visibility,owner_id,icon_color) VALUES(?,?,?,?,?,?,?)",
           spaceMap.get(s.id)!,
