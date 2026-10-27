@@ -12,8 +12,9 @@ import {
 } from "../lib/view-toolbar";
 import { view as viewSchema } from "../lib/database-schema";
 import type { Field, FilterGroup, View } from "../lib/types";
+import { translate } from "../lib/i18n";
 
-const en = (_de: string, en: string) => en;
+const en = translate("en");
 const de = (de: string) => de;
 const fields: Field[] = [
   { id: "title", name: "Name", type: "text" },
