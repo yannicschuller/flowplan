@@ -4,10 +4,14 @@ import { pressureOutline } from "@/lib/whiteboard-tools";
 import { LibraryIcon } from "../library-icons";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { placeholderKey, usePlaceholder } from "../image-placeholder";
-import { safeImageSource, type Point, type WhiteboardItem } from "@/lib/whiteboard-model";
+import { safeImageSource, type WhiteboardItem } from "@/lib/whiteboard-model";
 import { connectorGeometry, contentBounds, shapePath } from "@/lib/whiteboard-geometry";
 import { displayText } from "@/lib/field-format";
 import type { RowCardData, RowCardProp } from "@/lib/whiteboard-cards";
+import { connectorEnds, markerSvg } from "@/lib/whiteboard-connector-markers";
+import { isLibraryShape } from "@/lib/whiteboard-shapes-library";
+import { LibraryShapeView } from "./library-shape";
+import { TimelineItemView } from "./timeline-item";
 
 export type PageRef = {
   id: string;
@@ -19,20 +23,6 @@ export type PageRef = {
 // Geometry lives in lib/whiteboard-geometry.ts so the server can draw boards
 // too (SVG in the Markdown export).
 export { shapePath, connectorGeometry, contentBounds } from "@/lib/whiteboard-geometry";
-function arrowHead(at: Point, dir: Point, size: number, color: string) {
-  const len = Math.hypot(dir.x, dir.y) || 1,
-    ux = dir.x / len,
-    uy = dir.y / len;
-  const back = { x: at.x - ux * size, y: at.y - uy * size };
-  const left = { x: back.x - uy * size * 0.55, y: back.y + ux * size * 0.55 },
-    right = { x: back.x + uy * size * 0.55, y: back.y - ux * size * 0.55 };
-  return (
-    <path
-      d={`M ${at.x} ${at.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`}
-      fill={color}
-    />
-  );
-}
 function TextBox({
   item,
   padding = 10,
@@ -155,6 +145,7 @@ export function WhiteboardShape({
         </g>
       );
     case "shape":
+      if (isLibraryShape(item.lib)) return <LibraryShapeView item={item} transform={transform} hideText={editing !== undefined} />;
       return (
         <g transform={transform}>
           <path
@@ -239,9 +230,12 @@ export function WhiteboardShape({
             strokeDasharray={item.dashed ? "8 6" : undefined}
             strokeLinecap="round"
           />
-          {item.endArrow !== false &&
-            arrowHead(b, endDir, 8 + width * 2, color)}
-          {item.startArrow && arrowHead(a, startDir, 8 + width * 2, color)}
+          {/* Arrowheads, UML and crow's-foot ends (lib/whiteboard-connector-markers.ts). */}
+          <g
+            dangerouslySetInnerHTML={{
+              __html: markerSvg(connectorEnds(item).end, b, endDir, width, color) + markerSvg(connectorEnds(item).start, a, startDir, width, color),
+            }}
+          />
           {item.text && (
             <foreignObject
               x={(a.x + b.x) / 2 - 80}
@@ -394,6 +388,8 @@ export function WhiteboardShape({
         </g>
       );
     }
+    case "timeline":
+      return <TimelineItemView item={item} transform={transform} />;
     case "emoji":
       return (
         <g transform={transform}>

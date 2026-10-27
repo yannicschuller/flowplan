@@ -2,6 +2,7 @@
 // "items": id → Y.Map of the properties below. Every property is a plain
 // JSON value, so moving, resizing and editing text of the same item by
 // different people merge property by property.
+import { diagramText, type MarkerKind, type TimelineData } from "./whiteboard-diagram-model";
 export const whiteboardItemTypes = [
   "sticky",
   "text",
@@ -14,6 +15,7 @@ export const whiteboardItemTypes = [
   "emoji",
   "comment",
   "table",
+  "timeline",
 ] as const;
 export type WhiteboardItemType = (typeof whiteboardItemTypes)[number];
 export const shapeKinds = [
@@ -80,6 +82,14 @@ export type WhiteboardItem = {
   pressures?: number[];
   // Images from the image search: author and licence.
   credit?: string;
+  // Diagrams (lib/whiteboard-diagram-model.ts): a shape of a library
+  // ("flow:decision"), connector ends, a prototype link ("frame:<id>" or
+  // "back") and the data of a timeline element.
+  lib?: string;
+  startMarker?: MarkerKind;
+  endMarker?: MarkerKind;
+  link?: string;
+  timeline?: TimelineData;
 };
 export type WhiteboardMessage = {
   id: string;
@@ -141,6 +151,7 @@ export function itemText(item: Partial<WhiteboardItem>) {
     item.emoji,
     ...(item.cells || []).flat(),
     ...(item.messages || []).map((m) => m.text),
+    ...diagramText(item),
   ]
     .filter(Boolean)
     .join(" ")
