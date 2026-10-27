@@ -21833,6 +21833,34 @@ h3 .block-reactions {
 .ai-ask-new {
   margin-left: auto;
 }
+/* Phones: the ask window fills the visible area (above the on-screen
+   keyboard, components/ai-ask.tsx sets the variables); the conversation
+   scrolls, the question field stays at the bottom. */
+@media (max-width: 767px) {
+  .modal.ai-ask {
+    top: calc(var(--ask-vv-top, 0px) + max(var(--safe-top), 10px));
+    transform: translateX(-50%);
+    height: calc(var(--ask-vv-height, 100dvh) - max(var(--safe-top), 10px) - max(var(--safe-bottom), 10px));
+    max-height: none;
+    padding: 18px 16px 14px;
+    overflow: hidden;
+  }
+  .modal.ai-ask > .modal-heading {
+    margin-bottom: 4px;
+  }
+  .ai-ask .ai-ask-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+  .ask-keyboard .modal.ai-ask {
+    height: calc(var(--ask-vv-height, 100dvh) - max(var(--safe-top), 10px) - 8px);
+  }
+  .ask-keyboard .ai-ask-note,
+  .ask-keyboard .ai-ask-empty {
+    display: none;
+  }
+}
 @media (max-width: 560px) {
   .ai-ask .ai-ask-scope {
     max-width: none;

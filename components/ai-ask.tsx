@@ -75,6 +75,30 @@ export function AskPanel({
     end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages, scope, across]);
   useEffect(() => () => controller.current?.abort(), []);
+  // Phones: the window fills what the on-screen keyboard leaves visible, so
+  // the question field stays right above the keyboard.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!open || !vv) return;
+    const root = document.documentElement;
+    let tallest = vv.height;
+    const update = () => {
+      tallest = Math.max(tallest, vv.height);
+      root.style.setProperty("--ask-vv-top", `${vv.offsetTop}px`);
+      root.style.setProperty("--ask-vv-height", `${vv.height}px`);
+      root.classList.toggle("ask-keyboard", vv.height < tallest * 0.8);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      root.style.removeProperty("--ask-vv-top");
+      root.style.removeProperty("--ask-vv-height");
+      root.classList.remove("ask-keyboard");
+    };
+  }, [open]);
 
   const scopeValue = (): AskScope =>
     across
