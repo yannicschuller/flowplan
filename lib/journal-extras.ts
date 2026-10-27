@@ -54,6 +54,9 @@ type SettingsRow = {
 export const journalOptionsSchema = z.object({
   place: z.boolean().default(true),
   events: z.boolean().default(true),
+  // "Seite des Tages anlegen": when the day starts (auto) or with the first
+  // keystroke, ticked task, tracker value or file (write; lib/journal-days.ts).
+  create: z.enum(["auto", "write"]).default("auto"),
 });
 export type JournalOptions = z.infer<typeof journalOptionsSchema>;
 function settingsRow(journalId: string) {
@@ -68,7 +71,7 @@ export function journalSettings(journalId: string) {
   try {
     if (row) trackers = z.array(trackerSchema).parse(JSON.parse(row.trackers));
   } catch {}
-  let options: JournalOptions = { place: true, events: true };
+  let options: JournalOptions = { place: true, events: true, create: "auto" };
   try {
     options = journalOptionsSchema.parse(JSON.parse(row?.options || "{}"));
   } catch {}
@@ -146,7 +149,13 @@ export function templateNodes(
   journalId: string,
   target: ReturnType<typeof documentSchema> = schema(),
 ): PMNode[] {
-  const html = journalSettings(journalId).template;
+  return templateNodesOf(journalSettings(journalId).template, target);
+}
+// The nodes of one version of a template (stored HTML).
+export function templateNodesOf(
+  html: string,
+  target: ReturnType<typeof documentSchema> = schema(),
+): PMNode[] {
   if (!html) return [];
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, htmlState(html));
@@ -158,20 +167,25 @@ export function templateNodes(
 }
 // Texts of the template's tasks: they come back every day by themselves and
 // are not carried over as well.
-export function templateTaskTexts(journalId: string) {
+export function templateTaskTexts(journalId: string, nodes = templateNodes(journalId)) {
   const texts = new Set<string>();
-  for (const node of templateNodes(journalId))
+  for (const node of nodes)
     node.descendants((child) => {
       if (child.type.name === "taskItem") texts.add(child.textContent.trim());
       return true;
     });
   return texts;
 }
-// A day that still reads exactly like the template (plus carried tasks).
-export function onlyTemplate(journalId: string, doc: PMNode, date: string) {
-  const nodes = templateNodes(journalId);
+// A day that still reads exactly like the template (plus carried tasks):
+// the current one, or the version the day was created from.
+export function onlyTemplate(
+  journalId: string,
+  doc: PMNode,
+  date: string,
+  nodes: PMNode[] = templateNodes(journalId),
+) {
   if (!nodes.length) return false;
-  const tasks = templateTaskTexts(journalId);
+  const tasks = templateTaskTexts(journalId, nodes);
   const strip = (node: PMNode): unknown => {
     if (node.isText) return node.text;
     const kids: unknown[] = [];

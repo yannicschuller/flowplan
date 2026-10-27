@@ -372,7 +372,7 @@ function writeJournal(user: Identity, input: z.infer<typeof journalNote>) {
   if (!access || access.page.kind !== "journal") throw new HttpError(404, ct("Seite nicht gefunden.", "Page not found."));
   if (access.encrypted) throw new HttpError(409, ct("Für verschlüsselte Seiten nicht verfügbar.", "Not available for encrypted pages."));
   if (access.locked) throw new HttpError(423, ct("Dieses Journal ist gesperrt.", "This journal is locked."));
-  const { dayId } = command(writer, { action: "journal.roll", pageId: input.journalId, date: input.today }) as { dayId: string };
+  const { dayId } = command(writer, { action: "journal.roll", pageId: input.journalId, date: input.today, write: true }) as { dayId: string };
   const dayPage = requirePage(writer, dayId, true);
   requireUnlocked(writer, dayPage);
   if (dayPage.locked) throw new HttpError(409, ct("Diese Seite ist gesperrt.", "This page is locked."));

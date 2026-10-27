@@ -803,7 +803,15 @@ function InstanceNumbers() {
   if (!data) return null;
   const m = data.metrics;
   const rows: [string, string][] = [
-    [t("Seiten", "Pages"), t(`${num(m.pages)} aktiv · ${num(m.trashedPages)} im Papierkorb`, `${num(m.pages)} active · ${num(m.trashedPages)} in trash`)],
+    [
+      t("Seiten", "Pages"),
+      m.journalDays
+        ? t(
+            `${num(m.pages - m.journalDays)} Seiten · ${num(m.journalDays)} Journaltage aktiv · ${num(m.trashedPages)} im Papierkorb`,
+            `${num(m.pages - m.journalDays)} pages · ${num(m.journalDays)} journal days active · ${num(m.trashedPages)} in trash`,
+          )
+        : t(`${num(m.pages)} aktiv · ${num(m.trashedPages)} im Papierkorb`, `${num(m.pages)} active · ${num(m.trashedPages)} in trash`),
+    ],
     [t("Datensätze", "Records"), num(m.rows)],
     [t("Versionen", "Versions"), t(`${num(m.snapshots)} · Aufbewahrung ${m.retentionDays ? `${m.retentionDays} Tage` : "unbegrenzt"}`, `${num(m.snapshots)} · kept ${m.retentionDays ? `${m.retentionDays} days` : "forever"}`)],
     [t("Erinnerungen", "Reminders"), num(m.reminders)],

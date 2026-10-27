@@ -7,8 +7,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Graph, MagnifyingGlass } from "@phosphor-icons/react";
 import { api } from "./ui";
 
-// Records carry the database they belong to (pageId).
-type Node = { id: string; title: string; icon: string; kind: string; links: number; pageId?: string; pageTitle?: string };
+// Records carry the database they belong to (pageId); a month of a journal
+// the journal it opens (journalId) and how many days it stands for.
+type Node = { id: string; title: string; icon: string; kind: string; links: number; pageId?: string; pageTitle?: string; journalId?: string; days?: number };
+// Journal days: left out, one dot per journal and month, or each day.
+type DaysMode = "hide" | "month" | "show";
 type Edge = { from: string; to: string; kind: "link" | "parent" };
 type Point = { x: number; y: number; vx: number; vy: number };
 
@@ -99,15 +102,33 @@ export function PageGraph({
   const [parents, setParents] = useState(false);
   const [orphans, setOrphans] = useState(true);
   const [filter, setFilter] = useState("");
+  const [days, setDays] = useState<DaysMode>(() => {
+    try {
+      const kept = localStorage.getItem("flowplan:graph-days");
+      return kept === "hide" || kept === "show" ? kept : "month";
+    } catch {
+      return "month";
+    }
+  });
+  const chooseDays = (next: DaysMode) => {
+    setDays(next);
+    try {
+      localStorage.setItem("flowplan:graph-days", next);
+    } catch {}
+  };
   const [hover, setHover] = useState<string | null>(null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
   useEffect(() => {
-    api<{ nodes: Node[]; edges: Edge[] }>(`/api/graph?workspace=${workspaceId}`)
-      .then(setGraph)
+    let live = true;
+    api<{ nodes: Node[]; edges: Edge[] }>(`/api/graph?workspace=${workspaceId}&days=${days}`)
+      .then((next) => live && setGraph(next))
       .catch((e) => onError((e as Error).message));
-  }, [workspaceId, onError]);
+    return () => {
+      live = false;
+    };
+  }, [workspaceId, onError, days]);
   const edges = useMemo(
     () => (graph?.edges || []).filter((e) => parents || e.kind === "link"),
     [graph, parents],
@@ -146,7 +167,10 @@ export function PageGraph({
   // Dots and labels keep their size on screen when zoomed out.
   const screen = 1 / Math.min(1, view.k);
   const radius = (n: Node) => (5 + Math.min(12, Math.sqrt(n.links) * 2.4)) * screen;
-  const open = (node: Node) => (node.pageId ? onOpen(node.pageId, node.id) : onOpen(node.id));
+  const open = (node: Node) =>
+    node.journalId ? onOpen(node.journalId) : node.pageId ? onOpen(node.pageId, node.id) : onOpen(node.id);
+  const dayCount = nodes.reduce((sum, n) => sum + (n.kind === "journal-month" ? n.days || 0 : 0), 0);
+  const pageCount = nodes.filter((n) => n.kind !== "journal-month").length;
   const zoom = (factor: number, cx: number, cy: number) =>
     setView((v) => {
       const k = Math.min(4, Math.max(0.15, v.k * factor));
@@ -178,8 +202,18 @@ export function PageGraph({
           <input type="checkbox" checked={orphans} onChange={(e) => setOrphans(e.target.checked)} />
           {t("Seiten ohne Verbindung", "Pages without connections")}
         </label>
+        <label className="graph-option graph-days">
+          {t("Journaltage", "Journal days")}
+          <select aria-label={t("Journaltage im Graph", "Journal days in the graph")} value={days} onChange={(e) => chooseDays(e.target.value as DaysMode)}>
+            <option value="hide">{t("ausblenden", "hide")}</option>
+            <option value="month">{t("je Monat ein Punkt", "one dot per month")}</option>
+            <option value="show">{t("einzeln zeigen", "show each day")}</option>
+          </select>
+        </label>
         <span className="graph-count">
-          {nodes.length} {t("Seiten ·", "pages ·")}{" "}{edges.filter((e) => e.kind === "link").length} {t("Links", "links")}
+          {pageCount} {t("Seiten ·", "pages ·")}{" "}
+          {dayCount > 0 && <>{dayCount} {t("Journaltage ·", "journal days ·")}{" "}</>}
+          {edges.filter((e) => e.kind === "link").length} {t("Links", "links")}
         </span>
       </div>
       {!graph ? (
@@ -239,7 +273,13 @@ export function PageGraph({
                   transform={`translate(${p.x} ${p.y})`}
                   role="link"
                   tabIndex={0}
-                  aria-label={node.pageTitle ? `${node.title} · ${node.pageTitle}` : node.title}
+                  aria-label={
+                    node.pageTitle
+                      ? `${node.title} · ${node.pageTitle}`
+                      : node.kind === "journal-month"
+                        ? t(`${node.title} · ${node.days} Journaltage`, `${node.title} · ${node.days} journal days`)
+                        : node.title
+                  }
                   onPointerEnter={() => setHover(node.id)}
                   onPointerLeave={() => setHover(null)}
                   onFocus={() => setHover(node.id)}

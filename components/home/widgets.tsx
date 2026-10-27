@@ -315,8 +315,15 @@ function RecentWidget({ widget, config }: Props<"recent">) {
     <>
       <Heading widget={widget}>
         {!viewed && (
-          <span>
-            {env.pages.length} {t("Seiten in deinem Arbeitsbereich", "pages in your workspace")}
+          <span className="home-page-count">
+            {(() => {
+              // Journal days apart (#49): "120 Seiten · 340 Journaltage".
+              const counts = env.boot.pageCounts;
+              if (!counts) return `${env.pages.length} ${t("Seiten in deinem Arbeitsbereich", "pages in your workspace")}`;
+              return counts.days
+                ? t(`${counts.pages} Seiten · ${counts.days} Journaltage in deinem Arbeitsbereich`, `${counts.pages} pages · ${counts.days} journal days in your workspace`)
+                : t(`${counts.pages} Seiten in deinem Arbeitsbereich`, `${counts.pages} pages in your workspace`);
+            })()}
           </span>
         )}
       </Heading>

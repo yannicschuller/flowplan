@@ -152,16 +152,20 @@ export function JournalView({
   const rolled = useRef("");
   // Today's page was deleted: say so instead of waiting for it.
   const [trashed, setTrashed] = useState<string | null>(null);
+  // "Beim ersten Schreiben": today is a draft until somebody writes.
+  const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!editable || current || rolled.current === `${pageId}:${today}`)
       return;
     rolled.current = `${pageId}:${today}`;
     void onRoll(pageId, today).then((result) => {
-      const r = result as { trashed?: boolean; dayId?: string } | null;
+      const r = result as { trashed?: boolean; dayId?: string; draft?: boolean } | null;
       setTrashed(r?.trashed && r.dayId ? r.dayId : null);
+      setDraft(r?.draft && r.dayId ? r.dayId : null);
     });
   }, [editable, current, pageId, today, onRoll]);
+  const todayId = current?.id || (!trashed && draft) || null;
   const [layout, setLayout] = useState<"list" | "calendar">(() => {
     try {
       return localStorage.getItem("flowplan:journal-layout") === "calendar" ? "calendar" : "list";
@@ -254,9 +258,9 @@ export function JournalView({
       </div>
       <button
         type="button"
-        className="journal-today"
-        disabled={!current}
-        onClick={() => current && onOpen(current.id)}
+        className={`journal-today${!current && todayId ? " draft" : ""}`}
+        disabled={!todayId}
+        onClick={() => todayId && onOpen(todayId)}
       >
         <span className="journal-today-date" aria-hidden="true">
           <small>{shortMonth.format(utc(today))}</small>
@@ -268,6 +272,8 @@ export function JournalView({
           <span>
             {current
               ? current.excerpt || t("Schreib auf, was ansteht und was passiert ist.", "Write down what is coming up and what happened.")
+              : todayId
+                ? t("Noch nichts geschrieben – die Seite entsteht mit deinem ersten Eintrag.", "Nothing written yet – the page is created with your first entry.")
               : trashed
                 ? t("Die Seite für heute liegt im Papierkorb.", "Today's page is in the trash.")
                 : editable
@@ -275,9 +281,9 @@ export function JournalView({
                   : t("Für heute gibt es noch keinen Eintrag.", "There is no entry for today yet.")}
           </span>
         </span>
-        {current && (
+        {todayId && (
           <span className="journal-today-open">
-            {t("Öffnen", "Open")}{" "}<ArrowRight size={16} />
+            {current ? t("Öffnen", "Open") : t("Schreiben", "Write")}{" "}<ArrowRight size={16} />
           </span>
         )}
       </button>

@@ -6,11 +6,7 @@ import { contentLocale } from "./content-locale";
 // so the journal holds only days on which something happened.
 import * as Y from "yjs";
 import { Fragment, Node as PMNode } from "@tiptap/pm/model";
-import {
-  prosemirrorJSONToYDoc,
-  updateYFragment,
-  yDocToProsemirrorJSON,
-} from "y-prosemirror";
+import { updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { z } from "zod";
 import { all, one, run } from "./db";
 import { documentSchema } from "./document-schema";
@@ -23,10 +19,20 @@ import { documentChanged } from "./document-live";
 import { indexPageTasks } from "./doc-tasks";
 import {
   hasEntryData,
+  journalSettings,
   onlyTemplate,
   templateNodes,
+  templateNodesOf,
   templateTaskTexts,
 } from "./journal-extras";
+import {
+  dayTemplateHtml,
+  draftId as journalDraftId,
+  ensureDraft,
+  rememberDay,
+  rememberTemplate,
+  seededDayState,
+} from "./journal-days";
 
 // One schema instance: nodes of different instances cannot be combined.
 let cachedSchema: ReturnType<typeof documentSchema> | undefined;
@@ -132,6 +138,12 @@ function loadDocument(pageId: string) {
   const doc = PMNode.fromJSON(schema(), yDocToProsemirrorJSON(ydoc, "default"));
   return { ydoc, doc };
 }
+// A day's document (read only).
+export function dayDoc(pageId: string) {
+  const { ydoc, doc } = loadDocument(pageId);
+  ydoc.destroy();
+  return doc;
+}
 // Changes the stored Yjs document in place (a diff, no new generation), so
 // editors that have the page open merge the change on their next sync.
 function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
@@ -153,9 +165,13 @@ function storeDocument(pageId: string, ydoc: Y.Doc, doc: PMNode) {
 // A page nobody touched: no own text, same title, no icon or cover set, no
 // comments, no sub pages and no files.
 function untouched(page: Page, doc: PMNode) {
+  // Compared with the template the day was created from, so a later change
+  // of the template does not keep untouched days (and with today's one).
+  const created = dayTemplateHtml(page.id);
   if (
     hasOwnEntry(doc, page.journal_date!) &&
-    !onlyTemplate(page.parent_id!, doc, page.journal_date!)
+    !onlyTemplate(page.parent_id!, doc, page.journal_date!) &&
+    !(created !== null && onlyTemplate(page.parent_id!, doc, page.journal_date!, templateNodesOf(created)))
   )
     return false;
   if (hasEntryData(page.id)) return false;
@@ -194,8 +210,34 @@ export function journalDays(journalId: string) {
   );
 }
 
+// What a new day starts with: the open tasks of the last day before it
+// (without the template's own tasks, which come back by themselves) and
+// the template. Reads only; rollJournal moves the tasks.
+export function dayStart(journal: Page, today: string) {
+  const previous = one<Page>(
+    "SELECT * FROM pages WHERE parent_id=? AND journal_date<? AND deleted_at IS NULL ORDER BY journal_date DESC LIMIT 1",
+    journal.id,
+    today,
+  );
+  const daily = templateTaskTexts(journal.id);
+  let carried: PMNode[] = [];
+  let before: { ydoc: Y.Doc; doc: PMNode } | null = null;
+  if (previous) {
+    before = loadDocument(previous.id);
+    carried = carryTasks(
+      openTasks(before.doc).filter((task) => !daily.has(task.textContent.trim())),
+      previous.journal_date!,
+    );
+  }
+  const doc = dayDocument(carried, templateNodes(journal.id, schema()));
+  return { previous, before, carried, daily, doc };
+}
+
 // Makes sure the journal has a page for `today`. Runs inside the command
 // transaction; returns the id of today's page and whether anything changed.
+// A journal set to "beim ersten Schreiben" (lib/journal-days.ts) only gets
+// the page with `write` (the first keystroke, task, tracker value or file);
+// until then the answer names the draft that stands in for it.
 export function rollJournal(
   user: Identity,
   journal: Page,
@@ -203,7 +245,16 @@ export function rollJournal(
   now = new Date().toISOString().slice(0, 10),
   // Today's page is in the trash and a fresh one is wanted.
   recreate = false,
-) {
+  options: { write?: boolean } = {},
+): {
+  // Today's page – or, while it is a draft, the draft's id (it opens like
+  // a page, GET /api/pages/<id>).
+  dayId: string;
+  changed: boolean;
+  trashed?: boolean;
+  draft?: boolean;
+  generation?: string;
+} {
   if (journal.kind !== "journal")
     throw new HttpError(400, "Diese Seite ist kein Journal.");
   // A client clock far off the server's would create the wrong days.
@@ -215,37 +266,40 @@ export function rollJournal(
     journal.id,
     today,
   );
+  const generationOf = (pageId: string) =>
+    String(one<{ generation: string }>("SELECT generation FROM documents WHERE page_id=?", pageId)?.generation || "1");
   if (existing && existing.deleted_at && recreate) {
     // The deleted page stays in the trash as an ordinary page.
     run("UPDATE pages SET journal_date=NULL WHERE id=?", existing.id);
   } else if (existing)
-    return { dayId: existing.id, changed: false, trashed: !!existing.deleted_at };
-  const previous = one<Page>(
-    "SELECT * FROM pages WHERE parent_id=? AND journal_date<? AND deleted_at IS NULL ORDER BY journal_date DESC LIMIT 1",
-    journal.id,
-    today,
-  );
-  let carried: PMNode[] = [];
-  const daily = templateTaskTexts(journal.id);
-  if (previous) {
-    const { ydoc, doc } = loadDocument(previous.id);
-    // Tasks of the template come back by themselves and stay where they were.
-    carried = carryTasks(
-      openTasks(doc).filter((task) => !daily.has(task.textContent.trim())),
-      previous.journal_date!,
-    );
-    if (untouched(previous, doc)) removeDay(previous);
+    return {
+      dayId: existing.id,
+      changed: false,
+      trashed: !!existing.deleted_at,
+      ...(options.write ? { generation: generationOf(existing.id) } : {}),
+    };
+  // Created on the first write: nothing is stored yet, carried tasks stay
+  // where they are; the draft id is the same for every device.
+  if (!options.write && journalSettings(journal.id).options.create === "write")
+    return { dayId: ensureDraft(journal.id, today), changed: false, draft: true };
+  const { previous, before, carried, daily, doc } = dayStart(journal, today);
+  if (previous && before) {
+    const { ydoc, doc: previousDoc } = before;
+    if (untouched(previous, previousDoc)) removeDay(previous);
     else if (carried.length) {
       storeDocument(
         previous.id,
         ydoc,
-        withoutOpenTasks(doc, (task) => daily.has(task.textContent.trim())),
+        withoutOpenTasks(previousDoc, (task) => daily.has(task.textContent.trim())),
       );
       // The moved tasks now live in the new day ("Meine Aufgaben").
       indexPageTasks(previous.id, false);
     }
     ydoc.destroy();
   }
+  // A day that was a draft keeps its id and gets exactly the state the
+  // draft showed (lib/journal-days.ts), so what was typed there merges.
+  const draft = journalDraftId(journal.id, today);
   const dayId = createPage(
     journal.workspace_id,
     journal.space_id,
@@ -253,9 +307,10 @@ export function rollJournal(
     dayTitle(today),
     "document",
     journal.id,
+    undefined,
+    ...(draft && !one("SELECT 1 FROM pages WHERE id=?", draft) ? [draft] : []),
   );
-  const doc = dayDocument(carried, templateNodes(journal.id, schema()));
-  const ydoc = prosemirrorJSONToYDoc(schema(), doc.toJSON(), "default");
+  const seeded = seededDayState(dayId, doc);
   // Newest day first in the page tree.
   run(
     "UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?",
@@ -264,15 +319,18 @@ export function rollJournal(
     dayId,
   );
   run(
-    "UPDATE documents SET state=?,html=? WHERE page_id=?",
-    Y.encodeStateAsUpdate(ydoc),
-    stateHtml(ydoc),
+    "UPDATE documents SET state=?,html=?,generation=? WHERE page_id=?",
+    Y.encodeStateAsUpdate(seeded.ydoc),
+    stateHtml(seeded.ydoc),
+    seeded.generation,
     dayId,
   );
+  if (draft) run("DELETE FROM journal_drafts WHERE journal_id=? AND date=?", journal.id, today);
+  rememberDay(dayId, journal.id, rememberTemplate(journal.id), seeded.hash);
   documentChanged(dayId);
-  ydoc.destroy();
+  seeded.ydoc.destroy();
   indexPageTasks(dayId, false);
-  return { dayId, changed: true };
+  return { dayId, changed: true, ...(options.write ? { generation: seeded.generation } : {}) };
 }
 // All journals of a workspace the user may edit.
 export function rollJournals(user: Identity, workspaceId: string, today: string) {
@@ -283,6 +341,7 @@ export function rollJournals(user: Identity, workspaceId: string, today: string)
   )) {
     const role = pageRole(user, journal);
     if (role !== "editor" && role !== "owner") continue;
+    // Journals that create a day on the first write wait for it.
     if (rollJournal(user, journal, today).changed) changed = true;
   }
   return changed;

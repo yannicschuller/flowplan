@@ -150,6 +150,30 @@ function rowBody(markdown: string) {
   return lines.slice(i).join("\n").trim();
 }
 
+// Day files of journals in a Flowplan export: <journal folder>/YYYY/MM/
+// YYYY-MM-DD.md below a Markdown page (the journal: <folder>/index.md or
+// <folder>.md). The heading is the day's title; a second file of the same
+// journal and date is left out instead of becoming another day.
+function flowplanDays(nodes: Map<string, Node>, text: (path: string) => string) {
+  const days = new Map<string, { journal: string; date: string; title: string; skip?: boolean }>();
+  const seen = new Set<string>();
+  for (const node of [...nodes.values()].sort((a, b) => a.key.localeCompare(b.key))) {
+    if (node.kind !== "document") continue;
+    const match = /^(?:(.*)\/)?(\d{4})\/(\d{2})\/((\d{4})-(\d{2})-(\d{2}))$/.exec(node.key);
+    if (!match || match[2] !== match[5] || match[3] !== match[6]) continue;
+    const date = match[4];
+    if (new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) continue;
+    const folder = match[1] || "";
+    const journal = [folder, folder ? `${folder}/index` : "index"].find((key) => key && nodes.get(key)?.kind === "document");
+    if (!journal) continue;
+    const heading = /^#\s+([^\n]+)/m.exec(splitFrontmatter(text(node.path)).body)?.[1]?.trim();
+    const key = `${journal}\u0000${date}`;
+    days.set(node.key, { journal, date, title: (heading || date).slice(0, 500), skip: seen.has(key) });
+    seen.add(key);
+  }
+  return days;
+}
+
 export async function importZip(
   user: Identity,
   workspaceId: string,
@@ -214,6 +238,10 @@ export async function importZip(
     throw new HttpError(413, `Maximal ${MAX_IMPORT_PAGES} Seiten je Import.`);
   const text = (path: string) =>
     entries.get(path)!.toString("utf8").replace(/^﻿/, "");
+  // Journals of a Flowplan export (#49): days at <journal folder>/2026/10/
+  // 2026-10-27.md become the days of that journal again, one per date.
+  const days = flowplanDays(nodes, text);
+  for (const [key, day] of days) if (day.skip) nodes.delete(key);
   // Drawings are read before anything is written; one that cannot be read
   // becomes a board with a note saying why.
   const boards = new Map<string, ImportedBoard>();
@@ -230,24 +258,31 @@ export async function importZip(
           items: [{ id: "n", type: "sticky", x: 0, y: 0, w: 320, h: 160, text: `${posix.basename(node.path)}: ${error.message}`, fill: "#ffc9c9", fontSize: 14 }],
         });
       }
+  const journals = new Set([...days.values()].filter((d) => !d.skip).map((d) => d.journal));
   return transaction(() => {
     const pageIds = new Map<string, string>();
     const ordered = [...nodes.values()].sort(
       (a, b) => a.depth - b.depth || a.key.localeCompare(b.key, "de"),
     );
     for (const node of ordered) {
-      const parent = pageIds.get(posix.dirname(node.key)) || null;
-      pageIds.set(
-        node.key,
-        createPage(
-          workspaceId,
-          spaceId,
-          user.id,
-          node.title,
-          node.kind,
-          parent,
-        ),
+      const day = days.get(node.key);
+      const parent = (day ? pageIds.get(day.journal) : pageIds.get(posix.dirname(node.key))) || null;
+      const created = createPage(
+        workspaceId,
+        spaceId,
+        user.id,
+        day ? day.title : node.title,
+        journals.has(node.key) ? "journal" : node.kind,
+        parent,
       );
+      if (day && parent)
+        run(
+          "UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?",
+          day.date,
+          -Number(day.date.replaceAll("-", "")),
+          created,
+        );
+      pageIds.set(node.key, created);
     }
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const uploaded = new Map<string, string>();
@@ -314,9 +349,14 @@ export async function importZip(
         const { data, body: rest } = splitFrontmatter(text(node.path));
         const aliases = frontmatterAliases(data);
         if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pid);
-        const onlyAliases = aliases.length && Object.keys(data).every((key) => ["aliases", "alias"].includes(key.trim().toLowerCase()));
+        // Flowplan's own keys (a journal day's id and date) go too.
+        const keys = Object.keys(data).map((key) => key.trim().toLowerCase());
+        const onlyAliases =
+          (aliases.length || keys.includes("flowplan")) && keys.every((key) => ["aliases", "alias", "flowplan"].includes(key));
         // The first heading repeats the page title.
-        const body = (onlyAliases ? rest.replace(/^\s*\n/, "") : text(node.path)).replace(/^#\s+[^\n]*\n?/, "");
+        let body = (onlyAliases ? rest.replace(/^\s*\n/, "") : text(node.path)).replace(/^#\s+[^\n]*\n?/, "");
+        // A journal lists its days below; they are its days again.
+        if (journals.has(node.key)) body = body.replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "\n");
         const html = markdownToHtml(body, resolver(node.path, pid));
         run(
           "UPDATE documents SET html=?,state=? WHERE page_id=?",

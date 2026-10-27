@@ -34,6 +34,7 @@ import {
   whiteboardData,
 } from "./whiteboard";
 import { journalDate, rollJournal, rollJournals } from "./journal";
+import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { changeDocTask, dueTaskCount, indexPageTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
@@ -277,6 +278,7 @@ export function bootstrap(user: Identity, wid?: string) {
     workspaces,
     workspace,
     pages,
+    pageCounts: pageCounts(user, workspace.id, pages),
     // Pages owned by me whose review date has passed (lib/page-review.ts).
     reviewsDue: reviewsDue(user, pages),
     // In the workspace's order (lib/space-order.ts).
@@ -1365,11 +1367,34 @@ export function command(
         const date = journalDate.parse(b.date);
         if (b.pageId) {
           const journal = write();
-          result = rollJournal(user, journal, date, undefined, b.recreate === true);
+          // `write`: the first keystroke, task, tracker value or file in a
+          // draft day creates it (journals set to "beim ersten Schreiben").
+          result = rollJournal(user, journal, date, undefined, b.recreate === true, { write: b.write === true });
         } else {
           requireMember(user, wid());
           result = { changed: rollJournals(user, wid(), date) };
         }
+        break;
+      }
+      // "@heute", "@gestern", "@2026-10-27": the journal day to link to.
+      case "journal.link": {
+        requireMember(user, wid());
+        result = journalDayLink(user, wid(), {
+          date: z.string().parse(b.date),
+          today: z.string().parse(b.today),
+          fromPageId: b.fromPageId ? uuid.parse(b.fromPageId) : null,
+        });
+        break;
+      }
+      // "Leere Tage entfernen": the days chosen from the preview go to the trash.
+      case "journal.removeEmpty": {
+        const journal = write();
+        result = removeEmptyJournalDays(
+          user,
+          journal,
+          z.array(uuid).max(5000).parse(b.dayIds),
+          journalDate.parse(b.today),
+        );
         break;
       }
       case "page.delete": {

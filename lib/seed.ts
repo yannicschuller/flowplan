@@ -91,8 +91,9 @@ export function createPage(
   kind = "document",
   parent: string | null = null,
   databaseKind: DatabaseKind = "tasks",
+  // A journal day written into before it existed keeps its draft id.
+  pid: string = id(),
 ) {
-  const pid = id();
   run(
     "INSERT INTO pages(id,workspace_id,space_id,parent_id,title,kind,created_by,position,icon) VALUES(?,?,?,?,?,?,?,?,?)",
     pid,

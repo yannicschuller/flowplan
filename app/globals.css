@@ -776,6 +776,20 @@ kbd,
 .breadcrumb-divider {
   color: #d2d6dd;
 }
+/* A journal day that is only a draft (#49). */
+.journal-draft-hint {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.topbar-note.journal-draft-note {
+  white-space: normal;
+  min-width: 0;
+}
 .topbar-note {
   display: flex;
   align-items: center;
@@ -12446,6 +12460,9 @@ html.card-grabbing * {
     box-shadow 0.18s ease,
     translate 0.18s var(--ease-out);
 }
+.journal-today.draft {
+  border-style: dashed;
+}
 .journal-today:not(:disabled):hover {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
   box-shadow: 0 10px 28px -12px #1d1a1433;
@@ -14626,6 +14643,16 @@ h3 .block-reactions {
 .graph-node.kind-whiteboard circle { fill: #2f9e62; }
 .graph-node.kind-journal circle { fill: #a45ad8; }
 .graph-node.kind-record circle { fill: #3b82c4; }
+/* One dot per journal and month (#49): the journal's colour, ringed. */
+.graph-node.kind-journal-month circle { fill: #c9a4ea; stroke: #a45ad8; stroke-width: 2; }
+.graph-days select {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
 .graph-node.current circle {
   stroke: var(--text);
   stroke-width: 2.5;
@@ -15524,6 +15551,115 @@ h3 .block-reactions {
   border-radius: 8px;
   background: var(--bg);
   letter-spacing: 0.2em;
+}
+/* Journal settings → Tage (#49): when today's page is created, and the
+   preview of "Leere Tage entfernen". Long day names never widen the panel. */
+.js-panel {
+  grid-template-columns: minmax(0, 1fr);
+}
+.js-choices {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.js-choices legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+.js-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 400;
+}
+.js-choice.active {
+  border-color: color-mix(in srgb, var(--blue) 55%, var(--border));
+  background: color-mix(in srgb, var(--blue-light) 60%, transparent);
+}
+.js-choice input {
+  flex: none;
+  margin: 3px 0 0;
+  accent-color: var(--blue);
+}
+.js-choice span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.js-choice small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.js-empty {
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-day-count {
+  display: block;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.js-empty .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.js-empty-count {
+  margin: 0;
+  font-weight: 550;
+  font-size: 13.5px;
+}
+.js-empty-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.js-empty-list label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 7px 10px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.js-empty-list input,
+.js-choice input {
+  width: auto;
+}
+.js-empty-list label span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.js-empty-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+.js-empty-list small {
+  flex: none;
+}
+.js-empty-list li + li {
+  border-top: 1px solid var(--border);
 }
 @media (max-width: 700px) {
   .js-tabs button {

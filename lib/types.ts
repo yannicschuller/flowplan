@@ -246,6 +246,11 @@ export type Comment = {
   reactions?: Reaction[];
 };
 export type Reaction = { emoji: string; count: number; mine: boolean; names: string[] };
+export type PageCounts = {
+  pages: number;
+  days: number;
+  spaces: Record<string, { pages: number; days: number }>;
+};
 export type Bootstrap = {
   user: Identity;
   localAccount?: boolean;
@@ -257,6 +262,10 @@ export type Bootstrap = {
   trashedSpaces?: Space[];
   managedSpaces?: Space[];
   pages: Page[];
+  // Pages and journal days counted separately ("120 Seiten · 340
+  // Journaltage"), in the workspace and per space; days behind a journal
+  // PIN not entered yet are not counted.
+  pageCounts?: PageCounts;
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
   savedSearches?: import("./saved-searches").SavedSearch[];

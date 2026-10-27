@@ -190,6 +190,29 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
   return true;
 }
 
+// A journal day by its path (lib/markdown-export.ts: <journal folder>/
+// 2026/10/2026-10-27.md, the folder of the export's root page or
+// pages/<title>-<journal id>/): the journal's day of that date. The id in
+// the file's frontmatter decides when it names a day of the same journal.
+export function journalDayOf(rootId: string, inside: string, text: string) {
+  const match = /^(?:pages\/[^/]*-([0-9a-f-]{36})\/)?(\d{4})\/(\d{2})\/((\d{4})-(\d{2})-\d{2})\.md$/.exec(inside);
+  if (!match || match[2] !== match[5] || match[3] !== match[6]) return undefined;
+  const journalId = match[1] || rootId;
+  const flowplan = splitFrontmatter(text).data.flowplan;
+  const stored = flowplan && typeof flowplan === "object" && !Array.isArray(flowplan) ? String(flowplan.id || "") : "";
+  const byId = /^[0-9a-f-]{36}$/.test(stored)
+    ? one<{ id: string }>("SELECT id FROM pages WHERE id=? AND parent_id=? AND journal_date IS NOT NULL AND deleted_at IS NULL", stored, journalId)?.id
+    : undefined;
+  return (
+    byId ||
+    one<{ id: string }>(
+      "SELECT p.id FROM pages p JOIN pages j ON j.id=p.parent_id WHERE p.parent_id=? AND j.kind='journal' AND p.journal_date=? AND p.deleted_at IS NULL",
+      journalId,
+      match[4],
+    )?.id
+  );
+}
+
 // Takes over files changed in the repository: records (by flowplan.id, or
 // new ones) and document pages. Database tables (index.md of a database)
 // and comment and version files are read-only copies.
@@ -208,7 +231,8 @@ async function importChanges(user: Identity, folders: Map<string, string>, from:
         imported += (result.created || 0) + (result.updated || 0);
         continue;
       }
-      const page = inside === "index.md" ? rootId : /^pages\/.*-([0-9a-f-]{36})\.md$/.exec(inside)?.[1];
+      const page =
+        inside === "index.md" ? rootId : /^pages\/[^/]*-([0-9a-f-]{36})\.md$/.exec(inside)?.[1] || journalDayOf(rootId, inside, text);
       if (page && transaction(() => updateDocument(user, page, text), user)) imported++;
     } catch (error) {
       console.error("Git import skipped", path, (error as Error).message);

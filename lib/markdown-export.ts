@@ -22,7 +22,8 @@ import {
   type MarkdownContext,
 } from "./markdown";
 import { exportName } from "./export-name";
-import { ct } from "./content-locale";
+import { contentLocale, ct } from "./content-locale";
+import { dayTitle as localDayTitle, isAutoDayTitle } from "./journal-title";
 import { dashboardSummary } from "./dashboard";
 import { inkPicture } from "./ink-export";
 import { notebookPaper, notebookSheets, notebookText } from "./notebook";
@@ -61,6 +62,27 @@ const MAX_BYTES = 250 * 1024 * 1024,
 // The folder of a top-level page in a space export and in the scheduled
 // export (lib/scheduled-markdown-export.ts).
 export const exportFolder = (page: { id: string; title: string }) => `${exportName(page.title).slice(0, 60)}-${page.id.slice(0, 8)}`;
+// Journal days sort by their path (#49): <journal folder>/2026/10/2026-10-27.md,
+// the journal's folder being the one of its index.md or, for a journal
+// below another page, pages/<title>-<id>/ next to its file. Only days of
+// a journal that is exported too; anything else keeps its usual place.
+export const DAY_PATH = /(?:^|\/)(\d{4})\/(\d{2})\/(\d{4})-(\d{2})-(\d{2})\.md$/;
+const isExportedDay = (path: string) => {
+  const match = DAY_PATH.exec(path);
+  return !!match && match[1] === match[3] && match[2] === match[4];
+};
+export function journalFolderOf(journalPath: string) {
+  return journalPath.endsWith("index.md") ? journalPath.slice(0, -"index.md".length) : `${journalPath.replace(/\.md$/, "")}/`;
+}
+function journalDayPath(page: Page, parentPath: string | undefined, selected: Page[]) {
+  const date = page.journal_date;
+  if (!date || !parentPath || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const journal = selected.find((p) => p.id === page.parent_id);
+  if (journal?.kind !== "journal") return null;
+  // Two days of one date (should not happen): the second keeps its own path.
+  const path = `${journalFolderOf(parentPath)}${date.slice(0, 4)}/${date.slice(5, 7)}/${date}.md`;
+  return selected.some((other) => other !== page && other.parent_id === page.parent_id && other.journal_date === date && selected.indexOf(other) < selected.indexOf(page)) ? null : path;
+}
 
 function collect(user: Identity, options: MarkdownExportOptions) {
   const zip = options.format === "zip";
@@ -115,15 +137,19 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   const folders = new Map(roots.map((page) => [page.id, space ? `${exportFolder(page)}/` : ""]));
   const prefix = (pageId: string) => folders.get(rootOf.get(pageId)!.id)!;
   const prefixOfPath = (path: string) => (space ? path.slice(0, path.indexOf("/") + 1) : "");
-  const paths = new Map(
-    selected.map((page) => [
+  const paths = new Map<string, string>();
+  for (const page of selected) {
+    const parentPath = page.parent_id ? paths.get(page.parent_id) : undefined;
+    const day = journalDayPath(page, parentPath, selected);
+    paths.set(
       page.id,
-      prefix(page.id) +
-        (rootOf.get(page.id)!.id === page.id
-          ? "index.md"
-          : `pages/${exportName(page.title)}-${page.id}.md`),
-    ]),
-  );
+      day ??
+        prefix(page.id) +
+          (rootOf.get(page.id)!.id === page.id
+            ? "index.md"
+            : `pages/${exportName(page.title)}-${page.id}.md`),
+    );
+  }
   const entries = new Map<string, Buffer>();
   const pending: { path: string; build: () => Promise<Uint8Array> }[] = [];
   let total = 0,
@@ -543,9 +569,18 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   for (const page of selected) {
     const path = paths.get(page.id)!,
       ctx = context(path, page);
-    // Pages have frontmatter only for their aliases (as Obsidian reads them).
+    // Pages have frontmatter only for their aliases (as Obsidian reads them);
+    // journal days also name their page and date, so an import finds them.
     const aliases = pageAliases(page);
-    let markdown = (aliases.length ? toFrontmatter({ aliases }) + "\n" : "") + `# ${markdownText(page.title)}\n\n`;
+    const day = isExportedDay(path) ? page.journal_date! : null;
+    const front: Frontmatter = {
+      ...(aliases.length ? { aliases } : {}),
+      ...(day ? { flowplan: { id: page.id, date: day } } : {}),
+    };
+    // A day's own title in the language of the export (it was named in the
+    // language of whoever opened it first), unless somebody renamed it.
+    const heading = day && isAutoDayTitle(page.title, day) ? localDayTitle(day, contentLocale()) : page.title;
+    let markdown = (Object.keys(front).length ? toFrontmatter(front) + "\n" : "") + `# ${markdownText(heading)}\n\n`;
     if (page.cover.startsWith("/api/files/")) {
       const cover = ctx.url(page.cover);
       if (cover) markdown += `![Cover](<${markdownUrl(cover)}>)\n\n`;
@@ -786,8 +821,8 @@ export async function exportMarkdown(
       ct("Flowplan Markdown-Export\n\n", "Flowplan Markdown export\n\n") +
         spaceNote +
         ct(
-          "Öffne index.md. Unterseiten liegen unter pages/, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/ – dort liegen auch Whiteboards als SVG-Bild. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nJeder Datensatz unter records/ beginnt mit seinen Eigenschaften als YAML-Frontmatter (wie in Obsidian); berechnete Werte wie Formeln und Zeitstempel stehen unter \"flowplan:\". Eine Datenbank liest solche Dateien über „Markdown importieren“ wieder ein.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. ",
-          "Open index.md. Sub-pages are in pages/, record documents in records/, tables also as CSV in tables/ and local attachments in assets/ – where whiteboards are too, as SVG images. Links within this export are relative. Other page links still need a Flowplan sign-in. External media are exported as links and not downloaded.\n\nEvery record in records/ starts with its properties as YAML frontmatter (as in Obsidian); computed values such as formulas and timestamps are below \"flowplan:\". A database reads such files back with \"Import Markdown\".\n\nThe database output contains all records and properties, regardless of view filters. Markdown shows columns one after another and normalises merged table cells. Formulas use math code fences, diagrams mermaid code fences. Text values in CSV that start like spreadsheet formulas get a leading apostrophe.\n\nThis is a portable content format, not a Flowplan restore archive. ",
+          "Öffne index.md. Unterseiten liegen unter pages/, die Tage eines Journals in seinem Ordner unter <Jahr>/<Monat>/<Datum>.md, Datensatzdokumente unter records/, Tabellen zusätzlich als CSV unter tables/ und lokale Anhänge unter assets/ – dort liegen auch Whiteboards als SVG-Bild. Links innerhalb dieses Exports sind relativ. Andere Seitenlinks benötigen weiterhin eine Anmeldung bei Flowplan. Externe Medien werden als Links exportiert und nicht heruntergeladen.\n\nJeder Datensatz unter records/ beginnt mit seinen Eigenschaften als YAML-Frontmatter (wie in Obsidian); berechnete Werte wie Formeln und Zeitstempel stehen unter \"flowplan:\". Eine Datenbank liest solche Dateien über „Markdown importieren“ wieder ein.\n\nDie Datenbankausgabe enthält alle Datensätze und Eigenschaften, unabhängig von Ansichtfiltern. Markdown stellt Spalten nacheinander dar und normalisiert verbundene Tabellenzellen. Formeln verwenden math-Codezäune, Diagramme mermaid-Codezäune. Textwerte in CSV, die wie Tabellenkalkulationsformeln beginnen, erhalten ein führendes Apostroph.\n\nDies ist ein portables Inhaltsformat, kein Flowplan-Wiederherstellungsarchiv. ",
+          "Open index.md. Sub-pages are in pages/, the days of a journal in its folder under <year>/<month>/<date>.md, record documents in records/, tables also as CSV in tables/ and local attachments in assets/ – where whiteboards are too, as SVG images. Links within this export are relative. Other page links still need a Flowplan sign-in. External media are exported as links and not downloaded.\n\nEvery record in records/ starts with its properties as YAML frontmatter (as in Obsidian); computed values such as formulas and timestamps are below \"flowplan:\". A database reads such files back with \"Import Markdown\".\n\nThe database output contains all records and properties, regardless of view filters. Markdown shows columns one after another and normalises merged table cells. Formulas use math code fences, diagrams mermaid code fences. Text values in CSV that start like spreadsheet formulas get a leading apostrophe.\n\nThis is a portable content format, not a Flowplan restore archive. ",
         ) +
         historyNote,
     ),

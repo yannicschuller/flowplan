@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 67) return;
+  if (globalDb.flowplanSchema === 68) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -916,7 +916,14 @@ function migrate(d: DatabaseSync) {
     CREATE TRIGGER IF NOT EXISTS spaces_position_insert AFTER INSERT ON spaces WHEN NEW.position IS NULL BEGIN
       UPDATE spaces SET position=COALESCE((SELECT MAX(position) FROM spaces WHERE workspace_id IS NEW.workspace_id AND rowid!=NEW.rowid),0)+1 WHERE rowid=NEW.rowid;
     END;`);
-  globalDb.flowplanSchema = 67;
+  // Schema 68 – journal days created on first write (lib/journal-days.ts):
+  // the draft id a day gets before it exists (one per journal and date, so
+  // every device writes into the same page), which template version a day
+  // was created from and the template versions themselves (by hash).
+  d.exec(`CREATE TABLE IF NOT EXISTS journal_drafts(id TEXT PRIMARY KEY,journal_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,date TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(journal_id,date));
+    CREATE TABLE IF NOT EXISTS journal_day_meta(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,journal_id TEXT NOT NULL,template_hash TEXT NOT NULL DEFAULT '',base_hash TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS journal_templates(journal_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,hash TEXT NOT NULL,html TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(journal_id,hash));`);
+  globalDb.flowplanSchema = 68;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

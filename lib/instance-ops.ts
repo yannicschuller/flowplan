@@ -90,6 +90,8 @@ export function instanceMetrics() {
       count("SELECT COALESCE(SUM(length(data)),0) n FROM template_files"),
     files: count("SELECT COUNT(*) n FROM files"),
     pages: count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL"),
+    // Of those, days of journals (shown apart: "120 Seiten · 340 Journaltage").
+    journalDays: count("SELECT COUNT(*) n FROM pages WHERE deleted_at IS NULL AND journal_date IS NOT NULL"),
     trashedPages: count(
       "SELECT COUNT(*) n FROM pages WHERE deleted_at IS NOT NULL",
     ),

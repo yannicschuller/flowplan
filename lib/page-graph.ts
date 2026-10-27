@@ -14,6 +14,8 @@ import { requireRow } from "./row-documents";
 import { cellText } from "./cell-text";
 import { HttpError } from "./auth";
 import { aliasIndex, MIN_ALIAS_MENTION, pageAliases, recordAliases } from "./aliases";
+import { contentLocale } from "./content-locale";
+import { localeTag } from "./i18n";
 import type { Field, Identity, Page } from "./types";
 
 // A link to a page, a record (#page=…&row=…) or an embedded board, database
@@ -45,7 +47,31 @@ function readableRecords(user: Identity, workspaceId: string, readable: (page: P
   return records;
 }
 
-export function pageGraph(user: Identity, workspaceId: string) {
+// Journal days in the graph: left out ("hide", one journal has hundreds),
+// one dot per journal and month ("month") or each day ("show").
+export type GraphDays = "hide" | "month" | "show";
+type GraphNode = {
+  id: string;
+  title: string;
+  icon: string;
+  kind: string;
+  links: number;
+  // Records: their database.
+  pageId?: string;
+  pageTitle?: string;
+  // A month of a journal: the journal to open and the month (YYYY-MM).
+  journalId?: string;
+  month?: string;
+  days?: number;
+};
+const monthName = (month: string) =>
+  new Intl.DateTimeFormat(localeTag(contentLocale()), {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${month}-01T00:00:00Z`));
+export function pageGraph(user: Identity, workspaceId: string, options: { days?: GraphDays } = {}) {
+  const mode = options.days || "hide";
   const locked = lockedPageIds(user, workspaceId);
   const readable = (page: Page) => !locked.has(page.id) && !!pageRole(user, page);
   const pages = all<Page & { html: string | null }>(
@@ -60,54 +86,87 @@ export function pageGraph(user: Identity, workspaceId: string) {
     const page = visible.get(id);
     return page?.synced && page.parent_id && visible.has(page.parent_id) ? page.parent_id : id;
   };
+  // A journal day (readable, below a readable journal): where it shows up.
+  const dayOf = (page: Page | undefined) =>
+    page?.journal_date && page.parent_id && visible.get(page.parent_id)?.kind === "journal" ? page : null;
+  const months = new Map<string, GraphNode>();
+  const place = (id: string): string | null => {
+    const day = dayOf(visible.get(id));
+    if (!day) return id;
+    if (mode === "show") return id;
+    if (mode === "hide") return null;
+    const month = day.journal_date!.slice(0, 7);
+    const key = `month:${day.parent_id}:${month}`;
+    const journal = visible.get(day.parent_id!)!;
+    const node = months.get(key) || {
+      id: key,
+      title: `${monthName(month)} · ${journal.title || "Ohne Titel"}`,
+      icon: "day",
+      kind: "journal-month",
+      links: 0,
+      journalId: journal.id,
+      month,
+      days: 0,
+    };
+    months.set(key, node);
+    return key;
+  };
   const edges = new Map<string, { from: string; to: string; kind: "link" | "parent" }>();
+  const addEdge = (rawFrom: string, rawTo: string, kind: "link" | "parent") => {
+    const from = place(rawFrom),
+      to = place(rawTo);
+    if (!from || !to || from === to) return;
+    edges.set(`${from}>${to}${kind === "parent" ? ":p" : ""}`, { from, to, kind });
+  };
   // Links from one text: to a record when it names one, else to the page.
   const linksFrom = (from: string, html: string) => {
     for (const match of html.matchAll(reference)) {
       const to = match[2] && records.has(match[2]) ? match[2] : owner(match[1]);
       if (to === from || (!visible.has(to) && !records.has(to))) continue;
-      edges.set(`${from}>${to}`, { from, to, kind: "link" });
+      addEdge(from, to, "link");
     }
   };
   for (const page of pages) {
     linksFrom(owner(page.id), page.html || "");
-    if (!page.synced && page.parent_id && visible.has(page.parent_id) && !page.journal_date)
-      edges.set(`${page.parent_id}>${page.id}:p`, { from: page.parent_id, to: page.id, kind: "parent" });
+    if (!page.synced && page.parent_id && visible.has(page.parent_id)) addEdge(page.parent_id, page.id, "parent");
   }
   for (const record of records.values()) if (record.html.includes("=")) linksFrom(record.id, record.html);
   const degree = new Map<string, number>();
   for (const edge of edges.values())
     if (edge.kind === "link")
       for (const id of [edge.from, edge.to]) degree.set(id, (degree.get(id) || 0) + 1);
+  for (const page of pages) {
+    const key = dayOf(page) && mode === "month" ? place(page.id) : null;
+    if (key) months.get(key)!.days! += 1;
+  }
+  const nodes: GraphNode[] = [
+    ...pages
+      .filter((page) => !page.synced && (!dayOf(page) || mode === "show"))
+      .map((page) => ({
+        id: page.id,
+        title: page.title || "Ohne Titel",
+        icon: page.icon,
+        kind: page.kind,
+        links: degree.get(page.id) || 0,
+      })),
+    ...[...months.values()].map((node) => ({ ...node, links: degree.get(node.id) || 0 })),
+    // Records only when they link or are linked; a database has many.
+    ...[...records.values()]
+      .filter((record) => degree.has(record.id))
+      .map((record) => ({
+        id: record.id,
+        title: record.title || "Ohne Titel",
+        icon: "",
+        kind: "record",
+        pageId: record.page_id,
+        pageTitle: record.database.title,
+        links: degree.get(record.id) || 0,
+      })),
+  ];
+  const ids = new Set(nodes.map((node) => node.id));
   return {
-    nodes: [
-      ...pages
-        .filter((page) => !page.synced && !page.journal_date)
-        .map((page) => ({
-          id: page.id,
-          title: page.title || "Ohne Titel",
-          icon: page.icon,
-          kind: page.kind,
-          links: degree.get(page.id) || 0,
-        })),
-      // Records only when they link or are linked; a database has many.
-      ...[...records.values()]
-        .filter((record) => degree.has(record.id))
-        .map((record) => ({
-          id: record.id,
-          title: record.title || "Ohne Titel",
-          icon: "",
-          kind: "record",
-          pageId: record.page_id,
-          pageTitle: record.database.title,
-          links: degree.get(record.id) || 0,
-        })),
-    ],
-    edges: [...edges.values()].filter(
-      (e) =>
-        (visible.has(e.from) || records.has(e.from)) &&
-        (records.has(e.to) || (visible.has(e.to) && !visible.get(e.to)!.journal_date)),
-    ),
+    nodes,
+    edges: [...edges.values()].filter((e) => ids.has(e.from) && ids.has(e.to)),
   };
 }
 
