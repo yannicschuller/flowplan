@@ -69,7 +69,7 @@ export function AlertsForm({
           </fieldset>
         </SettingRow>
         {alerts.secret && (
-          <SettingRow label={t("Signaturschlüssel", "Signing secret")} description={t("Damit prüft der Empfänger die Signatur.", "The receiver checks the signature with it.")} id={`${own}-secret`}>
+          <SettingRow label={t("Signaturschlüssel", "Signing key")} description={t("Damit prüft der Empfänger die Signatur.", "The receiver checks the signature with it.")} id={`${own}-secret`}>
             <input id={`${own}-secret`} className={`${CONTROL.lg} font-mono`} readOnly value={alerts.secret} onFocus={(e) => e.target.select()} />
           </SettingRow>
         )}

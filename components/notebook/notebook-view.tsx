@@ -721,7 +721,7 @@ export default function NotebookView({
           </fieldset>
           <div className="notebook-paper-row">
             <fieldset>
-              <legend>{t("Format", "Size")}</legend>
+              <legend>{t("Format", "Size||paper")}</legend>
               {PAPER_SIZES.map((size) => (
                 <label key={size}>
                   <input type="radio" name="notebook-size" checked={draft.size === size} onChange={() => setDraft({ ...draft, size })} />

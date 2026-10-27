@@ -163,7 +163,7 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
   };
 
   const layout = useMemo(() => blockPaperLayout(paper, size), [paper, size]);
-  const paperName = (value: DrawBlockPaper) => ({ blank: t("Leer", "Blank"), lined: t("Liniert", "Lined"), grid: t("Kariert", "Grid") })[value];
+  const paperName = (value: DrawBlockPaper) => ({ blank: t("Leer", "Blank"), lined: t("Liniert", "Lined"), grid: t("Kariert", "Grid||paper") })[value];
   const status =
     sync.status === "saving" ? t("Wird gespeichert …", "Saving …") : sync.status === "dirty" ? t("Nicht gespeichert", "Not saved") : sync.status === "error" ? t("Nicht gespeichert – neuer Versuch folgt", "Not saved – trying again") : t("Gespeichert", "Saved");
   return (

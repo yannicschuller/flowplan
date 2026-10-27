@@ -217,7 +217,7 @@ function TestButton({ url, disabled, onError }: { url: string; disabled: boolean
         <span role="status" className="ai-test-result">
           {t("Verbindung steht", "Connected")} · {result.ms} ms
           {result.models.length > 0 && <> · {t(`${result.models.length} Modelle`, `${result.models.length} models`)}</>}
-          {result.reply && <> · {t("Antwort", "Reply")} „{result.reply}“</>}
+          {result.reply && <> · {t("Antwort", "Reply||noun")} „{result.reply}“</>}
           {!result.modelListed && <> · {t("Das Modell steht nicht in der Liste des Anbieters.", "The model is not in the provider's list.")}</>}
         </span>
       )}

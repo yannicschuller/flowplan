@@ -608,7 +608,7 @@ export function InlineComments({
                 >
                   <CommentComposer
                     key={thread.id}
-                    label={t("Antwort", "Reply")}
+                    label={t("Antwort", "Reply||noun")}
                     pageId={pageId}
                     rowId={rowId}
                     body={reply}

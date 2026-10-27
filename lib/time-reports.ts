@@ -405,7 +405,7 @@ export function timeReportCsv(user: Identity, input: unknown, variant: "csv" | "
     );
   const body = [header.map(cell).join(sep), ...lines].join("\r\n");
   return {
-    name: `${ct("Zeiten", "Time")} ${range.from} – ${range.to}.csv`,
+    name: `${ct("Zeiten", "Time||tracked")} ${range.from} – ${range.to}.csv`,
     body: variant === "excel" ? "﻿" + body : body,
   };
 }

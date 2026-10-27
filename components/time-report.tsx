@@ -87,7 +87,7 @@ export function TimeReport({ pageId, workspaceId, title }: { pageId?: string; wo
         ? date(new Date(`${key}T12:00:00`).getTime())
         : label || t("Ohne Titel", "Untitled");
   const statusLabel = (s: BillingState) =>
-    s === "billed" ? t("abgerechnet", "billed") : s === "unbillable" ? t("nicht abrechenbar", "not billable") : t("offen", "open");
+    s === "billed" ? t("abgerechnet", "billed") : s === "unbillable" ? t("nicht abrechenbar", "not billable") : t("offen", "open||billing");
   async function billing(status: BillingState, ids?: string[]) {
     setBusy(true);
     setMessage("");
@@ -214,7 +214,7 @@ export function TimeReport({ pageId, workspaceId, title }: { pageId?: string; wo
           <span>{t("Abrechnungsstatus", "Billing status")}</span>
           <Select aria-label={t("Abrechnungsstatus", "Billing status")} value={filters.status} onChange={(e) => set({ status: e.target.value as Filters["status"] })}>
             <option value="">{t("Jeder Status", "Any status")}</option>
-            <option value="open">{t("offen", "open")}</option>
+            <option value="open">{t("offen", "open||billing")}</option>
             <option value="billed">{t("abgerechnet", "billed")}</option>
             <option value="unbillable">{t("nicht abrechenbar", "not billable")}</option>
           </Select>

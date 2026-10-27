@@ -540,7 +540,7 @@ export default function DatabaseTimeline({
             onChange={(event) => void configureDependencies(event.target.value)}
           >
             <option value="">
-              {relations.length ? t("Keine", "None") : t("Keine Selbstrelation", "No self-relation")}
+              {relations.length ? t("Keine", "None||dependency") : t("Keine Selbstrelation", "No self-relation")}
             </option>
             {relations.map((f) => (
               <option key={f.id} value={f.id}>

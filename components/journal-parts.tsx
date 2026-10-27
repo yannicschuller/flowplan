@@ -212,7 +212,7 @@ export function JournalSettingsDialog({
     ["trackers", t("Tracker", "Trackers")],
     ["bar", t("Tagesleiste", "Day bar")],
     ["days", t("Tage", "Days")],
-    ["lock", t("Sperre", "Lock")],
+    ["lock", t("Sperre", "Lock||setting")],
   ];
   return (
     <Modal open onClose={onClose} title={t("Journal einrichten", "Set up journal")} wide className="journal-settings">
@@ -452,7 +452,7 @@ export function JournalSettingsDialog({
       )}
 
       {tab === "lock" && (
-        <section className="js-panel" role="tabpanel" aria-label={t("Sperre", "Lock")}>
+        <section className="js-panel" role="tabpanel" aria-label={t("Sperre", "Lock||setting")}>
           <p className="js-status">
             <LockKey size={18} weight={current.locked ? "fill" : "regular"} />
             {current.locked ? t("Das Journal ist mit einer PIN geschützt.", "The journal is protected with a PIN.") : t("Das Journal ist nicht gesperrt.", "The journal is not locked.")}

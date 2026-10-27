@@ -70,7 +70,7 @@ export default function DataSection() {
     <>
       <SettingGroup
         id="import"
-        title={t("Import", "Import")}
+        title={t("Import", "Import||section")}
         description={canWrite ? t("Inhalte aus Dateien und anderen Werkzeugen übernehmen.", "Bring in content from files and other tools.") : t("Importieren dürfen nur Mitglieder mit Bearbeitungsrechten.", "Only members who may edit can import.")}
       >
         <SettingRow label={t("Zielbereich", "Target space")} id="import-space" description={t("Wohin importierte Seiten und Datenbanken kommen.", "Where imported pages and databases go.")}>
@@ -201,7 +201,7 @@ export default function DataSection() {
         </SettingRow>
       </SettingGroup>
 
-      <SettingGroup id="export" title={t("Export", "Export")} description={t("Eine Kopie von allem, was du lesen darfst – zum Archivieren oder für einen Umzug.", "A copy of everything you may read – to archive or to move.")}>
+      <SettingGroup id="export" title={t("Export", "Export||section")} description={t("Eine Kopie von allem, was du lesen darfst – zum Archivieren oder für einen Umzug.", "A copy of everything you may read – to archive or to move.")}>
         <SettingRow
           label={t("Arbeitsbereich als ZIP", "Workspace as ZIP")}
           description={t(

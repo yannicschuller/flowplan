@@ -637,7 +637,7 @@ function Events({ events }: { events: MonitoringEvent[] }) {
   const t = useT();
   const [filter, setFilter] = useState<(typeof EVENT_FILTERS)[number]>("all");
   const shown = events.filter((e) => filter === "all" || e.level === filter || (filter === "info" && e.level === "ok"));
-  const label = { all: t("Alle", "All"), error: t("Fehler", "Errors"), warn: t("Warnungen", "Warnings"), info: t("Hinweise", "Notes") };
+  const label = { all: t("Alle", "All"), error: t("Fehler", "Errors"), warn: t("Warnungen", "Warnings"), info: t("Hinweise", "Notes||level") };
   const counts = { all: events.length, error: events.filter((e) => e.level === "error").length, warn: events.filter((e) => e.level === "warn").length, info: events.filter((e) => e.level === "info" || e.level === "ok").length };
   return (
     <Card id="events" title={t("Ereignisse", "Events")} description={t("Fehler, Warnungen und Wartung der letzten 14 Tage.", "Errors, warnings and maintenance of the last 14 days.")}>

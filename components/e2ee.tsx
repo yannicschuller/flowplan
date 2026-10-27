@@ -671,7 +671,7 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
               <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
             </label>
             <button className="button primary" disabled={busy}>
-              {t("Erzeugen", "Create")}
+              {t("Erzeugen", "Create||key")}
             </button>
           </form>
         )}

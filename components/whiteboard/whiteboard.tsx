@@ -2404,7 +2404,7 @@ export default function Whiteboard({
                 }
               >
                 <option value="left">{t("Links", "Left")}</option>
-                <option value="center">{t("Mitte", "Centre")}</option>
+                <option value="center">{t("Mitte", "Centre||alignment")}</option>
                 <option value="right">{t("Rechts", "Right")}</option>
               </Select>
               {strokeColors.slice(0, 6).map((c) => (
