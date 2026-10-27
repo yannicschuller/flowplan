@@ -2,6 +2,31 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.7.1 – 2026-10-27
+
+- Whiteboard: the actions menu fits above the phone's tab bar ([7b04876](https://github.com/yannicschuller/flowplan/commit/7b048763fd67f2042a61d45c68d2942057bd0434))
+- Whiteboards: two-person browser test for facilitation, layout and number fixes ([8ff8505](https://github.com/yannicschuller/flowplan/commit/8ff85058ef1fb8fa0988f438818978d7b3d3689a))
+- Whiteboards: private mode, planning poker, timer music and gathering everyone ([1ca623b](https://github.com/yannicschuller/flowplan/commit/1ca623b13966f47777cc7033e7311255b9309153))
+- Whiteboards: groups, minimap, frames panel, search, links, embeds, gallery, exports ([7aeb87a](https://github.com/yannicschuller/flowplan/commit/7aeb87a89abfdb5fd0bb20bbfe04d0eedb7398ef))
+- Tests: AI on whiteboards and notes as records ([922cddb](https://github.com/yannicschuller/flowplan/commit/922cddbb19fbcd1b15aaa357512db630367dbf1e))
+- Whiteboards: AI features and sticky notes as database records ([6e5e354](https://github.com/yannicschuller/flowplan/commit/6e5e3549fea8fcce27b21b5e03931302c76cefda))
+- Whiteboards: shape libraries, diagram import, auto layout, prototypes and timelines ([44f3b55](https://github.com/yannicschuller/flowplan/commit/44f3b5503cbda0caa371d79310db26e92c4e8764))
+- i18n: contexts for 12 more English words with two meanings ([6629e46](https://github.com/yannicschuller/flowplan/commit/6629e46842ceb0d73b6da3b31fb62dd84b8219c5))
+- Tests: the Days tab by its exact name ([4fb9918](https://github.com/yannicschuller/flowplan/commit/4fb99185a68394feaef89a2cd00872dab4de4ba1))
+- Tests: journal options now carry both day settings ([6847c44](https://github.com/yannicschuller/flowplan/commit/6847c44740a1c83797f671941e4e8a7af273a302))
+- Journals: short sidebar, day navigation and month summaries (#49) ([9c79419](https://github.com/yannicschuller/flowplan/commit/9c79419cb6e44b296ee425bf0dfc7dadd6e6cc84))
+- Tests: the view toolbar test translates like the app ([b4e0b14](https://github.com/yannicschuller/flowplan/commit/b4e0b14095a1b3e4e4d9915c8e043d711cc8bb9f))
+- Let workspace owners reorder spaces in the sidebar (#48) ([2b5443e](https://github.com/yannicschuller/flowplan/commit/2b5443ea67f4ea785142e3f01dc9034340f0b27a))
+- i18n: a context for English words with two meanings ([ff8fae7](https://github.com/yannicschuller/flowplan/commit/ff8fae73cb8520e76ef2729a791d8f64329aafff))
+- Journal days: lazy creation, empty-day cleanup, sortable export paths, search/graph/count handling ([b4cff5d](https://github.com/yannicschuller/flowplan/commit/b4cff5d4cc64956b4f06b6a1bc159e3dce680493))
+- French: review of the texts added in v0.7.0 (vous, terminology, delivery, Apple Calendar) ([022a1c7](https://github.com/yannicschuller/flowplan/commit/022a1c7435c0c6b26f50e162ea3931adc68333fc))
+- Health details: version, commit and build time of what runs here ([5e86edd](https://github.com/yannicschuller/flowplan/commit/5e86edd297e6cd9510d0483cc2bb02df830dca20))
+- CodeQL findings: entity decoding, table-cell ReDoS, escaping gaps ([525b602](https://github.com/yannicschuller/flowplan/commit/525b60220a67cf0ec28fde88132f3bd2f7df1809))
+- Side panels: the table of contents moves beside them; the split drop zone always goes away ([5575972](https://github.com/yannicschuller/flowplan/commit/55759729a6e3824dab6e607c427803a3bcc12b66))
+- Quick capture for the desktop app: targets, shorthand, saving with files, undo, AI suggestion ([980c1d5](https://github.com/yannicschuller/flowplan/commit/980c1d5d9f03ee7ae70c6213e2f8b0430f1c92db))
+- Administration → Arbeitsbereiche: owners per workspace, search by owner, pages of 25 ([397c441](https://github.com/yannicschuller/flowplan/commit/397c4410d208446296c4c2aa10d2508ef2b71a51))
+- On-device AI: Apple's model in the apps for the light AI actions ([3d502ad](https://github.com/yannicschuller/flowplan/commit/3d502ad9fb70dab13a532bf1de7342b0a419a985))
+
 ## v0.7.0 – 2026-10-26
 
 - Captured tasks count at once; desktop offer also when the bridge is there ([46b1de3](https://github.com/yannicschuller/flowplan/commit/46b1de3e2d8c2d8c1f6274d7cb763af18081b595))
