@@ -91,6 +91,18 @@ function CoveredShape({
     </g>
   );
 }
+// Planning poker: the value taken over, as a label in the note's corner.
+function EstimateTag({ value, width }: { value: string; width: number }) {
+  const w = 14 + value.length * 9;
+  return (
+    <g className="wb-estimate-tag" transform={`translate(${width - w - 6} 6)`}>
+      <rect width={w} height={22} rx={11} fill="#1f2937" />
+      <text x={w / 2} y={15.5} textAnchor="middle" fontSize={13} fontWeight={600} fill="#ffffff">
+        {value}
+      </text>
+    </g>
+  );
+}
 export type RowCard = RowCardData;
 // A property on a record card: dates and numbers formatted here, in the
 // person's language and time zone, like the database views do.
@@ -129,6 +141,7 @@ export function WhiteboardShape({
             filter="url(#wb-shadow)"
           />
           <TextBox item={item}>{text}</TextBox>
+          {item.estimate && <EstimateTag value={item.estimate} width={item.w} />}
         </g>
       );
     case "text":

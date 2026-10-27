@@ -90,6 +90,8 @@ export type WhiteboardItem = {
   endMarker?: MarkerKind;
   link?: string;
   timeline?: TimelineData;
+  // Planning poker: the value taken over for this note (a label on it).
+  estimate?: string;
 };
 export type WhiteboardMessage = {
   id: string;
@@ -105,6 +107,8 @@ export type WhiteboardMeta = {
   // "Folge mir": everyone follows this person's view.
   presenter?: { userId: string; name: string; since: number };
   timer?: { endsAt: number | null; remaining: number; duration: number };
+  // Background music while the timer runs (components/whiteboard/timer-music.ts).
+  music?: { track: string };
 };
 export const stickyColors = [
   "#fff6b6",

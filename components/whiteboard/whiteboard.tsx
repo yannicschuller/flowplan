@@ -153,6 +153,9 @@ import { DIAGRAM_FILE, DiagramPanels, DiagramStyleControls, copyMermaid, dropDia
 import { LIBRARY_DRAG_TYPE, dropLibraryShape, insertLibraryShape } from "./shape-library";
 import { PrototypeBadges } from "./prototype-player";
 import { remapLink } from "@/lib/whiteboard-diagram-model";
+// Workshop facilitation: private mode, planning poker, timer music, gathering.
+import { boardSignal, useFacilitation } from "./facilitation";
+import { sharedUpdate } from "@/lib/whiteboard-private-mode";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -483,7 +486,7 @@ export default function Whiteboard({
     const send = editable && dirty.current;
     const vector = Y.encodeStateVector(doc);
     const update = send
-      ? Y.encodeStateAsUpdate(doc, lastVector.current || undefined)
+      ? sharedUpdate(doc, lastVector.current)
       : null;
     if (send) {
       dirty.current = false;
@@ -523,7 +526,7 @@ export default function Whiteboard({
         pageId,
         generation,
         update: to64(
-          Y.encodeStateAsUpdate(doc, lastVector.current || undefined),
+          sharedUpdate(doc, lastVector.current),
         ),
         cursor: null,
       });
@@ -624,6 +627,7 @@ export default function Whiteboard({
           data.cursors.forEach(take);
         } else if (data.type === "cursor") take(data);
         else if (data.type === "leave") others.delete(data.userId);
+        else boardSignal(pageId, data);
         publish();
       };
       source.onerror = () => {
@@ -986,6 +990,15 @@ export default function Whiteboard({
       clearInterval(timer);
     };
   }, [rowRefs, pageId]);
+  const facilitation = useFacilitation({
+    pageId, doc, itemsMap, editable, userId, items, byId, selection, zoom: view.zoom, rowCards,
+    visibleRect, moveTo: (target) => moveCamera(target), change, setProps, meta, setMetaValue, onError,
+    viewport: () => {
+      const rect = svg.current?.getBoundingClientRect();
+      return { width: rect?.width || 800, height: rect?.height || 600 };
+    },
+    timerRunning: !!meta.timer?.endsAt && meta.timer.endsAt > now,
+  });
   function addMessage(id: string, text: string) {
     const map = itemsMap.get(id);
     if (!map || !text.trim()) return;
@@ -2581,6 +2594,7 @@ export default function Whiteboard({
               </>
             )}
           <DiagramStyleControls board={boardApi} selected={selected} />
+          {facilitation.selectionTools}
           <span className="wb-sep" />
           <button
             aria-label={t("Nach vorne", "Bring forward")}
@@ -2822,6 +2836,7 @@ export default function Whiteboard({
             setVotingOpen(false);
           },
         },
+        ...facilitation.actions,
       ]
     : [];
   const viewActions: BoardAction[] = [
@@ -3084,6 +3099,7 @@ export default function Whiteboard({
               </g>
             ))}
           <PrototypeBadges items={items} zoom={view.zoom} />
+          {facilitation.world}
           {selectionBox && (
             <rect
               data-ui
@@ -3535,6 +3551,7 @@ export default function Whiteboard({
           )}
         </div>
       )}
+      {facilitation.overlay}
       {timer && (
         <div
           className={`wb-timer${remaining === 0 ? " done" : ""}`}
@@ -3546,6 +3563,7 @@ export default function Whiteboard({
           <strong>
             {remaining === 0 ? t("Zeit abgelaufen", "Time is up") : clock(remaining)}
           </strong>
+          {facilitation.timerControls}
           {editable && (
             <>
               {timer.endsAt && remaining > 0 ? (
@@ -3737,6 +3755,7 @@ export default function Whiteboard({
                 aria-label={t("Minuten", "Minutes")}
               />
             </label>
+            {facilitation.timerSettings}
             <button className="button primary">{t("Starten", "Start||action")}</button>
           </form>
         </div>

@@ -108,3 +108,10 @@ export function watchBoard(
     sweep(pageId, b);
   };
 }
+// Workshop facilitation (lib/whiteboard-facilitation.ts): a short signal to
+// everyone on the board (or everyone but one person). It never carries
+// private content: who reads the new state asks for their own view of it.
+export function signalBoard(pageId: string, payload: { type: string } & Record<string, unknown>, except?: string) {
+  const b = boards.get(pageId);
+  if (b) broadcast(b, payload, except);
+}

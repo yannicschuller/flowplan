@@ -1218,6 +1218,7 @@ export const routesOutsideSpec: Record<string, string> = {
   "app/api/share/[token]/unlock/route.ts": "Share links with their own token",
   "app/api/tickets/[token]/route.ts": "Service desk links for customers",
   "app/api/transcribe/[...path]/route.ts": "Voice notes of the browser app (chunked upload to the transcription service)",
+  "app/api/whiteboards/[id]/facilitation/route.ts": "Workshop facilitation on whiteboards (private mode, planning poker, gathering everyone) of the browser app",
   "app/api/webhooks/slack/[id]/route.ts": "Slack Event Subscriptions of a Slack webhook, signed with its signing secret",
 };
 

@@ -907,6 +907,23 @@ const exact: Record<string, string> = {
   "Der Ausschnitt ist zu groß.": "The clip is too large.",
   "Kein Text markiert.": "No text highlighted.",
   "Kein Inhalt zum Speichern.": "Nothing to save.",
+  // Workshop facilitation on whiteboards (lib/whiteboard-facilitation.ts).
+  "Diese Änderung hängt an privaten Inhalten und wird erst nach dem Aufdecken gespeichert.": "This change depends on private content and is saved once it is revealed.",
+  "Der private Modus läuft bereits.": "Private mode is already running.",
+  "Der private Modus ist beendet.": "Private mode has ended.",
+  "Rahmen nicht gefunden.": "Frame not found.",
+  "Diese Kennung ist schon vergeben.": "This ID is already taken.",
+  "Nur eigene private Änderungen.": "Only your own private changes.",
+  "Zu viele private Inhalte.": "Too much private content.",
+  "Zu viele Anfragen. Bitte gleich erneut versuchen.": "Too many requests. Please try again shortly.",
+  "Wähle Zettel oder Datensatzkarten zum Schätzen aus.": "Select notes or record cards to estimate.",
+  "Diese Schätzrunde ist schon vorbei.": "This estimation round is already over.",
+  "Die Karten sind schon aufgedeckt.": "The cards have already been revealed.",
+  "Diesen Wert gibt es im Kartensatz nicht.": "This value is not in the deck.",
+  "Diese Karte zeigt einen anderen Datensatz.": "This card shows a different record.",
+  "Dieser Wert ist keine Zahl.": "This value is not a number.",
+  "Nur im Browser verfügbar.": "Only available in the browser.",
+  "Diesen Wert gibt es in der Auswahl nicht.": "This value is not one of the options.",
 };
 const patterns: [RegExp, string][] = [
   [/^Ein Notizbuch hat höchstens (\d+) Blätter\.$/, "A notebook has at most $1 sheets."],
