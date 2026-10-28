@@ -2,6 +2,12 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.7.2 – 2026-10-27
+
+- AI ask on phones: the question field stays above the keyboard ([33a112b](https://github.com/yannicschuller/flowplan/commit/33a112b07372b3b67942e82943269b949daeb699))
+- AI ask: the newest journal day for "the last …"; answers in Markdown ([4a8a9f0](https://github.com/yannicschuller/flowplan/commit/4a8a9f02004728d8bf51f5148a2a25a332305f99))
+- AI: answers from thinking models reach the browser; a tidier ask window ([e871468](https://github.com/yannicschuller/flowplan/commit/e8714680bcbc06749b813450e1d0dfca685a0b79))
+
 ## v0.7.1 – 2026-10-27
 
 - Whiteboard: the actions menu fits above the phone's tab bar ([7b04876](https://github.com/yannicschuller/flowplan/commit/7b048763fd67f2042a61d45c68d2942057bd0434))
