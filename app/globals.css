@@ -319,7 +319,7 @@ kbd,
 }
 .app-shell {
   display: grid;
-  grid-template-columns: 246px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 246px) minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
 }
@@ -5284,7 +5284,7 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 }
 @media (max-width: 1200px) {
   .app-shell {
-    grid-template-columns: 225px minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-width, 225px) minmax(0, 1fr);
   }
   .home-content {
     padding: 45px 35px 25px;
@@ -22668,6 +22668,55 @@ td.ai-filled {
 .sidebar-tools .sidebar-help {
   color: var(--muted);
 }
+/* The sidebar's draggable right edge (components/sidebar-resize.tsx): an
+   8 px strip over the border that shows a line on hover and while dragged. */
+@media (min-width: 768px) {
+  .sidebar {
+    position: relative;
+  }
+}
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  z-index: 5;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: var(--blue);
+  opacity: 0;
+  transition: opacity 0.15s ease 0.1s;
+}
+.sidebar-resize:hover::after,
+.sidebar-resize:focus-visible::after,
+.sidebar-resizing .sidebar-resize::after {
+  opacity: 1;
+}
+.sidebar-resize:focus-visible {
+  outline: none;
+}
+.sidebar-resizing,
+.sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+@media (max-width: 767px) {
+  .sidebar-resize {
+    display: none;
+  }
+}
+.desktop-collapsed .sidebar-resize {
+  display: none;
+}
 @media (max-width: 767px) {
   .tree-toggle,
   .nav-add,
@@ -23707,6 +23756,10 @@ tr:hover .row-open-mark,
   }
   .sidebar {
     bottom: var(--tab-bar-space);
+  }
+  /* The tab bar already keeps the home indicator's room below the sidebar. */
+  .app-shell:not(.keyboard-open, .focus-mode) .sidebar-bottom {
+    padding-bottom: 0;
   }
   .mobile-scrim {
     bottom: var(--tab-bar-space);

@@ -39,6 +39,7 @@ import { Onboarding } from "./onboarding";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
+import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PagePeople } from "./page-people";
@@ -509,6 +510,23 @@ export default function WorkspaceApp({
   // Profile pictures for every Avatar below, from the current member list.
   setAvatarDirectory([...boot.members, boot.user]);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  // The sidebar's width on wide screens, dragged at its right edge (kept per
+  // device, read after the first render so it matches the server's; null:
+  // the default from the stylesheet).
+  const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
+  const sidebarWidthRead = useRef(false);
+  useEffect(() => {
+    try {
+      if (!sidebarWidthRead.current) {
+        sidebarWidthRead.current = true;
+        const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+        if (stored) setSidebarWidth(clampSidebar(stored));
+        return;
+      }
+      if (sidebarWidth === null) localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+      else localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    } catch {}
+  }, [sidebarWidth]);
   // Presentation mode of the open document (components/presentation.tsx).
   const [presenting, setPresenting] = useState<{ html: string; title: string } | null>(null);
   // Split view (components/split-pane.tsx): the page shown next to the open
@@ -2527,6 +2545,7 @@ export default function WorkspaceApp({
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <div
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}`}
+      style={sidebarWidth ? ({ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties) : undefined}
       inert={switching || !!presenting}
       aria-busy={switching}
     >
@@ -3052,6 +3071,12 @@ export default function WorkspaceApp({
             </Dropdown.Root>
           </div>
         </div>
+        <SidebarResize
+          width={sidebarWidth}
+          onWidth={setSidebarWidth}
+          label={t("Breite der Seitenleiste", "Sidebar width")}
+          hint={t("Ziehen zum Ändern, Doppelklick setzt zurück", "Drag to resize, double-click to reset")}
+        />
       </aside>
       <main className="main" id="main-content" tabIndex={-1} ref={mainRef}>
         {boot.user.demo && (
