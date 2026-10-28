@@ -2,6 +2,13 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.7.3 – 2026-10-28
+
+- Ask AI answers questions about Flowplan from the built-in help ([e43336d](https://github.com/yannicschuller/flowplan/commit/e43336d5518b5fcc4f67adba22c9946815bd8400))
+- Administration: delete inactive accounts after a set number of days, with e-mails before ([6566a84](https://github.com/yannicschuller/flowplan/commit/6566a84767e052721ffb597afd7d7b7c06631438))
+- Administration: see who is here right now and how long they have been idle ([650f3f2](https://github.com/yannicschuller/flowplan/commit/650f3f2a0921dbb061166b12930b716e37953c80))
+- Sidebar: drag its edge to resize; no double home-indicator gap on phones ([ca477cc](https://github.com/yannicschuller/flowplan/commit/ca477ccc5f6a5885990032a4adca64984817527c))
+
 ## v0.7.2 – 2026-10-27
 
 - AI ask on phones: the question field stays above the keyboard ([33a112b](https://github.com/yannicschuller/flowplan/commit/33a112b07372b3b67942e82943269b949daeb699))
