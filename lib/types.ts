@@ -13,6 +13,10 @@ export type User = {
   demo_until?: number | null;
   // Last sign-in through the identity provider (ms).
   last_login_at?: number | null;
+  // Administration only: when the app was last open and last used (ms,
+  // lib/user-activity.ts).
+  last_open_at?: number | null;
+  last_active_at?: number | null;
 };
 export type Identity = User & {
   groups: string[];

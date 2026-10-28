@@ -40,6 +40,7 @@ import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
 import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
+import { ActivityPing } from "./activity-ping";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PagePeople } from "./page-people";
@@ -2549,6 +2550,7 @@ export default function WorkspaceApp({
       inert={switching || !!presenting}
       aria-busy={switching}
     >
+      <ActivityPing />
       {focusMode && screen === "page" && data && (
         <FocusBar
           pageId={data.page.id}

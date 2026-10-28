@@ -3,7 +3,7 @@
 // list with their state (active, inactive, disabled, admin), actions for
 // several at once, and one account's limits, sessions and actions in a side
 // sheet (full screen on phones). Registration is set under Anmeldung & SSO.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlass, UserCircleMinus, Users } from "@phosphor-icons/react";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
@@ -15,7 +15,8 @@ import { AiUserSwitch } from "../../ai-settings";
 import { useAdminData, type AdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, type StatusItem } from "./parts";
-import { ago, mbText } from "./format";
+import { ago, duration, mbText } from "./format";
+import { activityState, type UserActivity } from "@/lib/user-activity-state";
 
 type Local = {
   admin: boolean;
@@ -24,7 +25,7 @@ type Local = {
   totp?: boolean;
 };
 type Usage = NonNullable<AdminData["userUsage"]>[number];
-type Filter = "all" | "active" | "inactive" | "disabled" | "admins";
+type Filter = "all" | "here" | "active" | "inactive" | "disabled" | "admins";
 // No sign-in for this long counts as inactive (the instance may disable such
 // accounts automatically after its own number of days).
 const INACTIVE_DAYS = 30;
@@ -47,12 +48,18 @@ export default function UsersSection() {
     [open, setOpen] = useState<string | null>(null),
     [bulk, setBulk] = useState(false);
   const now = useMemo(() => Date.now(), [data]);
+  const live = useLiveActivity();
   if (!data) return <AdminLoading />;
+  // The live times (every 30 s) over the ones the page was loaded with.
+  const activityOf = (u: User): Pick<UserActivity, "openAt" | "activeAt"> =>
+    live.users.get(u.id) ?? { openAt: u.last_open_at ?? null, activeAt: u.last_active_at ?? null };
+  const liveNow = live.now || now;
   const local = data.localAccounts || {};
   const states = new Map(data.users.map((u) => [u.id, stateOf(u, now)]));
   const count = (f: Filter) => data.users.filter((u) => matches(u, f)).length;
   function matches(u: User, f: Filter) {
     const s = states.get(u.id)!.key;
+    if (f === "here") return ["active", "idle"].includes(activityState(activityOf(u), liveNow));
     return f === "all" || (f === "admins" ? !!local[u.id]?.admin : s === f);
   }
   const needle = query.trim().toLocaleLowerCase();
@@ -83,13 +90,18 @@ export default function UsersSection() {
     }
   };
   const inactive = count("inactive"),
-    disabled = count("disabled");
+    disabled = count("disabled"),
+    here = count("here");
   const items: StatusItem[] = [
     {
       tone: "ok",
       label: data.users.length === 1 ? t("1 Konto", "1 account") : t(`${data.users.length} Konten`, `${data.users.length} accounts`),
     },
   ];
+  items.push({
+    tone: here ? "ok" : "off",
+    label: here === 1 ? t("1 gerade da", "1 here now") : t(`${here} gerade da`, `${here} here now`),
+  });
   if (inactive)
     items.push({
       tone: "warn",
@@ -134,6 +146,7 @@ export default function UsersSection() {
             </span>
             <Select aria-label={t("Status", "Status")} className="control-md" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
               <option value="all">{t(`Alle (${data.users.length})`, `All (${data.users.length})`)}</option>
+              <option value="here">{t(`Gerade da (${here})`, `Here now (${here})`)}</option>
               <option value="active">{t(`Aktiv (${count("active")})`, `Active (${count("active")})`)}</option>
               <option value="inactive">{t(`Inaktiv (${inactive})`, `Inactive (${inactive})`)}</option>
               <option value="disabled">{t(`Deaktiviert (${disabled})`, `Disabled (${disabled})`)}</option>
@@ -214,6 +227,8 @@ export default function UsersSection() {
                   local={local[u.id]}
                   usage={data.userUsage?.find((x) => x.id === u.id)}
                   state={states.get(u.id)!}
+                  activity={activityOf(u)}
+                  now={liveNow}
                   selected={selected.has(u.id)}
                   onSelect={(on) => toggle(u.id, on)}
                   onOpen={() => setOpen(u.id)}
@@ -223,8 +238,65 @@ export default function UsersSection() {
           </table>
         )}
       </section>
-      {person && <UserSheet key={person.id} user={person} data={data} state={states.get(person.id)!} onClose={() => setOpen(null)} />}
+      {person && <UserSheet key={person.id} user={person} data={data} state={states.get(person.id)!} activity={activityOf(person)} now={liveNow} onClose={() => setOpen(null)} />}
     </>
+  );
+}
+
+// Who is here, refreshed every 30 seconds while the list is open.
+function useLiveActivity() {
+  const [live, setLive] = useState<{ now: number; users: Map<string, UserActivity> }>({ now: 0, users: new Map() });
+  useEffect(() => {
+    let stop = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/admin/activity", { cache: "no-store" });
+        if (!res.ok || stop) return;
+        const body = (await res.json()) as { now: number; users: UserActivity[] };
+        // The server's clock, moved to this moment.
+        const skew = Date.now() - body.now;
+        setLive({
+          now: Date.now(),
+          users: new Map(body.users.map((a) => [a.id, { ...a, openAt: a.openAt && a.openAt + skew, activeAt: a.activeAt && a.activeAt + skew }])),
+        });
+      } catch {}
+    };
+    // The first time shortly after opening, so this tab's own ping is in.
+    const first = window.setTimeout(load, 1500);
+    const timer = window.setInterval(load, 30_000);
+    return () => {
+      stop = true;
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
+  }, []);
+  return live;
+}
+
+// Here and in use, open but idle (and for how long), or when last here.
+function Presence({ activity, now, long }: { activity: Pick<UserActivity, "openAt" | "activeAt">; now: number; long?: boolean }) {
+  const t = useT();
+  const state = activityState(activity, now);
+  const idle = activity.activeAt ? duration(Math.max(60, (now - activity.activeAt) / 1000), t) : null;
+  const text =
+    state === "active"
+      ? t("Jetzt aktiv", "Active now")
+      : state === "idle"
+        ? idle
+          ? t(`Geöffnet · inaktiv seit ${idle}`, `Open · idle for ${idle}`)
+          : t("Geöffnet · inaktiv", "Open · idle")
+        : state === "offline"
+          ? activity.activeAt
+            ? long
+              ? t(`Zuletzt aktiv ${ago(activity.activeAt, t, now)}`, `Last active ${ago(activity.activeAt, t, now)}`)
+              : ago(activity.activeAt, t, now)
+            : t("offline", "offline")
+          : t("noch nie da", "never here");
+  return (
+    <span className={`presence presence-${state}`}>
+      <i aria-hidden="true" />
+      {text}
+    </span>
   );
 }
 
@@ -250,6 +322,8 @@ function UserRow({
   local,
   usage,
   state,
+  activity,
+  now,
   selected,
   onSelect,
   onOpen,
@@ -258,6 +332,8 @@ function UserRow({
   local?: Local;
   usage?: Usage;
   state: ReturnType<typeof stateOf>;
+  activity: Pick<UserActivity, "openAt" | "activeAt">;
+  now: number;
   selected: boolean;
   onSelect: (on: boolean) => void;
   onOpen: () => void;
@@ -284,7 +360,7 @@ function UserRow({
         </div>
       </td>
       <td className="last" data-label={t("Zuletzt aktiv", "Last active")}>
-        {u.last_login_at ? ago(u.last_login_at, t) : t("nie angemeldet", "never signed in")}
+        <Presence activity={activity} now={now} />
       </td>
       <td className="storage end" data-label={t("Speicher", "Storage")}>
         {usage ? `${mbText(usage.bytes)}${storage ? ` / ${storage} MB` : ""}` : "–"}
@@ -303,7 +379,21 @@ function UserRow({
 
 // One account in a side sheet: usage, limits, access and – at the end – what
 // cannot be undone.
-function UserSheet({ user: u, data, state, onClose }: { user: User; data: AdminData; state: ReturnType<typeof stateOf>; onClose: () => void }) {
+function UserSheet({
+  user: u,
+  data,
+  state,
+  activity,
+  now,
+  onClose,
+}: {
+  user: User;
+  data: AdminData;
+  state: ReturnType<typeof stateOf>;
+  activity: Pick<UserActivity, "openAt" | "activeAt">;
+  now: number;
+  onClose: () => void;
+}) {
   const t = useT();
   const { act, load } = useAdminData();
   const local = data.localAccounts?.[u.id];
@@ -335,6 +425,7 @@ function UserSheet({ user: u, data, state, onClose }: { user: User; data: AdminD
             {local?.admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
             {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
           </span>
+          <Presence activity={activity} now={now} long />
           <small>
             {signIn(local, t)} · {u.last_login_at ? t(`zuletzt angemeldet ${ago(u.last_login_at, t)}`, `last signed in ${ago(u.last_login_at, t)}`) : t("noch nie angemeldet", "never signed in")}
           </small>

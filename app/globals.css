@@ -28159,3 +28159,65 @@ label.ws-search input {
     display: none;
   }
 }
+/* Who is here (Administration → Users, components/settings/admin/users.tsx):
+   a dot – green while in use, amber while open but idle (with how long),
+   grey when closed – and the time. The green dot breathes. */
+.presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--secondary);
+  white-space: nowrap;
+}
+.presence > i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b9bcc6;
+}
+.presence-active {
+  color: #2f6b47;
+  font-weight: 550;
+}
+.presence-active > i {
+  background: #2fa35e;
+  box-shadow: 0 0 0 0 rgba(47, 163, 94, 0.45);
+  animation: presence-pulse 2.4s ease-out infinite;
+}
+.presence-idle {
+  color: #6f5b22;
+}
+.presence-idle > i {
+  background: #e0a630;
+}
+.presence-never {
+  color: var(--muted);
+}
+.presence-never > i {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px #b9bcc6;
+}
+[data-theme="dark"] .presence-active {
+  color: #a8d8b9;
+}
+[data-theme="dark"] .presence-idle {
+  color: #f2c27a;
+}
+@keyframes presence-pulse {
+  70% {
+    box-shadow: 0 0 0 6px rgba(47, 163, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(47, 163, 94, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .presence-active > i {
+    animation: none;
+  }
+}
+.admin-user-sheet-head .presence {
+  margin: 2px 0;
+  font-size: 13px;
+}

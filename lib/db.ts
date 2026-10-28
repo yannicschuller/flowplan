@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 72) return;
+  if (globalDb.flowplanSchema === 73) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -939,7 +939,14 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS whiteboard_private_clients(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,client INTEGER NOT NULL,session_id TEXT NOT NULL REFERENCES whiteboard_private(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(page_id,client));
     CREATE TABLE IF NOT EXISTS whiteboard_estimation(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,data TEXT NOT NULL,updated_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS whiteboard_estimate_votes(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,round TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,value TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(page_id,round,user_id));`);
-  globalDb.flowplanSchema = 72;
+  // Schema 73 – who is here right now (lib/user-activity.ts): when the app
+  // was last open and when someone last used it.
+  {
+    const columns = (d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes("last_open_at")) d.exec("ALTER TABLE users ADD COLUMN last_open_at INTEGER");
+    if (!columns.includes("last_active_at")) d.exec("ALTER TABLE users ADD COLUMN last_active_at INTEGER");
+  }
+  globalDb.flowplanSchema = 73;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

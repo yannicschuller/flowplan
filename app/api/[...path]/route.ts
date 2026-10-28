@@ -50,6 +50,7 @@ import { listSsoMappings, ssoSources } from "@/lib/sso-mappings";
 import { mailStatus, sendTestMail } from "@/lib/mail";
 import { runScheduledBackup, scheduledBackupStatus } from "@/lib/scheduled-backup";
 import { encryptExisting, encryptionOverview } from "@/lib/encryption-status";
+import { recordActivity, userActivity } from "@/lib/user-activity";
 import { pageShares } from "@/lib/page-share";
 import { documentLog, encryptedArchive, identityOf, isEncryptedPage, requirePlaintext, requirePlaintextSpace, spaceKeys } from "@/lib/e2ee-server";
 import { exportablePages, markdownExportStatus, runMarkdownExports, setMarkdownExport } from "@/lib/scheduled-markdown-export";
@@ -884,6 +885,9 @@ async function handleGET(
         },
       });
     }
+    // Who is here right now (Administration → Users, refreshed while open).
+    if (path.length === 2 && path[0] === "admin" && path[1] === "activity")
+      return NextResponse.json({ now: Date.now(), users: userActivity(user) }, { headers: { "Cache-Control": "no-store" } });
     if (path.length === 2 && path[0] === "admin" && path[1] === "storage") {
       requireAdmin(user);
       return NextResponse.json(await storageOverview(), {
@@ -901,7 +905,7 @@ async function handleGET(
         update: await updateStatus(),
         userUsage: usersUsage(),
         users: all(
-          "SELECT id,name,email,disabled,created_at,last_login_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
+          "SELECT id,name,email,disabled,created_at,last_login_at,last_open_at,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",
         ),
         mail: mailStatus(),
         backup: scheduledBackupStatus(),
@@ -1022,7 +1026,7 @@ async function handleGET(
 // Idempotency-Key (lib/idempotency.ts): /api/command reserves the key in
 // the action's transaction; every other change around its handler. Reads
 // with a body, cursors and presence go without one.
-const readsWithBody = new Set(["home/data", "presence", "clip", "transcribe", "capture/preview"]);
+const readsWithBody = new Set(["home/data", "presence", "clip", "transcribe", "capture/preview", "activity"]);
 export const POST = withRequestLocale(
   withIdempotency(handlePOST, {
     skip: (req) => {
@@ -1059,6 +1063,9 @@ async function handlePOST(
     // the body) and what its widgets do (lib/home-widgets.ts).
     if (path.length === 2 && path[0] === "home" && path[1] === "data")
       return NextResponse.json(homeData(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
+    // The open app reports that it is open and how long it has been idle.
+    if (path.length === 1 && path[0] === "activity")
+      return NextResponse.json(recordActivity(user, await req.json().catch(() => null)), { headers: { "Cache-Control": "no-store" } });
     if (user.apiScope === "read") throw new HttpError(403, "Dieses API-Token darf nur lesen.");
     if (path.length === 2 && path[0] === "home" && path[1] === "action")
       return NextResponse.json(await homeAction(user, await req.json()), { headers: { "Cache-Control": "no-store" } });
