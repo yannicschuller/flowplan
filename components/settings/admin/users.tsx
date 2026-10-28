@@ -9,7 +9,6 @@ import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
 import { useT } from "../../i18n";
 import { Avatar, Modal } from "../../ui";
-import { Select } from "../../select";
 import { DangerZone, EmptyState, NumberField, SaveState, SettingGroup, SettingRow, StatusBadge, UsageMeter, useSaveState, type Tone } from "../../settings-ui";
 import { AiUserSwitch } from "../../ai-settings";
 import { useAdminData, type AdminData } from "../admin-context";
@@ -145,14 +144,26 @@ export default function UsersSection() {
                 onChange={(e) => setQuery(e.target.value)}
               />
             </span>
-            <Select aria-label={t("Status", "Status")} className="control-md" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-              <option value="all">{t(`Alle (${data.users.length})`, `All (${data.users.length})`)}</option>
-              <option value="here">{t(`Gerade da (${here})`, `Here now (${here})`)}</option>
-              <option value="active">{t(`Aktiv (${count("active")})`, `Active (${count("active")})`)}</option>
-              <option value="inactive">{t(`Inaktiv (${inactive})`, `Inactive (${inactive})`)}</option>
-              <option value="disabled">{t(`Deaktiviert (${disabled})`, `Disabled (${disabled})`)}</option>
-              <option value="admins">{t(`Admins (${count("admins")})`, `Admins (${count("admins")})`)}</option>
-            </Select>
+          </div>
+          {/* Buttons, not a select: one tap on phones, and the system picker
+              of some phones did not pass the choice on. */}
+          <div className="admin-user-filters" role="group" aria-label={t("Nach Status filtern", "Filter by status")}>
+            {(
+              [
+                ["all", t("Alle", "All"), data.users.length],
+                ["here", t("Gerade da", "Here now"), here],
+                ["active", t("Aktiv", "Active"), count("active")],
+                ["inactive", t("Inaktiv", "Inactive"), inactive],
+                ["disabled", t("Deaktiviert", "Disabled"), disabled],
+                ["admins", t("Admins", "Admins"), count("admins")],
+              ] as [Filter, string, number][]
+            ).map(([key, label, n]) => (
+              <button key={key} type="button" className={`admin-user-filter${filter === key ? " on" : ""}`} aria-pressed={filter === key} onClick={() => setFilter(key)}>
+                {key === "here" && <i className="presence-dot" aria-hidden="true" />}
+                {label}
+                <span>{n}</span>
+              </button>
+            ))}
           </div>
         </header>
         {chosen.length > 0 && (

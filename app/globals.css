@@ -25441,7 +25441,7 @@ html.split-resizing * {
   .admin-usage-bar {
     width: 120px;
   }
-  /* The user table becomes a list: check, person, state, button. */
+  /* The user table becomes a list: check, person, presence, state, button. */
   .admin-user-table thead {
     display: none;
   }
@@ -25452,7 +25452,7 @@ html.split-resizing * {
   .admin-user-table tr {
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr) auto;
-    grid-template-areas: "check who who" "check state action";
+    grid-template-areas: "check who who" "check last last" "check state action";
     align-items: center;
     gap: 4px 8px;
     padding: 12px 16px 12px 4px;
@@ -25478,7 +25478,11 @@ html.split-resizing * {
   .admin-user-table td.who {
     min-width: 0;
   }
-  .admin-user-table td.last,
+  /* Who is here stays visible on phones: under the name. */
+  .admin-user-table td.last {
+    grid-area: last;
+    font-size: 13px;
+  }
   .admin-user-table td.storage {
     display: none;
   }
@@ -28220,4 +28224,57 @@ label.ws-search input {
 .admin-user-sheet-head .presence {
   margin: 2px 0;
   font-size: 13px;
+}
+/* Administration → Users: the status filter as a row of buttons with their
+   counts (scrolls sideways on phones). */
+.admin-user-filters {
+  display: flex;
+  flex: 1 1 100%;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.admin-user-filters::-webkit-scrollbar {
+  display: none;
+}
+.admin-user-filter {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--secondary);
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.admin-user-filter > span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.admin-user-filter:hover {
+  color: var(--text);
+}
+.admin-user-filter.on {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.admin-user-filter.on > span {
+  color: inherit;
+}
+.admin-user-filter .presence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2fa35e;
+}
+@media (max-width: 760px) {
+  .admin-user-filter {
+    min-height: 38px;
+  }
 }
