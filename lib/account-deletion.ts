@@ -81,6 +81,9 @@ const PERSONAL = [
 export function setUserDisabled(userId: string, disabled: boolean) {
   run("UPDATE users SET disabled=? WHERE id=?", disabled ? 1 : 0, userId);
   if (disabled) run("DELETE FROM sessions WHERE user_id=?", userId);
+  // Enabled again by an admin: the account is wanted, a pending deletion
+  // ends and the days without use count from now (lib/inactive-accounts.ts).
+  else run("UPDATE users SET last_active_at=?,deletion_notice_at=NULL,deletion_reminder_at=NULL,deletion_due_at=NULL WHERE id=?", Date.now(), userId);
 }
 
 export function deletionPlan(userId: string): Plan {
@@ -119,6 +122,14 @@ export function deleteAccount(admin: Identity, userId: string) {
   const plan = deletionPlan(userId);
   removeAccount(userId, plan.removed, {});
   audit(admin.id, "admin.deleteUser", userId, plan.name);
+  return plan;
+}
+
+// Deleted for inactivity (lib/inactive-accounts.ts): like an admin deletion,
+// without an admin. Returns what happened, for the activity log.
+export function deleteInactiveAccount(userId: string) {
+  const plan = deletionPlan(userId);
+  removeAccount(userId, plan.removed, {});
   return plan;
 }
 

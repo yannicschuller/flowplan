@@ -97,6 +97,25 @@ export default function SigninSection() {
           max={3650}
           placeholder={t("nie", "never")}
         />
+        <InstanceNumber
+          field="deleteInactiveDays"
+          label={t("Inaktive Konten löschen", "Delete inactive accounts")}
+          description={
+            data.mail?.configured
+              ? t(
+                  "Nach so vielen Tagen ohne jede Nutzung wird ein Konto gelöscht (mindestens 60, mehr als beim Sperren). 14 und 3 Tage vorher bekommt die Person eine E-Mail mit dem Datum; meldet sie sich an, bleibt das Konto. Admins und Konten ohne E-Mail-Adresse werden nie gelöscht. Leer = nie.",
+                  "After this many days without any use an account is deleted (at least 60, more than for blocking). 14 and 3 days before, the person gets an e-mail with the date; signing in keeps the account. Admins and accounts without an e-mail address are never deleted. Empty = never.",
+                )
+              : t(
+                  "Braucht den E-Mail-Versand (Administration → E-Mail): Ohne Vorwarnung per E-Mail wird kein Konto gelöscht. Leer = nie.",
+                  "Needs e-mail delivery (Administration → E-mail): without a warning by e-mail no account is deleted. Empty = never.",
+                )
+          }
+          unit={t("Tage", "days")}
+          min={60}
+          max={3650}
+          placeholder={t("nie", "never")}
+        />
       </SettingGroup>
 
       {data.localLogin && (

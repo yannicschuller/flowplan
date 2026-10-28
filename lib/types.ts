@@ -17,6 +17,9 @@ export type User = {
   // lib/user-activity.ts).
   last_open_at?: number | null;
   last_active_at?: number | null;
+  // Administration only: deleted for inactivity on this day unless used
+  // before (lib/inactive-accounts.ts).
+  deletion_due_at?: number | null;
 };
 export type Identity = User & {
   groups: string[];

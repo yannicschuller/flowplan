@@ -17,6 +17,7 @@ import { AdminLoading } from "../shell";
 import { AdminStatus, FixLink, type StatusItem } from "./parts";
 import { ago, duration, mbText } from "./format";
 import { activityState, type UserActivity } from "@/lib/user-activity-state";
+import { LOCALE_TAG } from "@/lib/locale-tag";
 
 type Local = {
   admin: boolean;
@@ -300,6 +301,19 @@ function Presence({ activity, now, long }: { activity: Pick<UserActivity, "openA
   );
 }
 
+// Inactive for too long: deleted on this day unless the person comes back
+// (or an admin enables a blocked account).
+function DeletionBadge({ due }: { due?: number | null }) {
+  const t = useT();
+  if (!due) return null;
+  const date = new Date(due).toLocaleDateString(LOCALE_TAG, { day: "numeric", month: "short" });
+  return (
+    <StatusBadge tone="error">
+      {t(`Wird am ${date} gelöscht`, `Deleted on ${date}`)}
+    </StatusBadge>
+  );
+}
+
 function StateBadge({ state }: { state: ReturnType<typeof stateOf> }) {
   const t = useT();
   const tone: Tone = state.key === "disabled" ? "error" : state.key === "inactive" ? "warn" : "ok";
@@ -353,6 +367,7 @@ function UserRow({
               {u.name}
               {local?.admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
               {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
+              <DeletionBadge due={u.deletion_due_at} />
             </strong>
             <small>{u.email}</small>
             <small className="signin">{signIn(local, t)}</small>
@@ -424,6 +439,7 @@ function UserSheet({
             <StateBadge state={state} />
             {local?.admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
             {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
+            <DeletionBadge due={u.deletion_due_at} />
           </span>
           <Presence activity={activity} now={now} long />
           <small>

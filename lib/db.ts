@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 73) return;
+  if (globalDb.flowplanSchema === 74) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -946,7 +946,14 @@ function migrate(d: DatabaseSync) {
     if (!columns.includes("last_open_at")) d.exec("ALTER TABLE users ADD COLUMN last_open_at INTEGER");
     if (!columns.includes("last_active_at")) d.exec("ALTER TABLE users ADD COLUMN last_active_at INTEGER");
   }
-  globalDb.flowplanSchema = 73;
+  // Schema 74 – deleting inactive accounts (lib/inactive-accounts.ts):
+  // when the notice and the reminder went out and the day of deletion.
+  {
+    const columns = (d.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name);
+    for (const column of ["deletion_notice_at", "deletion_reminder_at", "deletion_due_at"])
+      if (!columns.includes(column)) d.exec(`ALTER TABLE users ADD COLUMN ${column} INTEGER`);
+  }
+  globalDb.flowplanSchema = 74;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

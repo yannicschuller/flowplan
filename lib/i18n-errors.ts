@@ -4,6 +4,7 @@ import { translate, type Locale } from "./i18n";
 import { PAGE_LOCALE } from "./locale-tag";
 
 const exact: Record<string, string> = {
+  "Löschen muss später kommen als Sperren: mehr Tage als bei „Inaktive Konten sperren“.": "Deleting must come later than blocking: more days than under “Block inactive accounts”.",
   // Share links with password and end date, two-factor sign-in.
   "Bitte richte zuerst die Zwei-Faktor-Anmeldung ein.": "Please set up two-factor sign-in first.",
   "Dieser Link ist abgelaufen.": "This link has expired.",

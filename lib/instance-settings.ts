@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { all, run } from "./db";
+import { HttpError } from "./auth";
 
 // Instance-wide settings admins change in the interface. Environment
 // variables stay the defaults; stored values take precedence.
@@ -22,6 +23,9 @@ export const instanceSettingsSchema = z.object({
   backupInterval: z.enum(["daily", "hourly"]).default("daily"),
   // Accounts without sign-in for this many days are disabled (null = never).
   inactiveDays: z.number().int().min(30).max(3650).nullable().default(null),
+  // Accounts without any use for this many days are deleted, after an
+  // e-mail 14 and 3 days before (null = never; lib/inactive-accounts.ts).
+  deleteInactiveDays: z.number().int().min(60).max(3650).nullable().default(null),
   // Defaults for every account without its own limits (0 = unlimited).
   defaultUserStorageMb: z.number().int().min(0).max(10_000_000).nullable().default(null),
   defaultUserWorkspaces: z.number().int().min(0).max(10_000).nullable().default(null),
@@ -48,6 +52,7 @@ const defaults: InstanceSettings = {
   backupKeep: 7,
   backupInterval: "daily",
   inactiveDays: null,
+  deleteInactiveDays: null,
   defaultUserStorageMb: null,
   defaultUserWorkspaces: null,
   twoFactor: "off",
@@ -74,6 +79,9 @@ export function saveInstanceSettings(input: unknown) {
     ...instanceSettings(),
     ...(input && typeof input === "object" ? input : {}),
   });
+  // Deleting comes after blocking, never before it.
+  if (next.deleteInactiveDays && next.inactiveDays && next.deleteInactiveDays <= next.inactiveDays)
+    throw new HttpError(400, "Löschen muss später kommen als Sperren: mehr Tage als bei „Inaktive Konten sperren“.");
   for (const [key, value] of Object.entries(next))
     run(
       "INSERT INTO instance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
