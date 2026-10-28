@@ -100,8 +100,11 @@ export async function streamAiFrom(
 
 // ---- Ask the workspace (POST /api/ai/ask, lib/ai/ask.ts) ----
 
-export type AskSource = { n: number; pageId: string; rowId?: string; title: string; pageTitle?: string; kind: string; workspaceId?: string; workspaceName?: string };
-export type AskScope = { kind: "workspace" } | { kind: "page"; pageId: string } | { kind: "space"; spaceId: string } | { kind: "all" };
+// Sources of kind "help" are sections of the Flowplan help: no pageId, a url.
+export type AskSource = { n: number; pageId: string; rowId?: string; title: string; pageTitle?: string; kind: string; workspaceId?: string; workspaceName?: string; url?: string };
+export type AskScope = { kind: "workspace" } | { kind: "page"; pageId: string } | { kind: "space"; spaceId: string } | { kind: "all" } | { kind: "help" };
+// Opens a help source on docs.flowplan.org; only that address is trusted.
+export const helpSourceUrl = (s: AskSource) => (s.kind === "help" && s.url?.startsWith("https://docs.flowplan.org/") ? s.url : null);
 export type AskOptions = {
   workspaceId: string;
   question: string;

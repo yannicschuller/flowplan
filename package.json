@@ -27,7 +27,8 @@
     "extension:zip": "node scripts/extension-zip.mjs",
     "quality": "node scripts/quality-check.mjs",
     "test:visual": "playwright test --config playwright.visual.config.ts",
-    "test:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots"
+    "test:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots",
+    "help-docs": "node scripts/help-docs.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

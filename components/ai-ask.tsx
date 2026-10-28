@@ -3,13 +3,13 @@
 // (lib/ai/ask.ts). The conversation is kept in this browser tab only
 // (sessionStorage) – the server stores none of it.
 import { Fragment, useEffect, useRef, useState } from "react";
-import { ArrowSquareOut, ChatCircleDots, Lightning, MagnifyingGlass, PaperPlaneRight, Sparkle, Stop } from "@phosphor-icons/react";
+import { ArrowSquareOut, ChatCircleDots, Lifebuoy, Lightning, MagnifyingGlass, PaperPlaneRight, Sparkle, Stop } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon } from "./ui";
 import { Select } from "./select";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
 import { AiMarkdown } from "./ai-markdown";
-import { askAi, aiProviderLabel, aiUsable, citationParts, type AskScope, type AskSource } from "@/lib/ai/client";
+import { askAi, aiProviderLabel, aiUsable, citationParts, helpSourceUrl, type AskScope, type AskSource } from "@/lib/ai/client";
 import type { AiStatus } from "@/lib/ai/features";
 import type { Space } from "@/lib/types";
 
@@ -103,7 +103,9 @@ export function AskPanel({
   const scopeValue = (): AskScope =>
     across
       ? { kind: "all" }
-      : scope.startsWith("page:") ? { kind: "page", pageId: scope.slice(5) } : scope.startsWith("space:") ? { kind: "space", spaceId: scope.slice(6) } : { kind: "workspace" };
+      : scope === "help"
+        ? { kind: "help" }
+        : scope.startsWith("page:") ? { kind: "page", pageId: scope.slice(5) } : scope.startsWith("space:") ? { kind: "space", spaceId: scope.slice(6) } : { kind: "workspace" };
 
   async function send() {
     const text = question.trim();
@@ -140,6 +142,12 @@ export function AskPanel({
     }
   }
 
+  // Pages and records open in Flowplan, help sections on docs.flowplan.org.
+  const openSource = (s: AskSource) => {
+    const url = helpSourceUrl(s);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    else if (s.pageId) onOpenSource(s.pageId, s.rowId);
+  };
   const provider = ai?.provider;
   return (
     <Modal open={open} onClose={onClose} title={t("KI fragen", "Ask AI")} wide className="ai-ask">
@@ -164,6 +172,7 @@ export function AskPanel({
               </option>
             ))}
             <option value="all">{t("Alle meine Arbeitsbereiche", "All my workspaces")}</option>
+            <option value="help">{t("Nur Flowplan-Hilfe", "Only the Flowplan help")}</option>
           </Select>
         </div>
         <span
@@ -188,7 +197,7 @@ export function AskPanel({
         {!messages.length && (
           <div className="ai-ask-empty">
             <Sparkle size={26} />
-            <p>{t("Frag nach Inhalten deiner Seiten und Datenbanken. Antworten nennen ihre Quellen – findet die KI nichts, sagt sie das.", "Ask about the content of your pages and databases. Answers name their sources – if the AI finds nothing, it says so.")}</p>
+            <p>{t("Frag nach Inhalten deiner Seiten und Datenbanken – oder wie etwas in Flowplan geht. Antworten nennen ihre Quellen – findet die KI nichts, sagt sie das.", "Ask about the content of your pages and databases – or how something works in Flowplan. Answers name their sources – if the AI finds nothing, it says so.")}</p>
           </div>
         )}
         {messages.map((m, i) =>
@@ -201,18 +210,19 @@ export function AskPanel({
               {m.streaming && !m.content ? (
                 <p className="ai-ask-thinking">{t("Sucht im Arbeitsbereich …", "Searching the workspace …")}</p>
               ) : (
-                <AnswerText text={m.content} sources={m.sources || []} onOpen={onOpenSource} streaming={!!m.streaming} />
+                <AnswerText text={m.content} sources={m.sources || []} onOpen={openSource} streaming={!!m.streaming} />
               )}
               {!!m.sources?.length && !m.error && (
                 <ol className="ai-ask-sources" aria-label={t("Quellen", "Sources")}>
                   {m.sources.map((s, n) => (
                     <li key={s.n} style={{ animationDelay: `${n * 40}ms` }}>
-                      <button type="button" className="ai-source-chip" onClick={() => onOpenSource(s.pageId, s.rowId)} title={s.pageTitle ? t(`Eintrag in ${s.pageTitle}`, `Record in ${s.pageTitle}`) : undefined}>
+                      <button type="button" className={`ai-source-chip${s.kind === "help" ? " help" : ""}`} onClick={() => openSource(s)} title={s.pageTitle ? t(`Eintrag in ${s.pageTitle}`, `Record in ${s.pageTitle}`) : s.kind === "help" ? t("In der Flowplan-Hilfe öffnen", "Open in the Flowplan help") : undefined}>
                         <span className="ai-cite-number">{s.n}</span>
-                        <PageIcon name={s.kind === "row" ? "file" : s.kind === "database" ? "table" : "file"} />
+                        {s.kind === "help" ? <Lifebuoy size={14} aria-hidden="true" /> : <PageIcon name={s.kind === "row" ? "file" : s.kind === "database" ? "table" : "file"} />}
                         <span className="ai-source-title">{s.title}</span>
                         {s.pageTitle && <small>{s.pageTitle}</small>}
                         {s.workspaceName && s.workspaceId !== workspaceId && <small className="ai-source-workspace">{s.workspaceName}</small>}
+                        {s.kind === "help" && <small className="ai-source-workspace">{t("Flowplan-Hilfe", "Flowplan help")}</small>}
                         <ArrowSquareOut size={13} />
                       </button>
                     </li>
@@ -228,7 +238,7 @@ export function AskPanel({
                       instruction: messages[i - 1]?.content || t("Was lässt sich aus dieser Antwort anlegen?", "What can be created from this answer?"),
                       context: m.content,
                       pageId: currentPage?.id || null,
-                      sources: (m.sources || []).filter((s) => !s.workspaceId || s.workspaceId === workspaceId).map((s) => ({ pageId: s.pageId, rowId: s.rowId || null })),
+                      sources: (m.sources || []).filter((s) => s.pageId && (!s.workspaceId || s.workspaceId === workspaceId)).map((s) => ({ pageId: s.pageId, rowId: s.rowId || null })),
                     })
                   }
                 >
@@ -293,14 +303,14 @@ export function AskPanel({
 
 // The answer as Markdown, with [n] as clickable chips (only for sources
 // that exist).
-function AnswerText({ text, sources, onOpen, streaming }: { text: string; sources: AskSource[]; onOpen: (pageId: string, rowId?: string) => void; streaming: boolean }) {
+function AnswerText({ text, sources, onOpen, streaming }: { text: string; sources: AskSource[]; onOpen: (source: AskSource) => void; streaming: boolean }) {
   const t = useT();
   const withCitations = (part: string, key: string) =>
     citationParts(part, sources).map((piece, j) => {
       if ("text" in piece) return <Fragment key={`${key}:${j}`}>{piece.text}</Fragment>;
       const source = sources.find((s) => s.n === piece.cite)!;
       return (
-        <button key={`${key}:${j}`} type="button" className="ai-cite" title={source.title} aria-label={t(`Quelle ${piece.cite}: ${source.title}`, `Source ${piece.cite}: ${source.title}`)} onClick={() => onOpen(source.pageId, source.rowId)}>
+        <button key={`${key}:${j}`} type="button" className="ai-cite" title={source.title} aria-label={t(`Quelle ${piece.cite}: ${source.title}`, `Source ${piece.cite}: ${source.title}`)} onClick={() => onOpen(source)}>
           {piece.cite}
         </button>
       );

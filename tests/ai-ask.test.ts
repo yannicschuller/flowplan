@@ -382,3 +382,20 @@ test("the last lesson with a person: the newest journal day, with its date", asy
   const days = prepared.sources.filter((s) => /^2026-/.test(s.title)).map((s) => s.title);
   assert.equal(days[0], "2026-10-20");
 });
+
+// Questions about Flowplan itself: the help that comes with the app.
+test("the Flowplan help answers questions about using Flowplan", async () => {
+  const how = await ask(ben, "Wie richte ich die Zwei-Faktor-Anmeldung mit einer Authenticator-App ein?");
+  const help = how.sources.filter((s) => s.kind === "help");
+  assert.ok(help.length, "help sections found");
+  assert.ok(help.every((s) => s.url?.startsWith("https://docs.flowplan.org/de/") && s.pageId === ""));
+  assert.ok(help.some((s) => /sign-in|administration/.test(s.url!)), help.map((s) => s.url).join(" "));
+  const prompt = how.messages.at(-1)!.content;
+  assert.match(prompt, /<quelle nr="\d+" art="hilfe" titel="Flowplan-Hilfe: /);
+  // Only the help: no pages of the workspace.
+  const only = await ask(ben, "Betriebsausflug Hamburg Zwei-Faktor", { scope: { kind: "help" } });
+  assert.ok(only.sources.length && only.sources.every((s) => s.kind === "help"));
+  // A page or a space stays exactly that.
+  const onPage = await ask(ben, "Zwei-Faktor-Anmeldung Authenticator", { scope: { kind: "page", pageId: plan } });
+  assert.ok(onPage.sources.every((s) => s.kind !== "help"));
+});
