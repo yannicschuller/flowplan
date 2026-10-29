@@ -23801,10 +23801,9 @@ tr:hover .row-open-mark,
     transform: scale(0.92);
     transition: transform 0.08s ease;
   }
-  /* The bar replaces the hamburger in the top bar. */
-  .mobile-menu {
-    display: none;
-  }
+  /* The sidebar button stays at the top left, where people look for it;
+     swiping from the left edge opens the sidebar too
+     (components/drawer-swipe.ts). */
   .main {
     height: calc(100dvh - var(--tab-bar-space));
   }

@@ -41,6 +41,7 @@ import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
 import { SIDEBAR_WIDTH_KEY, SidebarResize, clampSidebar } from "./sidebar-resize";
 import { ActivityPing } from "./activity-ping";
+import { useDrawerSwipe } from "./drawer-swipe";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PagePeople } from "./page-people";
@@ -1523,6 +1524,8 @@ export default function WorkspaceApp({
   }, [usedJournal]);
   // Phones: the bottom bar steps aside while the keyboard is open.
   const keyboardOpen = useSoftKeyboard();
+  // Phones: swipe from the left edge to pull the sidebar in, and back out.
+  useDrawerSwipe(mobile, setMobile);
   // Only the panes scroll, never the document (no rubber band under the bars).
   useShellDocument();
   // Encrypted titles are decrypted here, in the browser, once unlocked.
