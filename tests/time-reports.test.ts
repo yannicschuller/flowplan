@@ -41,7 +41,9 @@ const design = act({ action: "row.create", pageId: tasks, cells: { title: "Desig
 const build = act({ action: "row.create", pageId: tasks, cells: { title: "Bau", project: [beta] } }).id as string;
 const secret = act({ action: "row.create", pageId: tasks, cells: { title: "Geheim" } }).id as string;
 act({ action: "row.access", pageId: tasks, rowId: secret, access: "private", grants: [] });
-const today = new Date().toISOString().slice(0, 10);
+// The local day, as the reports group by it (not UTC: near midnight the
+// two differ wherever the clock is not on UTC).
+const today = new Date().toLocaleDateString("sv-SE");
 const add = (rowId: string, minutes: number, who = owner, note = "") => act({ action: "time.add", pageId: tasks, rowId, fieldId: "spent", minutes, date: today, note }, who);
 add(design, 120);
 add(design, 60, editor, "Entwurf");
