@@ -327,6 +327,10 @@ kbd,
   grid-template-columns: var(--sidebar-width, 246px) minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
+  /* Not even scrollable by script or focus: something sticking out below
+     (a hidden label, a popover) must not shift the whole app up when the
+     browser scrolls an element into view. */
+  overflow: clip;
 }
 .sidebar {
   background: var(--sidebar);
@@ -20301,6 +20305,9 @@ h3 .block-reactions {
   text-align: center;
 }
 .notif-channel {
+  /* Holds its hidden name: positioned elsewhere, it would stick out of the
+     scrolling settings and make the whole app shell scroll. */
+  position: relative;
   display: flex;
   justify-content: center;
   margin: 0;
