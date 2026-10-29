@@ -68,8 +68,13 @@ button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
-button:hover {
-  background: var(--hover);
+/* Only with a mouse: iOS keeps :hover on the last element a finger
+   touched, which left tapped buttons (and the scrim beside the open
+   sidebar) filled with the hover colour. */
+@media (hover: hover) {
+  button:hover {
+    background: var(--hover);
+  }
 }
 button:focus-visible,
 a:focus-visible {
@@ -5440,7 +5445,8 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   .nav-open .sidebar {
     transform: translateX(0);
   }
-  .mobile-scrim {
+  .mobile-scrim,
+  .mobile-scrim:hover {
     position: fixed;
     inset: 0;
     background: #17243850;
