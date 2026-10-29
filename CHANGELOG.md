@@ -2,6 +2,22 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.7.4 – 2026-10-29
+
+- ⌘F / Ctrl+F: find on the page ([88966e6](https://github.com/yannicschuller/flowplan/commit/88966e6f33576e1b99048916d6b1f864678fe050))
+- Published pages: show the outline beside the text ([be19778](https://github.com/yannicschuller/flowplan/commit/be197786ca0b3037309072c39e85ad40db38703a))
+- Admin push status names the apps for iPhone, iPad and Android ([e4af103](https://github.com/yannicschuller/flowplan/commit/e4af1031032a721f22191de5ce7c0a5954fa7192))
+- Phones: hint at the apps after signing in; Android download in settings ([6065933](https://github.com/yannicschuller/flowplan/commit/6065933928793f55d14e779084e33c3c323b00bd))
+- Phones: the sidebar swipe no longer drags blocks along or gets stuck ([2d9db91](https://github.com/yannicschuller/flowplan/commit/2d9db9165711d3addb026a9f5243f4d6e2a2a49d))
+- Phones: keep the left edge for iOS back, open the sidebar from just inside it ([abc6618](https://github.com/yannicschuller/flowplan/commit/abc66188773cf3b4d4242c907f2d8c86d4302fba))
+- Phones: the page stays visible beside the open sidebar ([91bc58d](https://github.com/yannicschuller/flowplan/commit/91bc58dfed0ea11558357212d401ca6eae6dc67d))
+- Phones: open the sidebar from the left – edge swipe and the button at the top left ([3ff60c3](https://github.com/yannicschuller/flowplan/commit/3ff60c32c7bc36e419cd50769999708ede165d40))
+- Point to the iPhone and iPad beta on TestFlight ([69303bf](https://github.com/yannicschuller/flowplan/commit/69303bfbc4e626e50ccd1869dd5f0f434aad0986))
+- Settings: errors under the field; blocking and deleting stay in order ([035f3db](https://github.com/yannicschuller/flowplan/commit/035f3db24ef7ff88215cc84946e3b113c6aa887c))
+- Selects keep the choice on the iPhone (#51); table commands next to the table (#52) ([51acba7](https://github.com/yannicschuller/flowplan/commit/51acba7110a1c1b1073acdc2a6e9e0a5f80a47ea))
+- Help for Ask AI: current documentation ([1d08782](https://github.com/yannicschuller/flowplan/commit/1d08782fdab25ab0b6a6e599fae8f86fe197a550))
+- Administration → Users: status filter as buttons; presence on phones ([e2c9daa](https://github.com/yannicschuller/flowplan/commit/e2c9daa071d97117d236bd6d7a1af7f185025d19))
+
 ## v0.7.3 – 2026-10-28
 
 - Ask AI answers questions about Flowplan from the built-in help ([e43336d](https://github.com/yannicschuller/flowplan/commit/e43336d5518b5fcc4f67adba22c9946815bd8400))
