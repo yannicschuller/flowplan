@@ -1,3 +1,4 @@
+import { PublicOutline } from "./document-outline";
 import { requestLocale, serverT } from "@/lib/i18n-server";
 import { localeTag } from "@/lib/i18n";
 import { imageFileId } from "@/lib/page-appearance";
@@ -493,6 +494,7 @@ async function renderPublishedPage({
                 ))}
             </dl>
           )}
+          <PublicOutline />
           <ReadOnlyDocument
             className={`font-${page.font}`}
             shareToken={token}

@@ -6084,6 +6084,18 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     padding-right: 236px;
   }
 }
+/* Shared and published pages (PublicOutline): the same, around the page. */
+@media (min-width: 901px) {
+  .public-page.with-outline .outline-toggle {
+    visibility: hidden;
+  }
+}
+@media (min-width: 901px) and (max-width: 1439px) {
+  .public-page.with-outline {
+    max-width: calc(850px + 236px);
+    padding-right: 261px;
+  }
+}
 @media (max-width: 900px) {
   .outline-toggle {
     position: fixed;
@@ -28335,5 +28347,15 @@ label.ws-search input {
 @media (max-width: 760px) {
   .admin-user-filter {
     min-height: 38px;
+  }
+}
+/* Shared and published pages have no tab bar: the outline's round button
+   and its list sit at the bottom edge. */
+@media (max-width: 900px) {
+  .public-page .outline-toggle {
+    bottom: calc(20px + var(--safe-bottom, 0px));
+  }
+  .public-page .document-outline {
+    bottom: calc(76px + var(--safe-bottom, 0px));
   }
 }

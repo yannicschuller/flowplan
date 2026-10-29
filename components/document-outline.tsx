@@ -1,7 +1,8 @@
 "use client";
 // The table of contents beside a document: built from its headings while
 // writing, follows the reading position and jumps to a heading on click.
-// Open or closed is remembered in this browser for all documents.
+// Open or closed is remembered in this browser for all documents. Shared and
+// published pages have it too (PublicOutline), from the rendered headings.
 import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { ListBullets, X } from "@phosphor-icons/react";
@@ -38,23 +39,35 @@ const headingElement = (editor: Editor, pos: number) => {
   }
 };
 
-export function DocumentOutline({ editor, headings, onClose }: { editor: Editor | null; headings: OutlineHeading[]; onClose: () => void }) {
+export function DocumentOutline({
+  editor,
+  headings,
+  onClose,
+  locate,
+}: {
+  editor: Editor | null;
+  headings: OutlineHeading[];
+  onClose: () => void;
+  // Without an editor: the element of a heading (a read-only document).
+  locate?: (pos: number) => HTMLElement | null;
+}) {
   const t = useT();
   const [active, setActive] = useState<number | null>(null);
   const top = Math.min(...headings.map((h) => h.level), 3);
   // The heading the reader is in: the last one above the upper fifth of the window.
   const key = headings.map((h) => h.pos).join(",");
+  const element = (pos: number) => (editor ? headingElement(editor, pos) : locate?.(pos) || null);
   useEffect(() => {
-    if (!editor) return;
+    if (!editor && !locate) return;
     let frame = 0;
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        if (editor.isDestroyed) return;
+        if (editor?.isDestroyed) return;
         const line = window.innerHeight * 0.2;
         let current: number | null = headings[0]?.pos ?? null;
         for (const h of headings) {
-          const el = headingElement(editor, h.pos);
+          const el = element(h.pos);
           if (el && el.getBoundingClientRect().top <= line) current = h.pos;
         }
         setActive(current);
@@ -88,12 +101,11 @@ export function DocumentOutline({ editor, headings, onClose }: { editor: Editor 
                 type="button"
                 aria-current={active === h.pos ? "location" : undefined}
                 onClick={() => {
-                  if (!editor) return;
                   // Scrolls to the heading, which then flashes briefly.
-                  reveal(headingElement(editor, h.pos), "start", true);
+                  reveal(element(h.pos), "start", true);
                   setActive(h.pos);
                   // The caret goes to the heading, so typing continues there.
-                  editor.commands.setTextSelection(h.pos + 1 + h.text.length);
+                  editor?.commands.setTextSelection(h.pos + 1 + h.text.length);
                   // Small screens: the list covers the text, so it closes.
                   if (window.innerWidth < 1100) onClose();
                 }}
@@ -132,5 +144,33 @@ export function OutlineToggle({ open, count, onToggle }: { open: boolean; count:
       <ListBullets size={16} aria-hidden />
       {count > 0 && <span>{count}</span>}
     </button>
+  );
+}
+
+// Shared and published pages: the outline of the read-only document in the
+// page (its rendered headings), with the same toggle and list as in the
+// editor. Headings in embedded pages and comments do not count.
+export function PublicOutline() {
+  const [open, setOpen] = useOutlineOpen();
+  const [headings, setHeadings] = useState<OutlineHeading[]>([]);
+  const [elements, setElements] = useState<HTMLElement[]>([]);
+  useEffect(() => {
+    const root = document.querySelector<HTMLElement>(".public-page .document-editor");
+    if (!root) return;
+    const found = Array.from(root.querySelectorAll<HTMLElement>("h1, h2, h3, h4")).filter(
+      (el) => el.closest(".document-editor") === root && (el.textContent || "").trim(),
+    );
+    setElements(found);
+    setHeadings(found.map((el, i) => ({ text: (el.textContent || "").trim(), pos: i, level: Number(el.tagName[1]) })));
+  }, []);
+  useEffect(() => {
+    document.querySelector(".public-page")?.classList.toggle("with-outline", open && headings.length > 0);
+  }, [open, headings.length]);
+  if (!headings.length) return null;
+  return (
+    <>
+      <OutlineToggle open={open} count={headings.length} onToggle={() => setOpen(!open)} />
+      {open && <DocumentOutline editor={null} headings={headings} locate={(pos) => elements[pos] || null} onClose={() => setOpen(false)} />}
+    </>
   );
 }
