@@ -4,14 +4,18 @@
 // it) pushes it out – released past a third of its width or with some
 // speed, it settles open or closed, otherwise it springs back. Vertical
 // swipes, dialogs, whiteboards and places that pan sideways themselves are
-// left alone. iOS Safari's own "back" swipe starts at the very edge, so in
-// the browser the edge zone starts a few pixels in; in the app and the
-// installed web app there is no such gesture.
+// left alone. On iOS the very edge belongs to "back" – Safari's own swipe,
+// and the app's (flowplan-app) whenever the page has a step back – so there
+// the swipe that opens starts a little further in, where back never begins.
+// Where nothing claims the edge (the installed web app, the app on its start
+// page) it may start at the edge itself.
 import { useEffect, useRef } from "react";
 
 const PHONE = "(max-width: 767px)";
-// Where a swipe that opens may start, from the left edge.
-const EDGE = 28;
+// Where a swipe that opens may start, from the left edge; BACK_EDGE is left
+// to iOS's back swipe (it begins within about 20 points of the edge).
+const EDGE = 64;
+const BACK_EDGE = 24;
 // Moved this far before deciding: sideways (drawer) or not (scroll).
 const DECIDE = 10;
 const IGNORE =
@@ -25,9 +29,23 @@ export function useDrawerSwipe(
   state.current = { open, setOpen };
   useEffect(() => {
     const phone = window.matchMedia(PHONE);
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      "FlowplanApp" in window;
+    const ios =
+      /iP(hone|ad|od)/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const inApp = "FlowplanApp" in window;
+    const standalone = window.matchMedia("(display-mode: standalone)").matches;
+    // Whether a swipe from the very edge goes back instead (lib/app-back.ts
+    // turns the app's gesture on only when there is a step back).
+    const backAtEdge = () => {
+      if (!ios) return false;
+      if (inApp) {
+        const nav = (
+          window as { FlowplanNavigation?: { canGoBack?: () => boolean } }
+        ).FlowplanNavigation;
+        return nav?.canGoBack?.() !== false;
+      }
+      return !standalone;
+    };
     let start: { x: number; y: number; t: number; open: boolean } | null = null;
     let dragging = false;
     let width = 0;
@@ -68,7 +86,7 @@ export function useDrawerSwipe(
         )
           return;
       } else {
-        const from = standalone ? 0 : 6;
+        const from = backAtEdge() ? BACK_EDGE : 0;
         if (touch.clientX < from || touch.clientX > EDGE) return;
       }
       width = parts().sidebar?.getBoundingClientRect().width || 300;
