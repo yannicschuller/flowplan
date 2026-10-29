@@ -36,6 +36,7 @@ import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
+import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
 import { SplitDivider, SplitPane, clampSplit } from "./split-pane";
@@ -4221,6 +4222,7 @@ export default function WorkspaceApp({
           )}
         </div>
       </main>
+      <AppPromo paused={onboarding} />
       {onboarding && (
         <Onboarding
           boot={boot}

@@ -1,5 +1,6 @@
 "use client";
 import { useLocale, useT } from "./i18n";
+import { ANDROID_APK_URL, DOWNLOAD_URL, TESTFLIGHT_URL } from "@/lib/app-links";
 import { friendlyError } from "./ui";
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "./page-activity";
@@ -360,7 +361,7 @@ export function OfflineSettings({
           >
             <a
               className="button"
-              href="https://flowplan.org/download"
+              href={DOWNLOAD_URL}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -370,17 +371,21 @@ export function OfflineSettings({
           <SettingRow
             label="Android"
             description={t(
-              "In Vorbereitung; bis dahin als Web-App vom Browser aus installierbar.",
-              "Coming soon; until then it installs as a web app from the browser.",
+              "App direkt von flowplan.org, ohne Play Store: die Datei öffnen und installieren; neue Versionen findet die App selbst.",
+              "App straight from flowplan.org, without the Play Store: open the file and install it; the app finds new versions by itself.",
             )}
           >
-            {null}
+            <a
+              className="button"
+              href={ANDROID_APK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t("Herunterladen", "Download")}
+            </a>
           </SettingRow>
         </SettingGroup>
       )}
     </>
   );
 }
-
-// The beta of the iPhone and iPad app.
-const TESTFLIGHT_URL = "https://testflight.apple.com/join/Yjy9aZAE";
