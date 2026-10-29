@@ -74,7 +74,7 @@ export default function PushSection() {
     ? `${relayReason(t, r.reason)} ${
         r.reason === "off"
           ? t("Die Apps bekommen Mitteilungen nur noch über Expo, wenn sie ein Expo-Token haben (ältere App-Versionen).", "The apps only get notifications through Expo when they have an Expo token (older app versions).")
-          : t("Bis das behoben ist, bekommen die Apps aus App Store und Google Play keine Mitteilungen über das Relay.", "Until that is fixed, the apps from the App Store and Google Play get no notifications through the relay.")
+          : t("Bis das behoben ist, bekommen die Flowplan-Apps für iPhone, iPad und Android keine Mitteilungen über das Relay.", "Until that is fixed, the Flowplan apps for iPhone, iPad and Android get no notifications through the relay.")
       }`
     : r.health && !r.health.ok
       ? t(
