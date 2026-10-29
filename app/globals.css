@@ -1533,12 +1533,48 @@ aside[data-callout] p:last-child {
   border-radius: 6px;
   margin: 15px 0;
 }
+/* The commands of a table, next to it while the cursor is inside
+   (components/table-tools.tsx). */
 .table-tools {
+  position: absolute;
+  z-index: 35;
   display: flex;
-  gap: 5px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px -10px rgba(29, 28, 34, 0.3);
   color: var(--secondary);
-  font-size: 12px;
+}
+.table-tools > button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  border-radius: 7px;
+}
+.table-tools > button:hover,
+.table-tools > button[data-state="open"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.table-tools-gap {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--border);
+}
+@media (pointer: coarse) {
+  .table-tools > button {
+    width: 40px;
+    height: 38px;
+  }
+}
+.dropdown .dropdown-item.danger {
+  color: var(--signal);
 }
 .subpages {
   margin-top: 25px;

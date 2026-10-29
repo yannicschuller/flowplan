@@ -6,7 +6,7 @@ import { SHEET_HANDLE, type SheetDragOptions } from "./sheet-drag";
 
 // Elements in which a drag means something else (selecting text, sliders,
 // horizontal lists).
-const OWN_GESTURES = 'textarea, [contenteditable="true"], input[type="range"], canvas, [data-sheet-no-drag]';
+const OWN_GESTURES = 'textarea, select, .fp-select, [contenteditable="true"], input[type="range"], canvas, [data-sheet-no-drag]';
 // iOS' sheet curve: quick start, long soft landing.
 const SPRING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const LEAVE = "cubic-bezier(0.2, 0.7, 0.4, 1)";

@@ -22,11 +22,21 @@ type Choice = {
 // stays in place (invisible) as the form control: it keeps the value,
 // labels, forms and keyboard focus; the list only sets its value and fires
 // the usual change event.
+//
+// The native element itself is uncontrolled; a `value` is written to it
+// here, but not while it has the focus. React writes a controlled value back
+// on every render, and iOS hands over the choice from its picker only when
+// the picker closes: a render in between (the picker shrinks the visible
+// area, the app shell renders again) put the old value back, and the choice
+// was lost – in record properties, filters, every select on the iPhone.
 export function Select({
   className = "",
   style,
   ref,
   onKeyDown,
+  value,
+  defaultValue,
+  onChange,
   ...props
 }: ComponentProps<"select">) {
   const native = useRef<HTMLSelectElement | null>(null),
@@ -51,6 +61,38 @@ export function Select({
     },
     [ref],
   );
+  const latest = useRef(value);
+  latest.current = value;
+  const syncLabel = useCallback(() => {
+    const el = native.current;
+    const option = el?.options[el.selectedIndex];
+    setLabel(option ? option.label || option.text : "");
+  }, []);
+  // When the person last chose: owners that save first (a request, then
+  // the new value) get a moment before a choice they did not take goes back.
+  const chosenAt = useRef(0);
+  const GRACE = 2500;
+  // The given value onto the native element (when there is one).
+  const apply = useCallback(
+    (force = false) => {
+      const el = native.current;
+      if (!el || latest.current === undefined || latest.current === null)
+        return;
+      if (!force && Date.now() - chosenAt.current < GRACE) return;
+      const next = String(latest.current);
+      if (el.value !== next) {
+        el.value = next;
+        syncLabel();
+      }
+    },
+    [syncLabel],
+  );
+  // After every render – except while a choice is being made.
+  useLayoutEffect(() => {
+    if (native.current && document.activeElement !== native.current) apply();
+  });
+  const graceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(graceTimer.current), []);
   const read = useCallback(() => {
     const el = native.current;
     if (!el) return [];
@@ -75,7 +117,11 @@ export function Select({
     sync();
     el.addEventListener("change", sync);
     const observer = new MutationObserver(sync);
-    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    observer.observe(el, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
     return () => {
       el.removeEventListener("change", sync);
       observer.disconnect();
@@ -191,12 +237,16 @@ export function Select({
         (c, i) =>
           i > active &&
           !c.disabled &&
-          c.label.toLocaleLowerCase("de").startsWith(e.key.toLocaleLowerCase("de")),
+          c.label
+            .toLocaleLowerCase("de")
+            .startsWith(e.key.toLocaleLowerCase("de")),
       );
       const first = choices.findIndex(
         (c) =>
           !c.disabled &&
-          c.label.toLocaleLowerCase("de").startsWith(e.key.toLocaleLowerCase("de")),
+          c.label
+            .toLocaleLowerCase("de")
+            .startsWith(e.key.toLocaleLowerCase("de")),
       );
       if (next >= 0 || first >= 0) {
         e.preventDefault();
@@ -233,11 +283,20 @@ export function Select({
     >
       <select
         {...props}
+        defaultValue={value ?? defaultValue}
         ref={setRefs}
         className="fp-select-native"
         onKeyDown={keyDown}
+        onChange={(e) => {
+          chosenAt.current = Date.now();
+          onChange?.(e);
+          // A choice the owner did not take (its value stayed) goes back.
+          clearTimeout(graceTimer.current);
+          graceTimer.current = setTimeout(() => apply(true), GRACE);
+        }}
         onBlur={(e) => {
           props.onBlur?.(e);
+          apply();
           if (!list.current?.contains(e.relatedTarget as Node)) setOpen(false);
         }}
       />

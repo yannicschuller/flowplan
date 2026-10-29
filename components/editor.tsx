@@ -25,6 +25,7 @@ import {
 import { syncedBlockNode, type SyncedContext } from "./synced-block";
 import { VoiceRecorder } from "./voice-recorder";
 import { TextMenu } from "./text-menu";
+import { TableTools } from "./table-tools";
 import { AiWriter, blocksFromHtml, type AiWriterRequest } from "./ai-writer";
 import { useAi, useAiAvailability, useAiBlockedHint } from "./ai-context";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
@@ -2284,24 +2285,7 @@ export default function DocumentEditor({
             </DocumentBlockControls>
           )}
         </div>
-        {editor?.isActive("table") && editable && (
-          <div className="table-tools">
-            <button onClick={() => editor.chain().focus().addRowAfter().run()}>
-              {t("+ Zeile", "+ Row")}
-            </button>
-            <button
-              onClick={() => editor.chain().focus().addColumnAfter().run()}
-            >
-              {t("+ Spalte", "+ Column")}
-            </button>
-            <button onClick={() => editor.chain().focus().deleteRow().run()}>
-              {t("Zeile löschen", "Delete row")}
-            </button>
-            <button onClick={() => editor.chain().focus().deleteColumn().run()}>
-              {t("Spalte löschen", "Delete column")}
-            </button>
-          </div>
-        )}
+        {editor?.isActive("table") && editable && <TableTools editor={editor} />}
       </div>
       {!embedded && (
       <InlineComments
