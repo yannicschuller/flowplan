@@ -94,7 +94,8 @@ export default function SigninSection() {
           )}
           unit={t("Tage", "days")}
           min={30}
-          max={3650}
+          // Earlier than deleting: a larger number becomes the largest allowed.
+          max={s.deleteInactiveDays ? Math.max(30, s.deleteInactiveDays - 1) : 3650}
           placeholder={t("nie", "never")}
         />
         <InstanceNumber
@@ -112,7 +113,8 @@ export default function SigninSection() {
                 )
           }
           unit={t("Tage", "days")}
-          min={60}
+          // Later than blocking: a smaller number becomes the smallest allowed.
+          min={Math.max(60, (s.inactiveDays ?? 0) + 1)}
           max={3650}
           placeholder={t("nie", "never")}
         />

@@ -20144,6 +20144,24 @@ h3 .block-reactions {
 .setting-control .save-state:empty {
   display: none;
 }
+/* An error goes under the field and wraps there instead of taking the
+   row's width from its text. */
+.setting-control:has(> .save-state.error) {
+  flex-direction: column;
+  align-items: flex-end;
+}
+.setting-control > .save-state.error {
+  order: 1;
+  width: 320px;
+  max-width: 100%;
+  align-items: flex-start;
+  line-height: 1.4;
+  text-align: left;
+}
+.setting-control > .save-state.error > svg {
+  flex: none;
+  margin-top: 2px;
+}
 /* Konto: who you are, the password form, passkeys, devices. */
 .account-identity {
   grid-template-columns: auto minmax(0, 1fr) auto;
