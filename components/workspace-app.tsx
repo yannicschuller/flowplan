@@ -36,6 +36,7 @@ import { CoverPicker } from "./cover-picker";
 import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
+import { FindInPage } from "./find-in-page";
 import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
@@ -439,6 +440,7 @@ export default function WorkspaceApp({
     [sourcePage, setSourcePage] = useState<string | null>(null),
     [spaceExport, setSpaceExport] = useState<string | null>(null),
     [onboarding, setOnboarding] = useState(!!initial.onboarding),
+    [find, setFind] = useState({ open: false, key: 0 }),
     [spaceManager, setSpaceManager] = useState<{
       space: Space;
       purge?: boolean;
@@ -1333,6 +1335,8 @@ export default function WorkspaceApp({
       if (e.isComposing || presentingRef.current) return;
       const action = matchAction(e, isTyping(e.target));
       if (!action) return;
+      // A whiteboard has its own search for ⌘F (it marks the event handled).
+      if (action === "find" && e.defaultPrevented) return;
       e.preventDefault();
       // Once, also when the app reports the same key (lib/app-shortcuts.ts).
       if (firstRun(action)) shortcutRef.current(action);
@@ -1468,6 +1472,9 @@ export default function WorkspaceApp({
           setPaletteSplit(false);
           openSearch();
         }
+        break;
+      case "find":
+        setFind((f) => ({ open: true, key: f.key + 1 }));
         break;
       case "newPage":
         setCreate(true);
@@ -2378,6 +2385,7 @@ export default function WorkspaceApp({
     })),
     { label: t("Neues Notizbuch", "New notebook"), keywords: t("handschrift stift zeichnen heft goodnotes pdf", "handschrift stift zeichnen heft goodnotes pdf handwriting pencil notebook sketch"), icon: NotePencil, run: () => addPage("notebook") },
     { label: t("Neues Dashboard", "New dashboard"), keywords: t("übersicht kennzahlen kacheln", "übersicht kennzahlen kacheln overview metrics tiles dashboard"), icon: Gauge, run: () => addPage("dashboard") },
+    { label: t("Auf der Seite suchen", "Find on page"), keywords: t("finden text treffer strg f", "finden text treffer strg f find text match ctrl f"), icon: MagnifyingGlass, run: () => setFind((f) => ({ open: true, key: f.key + 1 })) },
     { label: t("Einführung ansehen", "Show introduction"), keywords: t("onboarding tour hilfe willkommen", "onboarding tour hilfe willkommen help welcome"), icon: Sparkle, run: () => setOnboarding(true) },
     { label: t("Vorlagen öffnen", "Open templates"), keywords: "template galerie", icon: SquaresFour, run: () => setTemplates(true) },
     { label: t("Zur Startseite", "Go to home"), keywords: "home start", icon: House, run: () => go("home") },
@@ -4233,6 +4241,7 @@ export default function WorkspaceApp({
           onClose={() => setOnboarding(false)}
         />
       )}
+      <FindInPage open={find.open} focusKey={find.key} onClose={() => setFind((f) => ({ ...f, open: false }))} />
       <KeyboardShortcuts
         open={shortcuts}
         onClose={() => setShortcuts(false)}

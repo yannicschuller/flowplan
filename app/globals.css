@@ -28359,3 +28359,62 @@ label.ws-search input {
     bottom: calc(76px + var(--safe-bottom, 0px));
   }
 }
+
+/* Find on the page (components/find-in-page.tsx). */
+.find-bar {
+  position: fixed;
+  z-index: 60;
+  /* Below the top bar, so sharing and the page menu stay reachable. */
+  top: calc(62px + var(--safe-top, 0px));
+  right: calc(16px + var(--safe-right, 0px));
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.find-bar input {
+  width: 200px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+}
+.find-bar input::-webkit-search-cancel-button {
+  display: none;
+}
+.find-count {
+  min-width: 54px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.find-bar .icon-button {
+  width: 28px;
+  height: 28px;
+}
+@media (max-width: 600px) {
+  .find-bar {
+    left: calc(12px + var(--safe-left, 0px));
+    right: calc(12px + var(--safe-right, 0px));
+  }
+  .find-bar input {
+    flex: 1;
+    width: auto;
+  }
+}
+::highlight(find-match) {
+  background-color: #f6d36b80;
+  color: inherit;
+}
+::highlight(find-current) {
+  background-color: #f59e0b;
+  color: #1c1917;
+}

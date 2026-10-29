@@ -32,6 +32,8 @@ export function actionLabel(action: ShortcutAction, t: T): string {
   switch (action) {
     case "search":
       return t("Suchen und Befehle", "Search and commands");
+    case "find":
+      return t("Auf der Seite suchen", "Find on page");
     case "newPage":
       return t("Neue Seite", "New page");
     case "capture":

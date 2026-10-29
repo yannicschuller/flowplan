@@ -14,6 +14,7 @@ import { appleOS, currentOS } from "./device-os";
 
 export const SHORTCUT_ACTIONS = [
   "search",
+  "find",
   "newPage",
   "capture",
   "shortcuts",
@@ -33,6 +34,9 @@ export type KeymapOverrides = Partial<Record<ShortcutAction, string[]>>;
 
 export const DEFAULT_KEYMAP: Keymap = {
   search: ["Mod+K"],
+  // Find on the page (components/find-in-page.tsx) instead of the
+  // browser's: it also works in the desktop app and the apps.
+  find: ["Mod+F"],
   newPage: ["Mod+N"],
   capture: ["Mod+Alt+N"],
   shortcuts: ["?", "Mod+/"],

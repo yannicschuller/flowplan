@@ -1102,7 +1102,7 @@ CommandNotificationWeeklyResult = TypedDict("CommandNotificationWeeklyResult", {
     "timeZone": Required[str],
 }, total=False)
 
-# Save your own keyboard shortcuts. Replaces the whole set. Keys are actions (search, newPage, capture, shortcuts, readMode, sidebar, focusMode, comments, theme, splitView, present, journalToday), values up to 3 combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything.
+# Save your own keyboard shortcuts. Replaces the whole set. Keys are actions (search, find, newPage, capture, shortcuts, readMode, sidebar, focusMode, comments, theme, splitView, present, journalToday), values up to 3 combinations such as `Mod+Alt+N` (`Mod` is ⌘ on Apple devices, Ctrl elsewhere); an empty list removes the shortcut, a missing action uses its default. `{}` resets everything.
 CommandShortcutsSave = TypedDict("CommandShortcutsSave", {
     "action": Required[Literal["shortcuts.save"]],
     "bindings": Required[dict[str, list[str]]],
