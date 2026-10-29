@@ -1747,6 +1747,10 @@ class FlowplanClient:
         """Billing status of time entries, hourly rates and currency — `{ action: "billing", status: open|billed|unbillable, ids, workspace }` or with `filter` (the GET parameters) for the whole filtered set – marking it billed leaves entries that are not billable as they are. Needs edit rights on the record and its time property; audit-logged. `{ action: "rate", workspace, kind: person|project, targetId, rate | null }` and `{ action: "currency", workspace, currency }` are for workspace owners. (POST /api/time-reports)"""
         return self._json("POST", "/api/time-reports", json_body=body, headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
+    def list_banners(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Banners of the administration for the signed-in person — Banners each person sees until they close them (Administration → Maintenance & notices). Not with API tokens: the answer is empty. Answered with `Cache-Control: no-store`. (GET /api/banners)"""
+        return self._json("GET", "/api/banners", headers=headers)
+
     def maintenance_notice(self, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Scheduled maintenance announced by the administration — `notice` is null when none is announced or it has ended. Answered with `Cache-Control: no-store`. (GET /api/maintenance)"""
         return self._json("GET", "/api/maintenance", headers=headers)

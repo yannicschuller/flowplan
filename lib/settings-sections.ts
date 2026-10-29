@@ -432,11 +432,12 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "operations",
     icon: "Megaphone",
     title: { de: "Wartung & Hinweise", en: "Maintenance & notices" },
-    description: { de: "Ein Hinweis für alle und angekündigte Wartungen als Banner.", en: "A notice for everyone and announced maintenance as a banner." },
+    description: { de: "Ein Hinweis für alle, angekündigte Wartungen und Banner, die man einmal wegklickt.", en: "A notice for everyone, announced maintenance and banners people click away once." },
     keywords: { de: "wartung hinweis banner ankündigung ausfall update", en: "maintenance notice banner announcement downtime update" },
     entries: [
       { title: { de: "Hinweis für alle Personen", en: "Notice for everyone" }, anchor: "notice" },
       { title: { de: "Wartungshinweis", en: "Maintenance notice" }, anchor: "maintenance-window" },
+      { title: { de: "Banner zum Wegklicken", en: "Banners to click away" }, keywords: { de: "werbung app discord community neuigkeit einmalig schließen", en: "promotion app discord community news once close" }, anchor: "banners" },
     ],
   },
   {

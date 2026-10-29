@@ -1,3 +1,4 @@
+import { bannersFor } from "./instance-banners";
 import type { TransactionHook } from "./idempotency";
 import { teamReply } from "./service-desk";
 import { deletePlugin, updatePlugin } from "./plugins";
@@ -312,6 +313,8 @@ export function bootstrap(user: Identity, wid?: string) {
     instance: {
       name: instanceSettings().name,
       announcement: instanceSettings().announcement,
+      // Banners to click away once (lib/instance-banners.ts).
+      banners: bannersFor(user),
       allowWorkspaceCreation:
         instanceSettings().allowWorkspaceCreation || user.isAdmin,
       transcription: transcriptionEnabled() && !user.demo,

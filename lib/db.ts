@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 74) return;
+  if (globalDb.flowplanSchema === 75) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -953,7 +953,11 @@ function migrate(d: DatabaseSync) {
     for (const column of ["deletion_notice_at", "deletion_reminder_at", "deletion_due_at"])
       if (!columns.includes(column)) d.exec(`ALTER TABLE users ADD COLUMN ${column} INTEGER`);
   }
-  globalDb.flowplanSchema = 74;
+  // Schema 75 – banners people click away once (lib/instance-banners.ts):
+  // the banners of the administration and who closed or followed which.
+  d.exec(`CREATE TABLE IF NOT EXISTS instance_banners(id TEXT PRIMARY KEY,title TEXT NOT NULL DEFAULT '',message TEXT NOT NULL,link_url TEXT,link_label TEXT,tone TEXT NOT NULL DEFAULT 'info',audience TEXT NOT NULL DEFAULT 'all',surface TEXT NOT NULL DEFAULT 'everywhere',starts_at INTEGER,ends_at INTEGER,paused INTEGER NOT NULL DEFAULT 0,created_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS instance_banner_seen(banner_id TEXT NOT NULL REFERENCES instance_banners(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,dismissed_at INTEGER NOT NULL,clicked INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(banner_id,user_id));`);
+  globalDb.flowplanSchema = 75;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

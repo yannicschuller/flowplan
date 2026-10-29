@@ -116,6 +116,16 @@ const midnight = (now: number) => {
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 };
+// Different people who used Flowplan since `since`: the app's pings
+// (lib/user-activity.ts), else a request of one of their sessions.
+export const activeSince = (since: number) =>
+  Number(
+    one<{ n: number }>(
+      "SELECT COUNT(*) n FROM users u WHERE u.disabled=0 AND (u.last_active_at>=? OR EXISTS (SELECT 1 FROM sessions s WHERE s.user_id=u.id AND s.last_seen>=?))",
+      since,
+      since,
+    )?.n || 0,
+  );
 const events = (kind: string, since: number) => Number(one<{ n: number }>("SELECT COUNT(*) n FROM ops_events WHERE kind=? AND at>=?", kind, since)?.n || 0);
 
 export function monitoringLive(now = Date.now(), range: RequestRange = "24h") {
@@ -127,6 +137,7 @@ export function monitoringLive(now = Date.now(), range: RequestRange = "24h") {
     kpis: {
       ...live,
       signinsToday: events("login_success", midnight(now)),
+      activeToday: activeSince(midnight(now)),
       failedSigninsToday: events("login_failure", midnight(now)),
     },
     requests: requestSeries(range, now),

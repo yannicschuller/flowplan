@@ -1,6 +1,7 @@
 // Administration → Operations (lib/admin-ops.ts): the overview, the
 // activity log export (`?export=audit&format=csv|json&from&to`), health
-// alert settings with a test message, the maintenance notice and the push
+// alert settings with a test message, the maintenance notice, the banners
+// people click away once (`banners.*`) and the push
 // relay's signing keys (`pushRelay.keys`, `pushRelay.rotate`,
 // lib/push-identity.ts). Administrators only; API tokens never.
 import { z } from "zod";
@@ -8,6 +9,7 @@ import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import { audit } from "@/lib/db";
 import { pushIdentityStatus, rotatePushIdentity } from "@/lib/push-identity";
+import { deleteBanner, listBanners, saveBanner, showBannerAgain } from "@/lib/instance-banners";
 import { auditExport, checkHealthAlerts, opsOverview, requireOpsAdmin, saveAlertSettings, saveMaintenance, sendTestAlert } from "@/lib/admin-ops";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +60,19 @@ export const POST = withRequestLocale(async (req: Request) => {
       case "maintenance.save":
         saveMaintenance(user.id, body.notice ?? null);
         break;
+      // Banners people click away once (lib/instance-banners.ts).
+      case "banners.list":
+        return Response.json({ banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
+      case "banners.save": {
+        const saved = saveBanner(user, body.banner);
+        return Response.json({ id: saved, banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
+      }
+      case "banners.delete":
+        deleteBanner(user, z.string().uuid().parse(body.id));
+        return Response.json({ banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
+      case "banners.reset":
+        showBannerAgain(user, z.string().uuid().parse(body.id));
+        return Response.json({ banners: listBanners(user) }, { headers: { "Cache-Control": "no-store" } });
       // The push relay's signing key: list, or replace with a grace period
       // for the old one (immediate: the old one goes at once).
       case "pushRelay.keys":

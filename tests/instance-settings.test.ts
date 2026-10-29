@@ -65,6 +65,8 @@ test("admins configure the instance; stored values override the environment", ()
   assert.deepEqual(bootstrap(person, wid).instance, {
     name: "Muster GmbH",
     announcement: "Wartung am Samstag",
+    // No banners to click away (lib/instance-banners.ts).
+    banners: [],
     allowWorkspaceCreation: false,
     transcription: false,
     mail: false,

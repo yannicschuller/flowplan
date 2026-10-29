@@ -65,6 +65,7 @@ import {
   checkOrigin,
   HttpError,
   adminGroup,
+  adminUserIds,
   cookieName,
   rememberPolicy,
   hash,
@@ -932,6 +933,8 @@ async function handleGET(
         usage: workspaceUsage(),
         settings: instanceSettings(),
         localAccounts: localAccountInfo(),
+        // Administrators of every kind of sign-in (SSO groups included).
+        adminIds: adminUserIds(),
         localLogin: localLoginEnabled(),
         restorePending: pendingRestore(),
         // Who may use AI when the administration chose "selected people".

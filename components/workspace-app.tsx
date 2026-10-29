@@ -37,6 +37,7 @@ import { SpaceManager } from "./space-manager";
 import { SpaceExportDialog } from "./space-export";
 import { Onboarding } from "./onboarding";
 import { FindInPage } from "./find-in-page";
+import { InstanceBanners } from "./instance-banners";
 import { AppPromo } from "./app-promo";
 import { actionLabel, KeyboardShortcuts } from "./keyboard-shortcuts";
 import { Presentation } from "./presentation";
@@ -3118,6 +3119,7 @@ export default function WorkspaceApp({
             {boot.instance.announcement}
           </div>
         )}
+        <InstanceBanners initial={boot.instance?.banners || []} />
         {!online && (
           <div className="offline-banner" role="status">
             {t("Offline – du siehst den zuletzt gespeicherten Stand. Textänderungen werden später abgeglichen.", "Offline – you see the last saved state. Text changes are synced later.")}

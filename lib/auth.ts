@@ -13,6 +13,20 @@ export const hash = (value: string) =>
 export function adminGroup() {
   return process.env.OIDC_ADMIN_GROUP || "flowplan-admins";
 }
+// Who is an administrator, for the lists of the administration: the group
+// of their latest sign-in (SSO, local accounts and LDAP all write it into
+// the session), else the flag of a local or directory account. Accounts
+// without a session since then keep the last state they signed in with.
+export function adminUserIds(): string[] {
+  const needle = `%${JSON.stringify(adminGroup())}%`;
+  return all<{ id: string }>(
+    `SELECT u.id FROM users u WHERE u.disabled=0 AND (
+       (SELECT s.groups_json FROM sessions s WHERE s.user_id=u.id ORDER BY COALESCE(s.created_at,0) DESC, s.expires DESC LIMIT 1) LIKE ?
+       OR EXISTS (SELECT 1 FROM local_accounts a WHERE a.user_id=u.id AND a.is_admin=1)
+       OR EXISTS (SELECT 1 FROM ldap_accounts l WHERE l.user_id=u.id AND l.is_admin=1))`,
+    needle,
+  ).map((r) => r.id);
+}
 export function extractGroups(claims: Record<string, unknown>): string[] {
   const val = (process.env.OIDC_GROUPS_CLAIM || "groups")
     .split(".")

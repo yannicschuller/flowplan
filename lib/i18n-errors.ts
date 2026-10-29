@@ -4,6 +4,13 @@ import { translate, type Locale } from "./i18n";
 import { PAGE_LOCALE } from "./locale-tag";
 
 const exact: Record<string, string> = {
+  // Banners to click away once (lib/instance-banners.ts).
+  "Nur für Administratoren.": "Administrators only.",
+  "Der Link muss mit https:// beginnen oder auf eine Seite dieser Instanz zeigen.": "The link must start with https:// or point to a page of this instance.",
+  "Das Ende muss nach dem Beginn liegen.": "The end must be after the start.",
+  "Das Ende liegt in der Vergangenheit.": "The end is in the past.",
+  "Banner nicht gefunden.": "Banner not found.",
+  "Nicht mit einem API-Token.": "Not with an API token.",
   "Löschen muss später kommen als Sperren: mehr Tage als bei „Inaktive Konten sperren“.": "Deleting must come later than blocking: more days than under “Block inactive accounts”.",
   // Share links with password and end date, two-factor sign-in.
   "Bitte richte zuerst die Zwei-Faktor-Anmeldung ein.": "Please set up two-factor sign-in first.",
@@ -937,6 +944,7 @@ const exact: Record<string, string> = {
   "Diesen Wert gibt es in der Auswahl nicht.": "This value is not one of the options.",
 };
 const patterns: [RegExp, string][] = [
+  [/^Höchstens (\d+) Banner – lösche zuerst alte\.$/, "At most $1 banners – delete old ones first."],
   [/^Ein Notizbuch hat höchstens (\d+) Blätter\.$/, "A notebook has at most $1 sheets."],
   [/^Unbekannte Eigenschaft im KI-Prompt: (.+)$/, "Unknown property in the AI prompt: $1"],
   [/^Bitte höchstens (\d+) Seiten je (.+)-Export auswählen\.$/, "Please select at most $1 pages per $2 export."],

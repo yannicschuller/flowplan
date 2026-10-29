@@ -2474,6 +2474,31 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/time-reports`, { json: body, idempotent: true }, options);
   }
 
+  /** Banners of the administration for the signed-in person — Banners each person sees until they close them (Administration → Maintenance & notices). Not with API tokens: the answer is empty. Answered with `Cache-Control: no-store`. (GET /api/banners) */
+  async listBanners(options?: RequestOptions): Promise<{
+    banners: ({
+      id?: string;
+      title?: string;
+      message?: string;
+      linkUrl?: string | null;
+      linkLabel?: string | null;
+      tone?: "info" | "promo" | "success" | "warning";
+      surface?: "everywhere" | "browser";
+    })[];
+  }> {
+    return this.json<{
+    banners: ({
+      id?: string;
+      title?: string;
+      message?: string;
+      linkUrl?: string | null;
+      linkLabel?: string | null;
+      tone?: "info" | "promo" | "success" | "warning";
+      surface?: "everywhere" | "browser";
+    })[];
+  }>("GET", `/api/banners`, {}, options);
+  }
+
   /** Scheduled maintenance announced by the administration — `notice` is null when none is announced or it has ended. Answered with `Cache-Control: no-store`. (GET /api/maintenance) */
   async maintenanceNotice(options?: RequestOptions): Promise<{
     notice: {

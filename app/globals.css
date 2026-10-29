@@ -11910,7 +11910,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   color: #b4c6f5;
 }
 .kpi-grid.cards {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -12181,8 +12181,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 1100px) {
-  .mon-health ul,
-  .kpi-grid.cards {
+  .mon-health ul {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .mon-grid {
@@ -12196,7 +12195,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     border-bottom: 1px solid var(--border);
   }
   .live-strip .kpi-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 @media (max-width: 860px) {
@@ -28424,4 +28423,148 @@ label.ws-search input {
 ::highlight(find-current) {
   background-color: #f59e0b;
   color: #1c1917;
+}
+
+/* Banners to click away once (components/instance-banners.tsx). */
+.instance-banners {
+  display: grid;
+}
+.instance-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--blue-light);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.instance-banner > svg {
+  flex: none;
+  color: var(--blue);
+}
+.instance-banner.tone-promo {
+  background: color-mix(in srgb, var(--blue) 14%, var(--bg));
+}
+.instance-banner.tone-success {
+  background: color-mix(in srgb, #16a34a 12%, var(--bg));
+}
+.instance-banner.tone-success > svg {
+  color: #15803d;
+}
+.instance-banner.tone-warning {
+  background: color-mix(in srgb, #f59e0b 16%, var(--bg));
+}
+.instance-banner.tone-warning > svg {
+  color: #b45309;
+}
+.instance-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.instance-banner-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.instance-banner-link:hover {
+  border-color: var(--blue);
+}
+.instance-banner-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--muted);
+}
+@media (hover: hover) {
+  .instance-banner-close:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+}
+@media (max-width: 600px) {
+  .instance-banner {
+    flex-wrap: wrap;
+    padding-left: 12px;
+  }
+  .instance-banner-text {
+    flex-basis: calc(100% - 70px);
+  }
+  .instance-banner-link {
+    margin-left: 26px;
+  }
+}
+.main > .instance-banners:first-child .instance-banner:first-child {
+  padding-top: calc(7px + var(--safe-top, 0px));
+}
+
+/* Administration: the banners to click away (settings/admin/banners.tsx). */
+.admin-banner-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-banner-list > li {
+  display: grid;
+  gap: 4px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+.admin-banner-list > li:first-child {
+  border-top: 0;
+}
+.admin-banner-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-banner-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 2px;
+}
+.admin-banner-delete {
+  color: var(--signal);
+}
+.admin-banner-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-banner-preview {
+  display: grid;
+  gap: 6px;
+}
+.admin-banner-preview .instance-banner {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.admin-banner-error {
+  margin: 0;
+  padding: 10px 20px;
+  color: var(--signal);
+}
+.admin-banner-form textarea {
+  resize: vertical;
 }

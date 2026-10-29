@@ -319,6 +319,7 @@ function Kpis({ d }: { d: MonitoringOverview }) {
       <Kpi label={t("gerade aktiv", "active now")} value={num(k.activeNow)} note={t("Personen in den letzten 5 Minuten", "people in the last 5 minutes")}>
         <Sparkline values={d.active.slice(-24).map((p) => p.people)} label={t("Aktive Personen je Stunde, 24 Std.", "Active people per hour, 24 h")} />
       </Kpi>
+      <Kpi label={t("heute aktiv", "active today")} value={num(k.activeToday)} note={t("verschiedene Personen seit Mitternacht", "different people since midnight")} />
       <Kpi
         label={t("Anfragen/Min.", "Requests/min")}
         value={on ? num(k.requestsPerMinute) : "–"}

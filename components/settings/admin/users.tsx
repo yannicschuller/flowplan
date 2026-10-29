@@ -55,12 +55,14 @@ export default function UsersSection() {
     live.users.get(u.id) ?? { openAt: u.last_open_at ?? null, activeAt: u.last_active_at ?? null };
   const liveNow = live.now || now;
   const local = data.localAccounts || {};
+  const admins = new Set(data.adminIds || []);
+  const isAdmin = (id: string) => admins.has(id) || !!local[id]?.admin;
   const states = new Map(data.users.map((u) => [u.id, stateOf(u, now)]));
   const count = (f: Filter) => data.users.filter((u) => matches(u, f)).length;
   function matches(u: User, f: Filter) {
     const s = states.get(u.id)!.key;
     if (f === "here") return ["active", "idle"].includes(activityState(activityOf(u), liveNow));
-    return f === "all" || (f === "admins" ? !!local[u.id]?.admin : s === f);
+    return f === "all" || (f === "admins" ? isAdmin(u.id) : s === f);
   }
   const needle = query.trim().toLocaleLowerCase();
   const shown = data.users.filter((u) => matches(u, filter) && (!needle || `${u.name} ${u.email}`.toLocaleLowerCase().includes(needle)));
@@ -237,6 +239,7 @@ export default function UsersSection() {
                   key={u.id}
                   user={u}
                   local={local[u.id]}
+                  admin={isAdmin(u.id)}
                   usage={data.userUsage?.find((x) => x.id === u.id)}
                   state={states.get(u.id)!}
                   activity={activityOf(u)}
@@ -345,6 +348,7 @@ function signIn(local: Local | undefined, t: (de: string, en: string) => string)
 function UserRow({
   user: u,
   local,
+  admin,
   usage,
   state,
   activity,
@@ -355,6 +359,7 @@ function UserRow({
 }: {
   user: User;
   local?: Local;
+  admin: boolean;
   usage?: Usage;
   state: ReturnType<typeof stateOf>;
   activity: Pick<UserActivity, "openAt" | "activeAt">;
@@ -376,7 +381,7 @@ function UserRow({
           <span>
             <strong>
               {u.name}
-              {local?.admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
+              {admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
               {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
               <DeletionBadge due={u.deletion_due_at} />
             </strong>
@@ -423,6 +428,7 @@ function UserSheet({
   const t = useT();
   const { act, load } = useAdminData();
   const local = data.localAccounts?.[u.id];
+  const admin = !!local?.admin || !!data.adminIds?.includes(u.id);
   const usage = data.userUsage?.find((x) => x.id === u.id);
   const ai = data.aiPolicy?.enabled && data.aiPolicy.access === "selected" ? { allowed: data.aiPolicy.allowed.includes(u.id) } : null;
   const [resetLink, setResetLink] = useState("");
@@ -448,7 +454,7 @@ function UserSheet({
           <small>{u.email}</small>
           <span className="admin-user-badges">
             <StateBadge state={state} />
-            {local?.admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
+            {admin && <StatusBadge tone="info">{t("Admin", "Admin")}</StatusBadge>}
             {local && !local.verified && <StatusBadge tone="warn">{t("E-Mail unbestätigt", "E-mail unconfirmed")}</StatusBadge>}
             <DeletionBadge due={u.deletion_due_at} />
           </span>

@@ -74,6 +74,7 @@ export function LiveKpis({ live }: { live: MonitoringLive }) {
   return (
     <div className="kpi-grid">
       <Kpi label={t("gerade aktiv", "active now")} value={num(k.activeNow)} />
+      <Kpi label={t("heute aktiv", "active today")} value={num(k.activeToday)} />
       <Kpi label={t("Anfragen/Min.", "Requests/min")} value={live.collecting.enabled ? num(k.requestsPerMinute) : "–"} />
       <Kpi label={t("Fehlerquote (1 Std.)", "Error rate (1 h)")} value={live.collecting.enabled ? percent(k.errorRate) : "–"} />
       <Kpi label={t("Anmeldungen heute", "Sign-ins today")} value={num(k.signinsToday)} />

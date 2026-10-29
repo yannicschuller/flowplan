@@ -295,6 +295,8 @@ export type Bootstrap = {
   instance?: {
     name: string;
     announcement: string;
+    // Banners to click away once (lib/instance-banners.ts).
+    banners?: import("./instance-banners").Banner[];
     allowWorkspaceCreation: boolean;
     // Voice notes can be turned into text (WHISPER_URL is set).
     transcription?: boolean;

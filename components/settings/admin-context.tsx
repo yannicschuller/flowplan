@@ -57,6 +57,8 @@ export type AdminData = {
   settings: InstanceSettings;
   localLogin?: boolean;
   localAccounts?: Record<string, { admin: boolean; verified: boolean; passkeys: number; totp?: boolean }>;
+  // Administrators of every kind of sign-in (lib/auth.ts adminUserIds).
+  adminIds?: string[];
   mail: { configured: boolean; host: string | null; from: string | null; pending: number; failed: number; sentWeek: number; lastError: string | null };
   markdownExport: MarkdownExportStatus;
   spaceGitExport: SpaceGitOverview;

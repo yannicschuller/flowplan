@@ -1,7 +1,8 @@
 "use client";
 // Administration → Wartung & Hinweise: the notice everyone sees above every
-// page (instance setting "announcement") and a maintenance window with start
-// and end (lib/admin-ops.ts, shown as a banner until it has ended).
+// page (instance setting "announcement"), a maintenance window with start
+// and end (lib/admin-ops.ts, shown as a banner until it has ended) and the
+// banners each person clicks away once (./banners.tsx).
 import { useEffect, useRef, useState } from "react";
 import { Megaphone } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -12,6 +13,7 @@ import { EmptyState, SaveState, SettingGroup, SettingRow, StatusBadge, useSaveSt
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
 import { AdminStatus, InstanceText, type StatusItem } from "./parts";
+import { BannersSection } from "./banners";
 
 type Notice = OpsOverview["maintenance"];
 const when = (ms: number) =>
@@ -74,6 +76,7 @@ export default function MaintenanceSection() {
         />
       </SettingGroup>
       <MaintenanceWindow notice={notice} phase={phase} onSaved={setNotice} />
+      <BannersSection />
     </>
   );
 }
