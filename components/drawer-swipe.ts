@@ -51,6 +51,8 @@ export function useDrawerSwipe(
     let width = 0;
     let last = { x: 0, t: 0 };
     let velocity = 0;
+    let pointer: { id: number; target: Element | null } | null = null;
+    let unlisten: (() => void) | null = null;
     const parts = () => ({
       sidebar: document.querySelector<HTMLElement>(".app-shell > .sidebar"),
       scrim: document.querySelector<HTMLElement>(".app-shell > .mobile-scrim"),
@@ -72,6 +74,8 @@ export function useDrawerSwipe(
       for (const el of [sidebar, scrim]) el?.removeAttribute("style");
     };
     const down = (e: TouchEvent) => {
+      // A drag whose end never arrived settles first instead of staying put.
+      if (dragging) up();
       start = null;
       dragging = false;
       if (!phone.matches || e.touches.length !== 1) return;
@@ -98,6 +102,22 @@ export function useDrawerSwipe(
       };
       last = { x: touch.clientX, t: start.t };
       velocity = 0;
+      // On the touch's own target: touch events keep going to it even when
+      // it leaves the document (a re-rendered block handle), and then never
+      // reach the document – the drawer would stay where it was.
+      unlisten?.();
+      const el = e.target as EventTarget;
+      el.addEventListener("touchmove", move as EventListener, {
+        passive: false,
+      });
+      el.addEventListener("touchend", up as EventListener);
+      el.addEventListener("touchcancel", up as EventListener);
+      unlisten = () => {
+        el.removeEventListener("touchmove", move as EventListener);
+        el.removeEventListener("touchend", up as EventListener);
+        el.removeEventListener("touchcancel", up as EventListener);
+        unlisten = null;
+      };
     };
     const move = (e: TouchEvent) => {
       if (!start) return;
@@ -109,10 +129,18 @@ export function useDrawerSwipe(
         // Up or down, or the wrong way: not the drawer.
         if (Math.abs(dy) > Math.abs(dx) || (start.open ? dx > 0 : dx < 0)) {
           start = null;
+          unlisten?.();
           return;
         }
         dragging = true;
+        // Whatever took the pointer on the way down lets it go (a block
+        // handle cancels its drag when it loses the capture).
+        const held = pointer?.target;
+        if (pointer && held?.hasPointerCapture?.(pointer.id))
+          held.releasePointerCapture(pointer.id);
+        window.getSelection()?.removeAllRanges();
       }
+      e.stopPropagation();
       e.preventDefault();
       const now = performance.now();
       if (now > last.t) velocity = (touch.clientX - last.x) / (now - last.t);
@@ -122,11 +150,14 @@ export function useDrawerSwipe(
         : Math.min(1, Math.max(0, dx) / width);
       place(shown);
     };
-    const up = () => {
+    const up = (e?: TouchEvent) => {
       if (!start) return;
       const was = start;
       start = null;
+      unlisten?.();
       if (!dragging) return;
+      // No tap on whatever is under the finger at the end.
+      if (e?.cancelable) e.preventDefault();
       dragging = false;
       const { sidebar } = parts();
       const shown = sidebar
@@ -152,16 +183,25 @@ export function useDrawerSwipe(
       state.current.setOpen(next);
       window.setTimeout(release, 220);
     };
+    // Once the drawer has the gesture, the page underneath gets nothing more
+    // of it (a block handle in the document would otherwise drag along).
+    const pointerDown = (e: PointerEvent) => {
+      if (e.pointerType === "touch" && e.isPrimary)
+        pointer = { id: e.pointerId, target: e.target as Element | null };
+    };
+    const swallow = (e: PointerEvent) => {
+      if (dragging && e.pointerType === "touch") e.stopImmediatePropagation();
+    };
+    window.addEventListener("pointerdown", pointerDown, true);
+    for (const type of ["pointermove", "pointerup", "pointercancel"] as const)
+      window.addEventListener(type, swallow, true);
     document.addEventListener("touchstart", down, { passive: true });
-    // Not passive: a sideways drag must not scroll the page underneath.
-    document.addEventListener("touchmove", move, { passive: false });
-    document.addEventListener("touchend", up);
-    document.addEventListener("touchcancel", up);
     return () => {
       document.removeEventListener("touchstart", down);
-      document.removeEventListener("touchmove", move);
-      document.removeEventListener("touchend", up);
-      document.removeEventListener("touchcancel", up);
+      window.removeEventListener("pointerdown", pointerDown, true);
+      for (const type of ["pointermove", "pointerup", "pointercancel"] as const)
+        window.removeEventListener(type, swallow, true);
+      unlisten?.();
       release();
     };
   }, []);
