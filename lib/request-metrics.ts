@@ -10,6 +10,9 @@
 import diagnosticsChannel from "node:diagnostics_channel";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { noteRequest } from "./metrics";
+import { clientAddress } from "./client-address";
+import { noteRefusal } from "./security-detect";
+import { securityEvent } from "./security-events";
 
 const SKIP = /^\/(?:_next\/(?:static|image|webpack-hmr)|__nextjs|fonts\/|icons\/|favicon\.ico|sw\.js|manifest\.webmanifest|icon\.svg|fonts\.css|api\/health(?:[/?]|$)|api\/metrics(?:[/?]|$))/;
 
@@ -30,6 +33,7 @@ export function startRequestMetrics() {
   });
   diagnosticsChannel.subscribe("http.server.response.finish", (message) => {
     const { response } = message as Message;
+    noteProbe(response);
     const start = started.get(response);
     if (start === undefined) return;
     started.delete(response);
@@ -40,4 +44,25 @@ export function startRequestMetrics() {
       // Counting never disturbs a request.
     }
   });
+}
+
+// Refused API requests per address (lib/security-detect.ts): many of them in
+// a short time are someone probing for addresses and ids.
+function noteProbe(response: ServerResponse) {
+  try {
+    const status = response.statusCode;
+    if (status !== 401 && status !== 403 && status !== 404) return;
+    const request = (response as ServerResponse & { req?: IncomingMessage }).req;
+    const path = request?.url || "";
+    if (!path.startsWith("/api/")) return;
+    const headers = new Headers();
+    for (const name of ["x-forwarded-for", "x-real-ip", "user-agent"]) {
+      const value = request?.headers[name];
+      if (typeof value === "string") headers.set(name, value);
+    }
+    const address = clientAddress(headers);
+    noteRefusal(address, status, path, Date.now(), (detail) => securityEvent("request.probing", { headers, detail }));
+  } catch {
+    // Counting never disturbs a request.
+  }
 }

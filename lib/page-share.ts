@@ -6,6 +6,7 @@
 // waits in invite_grants until they sign in (lib/auth.ts acceptInvites).
 import { z } from "zod";
 import { all, id, one, run } from "./db";
+import { securityEvent } from "./security-events";
 import { HttpError, inviteToken } from "./auth";
 import { memberRole, requirePage } from "./permissions";
 import { canManageSpace, removeFromWorkspace } from "./workspace-lifecycle";
@@ -91,6 +92,7 @@ export function sharePage(user: Identity, raw: unknown) {
     return { status: "added" as const, name: target.name, mailed, ...pageShares(user, page.id) };
   }
   // No account yet: an invitation as a guest, the grant waits for sign-in.
+  securityEvent("invite.created", { actorId: user.id, subject: email, detail: `guest ${b.role} page ${page.id}` });
   const invite = one<{ guest: number; role: Role }>("SELECT guest,role FROM invites WHERE workspace_id=? AND email=?", page.workspace_id, email);
   if (!invite)
     run(

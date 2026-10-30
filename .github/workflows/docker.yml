@@ -111,3 +111,33 @@ jobs:
             echo "::error::Coolify did not deploy ($status). 401/403: the API token needs the “deploy” permission and the team of the resource; check Settings → Advanced → API access and its allowed IPs."
             exit 1
           fi
+
+  # Known vulnerabilities in the published image (operating system packages
+  # and npm dependencies), with Trivy. Reports only – a finding never blocks
+  # a release or the beta; it shows in the run's summary. Runs on GitHub's
+  # runners, so nothing is installed on the self-hosted machine.
+  scan:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Scan the image with Trivy
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}"
+          echo "Scanning $image"
+          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.56.2 image \
+            --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln --exit-code 0 --format table \
+            --timeout 15m "$image" | tee "$RUNNER_TEMP/trivy.txt"
+          {
+            echo "## Trivy: HIGH and CRITICAL with a fix available"
+            echo
+            echo '```'
+            tail -c 60000 "$RUNNER_TEMP/trivy.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

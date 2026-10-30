@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import * as Y from "yjs";
 import { all, one, run, id, transaction, audit } from "./db";
+import { noteDangerousHtml } from "./security-events";
 import { HttpError } from "./auth";
 import { publicPage, publicFile, publishedHtml } from "./publication";
 import { cleanHtml, htmlState, stateHtml } from "./document-server";
@@ -344,6 +345,8 @@ function writableHtml(
     if (attribs["data-mention"]) mentions.add(attribs["data-mention"]);
     return { tagName, attribs };
   });
+  // Scripts in what a guest sends are removed below; noted for the security log.
+  noteDangerousHtml(html, { detail: `share link ${token.slice(0, 6)}…` });
   // Placeholders for links and files the guest cannot see map back.
   const hidden = new Map<string, string>();
   publishedHtml(original, token, pages, hidden);

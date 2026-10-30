@@ -5,6 +5,7 @@ import type { Identity, User } from "./types";
 import { identityFromApiToken } from "./api-tokens";
 import { needsTwoFactorSetup } from "./two-factor-policy";
 import { recordOpsEvent } from "./ops-events";
+import { blockedRequest, securityEvent } from "./security-events";
 import { noteActive } from "./metrics";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
@@ -118,8 +119,11 @@ export function identityFromToken(token: string): Identity | null {
   };
 }
 export async function currentUser() {
+  const requestHeaders = await headers();
+  // Blocked addresses (Administration → Sicherheit) are signed out.
+  if (blockedRequest(requestHeaders)) return null;
   // Scripts and integrations sign in with a personal API token.
-  const authorization = (await headers()).get("authorization");
+  const authorization = requestHeaders.get("authorization");
   if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
   const jar = await cookies();
   const token = jar.get(cookieName)?.value;
@@ -129,6 +133,7 @@ export async function currentUser() {
 // tests without a Next.js request around them): a personal API token, or
 // the session cookie.
 export function identityFromRequest(req: Request): Identity | null {
+  if (blockedRequest(req.headers)) return null;
   const authorization = req.headers.get("authorization");
   if (authorization?.startsWith("Bearer ")) return identityFromApiToken(authorization);
   return sessionIdentityFromRequest(req);
@@ -186,7 +191,20 @@ export async function issueSession(
     : policy
       ? Math.min(now + policy.idleHours * 3_600_000, rememberedEnd(now, !!options.sso, policy))
       : now + hours * 3_600_000;
-  const agent = ((await headers()).get("user-agent") || "").slice(0, 300);
+  const requestHeaders = await headers();
+  const agent = (requestHeaders.get("user-agent") || "").slice(0, 300);
+  // A security event (lib/security-events.ts): the detection compares it
+  // with earlier sign-ins and failures of the same account.
+  if (!demo) {
+    const email = one<{ email: string }>("SELECT email FROM users WHERE id=?", userId)?.email || "";
+    securityEvent("login.success", { actorId: userId, subject: email, headers: requestHeaders, detail: options.sso ? "sso" : "" });
+    // Admin rights that came with this sign-in (SSO or directory group) and
+    // were not there at the previous one.
+    const previous = one<{ groups_json: string }>("SELECT groups_json FROM sessions WHERE user_id=? ORDER BY COALESCE(created_at,0) DESC LIMIT 1", userId);
+    const admin = groups.includes(adminGroup());
+    if (previous && admin !== (JSON.parse(previous.groups_json) as string[]).includes(adminGroup()))
+      securityEvent(admin ? "admin.granted" : "admin.revoked", { actorId: userId, headers: requestHeaders, detail: `${options.sso ? "SSO" : "directory"} group at sign-in` });
+  }
   run(
     "INSERT INTO sessions(token,user_id,groups_json,expires,created_at,remember,sso,last_seen,agent) VALUES(?,?,?,?,?,?,?,?,?)",
     hash(token),
@@ -340,6 +358,8 @@ export function checkOrigin(req: Request) {
   // be forged by another site (the cookie is ignored for them).
   if (req.headers.get("authorization")?.startsWith("Bearer fp_")) return;
   const origin = req.headers.get("origin");
-  if (origin !== new URL(appUrl()).origin)
+  if (origin !== new URL(appUrl()).origin) {
+    securityEvent("request.origin", { headers: req.headers, detail: `${origin || "no origin"} → ${new URL(req.url).pathname}` });
     throw new HttpError(403, "Ungültiger Anfrageursprung.");
+  }
 }

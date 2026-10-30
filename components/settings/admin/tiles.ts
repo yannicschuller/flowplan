@@ -145,6 +145,15 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
       tone: s.security.problem ? "error" : undefined,
       badge: s.security.problem ? t("Schlüssel nicht lesbar", "Key not readable") : undefined,
     },
+    threats: {
+      line: s.securityCenter.open
+        ? t(`${s.securityCenter.open} offene Vorfälle`, `${s.securityCenter.open} open incidents`)
+        : t(`Keine offenen Vorfälle · ${s.securityCenter.failedDay} Fehlversuche (24 Std.)`, `No open incidents · ${s.securityCenter.failedDay} failures (24 h)`),
+      tone: s.securityCenter.critical ? "error" : s.securityCenter.open ? "warn" : undefined,
+      badge: s.securityCenter.critical ? t(`${s.securityCenter.critical} kritisch`, `${s.securityCenter.critical} critical`) : undefined,
+      value: num(s.securityCenter.open),
+      valueLabel: t("offen", "open"),
+    },
     audit: {
       line: s.audit.day === 1 ? t("1 Änderung in 24 Stunden", "1 change in 24 hours") : t(`${s.audit.day} Änderungen in 24 Stunden`, `${s.audit.day} changes in 24 hours`),
       value: num(s.audit.day),

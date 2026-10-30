@@ -383,6 +383,27 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     ],
   },
   {
+    id: "threats",
+    area: "admin",
+    group: "security",
+    icon: "ShieldCheck",
+    title: { de: "Angriffe & Vorfälle", en: "Threats & incidents" },
+    description: { de: "Vorfälle, Anmeldeversuche, Sperren, Sitzungen und offene Zugänge – mit dem, was zu tun ist.", en: "Incidents, sign-in attempts, blocks, sessions and open ways in – with what to do." },
+    keywords: {
+      de: "sicherheit angriff vorfall brute force passwort raten credential stuffing sperren blockieren ip adresse netz sitzungen abmelden token freigabelinks öffentlich siem log otel opentelemetry prometheus fail2ban crowdsec erkennung",
+      en: "security attack incident brute force password guessing credential stuffing block ip address network sessions sign out tokens share links public siem log otel opentelemetry prometheus fail2ban crowdsec detection",
+    },
+    entries: [
+      { title: { de: "Vorfälle", en: "Incidents" }, anchor: "incidents" },
+      { title: { de: "Adressen mit Fehlversuchen", en: "Addresses with failures" }, anchor: "addresses" },
+      { title: { de: "Sicherheitsereignisse", en: "Security events" }, keywords: { de: "export csv json", en: "export csv json" }, anchor: "events" },
+      { title: { de: "Angemeldete Personen", en: "Signed-in people" }, keywords: { de: "sitzungen beenden", en: "end sessions" }, anchor: "sessions" },
+      { title: { de: "Offene Zugänge", en: "Open ways in" }, keywords: { de: "api-tokens freigabelinks öffentliche seiten", en: "api tokens share links public pages" }, anchor: "access" },
+      { title: { de: "Sperren", en: "Blocks" }, keywords: { de: "ip netz sperren", en: "ip network block" }, anchor: "blocks" },
+      { title: { de: "Erkennung & Anbindung", en: "Detection & connection" }, keywords: { de: "regeln opentelemetry prometheus log", en: "rules opentelemetry prometheus log" }, anchor: "setup" },
+    ],
+  },
+  {
     id: "security",
     area: "admin",
     group: "security",

@@ -32,6 +32,7 @@ export function AlertsForm({
     ["storage_high", t("Speicher > 90 % des Kontingents", "Storage > 90 % of the quota")],
     ["worker_error", t("Worker-Fehler", "Worker error")],
     ["login_failures", t("Viele fehlgeschlagene Anmeldungen (50 in einer Stunde)", "Many failed sign-ins (50 in one hour)")],
+    ["security", t("Sicherheitsvorfälle (sofort, siehe Sicherheit)", "Security incidents (right away, see Security)")],
   ];
   return (
     <SettingGroup

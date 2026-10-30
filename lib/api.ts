@@ -189,6 +189,8 @@ import {
 import { z } from "zod";
 import * as Y from "yjs";
 import { all, one, run, id, transaction, audit } from "./db";
+import { securityEvent } from "./security-events";
+import { noteDangerousHtml } from "./security-events";
 import { HttpError, acceptPendingInvites, inviteToken } from "./auth";
 import {
   cleanHtml,
@@ -778,7 +780,7 @@ export function command(
         const content = z.string().max(2_000_000).parse(b.content);
         const html =
           b.format === "html"
-            ? cleanHtml(content)
+            ? (noteDangerousHtml(content, { actorId: user.id, detail: "page import" }), cleanHtml(content))
             : b.format === "markdown"
               ? markdownHtml(content)
               : `<p>${escaped(content).replaceAll("\n", "</p><p>")}</p>`;
@@ -2350,13 +2352,15 @@ export function command(
         break;
       case "page.publish": {
         const p = write();
+        const enabled = z.boolean().parse(b.enabled);
         publishPage(
           user,
           p,
-          z.boolean().parse(b.enabled),
+          enabled,
           z.boolean().optional().parse(b.includeChildren) ?? false,
           z.boolean().optional().parse(b.allowCopy) ?? true,
         );
+        if (enabled) securityEvent("share.public", { actorId: user.id, detail: `page ${p.id}${b.includeChildren === true ? " with subpages" : ""}` });
         break;
       }
       case "publication.copy":
@@ -2480,6 +2484,7 @@ export function command(
           Date.now(),
           inviteToken(),
         );
+        securityEvent("invite.created", { actorId: user.id, subject: email, detail: `${role}${b.guest === true ? " guest" : ""} workspace ${wid()}` });
         // With SMTP configured the person hears about it by e-mail.
         {
           const ws = one<{ name: string }>("SELECT name FROM workspaces WHERE id=?", wid());
@@ -2558,6 +2563,7 @@ export function command(
             wid(),
             target,
           );
+          securityEvent("role.changed", { actorId: user.id, severity: role === "owner" ? "warn" : "info", detail: `${target} → ${role} in workspace ${wid()}` });
           // An SSO-managed membership keeps its source: the next SSO
           // sign-in sets the mapped role again (lib/sso-mappings.ts).
         }
@@ -2916,6 +2922,7 @@ export function command(
             "Eigenes Konto kann nicht deaktiviert werden.",
           );
         setUserDisabled(uid, !!b.disabled);
+        securityEvent("admin.user", { actorId: user.id, detail: `${b.disabled ? "disabled" : "enabled"} ${uid}` });
         break;
       }
       case "admin.quota": {
@@ -2937,20 +2944,24 @@ export function command(
         if (uid === user.id && !b.admin)
           throw new HttpError(400, "Das eigene Admin-Recht kann nur eine andere Person entziehen.");
         setLocalAdmin(uid, b.admin === true);
+        securityEvent(b.admin === true ? "admin.granted" : "admin.revoked", { actorId: user.id, detail: `local account ${uid}` });
         break;
       }
       // Lost phone: the authenticator app of an account is turned off.
       case "admin.twoFactorReset":
         requireAdmin(user);
         adminResetTwoFactor(uuid.parse(b.userId));
+        securityEvent("admin.user", { actorId: user.id, detail: `two-factor reset ${b.userId}` });
         break;
       case "admin.resetLink":
         requireAdmin(user);
         result = { url: adminResetLink(uuid.parse(b.userId)) };
+        securityEvent("admin.user", { actorId: user.id, detail: `password reset link ${b.userId}` });
         break;
       case "admin.revoke":
         requireAdmin(user);
         run("DELETE FROM sessions WHERE user_id=?", uuid.parse(b.userId));
+        securityEvent("session.revoked", { actorId: user.id, detail: `all sessions of ${b.userId}` });
         break;
       default:
         throw new HttpError(400, "Unbekannte Aktion.");

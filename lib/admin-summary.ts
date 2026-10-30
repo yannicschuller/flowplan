@@ -110,6 +110,13 @@ export function adminSummary(now = Date.now(), update: UpdateStatus | null = nul
     push: pushSummary(now),
     ai: { ...ai, tokensToday: tokens.length ? tokens[tokens.length - 1].tokensIn + tokens[tokens.length - 1].tokensOut : 0 },
     security: { encrypted: key.enabled, problem: !!key.problem },
+    // Administration → Sicherheit (lib/security-admin.ts).
+    securityCenter: {
+      open: count("SELECT COUNT(*) n FROM security_incidents WHERE resolved_at IS NULL"),
+      critical: count("SELECT COUNT(*) n FROM security_incidents WHERE resolved_at IS NULL AND severity='critical'"),
+      failedDay: count("SELECT COUNT(*) n FROM security_events WHERE kind='login.failure' AND at>=?", now - DAY),
+      blocks: count("SELECT COUNT(*) n FROM security_blocks WHERE until IS NULL OR until>?", now),
+    },
     audit: { day: count("SELECT COUNT(*) n FROM audit WHERE created_at>=?", sqliteTime(now - DAY)) },
     monitoring: {
       failingWorkers: workers.map((w) => w.key),

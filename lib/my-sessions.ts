@@ -2,39 +2,15 @@
 // signed in and to sign out a single device or all others.
 import { createHash } from "node:crypto";
 import { all, run } from "./db";
+import { securityEvent } from "./security-events";
 import { HttpError, hash } from "./auth";
 import type { Identity } from "./types";
+import { deviceName } from "./device-name";
+export { deviceName };
 
 // A short public id for a session: derived from the stored token hash, so it
 // can neither sign in nor be turned back into the hash.
 const publicId = (tokenHash: string) => createHash("sha256").update(`session:${tokenHash}`).digest("hex").slice(0, 20);
-
-export function deviceName(agent: string) {
-  const app = /FlowplanMobile\//.test(agent) ? "Flowplan app" : /FlowplanDesktop\/|Electron\//.test(agent) ? "Flowplan desktop" : "";
-  const browser = /Edg\//.test(agent)
-    ? "Edge"
-    : /Firefox\//.test(agent)
-      ? "Firefox"
-      : /Chrome\//.test(agent)
-        ? "Chrome"
-        : /Safari\//.test(agent)
-          ? "Safari"
-          : "";
-  const system = /iPad/.test(agent)
-    ? "iPad"
-    : /iPhone/.test(agent)
-      ? "iPhone"
-      : /Android/.test(agent)
-        ? "Android"
-        : /Mac OS X|Macintosh/.test(agent)
-          ? "macOS"
-          : /Windows/.test(agent)
-            ? "Windows"
-            : /Linux/.test(agent)
-              ? "Linux"
-              : "";
-  return { app, browser, system };
-}
 
 export function mySessions(user: Identity, currentToken: string | undefined) {
   const current = currentToken ? hash(currentToken) : "";
@@ -63,5 +39,6 @@ export function endMySessions(user: Identity, currentToken: string | undefined, 
   );
   if (!ended.length && target.others !== true) throw new HttpError(404, "Diese Sitzung gibt es nicht mehr.");
   for (const s of ended) run("DELETE FROM sessions WHERE token=? AND user_id=?", s.token, user.id);
+  if (ended.length) securityEvent("session.revoked", { actorId: user.id, severity: "info", detail: target.others === true ? `${ended.length} other sessions` : "one session" });
   return { ended: ended.length, current: ended.some((s) => s.token === current) };
 }

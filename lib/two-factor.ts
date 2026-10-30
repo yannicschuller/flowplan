@@ -14,6 +14,7 @@
 import { createHash, randomInt } from "node:crypto";
 import { z } from "zod";
 import { one, run } from "./db";
+import { securityEvent } from "./security-events";
 import { HttpError, appUrl } from "./auth";
 import { addressKey } from "./client-address";
 import { failed, limited, localGroups, verifyPassword } from "./local-auth";
@@ -122,6 +123,7 @@ export function confirmTotpSetup(userId: string, input: unknown, locale: Locale,
   const step = matchTotp(openTotp(userId, stored.secret), code, now);
   if (step === null) throw new HttpError(400, t("Der Code stimmt nicht. Bitte den aktuellen Code aus der App eingeben.", "The code is wrong. Please enter the current code from the app."));
   run("UPDATE user_totp SET enabled=1,last_step=?,enabled_at=? WHERE user_id=?", step, now, userId);
+  securityEvent("account.2fa_on", { actorId: userId });
   return { recoveryCodes: newRecoveryCodes(userId) };
 }
 
@@ -187,6 +189,7 @@ export async function disableTotp(userId: string, input: unknown, address: strin
     throw new HttpError(409, t("Auf dieser Instanz ist die Zwei-Faktor-Anmeldung vorgeschrieben. Lege zuerst einen Passkey an.", "Two-factor sign-in is required on this instance. Add a passkey first."));
   await confirmWithPasswordOrCode(userId, input, address, t);
   removeTotp(userId);
+  securityEvent("account.2fa_off", { actorId: userId, address });
   return twoFactorStatus(userId);
 }
 export async function regenerateRecoveryCodes(userId: string, input: unknown, address: string, locale: Locale) {

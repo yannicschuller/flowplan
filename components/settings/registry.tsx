@@ -60,6 +60,7 @@ import MailSection from "./admin/mail";
 import PushSection from "./admin/push";
 import AdminAiSection from "./admin/ai";
 import SecuritySection from "./admin/security";
+import SecurityCenterSection from "./admin/security-center";
 import AuditSection from "./admin/audit";
 import MonitoringSection from "./admin/monitoring";
 import GeneralSection from "./admin/general";
@@ -127,6 +128,7 @@ const ADMIN_COMPONENTS: Record<string, ComponentType> = {
   push: PushSection,
   ai: AdminAiSection,
   security: SecuritySection,
+  threats: SecurityCenterSection,
   audit: AuditSection,
   monitoring: MonitoringSection,
   general: GeneralSection,

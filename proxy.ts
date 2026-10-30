@@ -91,7 +91,20 @@ const POLICY_EXCLUDED =
 const prefetch = (request: NextRequest) =>
   request.headers.has("next-router-prefetch") || request.headers.get("purpose") === "prefetch";
 
+// Addresses and networks the administrators blocked (Administration →
+// Sicherheit, lib/security-events.ts) get nothing but a short refusal.
+async function blocked(request: NextRequest) {
+  try {
+    const { blockedRequest } = await import("./lib/security-events");
+    return blockedRequest(request.headers);
+  } catch {
+    return false;
+  }
+}
+
 export async function proxy(request: NextRequest) {
+  if (await blocked(request))
+    return new NextResponse("Forbidden", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
   const path = request.nextUrl.pathname;
   const host = (request.headers.get("host") || "").toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
   // A custom domain (lib/custom-domains.ts) shows one publication and

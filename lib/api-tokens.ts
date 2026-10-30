@@ -7,6 +7,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { all, id, one, run } from "./db";
+import { securityEvent } from "./security-events";
 import { HttpError } from "./auth";
 import type { Identity, User } from "./types";
 
@@ -39,6 +40,7 @@ export function createApiToken(user: Identity, input: unknown) {
     Date.now(),
     b.days ? Date.now() + b.days * 86400_000 : null,
   );
+  securityEvent("account.token_created", { actorId: user.id, detail: `${b.scope} ${token.slice(0, 10)} ${b.name}` });
   return { id: tokenId, token };
 }
 
@@ -59,7 +61,8 @@ export function listApiTokens(user: Identity) {
 
 export function revokeApiToken(user: Identity, tokenId: unknown) {
   if (user.apiScope) throw new HttpError(403, "API-Tokens können keine Tokens widerrufen.");
-  run("DELETE FROM api_tokens WHERE id=? AND user_id=?", z.string().parse(tokenId), user.id);
+  if (run("DELETE FROM api_tokens WHERE id=? AND user_id=?", z.string().parse(tokenId), user.id).changes)
+    securityEvent("account.token_revoked", { actorId: user.id });
 }
 
 // The identity behind a bearer token, or null. Clipper tokens are only

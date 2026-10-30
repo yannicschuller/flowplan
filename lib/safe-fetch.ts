@@ -3,6 +3,7 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { isIP } from "node:net";
 import { HttpError } from "./auth";
+import { securityEvent } from "./security-events";
 
 // Fetches public HTTPS resources (link previews, embeds, profile pictures)
 // without reaching internal services: every hop is resolved, private and
@@ -88,8 +89,10 @@ export function pinnedLookup(allowPrivate: boolean) {
       const done = callback as unknown as (e: Error | null, a: string | { address: string; family: number }[], f?: number) => void;
       if (error) return done(error, "", 4);
       const list = addresses as { address: string; family: number }[];
-      if (!list.length || (!allowPrivate && list.some((a) => privateAddress(a.address))))
+      if (!list.length || (!allowPrivate && list.some((a) => privateAddress(a.address)))) {
+        if (list.length) securityEvent("blocked.ssrf", { detail: `${host} → ${list[0].address}` });
         return done(new Error("Interne Adressen sind nicht erlaubt."), "", 4);
+      }
       if ((options as { all?: boolean }).all) return done(null, [list[0]]);
       done(null, list[0].address, list[0].family);
     });
@@ -227,8 +230,10 @@ export async function safeFetch(
       !allowPrivate &&
       isIP(url.hostname.replace(/^\[|\]$/g, "")) &&
       privateAddress(url.hostname.replace(/^\[|\]$/g, ""))
-    )
+    ) {
+      securityEvent("blocked.ssrf", { detail: url.hostname });
       throw new HttpError(400, "Interne Adressen sind nicht erlaubt.");
+    }
     let result;
     try {
       result = await once(url, maxBytes, timeout, accept, allowPrivate, { method, headers, body });

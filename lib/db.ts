@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 76) return;
+  if (globalDb.flowplanSchema === 77) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -965,7 +965,21 @@ function migrate(d: DatabaseSync) {
       DELETE FROM doc_tasks WHERE page_id=OLD.page_id AND row_id=OLD.id;
     END;
     DELETE FROM doc_tasks WHERE row_id<>'' AND NOT EXISTS (SELECT 1 FROM rows r WHERE r.id=doc_tasks.row_id AND r.page_id=doc_tasks.page_id);`);
-  globalDb.flowplanSchema = 76;
+  // Schema 77 – security observability (lib/security-events.ts): events with
+  // the network of the address and a keyed hash of it (never the address
+  // itself), incidents of the detection rules (lib/security-detect.ts) and
+  // addresses or networks the administrators blocked.
+  d.exec(`CREATE TABLE IF NOT EXISTS security_events(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,kind TEXT NOT NULL,severity TEXT NOT NULL,actor_id TEXT,subject TEXT NOT NULL DEFAULT '',subject_key TEXT NOT NULL DEFAULT '',network TEXT NOT NULL DEFAULT '',address_key TEXT NOT NULL DEFAULT '',country TEXT NOT NULL DEFAULT '',device TEXT NOT NULL DEFAULT '',detail TEXT NOT NULL DEFAULT '');
+    CREATE INDEX IF NOT EXISTS security_events_at ON security_events(at);
+    CREATE INDEX IF NOT EXISTS security_events_kind ON security_events(kind,at);
+    CREATE INDEX IF NOT EXISTS security_events_address ON security_events(address_key,at);
+    CREATE INDEX IF NOT EXISTS security_events_subject ON security_events(subject_key,at);
+    CREATE INDEX IF NOT EXISTS security_events_actor ON security_events(actor_id,at);
+    CREATE TABLE IF NOT EXISTS security_incidents(id TEXT PRIMARY KEY,rule TEXT NOT NULL,key TEXT NOT NULL,severity TEXT NOT NULL,actor_id TEXT,network TEXT NOT NULL DEFAULT '',address_key TEXT NOT NULL DEFAULT '',detail TEXT NOT NULL DEFAULT '',first_at INTEGER NOT NULL,last_at INTEGER NOT NULL,count INTEGER NOT NULL DEFAULT 1,resolved_at INTEGER,resolved_by TEXT);
+    CREATE INDEX IF NOT EXISTS security_incidents_rule ON security_incidents(rule,key,resolved_at);
+    CREATE INDEX IF NOT EXISTS security_incidents_last ON security_incidents(last_at);
+    CREATE TABLE IF NOT EXISTS security_blocks(id TEXT PRIMARY KEY,kind TEXT NOT NULL,value TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',reason TEXT NOT NULL DEFAULT '',created_by TEXT,created_at INTEGER NOT NULL,until INTEGER,UNIQUE(kind,value));`);
+  globalDb.flowplanSchema = 77;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
@@ -1074,6 +1088,18 @@ export function run(
     .run(...params);
 }
 export const id = () => randomUUID();
+// Listeners of the activity log (lib/security-events.ts turns the
+// security-relevant entries into security events); a listener never
+// disturbs the write.
+type AuditListener = (actor: string, action: string, resource: string, detail: string) => void;
+// A function, not a constant: modules may register while this one is
+// still being evaluated (import cycles).
+function auditListeners() {
+  return ((globalThis as { flowplanAuditListeners?: Set<AuditListener> }).flowplanAuditListeners ??= new Set());
+}
+export function onAudit(listener: AuditListener) {
+  auditListeners().add(listener);
+}
 export function audit(
   actor: string,
   action: string,
@@ -1088,6 +1114,10 @@ export function audit(
     resource,
     detail,
   );
+  for (const listener of auditListeners())
+    try {
+      listener(actor, action, resource, detail);
+    } catch {}
 }
 export function transaction<T>(fn: () => T, actor?: Identity): T {
   db().exec("BEGIN IMMEDIATE");

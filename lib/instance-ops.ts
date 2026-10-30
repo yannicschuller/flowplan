@@ -8,6 +8,7 @@ import { HttpError } from "./auth";
 import { retentionDays } from "./version-history";
 import { instanceSettings } from "./instance-settings";
 import { demoCounts } from "./demo";
+import { securityCounters } from "./security-events";
 
 // Storage quota in MB: per-workspace override or FLOWPLAN_WORKSPACE_QUOTA_MB;
 // 0 or unset means unlimited.
@@ -206,6 +207,26 @@ export function prometheusMetrics() {
     usage.map((w) => [{ workspace: w.id }, w.effectiveQuotaMb * 1024 * 1024]),
   );
   metric("build_info", "Runtime version.", "gauge", [[{ node: m.node }, 1]]);
+  // Security observability (lib/security-events.ts, lib/security-detect.ts).
+  metric(
+    "security_events_total",
+    "Security events since the process started, by event and severity.",
+    "counter",
+    securityCounters().map((c) => [{ event: c.kind, severity: c.severity }, c.value]),
+  );
+  metric(
+    "security_incidents_open",
+    "Open security incidents by rule and severity.",
+    "gauge",
+    all<{ rule: string; severity: string; n: number }>(
+      "SELECT rule,severity,COUNT(*) n FROM security_incidents WHERE resolved_at IS NULL GROUP BY rule,severity",
+    ).map((r) => [{ rule: r.rule, severity: r.severity }, r.n]),
+  );
+  gauge(
+    "security_blocks",
+    "Blocked addresses and networks.",
+    Number(one<{ n: number }>("SELECT COUNT(*) n FROM security_blocks WHERE until IS NULL OR until>?", Date.now())?.n || 0),
+  );
   return lines.join("\n") + "\n";
 }
 // The metrics endpoint is off unless FLOWPLAN_METRICS_TOKEN is set; scrapers

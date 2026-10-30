@@ -66,7 +66,7 @@ test("services, monitoring and the activity of the last day", () => {
   assert.equal(typeof s.general.version, "string");
   assert.equal(s.general.update, null);
   assert.equal(adminSummary(Date.now(), { current: "0.1.0", latest: "9.9.9", url: "" }).general.update, "9.9.9");
-  assert.deepEqual(Object.keys(s).sort(), ["ai", "audit", "charts", "export", "extensions", "general", "limits", "mail", "maintenance", "monitoring", "push", "security", "signin", "storage", "users", "workspaces"]);
+  assert.deepEqual(Object.keys(s).sort(), ["ai", "audit", "charts", "export", "extensions", "general", "limits", "mail", "maintenance", "monitoring", "push", "security", "securityCenter", "signin", "storage", "users", "workspaces"]);
 });
 
 test("limits, extensions and the maintenance notice", async () => {

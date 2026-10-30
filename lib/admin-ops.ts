@@ -24,6 +24,8 @@ import { safeSend } from "./safe-fetch";
 import { openSecret, sealSecret } from "./secret-box";
 import { requireAdmin } from "./permissions";
 import type { Identity } from "./types";
+import { securityRules, type SecurityRule } from "./security-kinds";
+import { sweepSecurityEvents } from "./security-events";
 
 const DAY = 86_400_000;
 
@@ -268,9 +270,9 @@ function writeSetting(key: string, value: unknown) {
 
 /* ---------- Health alerts ---------- */
 
-export const alertEvents = ["backup_failed", "storage_high", "worker_error", "login_failures"] as const;
+export const alertEvents = ["backup_failed", "storage_high", "worker_error", "login_failures", "security"] as const;
 export type AlertEvent = (typeof alertEvents)[number];
-type StoredAlerts = { url: string; events: AlertEvent[]; secret: string };
+type StoredAlerts = { url: string; events: AlertEvent[]; secret: string; version?: number };
 const ALERTS_KEY = "opsAlerts";
 const allowPrivate = () => process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE === "true";
 
@@ -281,7 +283,10 @@ function storedAlerts(): (StoredAlerts & { plainSecret: string }) | null {
   try {
     plainSecret = openSecret(stored.secret, "ops-alerts");
   } catch {}
-  return { ...stored, events: (stored.events || []).filter((e) => alertEvents.includes(e)), plainSecret };
+  const events = (stored.events || []).filter((e) => alertEvents.includes(e));
+  // Saved before security incidents existed: they are reported as well.
+  if (!stored.version && !events.includes("security")) events.push("security");
+  return { ...stored, events, plainSecret };
 }
 export function alertSettingsForAdmin() {
   const stored = storedAlerts();
@@ -317,7 +322,7 @@ export function saveAlertSettings(actorId: string, input: unknown) {
     throw new HttpError(400, "Die Webhook-Adresse muss mit https:// beginnen.");
   const previous = storedAlerts();
   const secret = !newSecret && previous?.plainSecret ? previous.plainSecret : randomBytes(24).toString("base64url");
-  writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts") });
+  writeSetting(ALERTS_KEY, { url: parsed.toString(), events: [...new Set(events)], secret: sealSecret(secret, "ops-alerts"), version: 2 });
   audit(actorId, "admin.ops.alerts", "instance", parsed.host);
   return alertSettingsForAdmin();
 }
@@ -347,14 +352,16 @@ const alertTitle = (event: AlertEvent | "test") =>
     storage_high: ct("Speicher > 90 %", "Storage > 90 %"),
     worker_error: ct("Worker-Fehler", "Worker error"),
     login_failures: ct("Viele fehlgeschlagene Anmeldungen", "Many failed sign-ins"),
+    security: ct("Sicherheitsvorfall", "Security incident"),
     test: ct("Test-Benachrichtigung", "Test notification"),
   })[event];
 
-async function deliver(config: { url: string; plainSecret: string }, event: AlertEvent | "test", detail: string, now: number) {
+async function deliver(config: { url: string; plainSecret: string }, event: AlertEvent | "test", detail: string, now: number, extra: Record<string, string> = {}) {
   const body = JSON.stringify({
     event: `ops.${event}`,
     title: alertTitle(event),
     detail,
+    ...extra,
     instance: instanceSettings().name || "Flowplan",
     url: process.env.APP_URL || "",
     at: new Date(now).toISOString(),
@@ -388,6 +395,15 @@ export async function checkHealthAlerts(now = Date.now()) {
     sent.push({ event: alert.event, ...result });
   }
   return sent;
+}
+
+// A new security incident (lib/security-detect.ts), right away – not once
+// a day like the health alerts.
+export async function sendSecurityAlert(rule: SecurityRule, detail: string, now = Date.now()) {
+  const config = storedAlerts();
+  if (!config?.plainSecret || !config.events.includes("security")) return null;
+  const title = securityRules[rule];
+  return deliver(config, "security", `${ct(title.de, title.en)}${detail ? ` – ${detail}` : ""}`, now, { rule, severity: title.severity });
 }
 
 export async function sendTestAlert(actorId: string) {
@@ -444,6 +460,8 @@ export function startOpsWorker() {
       sweepIdempotencyKeys(now);
       if (now - (runtime.flowplanOpsSwept ?? 0) >= DAY) {
         sweepOpsEvents(now);
+        // Security events after their retention (lib/security-events.ts).
+        sweepSecurityEvents(now);
         runtime.flowplanOpsSwept = now;
       }
     } catch (error) {

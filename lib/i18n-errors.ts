@@ -4,6 +4,15 @@ import { translate, type Locale } from "./i18n";
 import { PAGE_LOCALE } from "./locale-tag";
 
 const exact: Record<string, string> = {
+  // Administration → Angriffe & Vorfälle (lib/security-admin.ts).
+  "Diese Adresse ist nicht mehr bekannt.": "This address is no longer known.",
+  "Das ist deine eigene Adresse.": "This is your own address.",
+  "Bitte ein Netz wie 203.0.113.0/24 oder 2001:db8:1::/48 angeben.": "Please enter a network like 203.0.113.0/24 or 2001:db8:1::/48.",
+  "Das ist dein eigenes Netz.": "This is your own network.",
+  "Die eigenen Sitzungen beendest du unter Einstellungen → Konto → Geräte.": "You end your own sessions under Settings → Account → Devices.",
+  "Das eigene Konto kann nicht gesperrt werden.": "Your own account cannot be disabled.",
+  "Konto nicht gefunden.": "Account not found.",
+  "Diesen Link gibt es nicht mehr.": "This link no longer exists.",
   // Banners to click away once (lib/instance-banners.ts).
   "Nur für Administratoren.": "Administrators only.",
   "Der Link muss mit https:// beginnen oder auf eine Seite dieser Instanz zeigen.": "The link must start with https:// or point to a page of this instance.",

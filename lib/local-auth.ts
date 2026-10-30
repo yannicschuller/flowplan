@@ -27,6 +27,7 @@ import type { User } from "./types";
 import { allow } from "./action-limits";
 import { addressKey } from "./client-address";
 import { recordOpsEvent } from "./ops-events";
+import { blockedAddress, securityEvent } from "./security-events";
 import { translate, type Locale } from "./i18n";
 import { ldapConfigured } from "./ldap";
 
@@ -187,16 +188,36 @@ const WINDOW = 15 * 60_000;
 // unknown address (lib/client-address.ts) has no key, so that everyone
 // does not share one bucket.
 export function limited(keys: string[]) {
+  const attempt = failureOf(keys);
+  // An address or network the administrators blocked (Administration →
+  // Sicherheit) does not get to try at all.
+  if (attempt.address && blockedAddress(attempt.address)) {
+    securityEvent("login.refused", { ...attempt, detail: `blocked ${attempt.detail}` });
+    return true;
+  }
   const since = Date.now() - WINDOW;
   run("DELETE FROM login_failures WHERE at<?", since);
-  return keys.some((key) => {
+  const over = keys.some((key) => {
     const limit = key.startsWith("ip:") ? 30 : 8;
     return Number(one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE key=? AND at>=?", key, since)?.n || 0) >= limit;
   });
+  if (over) securityEvent("login.refused", { ...attempt, detail: `limit ${attempt.detail}` });
+  return over;
 }
 export function failed(keys: string[]) {
   recordOpsEvent("login_failure");
+  securityEvent("login.failure", failureOf(keys));
   for (const key of keys) run("INSERT INTO login_failures(key,at) VALUES(?,?)", key, Date.now());
+}
+// The address and the account of an attempt, from its limit keys
+// ("ip:…", "email:…", "ldap:…", "totp:<user id>").
+function failureOf(keys: string[]) {
+  const address = keys.find((k) => k.startsWith("ip:"))?.slice(3) ?? "";
+  const other = keys.find((k) => !k.startsWith("ip:")) || "";
+  const [type, ...rest] = other.split(":");
+  const value = rest.join(":");
+  if (type === "totp") return { address, actorId: value, detail: "second factor" };
+  return { address, ...(value ? { subject: value } : {}), detail: type === "email" ? "password" : type || "passkey" };
 }
 // Failures within `windowMs` under `key` (for limits with their own windows).
 export function failuresSince(key: string, windowMs: number, now = Date.now()) {
@@ -244,6 +265,7 @@ export async function changePassword(userId: string, input: unknown, locale: Loc
   const password = passwordSchema(t).safeParse(next);
   if (!password.success) throw new HttpError(400, password.error.issues[0].message);
   run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(password.data), userId);
+  securityEvent("account.password", { actorId: userId });
 }
 
 // Name of a local account (SSO accounts take it from the provider).
@@ -360,6 +382,7 @@ export async function resetPassword(input: unknown, locale: Locale) {
   if (one("SELECT 1 FROM local_accounts WHERE user_id=? AND email_verified=0", userId)) confirmAddress(userId);
   // Whoever knew the old password is signed out everywhere.
   run("DELETE FROM sessions WHERE user_id=?", userId);
+  securityEvent("account.password_reset", { actorId: userId });
   return userId;
 }
 
@@ -448,10 +471,11 @@ export async function finishPasskeyRegistration(user: User, token: string | unde
     name || t("Passkey", "Passkey"),
     Date.now(),
   );
+  securityEvent("account.passkey_added", { actorId: user.id, detail: name || "" });
   return credential.id;
 }
 export function deletePasskey(userId: string, passkeyId: string) {
-  run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId);
+  if (run("DELETE FROM passkeys WHERE id=? AND user_id=?", passkeyId, userId).changes) securityEvent("account.passkey_removed", { actorId: userId });
 }
 export async function passkeyLoginOptions() {
   if (!localLoginEnabled()) throw new HttpError(403, "Passkeys sind ausgeschaltet.");

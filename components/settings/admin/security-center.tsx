@@ -1,0 +1,661 @@
+"use client";
+// Administration → Sicherheit (/api/admin/security, every 30 s while
+// visible): the state at a glance, open incidents of the detection rules
+// with what to do about them, addresses with failed sign-ins, the security
+// events, signed-in people, open ways in (API tokens, share links, public
+// pages), blocked addresses and how the events leave the instance.
+// Anchors: #admin/threats/<incidents|addresses|events|sessions|access|blocks|setup>.
+import { useState, type ReactNode } from "react";
+import { CheckCircle, DownloadSimple, Info, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
+import type { securityOverview, securityEvents } from "@/lib/security-admin";
+import { securityKinds, securityRules, type SecurityKind, type SecurityRule } from "@/lib/security-kinds";
+import { useT } from "../../i18n";
+import { api } from "../../ui";
+import { BarChart, Legend } from "../../charts";
+import { EmptyState, ResponsiveTable, SettingGroup, StatusBadge, type Tone } from "../../settings-ui";
+import { useAdmin } from "../admin-context";
+import { AdminLoading } from "../shell";
+import { Kpi, LiveBadge } from "./live";
+import { useLive } from "./use-live";
+import { ago, clock, dateTime, num } from "./monitoring-format";
+import { useDocs } from "./parts";
+
+type Overview = ReturnType<typeof securityOverview>;
+type EventPage = ReturnType<typeof securityEvents>;
+type SecurityEventRow = EventPage["events"][number];
+type Incident = Overview["incidents"][number];
+type T = (de: string, en: string) => string;
+
+const URL = "/api/admin/security";
+const tone = (severity: string): Tone => (severity === "critical" ? "error" : severity === "warn" ? "warn" : "ok");
+
+export default function SecurityCenterSection() {
+  const t = useT();
+  const live = useLive<Overview>(URL, 30_000);
+  const { onError } = useAdmin();
+  const [busy, setBusy] = useState(false);
+  const d = live.data;
+  // Every action answers with the fresh overview.
+  const act = async (body: Record<string, unknown>, question?: string) => {
+    if (question && !confirm(question)) return;
+    setBusy(true);
+    try {
+      live.setData(await api<Overview>(URL, body));
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!d)
+    return live.state === "error" ? (
+      <EmptyState icon={<WarningCircle size={20} />} title={t("Der Sicherheitsbereich ist nicht erreichbar.", "Security is not reachable.")} action={<button type="button" className="button" onClick={() => void live.reload()}>{t("Erneut versuchen", "Try again")}</button>}>
+        {live.error}
+      </EmptyState>
+    ) : (
+      <AdminLoading />
+    );
+  return (
+    <div className="mon security-center" aria-busy={busy}>
+      <div className="mon-toolbar">
+        <LiveBadge state={live.state} label={live.updatedAt ? t(`aktualisiert ${clock(live.updatedAt)}`, `updated ${clock(live.updatedAt)}`) : undefined} />
+        <span className="security-export">
+          <a className="text-button" href={`${URL}?export=csv`} download>
+            <DownloadSimple size={14} aria-hidden /> CSV
+          </a>
+          <a className="text-button" href={`${URL}?export=json`} download>
+            <DownloadSimple size={14} aria-hidden /> JSON
+          </a>
+        </span>
+      </div>
+      <Verdict d={d} />
+      <div className="security-kpis">
+        <Kpi label={t("Offene Vorfälle", "Open incidents")} value={num(d.summary.openIncidents)} note={d.summary.criticalIncidents ? t(`${d.summary.criticalIncidents} kritisch`, `${d.summary.criticalIncidents} critical`) : undefined} />
+        <Kpi label={t("Fehlgeschlagene Anmeldungen (24 h)", "Failed sign-ins (24 h)")} value={num(d.summary.failedSignIns)} />
+        <Kpi label={t("Anmeldungen (24 h)", "Sign-ins (24 h)")} value={num(d.summary.signIns)} />
+        <Kpi label={t("Abgewiesen (24 h)", "Refused (24 h)")} value={num(d.summary.refused)} />
+        <Kpi label={t("Exporte (24 h)", "Exports (24 h)")} value={num(d.summary.exports)} />
+        <Kpi label={t("Admin-Sitzungen", "Admin sessions")} value={num(d.summary.adminSessions)} />
+        <Kpi label={t("Gesperrt", "Blocked")} value={num(d.summary.blocks)} />
+      </div>
+      <SignInChart d={d} />
+      <Incidents d={d} act={act} busy={busy} />
+      <Addresses d={d} act={act} busy={busy} />
+      <Events first={d.events} act={act} busy={busy} />
+      <Sessions d={d} act={act} busy={busy} />
+      <Access d={d} act={act} busy={busy} />
+      <Blocks d={d} act={act} busy={busy} />
+      <Setup d={d} />
+    </div>
+  );
+}
+
+type Act = (body: Record<string, unknown>, question?: string) => Promise<void>;
+
+/* ---------- At a glance ---------- */
+
+function Verdict({ d }: { d: Overview }) {
+  const t = useT();
+  const s = d.summary;
+  const notes: ReactNode[] = [];
+  if (d.setup.addressMissing)
+    notes.push(
+      t(
+        "Bei den Anmeldungen kommt keine Client-Adresse an – Sperren und Regeln pro Adresse wirken nicht. Prüfe, dass der Reverse-Proxy X-Forwarded-For setzt (FLOWPLAN_TRUSTED_PROXIES).",
+        "Sign-ins arrive without a client address – blocks and per-address rules do not work. Make sure the reverse proxy sets X-Forwarded-For (FLOWPLAN_TRUSTED_PROXIES).",
+      ),
+    );
+  if (!d.setup.webhook && !d.setup.mail)
+    notes.push(t("Vorfälle erscheinen nur im Posteingang der Admins und hier – richte E-Mail oder einen Webhook ein, um sie auch unterwegs zu bekommen.", "Incidents only show in the admins' inbox and here – set up e-mail or a webhook to get them on the go as well."));
+  const state = s.criticalIncidents ? "error" : s.openIncidents ? "warn" : "ok";
+  return (
+    <div className={`security-verdict ${state}`} role="status">
+      {state === "ok" ? <ShieldCheck size={28} aria-hidden /> : <ShieldWarning size={28} aria-hidden />}
+      <div>
+        <strong>
+          {state === "ok"
+            ? t("Keine offenen Sicherheitsvorfälle", "No open security incidents")
+            : state === "error"
+              ? s.criticalIncidents === 1
+                ? t("1 kritischer Vorfall offen", "1 critical incident open")
+                : t(`${s.criticalIncidents} kritische Vorfälle offen`, `${s.criticalIncidents} critical incidents open`)
+              : s.openIncidents === 1
+                ? t("1 Vorfall offen", "1 incident open")
+                : t(`${s.openIncidents} Vorfälle offen`, `${s.openIncidents} incidents open`)}
+        </strong>
+        <span>
+          {t(
+            `${num(s.events)} Ereignisse in 24 Stunden, davon ${num(s.warnings)} Warnungen. Die Regeln laufen bei jedem Ereignis.`,
+            `${num(s.events)} events in 24 hours, ${num(s.warnings)} of them warnings. The rules run on every event.`,
+          )}
+        </span>
+        {notes.map((note, i) => (
+          <p key={i} className="mon-note">
+            <Info size={16} aria-hidden />
+            {note}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SignInChart({ d }: { d: Overview }) {
+  const t = useT();
+  const series = [
+    { key: "signIns", label: t("erfolgreich", "successful"), values: d.hourly.map((h) => h.signIns), color: 0 },
+    { key: "failures", label: t("fehlgeschlagen", "failed"), values: d.hourly.map((h) => h.failures), color: 1 },
+  ];
+  return (
+    <SettingGroup title={t("Anmeldungen je Stunde", "Sign-ins per hour")} description={t("Die letzten 24 Stunden – ein Berg roter Balken ist ein Angriff auf Passwörter.", "The last 24 hours – a mountain of red bars is an attack on passwords.")}>
+      <Legend items={series.map((s) => ({ label: s.label, color: s.color }))} />
+      <BarChart
+        title={t("Anmeldungen je Stunde", "Sign-ins per hour")}
+        description={t("Erfolgreiche und fehlgeschlagene Anmeldungen der letzten 24 Stunden.", "Successful and failed sign-ins of the last 24 hours.")}
+        labels={d.hourly.map((h) => clock(h.at))}
+        tips={d.hourly.map((h) => dateTime(h.at))}
+        series={series}
+        formatY={(n) => num(n)}
+        height={160}
+      />
+    </SettingGroup>
+  );
+}
+
+/* ---------- Incidents ---------- */
+
+const ruleTitle = (rule: string, t: T) => {
+  const r = securityRules[rule as SecurityRule];
+  return r ? t(r.de, r.en) : rule;
+};
+const kindTitle = (kind: string, t: T) => {
+  const k = securityKinds[kind as SecurityKind];
+  return k ? t(k.de, k.en) : kind;
+};
+const person = (p: { name: string; email: string } | null) => (p ? p.name || p.email : "");
+
+function Incidents({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
+  const t = useT();
+  const open = d.incidents.filter((i) => !i.resolvedAt);
+  const done = d.incidents.filter((i) => i.resolvedAt);
+  return (
+    <SettingGroup
+      id="incidents"
+      title={t("Vorfälle", "Incidents")}
+      description={t("Was die Erkennungsregeln gefunden haben. Gleiches innerhalb eines Tages zählt beim selben Vorfall weiter.", "What the detection rules found. The same thing within a day counts on the same incident.")}
+      actions={
+        open.length > 1 ? (
+          <button type="button" className="button" disabled={busy} onClick={() => void act({ action: "incident.resolveAll" }, t("Alle offenen Vorfälle als erledigt markieren?", "Mark all open incidents as resolved?"))}>
+            {t("Alle erledigt", "All resolved")}
+          </button>
+        ) : undefined
+      }
+    >
+      {!open.length && (
+        <EmptyState icon={<CheckCircle size={20} />} title={t("Nichts offen", "Nothing open")}>
+          {t("Neue Vorfälle erscheinen hier und gehen an alle Admins.", "New incidents appear here and go to all admins.")}
+        </EmptyState>
+      )}
+      <ul className="security-incidents">
+        {[...open, ...done].map((i) => (
+          <IncidentItem key={i.id} i={i} act={act} busy={busy} />
+        ))}
+      </ul>
+    </SettingGroup>
+  );
+}
+
+function IncidentItem({ i, act, busy }: { i: Incident; act: Act; busy: boolean }) {
+  const t = useT();
+  return (
+    <li className={`security-incident ${i.resolvedAt ? "resolved" : i.severity}`}>
+      <div className="security-incident-head">
+        <StatusBadge tone={i.resolvedAt ? "off" : tone(i.severity)}>
+          {i.resolvedAt ? t("erledigt", "resolved") : i.severity === "critical" ? t("kritisch", "critical") : t("Warnung", "warning")}
+        </StatusBadge>
+        <strong>{ruleTitle(i.rule, t)}</strong>
+        {i.count > 1 && <span className="muted">× {num(i.count)}</span>}
+      </div>
+      <p>
+        {[i.detail, person(i.actor), i.network].filter(Boolean).join(" · ")}
+        <br />
+        <small className="muted">
+          {i.count > 1 ? t(`zuerst ${dateTime(i.firstAt)}, zuletzt ${ago(i.lastAt, t)}`, `first ${dateTime(i.firstAt)}, last ${ago(i.lastAt, t)}`) : dateTime(i.firstAt)}
+          {i.resolvedAt && ` · ${t("erledigt", "resolved")}${i.resolvedBy ? ` ${t("von", "by")} ${i.resolvedBy}` : ""}`}
+        </small>
+      </p>
+      <div className="security-actions">
+        {i.resolvedAt ? (
+          <button type="button" className="text-button" disabled={busy} onClick={() => void act({ action: "incident.reopen", id: i.id })}>
+            {t("Wieder öffnen", "Reopen")}
+          </button>
+        ) : (
+          <button type="button" className="button" disabled={busy} onClick={() => void act({ action: "incident.resolve", id: i.id })}>
+            {t("Erledigt", "Resolved")}
+          </button>
+        )}
+        {!i.resolvedAt && i.address && <BlockAddress address={i.address} network={i.network} act={act} busy={busy} />}
+        {!i.resolvedAt && i.actor && (
+          <>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => void act({ action: "sessions.end", userId: i.actor!.id }, t(`Alle Sitzungen von ${person(i.actor)} beenden? Die Person muss sich neu anmelden.`, `End all sessions of ${person(i.actor)}? They have to sign in again.`))}
+            >
+              {t("Sitzungen beenden", "End sessions")}
+            </button>
+            <button
+              type="button"
+              className="text-button danger"
+              disabled={busy}
+              onClick={() => void act({ action: "user.disable", userId: i.actor!.id }, t(`Das Konto von ${person(i.actor)} sperren? Alle Sitzungen und Tokens enden; unter Personen lässt es sich wieder freigeben.`, `Disable the account of ${person(i.actor)}? All sessions and tokens end; it can be enabled again under People.`))}
+            >
+              {t("Konto sperren", "Disable account")}
+            </button>
+          </>
+        )}
+      </div>
+    </li>
+  );
+}
+
+// "Block address" for 24 hours, "Block network" (/24, /48) for 24 hours.
+function BlockAddress({ address, network, act, busy }: { address: string; network: string; act: Act; busy: boolean }) {
+  const t = useT();
+  return (
+    <>
+      <button
+        type="button"
+        className="text-button"
+        disabled={busy}
+        onClick={() => void act({ action: "block.add", kind: "address", value: address, hours: 24, reason: "" }, t("Diese Adresse 24 Stunden sperren? Anfragen von ihr werden abgewiesen.", "Block this address for 24 hours? Its requests are refused."))}
+      >
+        {t("Adresse sperren", "Block address")}
+      </button>
+      {network && (
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy}
+          onClick={() => void act({ action: "block.add", kind: "network", value: network, hours: 24, reason: "" }, t(`Das ganze Netz ${network} 24 Stunden sperren? Das trifft alle Personen darin.`, `Block the whole network ${network} for 24 hours? This affects everyone in it.`))}
+        >
+          {t("Netz sperren", "Block network")}
+        </button>
+      )}
+    </>
+  );
+}
+
+/* ---------- Addresses ---------- */
+
+function Addresses({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
+  const t = useT();
+  return (
+    <SettingGroup id="addresses" title={t("Adressen mit Fehlversuchen", "Addresses with failures")} description={t("Die letzten 24 Stunden. Gezeigt wird das Netz; die Adresse selbst speichert Flowplan nicht.", "The last 24 hours. The network is shown; Flowplan does not store the address itself.")}>
+      <ResponsiveTable
+        label={t("Adressen mit Fehlversuchen", "Addresses with failures")}
+        rows={d.addresses}
+        rowKey={(r) => r.address}
+        empty={<p className="muted">{t("Keine Fehlversuche in den letzten 24 Stunden.", "No failures in the last 24 hours.")}</p>}
+        columns={[
+          { key: "network", header: t("Netz", "Network"), primary: true, render: (r) => <span className="mono">{r.network || "–"}</span> },
+          { key: "failures", header: t("Fehlversuche", "Failures"), align: "end", render: (r) => num(r.failures) },
+          { key: "accounts", header: t("Konten", "Accounts"), align: "end", render: (r) => num(r.accounts) },
+          { key: "refused", header: t("Abgewiesen", "Refused"), align: "end", render: (r) => num(r.refused) },
+          { key: "last", header: t("Zuletzt", "Last"), render: (r) => ago(r.lastAt, t) },
+          {
+            key: "action",
+            header: "",
+            render: (r) =>
+              r.blocked ? (
+                <StatusBadge tone="off">{t("gesperrt", "blocked")}</StatusBadge>
+              ) : (
+                <span className="security-cell-actions">
+                  <BlockAddress address={r.address} network={r.network} act={act} busy={busy} />
+                </span>
+              ),
+          },
+        ]}
+      />
+    </SettingGroup>
+  );
+}
+
+/* ---------- Events ---------- */
+
+const GROUPS = [
+  ["", "Alle", "All"],
+  ["login.", "Anmeldung", "Sign-in"],
+  ["account.", "Konto", "Account"],
+  ["admin.", "Administration", "Administration"],
+  ["data.export", "Exporte", "Exports"],
+  ["share.", "Freigaben", "Sharing"],
+  ["blocked.", "Abgewehrt", "Blocked"],
+  ["request.", "Anfragen", "Requests"],
+] as const;
+
+function Events({ first, act, busy }: { first: EventPage; act: Act; busy: boolean }) {
+  const t = useT();
+  const { onError } = useAdmin();
+  const [severity, setSeverity] = useState("all");
+  const [kind, setKind] = useState("");
+  const [page, setPage] = useState<EventPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const filtered = severity !== "all" || kind !== "";
+  // The first page follows the live overview; filters and "more" load their own.
+  const shown = page ?? (filtered ? { events: [], more: false } : first);
+  const load = async (next: { severity: string; kind: string }, before?: number) => {
+    setLoading(true);
+    try {
+      const query = new URLSearchParams({ events: "1", severity: next.severity, kind: next.kind, ...(before ? { before: String(before) } : {}) });
+      const answer = await api<EventPage>(`${URL}?${query}`);
+      setPage(before && page ? { events: [...page.events, ...answer.events], more: answer.more } : answer);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const filter = (next: { severity: string; kind: string }) => {
+    setSeverity(next.severity);
+    setKind(next.kind);
+    if (next.severity === "all" && !next.kind) setPage(null);
+    else void load(next);
+  };
+  return (
+    <SettingGroup id="events" title={t("Ereignisse", "Events")} description={t("Jedes sicherheitsrelevante Ereignis der Instanz, das neueste zuerst.", "Every security-relevant event of the instance, newest first.")}>
+      <div className="security-filters">
+        <div className="segmented" role="group" aria-label={t("Schwere", "Severity")}>
+          {(
+            [
+              ["all", t("Alle", "All")],
+              ["critical", t("Kritisch", "Critical")],
+              ["warn", t("Warnung", "Warning")],
+              ["info", t("Info", "Info")],
+            ] as const
+          ).map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={severity === value} onClick={() => filter({ severity: value, kind })}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <select aria-label={t("Art", "Kind")} value={kind} onChange={(e) => filter({ severity, kind: e.target.value })}>
+          {GROUPS.map(([value, deLabel, enLabel]) => (
+            <option key={value} value={value}>
+              {t(deLabel, enLabel)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <ResponsiveTable<SecurityEventRow>
+        label={t("Sicherheitsereignisse", "Security events")}
+        rows={shown.events}
+        rowKey={(e) => String(e.id)}
+        empty={<p className="muted">{loading ? t("Wird geladen …", "Loading …") : t("Keine Ereignisse.", "No events.")}</p>}
+        columns={[
+          { key: "at", header: t("Zeit", "Time"), render: (e) => <span title={new Date(e.at).toISOString()}>{dateTime(e.at)}</span> },
+          {
+            key: "kind",
+            header: t("Ereignis", "Event"),
+            primary: true,
+            render: (e) => (
+              <span className="security-event-kind">
+                <i className={`security-dot ${e.severity}`} aria-label={e.severity} />
+                {kindTitle(e.kind, t)}
+              </span>
+            ),
+          },
+          { key: "who", header: t("Wer", "Who"), render: (e) => person(e.actor) || e.subject || "–" },
+          { key: "where", header: t("Woher", "From"), hideOnPhone: true, render: (e) => [e.network, e.country, e.device].filter(Boolean).join(" · ") || "–" },
+          { key: "detail", header: t("Details", "Details"), hideOnPhone: true, render: (e) => <span className="security-detail">{e.detail || ""}</span> },
+          {
+            key: "action",
+            header: "",
+            render: (e) => (e.address && e.severity !== "info" ? <BlockAddress address={e.address} network="" act={act} busy={busy} /> : null),
+          },
+        ]}
+      />
+      {shown.more && (
+        <button type="button" className="button" disabled={loading} onClick={() => void load({ severity, kind }, shown.events.at(-1)?.id)}>
+          {t("Ältere laden", "Load older")}
+        </button>
+      )}
+    </SettingGroup>
+  );
+}
+
+/* ---------- Sessions and ways in ---------- */
+
+function Sessions({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
+  const t = useT();
+  return (
+    <SettingGroup id="sessions" title={t("Angemeldete Personen", "Signed-in people")} description={t("Admins zuerst. Sitzungen beenden meldet auf allen Geräten ab; die App muss sich neu anmelden.", "Admins first. Ending sessions signs out on every device; the app has to sign in again.")}>
+      <ResponsiveTable
+        label={t("Angemeldete Personen", "Signed-in people")}
+        rows={d.sessions}
+        rowKey={(s) => s.id}
+        empty={<p className="muted">{t("Niemand angemeldet.", "Nobody signed in.")}</p>}
+        columns={[
+          {
+            key: "name",
+            header: t("Person", "Person"),
+            primary: true,
+            render: (s) => (
+              <span>
+                {s.name || s.email} {s.admin && <StatusBadge tone="warn">Admin</StatusBadge>}
+              </span>
+            ),
+          },
+          { key: "email", header: t("E-Mail", "E-mail"), hideOnPhone: true, render: (s) => s.email },
+          { key: "sessions", header: t("Sitzungen", "Sessions"), align: "end", render: (s) => num(s.sessions) },
+          { key: "seen", header: t("Zuletzt aktiv", "Last active"), render: (s) => (s.lastSeen ? ago(s.lastSeen, t) : "–") },
+          {
+            key: "action",
+            header: "",
+            render: (s) => (
+              <button type="button" className="text-button" disabled={busy} onClick={() => void act({ action: "sessions.end", userId: s.id }, t(`Alle Sitzungen von ${s.name || s.email} beenden?`, `End all sessions of ${s.name || s.email}?`))}>
+                {t("Sitzungen beenden", "End sessions")}
+              </button>
+            ),
+          },
+        ]}
+      />
+    </SettingGroup>
+  );
+}
+
+function Access({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
+  const t = useT();
+  const roles: Record<string, string> = { editor: t("bearbeiten", "edit"), commenter: t("kommentieren", "comment"), viewer: t("ansehen", "view") };
+  return (
+    <SettingGroup id="access" title={t("Offene Zugänge", "Open ways in")} description={t("API-Tokens, Freigabelinks und öffentliche Seiten der ganzen Instanz – was nicht mehr gebraucht wird, schließt du hier.", "API tokens, share links and public pages of the whole instance – close what is no longer needed here.")}>
+      <h3 className="security-sub">{t(`API-Tokens (${d.tokens.length})`, `API tokens (${d.tokens.length})`)}</h3>
+      <ResponsiveTable
+        label={t("API-Tokens", "API tokens")}
+        rows={d.tokens}
+        rowKey={(r) => r.id}
+        empty={<p className="muted">{t("Keine Tokens.", "No tokens.")}</p>}
+        columns={[
+          { key: "name", header: t("Token", "Token"), primary: true, render: (r) => `${r.name} (${r.prefix}…)` },
+          { key: "owner", header: t("Person", "Person"), render: (r) => r.owner || r.email },
+          { key: "scope", header: t("Recht", "Scope"), render: (r) => (r.scope === "write" ? <StatusBadge tone="warn">{t("schreiben", "write")}</StatusBadge> : r.scope) },
+          { key: "used", header: t("Zuletzt benutzt", "Last used"), render: (r) => (r.lastUsedAt ? ago(r.lastUsedAt, t) : t("nie", "never")) },
+          {
+            key: "action",
+            header: "",
+            render: (r) => (
+              <button type="button" className="text-button danger" disabled={busy} onClick={() => void act({ action: "token.revoke", id: r.id }, t(`Das Token „${r.name}“ von ${r.owner} widerrufen? Skripte damit hören sofort auf zu funktionieren.`, `Revoke the token “${r.name}” of ${r.owner}? Scripts using it stop working at once.`))}>
+                {t("Widerrufen", "Revoke")}
+              </button>
+            ),
+          },
+        ]}
+      />
+      <h3 className="security-sub">{t(`Freigabelinks (${d.links.shares.length})`, `Share links (${d.links.shares.length})`)}</h3>
+      <ResponsiveTable
+        label={t("Freigabelinks", "Share links")}
+        rows={d.links.shares}
+        rowKey={(r) => r.id}
+        empty={<p className="muted">{t("Keine Freigabelinks.", "No share links.")}</p>}
+        columns={[
+          { key: "page", header: t("Seite", "Page"), primary: true, render: (r) => <a href={`#page=${r.pageId}`}>{r.page || t("Ohne Titel", "Untitled")}</a> },
+          { key: "name", header: t("Link", "Link"), render: (r) => r.name },
+          { key: "role", header: t("Recht", "Right"), render: (r) => (r.role === "editor" ? <StatusBadge tone="warn">{roles.editor}</StatusBadge> : roles[r.role] || r.role) },
+          { key: "creator", header: t("Erstellt von", "Created by"), hideOnPhone: true, render: (r) => r.creator || "–" },
+          {
+            key: "action",
+            header: "",
+            render: (r) => (
+              <button type="button" className="text-button danger" disabled={busy} onClick={() => void act({ action: "share.revoke", id: r.id }, t(`Den Link „${r.name}“ zu „${r.page}“ löschen? Wer ihn hat, kommt nicht mehr hinein.`, `Delete the link “${r.name}” to “${r.page}”? Whoever has it can no longer get in.`))}>
+                {t("Löschen", "Delete")}
+              </button>
+            ),
+          },
+        ]}
+      />
+      <h3 className="security-sub">{t(`Öffentliche Seiten (${d.links.published.length})`, `Public pages (${d.links.published.length})`)}</h3>
+      <ResponsiveTable
+        label={t("Öffentliche Seiten", "Public pages")}
+        rows={d.links.published}
+        rowKey={(r) => r.id}
+        empty={<p className="muted">{t("Keine öffentlichen Seiten.", "No public pages.")}</p>}
+        columns={[
+          { key: "page", header: t("Seite", "Page"), primary: true, render: (r) => <a href={`#page=${r.id}`}>{r.page || t("Ohne Titel", "Untitled")}</a> },
+          {
+            key: "action",
+            header: "",
+            render: (r) => (
+              <button type="button" className="text-button danger" disabled={busy} onClick={() => void act({ action: "publication.end", pageId: r.id }, t(`„${r.page}“ nicht mehr veröffentlichen?`, `Stop publishing “${r.page}”?`))}>
+                {t("Veröffentlichung beenden", "Stop publishing")}
+              </button>
+            ),
+          },
+        ]}
+      />
+    </SettingGroup>
+  );
+}
+
+/* ---------- Blocks ---------- */
+
+function Blocks({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
+  const t = useT();
+  const [network, setNetwork] = useState("");
+  const [hours, setHours] = useState("24");
+  const [reason, setReason] = useState("");
+  return (
+    <SettingGroup id="blocks" title={t("Sperren", "Blocks")} description={t("Gesperrte Adressen und Netze bekommen nur noch eine Ablehnung – auch angemeldete Personen darin. Die eigene Adresse lässt sich nicht sperren.", "Blocked addresses and networks only get a refusal – signed-in people in them too. Your own address cannot be blocked.")}>
+      <ResponsiveTable
+        label={t("Sperren", "Blocks")}
+        rows={d.blocks}
+        rowKey={(b) => b.id}
+        empty={<p className="muted">{t("Nichts gesperrt.", "Nothing blocked.")}</p>}
+        columns={[
+          { key: "label", header: t("Adresse oder Netz", "Address or network"), primary: true, render: (b) => <span className="mono">{b.label}</span> },
+          { key: "kind", header: t("Art", "Kind"), render: (b) => (b.kind === "network" ? t("Netz", "Network") : t("Adresse", "Address")) },
+          { key: "until", header: t("Bis", "Until"), render: (b) => (b.until ? dateTime(b.until) : t("unbefristet", "indefinitely")) },
+          { key: "reason", header: t("Grund", "Reason"), hideOnPhone: true, render: (b) => [b.reason, b.creator].filter(Boolean).join(" · ") || "–" },
+          {
+            key: "action",
+            header: "",
+            render: (b) => (
+              <button type="button" className="text-button" disabled={busy} onClick={() => void act({ action: "block.remove", id: b.id })}>
+                {t("Aufheben", "Lift")}
+              </button>
+            ),
+          },
+        ]}
+      />
+      <form
+        className="security-block-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void act({ action: "block.add", kind: "network", value: network, hours: hours ? Number(hours) : null, reason }).then(() => setNetwork(""));
+        }}
+      >
+        <label>
+          {t("Netz", "Network")}
+          <input value={network} onChange={(e) => setNetwork(e.target.value)} placeholder="203.0.113.0/24" required maxLength={60} />
+        </label>
+        <label>
+          {t("Dauer", "Duration")}
+          <select value={hours} onChange={(e) => setHours(e.target.value)}>
+            <option value="1">{t("1 Stunde", "1 hour")}</option>
+            <option value="24">{t("24 Stunden", "24 hours")}</option>
+            <option value="168">{t("7 Tage", "7 days")}</option>
+            <option value="720">{t("30 Tage", "30 days")}</option>
+            <option value="">{t("unbefristet", "indefinitely")}</option>
+          </select>
+        </label>
+        <label>
+          {t("Grund", "Reason")}
+          <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} />
+        </label>
+        <button type="submit" className="button" disabled={busy || !network.trim()}>
+          {t("Netz sperren", "Block network")}
+        </button>
+      </form>
+    </SettingGroup>
+  );
+}
+
+/* ---------- Detection and connection ---------- */
+
+function Setup({ d }: { d: Overview }) {
+  const t = useT();
+  const docs = useDocs();
+  const th = d.thresholds;
+  const minutes = (ms: number) => Math.round(ms / 60_000);
+  const describe: Record<SecurityRule, string> = {
+    brute_force_account: t(`${th.accountFailures} Fehlversuche bei einem Konto in ${minutes(th.window)} Minuten`, `${th.accountFailures} failures on one account in ${minutes(th.window)} minutes`),
+    brute_force_address: t(`${th.addressFailures} Fehlversuche von einer Adresse in ${minutes(th.window)} Minuten`, `${th.addressFailures} failures from one address in ${minutes(th.window)} minutes`),
+    credential_stuffing: t(`${th.stuffingAccounts} verschiedene Konten von einer Adresse in ${minutes(th.window)} Minuten`, `${th.stuffingAccounts} different accounts from one address in ${minutes(th.window)} minutes`),
+    login_after_failures: t(`Erfolgreiche Anmeldung nach ${th.failuresBeforeSuccess} Fehlversuchen`, `Successful sign-in after ${th.failuresBeforeSuccess} failures`),
+    admin_new_device: t("Admin meldet sich mit einem Gerät an, das 90 Tage nicht dabei war", "An admin signs in with a device not seen for 90 days"),
+    impossible_travel: t("Zwei Länder innerhalb von 2 Stunden (braucht FLOWPLAN_COUNTRY_HEADER)", "Two countries within 2 hours (needs FLOWPLAN_COUNTRY_HEADER)"),
+    privilege_change: t("Adminrechte, LDAP/SCIM, Wiederherstellung, Erweiterungen, Domains", "Admin rights, LDAP/SCIM, restore, extensions, domains"),
+    mass_export: t(`Mehr als ${th.exportsPerHour} Exporte einer Person in einer Stunde`, `More than ${th.exportsPerHour} exports by one person in an hour`),
+    probing: t(`${th.probes} abgewiesene API-Anfragen (401/403/404) einer Adresse in ${minutes(th.probeWindow)} Minuten`, `${th.probes} refused API requests (401/403/404) from one address in ${minutes(th.probeWindow)} minutes`),
+    injection_attempts: t(`${th.contentAttempts} abgewehrte Skripte oder interne Adressen in einer Stunde`, `${th.contentAttempts} refused scripts or internal addresses in an hour`),
+  };
+  const on = (value: boolean, label: string) => <StatusBadge tone={value ? "ok" : "off"}>{label}</StatusBadge>;
+  return (
+    <SettingGroup id="setup" title={t("Erkennung & Anbindung", "Detection & connection")} description={<a href={docs("operations", "sicherheit", "security")} target="_blank" rel="noreferrer">{t("Anleitung: Logs, OpenTelemetry, Prometheus, fail2ban und CrowdSec", "Guide: logs, OpenTelemetry, Prometheus, fail2ban and CrowdSec")}</a>}>
+      <h3 className="security-sub">{t("Regeln", "Rules")}</h3>
+      <ul className="security-rules">
+        {d.rules.map((r) => (
+          <li key={r.rule}>
+            <i className={`security-dot ${r.active ? r.severity : "off"}`} aria-hidden />
+            <div>
+              <strong>{ruleTitle(r.rule, t)}</strong>
+              <small>{describe[r.rule as SecurityRule]}</small>
+            </div>
+            {!r.active && <StatusBadge tone="off">{t("aus", "off")}</StatusBadge>}
+          </li>
+        ))}
+      </ul>
+      <h3 className="security-sub">{t("Wohin die Ereignisse gehen", "Where the events go")}</h3>
+      <dl className="security-setup">
+        <dt>{t("Log-Zeilen (stdout, JSON)", "Log lines (stdout, JSON)")}</dt>
+        <dd>{on(d.setup.logMode !== "off", d.setup.logMode === "on" ? t("mit Adresse", "with address") : d.setup.logMode === "anonymous" ? t("ohne Adresse", "without address") : t("aus", "off"))} <code>FLOWPLAN_SECURITY_LOG</code></dd>
+        <dt>OpenTelemetry (OTLP)</dt>
+        <dd>{on(!!d.setup.otlp, d.setup.otlp || t("nicht eingerichtet", "not set up"))} <code>OTEL_EXPORTER_OTLP_ENDPOINT</code></dd>
+        <dt>Prometheus</dt>
+        <dd>{on(d.setup.prometheus, d.setup.prometheus ? "/api/metrics" : t("aus", "off"))} <code>FLOWPLAN_METRICS_TOKEN</code></dd>
+        <dt>{t("Webhook für Vorfälle", "Webhook for incidents")}</dt>
+        <dd>
+          {on(d.setup.webhook, d.setup.webhook ? t("an", "on") : t("aus", "off"))} <a href="#admin/monitoring/alerts">{t("Überwachung → Warnungen", "Monitoring → Alerts")}</a>
+        </dd>
+        <dt>{t("E-Mail an Admins", "E-mail to admins")}</dt>
+        <dd>{on(d.setup.mail, d.setup.mail ? t("an", "on") : t("kein SMTP", "no SMTP"))}</dd>
+        <dt>{t("Land der Anfrage", "Country of the request")}</dt>
+        <dd>{on(d.setup.countryHeader, d.setup.countryHeader ? t("an", "on") : t("aus", "off"))} <code>FLOWPLAN_COUNTRY_HEADER</code></dd>
+        <dt>{t("Aufbewahrung", "Retention")}</dt>
+        <dd>
+          {t(`${d.setup.retentionDays} Tage`, `${d.setup.retentionDays} days`)} <code>FLOWPLAN_SECURITY_RETENTION_DAYS</code>
+        </dd>
+      </dl>
+    </SettingGroup>
+  );
+}
