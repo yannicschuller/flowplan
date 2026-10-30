@@ -281,3 +281,13 @@ Fragen, Ideen, zeigen, was ihr gebaut habt, oder einfach Hallo sagen: Kommt in d
 Beiträge sind willkommen – siehe [CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitslücken bitte vertraulich melden, wie in [SECURITY.md](SECURITY.md) beschrieben.
 
 Flowplan ist freie Software unter der [GNU Affero General Public License v3.0](LICENSE). Wer eine veränderte Fassung als Netzdienst betreibt, muss den Quellcode den Nutzenden zugänglich machen. Der n8n-Knoten in `integrations/n8n` steht unter der MIT-Lizenz, wie n8n es für Community-Knoten verlangt.
+
+## Sterne im Verlauf
+
+<a href="https://www.star-history.com/#yannicschuller/flowplan&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=yannicschuller/flowplan&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=yannicschuller/flowplan&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=yannicschuller/flowplan&type=Date" />
+  </picture>
+</a>
