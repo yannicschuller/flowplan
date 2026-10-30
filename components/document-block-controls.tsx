@@ -43,7 +43,11 @@ type Positioned = DocumentBlock & {
   rtl: boolean;
   right: number;
   glide?: Animation;
+  // Inside a callout, quote or toggle: no handle of its own (it would sit on
+  // the box's border); the box has one, and "Manage blocks" lists all.
+  boxed: boolean;
 };
+const BOXES = ["callout", "blockquote", "toggle"];
 // Handles sit on the middle of a block's first text line, so they stay
 // aligned with large headings and indented list text alike.
 function firstLineCenter(editor: Editor, block: DocumentBlock, rect: DOMRect) {
@@ -174,6 +178,11 @@ export function DocumentBlockControls({
             height: rect.height,
             handleTop: firstLineCenter(editor, b, rect) - origin.top - 14 - dy,
             glide: glide?.animation,
+            boxed: (() => {
+              const $pos = editor.state.doc.resolve(b.pos);
+              for (let d = $pos.depth; d > 0; d--) if (BOXES.includes($pos.node(d).type.name)) return true;
+              return false;
+            })(),
           },
         ];
       });
@@ -560,7 +569,7 @@ export function DocumentBlockControls({
         {editor?.isEditable && (
           <div className="block-handle-layer" aria-label={t("Blockgriffe", "Block handles")}>
             {blocks
-              .filter((block) => !listContainers.includes(block.node.type.name))
+              .filter((block) => !listContainers.includes(block.node.type.name) && !block.boxed)
               .map((block) => (
               <button
                 key={block.pos}

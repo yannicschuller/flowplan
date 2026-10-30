@@ -9,7 +9,10 @@ export function diagramSourceError(source: string): string | null {
   // inject CSS or fetch external resources while Mermaid measures their layout.
   if (/%%\s*\{|^\s*---/m.test(source))
     return "Konfigurationsdirektiven und YAML-Kopfbereiche werden nicht unterstützt.";
-  if (/<\s*\/?[a-z!]|\bimg\s*:|\burl\s*\(|@import|@font-face/i.test(source))
+  // Line breaks in labels (<br>, <br/>) are Mermaid's own syntax; any other
+  // tag is not.
+  const withoutBreaks = source.replace(/<br\s*\/?>/gi, " ");
+  if (/<\s*\/?[a-z!]|\bimg\s*:|\burl\s*\(|@import|@font-face/i.test(withoutBreaks))
     return "Bitte Textbeschriftungen ohne HTML, externe Bilder oder CSS-Ressourcen verwenden.";
   return null;
 }

@@ -32,12 +32,16 @@ test("Mermaid sources preserve syntax and reject resource/configuration injectio
     diagramSourceError("sequenceDiagram\n  Alice->>Bob: Hallo"),
     null,
   );
+  // Line breaks in labels are Mermaid syntax, not HTML.
+  assert.equal(diagramSourceError("flowchart LR\n  A[Erste<br/>Zeile] --> B[x<br>y<br />z]"), null);
   for (const input of [
     "",
     "a".repeat(MAX_DIAGRAM_LENGTH + 1),
     '%%{init: {securityLevel: "loose"}}%%\ngraph LR\nA-->B',
     "---\nconfig:\n theme: dark\n---\ngraph LR\nA-->B",
     'graph LR\nA["<img src=x onerror=alert(1)>"]',
+    'graph LR\nA["<br/><script>alert(1)</script>"]',
+    'graph LR\nA["<br onclick=alert(1)>"]',
     'graph LR\nA@{ img: "https://example.org/tracker" }',
     "graph LR\nclassDef red fill:url(https://example.org/x)",
     '@import "https://example.org/x"',
