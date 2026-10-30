@@ -66,6 +66,24 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     ],
   },
   {
+    id: "security",
+    area: "settings",
+    group: "personal",
+    icon: "ShieldCheck",
+    title: { de: "Sicherheitscheck", en: "Security check" },
+    description: { de: "Wie gut dein Konto geschützt ist, was du geteilt hast und deine letzten Anmeldungen.", en: "How well your account is protected, what you shared and your latest sign-ins." },
+    keywords: {
+      de: "sicherheit sicherheitscheck konto schützen zwei-faktor 2fa passkey wiederherstellungscodes geteilt freigabelinks öffentlich zugriff entziehen anmeldungen fehlgeschlagen geräte tipps",
+      en: "security check protect account two-factor 2fa passkey recovery codes shared share links public access remove sign-ins failed devices tips",
+    },
+    entries: [
+      { title: { de: "Sicherheitscheck", en: "Security check" }, anchor: "checks" },
+      { title: { de: "Was du geteilt hast", en: "What you shared" }, keywords: { de: "freigabelinks öffentliche seiten personen", en: "share links public pages people" }, anchor: "shared" },
+      { title: { de: "Anmeldungen & Änderungen", en: "Sign-ins & changes" }, anchor: "activity" },
+      { title: { de: "Tipps", en: "Tips" }, anchor: "tips" },
+    ],
+  },
+  {
     id: "appearance",
     area: "settings",
     group: "personal",

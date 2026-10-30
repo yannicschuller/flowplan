@@ -95,6 +95,7 @@ import { captureUndo, capturePreview, desktopCaptureSave, desktopCaptureTargets 
 import { MAX_CAPTURE_FILES } from "@/lib/mobile-capture";
 import { listInboundAddresses } from "@/lib/inbound-mail";
 import { endMySessions, mySessions } from "@/lib/my-sessions";
+import { mySecurity } from "@/lib/my-security";
 import { pageToRecordPlan } from "@/lib/page-to-record";
 import { recordToPagePlan } from "@/lib/record-to-page";
 import { importTracker } from "@/lib/tracker-import";
@@ -388,6 +389,9 @@ async function handleGET(
         { sessions: mySessions(user, (await cookies()).get(cookieName)?.value), rememberAvailable: !!rememberPolicy() },
         { headers: { "Cache-Control": "no-store" } },
       );
+    // Settings → Sicherheitscheck: one's own account, shares and sign-ins.
+    if (path.length === 1 && path[0] === "security")
+      return NextResponse.json(mySecurity(user, (await cookies()).get(cookieName)?.value), { headers: { "Cache-Control": "no-store" } });
     // Who has access to exactly this page (the share dialog).
     if (path.length === 3 && path[0] === "pages" && path[2] === "shares")
       return NextResponse.json(pageShares(user, z.uuid().parse(path[1])), { headers: { "Cache-Control": "no-store" } });

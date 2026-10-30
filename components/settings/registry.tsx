@@ -36,6 +36,7 @@ import {
 } from "@phosphor-icons/react";
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, type SectionMeta, type SettingsArea } from "@/lib/settings-sections";
 import AccountSection from "./user/account";
+import MySecuritySection from "./user/security";
 import AppearanceSection from "./user/appearance";
 import NotificationsSection from "./user/notifications";
 import AiSection from "./user/ai";
@@ -101,6 +102,7 @@ export const ICONS: Record<string, Icon> = {
 
 const USER_COMPONENTS: Record<string, ComponentType> = {
   account: AccountSection,
+  security: MySecuritySection,
   appearance: AppearanceSection,
   notifications: NotificationsSection,
   ai: AiSection,

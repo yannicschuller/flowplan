@@ -28983,3 +28983,92 @@ label.ws-search input {
     flex: 1 1 100%;
   }
 }
+
+/* ---------- Settings → Sicherheitscheck (components/settings/user/security.tsx) ---------- */
+.my-security {
+  display: grid;
+  gap: 18px;
+}
+.my-security .setting-rows {
+  padding: 0 22px 20px;
+}
+.my-security-meter {
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  max-width: 320px;
+}
+.my-security-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: currentColor;
+}
+.my-security-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.my-security-checks li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.my-security-checks li:first-child {
+  border-top: 0;
+}
+.my-security-checks li > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.my-security-checks li.ok > svg {
+  color: #3f8f5f;
+}
+.my-security-checks li.todo > svg {
+  color: #c48a1d;
+}
+.my-security-checks li > div {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.my-security-checks small {
+  color: var(--secondary);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.my-security-checks li.ok strong {
+  font-weight: 560;
+}
+.my-security-checks .button {
+  flex-shrink: 0;
+}
+.my-security-warn {
+  color: #c48a1d;
+}
+.my-security-tips {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--secondary);
+}
+@media (max-width: 600px) {
+  .my-security .setting-rows {
+    padding: 0 14px 16px;
+  }
+  .my-security-checks li {
+    flex-wrap: wrap;
+  }
+  .my-security-checks .button {
+    margin-left: 34px;
+  }
+}
