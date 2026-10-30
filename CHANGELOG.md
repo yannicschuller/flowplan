@@ -2,6 +2,15 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.7.5 – 2026-10-30
+
+- Block menu at the handle and a selection mode replace "Manage blocks" ([dda202b](https://github.com/yannicschuller/flowplan/commit/dda202b7bec5cc40bcded4cb69131d0362c039dd))
+- Callouts without inner block handles; Mermaid line breaks allowed ([4b82cfb](https://github.com/yannicschuller/flowplan/commit/4b82cfb44ca2088d7c3403246b2c031245f11683))
+- Tasks of a deleted record leave My tasks (#53) ([cd1cd48](https://github.com/yannicschuller/flowplan/commit/cd1cd48fff03033652c5d1cfd9d61516d13c7397))
+- Test: time reports use the local day, not the UTC one ([f8180d4](https://github.com/yannicschuller/flowplan/commit/f8180d424ec649c05542d0c92ef1c1037e2fc1c3))
+- Banners to click away once; active today; SSO admins in the user list ([ca1c7d8](https://github.com/yannicschuller/flowplan/commit/ca1c7d8780fe575368b3549b1c403f3e9b3d9760))
+- Settings: the app no longer shifts up and leaves a gap below ([1df01dc](https://github.com/yannicschuller/flowplan/commit/1df01dc6a8f378f2ff39f66d079ff68223e2d922))
+
 ## v0.7.4 – 2026-10-29
 
 - ⌘F / Ctrl+F: find on the page ([88966e6](https://github.com/yannicschuller/flowplan/commit/88966e6f33576e1b99048916d6b1f864678fe050))
