@@ -7828,11 +7828,6 @@ tr.order-drop-after > td {
 .block-editor-surface.with-block-handles {
   padding-left: 26px;
 }
-.block-manager-trigger {
-  font-size: 12px;
-  margin: 6px 0 8px;
-  color: var(--muted);
-}
 .block-handle-layer {
   position: absolute;
   inset: 0;
@@ -7875,35 +7870,194 @@ tr.order-drop-after > td {
   z-index: 3;
   pointer-events: none;
 }
-.document-block-list {
-  max-height: 300px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  margin: 12px 0;
+/* The menu of a block (components/block-menu.tsx). */
+.block-menu {
+  width: 260px;
+  max-width: calc(100vw - 16px);
+  max-height: min(70dvh, 520px);
 }
-.document-block-list > label {
+.block-menu-items {
+  display: grid;
+}
+.block-menu-item > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.block-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.block-menu-item:not(:disabled):is(:hover, :focus-visible) {
+  background: var(--hover);
+  color: var(--text);
+  outline: none;
+}
+.block-menu-item[aria-checked="true"] {
+  color: var(--text);
+  opacity: 1;
+}
+.block-menu-check {
+  color: var(--blue);
+}
+.block-menu-more {
+  color: var(--muted);
+}
+.block-menu-back {
   display: flex;
-  gap: 9px;
   align-items: center;
-  padding: 8px;
-  font-size: 13px;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
   cursor: pointer;
 }
-.document-block-list input {
-  width: 16px;
+.block-menu-note {
+  margin: 6px 10px 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.block-menu-swatch {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  margin: 0;
+  border-radius: 4px;
+  background: var(--callout);
 }
-.document-block-list span {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.block-menu-sheet .block-menu-item {
+  min-height: 46px;
+  font-size: 15px;
+  justify-content: flex-start;
+  text-align: start;
 }
-.block-action-buttons {
+.block-menu-sheet .block-menu-back {
+  justify-content: flex-start;
+  font-size: 14px;
+  min-height: 40px;
+}
+.block-menu-sheet .block-menu-item svg {
+  width: 20px;
+  height: 20px;
+}
+/* The selection mode: circles in place of the handles, the chosen blocks
+   tinted, a bar of actions at the bottom. */
+.document-block-pick {
+  position: absolute;
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  margin: 3px 1px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+  background: var(--bg);
+  color: #fff;
+  cursor: pointer;
+  z-index: 2;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+.document-block-pick:hover {
+  border-color: var(--blue);
+}
+.document-block-pick.checked {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+.document-block-pick:active {
+  transform: scale(0.9);
+}
+.document-block-picked {
+  position: absolute;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--blue) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 30%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+.block-select-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tab-bar-space, env(safe-area-inset-bottom, 0px)) + 14px);
+  transform: translateX(-50%);
+  z-index: 70;
   display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 16px);
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  animation: block-select-bar-in 0.18s ease-out;
+}
+@keyframes block-select-bar-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+}
+.block-select-count {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.block-select-actions {
+  display: flex;
+  gap: 2px;
+}
+.block-select-actions .icon-button.danger:not(:disabled) {
+  color: var(--signal);
+}
+.block-select-actions .icon-button:disabled {
+  opacity: 0.35;
+}
+@media (max-width: 600px) {
+  .block-select-bar {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    bottom: calc(var(--tab-bar-space, env(safe-area-inset-bottom, 0px)) + 8px);
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 6px;
+    padding: 6px 8px;
+  }
+  @keyframes block-select-bar-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+  .block-select-count {
+    flex-basis: 100%;
+    text-align: center;
+  }
+  .block-select-actions .icon-button {
+    min-width: 42px;
+    min-height: 44px;
+  }
+  .block-select-done {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .block-select-bar {
+    animation: none;
+  }
 }
 .block-action-message {
   color: var(--muted);
@@ -14909,7 +15063,6 @@ h3 .block-reactions {
     background: #fff;
     font-size: 11pt;
   }
-  .block-manager-trigger,
   .block-handle-layer,
   .code-block-toolbar,
   .code-block-note,

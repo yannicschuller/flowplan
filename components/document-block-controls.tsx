@@ -1,6 +1,31 @@
 "use client";
 import { useT } from "./i18n";
-import { Select } from "./select";
+import { createPortal } from "react-dom";
+import {
+  ArrowDown,
+  ArrowLineDown,
+  ArrowLineUp,
+  ArrowUp,
+  ArrowBendDownRight,
+  ArrowsClockwise,
+  ArrowsLeftRight,
+  ArrowsOutLineHorizontal,
+  Check,
+  CheckCircle,
+  CheckSquare,
+  Code,
+  Copy,
+  DotsThree,
+  Info,
+  ListBullets,
+  ListNumbers,
+  Quotes,
+  TextHOne,
+  TextHThree,
+  TextHTwo,
+  TextT,
+  Trash,
+} from "@phosphor-icons/react";
 import {
   useEffect,
   useLayoutEffect,
@@ -21,7 +46,6 @@ import {
   columnBlocks,
   documentBlocks,
   hasLinkedBlocks,
-  selectedDocumentBlock,
   type DocumentBlock,
 } from "@/lib/document-blocks";
 import {
@@ -32,7 +56,7 @@ import { applyBlockChange } from "@/lib/block-shortcuts";
 import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType } from "@/lib/document-schema";
 import { calloutLabels } from "@/lib/callout-types";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
-import { Modal } from "./ui";
+import { BlockMenu, type BlockMenuItem, type BlockMenuView } from "./block-menu";
 type Positioned = DocumentBlock & {
   left: number;
   top: number;
@@ -44,7 +68,7 @@ type Positioned = DocumentBlock & {
   right: number;
   glide?: Animation;
   // Inside a callout, quote or toggle: no handle of its own (it would sit on
-  // the box's border); the box has one, and "Manage blocks" lists all.
+  // the box's border); the box's handle moves it with everything inside.
   boxed: boolean;
 };
 const BOXES = ["callout", "blockquote", "toggle"];
@@ -79,7 +103,7 @@ type Drag = {
   clientY: number;
 };
 // A whole list has no handle of its own: its items carry one each (like
-// Notion); moving the entire list stays available in "Blöcke verwalten".
+// Notion); choosing all its items in the selection mode chooses the list.
 const listContainers = ["bulletList", "orderedList", "taskList"];
 const listItems = ["listItem", "taskItem"];
 export function DocumentBlockControls({
@@ -102,10 +126,14 @@ export function DocumentBlockControls({
   const dragging = useRef<Drag | null>(null);
   const geometry = useRef<Positioned[]>([]);
   const [blocks, setBlocks] = useState<Positioned[]>([]),
-    [open, setOpen] = useState(false),
     [, setTick] = useState(0),
-    [error, setError] = useState(""),
-    [destination, setDestination] = useState("");
+    [error, setError] = useState("");
+  // The menu of a block (a click on its handle) and the selection mode
+  // ("Select" in it): circles in place of the handles and a bar of actions.
+  const [menu, setMenu] = useState<{ anchor: DOMRect; handle: HTMLElement | null; view: string } | null>(null),
+    [picking, setPicking] = useState(false);
+  const pickingRef = useRef(false);
+  pickingRef.current = picking;
   const [pointerActive, setPointerActive] = useState(false);
   const [drop, setDrop] = useState<{
     top: number;
@@ -259,7 +287,12 @@ export function DocumentBlockControls({
     remember(positions);
     setTick((t) => t + 1);
     setError("");
-    setDestination("");
+  }
+  // Not on touch screens: the keyboard would cover the page.
+  function focusEditor() {
+    if (!editor || pickingRef.current) return;
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+    editor.commands.focus();
   }
   function perform(action: "duplicate" | "delete" | "move", target?: number) {
     if (!editor?.isEditable) {
@@ -282,8 +315,7 @@ export function DocumentBlockControls({
       setDrop(null);
       applyBlockChange(editor, tr);
       setError("");
-      setDestination("");
-      if (!open) editor.commands.focus();
+      focusEditor();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -299,7 +331,7 @@ export function DocumentBlockControls({
         columnBlocks(editor.state, selected.current, target, side),
       );
       setError("");
-      editor.commands.focus();
+      focusEditor();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -531,6 +563,7 @@ export function DocumentBlockControls({
     }
   }, [blocks]);
   const all = editor ? documentBlocks(editor.state.doc) : [];
+  const byPos = new Map(all.map((b) => [b.pos, b]));
   let rangeValid = false,
     up = false,
     down = false,
@@ -546,31 +579,343 @@ export function DocumentBlockControls({
       copyAllowed =
         allowLinkedCopies || !range.blocks.some((b) => hasLinkedBlocks(b.node));
     } catch {}
+  // A chosen block, or one inside a chosen block (the items of a chosen list).
+  function chosen(block: DocumentBlock) {
+    for (let b: DocumentBlock | undefined = block; b; b = byPos.get(b.parentPos))
+      if (selected.current.includes(b.pos)) return true;
+    return false;
+  }
+  // All items of a list chosen: the list itself (it moves as a whole).
+  function promote(positions: number[]) {
+    for (;;) {
+      const parent = byPos.get(byPos.get(positions[0])?.parentPos ?? -1);
+      if (
+        !parent ||
+        !listContainers.includes(parent.node.type.name) ||
+        all.filter((b) => b.parentPos === parent.pos).length !== positions.length
+      )
+        return positions;
+      positions = [parent.pos];
+    }
+  }
+  // A tap in the selection mode: the selection stays one run of
+  // neighbouring blocks, so the actions always apply.
+  function toggle(block: DocumentBlock) {
+    let positions = [...selected.current];
+    const container = positions.find(
+      (pos) => pos !== block.pos && chosen(block) && byPos.get(block.parentPos)?.pos === pos,
+    );
+    if (container !== undefined)
+      positions = all.filter((b) => b.parentPos === container).map((b) => b.pos);
+    else if (!positions.includes(block.pos) && chosen(block)) positions = [];
+    if (positions.includes(block.pos)) {
+      const sorted = positions.sort((a, b) => a - b),
+        at = sorted.indexOf(block.pos);
+      positions = at === 0 ? sorted.slice(1) : sorted.slice(0, at);
+    } else {
+      const first = byPos.get(positions[0]);
+      if (!first || first.parentPos !== block.parentPos) positions = [block.pos];
+      else {
+        const lo = Math.min(block.pos, ...positions),
+          hi = Math.max(block.pos, ...positions);
+        positions = all
+          .filter((b) => b.parentPos === block.parentPos && b.pos >= lo && b.pos <= hi)
+          .map((b) => b.pos);
+      }
+    }
+    select(positions.length ? promote(positions) : []);
+  }
+  function openMenu(handle: HTMLElement, block?: DocumentBlock, view = "main") {
+    if (menu?.handle === handle) return closeMenu();
+    if (block) select([block.pos]);
+    setMenu({ anchor: handle.getBoundingClientRect(), handle, view });
+  }
+  function closeMenu() {
+    const handle = menu?.handle;
+    setMenu(null);
+    if (!pickingRef.current) {
+      remember([]);
+      setTick((t) => t + 1);
+    }
+    // Back to the handle when the menu closed without an action.
+    requestAnimationFrame(() => {
+      if (handle?.isConnected && (!document.activeElement || document.activeElement === document.body))
+        handle.focus({ preventScroll: true });
+    });
+  }
+  function startPicking() {
+    pickingRef.current = true;
+    setPicking(true);
+    setError("");
+  }
+  function stopPicking() {
+    pickingRef.current = false;
+    setPicking(false);
+    setMenu(null);
+    select([]);
+  }
+  useEffect(() => {
+    if (!picking) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) stopPicking();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  });
+  // "Turn into": the current block takes another form. Runs on a text
+  // selection inside the block, like the slash menu.
+  function turnItems(block: DocumentBlock): BlockMenuItem[] {
+    if (!editor) return [];
+    const name = block.node.type.name,
+      parent = byPos.get(block.parentPos)?.node.type.name;
+    type Turn = [string, ReactNode, boolean, (c: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>];
+    const run = (selection: number | { from: number; to: number }, change: Turn[3]) => () => {
+      if (!editor.isEditable) return;
+      if (change(editor.chain().setTextSelection(selection)).run()) focusEditor();
+      else setError(t("Dieser Block lässt sich nicht so umwandeln.", "This block cannot be turned into that."));
+    };
+    const level = name === "heading" ? Number(block.node.attrs.level) : 0;
+    let turns: Turn[] = [];
+    let at: number | { from: number; to: number } = block.end - 1;
+    if ((name === "paragraph" || name === "heading" || name === "codeBlock") && !listItems.includes(parent || ""))
+      turns = [
+        [t("Text", "Text"), <TextT key="i" />, name === "paragraph", (c) => c.setParagraph()],
+        [t("Überschrift 1", "Heading 1"), <TextHOne key="i" />, level === 1, (c) => c.setHeading({ level: 1 })],
+        [t("Überschrift 2", "Heading 2"), <TextHTwo key="i" />, level === 2, (c) => c.setHeading({ level: 2 })],
+        [t("Überschrift 3", "Heading 3"), <TextHThree key="i" />, level === 3, (c) => c.setHeading({ level: 3 })],
+        [t("Aufzählung", "Bulleted list"), <ListBullets key="i" />, false, (c) => c.setParagraph().toggleBulletList()],
+        [t("Nummerierte Liste", "Numbered list"), <ListNumbers key="i" />, false, (c) => c.setParagraph().toggleOrderedList()],
+        [t("Aufgabenliste", "Task list"), <CheckSquare key="i" />, false, (c) => c.setParagraph().toggleTaskList()],
+        [t("Zitat", "Quote"), <Quotes key="i" />, false, (c) => c.wrapIn("blockquote")],
+        [t("Hinweis", "Callout"), <Info key="i" />, false, (c) => c.wrapIn("callout", { type: "note" })],
+        [t("Code", "Code"), <Code key="i" />, name === "codeBlock", (c) => c.setCodeBlock()],
+      ];
+    else if (listItems.includes(name)) {
+      at = block.pos + 2;
+      turns = [
+        [t("Aufzählung", "Bulleted list"), <ListBullets key="i" />, parent === "bulletList", (c) => c.toggleBulletList()],
+        [t("Nummerierte Liste", "Numbered list"), <ListNumbers key="i" />, parent === "orderedList", (c) => c.toggleOrderedList()],
+        [t("Aufgabenliste", "Task list"), <CheckSquare key="i" />, parent === "taskList", (c) => c.toggleTaskList()],
+        [t("Text", "Text"), <TextT key="i" />, false, (c) => c.liftListItem(name)],
+      ];
+    } else if (name === "blockquote" || name === "callout") {
+      at = { from: block.pos + 2, to: block.end - 2 };
+      turns = [
+        [t("Text", "Text"), <TextT key="i" />, false, (c) => c.lift(name)],
+        name === "blockquote"
+          ? [t("Hinweis", "Callout"), <Info key="i" />, false, (c) => c.lift(name).wrapIn("callout", { type: "note" })]
+          : [t("Zitat", "Quote"), <Quotes key="i" />, false, (c) => c.lift(name).wrapIn("blockquote")],
+      ];
+    }
+    return turns.map(([label, icon, active, change]) => ({
+      label,
+      icon,
+      checked: active,
+      disabled: active,
+      run: run(at, change),
+    }));
+  }
+  // "Move below …": the headings of the page (and its start and end).
+  function moveItems(): BlockMenuItem[] {
+    if (!editor || !rangeValid) return [];
+    const range = blockRange(editor.state.doc, selected.current);
+    const fits = (target: number) => {
+      if (target === range.from || target === range.to) return false;
+      try {
+        changeBlocks(editor.state, selected.current, "move", target);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const items: BlockMenuItem[] = [];
+    if (fits(0))
+      items.push({ icon: <ArrowLineUp />, label: t("An den Anfang", "To the top"), run: () => perform("move", 0) });
+    for (const b of all) {
+      if (b.parentPos !== -1 || b.node.type.name !== "heading") continue;
+      if (b.pos >= range.from && b.end <= range.to) continue;
+      const level = Number(b.node.attrs.level) || 1;
+      if (fits(b.end))
+        items.push({
+          icon: level === 1 ? <TextHOne /> : level === 2 ? <TextHTwo /> : <TextHThree />,
+          label: b.node.textContent.trim().slice(0, 60) || t("Überschrift ohne Text", "Empty heading"),
+          indent: Math.min(level, 3) - 1,
+          run: () => perform("move", b.end),
+        });
+    }
+    const end = editor.state.doc.content.size;
+    if (fits(end))
+      items.push({ icon: <ArrowLineDown />, label: t("Ans Ende", "To the end"), run: () => perform("move", end) });
+    return items;
+  }
+  function menuViews(): Record<string, BlockMenuView> {
+    const views: Record<string, BlockMenuView> = {};
+    if (!editor) return views;
+    const only = selected.current.length === 1 ? byPos.get(selected.current[0]) : undefined;
+    const many = selected.current.length > 1;
+    const items: BlockMenuItem[] = [
+      { icon: <ArrowUp />, label: t("Nach oben", "Move up"), disabled: !up, run: () => shift(-1) },
+      { icon: <ArrowDown />, label: t("Nach unten", "Move down"), disabled: !down, run: () => shift(1) },
+      { icon: <ArrowBendDownRight />, label: t("Verschieben unter …", "Move below …"), disabled: !rangeValid, view: "move" },
+      { icon: <Copy />, label: t("Duplizieren", "Duplicate"), disabled: !rangeValid || !copyAllowed, run: () => perform("duplicate") },
+    ];
+    views.move = {
+      title: t("Verschieben unter …", "Move below …"),
+      items: moveItems(),
+      note: t("Überschriften der Seite", "Headings of the page"),
+    };
+    if (!views.move.items.length) views.move.note = t("Keine andere Stelle möglich.", "No other place available.");
+    const turns = only ? turnItems(only) : [];
+    if (turns.length) {
+      items.push({ icon: <ArrowsClockwise />, label: t("Umwandeln in …", "Turn into …"), view: "turn" });
+      views.turn = { title: t("Umwandeln in …", "Turn into …"), items: turns };
+    }
+    if (only?.node.type.name === "callout") {
+      const labels = calloutLabels(t);
+      items.push({ icon: <Info />, label: t("Hinweistyp", "Callout type"), view: "callout" });
+      views.callout = {
+        title: t("Hinweistyp", "Callout type"),
+        items: CALLOUT_TYPES.map((type) => ({
+          icon: <span className="block-menu-swatch" data-callout={type} aria-hidden />,
+          label: labels[type],
+          checked: calloutType(only.node.attrs.type) === type,
+          run: () => setAttribute(only, { type }),
+        })),
+      };
+    }
+    if (only?.node.type.name === "media") {
+      items.push({ icon: <ArrowsOutLineHorizontal />, label: t("Breite", "Width"), view: "width" });
+      views.width = {
+        title: t("Breite", "Width"),
+        items: MEDIA_WIDTHS.map((w) => ({
+          icon: <ArrowsOutLineHorizontal />,
+          label: `${w} %`,
+          checked: Number(only.node.attrs.width || 100) === w,
+          run: () => setAttribute(only, { width: w }),
+        })),
+      };
+    }
+    // Text direction: automatic (by the text), left to right, right to left
+    // – for the blocks and everything inside them.
+    const turnable = all
+      .filter((b) => selected.current.includes(b.pos))
+      .filter((b) => {
+        if (TEXT_DIRECTION_TYPES.includes(b.node.type.name)) return true;
+        let inside = false;
+        b.node.descendants((n) => {
+          if (TEXT_DIRECTION_TYPES.includes(n.type.name)) inside = true;
+          return !inside;
+        });
+        return inside;
+      });
+    if (turnable.length) {
+      const values = new Set(turnable.map((b) => textDirection(b.node.attrs.dir) || ""));
+      const value = values.size === 1 ? [...values][0] : "mixed";
+      items.push({ icon: <ArrowsLeftRight />, label: t("Textrichtung", "Text direction"), view: "direction" });
+      views.direction = {
+        title: t("Textrichtung", "Text direction"),
+        items: ([
+          ["", t("Automatisch", "Automatic")],
+          ["ltr", t("Links nach rechts", "Left to right")],
+          ["rtl", t("Rechts nach links", "Right to left")],
+        ] as const).map(([dir, label]) => ({
+          icon: <ArrowsLeftRight />,
+          label,
+          checked: value === dir,
+          run: () => setDirection(turnable, (dir || null) as BlockDirection | null),
+        })),
+      };
+    }
+    items.push("separator");
+    if (!pickingRef.current)
+      items.push({ icon: <CheckCircle />, label: t("Mehrere auswählen", "Select several"), run: startPicking });
+    items.push({ icon: <Trash />, label: t("Löschen", "Delete"), danger: true, disabled: !rangeValid, run: () => perform("delete") });
+    views.main = {
+      title: many
+        ? t(`${selected.current.length} Blöcke`, `${selected.current.length} blocks`)
+        : only?.label || t("Block", "Block"),
+      items,
+      note: !copyAllowed
+        ? t("Verknüpfte Datenbanken lassen sich nur im Arbeitsbereich duplizieren.", "Linked databases can only be duplicated in the workspace.")
+        : undefined,
+    };
+    return views;
+  }
+  function setAttribute(block: DocumentBlock, attrs: Record<string, unknown>) {
+    if (!editor?.isEditable) return;
+    const tr = editor.state.tr.setNodeMarkup(block.pos, undefined, { ...block.node.attrs, ...attrs });
+    editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [block.pos]));
+    setTick((t) => t + 1);
+  }
+  function setDirection(turnable: DocumentBlock[], direction: BlockDirection | null) {
+    if (!editor?.isEditable) return;
+    const tr = editor.state.tr;
+    for (const block of turnable) setBlockDirection(tr, block.pos, direction);
+    // A list whose items all go one way goes that way as a whole.
+    const lists = new Set(
+      turnable
+        .filter((b) => listItems.includes(b.node.type.name))
+        .map((b) => b.parentPos),
+    );
+    for (const pos of lists) {
+      const list = tr.doc.nodeAt(pos);
+      if (!list) continue;
+      const dirs = new Set<string | null>();
+      list.forEach((item) => dirs.add(textDirection(item.attrs.dir)));
+      const shared = dirs.size === 1 ? [...dirs][0] : null;
+      if ((list.attrs.dir ?? null) !== shared) tr.setNodeAttribute(pos, "dir", shared);
+    }
+    if (!tr.docChanged) return;
+    editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [...selected.current]));
+    setTick((t) => t + 1);
+  }
+  const visible = blocks.filter(
+    (block) => !listContainers.includes(block.node.type.name) && !block.boxed,
+  );
+  const count = selected.current.length;
+  const picked = picking
+    ? blocks.filter((b) => selected.current.includes(b.pos))
+    : [];
   return (
     <>
-      {editor?.isEditable && (
-        <button
-          className="text-button block-manager-trigger"
-          type="button"
-          onClick={() => {
-            const block = selectedDocumentBlock(editor.state);
-            if (!selected.current.length && block) select([block.pos]);
-            setOpen(true);
-          }}
-        >
-          {t("⠿ Blöcke verwalten", "⠿ Manage blocks")}
-        </button>
-      )}
       <div
         ref={surface}
-        className={`block-editor-surface ${editor?.isEditable ? "with-block-handles" : ""}${blocks.some((block) => block.rtl) ? " with-rtl-blocks" : ""}`}
+        className={`block-editor-surface ${editor?.isEditable ? "with-block-handles" : ""}${picking ? " picking-blocks" : ""}${blocks.some((block) => block.rtl) ? " with-rtl-blocks" : ""}`}
       >
         {children}
         {editor?.isEditable && (
           <div className="block-handle-layer" aria-label={t("Blockgriffe", "Block handles")}>
-            {blocks
-              .filter((block) => !listContainers.includes(block.node.type.name) && !block.boxed)
-              .map((block) => (
+            {picked.map((block) => (
+              <div
+                key={`picked-${block.pos}`}
+                className="document-block-picked"
+                style={{ top: block.top - 3, left: block.left - 6, width: block.width + 12, height: block.height + 6 }}
+                aria-hidden="true"
+              />
+            ))}
+            {picking
+              ? visible.map((block) => {
+                  const on = chosen(block);
+                  return (
+                    <button
+                      key={block.pos}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={on}
+                      data-block-pos={block.pos}
+                      className={`document-block-pick${on ? " checked" : ""}`}
+                      style={{
+                        left: block.rtl ? block.right + 2 : Math.max(0, block.left - 25),
+                        top: block.handleTop,
+                      }}
+                      aria-label={block.label}
+                      onClick={() => toggle(block)}
+                    >
+                      {on && <Check size={12} weight="bold" aria-hidden />}
+                    </button>
+                  );
+                })
+              : visible.map((block) => (
               <button
                 key={block.pos}
                 type="button"
@@ -581,7 +926,9 @@ export function DocumentBlockControls({
                   top: block.handleTop,
                 }}
                 aria-label={t(`Blockaktionen: ${block.label}`, `Block actions: ${block.label}`)}
-                title={t("Ziehen oder Blockaktionen öffnen", "Drag or open block actions")}
+                aria-haspopup="menu"
+                aria-expanded={!!menu && selected.current.includes(block.pos)}
+                title={t("Ziehen zum Verschieben, klicken für das Menü", "Drag to move, click for the menu")}
                 onPointerDown={(event) => pointerDown(event, block)}
                 onPointerMove={pointerMove}
                 onPointerUp={(event) => {
@@ -603,11 +950,9 @@ export function DocumentBlockControls({
                       );
                     // A drag selects only for its own duration; the moved
                     // block's handle must not stay highlighted afterwards.
-                    if (!open) {
-                      remember([]);
-                      setTick((t) => t + 1);
-                    }
-                  } else setOpen(true);
+                    remember([]);
+                    setTick((t) => t + 1);
+                  } else openMenu(event.currentTarget, block);
                 }}
                 onPointerCancel={() => {
                   dragging.current = null;
@@ -620,10 +965,8 @@ export function DocumentBlockControls({
                   setDrop(null);
                 }}
                 onClick={(event) => {
-                  if (event.detail === 0) {
-                    select([block.pos]);
-                    setOpen(true);
-                  }
+                  // Keyboard (Enter, Space): no pointer events before it.
+                  if (event.detail === 0) openMenu(event.currentTarget, block);
                 }}
               >
                 ⠿
@@ -639,254 +982,61 @@ export function DocumentBlockControls({
           </div>
         )}
       </div>
-      {!open && error && (
+      {!picking && error && (
         <p role="status" className="block-action-message">
           {error}
         </p>
       )}
-      <Modal
-        open={open}
-        title={t("Blöcke verwalten", "Manage blocks")}
-        onClose={() => setOpen(false)}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          editor?.commands.focus();
-        }}
-      >
-        <p className="muted">
-          {t("Wähle einen Block oder mehrere benachbarte Blöcke derselben Ebene.", "Choose a block or several neighbouring blocks on the same level.")}
-        </p>
-        <div className="document-block-list">
-          {all.map((block) => (
-            <label
-              key={block.pos}
-              style={{ paddingLeft: 8 + block.depth * 12 }}
-            >
-              <input
-                type="checkbox"
-                aria-label={block.label}
-                checked={selected.current.includes(block.pos)}
-                onChange={(event) =>
-                  select(
-                    event.target.checked
-                      ? [...selected.current, block.pos]
-                      : selected.current.filter((pos) => pos !== block.pos),
-                  )
-                }
-              />
-              <span>{block.label}</span>
-            </label>
-          ))}
-        </div>
-        {(() => {
-          // A callout's kind (note, tip, important, warning, caution).
-          const only =
-            selected.current.length === 1
-              ? all.find((b) => b.pos === selected.current[0])
-              : undefined;
-          if (!editor || only?.node.type.name !== "callout") return null;
-          const labels = calloutLabels(t);
-          return (
-            <label className="block-media-width">
-              {t("Hinweistyp", "Callout type")}
-              <Select
-                aria-label={t("Hinweistyp", "Callout type")}
-                disabled={!editor.isEditable}
-                value={calloutType(only.node.attrs.type)}
-                onChange={(event) => {
-                  const tr = editor.state.tr.setNodeMarkup(only.pos, undefined, {
-                    ...only.node.attrs,
-                    type: calloutType(event.target.value),
-                  });
-                  editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [only.pos]));
-                  setTick((t) => t + 1);
-                }}
-              >
-                {CALLOUT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {labels[type]}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          );
-        })()}
-        {(() => {
-          // Videos and embeds take a width in percent of the column.
-          const only =
-            selected.current.length === 1
-              ? all.find((b) => b.pos === selected.current[0])
-              : undefined;
-          if (!editor || only?.node.type.name !== "media") return null;
-          return (
-            <label className="block-media-width">
-              {t("Breite", "Width")}
-              <Select
-                aria-label={t("Medienbreite", "Media width")}
-                disabled={!editor.isEditable}
-                value={String(only.node.attrs.width || 100)}
-                onChange={(event) => {
-                  const tr = editor.state.tr.setNodeMarkup(
-                    only.pos,
-                    undefined,
-                    {
-                      ...only.node.attrs,
-                      width: Number(event.target.value),
-                    },
-                  );
-                  editor.view.dispatch(
-                    tr.setMeta(BLOCK_SELECTION_META, [only.pos]),
-                  );
-                  setTick((t) => t + 1);
-                }}
-              >
-                {MEDIA_WIDTHS.map((w) => (
-                  <option key={w} value={w}>
-                    {w} %
-                  </option>
-                ))}
-              </Select>
-            </label>
-          );
-        })()}
-        {(() => {
-          // Text direction: automatic (by the text), left to right, right
-          // to left – for the blocks and everything inside them.
-          const chosen = all.filter((b) => selected.current.includes(b.pos));
-          const turnable = chosen.filter((b) => {
-            if (TEXT_DIRECTION_TYPES.includes(b.node.type.name)) return true;
-            let inside = false;
-            b.node.descendants((n) => {
-              if (TEXT_DIRECTION_TYPES.includes(n.type.name)) inside = true;
-              return !inside;
-            });
-            return inside;
-          });
-          if (!editor || !turnable.length) return null;
-          const values = new Set(turnable.map((b) => textDirection(b.node.attrs.dir) || ""));
-          return (
-            <label className="block-media-width">
-              {t("Textrichtung", "Text direction")}
-              <Select
-                aria-label={t("Textrichtung", "Text direction")}
-                disabled={!editor.isEditable}
-                value={values.size === 1 ? [...values][0] : "mixed"}
-                onChange={(event) => {
-                  const direction = (textDirection(event.target.value) || null) as BlockDirection | null;
-                  const tr = editor.state.tr;
-                  for (const block of turnable) setBlockDirection(tr, block.pos, direction);
-                  // A list whose items all go one way goes that way as a whole.
-                  const lists = new Set(
-                    turnable
-                      .filter((b) => ["listItem", "taskItem"].includes(b.node.type.name))
-                      .map((b) => b.parentPos),
-                  );
-                  for (const pos of lists) {
-                    const list = tr.doc.nodeAt(pos);
-                    if (!list) continue;
-                    const dirs = new Set<string | null>();
-                    list.forEach((item) => dirs.add(textDirection(item.attrs.dir)));
-                    const shared = dirs.size === 1 ? [...dirs][0] : null;
-                    if ((list.attrs.dir ?? null) !== shared) tr.setNodeAttribute(pos, "dir", shared);
-                  }
-                  if (!tr.docChanged) return;
-                  editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [...selected.current]));
-                  setTick((t) => t + 1);
-                }}
-              >
-                {values.size > 1 && <option value="mixed">{t("Gemischt", "Mixed")}</option>}
-                <option value="">{t("Automatisch", "Automatic")}</option>
-                <option value="ltr">{t("Links nach rechts", "Left to right")}</option>
-                <option value="rtl">{t("Rechts nach links", "Right to left")}</option>
-              </Select>
-            </label>
-          );
-        })()}
-        {selected.current.length > 0 && !rangeValid && (
-          <p role="status">
-            {t("Die Auswahl muss aus benachbarten Blöcken derselben Ebene bestehen.", "The selection must consist of neighbouring blocks on the same level.")}
-          </p>
+      {menu && editor && (
+        <BlockMenu
+          key={`${menu.view}-${menu.anchor.top}-${menu.anchor.left}`}
+          anchor={menu.anchor}
+          views={menuViews()}
+          initial={menu.view}
+          owner={menu.handle}
+          onClose={closeMenu}
+        />
+      )}
+      {picking &&
+        editor?.isEditable &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="block-select-bar" role="toolbar" aria-label={t("Ausgewählte Blöcke", "Selected blocks")}>
+            <span className="block-select-count" aria-live="polite">
+              {error ||
+                (count
+                  ? count === 1
+                    ? t("1 Block", "1 block")
+                    : t(`${count} Blöcke`, `${count} blocks`)
+                  : t("Kreise antippen zum Auswählen", "Tap the circles to select"))}
+            </span>
+            <div className="block-select-actions">
+              <button type="button" className="icon-button" disabled={!up} aria-label={t("Nach oben", "Move up")} title={t("Nach oben", "Move up")} onClick={() => shift(-1)}>
+                <ArrowUp size={18} />
+              </button>
+              <button type="button" className="icon-button" disabled={!down} aria-label={t("Nach unten", "Move down")} title={t("Nach unten", "Move down")} onClick={() => shift(1)}>
+                <ArrowDown size={18} />
+              </button>
+              <button type="button" className="icon-button" disabled={!rangeValid || !copyAllowed} aria-label={t("Duplizieren", "Duplicate")} title={t("Duplizieren", "Duplicate")} onClick={() => perform("duplicate")}>
+                <Copy size={18} />
+              </button>
+              <button type="button" className="icon-button" disabled={!rangeValid} aria-label={t("Verschieben unter …", "Move below …")} title={t("Verschieben unter …", "Move below …")} aria-haspopup="menu" onClick={(e) => openMenu(e.currentTarget, undefined, "move")}>
+                <ArrowBendDownRight size={18} />
+              </button>
+              <button type="button" className="icon-button danger" disabled={!rangeValid} aria-label={t("Löschen", "Delete")} title={t("Löschen", "Delete")} onClick={() => perform("delete")}>
+                <Trash size={18} />
+              </button>
+              <button type="button" className="icon-button" disabled={!rangeValid} aria-label={t("Weitere Aktionen", "More actions")} title={t("Weitere Aktionen", "More actions")} aria-haspopup="menu" onClick={(e) => openMenu(e.currentTarget)}>
+                <DotsThree size={18} weight="bold" />
+              </button>
+            </div>
+            <button type="button" className="button primary block-select-done" onClick={stopPicking}>
+              {t("Fertig", "Done")}
+            </button>
+          </div>,
+          // Inside the shell: above its tab bar on phones.
+          document.querySelector(".app-shell") || document.body,
         )}
-        <div className="block-action-buttons">
-          <button
-            className="button"
-            type="button"
-            disabled={!editor?.isEditable || !up}
-            onClick={() => shift(-1)}
-          >
-            {t("Nach oben", "Up")}
-          </button>
-          <button
-            className="button"
-            type="button"
-            disabled={!editor?.isEditable || !down}
-            onClick={() => shift(1)}
-          >
-            {t("Nach unten", "Down")}
-          </button>
-          <button
-            className="button"
-            type="button"
-            disabled={!editor?.isEditable || !rangeValid || !copyAllowed}
-            onClick={() => perform("duplicate")}
-          >
-            {t("Duplizieren", "Duplicate")}
-          </button>
-          <button
-            className="button"
-            type="button"
-            disabled={!editor?.isEditable || !rangeValid}
-            onClick={() => perform("delete")}
-          >
-            {t("Löschen", "Delete")}
-          </button>
-        </div>
-        {!copyAllowed && (
-          <p className="muted">
-            {t("Verknüpfte Datenbanken lassen sich nur im Arbeitsbereich duplizieren.", "Linked databases can only be duplicated in the workspace.")}
-          </p>
-        )}
-        <label>
-          {t("Zielposition", "Target position")}
-          <Select
-            aria-label={t("Block-Zielposition", "Block target position")}
-            value={destination}
-            onChange={(event) => setDestination(event.target.value)}
-          >
-            <option value="">{t("Position auswählen …", "Choose position …")}</option>
-            {all.flatMap((b) => [
-              <option key={`before-${b.pos}`} value={b.pos}>
-                {t("Vor:", "Before:")}{" "}{b.label}
-              </option>,
-              <option key={`after-${b.pos}`} value={b.end}>
-                {t("Nach:", "After:")}{" "}{b.label}
-              </option>,
-            ])}
-          </Select>
-        </label>
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="button"
-            onClick={() => setOpen(false)}
-          >
-            {t("Fertig", "Done")}
-          </button>
-          <button
-            type="button"
-            className="button primary"
-            disabled={!editor?.isEditable || !rangeValid || destination === ""}
-            onClick={() => perform("move", Number(destination))}
-          >
-            {t("Verschieben", "Move")}
-          </button>
-        </div>
-        {error && (
-          <p role="alert" className="math-validation">
-            {error}
-          </p>
-        )}
-      </Modal>
     </>
   );
 }

@@ -197,6 +197,7 @@ label.hit-check {
   /* An invisible area around small targets that have room around them. */
   :where(
       .document-block-handle,
+      .document-block-pick,
       .hit-check,
       .home-customize,
       .inline-comment-tools > .button,
@@ -284,11 +285,6 @@ label.hit-check {
   /* Lists of the start page's widgets. */
   .home-list li > :is(button, a, label) {
     min-height: 44px;
-  }
-  /* "Manage blocks" keeps clear of the first block's handle. */
-  .block-manager-trigger {
-    min-height: 44px;
-    margin: 0 0 14px;
   }
   .subpages > .text-button {
     min-height: 44px;

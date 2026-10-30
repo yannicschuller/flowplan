@@ -39,6 +39,8 @@ const names: Record<string, string> = {
 };
 export function documentBlocks(doc: Node): DocumentBlock[] {
   const blocks: DocumentBlock[] = [];
+  // Diagrams are named after the heading above them, not their source.
+  let heading = "";
   function visit(
     parent: Node,
     start: number,
@@ -57,12 +59,16 @@ export function documentBlocks(doc: Node): DocumentBlock[] {
           node.textContent ||
             node.attrs.title ||
             node.attrs.expression ||
-            (node.type.name === "mermaidBlock" ? node.attrs.source : "") ||
+            (node.type.name === "mermaidBlock" && heading
+              ? tr(`unter „${heading}“`, `below “${heading}”`)
+              : "") ||
             node.attrs.alt ||
             "",
         )
           .replace(/\s+/g, " ")
           .slice(0, 65);
+        if (node.type.name === "heading")
+          heading = node.textContent.replace(/\s+/g, " ").trim().slice(0, 40);
         blocks.push({
           pos,
           end: pos + node.nodeSize,

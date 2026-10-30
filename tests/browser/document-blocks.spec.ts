@@ -31,12 +31,6 @@ async function fixture(page: Page, title: string, kind = "document") {
   };
   return { host, origin, command, read, seed };
 }
-async function clearSelection(dialog: import("@playwright/test").Locator) {
-  for (const checkbox of await dialog
-    .getByRole("checkbox", { checked: true })
-    .all())
-    await checkbox.uncheck();
-}
 async function dragBlock(
   page: Page,
   from: import("@playwright/test").Locator,
@@ -112,31 +106,28 @@ test("block handles drag with mouse or touch, bulk actions preserve content and 
   await expect(
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Bravo", "Charlie", "Alpha"]);
+  // The selection mode: Bravo from its menu, Charlie by its circle.
   await page
-    .getByRole("button", { name: "Blöcke verwalten", exact: false })
+    .getByRole("button", { name: "Blockaktionen: Absatz · Bravo", exact: true })
     .click();
-  const dialog = page.getByRole("dialog", {
-    name: "Blöcke verwalten",
-    exact: true,
-  });
-  await clearSelection(dialog);
-  await dialog
-    .getByRole("checkbox", { name: "Absatz · Bravo", exact: true })
-    .check();
-  await dialog
+  await page
+    .getByRole("menuitem", { name: "Mehrere auswählen", exact: true })
+    .click();
+  await page
     .getByRole("checkbox", { name: "Absatz · Charlie", exact: true })
-    .check();
-  await dialog
-    .getByRole("button", { name: "Duplizieren", exact: true })
     .click();
+  const bar = page.getByRole("toolbar", { name: "Ausgewählte Blöcke" });
+  await expect(bar).toContainText("2 Blöcke");
+  await bar.getByRole("button", { name: "Duplizieren", exact: true }).click();
   await expect(
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Bravo", "Charlie", "Bravo", "Charlie", "Alpha"]);
-  await dialog.getByRole("button", { name: "Löschen", exact: true }).click();
+  await bar.getByRole("button", { name: "Löschen", exact: true }).click();
   await expect(
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Bravo", "Charlie", "Alpha"]);
-  await dialog.getByRole("button", { name: "Fertig", exact: true }).click();
+  await bar.getByRole("button", { name: "Fertig", exact: true }).click();
+  await expect(page.locator(".document-block-pick")).toHaveCount(0);
   await page.getByTitle("Rückgängig", { exact: true }).click();
   await expect(
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
@@ -145,21 +136,21 @@ test("block handles drag with mouse or touch, bulk actions preserve content and 
   await expect(
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Bravo", "Charlie", "Alpha"]);
-  await page
-    .getByRole("button", { name: "Blockaktionen: Absatz · Alpha", exact: true })
-    .click();
-  await dialog
-    .getByLabel("Block-Zielposition")
-    .selectOption({ label: "Vor: Absatz · Inside two" });
-  await dialog
-    .getByRole("button", { name: "Verschieben", exact: true })
-    .click();
+  // Into the callout: dropped below its first paragraph.
+  await dragBlock(
+    page,
+    page.getByRole("button", {
+      name: "Blockaktionen: Absatz · Alpha",
+      exact: true,
+    }),
+    editor.locator("aside > p").first(),
+    info.project.name === "mobile",
+  );
   await expect(editor.locator("aside > p")).toHaveText([
     "Inside one",
     "Alpha",
     "Inside two",
   ]);
-  await dialog.getByRole("button", { name: "Fertig", exact: true }).click();
   const alpha = editor.locator("aside > p").nth(1);
   await alpha.click();
   await page.keyboard.press("ControlOrMeta+Shift+ArrowUp");
@@ -201,9 +192,6 @@ test("block handles drag with mouse or touch, bulk actions preserve content and 
   await expect(
     page.getByRole("button", { name: /^Blockaktionen:/ }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Blöcke verwalten", exact: false }),
-  ).toHaveCount(0);
   expect(errors).toEqual([]);
   await page.goto("/#home");
   await f.command({ action: "page.delete", pageId: f.host.id });
@@ -244,12 +232,7 @@ test("record and guest editors reorder blocks while guest duplication preserves 
   await entry
     .getByRole("button", { name: "Blockaktionen: Absatz · First", exact: true })
     .click();
-  const manage = page.getByRole("dialog", {
-    name: "Blöcke verwalten",
-    exact: true,
-  });
-  await manage.getByRole("button", { name: "Nach unten", exact: true }).click();
-  await manage.getByRole("button", { name: "Fertig", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Nach unten", exact: true }).click();
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect
     .poll(async () => (await readRow()).html)
@@ -281,23 +264,24 @@ test("record and guest editors reorder blocks while guest duplication preserves 
         exact: true,
       })
       .click();
-    const menu = guest.getByRole("dialog", {
-      name: "Blöcke verwalten",
+    const firstHandle = guest.getByRole("button", {
+      name: "Blockaktionen: Absatz · First",
       exact: true,
     });
-    await menu.getByRole("button", { name: "Nach oben", exact: true }).click();
-    await menu
-      .getByRole("button", { name: "Duplizieren", exact: true })
+    await guest.getByRole("menuitem", { name: "Nach oben", exact: true }).click();
+    await firstHandle.first().click();
+    await guest.getByRole("menuitem", { name: "Duplizieren", exact: true }).click();
+    // Linked databases are not duplicated through guest links.
+    await guest
+      .getByRole("button", {
+        name: "Blockaktionen: Verknüpfte Datenbank",
+        exact: true,
+      })
       .click();
-    await clearSelection(menu);
-    await menu
-      .getByRole("checkbox", { name: "Verknüpfte Datenbank", exact: true })
-      .check();
     await expect(
-      menu.getByRole("button", { name: "Duplizieren", exact: true }),
+      guest.getByRole("menuitem", { name: "Duplizieren", exact: true }),
     ).toBeDisabled();
-    await menu.getByRole("button", { name: "Nach oben", exact: true }).click();
-    await menu.getByRole("button", { name: "Fertig", exact: true }).click();
+    await guest.getByRole("menuitem", { name: "Nach oben", exact: true }).click();
     await guest
       .getByRole("button", { name: "Änderungen speichern", exact: true })
       .click();
@@ -359,24 +343,24 @@ test("block selections track remote edits and a remote transaction cancels an ac
   await page
     .getByRole("button", { name: "Blockaktionen: Absatz · Bravo", exact: true })
     .click();
-  const menu = page.getByRole("dialog", {
-    name: "Blöcke verwalten",
-    exact: true,
-  });
+  await page
+    .getByRole("menuitem", { name: "Mehrere auswählen", exact: true })
+    .click();
+  const bar = page.getByRole("toolbar", { name: "Ausgewählte Blöcke" });
   await remoteEdit("Alpha", "Remote ");
   await expect(editor).toContainText("Remote Alpha", { timeout: 10000 });
   await expect(
-    menu.getByRole("checkbox", { name: "Absatz · Bravo", exact: true }),
+    page.getByRole("checkbox", { name: "Absatz · Bravo", exact: true }),
   ).toBeChecked();
   await remoteEdit("Bravo", "Updated ");
   await expect(
-    menu.getByRole("checkbox", { name: "Absatz · Updated Bravo", exact: true }),
+    page.getByRole("checkbox", { name: "Absatz · Updated Bravo", exact: true }),
   ).toBeChecked({ timeout: 10000 });
-  await menu.getByRole("button", { name: "Duplizieren", exact: true }).click();
+  await bar.getByRole("button", { name: "Duplizieren", exact: true }).click();
   await expect(
     editor.locator(":scope > p").filter({ hasText: /\S/ }),
   ).toHaveText(["Remote Alpha", "Updated Bravo", "Updated Bravo", "Charlie"]);
-  await menu.getByRole("button", { name: "Fertig", exact: true }).click();
+  await bar.getByRole("button", { name: "Fertig", exact: true }).click();
   await expect
     .poll(
       async () => ((await f.read()).html.match(/Updated Bravo/g) || []).length,
@@ -417,16 +401,14 @@ test("block selections track remote edits and a remote transaction cancels an ac
     .first()
     .click();
   await remoteEdit("Updated Bravo", null);
-  await expect(menu.getByRole("checkbox", { checked: true })).toHaveCount(0, {
-    timeout: 10000,
-  });
+  // The block of the open menu is gone: its actions no longer apply.
   await expect(
-    menu.getByRole("button", { name: "Löschen", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("menuitem", { name: "Löschen", exact: true }),
+  ).toBeDisabled({ timeout: 10000 });
   await expect(
     editor.locator(":scope > p").filter({ hasText: /Updated Bravo/ }),
   ).toHaveCount(1);
-  await menu.getByRole("button", { name: "Fertig", exact: true }).click();
+  await page.keyboard.press("Escape");
   await page.goto("/#home");
   await f.command({ action: "page.delete", pageId: f.host.id });
 });

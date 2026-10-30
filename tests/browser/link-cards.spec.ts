@@ -50,9 +50,8 @@ test("link cards show previews and videos take a chosen width", async ({
     .getByRole("button", { name: /^Blockaktionen: Medium/ })
     .first()
     .click();
-  const blocks = page.getByRole("dialog", { name: "Blöcke verwalten" });
-  await blocks.getByLabel("Medienbreite").selectOption("50");
-  await page.keyboard.press("Escape");
+  await page.getByRole("menuitem", { name: "Breite" }).click();
+  await page.getByRole("menuitemradio", { name: "50 %" }).click();
   await expect.poll(async () => (await read()).html).toMatch(/width:\s?50%/);
   // Visitors see the card on the public page.
   await command({ action: "page.publish", pageId: p.id, enabled: true });

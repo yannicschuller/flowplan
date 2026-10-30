@@ -89,9 +89,8 @@ test("right-to-left paragraphs turn by themselves and on request; handles go rig
   expect(handleBox.x).toBeGreaterThan(box.x + box.width - 5);
   // Manual override in the block menu.
   await page.locator(".document-block-handle").first().click();
-  const modal = page.getByRole("dialog", { name: "Blöcke verwalten" });
-  await modal.getByLabel("Textrichtung").selectOption("rtl");
-  await modal.getByRole("button", { name: "Fertig" }).click();
+  await page.getByRole("menuitem", { name: "Textrichtung" }).click();
+  await page.getByRole("menuitemradio", { name: "Rechts nach links" }).click();
   await expect(paragraphs.nth(0)).toHaveAttribute("dir", "rtl");
   await page.screenshot({ path: "test-results/rtl.png" });
 });
