@@ -1,3 +1,4 @@
+import { reindexRowTasks } from "./doc-tasks";
 import { hiddenRowIds } from "./row-access";
 import { appearanceSchema } from "./page-appearance";
 import { templateCategoryIds } from "./template-categories";
@@ -289,6 +290,8 @@ export function applyPageTemplate(
       );
       replaceRowDocument(rid, row.html, user.id);
     }
+    // Tasks in the template's records count in "My tasks" right away.
+    reindexRowTasks(user, page, rows.map((row) => rowMap.get(row.id)!));
     for (const pair of source.relationPairs) {
       const copied = {
         ...pair,

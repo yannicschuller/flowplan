@@ -364,7 +364,7 @@ function tasksData(ctx: Context, config: WidgetConfig<"tasks">) {
     const hidden = access.page.kind === "database" ? hiddenRowIds(user, access.page) : new Set<string>();
     const seen = new Set<string>();
     for (const t of all<{ row_id: string; idx: number; text: string; due: string | null }>(
-      "SELECT row_id,idx,text,due FROM doc_tasks WHERE page_id=? AND checked=0 ORDER BY CASE WHEN due IS NULL THEN 1 ELSE 0 END,due,row_id,idx LIMIT 500",
+      "SELECT t.row_id,t.idx,t.text,t.due FROM doc_tasks t WHERE t.page_id=? AND t.checked=0 AND (t.row_id='' OR EXISTS (SELECT 1 FROM rows r WHERE r.id=t.row_id AND r.page_id=t.page_id)) ORDER BY CASE WHEN t.due IS NULL THEN 1 ELSE 0 END,t.due,t.row_id,t.idx LIMIT 500",
       access.page.id,
     )) {
       const key = `${t.row_id}:${t.idx}`;

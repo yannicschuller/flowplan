@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 75) return;
+  if (globalDb.flowplanSchema === 76) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -957,7 +957,15 @@ function migrate(d: DatabaseSync) {
   // the banners of the administration and who closed or followed which.
   d.exec(`CREATE TABLE IF NOT EXISTS instance_banners(id TEXT PRIMARY KEY,title TEXT NOT NULL DEFAULT '',message TEXT NOT NULL,link_url TEXT,link_label TEXT,tone TEXT NOT NULL DEFAULT 'info',audience TEXT NOT NULL DEFAULT 'all',surface TEXT NOT NULL DEFAULT 'everywhere',starts_at INTEGER,ends_at INTEGER,paused INTEGER NOT NULL DEFAULT 0,created_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS instance_banner_seen(banner_id TEXT NOT NULL REFERENCES instance_banners(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,dismissed_at INTEGER NOT NULL,clicked INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(banner_id,user_id));`);
-  globalDb.flowplanSchema = 75;
+  // Schema 76 – tasks of a deleted record go with it (#53): doc_tasks has
+  // no reference to rows, so a trigger removes them on every path that
+  // deletes records (trash, version restore, templates, sync); the ones
+  // left behind before are removed once.
+  d.exec(`CREATE TRIGGER IF NOT EXISTS doc_tasks_row_delete AFTER DELETE ON rows BEGIN
+      DELETE FROM doc_tasks WHERE page_id=OLD.page_id AND row_id=OLD.id;
+    END;
+    DELETE FROM doc_tasks WHERE row_id<>'' AND NOT EXISTS (SELECT 1 FROM rows r WHERE r.id=doc_tasks.row_id AND r.page_id=doc_tasks.page_id);`);
+  globalDb.flowplanSchema = 76;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

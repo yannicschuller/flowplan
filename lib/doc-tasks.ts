@@ -13,11 +13,11 @@ import { htmlState } from "./document-server";
 import { rewriteDocument } from "./document-rewrite";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
-import { requireRow } from "./row-documents";
+import { ensureRowDocument, requireRow } from "./row-documents";
 import { journalLocked } from "./journal-extras";
 import { notificationOn } from "./notification-kinds";
 import { rememberTaskTarget } from "./notification-targets";
-import type { Identity, Page } from "./types";
+import type { Identity, Page, Row } from "./types";
 
 
 type JsonNode = {
@@ -168,6 +168,7 @@ function taskRows(user: Identity, workspaceId: string | null, includeDone: boole
        AND t.row_id='' AND (j.created_by=? OR p.created_by=?)
      WHERE ${workspaceId ? "t.workspace_id=?" : "t.workspace_id IN (SELECT workspace_id FROM members WHERE user_id=?)"}
        AND p.deleted_at IS NULL
+       AND (t.row_id='' OR EXISTS (SELECT 1 FROM rows r WHERE r.id=t.row_id AND r.page_id=t.page_id))
        AND (t.assignee=?
          OR (t.assignee IS NULL AND p.created_by=? AND t.due IS NOT NULL)
          OR (t.assignee IS NULL AND j.id IS NOT NULL))
@@ -292,6 +293,7 @@ export function processDueTasks(today = localToday()) {
   const due = all<{ id: string; page_id: string; row_id: string; text: string; assignee: string; title: string }>(
     `SELECT t.id,t.page_id,t.row_id,t.text,t.assignee,p.title FROM doc_tasks t JOIN pages p ON p.id=t.page_id
      WHERE t.due=? AND t.checked=0 AND t.assignee IS NOT NULL AND p.deleted_at IS NULL
+     AND (t.row_id='' OR EXISTS (SELECT 1 FROM rows r WHERE r.id=t.row_id AND r.page_id=t.page_id))
      AND NOT EXISTS(SELECT 1 FROM task_reminders r WHERE r.user_id=t.assignee AND r.page_id=t.page_id AND r.text=t.text AND r.due=t.due)
      AND ${notificationOn("inbox", "t.assignee", "'reminder'")}
      LIMIT 500`,
@@ -353,6 +355,18 @@ export function indexRowTasks(user: Identity, page: Page, rowId: string) {
     syncDocTasks(user, page, rowId, ydoc);
   } finally {
     ydoc.destroy();
+  }
+}
+// Records that come back (from the trash, an older version of the
+// database): their tasks were removed with them and are indexed again.
+export function reindexRowTasks(user: Identity, page: Page, rowIds: Iterable<string>) {
+  for (const rowId of rowIds) {
+    const row = one<Row>("SELECT * FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+    if (!row) continue;
+    const stored = one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId);
+    if (!(stored?.html ?? row.content ?? "").includes('data-type="taskItem"')) continue;
+    if (!stored) ensureRowDocument(row);
+    indexRowTasks(user, page, rowId);
   }
 }
 // Documents written before tasks were collected: indexed once.

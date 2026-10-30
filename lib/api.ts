@@ -38,7 +38,7 @@ import {
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
-import { changeDocTask, dueTaskCount, indexPageTasks, syncDocTasks } from "./doc-tasks";
+import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
 import { followRename } from "./link-titles";
@@ -1709,6 +1709,8 @@ export function command(
                 String(g.role),
                 String(g.role),
               );
+          // The restored records' tasks (removed with the old rows).
+          reindexRowTasks(user, p, data.rows.map((r: { id: string }) => r.id));
           if (Array.isArray(data.rowTemplates)) {
             run("DELETE FROM row_templates WHERE page_id=?", p.id);
             for (const t of data.rowTemplates)

@@ -154,3 +154,45 @@ test("ticking a task off in the list ticks off its subtasks", () => {
   assert.equal((html.match(/data-checked="true"/g) || []).length, 2);
   assert.match(html, /data-checked="false"[^>]*>(<label[^]*?)?<div><p>Danach/);
 });
+
+// #53: tasks in a record's content go with the record – deleted, restored,
+// purged, or turned into a page.
+test("tasks of a deleted record leave My tasks and come back with it", async () => {
+  const { indexRowTasks } = await import("../lib/doc-tasks");
+  const { requirePage } = await import("../lib/permissions");
+  const db = (command(anna, { action: "page.create", workspaceId: wid, spaceId: space, title: "Aufträge", kind: "database" }) as { id: string }).id;
+  const record = (title: string) => {
+    const rowId = (command(anna, { action: "row.create", pageId: db, cells: { title } }) as { id: string }).id;
+    const html = `<ul data-type="taskList">${task(`${title} prüfen ${mention(ben)}`, ` data-due="${today}"`)}</ul>`;
+    run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rowId, Buffer.from(htmlState(html)), html, id());
+    indexRowTasks(anna, requirePage(anna, db), rowId);
+    return rowId;
+  };
+  const texts = () => myTasks(ben, wid).map((t) => t.text).filter((t) => /prüfen/.test(t));
+  const kept = record("Alpha");
+  const gone = record("Beta");
+  assert.deepEqual(texts().sort(), ["Alpha prüfen @Ben", "Beta prüfen @Ben"]);
+  // Deleted: out of My tasks, no reminder.
+  command(anna, { action: "row.delete", pageId: db, rowId: gone });
+  assert.deepEqual(texts(), ["Alpha prüfen @Ben"]);
+  run("DELETE FROM task_reminders");
+  assert.ok(!all<{ text: string }>("SELECT text FROM doc_tasks WHERE row_id=?", gone).length);
+  // Restored from the trash: back.
+  command(anna, { action: "row.trash.restore", pageId: db, trashId: gone });
+  assert.deepEqual(texts().sort(), ["Alpha prüfen @Ben", "Beta prüfen @Ben"]);
+  // Deleted and purged: gone for good.
+  command(anna, { action: "row.delete", pageId: db, rowId: gone });
+  command(anna, { action: "row.trash.purge", pageId: db, trashId: gone });
+  assert.deepEqual(texts(), ["Alpha prüfen @Ben"]);
+  // Turned into a page: listed once, from the page.
+  command(anna, { action: "record.toPage", pageId: db, rowId: kept, spaceId: space, parentId: null, keepProperties: true });
+  const after = myTasks(ben, wid).filter((t) => t.text === "Alpha prüfen @Ben");
+  assert.equal(after.length, 1);
+  assert.equal(after[0].rowId ?? null, null);
+  // Orphans from before the fix are removed by the migration's statement.
+  run("INSERT INTO doc_tasks(id,page_id,row_id,idx,text,checked,assignee,due,workspace_id,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)", id(), db, id(), 0, "Waise", 0, ben.id, today, wid, Date.now());
+  // Until then, the lists already leave them out.
+  assert.ok(!myTasks(ben, wid).some((t) => t.text === "Waise"));
+  run("DELETE FROM doc_tasks WHERE row_id<>'' AND NOT EXISTS (SELECT 1 FROM rows r WHERE r.id=doc_tasks.row_id AND r.page_id=doc_tasks.page_id)");
+  assert.ok(!one("SELECT 1 FROM doc_tasks WHERE text='Waise'"));
+});

@@ -3,6 +3,7 @@ import { all, id, one, run } from "./db";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { maintainRowOrders } from "./row-order-server";
+import { reindexRowTasks } from "./doc-tasks";
 import { roleWithGrants, rowGrants, type RowGrant } from "./row-access";
 import { cellText } from "./cell-text";
 import { ct } from "./content-locale";
@@ -179,6 +180,8 @@ export function restoreTrashedRow(user: Identity, raw: unknown) {
     );
   run("DELETE FROM row_trash WHERE id=?", trashId);
   maintainRowOrders(page.id);
+  // Its tasks went with it (lib/db.ts, schema 76): back into "My tasks".
+  reindexRowTasks(user, page, [trashId]);
   return { ok: true, pageId: page.id, rowId: trashId };
 }
 export function purgeTrashedRow(user: Identity, raw: unknown) {
