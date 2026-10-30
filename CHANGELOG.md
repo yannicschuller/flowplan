@@ -2,6 +2,12 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.0 – 2026-10-30
+
+- README: star history chart ([9dc1fc6](https://github.com/yannicschuller/flowplan/commit/9dc1fc6a9227a30e1aa5baefcc6fb4bcb6908e39))
+- Settings → Sicherheitscheck: one's own account, shares and sign-ins ([b0b83e6](https://github.com/yannicschuller/flowplan/commit/b0b83e6c0d88dd89d93ad89faad3c2208aa4dfe9))
+- Security observability: events, detection, alerts and a section for admins ([066f56f](https://github.com/yannicschuller/flowplan/commit/066f56f0f19e12c4bd36dd93825c5ce0c1ab40a9))
+
 ## v0.7.5 – 2026-10-30
 
 - Block menu at the handle and a selection mode replace "Manage blocks" ([dda202b](https://github.com/yannicschuller/flowplan/commit/dda202b7bec5cc40bcded4cb69131d0362c039dd))
