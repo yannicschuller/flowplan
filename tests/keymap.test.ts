@@ -134,6 +134,10 @@ test("the action of an event; bare keys only outside of text", () => {
   assert.equal(actionForEvent(key("n", { ctrlKey: true }), map, false, false), "newPage");
   assert.equal(actionForEvent(key("\\", { ctrlKey: true, altKey: true }, "Backslash"), map, false, false), "splitView");
   assert.equal(actionForEvent(key("x", { ctrlKey: true }), map, false, false), null);
+  // "KI fragen" (#59): ⌘⌥A / Ctrl+Alt+A, also while typing in the document;
+  // on the Mac ⌥A types "å", the physical key counts.
+  assert.equal(actionForEvent(key("a", { ctrlKey: true, altKey: true }), map, false, true), "ask");
+  assert.equal(actionForEvent(key("å", { metaKey: true, altKey: true }, "KeyA"), map, true, true), "ask");
   assert.ok(needsModifier("?"));
   assert.ok(needsModifier("Shift+F2"));
   assert.ok(!needsModifier("Alt+F2"));

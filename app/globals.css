@@ -22114,32 +22114,253 @@ h3 .block-reactions {
 .ai-ask-new {
   margin-left: auto;
 }
-/* Phones: the ask window fills the visible area (above the on-screen
-   keyboard, components/ai-ask.tsx sets the variables); the conversation
-   scrolls, the question field stays at the bottom. */
-@media (max-width: 767px) {
-  .modal.ai-ask {
-    top: calc(var(--ask-vv-top, 0px) + max(var(--safe-top), 10px));
-    transform: translateX(-50%);
-    height: calc(var(--ask-vv-height, 100dvh) - max(var(--safe-top), 10px) - max(var(--safe-bottom), 10px));
-    max-height: none;
-    padding: 18px 16px 14px;
-    overflow: hidden;
+/* "KI fragen" as a panel (#59, components/ai-ask.tsx): from 768 px the app
+   shell's third column on the right – the page narrows beside it, nothing is
+   covered, no backdrop; on phones a bottom sheet above the tab bar that is
+   swiped down to a pill while the answer keeps coming in. */
+.ask-panel {
+  position: relative;
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 calc(16px + var(--safe-right, 0px)) 14px 16px;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  animation: ask-panel-in 0.22s var(--ease-out) backwards;
+}
+.ask-panel[hidden] {
+  display: none !important;
+}
+.ask-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 57px;
+  min-height: 57px;
+  margin: 0 calc(-16px - var(--safe-right, 0px)) 0 -16px;
+  padding: 0 calc(10px + var(--safe-right, 0px)) 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.ask-panel-head h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ask-panel-icon {
+  flex: none;
+  color: var(--accent-strong);
+}
+.ask-panel .ai-ask-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overscroll-behavior: contain;
+}
+.ask-panel .ai-ask-scope {
+  flex: 1 1 100%;
+  max-width: none;
+}
+.ask-panel .ai-provider-chip {
+  flex: 0 1 auto;
+}
+.ask-panel .ai-ask-composer textarea {
+  max-height: 30dvh;
+}
+.ai-ask-answer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ai-ask-answer-tools:empty {
+  display: none;
+}
+.ai-ask-answer-tools .ai-ask-actions {
+  margin-top: 0;
+}
+/* The handle on the panel's left edge (components/sidebar-resize.tsx). */
+.sidebar-resize.sidebar-resize-start {
+  right: auto;
+  left: -4px;
+}
+.ask-panel-pill {
+  display: none;
+}
+@keyframes ask-panel-in {
+  from {
+    opacity: 0;
+    translate: 16px 0;
   }
-  .modal.ai-ask > .modal-heading {
-    margin-bottom: 4px;
+}
+@media (min-width: 768px) {
+  .app-shell.ask-open {
+    --ask-space: var(--ask-width, 380px);
+    grid-template-columns: var(--sidebar-width, 246px) minmax(0, 1fr) var(--ask-width, 380px);
   }
-  .ai-ask .ai-ask-log {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
+  .app-shell.ask-open.desktop-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) var(--ask-width, 380px);
   }
-  .ask-keyboard .modal.ai-ask {
-    height: calc(var(--ask-vv-height, 100dvh) - max(var(--safe-top), 10px) - 8px);
-  }
-  .ask-keyboard .ai-ask-note,
-  .ask-keyboard .ai-ask-empty {
+  .ask-panel > .sheet-handle {
     display: none;
+  }
+  /* What floats at the page's right edge moves left of the panel. */
+  .app-shell.ask-open .document-outline {
+    right: calc(var(--ask-space) + 20px);
+  }
+  .app-shell.ask-open .author-legend,
+  .app-shell.ask-open .find-bar {
+    right: calc(var(--ask-space) + 16px);
+  }
+}
+@media (min-width: 768px) and (max-width: 1200px) {
+  .app-shell.ask-open {
+    --ask-space: var(--ask-width, 340px);
+    grid-template-columns: var(--sidebar-width, 225px) minmax(0, 1fr) var(--ask-width, 340px);
+  }
+  .app-shell.ask-open.desktop-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr) var(--ask-width, 340px);
+  }
+  /* Less room beside the panel: the title (one line) shows more of itself. */
+  .app-shell.ask-open .page-content .page-title {
+    font-size: 30px;
+  }
+}
+@media (min-width: 768px) and (max-width: 900px) {
+  .app-shell.ask-open .outline-toggle {
+    right: calc(var(--ask-space) + 16px);
+  }
+}
+@media (max-width: 767px) {
+  .ask-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--tab-bar-space, 0px);
+    z-index: 40;
+    height: min(72dvh, 640px);
+    padding: 0 calc(14px + var(--safe-right)) 12px calc(14px + var(--safe-left));
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 34px #1d1a1424;
+    animation: ask-sheet-in 0.3s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  }
+  .ask-panel > .sheet-handle {
+    display: block;
+    position: relative;
+    flex: none;
+    height: 16px;
+    margin: 0 calc(-14px - var(--safe-right)) -12px calc(-14px - var(--safe-left));
+    touch-action: none;
+    cursor: grab;
+  }
+  .ask-panel > .sheet-handle::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 5px;
+    margin-left: -18px;
+    border-radius: 3px;
+    background: var(--muted);
+    opacity: 0.45;
+  }
+  .ask-panel[data-sheet-dragging] > .sheet-handle {
+    cursor: grabbing;
+  }
+  .ask-panel-head {
+    height: 50px;
+    min-height: 50px;
+    margin: 0 calc(-14px - var(--safe-right)) 0 calc(-14px - var(--safe-left));
+    padding: 0 calc(6px + var(--safe-right)) 0 calc(14px + var(--safe-left));
+  }
+  .ask-panel-head .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+  /* The question and its button side by side: more room for the answer. */
+  .ask-panel .ai-ask-composer {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+  .ask-panel .ai-ask-composer textarea {
+    flex: 1;
+    width: auto;
+  }
+  .ask-panel .ai-ask-note {
+    font-size: 11px;
+  }
+  /* The on-screen keyboard: the sheet fills what it leaves visible (the
+     variables come from components/ai-ask.tsx). */
+  .ask-keyboard .ask-panel {
+    top: calc(var(--ask-vv-top, 0px) + max(var(--safe-top), 10px));
+    bottom: auto;
+    height: calc(var(--ask-vv-height, 100dvh) - max(var(--safe-top), 10px));
+  }
+  .ask-keyboard .ask-panel .ai-ask-note,
+  .ask-keyboard .ask-panel .ai-ask-empty {
+    display: none;
+  }
+  .ask-panel-pill {
+    /* Left, above the document's formatting row; the table of contents'
+       button sits on the right. */
+    position: fixed;
+    left: calc(14px + var(--safe-left));
+    bottom: calc(var(--tab-bar-space, 0px) + 60px);
+    z-index: 40;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    font-size: 14px;
+    font-weight: 600;
+    animation: ask-pill-in 0.2s var(--ease-out) backwards;
+  }
+  .ask-panel-pill > svg {
+    color: var(--accent-strong);
+  }
+  .ask-panel-pill.busy > svg {
+    animation: ask-pill-pulse 1.4s ease-in-out infinite;
+  }
+}
+@keyframes ask-sheet-in {
+  from {
+    translate: 0 100%;
+  }
+}
+@keyframes ask-pill-in {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+@keyframes ask-pill-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-panel,
+  .ask-panel-pill,
+  .ask-panel-pill.busy > svg {
+    animation: none;
+  }
+}
+@media print {
+  .ask-panel,
+  .ask-panel-pill {
+    display: none !important;
   }
 }
 @media (max-width: 560px) {
@@ -22995,7 +23216,7 @@ td.ai-filled {
     display: none;
   }
 }
-.desktop-collapsed .sidebar-resize {
+.desktop-collapsed > .sidebar .sidebar-resize {
   display: none;
 }
 @media (max-width: 767px) {

@@ -48,6 +48,8 @@ export function actionLabel(action: ShortcutAction, t: T): string {
       return t("Fokusmodus ein oder aus", "Focus mode on or off");
     case "comments":
       return t("Kommentare ein- oder ausblenden", "Show or hide comments");
+    case "ask":
+      return t("KI fragen öffnen oder schließen", "Open or close Ask AI");
     case "theme":
       return t("Helles oder dunkles Design", "Light or dark theme");
     case "splitView":

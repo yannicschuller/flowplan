@@ -22,6 +22,7 @@ export const SHORTCUT_ACTIONS = [
   "sidebar",
   "focusMode",
   "comments",
+  "ask",
   "theme",
   "splitView",
   "present",
@@ -44,6 +45,9 @@ export const DEFAULT_KEYMAP: Keymap = {
   sidebar: ["Mod+Alt+B"],
   focusMode: ["Mod+Alt+Z"],
   comments: ["Mod+Alt+K"],
+  // "KI fragen", the panel on the right (components/ai-ask.tsx). Not
+  // Mod+Alt+I/J: the browser's developer tools and console.
+  ask: ["Mod+Alt+A"],
   theme: [],
   splitView: ["Mod+Alt+S"],
   present: ["Mod+Alt+P"],

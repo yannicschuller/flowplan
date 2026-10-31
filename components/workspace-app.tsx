@@ -51,7 +51,7 @@ import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import { AiBlockToggle } from "./ai-settings";
-import { AskPanel } from "./ai-ask";
+import { ASK_WIDTH_KEY, AskPanel, clampAsk, type AskRequest } from "./ai-ask";
 import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
 import { AiSummaryPanel, type AiSummaryTarget } from "./ai-summary";
@@ -416,8 +416,10 @@ export default function WorkspaceApp({
     [paletteActive, setPaletteActive] = useState(0),
     // The page that is the Tab stop of its space's tree (roving tabindex).
     [treeFocus, setTreeFocus] = useState<string | null>(null),
-    // "KI fragen": open with an optional first question.
-    [ask, setAsk] = useState<{ question: string } | null>(null),
+    // "KI fragen", the panel on the right (components/ai-ask.tsx): null while
+    // closed, otherwise the last request to open it (with an optional first
+    // question).
+    [ask, setAsk] = useState<AskRequest | null>(null),
     [query, setQuery] = useState(""),
     [create, setCreate] = useState(false),
     [newTitle, setNewTitle] = useState(""),
@@ -533,6 +535,21 @@ export default function WorkspaceApp({
       else localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
     } catch {}
   }, [sidebarWidth]);
+  // The width of the "KI fragen" panel, the same way (dragged at its left edge).
+  const [askWidth, setAskWidth] = useState<number | null>(null);
+  const askWidthRead = useRef(false);
+  useEffect(() => {
+    try {
+      if (!askWidthRead.current) {
+        askWidthRead.current = true;
+        const stored = Number(localStorage.getItem(ASK_WIDTH_KEY));
+        if (stored) setAskWidth(clampAsk(stored));
+        return;
+      }
+      if (askWidth === null) localStorage.removeItem(ASK_WIDTH_KEY);
+      else localStorage.setItem(ASK_WIDTH_KEY, String(askWidth));
+    } catch {}
+  }, [askWidth]);
   // Presentation mode of the open document (components/presentation.tsx).
   const [presenting, setPresenting] = useState<{ html: string; title: string } | null>(null);
   // Split view (components/split-pane.tsx): the page shown next to the open
@@ -1465,6 +1482,45 @@ export default function WorkspaceApp({
     setPaletteSplit(true);
     openSearch();
   };
+  // "KI fragen" (#59): a panel beside the page, not a dialog. Every entry
+  // point (sidebar, command palette, search, shortcut) opens it this way.
+  const askRef = useRef(ask);
+  askRef.current = ask;
+  const openAsk = (question: string) => {
+    setMobile(false);
+    setAsk({ question, n: Date.now() + Math.random() });
+  };
+  // The panel and the comments share the right edge: opening one closes
+  // the other, so neither squeezes the page or covers the other.
+  const askOpen = !!ask;
+  const [askMounted, setAskMounted] = useState(false);
+  useEffect(() => {
+    if (!askOpen) return;
+    setAskMounted(true);
+    setComments(false);
+  }, [askOpen]);
+  useEffect(() => {
+    if (comments) setAsk(null);
+  }, [comments]);
+  // Narrow wide screens (an iPad, a small window): the sidebar makes room
+  // while the panel is open and comes back when it closes – unless the
+  // person changed it in between.
+  const askCollapsed = useRef(false);
+  useEffect(() => {
+    if (askOpen) {
+      if (!desktopCollapsed && matchMedia("(min-width: 768px) and (max-width: 1099px)").matches) {
+        askCollapsed.current = true;
+        setDesktopCollapsed(true);
+      }
+    } else if (askCollapsed.current) {
+      askCollapsed.current = false;
+      setDesktopCollapsed(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askOpen]);
+  useEffect(() => {
+    if (!desktopCollapsed) askCollapsed.current = false;
+  }, [desktopCollapsed]);
   const runShortcut = (action: ShortcutAction) => {
     switch (action) {
       case "search":
@@ -1497,6 +1553,12 @@ export default function WorkspaceApp({
         break;
       case "comments":
         if (screenRef.current === "page" && dataRef.current) setComments((v) => !v);
+        break;
+      case "ask":
+        // Closed: opens. Open: focus moves into it, or – from inside – it closes.
+        if (!aiUsable(boot.ai, "ask")) break;
+        if (askRef.current && document.querySelector(".ask-panel")?.contains(document.activeElement)) setAsk(null);
+        else openAsk("");
         break;
       case "theme":
         toggleTheme();
@@ -2469,7 +2531,7 @@ export default function WorkspaceApp({
       keywords: t("ki fragen frage antwort assistent chat", "ki fragen frage antwort assistent chat ai ask question answer assistant"),
       icon: Sparkle,
       // The text typed so far becomes the question.
-      run: () => setAsk({ question: query.replace(/^>\s*/, "").replace(/^(ki fragen|ask ai)\s*…?\s*/i, "").trim() }),
+      run: () => openAsk(query.replace(/^>\s*/, "").replace(/^(ki fragen|ask ai)\s*…?\s*/i, "").trim()),
     });
   const commandQuery = normalizeCommand(query.replace(/^>\s*/, ""));
   const shownActions =
@@ -2558,8 +2620,12 @@ export default function WorkspaceApp({
   return (
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <div
-      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}`}
-      style={sidebarWidth ? ({ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties) : undefined}
+      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? " ask-open" : ""}`}
+      style={
+        sidebarWidth || askWidth
+          ? ({ ...(sidebarWidth ? { "--sidebar-width": `${sidebarWidth}px` } : {}), ...(askWidth ? { "--ask-width": `${askWidth}px` } : {}) } as React.CSSProperties)
+          : undefined
+      }
       inert={switching || !!presenting}
       aria-busy={switching}
     >
@@ -2666,7 +2732,7 @@ export default function WorkspaceApp({
               {keyHints.visible && shortcutHint("search", mac) && <span className="keycap">{shortcutHint("search", mac)}</span>}
             </button>
             {canAsk && (
-              <button onClick={() => setAsk({ question: "" })}>
+              <button onClick={() => openAsk("")}>
                 <Sparkle size={19} />
                 {t("KI fragen", "Ask AI")}
               </button>
@@ -4363,6 +4429,8 @@ export default function WorkspaceApp({
         onCloseAutoFocus={(e) => {
           // Back to where the search was opened from, not to <body>.
           e.preventDefault();
+          // "KI fragen" from the palette has taken focus into its panel.
+          if (document.querySelector(".ask-panel")?.contains(document.activeElement)) return;
           const opener = searchOpener.current;
           if (opener && document.contains(opener)) opener.focus();
         }}
@@ -4456,7 +4524,7 @@ export default function WorkspaceApp({
             <button
               className="button compact"
               onClick={() => {
-                setAsk({ question: query.trim() });
+                openAsk(query.trim());
                 setSearch(false);
                 setQuery("");
               }}
@@ -4635,17 +4703,22 @@ export default function WorkspaceApp({
           )}
         </div>
       </Modal>
-      {canAsk && (
+      {/* Mounted with the first opening and kept: a closed panel keeps its
+          conversation (and a running answer) for the next time. */}
+      {canAsk && (askMounted || !!ask) && (
         <AskPanel
           open={!!ask}
+          hidden={focusMode && screen === "page"}
+          request={ask}
           onClose={() => setAsk(null)}
+          width={askWidth}
+          onWidth={setAskWidth}
           workspaceId={boot.workspace.id}
           ai={boot.ai}
           spaces={boot.spaces}
           currentPage={screen === "page" && data ? { id: data.page.id, title: data.page.title || t("Ohne Titel", "Untitled") } : null}
-          initialQuestion={ask?.question}
           onOpenSource={(pid, rowId) => {
-            setAsk(null);
+            // The panel stays open beside the page (#59).
             void openPage(pid, rowId ? { pageId: pid, rowId } : undefined);
           }}
         />
