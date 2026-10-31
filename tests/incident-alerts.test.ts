@@ -67,12 +67,18 @@ subscribe(ada);
 await M.connectMessenger(root, { service: "ntfy", topic: "root-alerts" });
 await M.connectMessenger(vera, { service: "ntfy", topic: "vera-alerts" });
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 const at = () => ({ at: Date.now(), actorId: null, network: "203.0.113.0/24", addressKey: "" });
 let n = 0;
 // A new incident of a rule (a new key each time, so it is not merged).
+// report() runs after openIncident returns (dynamic imports, push dispatch):
+// wait until its notifications are written instead of a fixed pause, which
+// was too short under the load of the full suite.
 async function incident(rule: "brute_force_account" | "credential_stuffing") {
+  const count = () => all("SELECT 1 FROM notifications WHERE kind='incident'").length;
+  const before = count();
   const incidentId = openIncident(rule, `key-${++n}`, at(), `detail ${n}`);
+  for (let waited = 0; count() === before && waited < 5000; waited += 20) await settle();
   await settle();
   return incidentId;
 }
