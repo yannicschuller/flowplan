@@ -76,6 +76,7 @@ import { adminResetLink, isLocalAccount, setLocalAdmin } from "./local-auth";
 import { isLdapAccount } from "./ldap-auth";
 import { validWorkspaceIcon } from "./workspace-icon";
 import { parseRecordLayout, recordLayoutSchema } from "./record-layout";
+import { afterContactWrite, contactCellsFor, contactsPageData } from "./contacts";
 import {
   assertRowAccess,
   canManageRow,
@@ -464,6 +465,8 @@ export function pageData(user: Identity, pid: string, options: { presence?: bool
       reminders: listDateReminders(user, pid),
       ...relations,
       form: formSettings(pid),
+      // Contacts databases: records kept by the LDAP directory (lib/contacts.ts).
+      contacts: contactsPageData(pid),
     };
   }
   if (p.kind === "dashboard")
@@ -1943,10 +1946,11 @@ export function command(
         const template = selectedRowTemplate(pid(), b.templateId);
         const given = z.record(z.string(), z.unknown()).parse(b.cells || {});
         assertFieldsWritable(user, write(), database(pid()).fields, Object.keys(given));
-        const cells = {
+        // Contacts: the display name from the names (lib/contacts.ts).
+        const cells = contactCellsFor(pid(), database(pid()).fields, {}, {
           ...(template ? JSON.parse(template.cells) : {}),
           ...given,
-        };
+        }, Object.keys(given));
         // Aliases follow their limits (lib/aliases.ts).
         const aliasProperty = aliasField(database(pid()).fields);
         if (aliasProperty && cells[aliasProperty.id] !== undefined)
@@ -1980,6 +1984,7 @@ export function command(
           user.id,
         );
         if (template) replaceRowDocument(rid, template.html, user.id);
+        afterContactWrite(pid(), rid);
         rowCreated(user, requirePage(user, pid()), rid);
         result = { id: rid };
         break;
@@ -2081,10 +2086,8 @@ export function command(
           );
         const before = JSON.parse(row.cells);
         const fieldsNow = database(pid()).fields;
-        const cells = {
-          ...before,
-          ...validateCellPatch(user, p, fieldsNow, b.cells || {}),
-        };
+        const patch = validateCellPatch(user, p, fieldsNow, b.cells || {});
+        const cells = contactCellsFor(pid(), fieldsNow, before, { ...before, ...patch }, Object.keys(patch));
         if (JSON.stringify(cells).length > 200000)
           throw new HttpError(413, "Datensatz zu groß.");
         run(
@@ -2097,6 +2100,7 @@ export function command(
           rid,
         );
         rowChanged(user, p, rid, before, cells, fieldsNow);
+        afterContactWrite(pid(), rid);
         const titleField = fieldsNow[0]?.id || "title";
         const [oldTitle, newTitle] = [cellText(before[titleField]), cellText(cells[titleField])];
         if (oldTitle !== newTitle)

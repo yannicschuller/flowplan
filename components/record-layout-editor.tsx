@@ -79,6 +79,18 @@ export function RecordLayoutEditor({
         />
         {t("Leere Eigenschaften einklappen", "Collapse empty properties")}
       </label>
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={draft.card === "contact"}
+          disabled={busy}
+          onChange={(e) => {
+            const { card: _card, ...rest } = draft;
+            void change(e.target.checked ? { ...rest, card: "contact" } : rest);
+          }}
+        />
+        {t("Kontaktkarte oben (Kontakte-Datenbank)", "Contact card on top (contacts database)")}
+      </label>
       <fieldset>
         <legend>{t("Sichtbare Eigenschaften", "Visible properties")}</legend>
         {fields.slice(1).map((f) => (

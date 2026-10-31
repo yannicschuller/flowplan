@@ -5,6 +5,8 @@ import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { requireAdmin } from "@/lib/permissions";
 import { createScimToken, revokeScimToken, scimOverview, ScimError } from "@/lib/scim";
 import { ldapStatus, syncLdapAccounts, testLdapConnection } from "@/lib/ldap-auth";
+import { contactsLdapConfig, contactsLdapStatus, saveContactsLdapSettings } from "@/lib/contacts-ldap";
+import { ldapTest } from "@/lib/ldap";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ async function admin() {
   requireAdmin(user);
   return user;
 }
-const overview = () => ({ scim: scimOverview(), ldap: ldapStatus() });
+const overview = () => ({ scim: scimOverview(), ldap: ldapStatus(), contacts: contactsLdapStatus() });
 
 export async function GET() {
   try {
@@ -34,7 +36,7 @@ export async function POST(req: Request) {
   try {
     checkOrigin(req);
     const user = await admin();
-    const body = (await req.json().catch(() => ({}))) as { action?: unknown; name?: unknown; id?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { action?: unknown; name?: unknown; id?: unknown; settings?: unknown };
     switch (body.action) {
       case "scim.token.create":
         return Response.json({ ...createScimToken(user.id, body.name), ...overview() }, { headers: { "Cache-Control": "no-store" } });
@@ -45,6 +47,15 @@ export async function POST(req: Request) {
         return Response.json({ test: await testLdapConnection(), ...overview() });
       case "ldap.sync":
         return Response.json({ sync: await syncLdapAccounts(), ...overview() });
+      // Contacts from the directory (lib/contacts-ldap.ts): base DN, filter,
+      // interval and on/off; the connection test uses that base.
+      case "contacts.ldap.save":
+        saveContactsLdapSettings(user, body.settings);
+        return Response.json(overview());
+      case "contacts.ldap.test": {
+        const config = contactsLdapConfig();
+        return Response.json({ test: config ? { ...(await ldapTest(config)), at: Date.now() } : { ok: false, ms: 0, error: "LDAP is not configured", at: Date.now() }, ...overview() });
+      }
       default:
         throw new HttpError(400, "Unbekannte Aktion.");
     }

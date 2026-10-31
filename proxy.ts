@@ -149,6 +149,11 @@ export async function proxy(request: NextRequest) {
     const { handleCalDav } = await import("./lib/caldav");
     return handleCalDav(request);
   }
+  // CardDAV (contacts databases, lib/carddav.ts) for the same reason.
+  if (path.startsWith("/api/carddav") || path.startsWith("/.well-known/carddav")) {
+    const { handleCardDav } = await import("./lib/carddav");
+    return handleCardDav(request);
+  }
   if (POLICY_EXCLUDED.test(path) || prefetch(request)) return pass();
   // Trailing slashes are kept for CalDAV (next.config.ts); pages redirect
   // to the address without one, as before.
@@ -234,6 +239,10 @@ export const config = {
     "/api/caldav/:path*",
     "/.well-known/caldav",
     "/.well-known/caldav/:path*",
+    "/api/carddav",
+    "/api/carddav/:path*",
+    "/.well-known/carddav",
+    "/.well-known/carddav/:path*",
     // Pages with a body (forms posting to themselves).
     "/((?!api/|_next/static|_next/image|fonts/|icons/|sw\\.js|fonts\\.css|manifest\\.webmanifest|icon\\.svg|favicon\\.ico).*)",
   ],

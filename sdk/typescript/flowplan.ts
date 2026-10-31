@@ -895,7 +895,7 @@ export type CommandPageCreate = {
   kind?: "document" | "database" | "whiteboard" | "journal" | "dashboard" | "notebook";
   /** Parent page in the same space */
   parentId?: string;
-  databaseKind?: "tasks" | "documents" | "empty";
+  databaseKind?: "tasks" | "documents" | "contacts" | "empty";
   /** A saved page template of the workspace */
   templateId?: string;
   /** A built-in starter template key */

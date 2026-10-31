@@ -38,6 +38,7 @@ const PERSONAL = [
   "auth_tokens",
   "auth_challenges",
   "caldav_accesses",
+  "carddav_accesses",
   "calendar_feeds",
   "favorites",
   "row_favorites",

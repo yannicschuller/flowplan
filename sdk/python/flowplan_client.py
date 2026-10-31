@@ -637,7 +637,7 @@ CommandPageCreate = TypedDict("CommandPageCreate", {
     "title": Required[str],
     "kind": Literal["document", "database", "whiteboard", "journal", "dashboard", "notebook"],  # Default: document
     "parentId": str,  # Parent page in the same space
-    "databaseKind": Literal["tasks", "documents", "empty"],
+    "databaseKind": Literal["tasks", "documents", "contacts", "empty"],
     "templateId": str,  # A saved page template of the workspace
     "starterTemplate": str,  # A built-in starter template key
 }, total=False)

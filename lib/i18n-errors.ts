@@ -4,6 +4,23 @@ import { translate, type Locale } from "./i18n";
 import { PAGE_LOCALE } from "./locale-tag";
 
 const exact: Record<string, string> = {
+  // Contacts databases, LDAP import, vCard, CardDAV (lib/contacts*.ts, lib/carddav.ts).
+  "Das ist keine Kontakte-Datenbank.": "This is not a contacts database.",
+  "Diese Eigenschaft kommt aus dem LDAP-Verzeichnis und kann nur dort geändert werden.": "This property comes from the LDAP directory and can only be changed there.",
+  "Bitte einen gültigen Basis-DN angeben.": "Please enter a valid base DN.",
+  "Der LDAP-Filter ist ungültig.": "The LDAP filter is invalid.",
+  "Dieser Eintrag liegt außerhalb des Verzeichnisbereichs für Kontakte.": "This entry lies outside the directory area for contacts.",
+  "Für Kontakte ist kein LDAP-Verzeichnis eingerichtet.": "No LDAP directory is set up for contacts.",
+  "Bitte Einträge oder eine OU auswählen.": "Please choose entries or an OU.",
+  "Höchstens 20 OUs je Datenbank.": "At most 20 OUs per database.",
+  "Diese Datenbank hat noch keine Kontakte aus dem Verzeichnis.": "This database has no contacts from the directory yet.",
+  "Der Abgleich läuft bereits.": "The sync is already running.",
+  "Zu viele Einträge ausgewählt.": "Too many records selected.",
+  "Die Datei ist zu groß (höchstens 5 MB).": "The file is too large (at most 5 MB).",
+  "Die vCard-Datei kann nicht gelesen werden.": "The vCard file cannot be read.",
+  "Die Datei enthält keine Kontakte (vCard).": "The file contains no contacts (vCard).",
+  "Administrator-Gruppe erforderlich.": "Administrator group required.",
+  "Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.": "The directory service (LDAP) cannot be reached right now.",
   // Administration → Angriffe & Vorfälle (lib/security-admin.ts).
   "Diese Adresse ist nicht mehr bekannt.": "This address is no longer known.",
   "Ungültiger Vorfall.": "Invalid incident.",

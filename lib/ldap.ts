@@ -323,12 +323,19 @@ export function ldapConfigured() {
 }
 export function ldapConfig(): LdapConfig | null {
   if (!ldapConfigured()) return null;
+  return ldapServerConfig(process.env.LDAP_BASE_DN!.trim());
+}
+// The server, the search account and TLS from the environment with another
+// base (contacts from the directory, lib/contacts-ldap.ts); null without
+// LDAP_URL.
+export function ldapServerConfig(baseDn: string): LdapConfig | null {
+  if (!process.env.LDAP_URL?.trim() || !baseDn) return null;
   const ca = process.env.LDAP_TLS_CA?.trim();
   return {
     url: process.env.LDAP_URL!.trim(),
     bindDn: process.env.LDAP_BIND_DN?.trim() || "",
     bindPassword: process.env.LDAP_BIND_PASSWORD || "",
-    baseDn: process.env.LDAP_BASE_DN!.trim(),
+    baseDn,
     userFilter: process.env.LDAP_USER_FILTER?.trim() || "(|(uid={user})(mail={user}))",
     groupAttribute: process.env.LDAP_GROUP_ATTRIBUTE?.trim() || "memberOf",
     tlsCa: ca ? (ca.startsWith("-----BEGIN") ? ca.replace(/\\n/g, "\n") : readFileSync(ca, "utf8")) : undefined,
@@ -498,8 +505,10 @@ export class LdapConnection {
     });
   }
   // scope: 0 base object, 1 one level, 2 subtree. noSuchObject gives [].
-  async search(options: { base: string; scope: 0 | 1 | 2; filter: LdapFilter; attributes: string[]; sizeLimit?: number }) {
+  // Values of the `binary` attributes (photos, objectGUID) come as base64.
+  async search(options: { base: string; scope: 0 | 1 | 2; filter: LdapFilter; attributes: string[]; sizeLimit?: number; binary?: string[] }) {
     const limit = Math.min(MAX_ENTRIES, options.sizeLimit || MAX_ENTRIES);
+    const binary = new Set((options.binary || []).map((a) => a.toLowerCase()));
     const entries: LdapEntry[] = [];
     return this.request<LdapEntry[]>(
       ber.seq(
@@ -520,7 +529,9 @@ export class LdapConnection {
           const attributes: Record<string, string[]> = {};
           for (const a of attrs ? children(attrs.value) : []) {
             const [type, values] = children(a.value);
-            attributes[type.value.toString("utf8").toLowerCase()] = children(values.value).map((v) => v.value.toString("utf8"));
+            const name = type.value.toString("utf8").toLowerCase();
+            const plain = name.replace(/;binary$/, "");
+            attributes[plain] = children(values.value).map((v) => v.value.toString(binary.has(plain) ? "base64" : "utf8"));
           }
           entries.push({ dn: name.value.toString("utf8"), attributes });
         } else if (op.tag === 0x65) {
@@ -563,7 +574,7 @@ export function userAttributes(config: LdapConfig) {
   ];
 }
 
-async function withConnection<T>(config: LdapConfig, fn: (conn: LdapConnection) => Promise<T>) {
+export async function withConnection<T>(config: LdapConfig, fn: (conn: LdapConnection) => Promise<T>) {
   const conn = await LdapConnection.open(config);
   try {
     return await fn(conn);
@@ -571,7 +582,7 @@ async function withConnection<T>(config: LdapConfig, fn: (conn: LdapConnection) 
     conn.close();
   }
 }
-async function serviceBind(conn: LdapConnection, config: LdapConfig) {
+export async function serviceBind(conn: LdapConnection, config: LdapConfig) {
   if (config.bindDn) await conn.bind(config.bindDn, config.bindPassword);
 }
 

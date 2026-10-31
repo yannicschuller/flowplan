@@ -14,6 +14,10 @@ export const recordLayoutSchema = z.object({
   properties: z.enum(["top", "side"]).default("top"),
   hideEmpty: z.boolean().default(false),
   hidden: z.array(z.string().min(1).max(100)).max(500).default([]),
+  // A card above the properties: "contact" shows a profile card (photo or
+  // initials, name, company, e-mail, phone, address) – contacts databases,
+  // lib/contacts.ts.
+  card: z.enum(["contact"]).optional(),
 });
 export type RecordLayout = z.infer<typeof recordLayoutSchema>;
 export const defaultRecordLayout: RecordLayout = recordLayoutSchema.parse({});

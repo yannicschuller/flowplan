@@ -3,6 +3,7 @@
 // throws and so undoes the change; automations add their changes in one
 // pass (their own changes do not trigger further automations, so rules
 // cannot loop). Overdue rules are checked by a background tick.
+import { assertContactWritable } from "./contacts";
 import { all, id, one, run, transaction } from "./db";
 import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
@@ -203,6 +204,8 @@ export function recordStatusChange(pageId: string, rowId: string, fields: Field[
 export function rowChanged(user: Identity | null | "system", page: Page, rowId: string, before: Cells, after: Cells, fields?: Field[]) {
   const settings = databaseSettings(page.id);
   const props = fields || (JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", page.id)!.fields) as Field[]);
+  // Properties an LDAP directory keeps stay as it says (lib/contacts.ts).
+  if (user !== "system") assertContactWritable(page.id, rowId, before, after);
   checkParent(page, rowId, props, before, after);
   checkWipLimits(page, props, before, after);
   checkWorkflow(user, page, props, settings, before, after);

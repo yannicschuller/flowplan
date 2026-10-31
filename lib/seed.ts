@@ -2,6 +2,7 @@ import { createNotebook } from "./notebook";
 import { id, run, all, transaction } from "./db";
 import type { Field, View } from "./types";
 import { ct } from "./content-locale";
+import { contactsSetup } from "./contacts";
 // A new database starts as a task list, in the language of the request.
 export const defaultFields = (): Field[] => [
   { id: "title", name: ct("Aufgabe", "Task"), type: "text" },
@@ -57,8 +58,9 @@ export const defaultViews = (): View[] => [
   { id: "form", name: ct("Formular", "Form"), type: "form", filters: [], sorts: [] },
 ];
 // What a new database starts as: a task list, a collection of documents
-// (records open as a full page) or only a title.
-export const databaseKinds = ["tasks", "documents", "empty"] as const;
+// (records open as a full page), contacts with a profile card
+// (lib/contacts.ts) or only a title.
+export const databaseKinds = ["tasks", "documents", "contacts", "empty"] as const;
 export type DatabaseKind = (typeof databaseKinds)[number];
 export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: View[]; recordLayout?: object } {
   if (kind === "documents")
@@ -76,6 +78,7 @@ export function databaseSetup(kind: DatabaseKind): { fields: Field[]; views: Vie
       ],
       recordLayout: { open: "full", properties: "top", hideEmpty: true, hidden: [] },
     };
+  if (kind === "contacts") return contactsSetup();
   if (kind === "empty")
     return {
       fields: [{ id: "title", name: "Name", type: "text" }],
@@ -116,6 +119,17 @@ export function createPage(
     );
     if (setup.recordLayout)
       run("UPDATE databases SET record_layout=? WHERE page_id=?", JSON.stringify(setup.recordLayout), pid);
+    // Contacts are personal data: closed to the AI until a manager of the
+    // page opens it ("Für KI gesperrt", lib/ai/access.ts).
+    if (databaseKind === "contacts")
+      run(
+        "INSERT INTO ai_blocks(target_id,kind,workspace_id,created_by,created_at) VALUES(?,?,?,?,?) ON CONFLICT(target_id) DO NOTHING",
+        pid,
+        "page",
+        workspace,
+        user,
+        Date.now(),
+      );
   }
   else run("INSERT INTO documents(page_id) VALUES(?)", pid);
   if (kind === "dashboard") run("INSERT INTO dashboards(page_id) VALUES(?)", pid);

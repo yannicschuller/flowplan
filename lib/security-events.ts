@@ -367,7 +367,7 @@ export function sweepSecurityEvents(now = Date.now()) {
 /* ---------- From the activity log ---------- */
 
 // Entries of the activity log that matter for security, as events.
-const ADMIN_SETTINGS = /^(ldap\.(enable|disable)|scim\.token\.(create|revoke)|admin\.(ops\.alerts|ops\.maintenance|push\.rotate|ai|metrics\.clear)|instance\.(backup|restore\.staged)|plugin\.(register|update|delete)|domain\.(add|remove)|e2ee\.identity\.reset|inbound\.rotate)$/;
+const ADMIN_SETTINGS = /^(ldap\.(enable|disable)|scim\.token\.(create|revoke)|admin\.(ops\.alerts|ops\.maintenance|push\.rotate|ai|metrics\.clear)|instance\.(backup|restore\.staged)|plugin\.(register|update|delete)|domain\.(add|remove)|e2ee\.identity\.reset|inbound\.rotate|contacts\.ldap\.(config|import|unsubscribe))$/;
 const EXPORTS = /(\.export|^instance\.backup)$/;
 export function auditToSecurity(actor: string, action: string, resource: string, detail: string): [SecurityKind, SecurityInput] | null {
   if (action === "account.delete") return ["account.deleted", { actorId: actor, detail: resource }];

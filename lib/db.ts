@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 79) return;
+  if (globalDb.flowplanSchema === 80) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1041,7 +1041,19 @@ function migrate(d: DatabaseSync) {
       WHERE t.user_id=NEW.user_id AND t.enabled=1 AND u.disabled=0 AND u.demo_until IS NULL
       AND ${notificationOn("messenger", "NEW.user_id", "COALESCE(NEW.kind,'comment')")};
     END;`);
-  globalDb.flowplanSchema = 79;
+  // Schema 80 – contacts databases (lib/contacts.ts, lib/contacts-ldap.ts,
+  // lib/carddav.ts): the LDAP source of a contacts database (its OUs, the
+  // property ↔ attribute mapping, the last sync), the record ↔ directory
+  // entry links (DN, entryUUID/objectGUID, hash of the last values) and the
+  // CardDAV accesses (only the password's hash).
+  d.exec(`CREATE TABLE IF NOT EXISTS contact_ldap_sources(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,ous TEXT NOT NULL DEFAULT '[]',mapping TEXT NOT NULL DEFAULT '{}',fields TEXT NOT NULL DEFAULT '[]',created_by TEXT,created_at INTEGER NOT NULL,last_sync_at INTEGER,last_result TEXT);
+    CREATE TABLE IF NOT EXISTS contact_ldap_links(row_id TEXT PRIMARY KEY REFERENCES rows(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,dn TEXT NOT NULL,uuid TEXT NOT NULL DEFAULT '',ou TEXT NOT NULL DEFAULT '',hash TEXT NOT NULL DEFAULT '',photo_hash TEXT NOT NULL DEFAULT '',missing_at INTEGER,synced_at INTEGER);
+    CREATE INDEX IF NOT EXISTS contact_ldap_links_page ON contact_ldap_links(page_id,uuid);
+    CREATE INDEX IF NOT EXISTS contact_ldap_links_dn ON contact_ldap_links(page_id,dn);
+    CREATE TABLE IF NOT EXISTS carddav_accesses(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS carddav_accesses_user ON carddav_accesses(user_id,page_id);
+    CREATE TABLE IF NOT EXISTS carddav_profile_links(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,expires INTEGER NOT NULL);`);
+  globalDb.flowplanSchema = 80;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

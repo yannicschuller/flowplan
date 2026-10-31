@@ -40,6 +40,9 @@ export async function register() {
     // LDAP groups and account state, hourly (only with LDAP_URL).
     const { startLdapSyncWorker } = await import("./lib/ldap-auth");
     startLdapSyncWorker();
+    // Contacts from the LDAP directory (lib/contacts-ldap.ts), hourly by default.
+    const { startContactsSyncWorker } = await import("./lib/contacts-ldap");
+    startContactsSyncWorker();
     // AI properties (automatic updates, queued values) and the semantic index.
     const { startAiWorker } = await import("./lib/ai/database");
     startAiWorker();
