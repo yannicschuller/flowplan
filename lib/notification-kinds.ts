@@ -8,8 +8,15 @@ export const notificationKinds = {
   change: "Änderungen an Seiten, denen du folgst",
   automation: "Automationen in Datenbanken",
   security: "Sicherheitshinweise zu deinem Konto und deinen Seiten",
+  // Incidents of the detection rules (lib/security-detect.ts): only for
+  // administrators, see adminOnlyKinds.
+  incident: "Sicherheitsvorfälle der Instanz",
 } as const;
 export type NotificationKind = keyof typeof notificationKinds;
+// Kinds only administrators get and see in the settings.
+export const adminOnlyKinds: readonly NotificationKind[] = ["incident"];
+export const kindsFor = (admin: boolean) =>
+  (Object.keys(notificationKinds) as NotificationKind[]).filter((kind) => admin || !adminOnlyKinds.includes(kind));
 // What applies until a person changes it: what concerns them directly
 // arrives everywhere; changes on followed pages and automations only in the
 // inbox, so small edits do not become push messages or e-mails. The chat
@@ -27,6 +34,7 @@ export const notificationDefaults: Record<NotificationKind, NotificationChannels
   change: { inbox: true, push: false, email: false, messenger: false },
   automation: { inbox: true, push: false, email: false, messenger: false },
   security: { inbox: true, push: true, email: true, messenger: true },
+  incident: { inbox: true, push: true, email: true, messenger: true },
 };
 // SQL for "this channel is on for this person and kind": their own setting,
 // else the default (table notification_defaults, filled from the map above).
@@ -36,3 +44,16 @@ export function notificationOn(channel: NotificationChannel, user: string, kind:
   return `COALESCE((SELECT np.${channel} FROM notification_prefs np WHERE np.user_id=${user} AND np.kind=${kind}),(SELECT nd.${channel} FROM notification_defaults nd WHERE nd.kind=${kind}),1)=1`;
 }
 export type NotificationPrefs = Record<NotificationKind, NotificationChannels>;
+
+// From which severity an administrator hears about incidents of the
+// instance (notification_prefs.min_severity of their "incident" row; none =
+// all). The rules (lib/security-kinds.ts securityRules) only know "warn" and
+// "critical" today, so the settings offer "all" and "critical"; "warn" stays
+// valid for when rules with "info" exist.
+export const incidentThresholds = ["all", "warn", "critical"] as const;
+export type IncidentThreshold = (typeof incidentThresholds)[number];
+const severityRank = { info: 0, warn: 1, critical: 2 } as const;
+export function incidentPasses(threshold: IncidentThreshold, severity: string) {
+  if (threshold === "all") return true;
+  return (severityRank[severity as keyof typeof severityRank] ?? 2) >= severityRank[threshold];
+}

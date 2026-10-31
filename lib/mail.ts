@@ -11,6 +11,7 @@ import { translate, type Locale } from "./i18n";
 import { localizedMessage } from "./i18n-errors";
 import { userLocale } from "./user-locale";
 import { notificationOn } from "./notification-kinds";
+import { notificationUrl } from "./page-location";
 
 export type MailConfig = {
   host: string;
@@ -276,11 +277,12 @@ export function queueNotificationDigests(now = Date.now()) {
     page_id: string | null;
     row_id: string | null;
     thread_id: string | null;
+    link: string | null;
     kind: string | null;
     email: string;
     name: string;
   }>(
-    `SELECT n.id,n.user_id,n.body,n.page_id,n.row_id,n.thread_id,n.kind,u.email,u.name FROM notifications n
+    `SELECT n.id,n.user_id,n.body,n.page_id,n.row_id,n.thread_id,n.link,n.kind,u.email,u.name FROM notifications n
      JOIN users u ON u.id=n.user_id
      WHERE n.read_at IS NULL AND n.emailed_at IS NULL AND n.created_at<=? AND u.disabled=0 AND u.demo_until IS NULL
        AND u.email LIKE '%@%'
@@ -301,7 +303,7 @@ export function queueNotificationDigests(now = Date.now()) {
       const link = (n: (typeof items)[number]) =>
         n.page_id
           ? `${url}/#page=${n.page_id}${n.row_id ? `&row=${n.row_id}` : ""}${n.thread_id ? `&thread=${n.thread_id}` : ""}`
-          : `${url}/#inbox`;
+          : `${url}${notificationUrl(n)}`;
       const shown = items.slice(0, 20);
       const more = items.length - shown.length;
       const andMore = t(`… und ${more} weitere`, `… and ${more} more`);

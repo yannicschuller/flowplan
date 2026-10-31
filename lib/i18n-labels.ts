@@ -105,6 +105,7 @@ const labels: Record<string, string> = {
   "Mit dir geteilte Seiten": "Pages shared with you",
   "Änderungen an Seiten, denen du folgst": "Changes to pages you follow",
   "Sicherheitshinweise zu deinem Konto und deinen Seiten": "Security notices about your account and pages",
+  "Sicherheitsvorfälle der Instanz": "Security incidents of the instance",
   // charts
   Standard: "Default",
   Warm: "Warm",

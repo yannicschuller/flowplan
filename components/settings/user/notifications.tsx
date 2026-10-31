@@ -31,6 +31,9 @@ export default function NotificationsSection() {
         <NotificationSettings
           prefs={boot.notificationPrefs}
           messenger={chatApps}
+          admin={!!boot.user.isAdmin}
+          threshold={boot.incidentThreshold}
+          onThreshold={(threshold) => mutate({ action: "notification.prefs", kind: "incident", ...boot.notificationPrefs!.incident, threshold })}
           onReset={() => mutate({ action: "notification.reset" })}
           onChange={(kind, value) => mutate({ action: "notification.prefs", kind, ...value })}
         />

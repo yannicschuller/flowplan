@@ -42,11 +42,26 @@ export function pageLocationHash(target: PageLocation): string {
   const hash = `#${params}`;
   return parsePageLocation(hash) ? hash : "#inbox";
 }
+// Where a notification leads beyond pages (notifications.link): only
+// in-app hash routes of the settings and the administration ("#admin/…",
+// "#settings/…" with plain path segments) – never another address.
+const notificationLink = /^#(admin|settings)(\/[A-Za-z0-9_-]{1,64}){0,3}$/;
+export const isNotificationLink = (link: unknown): link is string =>
+  typeof link === "string" && link.length <= 200 && notificationLink.test(link);
 export function notificationUrl(notification: {
   page_id: string | null;
   row_id?: string | null;
   thread_id?: string | null;
+  link?: string | null;
+  kind?: string | null;
+  body?: string | null;
 }): string {
+  if (!notification.page_id) {
+    if (isNotificationLink(notification.link)) return `/${notification.link}`;
+    // Incidents reported before notifications had a target (kind
+    // "security", "Sicherheit: …"): the administration's security page.
+    if (notification.kind === "security" && notification.body?.startsWith("Sicherheit: ")) return "/#admin/threats";
+  }
   return notification.page_id
     ? `/${pageLocationHash({ pageId: notification.page_id, rowId: notification.row_id || undefined, threadId: notification.thread_id || undefined })}`
     : "/#inbox";
@@ -55,6 +70,8 @@ export function notificationUrl(notification: {
 /** OIDC return paths are limited to the application root and validated hash targets. */
 export function loginReturnPath(value: unknown): string {
   if (value === "/#inbox") return value;
+  // Where a notification leads (an incident of the instance).
+  if (typeof value === "string" && value.startsWith("/#") && isNotificationLink(value.slice(1))) return value;
   // Signing in the desktop app through the browser (lib/desktop-sign-in.ts).
   if (typeof value === "string" && /^\/api\/auth\/desktop\?challenge=[A-Za-z0-9_-]{43}$/.test(value)) return value;
   // Content shared from another app waits for the sign-in.

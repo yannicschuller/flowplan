@@ -1,8 +1,9 @@
 // Detection rules over the security events (lib/security-events.ts). Each
 // rule opens an incident; the same rule and key within a day counts on the
 // open incident instead of opening a new one. A new incident is reported to
-// the instance administrators (inbox, push and e-mail as notification kind
-// "security") and to the alert webhook of the monitoring (event "security").
+// the instance administrators (notification kind "incident": inbox, push,
+// e-mail and chat apps as each of them chose, from the severity they chose)
+// and to the alert webhook of the monitoring (event "security").
 //
 // Thresholds are deliberately simple and conservative; FLOWPLAN_SECURITY_*
 // variables are not needed for normal instances.
@@ -113,10 +114,12 @@ function loginSuccess(e: SecurityEvent) {
 async function newDevice(e: SecurityEvent) {
   const where = [e.device, e.network, e.country].filter(Boolean).join(", ");
   run(
-    "INSERT INTO notifications(id,user_id,body,kind) VALUES(?,?,?,'security')",
+    "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'security',?)",
     id(),
     e.actorId,
     `Neue Anmeldung bei deinem Konto: ${where}. Warst du das nicht? Ändere dein Passwort und melde unter Einstellungen → Konto → Geräte alle anderen Geräte ab.`,
+    // Leads to the signed-in devices.
+    "#settings/account/sessions",
   );
   const { securityEvent } = await import("./security-events");
   securityEvent("login.new_device", { actorId: e.actorId, detail: where, address: "", at: e.at });
@@ -180,7 +183,7 @@ export function openIncident(
     e.at,
     evidence ? JSON.stringify(evidence) : "",
   );
-  void report(rule, detail, e.at);
+  void report(incident, rule, detail, e.at);
   return incident;
 }
 
@@ -193,18 +196,25 @@ function mayReport(now: number) {
   recent.push(now);
   return true;
 }
-async function report(rule: SecurityRule, detail: string, now: number) {
+async function report(incident: string, rule: SecurityRule, detail: string, now: number) {
   if (!mayReport(now)) return;
   try {
     const { adminUserIds } = await import("./auth");
-    const title = securityRules[rule].de;
+    const { incidentThreshold } = await import("./notification-prefs");
+    const { incidentPasses } = await import("./notification-kinds");
+    const { de: title, severity } = securityRules[rule];
+    // Each administrator chose the channels (notification kind "incident")
+    // and from which severity on; the incident shows under Administration →
+    // Sicherheit either way. The notification leads to the incident's page.
     for (const admin of adminUserIds())
-      run(
-        "INSERT INTO notifications(id,user_id,body,kind) VALUES(?,?,?,'security')",
-        id(),
-        admin,
-        `Sicherheit: ${title}${detail ? ` – ${detail}` : ""}. Details unter Administration → Sicherheit.`,
-      );
+      if (incidentPasses(incidentThreshold(admin), severity))
+        run(
+          "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'incident',?)",
+          id(),
+          admin,
+          `${severity === "critical" ? "Kritischer Sicherheitsvorfall" : "Sicherheitsvorfall"}: ${title}${detail ? ` – ${detail}` : ""}. Details unter Administration → Sicherheit.`,
+          `#admin/threats/incident/${incident}`,
+        );
     await dispatch();
     const { sendSecurityAlert } = await import("./admin-ops");
     await sendSecurityAlert(rule, detail, now);

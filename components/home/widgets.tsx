@@ -492,8 +492,11 @@ function InboxWidget({ widget, config }: Props<"inbox">) {
               type="button"
               onClick={() => {
                 if (!n.read_at) void env.mutate({ action: "notification.mark", notificationId: n.id, read: true }).catch(() => {});
-                const target = parsePageLocation(notificationUrl(n).slice(1));
+                const url = notificationUrl(n);
+                const target = parsePageLocation(url.slice(1));
                 if (target) env.openPage(target.pageId, target);
+                // A place of the app (an incident of the instance).
+                else if (url !== "/#inbox") location.hash = url.slice(2);
                 else env.go("inbox");
               }}
             >

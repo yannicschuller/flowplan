@@ -137,7 +137,7 @@ test("at most 5 tests per person in 10 minutes", async () => {
 test("every target through its real channel, the outcome per target, no inbox entry and no secrets", async () => {
   const { user, token } = account("many", { agent: CHROME_MAC, locale: "en" });
   // Push switched off for every kind and a Focus on: a test still goes.
-  for (const kind of ["mention", "share", "comment", "reminder", "guest", "change", "automation", "security"])
+  for (const kind of ["mention", "share", "comment", "reminder", "guest", "change", "automation", "security", "incident"])
     run("INSERT INTO notification_prefs(user_id,kind,inbox,push) VALUES(?,?,0,0)", user.id, kind);
   const here = webSubscription("fcm.googleapis.com");
   subscribePush(user, token, here);

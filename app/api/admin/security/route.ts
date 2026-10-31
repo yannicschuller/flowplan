@@ -39,7 +39,7 @@ export const GET = withRequestLocale(async (req: Request) => {
     const incident = params.get("incident");
     if (incident) return Response.json(securityIncident(incident), noStore);
     if (params.get("events")) return Response.json(securityEvents(Object.fromEntries(params)), noStore);
-    return Response.json(securityOverview(), noStore);
+    return Response.json(securityOverview(Date.now(), user), noStore);
   } catch (e) {
     return failure(e);
   }

@@ -20507,6 +20507,10 @@ h3 .block-reactions {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+/* Administrators: which incidents of the instance arrive. */
+.notif-threshold {
+  margin-top: 8px;
+}
 /* Switches in these panels get a 44 px hit area without growing. */
 :is(.notif-matrix, .settings-body .setting-control) .switch::after {
   content: "";

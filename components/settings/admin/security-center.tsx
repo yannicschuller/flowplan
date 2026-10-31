@@ -196,9 +196,10 @@ function Incidents({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
         ) : undefined
       }
     >
+      <MyAlerts alerts={d.alerts} />
       {!open.length && (
         <EmptyState icon={<CheckCircle size={20} />} title={t("Nichts offen", "Nothing open")}>
-          {t("Neue Vorfälle erscheinen hier und gehen an alle Admins.", "New incidents appear here and go to all admins.")}
+          {t("Neue Vorfälle erscheinen hier und gehen an alle Admins – jeder wählt selbst, wie.", "New incidents appear here and go to all admins – each chooses how.")}
         </EmptyState>
       )}
       <ul className="security-incidents">
@@ -207,6 +208,34 @@ function Incidents({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
         ))}
       </ul>
     </SettingGroup>
+  );
+}
+
+// "Wie du benachrichtigt wirst: …": the own choice (Settings →
+// Notifications, "Sicherheitsvorfälle der Instanz"), so administrators find
+// where to change it. Channels that cannot reach them (no push device, no
+// SMTP, no chat app) are left out of the list.
+function MyAlerts({ alerts }: { alerts: Overview["alerts"] }) {
+  const t = useT();
+  if (!alerts) return null;
+  const channels = [
+    alerts.inbox && t("Posteingang", "Inbox"),
+    alerts.inbox && alerts.push && alerts.reach.push && t("Push", "Push"),
+    alerts.inbox && alerts.email && alerts.reach.email && t("E-Mail", "E-mail"),
+    alerts.inbox && alerts.messenger && alerts.reach.messenger && t("Chat-Apps", "Chat apps"),
+  ].filter(Boolean);
+  const which =
+    alerts.threshold === "critical" ? t("nur kritische Vorfälle", "critical incidents only") : alerts.threshold === "warn" ? t("ab Warnung", "from warnings on") : t("alle Vorfälle", "all incidents");
+  return (
+    <p className="mon-note security-my-alerts">
+      <Info size={16} aria-hidden />
+      <span>
+        {channels.length
+          ? t(`Wie du benachrichtigt wirst: ${channels.join(", ")} – ${which}.`, `How you are notified: ${channels.join(", ")} – ${which}.`)
+          : t("Wie du benachrichtigt wirst: gar nicht – Vorfälle siehst du nur hier.", "How you are notified: not at all – you only see incidents here.")}
+      </span>
+      <a href="#settings/notifications/kinds">{t("In den Benachrichtigungen ändern", "Change in notifications")}</a>
+    </p>
   );
 }
 

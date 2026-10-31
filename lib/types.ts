@@ -282,6 +282,8 @@ export type Bootstrap = {
   // Open tasks given to the person that are due today or overdue.
   dueTasks?: number;
   notificationPrefs?: import("./notification-kinds").NotificationPrefs;
+  // Administrators: from which severity incidents of the instance arrive.
+  incidentThreshold?: import("./notification-kinds").IncidentThreshold;
   weeklyDigest?: import("./weekly-digest").WeeklyDigestPrefs;
   // Own keyboard shortcuts, only those that differ from the defaults.
   shortcuts?: import("./keymap").KeymapOverrides;
@@ -313,6 +315,9 @@ export type Bootstrap = {
     id: string;
     body: string;
     page_id: string | null;
+    // Where it leads beyond pages (lib/page-location.ts isNotificationLink).
+    link?: string | null;
+    kind?: string | null;
     read_at: string | null;
     created_at: string;
   }[];

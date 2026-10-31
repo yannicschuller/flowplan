@@ -470,6 +470,7 @@ const kindTitles: Record<NotificationKind, [string, string]> = {
   change: ["Änderung", "Change"],
   automation: ["Automation", "Automation"],
   security: ["Sicherheit", "Security"],
+  incident: ["Sicherheitsvorfall", "Security incident"],
 };
 const excerpt = (text: string, max = 280) => {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -479,7 +480,7 @@ const excerpt = (text: string, max = 280) => {
 // The message for one notification: its text, or only a hint when the
 // person wants that or the page is end-to-end encrypted.
 export function notificationMessage(
-  notification: { id?: string; body: string | null; kind: string | null; page_id: string | null; row_id?: string | null; thread_id?: string | null },
+  notification: { id?: string; body: string | null; kind: string | null; page_id: string | null; row_id?: string | null; thread_id?: string | null; link?: string | null },
   locale: Locale,
   options: { preview: boolean; encrypted: boolean },
 ): MessengerMessage {
@@ -487,7 +488,7 @@ export function notificationMessage(
   const url = `${appUrl()}${notificationUrl(notification)}`;
   const open = say("In Flowplan öffnen", "Open in Flowplan");
   const kind = (notification.kind || "comment") as NotificationKind;
-  const urgent = kind === "security";
+  const urgent = kind === "security" || kind === "incident";
   if (!options.preview || options.encrypted || !notification.body)
     return { title: instanceName(), text: say("Neue Benachrichtigung in Flowplan", "New notification in Flowplan"), url, open, urgent };
   const label = kindTitles[kind] ? say(...kindTitles[kind]) : "";
@@ -564,6 +565,7 @@ type Job = TargetRow & {
   n_page_id: string | null;
   n_row_id: string | null;
   n_thread_id: string | null;
+  n_link: string | null;
   n_read_at: string | null;
   n_exists: number | null;
   disabled_user: number;
@@ -574,10 +576,12 @@ function disableTarget(t: TargetRow, outcome: SendOutcome) {
   const detail = outcome.ok ? "" : outcome.reason === "private" ? "SSRF" : `HTTP ${outcome.status ?? "?"}`;
   if (!run("UPDATE messenger_targets SET enabled=0,disabled_reason=? WHERE id=? AND enabled=1", failureCode(outcome), t.id).changes) return;
   run(
-    "INSERT INTO notifications(id,user_id,body,kind) VALUES(?,?,?,'security')",
+    "INSERT INTO notifications(id,user_id,body,kind,link) VALUES(?,?,?,'security',?)",
     id(),
     t.user_id,
     `Chat-App ${messengerNames[t.service]} ausgeschaltet: wiederholt abgewiesen (${detail}). Bitte unter Einstellungen → Benachrichtigungen prüfen und wieder einschalten.`,
+    // Leads to the connections (lib/page-location.ts notificationUrl).
+    "#settings/notifications/messengers",
   );
   // What waits for it is dropped; the notifications stay in the inbox.
   run("DELETE FROM messenger_deliveries WHERE target_id=? AND delivered_at IS NULL", t.id);
@@ -607,7 +611,7 @@ async function handle(job: Job, bot: Bot | null, services: Record<MessengerServi
     if (job.n_page_id && (!page || page.deleted_at || !pageRole({ id: job.user_id } as Identity, page))) return drop();
     if (job.n_row_id && !one("SELECT 1 FROM rows WHERE id=? AND page_id=?", job.n_row_id, job.n_page_id)) return drop();
     message = notificationMessage(
-      { body: job.n_body, kind: job.n_kind, page_id: job.n_page_id, row_id: job.n_row_id, thread_id: job.n_thread_id },
+      { body: job.n_body, kind: job.n_kind, page_id: job.n_page_id, row_id: job.n_row_id, thread_id: job.n_thread_id, link: job.n_link },
       locale,
       { preview, encrypted: !!page && isEncryptedPage(page) },
     );
@@ -655,7 +659,7 @@ export async function flushMessengerQueue(now = Date.now()) {
   run("DELETE FROM messenger_deliveries WHERE created_at<?", now - 7 * DAY);
   const jobs = all<Job>(
     `SELECT t.*,d.id delivery_id,d.attempts,d.notification_id,d.title d_title,d.body d_body,d.url d_url,
-       n.body n_body,n.kind n_kind,n.page_id n_page_id,n.row_id n_row_id,n.thread_id n_thread_id,n.read_at n_read_at,
+       n.body n_body,n.kind n_kind,n.page_id n_page_id,n.row_id n_row_id,n.thread_id n_thread_id,n.link n_link,n.read_at n_read_at,
        CASE WHEN n.id IS NULL THEN 0 ELSE 1 END n_exists,u.disabled disabled_user
      FROM messenger_deliveries d JOIN messenger_targets t ON t.id=d.target_id JOIN users u ON u.id=t.user_id
      LEFT JOIN notifications n ON n.id=d.notification_id
@@ -693,7 +697,7 @@ export async function flushMessengerQueue(now = Date.now()) {
 
 // Health alerts (lib/admin-ops.ts) to the chat apps of administrators who
 // want them. Security incidents are not sent here: they already reach the
-// administrators as notifications of the kind "security", which go to their
+// administrators as notifications of the kind "incident", which go to their
 // chat apps through the matrix like every other kind.
 export function opsMessengerAdmins() {
   const admins = adminUserIds();

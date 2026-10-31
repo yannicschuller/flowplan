@@ -2,6 +2,7 @@
 // server answers in German; the browser shows the reader's language.
 import { translate, type Locale } from "./i18n";
 import { PAGE_LOCALE } from "./locale-tag";
+import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
   // Contacts databases, LDAP import, vCard, CardDAV (lib/contacts*.ts, lib/carddav.ts).
@@ -1059,8 +1060,20 @@ const patterns: [RegExp, string][] = [
   [/^(.+): Word-Datei konnte nicht gelesen werden\.$/, "$1: the Word file could not be read."],
 ];
 
+// An incident of the instance for the administrators (lib/security-detect.ts
+// report): with the rule's own English title.
+const incidentNotice = /^(Kritischer )?Sicherheitsvorfall: (.+?)( – .+)?\. Details unter Administration → Sicherheit\.$/s;
+function incidentEnglish(message: string) {
+  const m = incidentNotice.exec(message);
+  if (!m) return null;
+  const rule = Object.values(securityRules).find((r) => r.de === m[2]);
+  return `${m[1] ? "Critical security incident" : "Security incident"}: ${rule ? rule.en : m[2]}${m[3] || ""}. Details under Administration → Security.`;
+}
+
 export function englishMessage(message: string) {
   if (exact[message]) return exact[message];
+  const incident = incidentEnglish(message);
+  if (incident) return incident;
   for (const [pattern, english] of patterns)
     if (pattern.test(message)) return message.replace(pattern, english);
   return message;

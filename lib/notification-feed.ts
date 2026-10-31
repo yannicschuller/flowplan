@@ -34,11 +34,12 @@ export function notificationFeed(user: Identity, since: number | null) {
     page_id: string | null;
     row_id: string | null;
     thread_id: string | null;
+    link: string | null;
     read_at: string | null;
     created_at: string;
     push: number;
   }>(
-    `SELECT n.id,n.kind,n.body,n.page_id,n.row_id,n.thread_id,n.read_at,n.created_at,
+    `SELECT n.id,n.kind,n.body,n.page_id,n.row_id,n.thread_id,n.link,n.read_at,n.created_at,
        ${notificationOn("push", "n.user_id", "n.kind")} push
      FROM notifications n WHERE n.user_id=? ${since === null ? "" : "AND n.created_at>=?"}
      ORDER BY n.created_at DESC, n.rowid DESC LIMIT ?`,

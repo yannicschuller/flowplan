@@ -3,10 +3,21 @@
 // inbox and, from there, push, e-mail and – where the instance allows any –
 // chat apps (lib/messengers.ts). One card; each kind is a row with a switch
 // per channel – a matrix with column heads on wide screens, a stacked card
-// with labelled switches on phones.
+// with labelled switches on phones. Administrators also get the incidents of
+// the instance (kind "incident") with the severity they start from.
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
-import { notificationDefaults, notificationKinds, type NotificationChannels, type NotificationKind, type NotificationPrefs } from "@/lib/notification-kinds";
+import {
+  incidentThresholds,
+  kindsFor,
+  notificationDefaults,
+  notificationKinds,
+  type IncidentThreshold,
+  type NotificationChannels,
+  type NotificationKind,
+  type NotificationPrefs,
+} from "@/lib/notification-kinds";
+import { securityRules } from "@/lib/security-kinds";
 import { SaveState, SettingGroup, Switch, useSaveState } from "./settings-ui";
 
 // i18n-table: 1 – what each kind is about
@@ -18,8 +29,21 @@ const kindHints: Record<NotificationKind, [string, string]> = {
   guest: ["Kommentare und Einträge über Freigabelinks und Formulare.", "Comments and records through share links and forms."],
   change: ["Jemand bearbeitet eine Seite, der du folgst – auch eigene Seiten, denen du beim Anlegen folgst.", "Someone edits a page you follow – also your own pages, which you follow when creating them."],
   automation: ["Benachrichtigungen aus Automationen in Datenbanken.", "Notifications from automations in databases."],
-  security: ["Jemand gibt mehrmals eine falsche PIN für dein Journal ein.", "Someone enters a wrong PIN for your journal several times."],
+  security: [
+    "Zu deinem eigenen Konto: Anmeldung von einem neuen Gerät, falsche PIN für dein Journal, eine abgeschaltete Chat-App.",
+    "About your own account: a sign-in from a new device, a wrong PIN for your journal, a chat app switched off.",
+  ],
+  incident: [
+    "Nur für Administratoren: was die Erkennungsregeln auf der ganzen Instanz finden – Passwort-Raten, neue Adminrechte, Abtasten. Ein Tipp öffnet den Vorfall unter Administration → Sicherheit.",
+    "Administrators only: what the detection rules find on the whole instance – password guessing, new admin rights, probing. A tap opens the incident under Administration → Security.",
+  ],
 };
+
+// The severities the rules use (lib/security-kinds.ts): "from warning on"
+// only makes sense once a rule reports less than a warning.
+const offeredThresholds = incidentThresholds.filter(
+  (th) => th !== "warn" || Object.values(securityRules).some((r) => (r.severity as string) === "info"),
+);
 
 type Channels = NotificationChannels;
 
@@ -28,8 +52,15 @@ export function NotificationSettings({
   onChange,
   onReset,
   messenger = false,
+  admin = false,
+  threshold = "all",
+  onThreshold,
 }: {
   prefs: NotificationPrefs;
+  // Administrators: the incidents of the instance and their threshold.
+  admin?: boolean;
+  threshold?: IncidentThreshold;
+  onThreshold?: (value: IncidentThreshold) => Promise<unknown>;
   // The chat-app column: when the instance allows at least one chat app.
   messenger?: boolean;
   // Rejects when saving failed; the error is shown next to the switches.
@@ -55,9 +86,27 @@ export function NotificationSettings({
     queue.current = next;
     void run(() => next);
   };
-  const kinds = Object.keys(notificationKinds) as NotificationKind[];
+  const [localThreshold, setLocalThreshold] = useState(threshold);
+  useEffect(() => {
+    if (Date.now() - lastChange.current > 3000) setLocalThreshold(threshold);
+  }, [threshold]);
+  const changeThreshold = (value: IncidentThreshold) => {
+    if (!onThreshold) return;
+    lastChange.current = Date.now();
+    setLocalThreshold(value);
+    const next = queue.current.catch(() => {}).then(() => onThreshold(value));
+    queue.current = next;
+    void run(() => next);
+  };
+  const kinds = kindsFor(admin);
   const shown = (["inbox", "push", "email", ...(messenger ? (["messenger"] as const) : [])] as const);
-  const changed = kinds.some((kind) => shown.some((channel) => local[kind][channel] !== notificationDefaults[kind][channel]));
+  const changed =
+    kinds.some((kind) => shown.some((channel) => local[kind][channel] !== notificationDefaults[kind][channel])) || (admin && localThreshold !== "all");
+  const thresholdNames: Record<IncidentThreshold, string> = {
+    all: t("Alle Vorfälle", "All incidents"),
+    warn: t("Ab Warnung", "From warnings on"),
+    critical: t("Nur kritische", "Critical only"),
+  };
   const allChannels = [
     { key: "inbox", name: t("Posteingang", "Inbox"), label: (kind: NotificationKind) => t(`${notificationKinds[kind]} im Posteingang`, `${t(notificationKinds[kind])} in the inbox`) },
     { key: "push", name: t("Push", "Push"), label: (kind: NotificationKind) => t(`${notificationKinds[kind]} als Push`, `${t(notificationKinds[kind])} as push`) },
@@ -83,6 +132,7 @@ export function NotificationSettings({
               onClick={() => {
                 lastChange.current = 0;
                 setLocal(notificationDefaults);
+                setLocalThreshold("all");
                 void run(onReset);
               }}
             >
@@ -104,6 +154,22 @@ export function NotificationSettings({
             <div className="setting-text">
               <span className="setting-label">{t(notificationKinds[kind])}</span>
               <small>{t(...kindHints[kind])}</small>
+              {kind === "incident" && onThreshold && (
+                <div className="segmented notif-threshold" role="radiogroup" aria-label={t("Welche Vorfälle", "Which incidents")}>
+                  {offeredThresholds.map((th) => (
+                    <label key={th} data-active={localThreshold === th}>
+                      <input
+                        type="radio"
+                        name="incident-threshold"
+                        checked={localThreshold === th}
+                        disabled={!local.incident.inbox}
+                        onChange={() => changeThreshold(th)}
+                      />
+                      {thresholdNames[th]}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
             {channels.map((c) => (
               <label className="notif-channel" key={c.key}>

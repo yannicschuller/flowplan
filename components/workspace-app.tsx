@@ -4170,10 +4170,13 @@ export default function WorkspaceApp({
                             notificationId: n.id,
                             read: true,
                           });
-                        const target = parsePageLocation(
-                          notificationUrl(n).slice(1),
-                        );
-                        if (!target) return;
+                        const url = notificationUrl(n);
+                        const target = parsePageLocation(url.slice(1));
+                        // Not a page: a place of the app (an incident of the instance).
+                        if (!target) {
+                          if (url !== "/#inbox") location.hash = url.slice(2);
+                          return;
+                        }
                         // The commented passage or the mention flashes.
                         jumpTo(
                           target,

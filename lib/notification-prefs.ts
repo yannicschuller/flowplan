@@ -1,9 +1,14 @@
 import { z } from "zod";
-import { all, run } from "./db";
+import { all, one, run } from "./db";
+import { HttpError } from "./auth";
+import { ct } from "./content-locale";
 import type { Identity } from "./types";
 import {
+  adminOnlyKinds,
+  incidentThresholds,
   notificationDefaults,
   notificationKinds,
+  type IncidentThreshold,
   type NotificationKind,
   type NotificationPrefs,
 } from "./notification-kinds";
@@ -38,6 +43,16 @@ export function notificationPrefs(user: Identity): NotificationPrefs {
     }),
   ) as NotificationPrefs;
 }
+// The severity from which an administrator hears about incidents of the
+// instance (Settings → Notifications); "all" when never chosen.
+export function incidentThreshold(userId: string): IncidentThreshold {
+  const value = one<{ min_severity: string | null }>(
+    "SELECT min_severity FROM notification_prefs WHERE user_id=? AND kind='incident'",
+    userId,
+  )?.min_severity;
+  return (incidentThresholds as readonly string[]).includes(value || "") ? (value as IncidentThreshold) : "all";
+}
+
 export function setNotificationPref(user: Identity, input: unknown) {
   const b = z
     .object({
@@ -46,15 +61,22 @@ export function setNotificationPref(user: Identity, input: unknown) {
       push: z.boolean(),
       email: z.boolean().optional(),
       messenger: z.boolean().optional(),
+      // Only for "incident": from which severity on (incidentThresholds).
+      threshold: z.enum(incidentThresholds).optional(),
     })
     .parse(input);
+  // Incidents of the instance are for administrators only.
+  if (adminOnlyKinds.includes(b.kind) && !user.isAdmin)
+    throw new HttpError(403, ct("Nur Administratoren bekommen Sicherheitsvorfälle der Instanz.", "Only administrators get security incidents of the instance."));
+  if (b.threshold && b.kind !== "incident") throw new HttpError(400, ct("Eine Schwelle gibt es nur für Sicherheitsvorfälle.", "Only security incidents have a threshold."));
   const current = notificationPrefs(user)[b.kind];
   const email = b.email ?? current.email;
   const messenger = b.messenger ?? current.messenger;
   // Push is only sent for notifications that reach the inbox.
   run(
-    `INSERT INTO notification_prefs(user_id,kind,inbox,push,email,messenger) VALUES(?,?,?,?,?,?)
-     ON CONFLICT(user_id,kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email,messenger=excluded.messenger`,
+    `INSERT INTO notification_prefs(user_id,kind,inbox,push,email,messenger,min_severity) VALUES(?,?,?,?,?,?,?)
+     ON CONFLICT(user_id,kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email,messenger=excluded.messenger,
+       min_severity=COALESCE(excluded.min_severity,notification_prefs.min_severity)`,
     user.id,
     b.kind,
     b.inbox ? 1 : 0,
@@ -63,6 +85,7 @@ export function setNotificationPref(user: Identity, input: unknown) {
     b.inbox && email ? 1 : 0,
     // So are the messages to chat apps (lib/messengers.ts).
     b.inbox && messenger ? 1 : 0,
+    b.threshold ?? null,
   );
   return notificationPrefs(user);
 }
@@ -78,6 +101,7 @@ export function resetNotificationPrefs(user: Identity) {
 export function setEmailForAll(user: Identity, input: unknown) {
   const on = z.boolean().parse(input);
   const prefs = notificationPrefs(user);
+  // Every kind, so the answer is uniform; incidents only reach admins anyway.
   for (const kind of kindIds)
     run(
       `INSERT INTO notification_prefs(user_id,kind,inbox,push,email) VALUES(?,?,?,?,?)

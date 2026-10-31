@@ -200,8 +200,8 @@ export function MessengerSettings({ overview, onChange }: { overview: MessengerO
             <SettingRow
               label={t("Betriebswarnungen", "Operations alerts")}
               description={t(
-                "Für Administratoren: fehlgeschlagene Backups, voller Speicher, Fehler von Hintergrunddiensten und viele fehlgeschlagene Anmeldungen – höchstens einmal am Tag je Warnung. Sicherheitsvorfälle kommen als „Sicherheitshinweise“ (Spalte oben).",
-                "For administrators: failed backups, full storage, errors of background workers and many failed sign-ins – at most once a day per alert. Security incidents arrive as “Security notices” (column above).",
+                "Für Administratoren: fehlgeschlagene Backups, voller Speicher, Fehler von Hintergrunddiensten und viele fehlgeschlagene Anmeldungen – höchstens einmal am Tag je Warnung. Sicherheitsvorfälle kommen als „Sicherheitsvorfälle der Instanz“ (Zeile oben).",
+                "For administrators: failed backups, full storage, errors of background workers and many failed sign-ins – at most once a day per alert. Security incidents arrive as “Security incidents of the instance” (row above).",
               )}
             >
               <Switch

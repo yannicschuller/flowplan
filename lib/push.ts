@@ -252,11 +252,12 @@ export async function flushPushQueue(
     read_at: string | null;
     body: string | null;
     kind: string | null;
+    link: string | null;
     device_id: string | null;
     relay_token: string | null;
     public_key: string | null;
   }>(
-    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at,n.body,n.kind,md.id device_id,r.relay_token,r.public_key FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id LEFT JOIN mobile_devices md ON md.push_subscription_id=s.id LEFT JOIN mobile_push_relay r ON r.device_id=md.id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
+    "SELECT d.id,d.subscription_id,d.notification_id,d.attempts,s.user_id,s.endpoint,s.p256dh,s.auth,n.page_id,n.row_id,n.thread_id,n.read_at,n.body,n.kind,n.link,md.id device_id,r.relay_token,r.public_key FROM push_deliveries d JOIN push_subscriptions s ON s.id=d.subscription_id JOIN notifications n ON n.id=d.notification_id LEFT JOIN mobile_devices md ON md.push_subscription_id=s.id LEFT JOIN mobile_push_relay r ON r.device_id=md.id WHERE d.delivered_at IS NULL AND d.attempts<5 AND d.available_at<=? ORDER BY d.id LIMIT 20",
     now,
   );
   const relay = relayConfig();
@@ -421,6 +422,7 @@ type RelayJob = {
   thread_id: string | null;
   body: string | null;
   kind: string | null;
+  link: string | null;
   device_id: string | null;
   relay_token: string | null;
   public_key: string | null;

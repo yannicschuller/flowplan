@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 80) return;
+  if (globalDb.flowplanSchema === 81) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1053,7 +1053,21 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS carddav_accesses(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,token_hash TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS carddav_accesses_user ON carddav_accesses(user_id,page_id);
     CREATE TABLE IF NOT EXISTS carddav_profile_links(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,expires INTEGER NOT NULL);`);
-  globalDb.flowplanSchema = 80;
+  // Schema 81 – incidents of the instance as their own notification kind
+  // "incident" (lib/notification-kinds.ts), for administrators: where a
+  // notification leads beyond pages (notifications.link, e.g.
+  // "#admin/threats/incident/<id>") and from which severity an
+  // administrator wants them (notification_prefs.min_severity of the
+  // "incident" row). Until now incidents came as "security"; whoever
+  // switched channels off there keeps them off for incidents – copied once,
+  // together with adding the column.
+  if (!(d.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]).some((c) => c.name === "link"))
+    d.exec("ALTER TABLE notifications ADD COLUMN link TEXT");
+  if (!(d.prepare("PRAGMA table_info(notification_prefs)").all() as { name: string }[]).some((c) => c.name === "min_severity"))
+    d.exec(`ALTER TABLE notification_prefs ADD COLUMN min_severity TEXT;
+      INSERT OR IGNORE INTO notification_prefs(user_id,kind,inbox,push,email,messenger)
+        SELECT user_id,'incident',inbox,push,email,messenger FROM notification_prefs WHERE kind='security';`);
+  globalDb.flowplanSchema = 81;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

@@ -22,6 +22,7 @@ import {
 } from "./security-events";
 import { SECURITY_THRESHOLDS } from "./security-detect";
 import { isSecurityKind, securityRules, type SecurityRule } from "./security-kinds";
+import { incidentThreshold, notificationPrefs } from "./notification-prefs";
 import type { Identity } from "./types";
 
 const HOUR = 3_600_000,
@@ -376,7 +377,25 @@ function setup(now: number) {
   };
 }
 
-export function securityOverview(now = Date.now()) {
+// How the administrator looking at the page hears about incidents (Settings
+// → Notifications, kind "incident"): the channels that are on and can
+// deliver, and from which severity on.
+function incidentAlertsOf(viewer: Identity) {
+  const on = notificationPrefs(viewer).incident;
+  const chatApp = !!one("SELECT 1 FROM messenger_targets WHERE user_id=? AND enabled=1", viewer.id);
+  const push = !!one("SELECT 1 FROM push_subscriptions WHERE user_id=?", viewer.id);
+  return {
+    inbox: on.inbox,
+    push: on.push,
+    email: on.email,
+    messenger: on.messenger,
+    // Whether those channels can reach the person at all.
+    reach: { push, email: !!mailConfig() && /@/.test(viewer.email || ""), messenger: chatApp },
+    threshold: incidentThreshold(viewer.id),
+  };
+}
+
+export function securityOverview(now = Date.now(), viewer: Identity | null = null) {
   const day = now - DAY;
   const hourly = Array.from({ length: 24 }, (_, i) => ({ at: now - (23 - i) * HOUR, failures: 0, signIns: 0 }));
   for (const row of all<{ bucket: number; kind: string; n: number }>(
@@ -424,6 +443,7 @@ export function securityOverview(now = Date.now()) {
     })),
     thresholds: SECURITY_THRESHOLDS,
     setup: setup(now),
+    alerts: viewer ? incidentAlertsOf(viewer) : null,
   };
 }
 
@@ -535,7 +555,7 @@ export function securityAction(admin: Identity, input: unknown, requestHeaders: 
         securityEvent("admin.settings", { actorId: admin.id, headers: requestHeaders, severity: "info", detail: `publication ended ${b.pageId}` });
       break;
   }
-  return securityOverview(now);
+  return securityOverview(now, admin);
 }
 
 // The events as CSV or JSON for the operator's own tools.

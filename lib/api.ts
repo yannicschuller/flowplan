@@ -143,7 +143,7 @@ import type { Filter } from "./types";
 import { captureTemplateFiles } from "./template-files";
 import { detachOccurrence } from "./recurrence-detach";
 import { instanceSettings, saveInstanceSettings } from "./instance-settings";
-import { notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
+import { incidentThreshold, notificationPrefs, resetNotificationPrefs, setEmailForAll, setNotificationPref } from "./notification-prefs";
 import { setWeeklyDigest, weeklyDigestPrefs } from "./weekly-digest";
 import { saveShortcuts, userShortcuts } from "./user-shortcuts";
 import { homeLayout, resetHomeLayout, saveHomeLayout, saveHomeNote, setTeamDefault } from "./home-layout";
@@ -308,6 +308,7 @@ export function bootstrap(user: Identity, wid?: string) {
     recentVisits: recentVisits(user, workspace.id, 8),
     dueTasks: dueTaskCount(user, workspace.id),
     notificationPrefs: notificationPrefs(user),
+    ...(user.isAdmin ? { incidentThreshold: incidentThreshold(user.id) } : {}),
     weeklyDigest: weeklyDigestPrefs(user),
     // Own keyboard shortcuts (lib/keymap.ts), only those that differ.
     shortcuts: userShortcuts(user),
