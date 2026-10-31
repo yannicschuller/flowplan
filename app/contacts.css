@@ -1,0 +1,392 @@
+/* Contacts databases (issue #64): the profile card, the LDAP markers, the
+   import dialog with the OU tree and the contact hover card
+   (components/contacts.tsx, components/link-preview.tsx). */
+
+.contact-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+  margin: 4px 0 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--surface);
+}
+.contact-avatar {
+  flex: none;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--hover);
+}
+.contact-initials {
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: hsl(var(--contact-hue, 210) 55% 30%);
+  background: hsl(var(--contact-hue, 210) 70% 90%);
+  user-select: none;
+}
+[data-theme="dark"] .contact-initials {
+  color: hsl(var(--contact-hue, 210) 70% 85%);
+  background: hsl(var(--contact-hue, 210) 30% 26%);
+}
+.contact-card-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.contact-role {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--secondary);
+}
+.contact-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+.contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.contact-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+.contact-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contact-action svg {
+  flex: none;
+  color: var(--blue);
+}
+.contact-action:hover,
+.contact-action:focus-visible {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+.contact-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.contact-address,
+.contact-birthday {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.contact-address > span {
+  display: grid;
+}
+.contact-address:hover span {
+  color: var(--blue);
+  text-decoration: underline;
+}
+.contact-address svg,
+.contact-birthday svg {
+  flex: none;
+  margin-top: 1px;
+}
+.contact-vcard {
+  margin: -6px -8px 0 0;
+}
+.ldap-marker {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--blue-light);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.ldap-marker.small {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 10px;
+  vertical-align: 1px;
+}
+.ldap-marker.missing {
+  background: color-mix(in srgb, var(--signal) 16%, transparent);
+  color: color-mix(in srgb, var(--signal) 70%, var(--text));
+}
+@media (max-width: 600px) {
+  .contact-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+  }
+  .contact-card > .contact-avatar {
+    width: 56px !important;
+    height: 56px !important;
+  }
+  .contact-vcard {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    margin: 0;
+  }
+  .contact-actions {
+    display: grid;
+  }
+  .contact-card-body {
+    grid-column: 1 / -1;
+  }
+  .contact-role {
+    padding-right: 36px;
+  }
+}
+
+/* The hover card of a mentioned contact: it can be entered. */
+.link-preview.contact-preview {
+  pointer-events: auto;
+  gap: 6px;
+}
+.contact-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.contact-preview-head > span {
+  display: grid;
+  min-width: 0;
+}
+.contact-preview a {
+  overflow: hidden;
+  color: var(--blue);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contact-preview a:hover {
+  text-decoration: underline;
+}
+.contact-preview .ldap-marker {
+  justify-self: start;
+}
+.contact-preview-open {
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+/* "Aus LDAP importieren": the OU tree beside the people of a unit. */
+.ldap-import .ldap-browser {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) minmax(0, 3fr);
+  gap: 14px;
+  min-height: 300px;
+  margin: 12px 0;
+}
+.ldap-tree,
+.ldap-people {
+  min-width: 0;
+  max-height: min(52vh, 460px);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.ldap-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ldap-tree ul ul {
+  padding-left: 16px;
+}
+.ou-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 6px;
+}
+.ou-row[data-active] {
+  background: var(--blue-light);
+}
+.ou-row[data-active] .ou-name {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.ou-toggle {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+}
+.ou-name {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.ou-name span:not(.ldap-marker) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldap-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.ldap-search input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  outline: none;
+  padding: 7px 0;
+}
+.ldap-search:focus-within {
+  border-color: var(--blue);
+}
+.ldap-whole,
+.ldap-all {
+  margin: 4px 0 8px;
+  padding: 0 4px;
+}
+.ldap-whole small {
+  display: block;
+}
+.ldap-person-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ldap-person-list label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 4px;
+  border-radius: 6px;
+}
+.ldap-person-list label > input {
+  flex: none;
+  margin-top: 0;
+}
+.ldap-person-list label:hover {
+  background: var(--hover);
+}
+.ldap-person {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.ldap-person small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ldap-subscribed {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.ldap-subscribed ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.ldap-subscribed li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.ldap-subscribed code {
+  overflow-wrap: anywhere;
+}
+.ldap-mapping summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ldap-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px 12px;
+}
+.ldap-mapping-grid label {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.ldap-mapping-grid input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  .ldap-import .ldap-browser {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ldap-tree {
+    max-height: 30vh;
+  }
+}
+.contacts-menu .dropdown-hint {
+  display: block;
+  max-width: 260px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: normal;
+}
+.contacts-profile-link {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.admin-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

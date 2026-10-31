@@ -230,7 +230,10 @@ function photoOf(entry: LdapEntry) {
 }
 export type Mapping = Partial<Record<ContactKey, string[]>>;
 const attributeName = z.string().regex(/^[A-Za-z][A-Za-z0-9-]{0,63}$/);
-export const mappingSchema = z.record(z.enum(Object.keys(CONTACT_FIELDS) as [ContactKey, ...ContactKey[]]), z.array(attributeName).max(5));
+// Contact property → attributes; unknown properties are dropped.
+export const mappingSchema = z
+  .record(z.string().max(40), z.array(attributeName).max(5))
+  .transform((value): Mapping => Object.fromEntries(Object.entries(value).filter(([key]) => key in CONTACT_FIELDS)));
 function parseMapping(raw: string | null | undefined): Mapping {
   try {
     const parsed = mappingSchema.safeParse(JSON.parse(raw || "{}"));

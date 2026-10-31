@@ -11,8 +11,10 @@ import { EmptyState, ResponsiveTable, SettingGroup, SettingRow, StatusBadge } fr
 import { when } from "./settings/admin/format";
 import type { ScimOverview } from "@/lib/scim";
 import type { LdapStatus } from "@/lib/ldap-auth";
+import type { ContactsLdapStatus } from "@/lib/contacts-ldap";
+import { AdminContactsLdap } from "./admin-contacts-ldap";
 
-export type DirectoryOverview = { scim: ScimOverview; ldap: LdapStatus };
+export type DirectoryOverview = { scim: ScimOverview; ldap: LdapStatus; contacts?: ContactsLdapStatus };
 
 // /api/admin/directory, loaded once; `act` runs a command and keeps its answer.
 export function useDirectory(onError: (message: string) => void) {
@@ -31,7 +33,7 @@ export function useDirectory(onError: (message: string) => void) {
     setBusy(action);
     try {
       const result = await api<DirectoryOverview & { token?: string }>("/api/admin/directory", { action, ...extra });
-      setData({ scim: result.scim, ldap: result.ldap });
+      setData({ scim: result.scim, ldap: result.ldap, contacts: result.contacts });
       return result;
     } catch (e) {
       report.current((e as Error).message);
@@ -265,6 +267,7 @@ export function AdminDirectory({ directory }: { directory: ReturnType<typeof use
           </>
         )}
       </SettingGroup>
+      {data.contacts && <AdminContactsLdap status={data.contacts} busy={busy} act={act} />}
     </>
   );
 }

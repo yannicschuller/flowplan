@@ -310,6 +310,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "SSO-Gruppen zentral zuordnen", en: "Map SSO groups centrally" }, anchor: "sso-groups" },
       { title: { de: "SCIM-Token", en: "SCIM tokens" }, anchor: "scim" },
       { title: { de: "LDAP-Verzeichnis", en: "LDAP directory" }, anchor: "ldap" },
+      { title: { de: "Kontakte aus LDAP", en: "Contacts from LDAP" }, keywords: { de: "kontakte adressbuch ou organisationseinheit", en: "contacts address book ou organizational unit" }, anchor: "ldap-contacts" },
     ],
   },
   {

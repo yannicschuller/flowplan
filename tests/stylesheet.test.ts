@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-for (const file of ["app/globals.css", "app/mobile-ux.css"]) {
+for (const file of ["app/globals.css", "app/mobile-ux.css", "app/contacts.css"]) {
   test(`${file} has balanced braces and no merge markers`, () => {
     const css = readFileSync(file, "utf8");
     assert.doesNotMatch(css, /^(<<<<<<<|=======|>>>>>>>)( |$)/m, "leftover merge marker");

@@ -3,7 +3,9 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, PageIcon } from "./ui";
-import { parsePageLocation } from "@/lib/page-location";
+import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
+import type { ContactCardData } from "@/lib/contacts-io";
+import { ContactAvatar } from "./contacts";
 
 type Preview = {
   id: string;
@@ -17,6 +19,8 @@ type Preview = {
 };
 type Card =
   | { kind: "page"; rect: DOMRect; preview: Preview | null; error?: string }
+  // A link to a record of a contacts database (issue #64).
+  | { kind: "contact"; rect: DOMRect; contact: ContactCardData }
   | { kind: "person"; rect: DOMRect; name: string; email: string };
 
 // Spoiler text in read-only content opens (and closes) with a click; while
@@ -62,6 +66,8 @@ export function LinkPreview({
   const t = useT();
   const [card, setCard] = useState<Card | null>(null);
   const cache = useRef(new Map<string, Preview | string>());
+  // Records: their contact card, or null for records of other databases.
+  const contacts = useRef(new Map<string, ContactCardData | null>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const current = useRef<Element | null>(null);
   useEffect(() => {
@@ -93,6 +99,20 @@ export function LinkPreview({
         const href = target.getAttribute("href") || "";
         const location = parsePageLocation(href.slice(href.indexOf("#")));
         if (!location) return;
+        if (location.rowId) {
+          const key = `${location.pageId}:${location.rowId}`;
+          let contact = contacts.current.get(key);
+          if (contact === undefined) {
+            contact = await api<{ card: ContactCardData | null }>(`/api/contacts?view=card&page=${location.pageId}&row=${location.rowId}`)
+              .then((r) => r.card)
+              .catch(() => null);
+            contacts.current.set(key, contact);
+          }
+          if (contact) {
+            if (current.current === target) setCard({ kind: "contact", rect, contact });
+            return;
+          }
+        }
         const cached = cache.current.get(location.pageId);
         if (cached && typeof cached !== "string") {
           setCard({ kind: "page", rect, preview: cached });
@@ -127,6 +147,8 @@ export function LinkPreview({
       const related = (event as MouseEvent).relatedTarget as Element | null;
       if (current.current && related && current.current.contains(related))
         return;
+      // A contact card can be entered (its links are clickable).
+      if (related?.closest?.(".link-preview.contact-preview")) return;
       if (
         (event.target as Element | null)?.closest?.(
           'a[href*="#page="], span[data-mention]',
@@ -190,8 +212,40 @@ export function LinkPreview({
     };
   }, [members]);
   if (!card) return null;
-  const top = Math.min(card.rect.bottom + 6, window.innerHeight - 170),
+  const top = Math.min(card.rect.bottom + 6, window.innerHeight - (card.kind === "contact" ? 220 : 170)),
     left = Math.max(8, Math.min(card.rect.left, window.innerWidth - 328));
+  if (card.kind === "contact") {
+    const c = card.contact;
+    const close = () => {
+      current.current = null;
+      setCard(null);
+    };
+    return (
+      <div className="link-preview contact-preview" role="dialog" aria-label={c.name} style={{ top, left }} onMouseLeave={close}>
+        <div className="contact-preview-head">
+          <ContactAvatar name={c.name} photo={c.photo} size={40} />
+          <span>
+            <strong>{c.name || t("Ohne Titel", "Untitled")}</strong>
+            {(c.position || c.company) && <small>{[c.position, c.company].filter(Boolean).join(" · ")}</small>}
+          </span>
+        </div>
+        {c.email && <a href={`mailto:${c.email}`}>{c.email}</a>}
+        {(c.phone || c.mobile) && <a href={`tel:${(c.phone || c.mobile).replace(/[^\d+]/g, "")}`}>{c.phone || c.mobile}</a>}
+        {c.missing && <small className="ldap-marker missing">{t("Nicht mehr im Verzeichnis", "No longer in directory")}</small>}
+        <a
+          className="contact-preview-open"
+          href={`/${pageLocationHash({ pageId: c.pageId, rowId: c.rowId })}`}
+          onClick={(event) => {
+            event.preventDefault();
+            close();
+            location.hash = pageLocationHash({ pageId: c.pageId, rowId: c.rowId });
+          }}
+        >
+          {t("Profil öffnen", "Open profile")} →
+        </a>
+      </div>
+    );
+  }
   return (
     <div className="link-preview" role="tooltip" style={{ top, left }}>
       {card.kind === "person" ? (

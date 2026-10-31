@@ -73,6 +73,8 @@ export function contactsSetup(): { fields: Field[]; views: View[]; recordLayout:
           { field: F.lastName, direction: "asc" },
           { field: F.firstName, direction: "asc" },
         ],
+        // The name is the title; beside it company and e-mail.
+        hiddenFields: [F.firstName, F.lastName, F.position, F.phone, F.mobile, F.street, F.postalCode, F.country, F.birthday, F.tags],
       },
       {
         id: "table",

@@ -1,19 +1,19 @@
 "use client";
-// What a new database starts as: tasks, documents, only a title, or one of
+// What a new database starts as: tasks, documents, contacts, only a title, or one of
 // the saved database templates. The last choice is remembered per device.
 import { useEffect, useState } from "react";
-import { CheckSquare, Files, Rows, Star } from "@phosphor-icons/react";
+import { AddressBook, CheckSquare, Files, Rows, Star } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { api } from "./ui";
 
 export const DATABASE_KIND_KEY = "flowplan-database-kind";
-export type DatabaseChoice = "tasks" | "documents" | "empty" | `template:${string}`;
+export type DatabaseChoice = "tasks" | "documents" | "contacts" | "empty" | `template:${string}`;
 type Template = { id: string; name: string; kind: string };
 
 export function rememberedDatabaseKind(): DatabaseChoice {
   try {
     const stored = localStorage.getItem(DATABASE_KIND_KEY) || "";
-    if (["tasks", "documents", "empty"].includes(stored) || stored.startsWith("template:")) return stored as DatabaseChoice;
+    if (["tasks", "documents", "contacts", "empty"].includes(stored) || stored.startsWith("template:")) return stored as DatabaseChoice;
   } catch {}
   return "tasks";
 }
@@ -59,6 +59,12 @@ export function DatabaseKindPicker({
   const kinds = [
     { id: "tasks" as const, icon: CheckSquare, label: t("Aufgaben", "Tasks"), hint: t("Status, Priorität, Fälligkeit, Verantwortlich", "Status, priority, due date, assignee") },
     { id: "documents" as const, icon: Files, label: t("Dokumente", "Documents"), hint: t("Titel, Tags, Erstellt, Bearbeitet – Einträge öffnen als ganze Seite", "Title, tags, created, edited – records open as a full page") },
+    {
+      id: "contacts" as const,
+      icon: AddressBook,
+      label: t("Kontakte", "Contacts"),
+      hint: t("Name, Firma, E-Mail, Telefon, Adresse, Geburtstag – mit Profilseite, vCard und LDAP", "Name, company, e-mail, phone, address, birthday – with a profile page, vCard and LDAP"),
+    },
     { id: "empty" as const, icon: Rows, label: t("Leer", "Empty"), hint: t("Nur ein Titel", "Only a title") },
   ];
   return (

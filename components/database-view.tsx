@@ -107,6 +107,7 @@ import { UnlinkedMentions } from "./unlinked-mentions";
 import { DuplicateHint, RelatedPages } from "./related-pages";
 import { MarkdownRecordsImport } from "./markdown-records-import";
 import { DatabaseExportMenu, RecordExportMenu } from "./record-export";
+import { ContactCard, ContactsMenu, LdapMarker, contactLocked, type ContactsData } from "./contacts";
 import { RecordToPage } from "./record-to-page";
 import { RollupValue } from "./rollup-value";
 import {
@@ -239,6 +240,8 @@ export type DatabaseData = {
   groups?: { id: string; name: string }[];
   // Visible properties this person may not change (lib/field-access.ts).
   readOnlyFields?: string[];
+  // Contacts databases: records the LDAP directory keeps (lib/contacts.ts).
+  contacts?: ContactsData;
 };
 // i18n-table: 1 – [German, English] pairs
 const fieldNames: Record<FieldType, [string, string]> = {
@@ -541,7 +544,9 @@ export default function DatabaseView({
   const recordLayout = data.database.recordLayout || defaultRecordLayout;
   // What a new record is called: a task in a task list (lib/seed.ts), a
   // document where records open as a page (notes), otherwise an entry.
-  const newRecordTitle = data.database.fields.some((f) => f.id === "status")
+  const newRecordTitle = recordLayout.card === "contact"
+    ? t("Neuer Kontakt", "New contact")
+    : data.database.fields.some((f) => f.id === "status")
     ? t("Neue Aufgabe", "New task")
     : recordLayout.open === "full"
       ? t("Neues Dokument", "New document")
@@ -1058,10 +1063,14 @@ export default function DatabaseView({
   const rowEditable = (r: Row) => editable && r.role !== "viewer";
   // Properties only some people change (field-level permissions).
   const lockedFields = new Set(data.readOnlyFields || []);
-  const lockedTitle = (f: Field) =>
+  const lockedTitle = (f: Field, r?: Row) =>
     lockedFields.has(f.id)
       ? describeRule(f.access?.write, "write", data.groups || [], t)
-      : undefined;
+      : r && contactLocked(data.contacts, r.id, f.id)
+        ? t("Kommt aus dem LDAP-Verzeichnis und wird dort gepflegt.", "Comes from the LDAP directory and is kept there.")
+        : undefined;
+  // Also properties of contacts the LDAP directory keeps (lib/contacts.ts).
+  const fieldLocked = (r: Row, f: Field) => lockedFields.has(f.id) || contactLocked(data.contacts, r.id, f.id);
   const act = async (b: Record<string, unknown>) => {
     try {
       // The action's Idempotency-Key stays with it (lib/idempotency-key.ts).
@@ -2419,13 +2428,13 @@ export default function DatabaseView({
             role="gridcell"
             className={`${stickyCell(f, i).className}${aiStatus.fresh.has(`${r.id}:${f.id}`) ? " ai-filled" : ""}`.trim() || undefined}
             style={stickyCell(f, i).style}
-            title={lockedTitle(f)}
+            title={lockedTitle(f, r)}
             onClick={() => {
               if (
                 !rowEditable(r) ||
                 f.id === fields[0].id ||
                 computedTypes.includes(f.type) ||
-                lockedFields.has(f.id)
+                fieldLocked(r, f)
               )
                 setRowId(r.id);
               else if (f.type === "checkbox")
@@ -2731,6 +2740,16 @@ export default function DatabaseView({
               )
             }
           />
+          {recordLayout.card === "contact" && (
+            <ContactsMenu
+              pageId={page.id}
+              title={page.title}
+              editable={editable}
+              selected={[...selection.keys()]}
+              onChanged={onRefresh}
+              onError={onError}
+            />
+          )}
           {editable && (
             <>
               <button
@@ -3542,8 +3561,8 @@ export default function DatabaseView({
             editable
               ? (r) => ({
                   property: (f) =>
-                    computedTypes.includes(f.type) || lockedFields.has(f.id) ? (
-                      <span title={lockedTitle(f)}>{display(r, f)}</span>
+                    computedTypes.includes(f.type) || fieldLocked(r, f) ? (
+                      <span title={lockedTitle(f, r)}>{display(r, f)}</span>
                     ) : (
                       <CellInput
                         field={f}
@@ -5347,7 +5366,7 @@ export default function DatabaseView({
               </div>
             )}
             <h2>
-              {selected.icon && (
+              {selected.icon && !(recordLayout.card === "contact" && selected.icon.startsWith("/api/")) && (
                 <PageIcon
                   name={selected.icon}
                   size={30}
@@ -5366,6 +5385,9 @@ export default function DatabaseView({
               )}
             </h2>
             {freshRowId === selected.id && <DuplicateHint workspaceId={page.workspace_id} title={cellText(selected.cells[fields[0].id])} databaseId={page.id} excludeRowId={selected.id} />}
+            {recordLayout.card === "contact" && (
+              <ContactCard row={selected} fields={fields} pageId={page.id} contacts={data.contacts} onError={onError} />
+            )}
             <div
               className={`row-columns${recordLayout.properties === "side" ? " properties-side" : ""}`}
             >
@@ -5373,7 +5395,10 @@ export default function DatabaseView({
                 {recordFields.map((f) => (
                   <Fragment key={`${selected.id}-${f.id}`}>
                     <PropertyRow group={f.type === "files" || f.type === "date"}>
-                      <span>{f.name}</span>
+                      <span>
+                        {f.name}
+                        {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}
+                      </span>
                       {computedTypes.includes(f.type) ? (
                         <span>
                           {display(
@@ -5390,15 +5415,15 @@ export default function DatabaseView({
                           )}
                         </span>
                       ) : (
-                        <span title={lockedTitle(f)}>
+                        <span title={lockedTitle(f, selected)}>
                           <CellInput
                             field={f}
                             value={selected.cells[f.id]}
                             members={members}
                             related={related}
-                            disabled={!selectedEditable || lockedFields.has(f.id)}
+                            disabled={!selectedEditable || fieldLocked(selected, f)}
                             onChange={(v) => updateCell(selected, f, v)}
-                            upload={selectedEditable && !lockedFields.has(f.id) ? uploadFile : undefined}
+                            upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
                             files={data.files}
                           />
                         </span>

@@ -106,7 +106,7 @@ test("people of a unit: persons only, search below the unit, result size bounded
 
 test("import: chosen entries and a whole unit become contacts with directory values and photo", async () => {
   const result = await importContacts(owner, pageId, { entries: [`uid=dave,${PEOPLE}`], units: [`ou=sales,${PEOPLE}`] });
-  assert.equal(result.ok, true, result.error);
+  assert.equal(result.ok, true, result.error || "");
   assert.equal(result.created, 3);
   const alice = cellsOf(rowOf(`uid=alice,ou=sales,${PEOPLE}`)!);
   assert.equal(alice.title, "Alice Adler");
@@ -171,7 +171,7 @@ test("sync: changed values, new people of a unit, renamed entries keep their rec
   entries.delete(`uid=bob,ou=sales,${PEOPLE}`);
   entries.set(`uid=bob,ou=dev,${PEOPLE}`, bobEntry);
   const result = await syncContactsNow(owner, pageId);
-  assert.equal(result.ok, true, result.error);
+  assert.equal(result.ok, true, result.error || "");
   assert.equal(result.created, 1);
   assert.equal(result.missing, 0);
   assert.equal(cellsOf(alice).position, "Vertriebsleitung");
@@ -191,7 +191,7 @@ test("entries that left the directory are tagged, not deleted, and come back", a
   const entry = entries.get(`uid=carol,ou=dev,${PEOPLE}`)!;
   entries.delete(`uid=carol,ou=dev,${PEOPLE}`);
   const gone = await syncContactsSource(pageId, {});
-  assert.equal(gone.ok, true, gone.error);
+  assert.equal(gone.ok, true, gone.error || "");
   assert.equal(gone.missing, 1);
   assert.ok(one("SELECT 1 FROM rows WHERE id=?", rid), "the record stays");
   assert.deepEqual(cellsOf(rid).tags, ["Nicht mehr im Verzeichnis"]);
@@ -205,7 +205,7 @@ test("entries that left the directory are tagged, not deleted, and come back", a
 test("a sync that would mark most contacts as gone stops instead; a vanished unit too", async () => {
   // The big unit: 505 contacts, then all of them vanish at once.
   const imported = await importContacts(owner, pageId, { units: [`ou=big,${PEOPLE}`] });
-  assert.equal(imported.ok, true, imported.error);
+  assert.equal(imported.ok, true, imported.error || "");
   assert.equal(imported.created, 505);
   const saved = new Map([...entries].filter(([dn]) => dn.endsWith(`ou=big,${PEOPLE}`) && dn.startsWith("uid=")));
   for (const dn of saved.keys()) entries.delete(dn);
@@ -239,6 +239,18 @@ test("a directory that does not answer in time leaves everything as it was", asy
     fake.delayMs = 0;
     process.env.LDAP_TIMEOUT_MS = "5000";
   }
+});
+
+test("a mapping of its own: only the mapped properties follow the directory", async () => {
+  const other = act({ action: "page.create", spaceId: boot.spaces[0].id, kind: "database", databaseKind: "contacts", title: "Partner" }).id as string;
+  const result = await importContacts(owner, other, { entries: [`uid=dave,${PEOPLE}`], mapping: { title: ["cn"], lastName: ["sn"], city: ["l", "street"], unknown: ["x"] } });
+  assert.equal(result.ok, true, result.error || "");
+  const rid = one<{ row_id: string }>("SELECT row_id FROM contact_ldap_links WHERE page_id=?", other)!.row_id;
+  assert.deepEqual(cellsOf(rid), { title: "Dave Dorn", lastName: "Dorn", city: "Weg 1" });
+  const data = pageData(owner, other) as { contacts: { ldapFields: string[] } };
+  assert.deepEqual([...data.contacts.ldapFields].sort(), ["city", "lastName", "title"]);
+  act({ action: "row.update", pageId: other, rowId: rid, version: versionOf(rid), cells: { company: "Dorn & Söhne" } });
+  await assert.rejects(importContacts(owner, other, { entries: [`uid=dave,${PEOPLE}`], mapping: { title: ["bad attribute!"] } }));
 });
 
 test("administration: base DN and filter, recorded as security events; switched off means no access", async () => {
