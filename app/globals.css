@@ -5443,11 +5443,16 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
     bottom: 0;
     width: min(320px, 86vw);
     z-index: 42;
-    transform: translateX(-100%);
+    transform: translate3d(-100%, 0, 0);
     transition: transform 0.18s ease;
+    /* Its own layer for good: WebKit (iOS, the app's web view) otherwise
+       drops the layer when the slide ends and stops painting the open
+       drawer – the page stays dimmed with nothing beside it. */
+    will-change: transform;
+    backface-visibility: hidden;
   }
   .nav-open .sidebar {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   .mobile-scrim,
   .mobile-scrim:hover {
