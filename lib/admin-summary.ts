@@ -20,6 +20,7 @@ import { pendingRestore } from "./instance-backup";
 import { activeSeries, aiUsage, liveNumbers, requestSeries, storageTrend } from "./metrics";
 import { pushSummary } from "./push-status";
 import type { UpdateStatus } from "./update-check";
+import { plainHttpInstance } from "./instance-https";
 import type { Identity } from "./types";
 
 const DAY = 86_400_000;
@@ -129,6 +130,8 @@ export function adminSummary(now = Date.now(), update: UpdateStatus | null = nul
       name: settings.name,
       version: buildInfo().version,
       update: update ? update.latest : null,
+      // APP_URL is plain http on another machine (lib/instance-https.ts).
+      plainHttp: plainHttpInstance(),
       announcement: !!settings.announcement,
       uptimeSeconds: metrics.uptimeSeconds,
     },

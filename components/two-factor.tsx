@@ -227,7 +227,7 @@ export function TwoFactorSettings({
           </div>
         </div>
       ) : setup ? (
-        <form className="totp-setup" onSubmit={finishSetup}>
+        <form method="post" action="/api/auth/no-script" className="totp-setup" onSubmit={finishSetup}>
           <p>
             {t(
               "1. Scanne den QR-Code mit einer Authenticator-App (z. B. Aegis, 2FAS, Google Authenticator, 1Password).",

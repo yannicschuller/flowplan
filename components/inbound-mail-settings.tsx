@@ -61,6 +61,8 @@ export function InboundMailSettings({ workspaceId, pages, onError }: { workspace
   const [adding, setAdding] = useState(false);
   const form = (
     <form
+      method="post"
+      action="/api/auth/no-script"
       className="ws-form"
       onSubmit={async (e) => {
         e.preventDefault();

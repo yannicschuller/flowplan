@@ -5,6 +5,7 @@ import {
   customHostRoute,
   type HostState,
 } from "./lib/custom-domain-routing";
+import { upgradeInsecureRequests } from "./lib/instance-https";
 
 // Content Security Policy for every page. Scripts run only with the nonce
 // of this request (Next.js adds it to its own scripts), so an injected
@@ -12,6 +13,9 @@ import {
 // stay 'unsafe-inline' (the editor, KaTeX and Mermaid set inline styles);
 // images may come from any HTTPS address (pasted pictures, link cards);
 // frames only from the supported embed players and block extensions.
+// "upgrade-insecure-requests" only where the instance is served over HTTPS
+// (lib/instance-https.ts): on plain http it would send every script and
+// style to an https address nobody answers (#62).
 const players = [
   "https://www.youtube-nocookie.com",
   "https://player.vimeo.com",
@@ -21,7 +25,7 @@ const players = [
   "https://codepen.io",
 ];
 
-export function contentSecurityPolicy(nonce: string | null, dev: boolean, pluginOrigins: string[] = []) {
+export function contentSecurityPolicy(nonce: string | null, dev: boolean, pluginOrigins: string[] = [], https = true) {
   const scripts = nonce
     ? `'self' 'nonce-${nonce}' 'strict-dynamic'`
     : // Static pages without user content (documentation) have no nonce.
@@ -43,7 +47,7 @@ export function contentSecurityPolicy(nonce: string | null, dev: boolean, plugin
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'self'",
-    ...(dev ? [] : ["upgrade-insecure-requests"]),
+    ...(dev || !https ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }
 
@@ -88,6 +92,8 @@ async function customHostState(host: string): Promise<HostState> {
 // prefetches keep the nonce of the page that loads them.
 const POLICY_EXCLUDED =
   /^\/(api\/|_next\/static|_next\/image|fonts\/|icons\/|sw\.js$|fonts\.css$|manifest\.webmanifest$|icon\.svg$|favicon\.ico$)/;
+const servedOverHttps = (request: NextRequest) =>
+  upgradeInsecureRequests({ forwardedProto: request.headers.get("x-forwarded-proto"), requestProtocol: request.nextUrl.protocol });
 const prefetch = (request: NextRequest) =>
   request.headers.has("next-router-prefetch") || request.headers.get("purpose") === "prefetch";
 
@@ -134,7 +140,7 @@ export async function proxy(request: NextRequest) {
   }
   const dev = process.env.NODE_ENV === "development";
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const policy = contentSecurityPolicy(nonce, dev, await pluginOrigins());
+  const policy = contentSecurityPolicy(nonce, dev, await pluginOrigins(), servedOverHttps(request));
   const headers = new Headers(request.headers);
   headers.delete(CUSTOM_HOST_HEADER);
   if (nonce) headers.set("x-nonce", nonce);
@@ -180,7 +186,9 @@ async function customHostResponse(request: NextRequest, state: HostState, host: 
   let policy = "default-src 'none'; frame-ancestors 'none'";
   if (page) {
     const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-    policy = customHostPolicy(contentSecurityPolicy(nonce, process.env.NODE_ENV === "development", await pluginOrigins()));
+    policy = customHostPolicy(
+      contentSecurityPolicy(nonce, process.env.NODE_ENV === "development", await pluginOrigins(), servedOverHttps(request)),
+    );
     headers.set("x-nonce", nonce);
     headers.set("Content-Security-Policy", policy);
   }

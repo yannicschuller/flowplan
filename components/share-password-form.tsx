@@ -30,7 +30,7 @@ export function SharePasswordForm({ token }: { token: string }) {
     }
   };
   return (
-    <form className="share-password-form" onSubmit={submit}>
+    <form method="post" action="/api/auth/no-script" className="share-password-form" onSubmit={submit}>
       {error && (
         <p role="alert" className="error">
           {error}

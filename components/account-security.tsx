@@ -120,7 +120,7 @@ export function PasswordRow() {
         )}
       </SettingRow>
       {open && (
-        <form id="password-form" className="setting-row wide account-form" onSubmit={submit}>
+        <form method="post" action="/api/auth/no-script" id="password-form" className="setting-row wide account-form" onSubmit={submit}>
           <label>
             {t("Bisheriges Passwort", "Current password")}
             <input className={CONTROL.lg} name="current" type="password" autoComplete="current-password" required maxLength={200} autoFocus />
@@ -206,7 +206,10 @@ export function PasskeysRow() {
         description={
           supported
             ? t("Anmelden per Fingerabdruck, Gesicht oder Geräte-PIN – ohne Passwort.", "Sign in with your fingerprint, face or device PIN – no password needed.")
-            : t("Dieser Browser unterstützt keine Passkeys.", "This browser does not support passkeys.")
+            : typeof window !== "undefined" && !window.isSecureContext
+              ? // Plain http (#62): browsers offer passkeys only over HTTPS.
+                t("Passkeys brauchen HTTPS – diese Instanz läuft ohne.", "Passkeys need HTTPS – this instance runs without it.")
+              : t("Dieser Browser unterstützt keine Passkeys.", "This browser does not support passkeys.")
         }
       >
         <Note text={note.text} error={note.error} />

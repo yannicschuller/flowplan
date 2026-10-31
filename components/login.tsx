@@ -7,6 +7,7 @@ import { BrandMark } from "./brand-mark";
 import { loginReturnPath } from "@/lib/page-location";
 import { useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, ArrowSquareOut, EnvelopeSimple, Fingerprint, ShieldCheck, SpinnerGap } from "@phosphor-icons/react";
+import { PlainHttpNote } from "./plain-http-note";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
@@ -46,6 +47,7 @@ export default function Login({
   mail = false,
   remember: rememberAvailable = false,
   ldap = false,
+  plainHttp = false,
   error,
   notice: initialNotice,
   instanceName = "",
@@ -284,7 +286,7 @@ export default function Login({
           </div>
         )}
         {passwordForm && mode === "totp" && (
-          <form className="login-form" onSubmit={submit}>
+          <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
             <label>
               {recovery ? t("Wiederherstellungscode", "Recovery code") : t("Code aus der App", "Code from the app")}
               <input
@@ -314,7 +316,7 @@ export default function Login({
           </form>
         )}
         {passwordForm && mode !== "confirm" && mode !== "totp" && (
-          <form className="login-form" onSubmit={submit}>
+          <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
             {mode === "register" && (
               <label>
                 {t("Name", "Name")}
@@ -429,6 +431,7 @@ export default function Login({
             ) : null}
           </p>
         )}
+        {plainHttp && <PlainHttpNote />}
         <small>{t("Dein Wissen. Dein Workflow. Dein Flowplan.", "Your knowledge. Your workflow. Your Flowplan.")}</small>
       </section>
       {/* One quiet line: the tagline on the left, legal links and language on the right. */}

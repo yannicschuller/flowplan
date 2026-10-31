@@ -5,9 +5,10 @@
 // limits under Grenzen & Aufbewahrung, backups under Speicher & Sicherung,
 // the notice under Wartung & Hinweise, extensions and domains under
 // Erweiterungen & Domains.
-import { ArrowCircleUp } from "@phosphor-icons/react";
+import { ArrowCircleUp, LockSimpleOpen } from "@phosphor-icons/react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
+import { httpsDocsUrl, usePlainHttpText } from "../../plain-http-note";
 import { SettingGroup, SettingRow } from "../../settings-ui";
 import { useAdminData } from "../admin-context";
 import { AdminLoading } from "../shell";
@@ -16,6 +17,8 @@ import { AdminStatus, FixLink, InstanceSwitch, InstanceText, useDocs } from "./p
 export default function GeneralSection() {
   const t = useT();
   const docs = useDocs();
+  const locale = useLocale();
+  const plainHttpText = usePlainHttpText();
   const { data } = useAdminData();
   if (!data) return <AdminLoading />;
   const build = data.build;
@@ -34,8 +37,23 @@ export default function GeneralSection() {
                 label: t(`${update.latest} verfügbar`, `${update.latest} available`),
               }
             : { tone: "ok", label: t("Aktuell", "Up to date") },
+          ...(data.plainHttp ? [{ tone: "warn" as const, label: t("Ohne HTTPS", "Without HTTPS") }] : []),
         ]}
       />
+      {data.plainHttp && (
+        // APP_URL is plain http (#62): fine for trying it out, not for real use.
+        <div className="callout admin-update" role="status">
+          <LockSimpleOpen size={20} aria-hidden="true" />
+          <span>
+            <strong>{t("Diese Instanz läuft ohne HTTPS.", "This instance runs without HTTPS.")}</strong> {plainHttpText}
+          </span>
+          <span className="admin-update-links">
+            <a href={httpsDocsUrl(locale)} target="_blank" rel="noreferrer">
+              {t("So richtest du HTTPS ein", "How to set up HTTPS")}
+            </a>
+          </span>
+        </div>
+      )}
       {update && (
         <div className="callout admin-update" role="status">
           <ArrowCircleUp size={20} aria-hidden="true" />

@@ -48,7 +48,7 @@ export default function ResetPassword({ token }: { token: string }) {
         ) : !token ? (
           <p>{t("Dieser Link ist unvollständig.", "This link is incomplete.")}</p>
         ) : (
-          <form className="login-form" onSubmit={submit}>
+          <form method="post" action="/api/auth/no-script" className="login-form" onSubmit={submit}>
             {message && (
               <div role="alert" className="error">
                 {message}

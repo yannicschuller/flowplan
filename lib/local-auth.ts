@@ -22,6 +22,7 @@ import {
 import { all, id, one, run } from "./db";
 import { HttpError, acceptInvites, adminGroup, appUrl, hash, rememberPolicy } from "./auth";
 import { instanceSettings } from "./instance-settings";
+import { plainHttpInstance } from "./instance-https";
 import { mailConfig, queueLinkMail } from "./mail";
 import type { User } from "./types";
 import { allow } from "./action-limits";
@@ -531,6 +532,8 @@ export function loginOptions() {
     remember: !!rememberPolicy(),
     // The password form also signs in with the LDAP directory (LDAP_URL).
     ldap: ldapConfigured(),
+    // APP_URL is plain http on another machine: a calm note about HTTPS (#62).
+    plainHttp: plainHttpInstance(appUrl()),
   };
 }
 export type LoginOptions = ReturnType<typeof loginOptions>;

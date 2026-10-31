@@ -131,6 +131,7 @@ import { readableDatabase } from "@/lib/field-access";
 import { listRowTrash } from "@/lib/row-trash";
 import { ARCHIVE_LIMIT } from "@/lib/archive";
 import { buildInfo } from "@/lib/build-info";
+import { plainHttpInstance } from "@/lib/instance-https";
 import { updateStatus } from "@/lib/update-check";
 import { enforceUserStorage, maxUploadMbFor, usersUsage } from "@/lib/user-limits";
 import { exportTemplate, importTemplate } from "@/lib/template-exchange";
@@ -908,6 +909,7 @@ async function handleGET(
       return NextResponse.json({
         build: buildInfo(),
         update: await updateStatus(),
+        plainHttp: plainHttpInstance(),
         userUsage: usersUsage(),
         users: all(
           "SELECT id,name,email,disabled,created_at,last_login_at,deletion_due_at,last_open_at,COALESCE(last_active_at,(SELECT max(s.last_seen) FROM sessions s WHERE s.user_id=users.id)) last_active_at FROM users WHERE demo_until IS NULL AND subject NOT LIKE 'deleted:%' ORDER BY created_at DESC",

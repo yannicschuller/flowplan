@@ -22,6 +22,8 @@ export type AdminData = {
   build?: BuildInfo;
   // A newer release than the running one (lib/update-check.ts).
   update?: UpdateStatus | null;
+  // APP_URL is plain http on another machine (lib/instance-https.ts).
+  plainHttp?: boolean;
   userUsage?: {
     id: string;
     bytes: number;

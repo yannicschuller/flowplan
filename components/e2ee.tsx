@@ -86,6 +86,8 @@ export function E2eeSetupDialog({ open, onClose, onDone }: { open: boolean; onCl
     <Modal open={open} onClose={onClose} title={t("Verschlüsselung einrichten", "Set up encryption")}>
       {!prepared ? (
         <form
+          method="post"
+          action="/api/auth/no-script"
           className="e2ee-form"
           onSubmit={async (e) => {
             e.preventDefault();
@@ -197,6 +199,8 @@ export function E2eeUnlockDialog({ open, onClose, onDone }: { open: boolean; onC
   return (
     <Modal open={open} onClose={onClose} title={t("Verschlüsselte Bereiche entsperren", "Unlock encrypted spaces")}>
       <form
+        method="post"
+        action="/api/auth/no-script"
         className="e2ee-form"
         onSubmit={async (e) => {
           e.preventDefault();
@@ -623,6 +627,8 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
       <E2eeUnlockDialog open={dialog === "unlock"} onClose={close} />
       <Modal open={dialog === "passphrase"} onClose={close} title={t("Passphrase ändern", "Change passphrase")}>
         <form
+          method="post"
+          action="/api/auth/no-script"
           className="e2ee-form"
           onSubmit={(e) => {
             e.preventDefault();
@@ -660,6 +666,8 @@ export function E2eeKeySettings({ userId, onError }: { userId: string; onError: 
           </div>
         ) : (
           <form
+            method="post"
+            action="/api/auth/no-script"
             className="e2ee-form"
             onSubmit={(e) => {
               e.preventDefault();

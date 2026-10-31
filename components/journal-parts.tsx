@@ -1025,6 +1025,8 @@ export function JournalLockScreen({
   const [busy, setBusy] = useState(false);
   return (
     <form
+      method="post"
+      action="/api/auth/no-script"
       className="journal-lock"
       onSubmit={async (e) => {
         e.preventDefault();

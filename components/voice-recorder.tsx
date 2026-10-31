@@ -75,6 +75,9 @@ export function VoiceRecorder({
   const start = async () => {
     setError("");
     const type = pickType();
+    // Plain http (#62): browsers offer the microphone only over HTTPS.
+    if (!window.isSecureContext)
+      return setError(t("Aufnehmen braucht HTTPS – diese Instanz läuft ohne.", "Recording needs HTTPS – this instance runs without it."));
     if (!type || !navigator.mediaDevices?.getUserMedia)
       return setError(t("Dieser Browser kann nicht aufnehmen.", "This browser cannot record."));
     try {

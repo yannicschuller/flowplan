@@ -209,10 +209,18 @@ export function OfflineSettings({
           ) : (
             <SettingRow
               label={t("Auf diesem Gerät", "On this device")}
-              description={t(
-                "Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).",
-                "This browser does not support offline use (secure connection and service worker required).",
-              )}
+              description={
+                // Plain http (#62): the browser allows no service worker there.
+                typeof window !== "undefined" && !window.isSecureContext
+                  ? t(
+                      "Die Offline-Kopie braucht HTTPS – diese Instanz läuft ohne.",
+                      "The offline copy needs HTTPS – this instance runs without it.",
+                    )
+                  : t(
+                      "Dieser Browser unterstützt keine Offline-Nutzung (sichere Verbindung und Service Worker erforderlich).",
+                      "This browser does not support offline use (secure connection and service worker required).",
+                    )
+              }
             >
               <StatusBadge tone="off">
                 {t("Nicht unterstützt", "Not supported")}

@@ -63,7 +63,7 @@ export function DeleteOwnAccount() {
       {!plan && error && <span role="alert" className="save-state error">{error}</span>}
       <Modal open={!!plan} onClose={() => !busy && setPlan(null)} title={t("Dein Konto löschen?", "Delete your account?")}>
         {plan && (
-          <form className="delete-account" onSubmit={submit}>
+          <form method="post" action="/api/auth/no-script" className="delete-account" onSubmit={submit}>
             {plan.refusal ? (
               <p role="alert">{serverMessage(plan.refusal)}</p>
             ) : (

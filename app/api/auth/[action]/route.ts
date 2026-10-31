@@ -295,8 +295,24 @@ async function handlePOST(
   { params }: { params: Promise<{ action: string }> },
 ) {
   try {
-    checkOrigin(req);
     const { action } = await params;
+    // Where credential forms post when their script did not run (#62):
+    // method="post" keeps the password out of the address, and this answer
+    // never reads the body – it only says why nothing happened.
+    if (action === "no-script") {
+      const locale = await requestLocale(),
+        say = translate(locale);
+      const response = desktopPage(locale, {
+        title: say("Die Seite wurde nicht vollständig geladen", "The page did not load completely"),
+        text: say(
+          "Für dieses Formular braucht Flowplan JavaScript, und das ist nicht angekommen. Lade die Seite neu und versuche es noch einmal. Passiert das wieder, prüfe, ob JavaScript erlaubt ist und ob die Adresse der Instanz (APP_URL) zu der passt, unter der du sie aufrufst – http oder https.",
+          "Flowplan needs JavaScript for this form, and it did not arrive. Reload the page and try again. If it happens again, check that JavaScript is allowed and that the instance's address (APP_URL) matches the one you open it with – http or https.",
+        ),
+        body: `<a class="button" href="/">${escapeHtml(say("Zurück zu Flowplan", "Back to Flowplan"))}</a>`,
+      });
+      return new Response(response.body, { status: 400, headers: response.headers });
+    }
+    checkOrigin(req);
     if (action === "demo") {
       if (process.env.NODE_ENV === "production")
         throw new HttpError(

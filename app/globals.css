@@ -16541,6 +16541,29 @@ h3 .block-reactions {
   font-size: 13px;
   text-align: left;
 }
+/* Plain http (components/plain-http-note.tsx): one quiet note, no alarm. */
+.login-card .login-http-note {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+}
+.login-http-note > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.login-http-note strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.login-http-note a {
+  color: var(--blue);
+}
 /* Settings → profile: name, password, passkeys (components/account-security.tsx). */
 .account-status {
   color: var(--blue);

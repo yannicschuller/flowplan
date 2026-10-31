@@ -11,6 +11,7 @@ import { siteUrl } from "@/lib/seo";
 import { LocaleProvider } from "@/components/i18n";
 import { catalogScript } from "@/lib/i18n-catalogs-server";
 import { PdfViewerHost } from "@/components/pdf-viewer";
+import { ClipboardFallback } from "@/components/clipboard-fallback";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
 export async function generateMetadata(): Promise<Metadata> {
@@ -87,6 +88,8 @@ export default async function RootLayout({
         <LocaleProvider locale={locale}>
           {children}
           <PdfViewerHost />
+          {/* Copy buttons on a plain-http instance (#62). */}
+          <ClipboardFallback />
         </LocaleProvider>
       </body>
     </html>

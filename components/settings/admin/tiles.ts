@@ -175,8 +175,12 @@ export function adminTiles(s: AdminSummary, t: T): Record<string, TileSummary> {
     },
     general: {
       line: join(`v${s.general.version}`, s.general.name),
-      tone: s.general.update ? "info" : undefined,
-      badge: s.general.update ? t(`${s.general.update} verfügbar`, `${s.general.update} available`) : undefined,
+      tone: s.general.plainHttp ? "warn" : s.general.update ? "info" : undefined,
+      badge: s.general.plainHttp
+        ? t("Ohne HTTPS", "Without HTTPS")
+        : s.general.update
+          ? t(`${s.general.update} verfügbar`, `${s.general.update} available`)
+          : undefined,
     },
   };
 }

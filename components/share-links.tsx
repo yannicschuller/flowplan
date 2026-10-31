@@ -112,7 +112,7 @@ export function ShareLinks({
           </button>
         </div>
       ))}
-      <form onSubmit={create}>
+      <form method="post" action="/api/auth/no-script" onSubmit={create}>
         <label>
           {t("Linkname", "Link name")}
           <input

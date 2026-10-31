@@ -411,6 +411,8 @@ function WebhookEditor({
         <h2>{hook ? hook.url : t("Neuer Webhook", "New webhook")}</h2>
       </div>
       <form
+        method="post"
+        action="/api/auth/no-script"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
