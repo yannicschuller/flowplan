@@ -4,11 +4,13 @@
 // with what to do about them, addresses with failed sign-ins, the security
 // events, signed-in people, open ways in (API tokens, share links, public
 // pages), blocked addresses and how the events leave the instance.
-// Anchors: #admin/threats/<incidents|addresses|events|sessions|access|blocks|setup>.
+// Anchors: #admin/threats/<incidents|addresses|events|sessions|access|blocks|setup>;
+// an incident's own page: #admin/threats/incident/<id>.
 import { useEffect, useState, type ReactNode } from "react";
-import { CheckCircle, DownloadSimple, Info, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
+import { ArrowLeft, CheckCircle, DownloadSimple, Info, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
 import type { securityIncident, securityOverview, securityEvents } from "@/lib/security-admin";
 import { securityKinds, securityRules, type SecurityKind, type SecurityRule } from "@/lib/security-kinds";
+import { securityPlaybooks, type PlaybookStep } from "@/lib/security-playbooks";
 import { useT } from "../../i18n";
 import { api } from "../../ui";
 import { BarChart, Legend } from "../../charts";
@@ -36,6 +38,7 @@ export default function SecurityCenterSection() {
   const { onError } = useAdmin();
   const [busy, setBusy] = useState(false);
   const d = live.data;
+  const incidentId = useIncidentRoute();
   // Every action answers with the fresh overview.
   const act = async (body: Record<string, unknown>, question?: string) => {
     if (question && !confirm(question)) return;
@@ -56,6 +59,7 @@ export default function SecurityCenterSection() {
     ) : (
       <AdminLoading />
     );
+  if (incidentId) return <IncidentPage id={incidentId} live={d} act={act} busy={busy} />;
   return (
     <div className="mon security-center" aria-busy={busy}>
       <div className="mon-toolbar">
@@ -206,16 +210,19 @@ function Incidents({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
   );
 }
 
+const incidentHref = (id: string) => `#admin/threats/incident/${id}`;
+
 function IncidentItem({ i, act, busy }: { i: Incident; act: Act; busy: boolean }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
   return (
     <li className={`security-incident ${i.resolvedAt ? "resolved" : i.severity}`}>
       <div className="security-incident-head">
         <StatusBadge tone={i.resolvedAt ? "off" : tone(i.severity)}>
           {i.resolvedAt ? t("erledigt", "resolved") : i.severity === "critical" ? t("kritisch", "critical") : t("Warnung", "warning")}
         </StatusBadge>
-        <strong>{ruleTitle(i.rule, t)}</strong>
+        <a className="security-incident-title" href={incidentHref(i.id)}>
+          {ruleTitle(i.rule, t)}
+        </a>
         {i.count > 1 && <span className="muted">× {num(i.count)}</span>}
       </div>
       <p>
@@ -226,43 +233,62 @@ function IncidentItem({ i, act, busy }: { i: Incident; act: Act; busy: boolean }
           {i.resolvedAt && ` · ${t("erledigt", "resolved")}${i.resolvedBy ? ` ${t("von", "by")} ${i.resolvedBy}` : ""}`}
         </small>
       </p>
-      {open && <IncidentDetail i={i} />}
       <div className="security-actions">
-        <button type="button" className="text-button" aria-expanded={open} aria-controls={`incident-${i.id}`} onClick={() => setOpen(!open)}>
-          {open ? t("Details ausblenden", "Hide details") : t("Details", "Details")}
-        </button>
-        {i.resolvedAt ? (
-          <button type="button" className="text-button" disabled={busy} onClick={() => void act({ action: "incident.reopen", id: i.id })}>
-            {t("Wieder öffnen", "Reopen")}
-          </button>
-        ) : (
-          <button type="button" className="button" disabled={busy} onClick={() => void act({ action: "incident.resolve", id: i.id })}>
-            {t("Erledigt", "Resolved")}
-          </button>
-        )}
-        {!i.resolvedAt && i.address && <BlockAddress address={i.address} network={i.network} act={act} busy={busy} />}
-        {!i.resolvedAt && i.actor && (
-          <>
-            <button
-              type="button"
-              className="text-button"
-              disabled={busy}
-              onClick={() => void act({ action: "sessions.end", userId: i.actor!.id }, t(`Alle Sitzungen von ${person(i.actor)} beenden? Die Person muss sich neu anmelden.`, `End all sessions of ${person(i.actor)}? They have to sign in again.`))}
-            >
-              {t("Sitzungen beenden", "End sessions")}
-            </button>
-            <button
-              type="button"
-              className="text-button danger"
-              disabled={busy}
-              onClick={() => void act({ action: "user.disable", userId: i.actor!.id }, t(`Das Konto von ${person(i.actor)} sperren? Alle Sitzungen und Tokens enden; unter Personen lässt es sich wieder freigeben.`, `Disable the account of ${person(i.actor)}? All sessions and tokens end; it can be enabled again under People.`))}
-            >
-              {t("Konto sperren", "Disable account")}
-            </button>
-          </>
-        )}
+        <a className="button" href={incidentHref(i.id)}>
+          {t("Details & nächste Schritte", "Details & next steps")}
+        </a>
+        <IncidentActions i={i} act={act} busy={busy} />
       </div>
     </li>
+  );
+}
+
+// Resolve or reopen, block the origin, end the sessions or disable the account.
+function IncidentActions({ i, act, busy }: { i: Incident; act: Act; busy: boolean }) {
+  const t = useT();
+  return (
+    <>
+      {i.resolvedAt ? (
+        <button type="button" className="text-button" disabled={busy} onClick={() => void act({ action: "incident.reopen", id: i.id })}>
+          {t("Wieder öffnen", "Reopen")}
+        </button>
+      ) : (
+        <button type="button" className="text-button" disabled={busy} onClick={() => void act({ action: "incident.resolve", id: i.id })}>
+          {t("Erledigt", "Resolved")}
+        </button>
+      )}
+      {!i.resolvedAt && i.address && <BlockAddress address={i.address} network={i.network} act={act} busy={busy} />}
+      {!i.resolvedAt && i.actor && <EndSessions actor={i.actor} act={act} busy={busy} />}
+      {!i.resolvedAt && i.actor && <DisableAccount actor={i.actor} act={act} busy={busy} />}
+    </>
+  );
+}
+
+type Actor = NonNullable<Incident["actor"]>;
+function EndSessions({ actor, act, busy }: { actor: Actor; act: Act; busy: boolean }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      className="text-button"
+      disabled={busy}
+      onClick={() => void act({ action: "sessions.end", userId: actor.id }, t(`Alle Sitzungen von ${person(actor)} beenden? Die Person muss sich neu anmelden.`, `End all sessions of ${person(actor)}? They have to sign in again.`))}
+    >
+      {t("Sitzungen beenden", "End sessions")}
+    </button>
+  );
+}
+function DisableAccount({ actor, act, busy }: { actor: Actor; act: Act; busy: boolean }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      className="text-button danger"
+      disabled={busy}
+      onClick={() => void act({ action: "user.disable", userId: actor.id }, t(`Das Konto von ${person(actor)} sperren? Alle Sitzungen und Tokens enden; unter Personen lässt es sich wieder freigeben.`, `Disable the account of ${person(actor)}? All sessions and tokens end; it can be enabled again under People.`))}
+    >
+      {t("Konto sperren", "Disable account")}
+    </button>
   );
 }
 
@@ -279,10 +305,13 @@ function Counts({ label, rows, tone: chipTone }: { label: string; rows: { value:
   if (!rows.length) return null;
   return (
     <>
-      <dt>{label}</dt>
+      <dt>
+        {label}
+        {rows.length > 1 && <span className="muted"> ({num(rows.length)})</span>}
+      </dt>
       <dd className="security-chips">
-        {rows.map((r) => (
-          <span key={r.value} className={`security-chip${chipTone ? ` ${chipTone}` : ""}`}>
+        {rows.map((r, n) => (
+          <span key={`${r.value}-${n}`} className={`security-chip${chipTone ? ` ${chipTone}` : ""}`}>
             {r.value}
             {r.n > 1 && <span className="muted"> × {num(r.n)}</span>}
           </span>
@@ -292,39 +321,114 @@ function Counts({ label, rows, tone: chipTone }: { label: string; rows: { value:
   );
 }
 
-// What lies behind an incident: why the rule fired, everything involved and
-// the events themselves (/api/admin/security?incident=<id>).
-function IncidentDetail({ i }: { i: Incident }) {
+// #admin/threats/incident/<id>: the incident's own page.
+function useIncidentRoute() {
+  const read = () => (typeof location === "undefined" ? null : /^#admin\/threats\/incident\/([0-9a-f-]{36})$/.exec(location.hash)?.[1] ?? null);
+  const [id, setId] = useState(read);
+  useEffect(() => {
+    const sync = () => setId(read());
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+  return id;
+}
+
+// One incident: on the left what happened (why the rule fired, everything
+// involved, the events), on the right what it means, when it is harmless and
+// what to do, step by step with the action right there.
+function IncidentPage({ id, live, act, busy }: { id: string; live: Overview; act: Act; busy: boolean }) {
   const t = useT();
   const [d, setD] = useState<IncidentDetailData | null>(null);
   const [error, setError] = useState("");
   const [all, setAll] = useState(false);
+  const [version, setVersion] = useState(0);
+  const listed = live.incidents.find((x) => x.id === id);
   useEffect(() => {
     let alive = true;
-    api<IncidentDetailData>(`${URL}?incident=${encodeURIComponent(i.id)}`).then(
-      (x) => alive && setD(x),
+    api<IncidentDetailData>(`${URL}?incident=${encodeURIComponent(id)}`).then(
+      (x) => alive && (setD(x), setError("")),
       (e) => alive && setError((e as Error).message),
     );
     return () => {
       alive = false;
     };
-    // Reloads when the incident counts on.
-  }, [i.id, i.count, i.lastAt]);
-  if (error) return <p className="security-incident-detail muted" id={`incident-${i.id}`}>{error}</p>;
+    // Reloads after an action and when the incident counts on.
+  }, [id, version, listed?.count, listed?.lastAt, listed?.resolvedAt]);
+  useEffect(() => {
+    document.getElementById("incident-title")?.focus({ preventScroll: false });
+  }, [id]);
+  // Actions answer with the overview; the page then loads the incident again.
+  const actHere: Act = async (body, question) => {
+    await act(body, question);
+    setVersion((v) => v + 1);
+  };
+  const back = (
+    <a className="security-back" href="#admin/threats/incidents">
+      <ArrowLeft size={16} aria-hidden /> {t("Alle Vorfälle", "All incidents")}
+    </a>
+  );
+  if (error)
+    return (
+      <div className="security-incident-page">
+        {back}
+        <EmptyState icon={<WarningCircle size={20} />} title={t("Vorfall nicht verfügbar", "Incident not available")}>
+          {error}
+        </EmptyState>
+      </div>
+    );
   if (!d)
     return (
-      <p className="security-incident-detail muted" id={`incident-${i.id}`} aria-busy="true">
-        {t("Details werden geladen …", "Loading details …")}
-      </p>
+      <div className="security-incident-page" aria-busy="true">
+        {back}
+        <AdminLoading />
+      </div>
     );
-  const events = all ? d.events : d.events.slice(0, 25);
+  const i = d.incident;
+  const playbook = securityPlaybooks[i.rule as SecurityRule];
+  const events = all ? d.events : d.events.slice(0, 40);
   const statuses = d.evidence ? Object.entries(d.evidence.statuses).sort((a, b) => b[1] - a[1]) : [];
+  const stepAction = (step: PlaybookStep) => {
+    if (i.resolvedAt && step.action !== "resolve") return null;
+    switch (step.action) {
+      case "block":
+        return i.address ? <BlockAddress address={i.address} network={i.network} act={actHere} busy={busy} /> : null;
+      case "sessions":
+        return i.actor ? <EndSessions actor={i.actor} act={actHere} busy={busy} /> : null;
+      case "disable":
+        return i.actor ? <DisableAccount actor={i.actor} act={actHere} busy={busy} /> : null;
+      case "resolve":
+        return i.resolvedAt ? (
+          <span className="muted">{t(`Erledigt${i.resolvedBy ? ` von ${i.resolvedBy}` : ""}`, `Resolved${i.resolvedBy ? ` by ${i.resolvedBy}` : ""}`)}</span>
+        ) : (
+          <button type="button" className="text-button" disabled={busy} onClick={() => void actHere({ action: "incident.resolve", id: i.id })}>
+            {t("Als erledigt markieren", "Mark as resolved")}
+          </button>
+        );
+    }
+    return null;
+  };
   return (
-    <div className="security-incident-detail" id={`incident-${i.id}`}>
-      <p className="security-reason">
-        <Info size={16} aria-hidden />
-        <span>{t(d.reason.de, d.reason.en)}</span>
-      </p>
+    <div className={`security-incident-page ${i.resolvedAt ? "resolved" : i.severity}`} aria-busy={busy}>
+      {back}
+      <header className="security-incident-page-head">
+        <StatusBadge tone={i.resolvedAt ? "off" : tone(i.severity)}>
+          {i.resolvedAt ? t("erledigt", "resolved") : i.severity === "critical" ? t("kritisch", "critical") : t("Warnung", "warning")}
+        </StatusBadge>
+        <h2 id="incident-title" tabIndex={-1}>
+          {ruleTitle(i.rule, t)}
+        </h2>
+        <p>{[i.detail, person(i.actor), i.network].filter(Boolean).join(" · ")}</p>
+        <div className="security-actions">
+          <IncidentActions i={i} act={actHere} busy={busy} />
+        </div>
+      </header>
+      <div className="security-incident-columns">
+        <section className="security-incident-detail" aria-labelledby="incident-what">
+          <h3 id="incident-what">{t("Was ist passiert", "What happened")}</h3>
+          <p className="security-reason">
+            <Info size={16} aria-hidden />
+            <span>{t(d.reason.de, d.reason.en)}</span>
+          </p>
       <dl className="security-facts">
         <dt>{t("Zeitraum", "Period")}</dt>
         <dd>
@@ -424,6 +528,37 @@ function IncidentDetail({ i }: { i: Incident }) {
           </button>
         )}
         {all && d.more > 0 && <small className="muted">{t(`${num(d.more)} ältere nicht angezeigt – siehe Ereignisse oder Export.`, `${num(d.more)} older not shown – see events or the export.`)}</small>}
+      </div>
+        </section>
+        {playbook && (
+          <aside className="security-playbook" aria-labelledby="incident-todo">
+            <h3>{t("Was bedeutet das?", "What does it mean?")}</h3>
+            <p>{t(playbook.meaning.de, playbook.meaning.en)}</p>
+            <h3>{t("Wann ist es harmlos?", "When is it harmless?")}</h3>
+            <p>{t(playbook.harmless.de, playbook.harmless.en)}</p>
+            <h3 id="incident-todo">{t("Was du tun solltest", "What to do")}</h3>
+            <ol className="security-steps">
+              {playbook.steps.map((step, n) => {
+                const action = stepAction(step);
+                return (
+                  <li key={n}>
+                    <span>{t(step.de, step.en)}</span>
+                    {(action || step.link) && (
+                      <span className="security-step-actions">
+                        {action}
+                        {step.link && (
+                          <a className="text-button" href={step.link.href}>
+                            {t(step.link.de, step.link.en)} →
+                          </a>
+                        )}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </aside>
+        )}
       </div>
     </div>
   );

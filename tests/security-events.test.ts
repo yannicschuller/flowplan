@@ -103,8 +103,10 @@ test("many accounts from one address is credential stuffing", async () => {
   reset();
   for (let i = 0; i < SECURITY_THRESHOLDS.stuffingAccounts; i++) failed(["ip:192.0.2.50", `email:person${i}@example.test`]);
   await settle();
-  const incident = one<{ severity: string; network: string }>("SELECT severity,network FROM security_incidents WHERE rule='credential_stuffing'");
+  const incident = one<{ id: string; severity: string; network: string }>("SELECT id,severity,network FROM security_incidents WHERE rule='credential_stuffing'");
   assert.ok(incident);
+  // Every account on its own, though their masked names look alike.
+  assert.equal(securityIncident(incident.id).accounts.length, SECURITY_THRESHOLDS.stuffingAccounts);
   assert.equal(incident.severity, "critical");
   assert.equal(incident.network, "192.0.2.0/24");
 });
@@ -246,4 +248,22 @@ test("old events go after the retention", () => {
   run("INSERT INTO security_events(at,kind,severity) VALUES(?,?,?)", Date.now(), "login.failure", "warn");
   events.sweepSecurityEvents();
   assert.equal(all("SELECT 1 FROM security_events").length, 1);
+});
+
+test("every rule has steps, and every link of a step leads to a real section", async () => {
+  const { securityPlaybooks } = await import("../lib/security-playbooks");
+  const { securityRules } = await import("../lib/security-kinds");
+  const { parseSettingsHash } = await import("../lib/settings-sections");
+  for (const rule of Object.keys(securityRules)) {
+    const p = securityPlaybooks[rule as keyof typeof securityPlaybooks];
+    assert.ok(p && p.steps.length >= 2, rule);
+    assert.ok(p.meaning.de && p.meaning.en && p.harmless.de && p.harmless.en, rule);
+    for (const step of p.steps) {
+      assert.ok(step.de && step.en, rule);
+      if (step.link) {
+        const route = parseSettingsHash(step.link.href);
+        assert.ok(route?.section && !route.redirected, `${rule}: ${step.link.href}`);
+      }
+    }
+  }
 });

@@ -28850,6 +28850,119 @@ label.ws-search input {
   background: var(--surface-2, var(--hover));
   font-size: 13px;
 }
+.security-incident-title {
+  color: inherit;
+  font-weight: 650;
+  text-decoration: none;
+}
+.security-incident-title:hover {
+  color: var(--accent, var(--blue));
+  text-decoration: underline;
+}
+.security-incident-page {
+  display: grid;
+  gap: 16px;
+}
+.security-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.security-back:hover {
+  color: var(--text);
+}
+.security-incident-page-head {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-left: 4px solid #d9a33a;
+  border-radius: 12px;
+}
+.security-incident-page.critical .security-incident-page-head {
+  border-left-color: #c2453f;
+}
+.security-incident-page.resolved .security-incident-page-head {
+  border-left-color: var(--border);
+}
+.security-incident-page-head h2 {
+  margin: 0;
+  font-size: 20px;
+  outline: none;
+}
+.security-incident-page-head p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.security-incident-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: start;
+}
+.security-incident-columns h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.security-playbook {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13.5px;
+  position: sticky;
+  top: 12px;
+}
+.security-playbook p {
+  margin: 0 0 6px;
+}
+.security-steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.security-steps li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 4px 10px;
+}
+.security-steps li::before {
+  content: counter(step);
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--hover);
+  font-size: 12px;
+  font-weight: 650;
+}
+.security-step-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+@media (max-width: 900px) {
+  .security-incident-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .security-playbook {
+    position: static;
+    order: -1;
+  }
+}
 .security-reason {
   display: flex;
   gap: 8px;
@@ -28926,7 +29039,7 @@ label.ws-search input {
   padding: 0;
   display: grid;
   gap: 4px;
-  max-height: 360px;
+  max-height: 560px;
   overflow: auto;
 }
 .security-timeline li {

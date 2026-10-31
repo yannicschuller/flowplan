@@ -233,12 +233,30 @@ export function securityIncident(incidentId: string) {
   return {
     id: i.id,
     rule: i.rule,
+    incident: {
+      id: i.id,
+      rule: i.rule,
+      severity: i.severity,
+      actor: i.actor_id ? { id: i.actor_id, name: i.name || "", email: i.email || "" } : null,
+      network: i.network,
+      address: i.address_key ? i.address_key.slice(0, 12) : "",
+      detail: i.detail,
+      firstAt: i.first_at,
+      lastAt: i.last_at,
+      count: i.count,
+      resolvedAt: i.resolved_at,
+      resolvedBy: i.resolver,
+    },
     reason: { de, en },
     window: { from, to },
     total,
     kinds: group("kind"),
-    // Accounts someone failed to sign in to (not the successful sign-ins).
-    accounts: group("subject", " AND e.kind IN ('login.failure','login.refused')"),
+    // Accounts someone failed to sign in to (not the successful sign-ins),
+    // one per account: masked names of different accounts can look alike.
+    accounts: all<{ value: string; n: number }>(
+      `SELECT MAX(e.subject) value,COUNT(*) n FROM security_events e WHERE ${where} AND e.kind IN ('login.failure','login.refused') AND e.subject_key<>'' GROUP BY e.subject_key ORDER BY n DESC LIMIT 20`,
+      ...args,
+    ),
     networks: group("network"),
     countries: group("country"),
     devices: group("device"),
