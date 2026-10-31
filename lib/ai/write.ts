@@ -3,12 +3,18 @@
 // instruction for a selection, or a free prompt at the caret (/ki) with the
 // page as context. The browser sends the choice and the selected text; the
 // prompt is built here (lib/ai/prompts.ts) and the page context loaded here.
+// With "links" asked for (and the feature usable), relevant existing pages
+// are offered to the model under handles (lib/ai/link-candidates.ts); the
+// handles and their pages go to the browser in X-Flowplan-Links, which turns
+// them into page links (lib/ai/links.ts).
 import { z } from "zod";
 import { HttpError } from "../auth";
 import { requirePage } from "../permissions";
 import { requireRow } from "../row-documents";
 import type { Identity } from "../types";
 import { aiPageMarkdown } from "./content";
+import { encodeLinkTargets, findLinkCandidates } from "./link-candidates";
+import { LINKS_HEADER } from "./links";
 import { WRITE_ACTION_IDS, WRITE_LANGUAGES, WRITE_TONES, writePrompt, type WriteAction } from "./prompts";
 import { isLocalProvider } from "./resolve";
 import { aiStreamResponse, requireAi } from "./run";
@@ -31,6 +37,8 @@ const input = z.object({
   language: z.enum(WRITE_LANGUAGES.map((l) => l[0]) as [(typeof WRITE_LANGUAGES)[number][0]]).optional(),
   // The page as context (the free prompt).
   context: z.boolean().optional(),
+  // Link relevant existing pages in the answer.
+  links: z.boolean().optional(),
   locale: z.enum(["de", "en", "fr"]).default("de"),
 });
 
@@ -45,13 +53,25 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
   const options = { workspaceId: page.workspace_id, pageId: page.id, rowId: b.rowId, signal };
   // The selection is page content too: refused when the AI may not read it.
   const resolved = requireAi(user, "write", options);
+  const local = resolved.config.kind === "ollama" || isLocalProvider(resolved.config);
   let context: { title: string; markdown: string } | null = null;
   if (b.context && b.action === "prompt") {
-    const limit = resolved.config.kind === "ollama" || isLocalProvider(resolved.config) ? WRITE_LIMITS.contextChars.local : WRITE_LIMITS.contextChars.remote;
+    const limit = local ? WRITE_LIMITS.contextChars.local : WRITE_LIMITS.contextChars.remote;
     const markdown = await aiPageMarkdown(user, page, b.rowId);
     context = { title: page.title, markdown: markdown.length > limit ? markdown.slice(0, limit) + "\n\n[…]" : markdown };
   }
-  return aiStreamResponse(
+  // Pages to link: found with the instruction, the selection and the page's title.
+  const links = b.links
+    ? await findLinkCandidates(user, {
+        workspaceId: page.workspace_id,
+        pageId: page.id,
+        query: [b.instruction, b.text, page.title].filter(Boolean).join("\n"),
+        local,
+        semantic: resolved.source === "instance",
+        signal,
+      })
+    : null;
+  const response = await aiStreamResponse(
     user,
     "write",
     writePrompt({
@@ -62,7 +82,10 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
       language: b.language,
       page: context,
       locale: b.locale,
+      links: links?.prompt,
     }),
     options,
   );
+  if (links?.targets.length) response.headers.set(LINKS_HEADER, encodeLinkTargets(links.targets));
+  return response;
 }

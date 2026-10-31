@@ -9,6 +9,8 @@ import { requirePage } from "../permissions";
 import { requireRow } from "../row-documents";
 import type { Identity } from "../types";
 import { aiDatabaseText, aiPageMarkdown } from "./content";
+import { encodeLinkTargets, findLinkCandidates } from "./link-candidates";
+import { LINKS_HEADER } from "./links";
 import { chunkSummaryPrompt, chunkText, cleanAnswer, combineSummaryPrompt, summaryLanguage, summaryPrompt, type SummaryKind } from "./prompts";
 
 // Also for the browser (on-device summaries, lib/ai/device.ts): in prompts.ts.
@@ -105,6 +107,8 @@ const input = z.object({
   rowIds: z.array(z.uuid()).max(20_000).optional(),
   // A voice note's transcript, to be inserted into this page.
   text: z.string().max(SUMMARY_LIMITS.maxText).optional(),
+  // A voice note's summary: link relevant existing pages (lib/ai/links.ts).
+  links: z.boolean().optional(),
   locale: z.enum(["de", "en", "fr"]).default("de"),
 });
 
@@ -150,10 +154,16 @@ export async function aiSummaryResponse(user: Identity, raw: unknown, signal: Ab
   const reduced = await reduceContent(plan, chunkChars, (prompt) => aiComplete(user, "summarize", prompt, options));
   headers["X-Flowplan-AI-Parts"] = String(reduced.parts);
   if (reduced.truncated) headers["X-Flowplan-AI-Truncated"] = "1";
+  // Only a voice note's summary goes into the document as text of its own.
+  const links =
+    b.links && plan.kind === "transcript"
+      ? await findLinkCandidates(user, { workspaceId: page.workspace_id, pageId: page.id, query: plan.content, local, semantic: resolved.source === "instance", signal })
+      : null;
+  if (links?.targets.length) headers[LINKS_HEADER] = encodeLinkTargets(links.targets);
   const response = await aiStreamResponse(
     user,
     "summarize",
-    summaryPrompt({ ...plan, content: reduced.content, partial: reduced.partial, language: reduced.language }),
+    summaryPrompt({ ...plan, content: reduced.content, partial: reduced.partial, language: reduced.language, links: links?.prompt }),
     { ...options, signal },
   );
   for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);

@@ -19,6 +19,16 @@ export const AI_FEATURES = [
     description: ["Zusammenfassungen und Aufgaben aus Seiten, Datenbanken und Einträgen.", "Summaries and action items of pages, databases and records."],
   },
   {
+    // Not a request of its own: the writing assistant and voice-note
+    // summaries get relevant pages as context and link them (lib/ai/links.ts).
+    id: "links",
+    label: ["Seiten verlinken", "Link pages"],
+    description: [
+      "Der Schreibassistent findet passende bestehende Seiten und verlinkt sie in seinem Text.",
+      "The writing assistant finds relevant existing pages and links them in its text.",
+    ],
+  },
+  {
     id: "ask",
     label: ["Fragen an den Arbeitsbereich", "Ask the workspace"],
     description: ["Fragen zu den Inhalten stellen, Antworten mit Quellen.", "Ask about the content and get answers with sources."],

@@ -7,6 +7,7 @@ import { Slice, type Fragment, type Node as ProseMirrorNode } from "@tiptap/pm/m
 import { Plugin, PluginKey, Selection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { markdownToRawHtml } from "../markdown-html";
+import { expandLinkHandles, pageLinkHref, type LinkTarget } from "./links";
 import { cleanAnswer } from "./prompts";
 
 // Links only to web, mail and in-app addresses.
@@ -21,8 +22,20 @@ function safeHref(href: string) {
 // answer must not make the browser load addresses it names – text injected
 // into a page could otherwise smuggle content out through an image URL.
 // Raw HTML in the answer stays text (lib/markdown-html.ts).
-export function aiMarkdownToHtml(markdown: string) {
-  return markdownToRawHtml(cleanAnswer(markdown), (href, kind) => (kind === "image" ? null : safeHref(href)));
+// With `links` (the pages offered to the model, lib/ai/links.ts) its page
+// handles become internal page links – "/#page=<id>", as the editor makes
+// them – and only those: unknown handles and page addresses the model wrote
+// itself stay text.
+export function aiMarkdownToHtml(markdown: string, links?: readonly LinkTarget[] | null) {
+  const text = cleanAnswer(markdown);
+  return markdownToRawHtml(links ? expandLinkHandles(text, links) : text, (href, kind) => {
+    if (kind === "image") return null;
+    if (links) {
+      const page = pageLinkHref(href, links);
+      if (page !== undefined) return page;
+    }
+    return safeHref(href);
+  });
 }
 
 // "replace" the range, "below" it, or at the "top" of the document.

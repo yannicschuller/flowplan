@@ -21710,6 +21710,13 @@ h3 .block-reactions {
   color: var(--muted);
   font-size: 12px;
 }
+/* "Mit bestehenden Seiten verlinken": close to the option above it. */
+.ai-writer-context:has(+ .ai-writer-links-toggle) {
+  margin-bottom: 2px;
+}
+.ai-writer-links-toggle {
+  margin-bottom: 4px;
+}
 .ai-writer-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -21755,6 +21762,21 @@ h3 .block-reactions {
   flex-wrap: wrap;
   gap: 4px;
   padding: 0 9px 4px;
+}
+/* The pages the answer links (lib/ai/links.ts), under the preview. */
+.ai-writer-linked {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.ai-writer-linked svg {
+  vertical-align: -2px;
+  color: var(--blue);
+}
+.ai-writer-linked strong {
+  font-weight: 550;
+  color: var(--text);
 }
 .ai-writer-job {
   display: flex;

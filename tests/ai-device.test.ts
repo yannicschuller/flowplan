@@ -65,6 +65,7 @@ function status(patch: Partial<AiStatus> = {}): AiStatus {
     features: {
       write: { ok: false, reason: "off" },
       summarize: { ok: false, reason: "off" },
+      links: { ok: false, reason: "off" },
       ask: { ok: false, reason: "off" },
       database: { ok: false, reason: "off" },
       actions: { ok: false, reason: "off" },
@@ -81,7 +82,7 @@ function status(patch: Partial<AiStatus> = {}): AiStatus {
 const withServer = (patch: Partial<AiStatus> = {}) =>
   status({
     enabled: true,
-    features: { write: { ok: true }, summarize: { ok: true }, ask: { ok: true }, database: { ok: true }, actions: { ok: true }, whiteboard: { ok: true } },
+    features: { write: { ok: true }, summarize: { ok: true }, links: { ok: true }, ask: { ok: true }, database: { ok: true }, actions: { ok: true }, whiteboard: { ok: true } },
     provider: { kind: "ollama", model: "m", host: "ollama", source: "instance", local: true },
     ...patch,
   });

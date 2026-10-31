@@ -7,12 +7,17 @@
 // below it, or discarded. In the Flowplan apps on Apple devices it runs on
 // the device where it can (lib/ai/device.ts), with the server as fallback
 // where the person may use it – in end-to-end encrypted spaces only there.
+// With "Mit bestehenden Seiten verlinken" (on unless switched off, remembered
+// in this browser) the server offers the model relevant existing pages and
+// the answer links them (lib/ai/links.ts): visible in the preview, listed
+// under it ("Verlinkt: …") and inserted as real page links.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { DOMParser as ProseMirrorDOMParser, type Schema } from "@tiptap/pm/model";
-import { ArrowBendDownLeft, ArrowClockwise, ArrowsClockwise, Check, PaperPlaneRight, Sparkle, Stop, X } from "@phosphor-icons/react";
+import { ArrowBendDownLeft, ArrowClockwise, ArrowsClockwise, Check, Link as LinkIcon, PaperPlaneRight, Sparkle, Stop, X } from "@phosphor-icons/react";
 import { streamAiFrom } from "@/lib/ai/client";
 import { aiInsertTransaction, aiMarkdownToHtml, selectionText, type AiInsertMode } from "@/lib/ai/insert";
+import { decodeLinkTargets, linkedTargets, LINKS_HEADER, LINKS_STORAGE_KEY, type LinkTarget } from "@/lib/ai/links";
 import { defaultTranslateTarget, WRITE_ACTIONS, WRITE_LANGUAGES, WRITE_TONES, type WriteAction, type WriteLanguage, type WriteTone } from "@/lib/ai/prompts";
 import { aiTarget, setAiTarget } from "@/lib/ai/target";
 import { useLocale, useT } from "./i18n";
@@ -35,6 +40,20 @@ export type AiWriterRequest =
 
 // The same request for the server (url, body) and for the device.
 type Job = { url: string; body: Record<string, unknown>; label: string; device: { kind: "write"; request: WriteRequest } | { kind: "summary"; text: string } };
+
+// The remembered choice whether to link existing pages (default: yes).
+function storedLinkChoice() {
+  try {
+    return localStorage.getItem(LINKS_STORAGE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+function storeLinkChoice(on: boolean) {
+  try {
+    localStorage.setItem(LINKS_STORAGE_KEY, on ? "on" : "off");
+  } catch {}
+}
 
 // The answer's HTML as editor blocks, parsed in a document of its own (no
 // resources load while parsing).
@@ -94,6 +113,12 @@ export function AiWriter({
   routes.current = { write: writeRoute, summary: summaryRoute };
   const [ranOn, setRanOn] = useState<"device" | "server" | null>(null);
   const [actions, setActions] = useState<AiActionsRequest | null>(null);
+  // Linking existing pages: the person's choice, where the feature is usable
+  // (never in end-to-end encrypted spaces – the server has no plaintext to
+  // search with). The pages the server offered for the current answer.
+  const linksUsable = !encrypted && aiUsable(ai.status, "links");
+  const [linkPages, setLinkPages] = useState(storedLinkChoice);
+  const [targets, setTargets] = useState<LinkTarget[]>([]);
 
   // Mark the text in the editor while the panel is open.
   useEffect(() => {
@@ -143,6 +168,7 @@ export function AiWriter({
       setAnswer("");
       setError("");
       setRanOn(null);
+      setTargets([]);
       setPhase("running");
       const onText = (all: string) => {
         if (controller.current === abort) setAnswer(all);
@@ -150,6 +176,12 @@ export function AiWriter({
       try {
         const route = next.device.kind === "summary" ? routes.current.summary : routes.current.write;
         const { result: text } = await runRouted(route, {
+          // No page links on the device: finding candidates means searching
+          // the workspace on the server with the text, which the device route
+          // promises keeps on this device (and in encrypted spaces the server
+          // cannot search at all) – and the model's context (about 4 000
+          // tokens, DEVICE_LIMITS) has no room for a list of pages next to
+          // the text and the answer. So the device writes without links.
           device: async () => {
             setRanOn("device");
             const work = next.device;
@@ -163,7 +195,14 @@ export function AiWriter({
           server: () => {
             setRanOn("server");
             setAnswer("");
-            return streamAiFrom(next.url, next.body, { signal: abort.signal, onText: (_piece, all) => onText(all) });
+            return streamAiFrom(next.url, next.body, {
+              signal: abort.signal,
+              onText: (_piece, all) => onText(all),
+              // The pages offered to the model, by handle (only those become links).
+              onResponse: (response) => {
+                if (controller.current === abort) setTargets(decodeLinkTargets(response.headers.get(LINKS_HEADER)));
+              },
+            });
           },
         });
         if (controller.current !== abort) return;
@@ -192,7 +231,7 @@ export function AiWriter({
     void run({
       url: "/api/ai/write",
       label,
-      body: { pageId, ...(rowId ? { rowId } : {}), action, text: source, locale, ...extra },
+      body: { pageId, ...(rowId ? { rowId } : {}), action, text: source, locale, ...extra, ...(linksUsable && linkPages ? { links: true } : {}) },
       device: { kind: "write", request },
     });
   };
@@ -202,7 +241,7 @@ export function AiWriter({
       void run({
         url: "/api/ai/summarize",
         label: t("Sprachnotiz zusammenfassen", "Summarise voice note"),
-        body: { pageId, ...(rowId ? { rowId } : {}), text: request.text, locale },
+        body: { pageId, ...(rowId ? { rowId } : {}), text: request.text, locale, ...(linksUsable && linkPages ? { links: true } : {}) },
         device: { kind: "summary", text: request.text },
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,7 +278,7 @@ export function AiWriter({
   function insert(mode: AiInsertMode) {
     if (editor.isDestroyed) return;
     const range = aiTarget(editor.state) || request;
-    const tr = aiInsertTransaction(editor.state, blocksFromHtml(editor.schema, aiMarkdownToHtml(answer)), range, mode);
+    const tr = aiInsertTransaction(editor.state, blocksFromHtml(editor.schema, aiMarkdownToHtml(answer, targets.length ? targets : null)), range, mode);
     if (tr) editor.view.dispatch(tr);
     close();
   }
@@ -249,7 +288,22 @@ export function AiWriter({
     if (request.kind === "prompt") write("prompt", { instruction: text, context, text: undefined }, text);
     else write("custom", { instruction: text }, text);
   };
-  const preview = useMemo(() => aiMarkdownToHtml(answer), [answer]);
+  const preview = useMemo(() => aiMarkdownToHtml(answer, targets.length ? targets : null), [answer, targets]);
+  const linked = useMemo(() => linkedTargets(answer, targets), [answer, targets]);
+  const linkToggle = linksUsable && (
+    <label className="ai-writer-context ai-writer-links-toggle">
+      <input
+        type="checkbox"
+        checked={linkPages}
+        onChange={(event) => {
+          setLinkPages(event.target.checked);
+          storeLinkChoice(event.target.checked);
+        }}
+      />
+      {t("Mit bestehenden Seiten verlinken", "Link existing pages")}
+      {writeRoute.primary === "device" && <small>{t("Nicht mit der KI auf diesem Gerät.", "Not with the on-device AI.")}</small>}
+    </label>
+  );
   const style = place
     ? { left: place.left, top: place.top, bottom: place.bottom, maxHeight: place.maxHeight }
     : { visibility: "hidden" as const };
@@ -299,6 +353,7 @@ export function AiWriter({
             </button>
           </form>
           {request.kind === "prompt" ? (
+            <>
             <label className="ai-writer-context">
               <input type="checkbox" checked={context} onChange={(event) => setContext(event.target.checked)} />
               {t("Seite als Kontext", "Page as context")}
@@ -308,7 +363,10 @@ export function AiWriter({
                   : t("Der Inhalt dieser Seite geht mit an die KI.", "The content of this page is sent to the AI as well.")}
               </small>
             </label>
+            {linkToggle}
+            </>
           ) : (
+            <>
             <div className="ai-writer-actions" role="menu" aria-label={t("KI-Aktionen", "AI actions")}>
               {WRITE_ACTIONS.map(([id, de, en, hintDe, hintEn]) =>
                 id === "tone" ? (
@@ -349,6 +407,8 @@ export function AiWriter({
                 ),
               )}
             </div>
+            {linkToggle}
+            </>
           )}
         </>
       )}
@@ -372,6 +432,17 @@ export function AiWriter({
               </p>
             )}
           </div>
+          {linked.length > 0 && (
+            <p className="ai-writer-linked">
+              <LinkIcon size={13} aria-hidden /> <span>{t("Verlinkt:", "Linked:")}</span>{" "}
+              {linked.map((target, i) => (
+                <span key={target.handle}>
+                  {i > 0 && ", "}
+                  <strong>{target.title}</strong>
+                </span>
+              ))}
+            </p>
+          )}
           <div className="ai-writer-buttons">
             {phase === "running" ? (
               <button type="button" className="button compact" onClick={() => controller.current?.abort()}>

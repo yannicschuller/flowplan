@@ -143,8 +143,8 @@ export function askWorkspaces(user: Identity, current: string): { id: string; na
 }
 
 // Full-text candidates: pages and records (not comments or files) that
-// contain any of the terms, best first.
-function textCandidates(workspaceId: string, terms: string[], scope: { pages: Set<string> | null; spaceId?: string }, limit = 400) {
+// contain any of the terms, best first (also lib/ai/link-candidates.ts).
+export function textCandidates(workspaceId: string, terms: string[], scope: { pages: Set<string> | null; spaceId?: string }, limit = 400) {
   if (!terms.length) return [];
   for (let i = 0; i < 10 && processSearchIndex(); i++);
   const rows = all<{ page_id: string; row_id: string }>(
