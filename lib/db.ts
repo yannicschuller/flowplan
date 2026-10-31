@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 78) return;
+  if (globalDb.flowplanSchema === 79) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -406,10 +406,16 @@ function migrate(d: DatabaseSync) {
       INSERT INTO push_deliveries(notification_id,subscription_id) SELECT NEW.id,s.id FROM push_subscriptions s JOIN sessions se ON se.token=s.session_token WHERE s.user_id=NEW.user_id AND se.expires>unixepoch()*1000
       AND ${notificationOn("push", "NEW.user_id", "NEW.kind")};
     END;`);
+  // Chat apps (lib/messengers.ts): a fourth channel per kind. A person's
+  // rows saved before it existed keep NULL there, i.e. the default.
+  if (!(d.prepare("PRAGMA table_info(notification_defaults)").all() as { name: string }[]).some((c) => c.name === "messenger"))
+    d.exec("ALTER TABLE notification_defaults ADD COLUMN messenger INTEGER NOT NULL DEFAULT 0");
+  if (!(d.prepare("PRAGMA table_info(notification_prefs)").all() as { name: string }[]).some((c) => c.name === "messenger"))
+    d.exec("ALTER TABLE notification_prefs ADD COLUMN messenger INTEGER");
   for (const [kind, on] of Object.entries(notificationDefaults))
     d.prepare(
-      "INSERT INTO notification_defaults(kind,inbox,push,email) VALUES(?,?,?,?) ON CONFLICT(kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email",
-    ).run(kind, on.inbox ? 1 : 0, on.push ? 1 : 0, on.email ? 1 : 0);
+      "INSERT INTO notification_defaults(kind,inbox,push,email,messenger) VALUES(?,?,?,?,?) ON CONFLICT(kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email,messenger=excluded.messenger",
+    ).run(kind, on.inbox ? 1 : 0, on.push ? 1 : 0, on.email ? 1 : 0, on.messenger ? 1 : 0);
   const flowColumns = d.prepare("PRAGMA table_info(oidc_flows)").all() as {
     name: string;
   }[];
@@ -983,7 +989,59 @@ function migrate(d: DatabaseSync) {
   // refused paths of probing.
   const incidentColumns = d.prepare("PRAGMA table_info(security_incidents)").all() as { name: string }[];
   if (!incidentColumns.some((c) => c.name === "evidence")) d.exec("ALTER TABLE security_incidents ADD COLUMN evidence TEXT NOT NULL DEFAULT ''");
-  globalDb.flowplanSchema = 78;
+  // Schema 79 – notifications to chat apps (#63, lib/messengers.ts): one
+  // connection per person and service (Telegram, Gotify, ntfy, Matrix) with
+  // its credentials sealed, the person's choices (text or only a hint,
+  // operations alerts for administrators), a queue like push_deliveries,
+  // filled by a trigger for every notification that reaches the inbox, and
+  // the one-time codes that bind a Telegram chat to the instance's bot.
+  d.exec(`CREATE TABLE IF NOT EXISTS messenger_targets(
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      service TEXT NOT NULL CHECK(service IN ('telegram','gotify','ntfy','matrix')),
+      mode TEXT NOT NULL DEFAULT '',
+      config TEXT NOT NULL DEFAULT '{}',
+      secret TEXT,
+      secret_hint TEXT NOT NULL DEFAULT '',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      disabled_reason TEXT,
+      failures INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      last_ok_at INTEGER,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id,service));
+    CREATE TABLE IF NOT EXISTS messenger_settings(
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      preview INTEGER NOT NULL DEFAULT 1,
+      ops INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS messenger_deliveries(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_id TEXT NOT NULL REFERENCES messenger_targets(id) ON DELETE CASCADE,
+      notification_id TEXT REFERENCES notifications(id) ON DELETE CASCADE,
+      title TEXT,
+      body TEXT,
+      url TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      available_at INTEGER NOT NULL DEFAULT 0,
+      delivered_at INTEGER,
+      last_error TEXT,
+      created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS messenger_deliveries_due ON messenger_deliveries(delivered_at,available_at);
+    CREATE INDEX IF NOT EXISTS messenger_deliveries_target ON messenger_deliveries(target_id,delivered_at);
+    CREATE TABLE IF NOT EXISTS telegram_links(
+      code_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires INTEGER NOT NULL,
+      used_at INTEGER,
+      chat_id TEXT);
+    DROP TRIGGER IF EXISTS queue_notification_messenger;
+    CREATE TRIGGER queue_notification_messenger AFTER INSERT ON notifications BEGIN
+      INSERT INTO messenger_deliveries(target_id,notification_id,available_at,created_at)
+      SELECT t.id,NEW.id,unixepoch()*1000,unixepoch()*1000 FROM messenger_targets t JOIN users u ON u.id=t.user_id
+      WHERE t.user_id=NEW.user_id AND t.enabled=1 AND u.disabled=0 AND u.demo_until IS NULL
+      AND ${notificationOn("messenger", "NEW.user_id", "COALESCE(NEW.kind,'comment')")};
+    END;`);
+  globalDb.flowplanSchema = 79;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

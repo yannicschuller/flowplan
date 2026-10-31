@@ -26,6 +26,7 @@ import { requireAdmin } from "./permissions";
 import type { Identity } from "./types";
 import { securityRules, type SecurityRule } from "./security-kinds";
 import { sweepSecurityEvents } from "./security-events";
+import { opsMessengerAdmins, queueOpsAlert } from "./messengers";
 
 const DAY = 86_400_000;
 
@@ -380,17 +381,34 @@ async function deliver(config: { url: string; plainSecret: string }, event: Aler
   }
 }
 
-// Sends each configured alert that holds now, once per event and day.
+// The title of an alert in a given language (chat apps of administrators).
+const alertTitleIn = (event: AlertEvent) => (say: (de: string, en: string) => string) =>
+  ({
+    backup_failed: say("Backup fehlgeschlagen", "Backup failed"),
+    storage_high: say("Speicher > 90 %", "Storage > 90 %"),
+    worker_error: say("Worker-Fehler", "Worker error"),
+    login_failures: say("Viele fehlgeschlagene Anmeldungen", "Many failed sign-ins"),
+    security: say("Sicherheitsvorfall", "Security incident"),
+  })[event];
+
+// Sends each configured alert that holds now, once per event and day: to
+// the operator's webhook (its chosen events) and to the chat apps of
+// administrators who want operations alerts there (lib/messengers.ts).
 export async function checkHealthAlerts(now = Date.now()) {
   const config = storedAlerts();
-  if (!config?.plainSecret) return [];
+  const webhook = config?.plainSecret ? config : null;
+  const admins = opsMessengerAdmins().length > 0;
+  if (!webhook && !admins) return [];
   const day = localDay(now);
   const sent: { event: AlertEvent; status: number | null; error: string | null }[] = [];
   for (const alert of activeAlerts(now)) {
-    if (!config.events.includes(alert.event)) continue;
+    const toWebhook = !!webhook && webhook.events.includes(alert.event);
+    if (!toWebhook && !admins) continue;
     // Claimed before sending, so two runs at once do not both send.
     if (!run("INSERT OR IGNORE INTO ops_alerts(event,day,sent_at) VALUES(?,?,?)", alert.event, day, now).changes) continue;
-    const result = await deliver(config, alert.event, alert.detail, now);
+    if (admins) queueOpsAlert(alertTitleIn(alert.event), alert.detail, now);
+    if (!toWebhook) continue;
+    const result = await deliver(webhook, alert.event, alert.detail, now);
     run("UPDATE ops_alerts SET status=?,error=? WHERE event=? AND day=?", result.status, result.error, alert.event, day);
     sent.push({ event: alert.event, ...result });
   }
@@ -398,7 +416,9 @@ export async function checkHealthAlerts(now = Date.now()) {
 }
 
 // A new security incident (lib/security-detect.ts), right away – not once
-// a day like the health alerts.
+// a day like the health alerts. Not to the administrators' chat apps: the
+// incident is also a notification of the kind "security" for each of them
+// (lib/security-detect.ts), which reaches their chat apps by that kind.
 export async function sendSecurityAlert(rule: SecurityRule, detail: string, now = Date.now()) {
   const config = storedAlerts();
   if (!config?.plainSecret || !config.events.includes("security")) return null;

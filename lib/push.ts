@@ -666,6 +666,9 @@ async function flushPushTests(send: Sender, sendExpo: ExpoSender, sendRelay: Rel
   );
 }
 export function dispatchPush() {
+  // Chat apps (lib/messengers.ts) are queued by the same notifications:
+  // sent right away too, not only by their worker's next round.
+  void import("./messengers").then((m) => m.dispatchMessengers()).catch(() => {});
   if (!runtime.flowplanPushRun)
     runtime.flowplanPushRun = flushPushQueue()
       .catch(() => {})

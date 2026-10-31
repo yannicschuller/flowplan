@@ -80,6 +80,7 @@ test("search targets of the personal and connection sections exist in their pane
     "components/my-sessions.tsx",
     "components/e2ee.tsx",
     "components/notification-settings.tsx",
+    "components/messenger-settings.tsx",
     "components/weekly-digest-settings.tsx",
     "components/push-settings.tsx",
     "components/offline-settings.tsx",

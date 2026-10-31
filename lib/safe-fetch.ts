@@ -105,14 +105,14 @@ export function safePost(raw: string, body: string, headers: Record<string, stri
 }
 // The same with another method (PUT for Matrix; GET, PATCH and DELETE for
 // calendar APIs) and the start of the answer (Slack's message ID), at most
-// `maxBytes` of it.
+// `maxBytes` of it, with the answer's headers (Retry-After of chat apps).
 export function safeSend(
   raw: string,
   body: string,
   headers: Record<string, string>,
   { method = "POST", allowPrivate = false, timeout = 10_000, maxBytes = 0 }: { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; allowPrivate?: boolean; timeout?: number; maxBytes?: number } = {},
 ) {
-  return new Promise<{ status: number; body: string }>((resolve, reject) => {
+  return new Promise<{ status: number; body: string; headers: Record<string, string> }>((resolve, reject) => {
     const url = new URL(raw);
     if (url.protocol !== "https:" && !(allowPrivate && url.protocol === "http:")) return reject(new Error("Nur https-Adressen sind erlaubt."));
     const request = url.protocol === "http:" ? httpRequest : httpsRequest;
@@ -121,9 +121,10 @@ export function safeSend(
       { method, timeout, headers: { ...headers, "content-length": String(Buffer.byteLength(body)) }, lookup: pinnedLookup(allowPrivate) as never },
       (res) => {
         const status = res.statusCode || 0;
+        const headers = flatHeaders(res.headers);
         if (!maxBytes) {
           res.resume();
-          return resolve({ status, body: "" });
+          return resolve({ status, body: "", headers });
         }
         const chunks: Buffer[] = [];
         let size = 0;
@@ -131,7 +132,7 @@ export function safeSend(
           if (size < maxBytes) chunks.push(chunk.subarray(0, maxBytes - size));
           size += chunk.length;
         });
-        res.on("end", () => resolve({ status, body: Buffer.concat(chunks).toString("utf8") }));
+        res.on("end", () => resolve({ status, body: Buffer.concat(chunks).toString("utf8"), headers }));
         res.on("error", reject);
       },
     );

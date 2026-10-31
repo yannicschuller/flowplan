@@ -17,8 +17,8 @@ const kindIds = Object.keys(notificationKinds) as [
 // Unset kinds follow notificationDefaults.
 export function notificationPrefs(user: Identity): NotificationPrefs {
   const stored = new Map(
-    all<{ kind: string; inbox: number; push: number; email: number }>(
-      "SELECT kind,inbox,push,email FROM notification_prefs WHERE user_id=?",
+    all<{ kind: string; inbox: number; push: number; email: number; messenger: number | null }>(
+      "SELECT kind,inbox,push,email,messenger FROM notification_prefs WHERE user_id=?",
       user.id,
     ).map((p) => [p.kind, p]),
   );
@@ -31,6 +31,8 @@ export function notificationPrefs(user: Identity): NotificationPrefs {
           inbox: p ? !!p.inbox : notificationDefaults[kind].inbox,
           push: p ? !!p.push : notificationDefaults[kind].push,
           email: p ? !!p.email : notificationDefaults[kind].email,
+          // NULL: saved before the chat apps existed – the default applies.
+          messenger: p && p.messenger !== null ? !!p.messenger : notificationDefaults[kind].messenger,
         },
       ];
     }),
@@ -43,19 +45,24 @@ export function setNotificationPref(user: Identity, input: unknown) {
       inbox: z.boolean(),
       push: z.boolean(),
       email: z.boolean().optional(),
+      messenger: z.boolean().optional(),
     })
     .parse(input);
-  const email = b.email ?? notificationPrefs(user)[b.kind].email;
+  const current = notificationPrefs(user)[b.kind];
+  const email = b.email ?? current.email;
+  const messenger = b.messenger ?? current.messenger;
   // Push is only sent for notifications that reach the inbox.
   run(
-    `INSERT INTO notification_prefs(user_id,kind,inbox,push,email) VALUES(?,?,?,?,?)
-     ON CONFLICT(user_id,kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email`,
+    `INSERT INTO notification_prefs(user_id,kind,inbox,push,email,messenger) VALUES(?,?,?,?,?,?)
+     ON CONFLICT(user_id,kind) DO UPDATE SET inbox=excluded.inbox,push=excluded.push,email=excluded.email,messenger=excluded.messenger`,
     user.id,
     b.kind,
     b.inbox ? 1 : 0,
     b.inbox && b.push ? 1 : 0,
     // The e-mail summary is made of inbox notifications.
     b.inbox && email ? 1 : 0,
+    // So are the messages to chat apps (lib/messengers.ts).
+    b.inbox && messenger ? 1 : 0,
   );
   return notificationPrefs(user);
 }

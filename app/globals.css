@@ -20486,6 +20486,10 @@ h3 .block-reactions {
 .notif-head > span:not(:first-child) {
   text-align: center;
 }
+/* With chat apps (lib/messengers.ts): a fourth column. */
+.notif-matrix[data-columns="4"] :is(.notif-head, .notif-kind) {
+  grid-template-columns: minmax(0, 1fr) repeat(4, 84px);
+}
 .notif-channel {
   /* Holds its hidden name: positioned elsewhere, it would stick out of the
      scrolling settings and make the whole app shell scroll. */
@@ -20740,6 +20744,9 @@ h3 .block-reactions {
   }
   .notif-kind {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .notif-matrix[data-columns="4"] .notif-kind {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .notif-kind > .setting-text {
     grid-column: 1 / -1;
@@ -29565,4 +29572,94 @@ label.ws-search input {
   .my-security-checks .button {
     margin-left: 34px;
   }
+}
+
+/* Chat apps (components/messenger-settings.tsx): one row per connection,
+   the form of a new one below; the link for the instance's Telegram bot. */
+.messenger-target-detail {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.messenger-target-where {
+  overflow-wrap: anywhere;
+}
+.messenger-target-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+}
+.messenger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.messenger-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--border);
+}
+.messenger-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--secondary);
+  font-size: 13px;
+}
+.messenger-form label > small {
+  color: var(--muted);
+}
+.messenger-form input,
+.messenger-form select {
+  width: 100%;
+  max-width: 420px;
+}
+.messenger-form .messenger-actions {
+  justify-content: flex-start;
+}
+.messenger-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.messenger-link {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--hover);
+}
+.messenger-link code {
+  overflow-wrap: anywhere;
+}
+.messenger-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.messenger-note[data-tone="error"] {
+  color: #a43c3f;
+}
+.messenger-note[data-tone="ok"] {
+  color: #3f6d52;
+}
+[data-theme="dark"] .messenger-note[data-tone="error"] {
+  color: #f3b0b0;
+}
+[data-theme="dark"] .messenger-note[data-tone="ok"] {
+  color: #a8d8b9;
+}
+@media (max-width: 700px) {
+  .messenger-actions {
+    justify-content: flex-start;
+  }
+}
+.messenger-hosts {
+  width: 100%;
+  min-height: 90px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
 }

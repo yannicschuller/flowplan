@@ -30,8 +30,8 @@ const later = (minutes: number) => Date.now() + minutes * 60_000;
 
 test("by default, changes on followed pages reach the inbox only", () => {
   const prefs = bootstrap(ada, wid).notificationPrefs;
-  assert.deepEqual(prefs.change, { inbox: true, push: false, email: false });
-  assert.deepEqual(prefs.mention, { inbox: true, push: true, email: true });
+  assert.deepEqual(prefs.change, { inbox: true, push: false, email: false, messenger: false });
+  assert.deepEqual(prefs.mention, { inbox: true, push: true, email: true, messenger: true });
   recordPageEdit(ben, page);
   assert.ok(one("SELECT 1 FROM notifications WHERE user_id=? AND kind='change'", ada.id), "in the inbox");
   queueNotificationDigests(later(30));

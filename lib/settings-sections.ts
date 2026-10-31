@@ -104,10 +104,18 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     group: "personal",
     icon: "BellSimple",
     title: { de: "Benachrichtigungen", en: "Notifications" },
-    description: { de: "Was dich im Posteingang, per Push und per E-Mail erreicht.", en: "What reaches you in the inbox, as push and by e-mail." },
-    keywords: { de: "posteingang push e-mail erwähnungen kommentare wöchentliche zusammenfassung digest", en: "inbox push email mentions comments weekly digest" },
+    description: { de: "Was dich im Posteingang, per Push, per E-Mail und in Chat-Apps erreicht.", en: "What reaches you in the inbox, as push, by e-mail and in chat apps." },
+    keywords: {
+      de: "posteingang push e-mail erwähnungen kommentare wöchentliche zusammenfassung digest chat-apps messenger telegram gotify ntfy matrix",
+      en: "inbox push email mentions comments weekly digest chat apps messenger telegram gotify ntfy matrix",
+    },
     entries: [
       { title: { de: "Benachrichtigungsarten", en: "Notification kinds" }, keywords: { de: "posteingang push e-mail erwähnungen kommentare", en: "inbox push email mentions comments" }, anchor: "kinds" },
+      {
+        title: { de: "Chat-Apps", en: "Chat apps" },
+        keywords: { de: "messenger telegram gotify ntfy matrix bot testnachricht", en: "messenger telegram gotify ntfy matrix bot test message" },
+        anchor: "messengers",
+      },
       { title: { de: "Wöchentliche Zusammenfassung", en: "Weekly digest" }, anchor: "weekly-digest" },
       { title: { de: "Push-Benachrichtigungen", en: "Push notifications" }, keywords: { de: "desktop-app mitteilungen", en: "desktop app notifications" }, anchor: "push" },
       { title: { de: "Testbenachrichtigung", en: "Test notification" }, keywords: { de: "test push relay app gerät zustellung", en: "test push relay app device delivery" }, anchor: "push-test" },
@@ -376,6 +384,23 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Signaturschlüssel wechseln", en: "Rotate the signing key" }, keywords: { de: "rotieren", en: "rotation" }, anchor: "keys" },
       { title: { de: "Zustellungen der letzten 24 Stunden", en: "Deliveries of the last 24 hours" }, anchor: "deliveries" },
       { title: { de: "Expo und Web Push", en: "Expo and Web Push" }, keywords: { de: "vapid mobile_push", en: "vapid mobile_push" }, anchor: "channels" },
+    ],
+  },
+  {
+    id: "messengers",
+    area: "admin",
+    group: "services",
+    icon: "ChatCircleDots",
+    title: { de: "Chat-Apps", en: "Chat apps" },
+    description: { de: "Telegram, Gotify, ntfy und Matrix für Benachrichtigungen: erlaubte Dienste, Server und der Telegram-Bot der Instanz.", en: "Telegram, Gotify, ntfy and Matrix for notifications: allowed services, servers and the instance's Telegram bot." },
+    keywords: {
+      de: "chat-apps messenger telegram bot gotify ntfy matrix benachrichtigungen server adressen erlauben sperren api relay",
+      en: "chat apps messenger telegram bot gotify ntfy matrix notifications server addresses allow block api relay",
+    },
+    entries: [
+      { title: { de: "Erlaubte Dienste", en: "Allowed services" }, anchor: "services" },
+      { title: { de: "Telegram-Bot der Instanz", en: "Instance Telegram bot" }, keywords: { de: "bot token api-adresse", en: "bot token api address" }, anchor: "bot" },
+      { title: { de: "Server-Adressen", en: "Server addresses" }, keywords: { de: "eigene server einschränken", en: "own servers restrict" }, anchor: "hosts" },
     ],
   },
   {

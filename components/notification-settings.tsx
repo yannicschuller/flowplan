@@ -1,11 +1,12 @@
 "use client";
 // Settings → Benachrichtigungen: which kinds of notifications reach the
-// inbox and, from there, push and e-mail. One card; each kind is a row with
-// three switches – a matrix with column heads on wide screens, a stacked
-// card with labelled switches on phones.
+// inbox and, from there, push, e-mail and – where the instance allows any –
+// chat apps (lib/messengers.ts). One card; each kind is a row with a switch
+// per channel – a matrix with column heads on wide screens, a stacked card
+// with labelled switches on phones.
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
-import { notificationDefaults, notificationKinds, type NotificationKind, type NotificationPrefs } from "@/lib/notification-kinds";
+import { notificationDefaults, notificationKinds, type NotificationChannels, type NotificationKind, type NotificationPrefs } from "@/lib/notification-kinds";
 import { SaveState, SettingGroup, Switch, useSaveState } from "./settings-ui";
 
 // i18n-table: 1 – what each kind is about
@@ -20,14 +21,17 @@ const kindHints: Record<NotificationKind, [string, string]> = {
   security: ["Jemand gibt mehrmals eine falsche PIN für dein Journal ein.", "Someone enters a wrong PIN for your journal several times."],
 };
 
-type Channels = { inbox: boolean; push: boolean; email: boolean };
+type Channels = NotificationChannels;
 
 export function NotificationSettings({
   prefs,
   onChange,
   onReset,
+  messenger = false,
 }: {
   prefs: NotificationPrefs;
+  // The chat-app column: when the instance allows at least one chat app.
+  messenger?: boolean;
   // Rejects when saving failed; the error is shown next to the switches.
   onReset?: () => Promise<unknown>;
   onChange: (kind: NotificationKind, value: Channels) => Promise<unknown>;
@@ -52,20 +56,23 @@ export function NotificationSettings({
     void run(() => next);
   };
   const kinds = Object.keys(notificationKinds) as NotificationKind[];
-  const changed = kinds.some((kind) => (["inbox", "push", "email"] as const).some((channel) => local[kind][channel] !== notificationDefaults[kind][channel]));
-  const channels = [
+  const shown = (["inbox", "push", "email", ...(messenger ? (["messenger"] as const) : [])] as const);
+  const changed = kinds.some((kind) => shown.some((channel) => local[kind][channel] !== notificationDefaults[kind][channel]));
+  const allChannels = [
     { key: "inbox", name: t("Posteingang", "Inbox"), label: (kind: NotificationKind) => t(`${notificationKinds[kind]} im Posteingang`, `${t(notificationKinds[kind])} in the inbox`) },
     { key: "push", name: t("Push", "Push"), label: (kind: NotificationKind) => t(`${notificationKinds[kind]} als Push`, `${t(notificationKinds[kind])} as push`) },
     { key: "email", name: "E-Mail", label: (kind: NotificationKind) => t(`${notificationKinds[kind]} per E-Mail`, `${t(notificationKinds[kind])} by email`) },
+    { key: "messenger", name: t("Chat-Apps", "Chat apps"), label: (kind: NotificationKind) => t(`${notificationKinds[kind]} in Chat-Apps`, `${t(notificationKinds[kind])} in chat apps`) },
   ] as const;
+  const channels = allChannels.filter((c) => c.key !== "messenger" || messenger);
   return (
     <SettingGroup
       id="kinds"
       title={t("Benachrichtigungsarten", "Notification kinds")}
-      description={t(
+      description={`${t(
         "Was dich direkt betrifft, kommt standardmäßig überall an; Änderungen an Seiten, denen du folgst, und Automationen nur im Posteingang. Per E-Mail kommt eine Zusammenfassung, wenn eine Benachrichtigung zehn Minuten ungelesen bleibt (geteilte Seiten sofort) – sofern die Instanz E-Mails versenden kann.",
         "What concerns you directly arrives everywhere by default; changes on pages you follow and automations only in the inbox. By e-mail you get a summary when a notification stays unread for ten minutes (shared pages right away) – if the instance can send e-mail.",
-      )}
+      )}${messenger ? ` ${t("Chat-Apps bekommen sie sofort, sobald du unten eine verbunden hast.", "Chat apps get them right away once you connected one below.")}` : ""}`}
       actions={
         <>
           <SaveState status={status} />
@@ -85,7 +92,7 @@ export function NotificationSettings({
         </>
       }
     >
-      <div className="notif-matrix" role="group" aria-label={t("Benachrichtigungsarten", "Notification kinds")}>
+      <div className="notif-matrix" data-columns={channels.length} role="group" aria-label={t("Benachrichtigungsarten", "Notification kinds")}>
         <div className="notif-head" aria-hidden>
           <span>{t("Art", "Kind")}</span>
           {channels.map((c) => (
@@ -109,7 +116,7 @@ export function NotificationSettings({
                     change(
                       kind,
                       c.key === "inbox"
-                        ? { inbox: on, push: on && local[kind].push, email: on && local[kind].email }
+                        ? { inbox: on, push: on && local[kind].push, email: on && local[kind].email, messenger: on && local[kind].messenger }
                         : { ...local[kind], [c.key]: on },
                     )
                   }

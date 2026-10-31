@@ -53,6 +53,11 @@ const PERSONAL = [
   "mobile_devices",
   "sso_sources",
   "push_subscriptions",
+  // Chat apps with their sealed tokens, choices and Telegram link codes
+  // (lib/messengers.ts); their queue goes with the connections.
+  "messenger_targets",
+  "messenger_settings",
+  "telegram_links",
   "notifications",
   "notification_prefs",
   "user_shortcuts",

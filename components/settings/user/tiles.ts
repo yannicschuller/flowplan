@@ -17,7 +17,7 @@ export function userTiles(boot: Bootstrap, theme: ThemeChoice, t: T): Record<str
   const roleName = owner ? t("Eigentümer", "Owner") : boot.workspace.role === "viewer" ? t("Ansehen", "View||role") : t("Bearbeiten", "Edit");
   // Notifications: how many kinds differ from the defaults, and the digest.
   const prefs = boot.notificationPrefs;
-  const custom = prefs ? (Object.keys(notificationDefaults) as NotificationKind[]).filter((k) => prefs[k] && (["inbox", "push", "email"] as const).some((c) => prefs[k][c] !== notificationDefaults[k][c])).length : 0;
+  const custom = prefs ? (Object.keys(notificationDefaults) as NotificationKind[]).filter((k) => prefs[k] && (["inbox", "push", "email", "messenger"] as const).some((c) => prefs[k][c] !== notificationDefaults[k][c])).length : 0;
   const webhookOwner = owner && !boot.user.demo;
   return {
     account: {

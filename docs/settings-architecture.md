@@ -82,7 +82,7 @@ Administration (`#admin/…`):
 |---|---|
 | Personen | `users` Benutzer · `signin` Anmeldung & SSO · `workspaces` Arbeitsbereiche |
 | Daten | `storage` Speicher & Sicherung · `limits` Grenzen & Aufbewahrung · `export` Markdown- & Git-Export |
-| Dienste | `mail` E-Mail · `push` Push-Benachrichtigungen · `ai` KI · `extensions` Erweiterungen & Domains |
+| Dienste | `mail` E-Mail · `push` Push-Benachrichtigungen · `messengers` Chat-Apps · `ai` KI · `extensions` Erweiterungen & Domains |
 | Sicherheit | `security` Verschlüsselung · `audit` Aktivitätsprotokoll |
 | Betrieb | `monitoring` Überwachung · `maintenance` Wartung & Hinweise · `general` Instanz |
 
@@ -122,6 +122,15 @@ live charts go above the tiles (`status` slot of the shell).
   `lib/metrics.ts`). The landing page's tile and the monitoring's health
   tile show the last check without making one (`pushSummary`); the summary
   route warms it for at most 1.5 s.
+- `#admin/messengers` (`components/settings/admin/messengers.tsx`,
+  `/api/admin/messengers`, `lib/messengers.ts`): which chat apps people may
+  connect (Telegram, Gotify, ntfy, Matrix; default `FLOWPLAN_MESSENGERS`),
+  the instance's Telegram bot (token checked with getMe, sealed, shown as
+  "…abcd"; default `FLOWPLAN_TELEGRAM_BOT_TOKEN` / `FLOWPLAN_TELEGRAM_API_URL`),
+  the server addresses people may use and the deliveries of 24 hours. The
+  person's side is the card `#settings/notifications/messengers`
+  (`components/messenger-settings.tsx`, `/api/messengers`) plus the
+  "Chat-Apps" column of the kinds matrix.
 - Charts: `components/charts.tsx` (line/area with crosshair, stacked columns,
   donut, legend, `ChartTable`) and `components/sparkline.tsx` – plain SVG,
   colours `--chart-1…5`/`--chart-other`, axis text `--chart-text` (light and

@@ -24,6 +24,10 @@ export async function register() {
     startRetentionWorker();
     const { startMailWorker } = await import("./lib/mail");
     startMailWorker();
+    // Chat apps (Telegram, Gotify, ntfy, Matrix) and the Telegram bot's
+    // connection codes (lib/messengers.ts).
+    const { startMessengerWorker } = await import("./lib/messengers");
+    startMessengerWorker();
     const { startWebhookWorker } = await import("./lib/webhooks");
     startWebhookWorker();
     // GitHub/GitLab issue sync: the 10-minute poll and quick pushes.

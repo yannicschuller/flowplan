@@ -8,6 +8,7 @@ import {
   BellSimple,
   BookmarkSimple,
   CalendarBlank,
+  ChatCircleDots,
   Database,
   DeviceMobile,
   EnvelopeSimple,
@@ -59,6 +60,7 @@ import StorageSection from "./admin/storage";
 import ExportSection from "./admin/export";
 import MailSection from "./admin/mail";
 import PushSection from "./admin/push";
+import MessengersSection from "./admin/messengers";
 import AdminAiSection from "./admin/ai";
 import SecuritySection from "./admin/security";
 import SecurityCenterSection from "./admin/security-center";
@@ -74,6 +76,7 @@ export const ICONS: Record<string, Icon> = {
   BellSimple,
   BookmarkSimple,
   CalendarBlank,
+  ChatCircleDots,
   Database,
   DeviceMobile,
   EnvelopeSimple,
@@ -128,6 +131,7 @@ const ADMIN_COMPONENTS: Record<string, ComponentType> = {
   export: ExportSection,
   mail: MailSection,
   push: PushSection,
+  messengers: MessengersSection,
   ai: AdminAiSection,
   security: SecuritySection,
   threats: SecurityCenterSection,

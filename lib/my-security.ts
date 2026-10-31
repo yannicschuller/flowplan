@@ -88,7 +88,7 @@ export function mySecurity(user: Identity, currentToken: string | undefined, now
   const activity = all<{ id: number; at: number; kind: string; network: string; country: string; device: string; detail: string }>(
     `SELECT id,at,kind,network,country,device,detail FROM security_events
      WHERE at>=? AND (actor_id=? OR (subject_key<>'' AND subject_key=?))
-       AND kind IN ('login.success','login.failure','login.refused','login.new_device','session.revoked','account.password','account.password_reset','account.passkey_added','account.passkey_removed','account.2fa_on','account.2fa_off','account.token_created','account.token_revoked','admin.granted','admin.revoked','share.public','data.export')
+       AND kind IN ('login.success','login.failure','login.refused','login.new_device','session.revoked','account.password','account.password_reset','account.passkey_added','account.passkey_removed','account.2fa_on','account.2fa_off','account.token_created','account.token_revoked','account.messenger_added','account.messenger_removed','admin.granted','admin.revoked','share.public','data.export')
      ORDER BY id DESC LIMIT 40`,
     now - 30 * DAY,
     user.id,
