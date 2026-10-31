@@ -20,6 +20,7 @@ import { useT } from "../i18n";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import type { InkTool, PencilSetting } from "@/lib/ink/presets";
 import { INK_TOOL_KEYS, type InkEditor } from "./use-ink-editor";
+import { useMenuPlacement } from "./menu-placement";
 
 export function InkToolbar({
   editor,
@@ -36,6 +37,7 @@ export function InkToolbar({
   const keyHints = useKeyboardHints();
   const [settings, setSettings] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
+  const placeMenu = useMenuPlacement();
   useEffect(() => {
     if (!settings) return;
     const close = (event: PointerEvent) => {
@@ -178,7 +180,7 @@ export function InkToolbar({
             <GearSix size={19} />
           </button>
           {settings && (
-            <div className="ink-menu" role="group" aria-label={t("Stifteinstellungen", "Pen settings")}>
+            <div ref={placeMenu} className="ink-menu" role="group" aria-label={t("Stifteinstellungen", "Pen settings")}>
               <label>
                 <input type="checkbox" checked={editor.penOnly} onChange={(e) => editor.setPenOnly(e.target.checked)} />
                 {t("Nur mit dem Stift zeichnen", "Draw with the pen only")}

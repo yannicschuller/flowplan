@@ -21,6 +21,7 @@ import { useT } from "./i18n";
 import { api, downloadBlob } from "./ui";
 import { InkLayer } from "./ink/ink-layer";
 import { InkToolbar } from "./ink/ink-toolbar";
+import { useMenuPlacement } from "./ink/menu-placement";
 import { useInkEditor, useInkShortcuts, type InkEditor } from "./ink/use-ink-editor";
 import type { PageSize } from "@/lib/ink/coords";
 import { emptyInk, hasInk, parseInk, type InkDoc } from "@/lib/ink/model";
@@ -97,6 +98,7 @@ function ViewerPage({ doc, number, width, ink }: { doc: PdfDocument; number: num
 export default function PdfViewerDialog({ src, title, onClose }: { src: string; title: string; onClose: () => void }) {
   const t = useT();
   const keyHints = useKeyboardHints();
+  const placeMenu = useMenuPlacement();
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [error, setError] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -362,7 +364,7 @@ export default function PdfViewerDialog({ src, title, onClose }: { src: string; 
               <ClockCounterClockwise size={19} />
             </button>
             {versions && (
-              <div className="ink-menu ink-versions" role="menu" aria-label={t("Versionen", "Versions")}>
+              <div ref={placeMenu} className="ink-menu ink-versions" role="menu" aria-label={t("Versionen", "Versions")}>
                 {!versions.length && <span className="ink-menu-hint">{t("Noch keine gespeicherte Version.", "No saved version yet.")}</span>}
                 {versions.map((v) => (
                   <button key={v.version} type="button" role="menuitem" onClick={() => void loadVersion(v.version)}>

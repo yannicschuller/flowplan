@@ -17120,13 +17120,14 @@ h3 .block-reactions {
 .ink-menu-anchor {
   position: relative;
 }
+/* Placed under its button by components/ink/menu-placement.ts, inside the
+   window whichever way the toolbar wraps. */
 .ink-menu {
   position: fixed;
   z-index: 230;
   display: grid;
   gap: 6px;
-  width: min(300px, calc(100vw - 32px));
-  margin-top: 6px;
+  width: min(300px, calc(100vw - 32px - var(--safe-left, 0px) - var(--safe-right, 0px)));
   padding: 12px;
   border-radius: 12px;
   background: var(--bg);
@@ -17134,7 +17135,6 @@ h3 .block-reactions {
   border: 1px solid var(--border);
   box-shadow: 0 12px 32px #0004;
   font-size: 14px;
-  transform: translateX(calc(-100% + 36px));
 }
 .ink-menu label {
   display: flex;
@@ -26386,9 +26386,6 @@ label.ws-search input {
 }
 .notebook-menu button:disabled {
   opacity: 0.4;
-}
-.notebook-thumb-more .notebook-menu {
-  transform: none;
 }
 .notebook-notice {
   display: flex;

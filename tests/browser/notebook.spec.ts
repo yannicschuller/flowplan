@@ -329,6 +329,29 @@ test("notebooks on the phone: sheets fit the width, the overview opens over them
   await expect(page.getByRole("navigation", { name: "Seitenübersicht" })).toBeVisible();
 });
 
+test("the pen settings open under the gear and inside the window, wherever the toolbar wraps it", async ({ page }, info) => {
+  const { create } = await setup(page);
+  const id = await create(`Einstellungen ${Date.now()}`, "notebook");
+  const tools = await openNotebook(page, id);
+  // Without the sidebar the gear wraps to the start of the second row (it
+  // used to open 264 px to its left, off the screen); on the phone it sits
+  // at the right edge of a scrolled bar.
+  if (info.project.name === "desktop") await page.getByRole("button", { name: "Navigation schließen", exact: true }).click();
+  const gear = tools.getByRole("button", { name: "Stifteinstellungen" });
+  await gear.click();
+  const menu = page.getByRole("group", { name: "Stifteinstellungen" });
+  await expect(menu.getByText("Formen beim Halten begradigen")).toBeVisible();
+  const view = page.viewportSize()!;
+  const at = (await gear.boundingBox())!;
+  const box = (await menu.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.height);
+  expect(Math.abs(box.y - (at.y + at.height))).toBeLessThan(16);
+  expect(box.x).toBeLessThanOrEqual(at.x + at.width);
+  expect(box.x + box.width).toBeGreaterThanOrEqual(at.x);
+});
+
 test("screenshots: iPad and desktop, light and dark", async ({ page }, info) => {
   test.skip(!shots || info.project.name !== "desktop", "Only when screenshots are asked for.");
   test.setTimeout(240_000);

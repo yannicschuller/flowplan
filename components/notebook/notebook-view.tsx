@@ -27,6 +27,7 @@ import { useT } from "../i18n";
 import { api, downloadBlob, Modal } from "../ui";
 import { InkLayer } from "../ink/ink-layer";
 import { InkToolbar } from "../ink/ink-toolbar";
+import { useMenuPlacement } from "../ink/menu-placement";
 import { useInkEditor, useInkShortcuts } from "../ink/use-ink-editor";
 import { useSurfaceSync } from "../ink/use-surface-sync";
 import { convertSelection } from "../ink/convert";
@@ -77,6 +78,10 @@ export default function NotebookView({
 }) {
   const t = useT();
   const keyHints = useKeyboardHints();
+  // The menus of the bar open under their button, those of the overview
+  // from the left edge of theirs; all stay inside the window.
+  const placeMenu = useMenuPlacement();
+  const placeStartMenu = useMenuPlacement("start");
   const canEdit = editable && notebook.canEdit;
   const [paper, setPaper] = useState<Paper>(notebook.paper);
   const [sheets, setSheets] = useState<NotebookSheet[]>(() =>
@@ -425,7 +430,7 @@ export default function NotebookView({
   }, [menu]);
 
   const sheetMenu = (sheet: NotebookSheet, index: number) => (
-    <div className="ink-menu notebook-menu" role="menu" aria-label={t(`Blatt ${index + 1}`, `Sheet ${index + 1}`)}>
+    <div ref={placeStartMenu} className="ink-menu notebook-menu" role="menu" aria-label={t(`Blatt ${index + 1}`, `Sheet ${index + 1}`)}>
       <button type="button" role="menuitem" onClick={() => (setMenu(null), void addSheet(sheet.id))}>
         <Plus size={16} /> {t("Neues Blatt danach", "New sheet after")}
       </button>
@@ -491,7 +496,7 @@ export default function NotebookView({
                 <Plus size={18} />
               </button>
               {menu === "add" && (
-                <div className="ink-menu notebook-menu" role="menu" aria-label={t("Blatt hinzufügen", "Add sheet")}>
+                <div ref={placeMenu} className="ink-menu notebook-menu" role="menu" aria-label={t("Blatt hinzufügen", "Add sheet")}>
                   <button type="button" role="menuitem" onClick={() => (setMenu(null), void addSheet(current || null))}>
                     {t("Nach dem aktuellen Blatt", "After the current sheet")}
                   </button>
@@ -520,7 +525,7 @@ export default function NotebookView({
               <DotsThree size={18} weight="bold" />
             </button>
             {menu === "more" && (
-              <div className="ink-menu notebook-menu notebook-menu-end" role="menu" aria-label={t("Weitere Aktionen", "More actions")}>
+              <div ref={placeMenu} className="ink-menu notebook-menu notebook-menu-end" role="menu" aria-label={t("Weitere Aktionen", "More actions")}>
                 {canEdit && (
                   <button type="button" role="menuitem" onClick={() => (setMenu(null), fileInput.current?.click())}>
                     <FilePdf size={16} /> {t("PDF importieren …", "Import PDF …")}
