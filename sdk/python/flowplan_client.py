@@ -1372,7 +1372,7 @@ ImportSourceForm = TypedDict("ImportSourceForm", {
     "workspaceId": Required[str],
     "spaceId": Required[str],
     "file": Required[FormFile],
-    "source": Literal["auto", "confluence", "evernote", "gdocs", "obsidian"],
+    "source": Literal["auto", "affine", "confluence", "evernote", "gdocs", "obsidian"],
     "mode": Literal["pages", "database"],
     "dryRun": Literal["0", "1"],
 }, total=False)
@@ -1864,7 +1864,7 @@ class FlowplanClient:
         return self._json("POST", "/api/import/zip", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def import_source(self, form: "ImportSourceForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:
-        """Import from Confluence, Evernote, Google Docs or Obsidian — Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source)"""
+        """Import from AFFiNE, Confluence, Evernote, Google Docs or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source)"""
         return self._json("POST", "/api/import/source", form=dict(form), headers=headers, idempotent=True, idempotency_key=idempotency_key)
 
     def import_tracker(self, form: "ImportTrackerForm", headers: Optional[dict[str, str]] = None, idempotency_key: Optional[str] = None) -> dict[str, Any]:

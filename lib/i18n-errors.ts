@@ -947,6 +947,23 @@ const exact: Record<string, string> = {
   "Eingebettete Notizen werden als Link übernommen.": "Embedded notes are imported as links.",
   "Bild ohne Datei im Tresor übersprungen.": "Image without a file in the vault skipped.",
   "Keine Notizen (.md) gefunden.": "No notes (.md) found.",
+  // AFFiNE workspaces (lib/importers/affine*.ts).
+  "Die AFFiNE-Datei kann nicht gelesen werden.": "The AFFiNE file cannot be read.",
+  "Die Datei ist keine AFFiNE-Arbeitsbereichsdatei.": "The file is not an AFFiNE workspace file.",
+  "Der AFFiNE-Arbeitsbereich ist zu groß.": "The AFFiNE workspace is too large.",
+  "Die AFFiNE-Datei enthält keinen Arbeitsbereich.": "The AFFiNE file contains no workspace.",
+  "Bitte die AFFiNE-Arbeitsbereichsdatei (.affine) oder einen Snapshot-Export (ZIP) hochladen.": "Please upload the AFFiNE workspace file (.affine) or a snapshot export (ZIP).",
+  "Ein Dokument konnte nicht gelesen werden.": "A document could not be read.",
+  "Ein Dokument ist zu groß und wurde übersprungen.": "A document is too large and was skipped.",
+  "Ein Dokument ohne Inhalt wurde nur mit seinem Titel übernommen.": "A document without content was imported with its title only.",
+  "Synchronisierte Dokumente werden als Link übernommen.": "Synced documents are imported as links.",
+  "HTML-Einbettungen werden nicht übernommen.": "HTML embeds are not imported.",
+  "Datenansichten (Data View) werden nicht übernommen.": "Data views are not imported.",
+  "Bild-Spalten von Datenbanken werden nicht übernommen.": "Image columns of databases are not imported.",
+  "Ordner, Sammlungen und Journale enthält nur die Arbeitsbereichsdatei (.affine).": "Only the workspace file (.affine) contains folders, collections and journals.",
+  "Regeln einer Sammlung konnten nicht vollständig ausgewertet werden; übernommen sind die fest hinzugefügten Dokumente.": "The rules of a collection could not be fully evaluated; the documents added by hand are imported.",
+  "Keine Dokumente gefunden.": "No documents found.",
+  "Whiteboards und Datenbanken werden nur beim Import als Seiten übernommen.": "Whiteboards and databases are only imported when importing as pages.",
   // Browser extension (lib/clipper.ts).
   "Bitte melde dich mit einem API-Token an.": "Please sign in with an API token.",
   "Das API-Token ist ungültig oder abgelaufen.": "The API token is invalid or has expired.",
@@ -1058,6 +1075,12 @@ const patterns: [RegExp, string][] = [
   [/^Makro „(.+)“ wird nicht übernommen\.$/, "Macro “$1” is not imported."],
   [/^(.+): keine Notizen gefunden\.$/, "$1: no notes found."],
   [/^(.+): Word-Datei konnte nicht gelesen werden\.$/, "$1: the Word file could not be read."],
+  [/^Block „(.+)“ wird nicht übernommen\.$/, "Block “$1” is not imported."],
+  [/^Datenbank-Spalte vom Typ „(.+)“ als Text übernommen\.$/, "Database column of type “$1” imported as text."],
+  [/^(\d+) Dokumente im Papierkorb werden nicht übernommen\.$/, "$1 documents in the trash are not imported."],
+  [/^(\d+) Elemente auf Whiteboards konnten nicht übernommen werden\.$/, "$1 elements on whiteboards could not be imported."],
+  [/^(\d+) Bilder oder Anhänge fehlen in der Datei\.$/, "$1 images or attachments are missing from the file."],
+  [/^Ein Journaltag konnte nicht ergänzt werden: (.+)$/, "A journal day could not be extended: $1"],
 ];
 
 // An incident of the instance for the administrators (lib/security-detect.ts

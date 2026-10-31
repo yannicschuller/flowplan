@@ -1,5 +1,6 @@
-// Imports from other tools: Confluence (space export), Evernote (.enex),
-// Google Docs (Takeout with .html or .docx) and Obsidian vaults. The file is
+// Imports from other tools: AFFiNE (workspace file .affine or snapshot ZIP),
+// Confluence (space export), Evernote (.enex), Google Docs (Takeout with
+// .html or .docx) and Obsidian vaults. The file is
 // read with the ZIP reader's limits, recognised (or taken as the source the
 // person chose), turned into an import tree and then previewed or written.
 import { posix } from "node:path";
@@ -7,6 +8,8 @@ import { readZip } from "../archive";
 import { HttpError } from "../auth";
 import { jobProgress } from "../background-jobs";
 import { parseConfluence, isConfluence } from "./confluence";
+import { parseAffine } from "./affine";
+import { isSnapshotZip, isSqlite, readAffineFile, readSnapshotZip } from "./affine-read";
 import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
 import { isObsidianVault, parseObsidian } from "./obsidian";
@@ -14,7 +17,7 @@ import { previewImport, requireSpace, writeImport, type ImportMode, type ImportP
 import type { ImportSource, ImportTree } from "./types";
 import type { Identity } from "../types";
 
-export const IMPORT_SOURCES: ImportSource[] = ["confluence", "evernote", "gdocs", "obsidian"];
+export const IMPORT_SOURCES: ImportSource[] = ["affine", "confluence", "evernote", "gdocs", "obsidian"];
 const isZip = (bytes: Buffer) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 
 // The entries of a ZIP; a single folder around everything is dropped.
@@ -30,11 +33,13 @@ export async function zipEntries(bytes: Buffer, budget = { left: 512 * 1024 * 10
 }
 
 export function detectSource(name: string, bytes: Buffer, entries?: Map<string, Buffer>): ImportSource | null {
+  if (isSqlite(bytes)) return /\.(affine|db)$/i.test(name) || !entries ? "affine" : null;
   if (/\.enex$/i.test(name) || (!isZip(bytes) && /<en-export[\s>]/.test(bytes.subarray(0, 4096).toString("utf8")))) return "evernote";
   if (!entries) return /\.(docx|html?)$/i.test(name) ? "gdocs" : null;
   const names = [...entries.keys()];
   if (names.length && names.every((n) => /\.enex$/i.test(n))) return "evernote";
   if (names.includes("word/document.xml")) return "gdocs";
+  if (isSnapshotZip(entries)) return "affine";
   if (isConfluence(entries)) return "confluence";
   if (isObsidianVault(entries)) return "obsidian";
   if (isGoogleTakeout(entries)) return "gdocs";
@@ -47,8 +52,13 @@ export async function parseImport(name: string, bytes: Buffer, chosen?: ImportSo
   const entries = zipped ? await zipEntries(bytes, budget) : undefined;
   const source = chosen && chosen !== "auto" ? chosen : detectSource(name, bytes, entries);
   if (!source) throw new HttpError(400, "Das Format der Datei wurde nicht erkannt.");
-  const title = posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx)$/i, "") || "Import";
+  const title = posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine)$/i, "") || "Import";
   switch (source) {
+    case "affine":
+      // The workspace file (SQLite) or a snapshot ZIP ("Export → Snapshot").
+      if (isSqlite(bytes)) return parseAffine(readAffineFile(bytes, title), title);
+      if (!entries || !isSnapshotZip(entries)) throw new HttpError(400, "Bitte die AFFiNE-Arbeitsbereichsdatei (.affine) oder einen Snapshot-Export (ZIP) hochladen.");
+      return parseAffine(readSnapshotZip(entries, title), title);
     case "evernote": {
       const files = entries
         ? [...entries].filter(([n]) => /\.enex$/i.test(n)).map(([n, data]) => ({ name: n, xml: data.toString("utf8") }))

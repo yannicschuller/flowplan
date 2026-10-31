@@ -1358,7 +1358,7 @@ async function handlePOST(
           z.uuid().parse(data.get("spaceId")),
           { name: file.name, bytes },
           {
-            source: z.enum(["auto", "confluence", "evernote", "gdocs", "obsidian"]).catch("auto").parse(data.get("source") || "auto"),
+            source: z.enum(["auto", "affine", "confluence", "evernote", "gdocs", "obsidian"]).catch("auto").parse(data.get("source") || "auto"),
             mode: data.get("mode") === "database" ? "database" : "pages",
             dryRun,
           },

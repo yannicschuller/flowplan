@@ -1,5 +1,5 @@
 "use client";
-// Import from Confluence, Evernote, Google Docs and Obsidian
+// Import from AFFiNE, Confluence, Evernote, Google Docs and Obsidian
 // (lib/importers): the file is uploaded once for a preview (counts and
 // warnings), then again for the import; both show the upload progress.
 import { useState } from "react";
@@ -8,7 +8,21 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { Select } from "./select";
 
-type Preview = { source: string; title: string; pages: number; folders: number; files: number; bytes: number; tags: number; warnings: string[] };
+type Preview = {
+  source: string;
+  title: string;
+  pages: number;
+  folders: number;
+  files: number;
+  bytes: number;
+  tags: number;
+  warnings: string[];
+  // AFFiNE only.
+  whiteboards?: number;
+  databases?: number;
+  journalDays?: number;
+  collections?: number;
+};
 type Result = Preview & { rootIds: string[]; rows: number; databaseId?: string };
 
 // Warnings carry a count ("… (3×)"); the text before it is translated.
@@ -61,6 +75,7 @@ export function ImportSources({
   const [progress, setProgress] = useState<{ phase: "upload" | "work"; share: number } | null>(null);
   const [done, setDone] = useState("");
   const names: Record<string, string> = {
+    affine: "AFFiNE",
     confluence: "Confluence",
     evernote: "Evernote",
     gdocs: "Google Docs",
@@ -98,10 +113,14 @@ export function ImportSources({
       const result = (await request(file, false)) as Result;
       setPreview(null);
       setFile(null);
+      const extra = (result.whiteboards || 0) + (result.databases || 0);
       setDone(
         mode === "database"
           ? t(`${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.rows} records and ${result.files} files imported.`)
-          : t(`${result.pages + result.folders} Seiten und ${result.files} Dateien importiert.`, `${result.pages + result.folders} pages and ${result.files} files imported.`),
+          : t(
+              `${result.pages + result.folders + extra} Seiten, ${result.rows} Datenbankeinträge und ${result.files} Dateien importiert.`,
+              `${result.pages + result.folders + extra} pages, ${result.rows} database records and ${result.files} files imported.`,
+            ),
       );
       await onRefresh();
       if (result.rootIds[0]) location.hash = `#page=${result.rootIds[0]}`;
@@ -113,11 +132,11 @@ export function ImportSources({
   return (
     <div className="setting-row wide import-sources" id="import-tools">
       <div className="setting-text">
-        <span className="setting-label">{t("Confluence, Evernote, Google Docs oder Obsidian", "Confluence, Evernote, Google Docs or Obsidian")}</span>
+        <span className="setting-label">{t("AFFiNE, Confluence, Evernote, Google Docs oder Obsidian", "AFFiNE, Confluence, Evernote, Google Docs or Obsidian")}</span>
         <small>
           {t(
-            "Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
-            "Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
+            "AFFiNE: die Arbeitsbereichsdatei (.affine) mit Ordnern, Sammlungen, Datenbanken, Whiteboards und Journal oder ein Snapshot-Export (ZIP). Confluence: Bereichsexport als HTML oder XML (ZIP). Evernote: Notizbuch als ENEX-Datei (mehrere als ZIP). Google Docs: Google-Takeout-ZIP oder einzelne Dokumente als HTML oder Word. Obsidian: der Tresor als ZIP. Seitenbaum, Bilder, Anhänge, Links zwischen Seiten, Hinweisboxen, Aufgaben und Tags werden übernommen. Vor dem Import siehst du, was übernommen wird.",
+            "AFFiNE: the workspace file (.affine) with folders, collections, databases, whiteboards and journal, or a snapshot export (ZIP). Confluence: space export as HTML or XML (ZIP). Evernote: notebook as an ENEX file (several as a ZIP). Google Docs: a Google Takeout ZIP or single documents as HTML or Word. Obsidian: the vault as a ZIP. The page tree, images, attachments, links between pages, callouts, tasks and tags come along. Before the import you see what will be imported.",
           )}
         </small>
       </div>
@@ -158,7 +177,7 @@ export function ImportSources({
             {t("Datei auswählen und prüfen", "Choose and check file")}
             <input
               type="file"
-              accept=".zip,.enex,.html,.htm,.docx,application/zip"
+              accept=".zip,.affine,.enex,.html,.htm,.docx,application/zip"
               hidden
               disabled={!canWrite || busy}
               aria-label={t("Datei für den Import", "File to import")}
@@ -191,6 +210,10 @@ export function ImportSources({
             {preview.folders > 0 && mode === "pages" && <li>{t(`${preview.folders} Ordner als Seiten`, `${preview.folders} folders as pages`)}</li>}
             <li>{t(`${preview.files} Dateien (${(preview.bytes / 1048576).toFixed(1)} MB)`, `${preview.files} files (${(preview.bytes / 1048576).toFixed(1)} MB)`)}</li>
             {preview.tags > 0 && <li>{t(`${preview.tags} Tags`, `${preview.tags} tags`)}</li>}
+            {mode === "pages" && !!preview.whiteboards && <li>{t(`${preview.whiteboards} Whiteboards`, `${preview.whiteboards} whiteboards`)}</li>}
+            {mode === "pages" && !!preview.databases && <li>{t(`${preview.databases} Datenbanken`, `${preview.databases} databases`)}</li>}
+            {!!preview.collections && <li>{t(`${preview.collections} Sammlungen als Seiten`, `${preview.collections} collections as pages`)}</li>}
+            {!!preview.journalDays && <li>{t(`${preview.journalDays} Tage ins Journal`, `${preview.journalDays} days into the journal`)}</li>}
           </ul>
           {preview.warnings.length > 0 && (
             <ul className="import-sources-warnings">

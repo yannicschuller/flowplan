@@ -2667,12 +2667,12 @@ export class FlowplanClient {
     return this.json<Record<string, unknown>>("POST", `/api/import/zip`, { form, idempotent: true }, options);
   }
 
-  /** Import from Confluence, Evernote, Google Docs or Obsidian — Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source) */
+  /** Import from AFFiNE, Confluence, Evernote, Google Docs or Obsidian — AFFiNE workspace file (`.affine`) or snapshot ZIP, Confluence space export (HTML or XML ZIP), Evernote `.enex` (several in a ZIP), Google Takeout ZIP or a single `.html`/`.docx`, Obsidian vault ZIP. `source` defaults to `auto` (recognised from the file). `mode=database` creates one new database (tags, dates, folder, source as properties) instead of a page tree. `dryRun=1` only answers with the preview (counts and warnings). (POST /api/import/source) */
   async importSource(form: {
     workspaceId: string;
     spaceId: string;
     file: Blob;
-    source?: "auto" | "confluence" | "evernote" | "gdocs" | "obsidian";
+    source?: "auto" | "affine" | "confluence" | "evernote" | "gdocs" | "obsidian";
     mode?: "pages" | "database";
     dryRun?: "0" | "1";
   }, options?: RequestOptions): Promise<Record<string, unknown>> {

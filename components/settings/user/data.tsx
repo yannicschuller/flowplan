@@ -1,7 +1,8 @@
 "use client";
 // Settings → Arbeitsbereich → Import & Export, in four groups:
 // Import (a target space for all imports; files, Notion/AppFlowy ZIPs,
-// Jira/Trello, Confluence/Evernote/Google Docs/Obsidian with a preview),
+// Jira/Trello, AFFiNE/Confluence/Evernote/Google Docs/Obsidian with a
+// preview),
 // Export (the workspace as ZIP or JSON, a space as Markdown, PDF or EPUB),
 // Sicherungen (restoring a Flowplan archive; the instance's backups live in
 // the administration) and Papierkorb & Aufbewahrung.

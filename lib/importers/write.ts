@@ -5,10 +5,16 @@
 // are stored only when a page refers to them.
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { id, one, onTransactionRollback, run, transaction } from "../db";
+import { all, id, one, onTransactionRollback, run, transaction } from "../db";
 import { HttpError } from "../auth";
-import { requireMember, spaceRole } from "../permissions";
+import { pageRole, requireMember, spaceRole } from "../permissions";
 import { createPage } from "../seed";
+import { dayTitle } from "../journal";
+import { journalLocked } from "../journal-extras";
+import { isEncryptedPage } from "../e2ee-server";
+import { appendHtmlToPage } from "../mcp";
+import { boardState, storeBoardImages } from "../whiteboard-import-server";
+import { writeWhiteboard } from "../whiteboard";
 import { cleanHtml, htmlState } from "../document-server";
 import { enforceQuota } from "../instance-ops";
 import { enforceUserStorage } from "../user-limits";
@@ -16,9 +22,9 @@ import { sanitizeFileName, verifiedMime } from "../upload-safety";
 import { storedAliases } from "../aliases";
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
-import { esc, isImage } from "./html";
+import { esc, isImage, pageRef } from "./html";
 import { MAX_IMPORT_PAGES, MAX_IMPORT_ROWS, type ImportPage, type ImportTree } from "./types";
-import type { Field, Identity, Space } from "../types";
+import type { Field, Identity, Page, Space } from "../types";
 
 export type ImportMode = "pages" | "database";
 export type ImportPreview = {
@@ -30,8 +36,14 @@ export type ImportPreview = {
   bytes: number;
   tags: number;
   warnings: string[];
+  // Only when the source has them (AFFiNE).
+  whiteboards?: number;
+  databases?: number;
+  journalDays?: number;
+  collections?: number;
 };
 export type ImportResult = ImportPreview & { rootIds: string[]; rows: number; databaseId?: string };
+const special = (page: ImportPage) => page.kind === "whiteboard" || page.kind === "database";
 
 const PLACEHOLDER = /fp-import:\/\/(file|page)\/([^"'\s<>)]*)/g;
 const decodeKey = (key: string) => {
@@ -41,16 +53,31 @@ const decodeKey = (key: string) => {
     return key;
   }
 };
-// The files the pages refer to, in order of first use, with the page.
-function referencedFiles(tree: ImportTree) {
+// The files the pages (and records of imported databases) refer to, in
+// order of first use, with the page.
+function referencedFiles(tree: ImportTree, mode: ImportMode = "pages") {
   const used = new Map<string, string>();
-  for (const page of tree.pages)
-    for (const match of page.html.matchAll(PLACEHOLDER))
-      if (match[1] === "file") {
-        const key = decodeKey(match[2]);
-        if (tree.files.has(key) && !used.has(key)) used.set(key, page.key);
-      }
+  for (const page of tree.pages) {
+    if (mode === "database" && special(page)) continue;
+    for (const html of [page.html, ...(page.database?.rows.map((r) => r.html) || [])])
+      for (const match of html.matchAll(PLACEHOLDER))
+        if (match[1] === "file") {
+          const key = decodeKey(match[2]);
+          if (tree.files.has(key) && !used.has(key)) used.set(key, page.key);
+        }
+  }
   return used;
+}
+// The journal days of an import go to: the writable journal in the target
+// space, else one elsewhere in the workspace, else a new one.
+function importJournal(user: Identity, workspaceId: string, spaceId: string) {
+  const journals = all<Page>(
+    "SELECT * FROM pages WHERE workspace_id=? AND kind='journal' AND deleted_at IS NULL ORDER BY (space_id=?) DESC, updated_at DESC",
+    workspaceId,
+    spaceId,
+  ).filter((j) => ["editor", "owner"].includes(pageRole(user, j) || "") && !j.locked && !journalLocked(user, j) && !isEncryptedPage(j));
+  if (journals[0]) return { id: journals[0].id, spaceId: journals[0].space_id };
+  return { id: createPage(workspaceId, spaceId, user.id, ct("Journal", "Journal"), "journal"), spaceId };
 }
 
 export function requireSpace(user: Identity, workspaceId: string, spaceId: string) {
@@ -63,12 +90,17 @@ export function requireSpace(user: Identity, workspaceId: string, spaceId: strin
 
 export function previewImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): ImportPreview {
   requireSpace(user, workspaceId, spaceId);
-  const used = referencedFiles(tree);
+  const used = referencedFiles(tree, mode);
   const bytes = [...used.keys()].reduce((sum, key) => sum + tree.files.get(key)!.data.length, 0);
   const warnings = [...tree.warnings];
   const unused = tree.files.size - used.size;
   if (unused > 0) warnings.push(`${unused} Dateien werden von keiner Seite verwendet und nicht übernommen.`);
-  const notes = tree.pages.filter((p) => !p.folder).length;
+  const boards = tree.pages.filter((p) => p.kind === "whiteboard").length;
+  const databases = tree.pages.filter((p) => p.kind === "database").length;
+  const journalDays = new Set(tree.pages.filter((p) => p.journalDate).map((p) => p.journalDate)).size;
+  if (mode === "database" && boards + databases)
+    warnings.push("Whiteboards und Datenbanken werden nur beim Import als Seiten übernommen.");
+  const notes = tree.pages.filter((p) => !p.folder && !special(p)).length;
   const count = mode === "database" ? notes : tree.pages.length;
   const limit = mode === "database" ? MAX_IMPORT_ROWS : MAX_IMPORT_PAGES;
   if (count > limit) warnings.push(mode === "database" ? `Maximal ${MAX_IMPORT_ROWS} Einträge je Import.` : `Maximal ${MAX_IMPORT_PAGES} Seiten je Import.`);
@@ -82,12 +114,17 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
   return {
     source: tree.source,
     title: tree.title,
-    pages: notes,
-    folders: tree.pages.length - notes,
+    // Pages: documents of their own (journal days are counted apart).
+    pages: mode === "pages" ? tree.pages.filter((p) => !p.folder && !special(p) && !p.journalDate).length : notes,
+    folders: tree.pages.filter((p) => p.folder).length,
     files: used.size,
     bytes,
     tags: new Set(tree.pages.flatMap((p) => p.tags || [])).size,
     warnings,
+    ...(boards ? { whiteboards: boards } : {}),
+    ...(databases ? { databases } : {}),
+    ...(journalDays && mode === "pages" ? { journalDays } : {}),
+    ...(tree.collections ? { collections: tree.collections } : {}),
   };
 }
 
@@ -101,8 +138,9 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
     throw new HttpError(413, mode === "database" ? `Maximal ${MAX_IMPORT_ROWS} Einträge je Import.` : `Maximal ${MAX_IMPORT_PAGES} Seiten je Import.`);
   enforceQuota(workspaceId, preview.bytes);
   enforceUserStorage(user, preview.bytes);
-  const used = referencedFiles(tree);
-  const byKey = new Map(tree.pages.map((p) => [p.key, p]));
+  const used = referencedFiles(tree, mode);
+  const pagesOf = mode === "database" ? tree.pages.filter((p) => !special(p)) : tree.pages;
+  const byKey = new Map(pagesOf.map((p) => [p.key, p]));
   // Parents before children; a parent outside the tree means the root.
   const depth = (page: ImportPage) => {
     let d = 0,
@@ -115,21 +153,52 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
     }
     return d;
   };
-  const ordered = tree.pages.map((page, index) => ({ page, index, depth: depth(page) })).sort((a, b) => a.depth - b.depth || a.index - b.index);
+  const ordered = pagesOf.map((page, index) => ({ page, index, depth: depth(page) })).sort((a, b) => a.depth - b.depth || a.index - b.index);
+  // Journal days that already exist get the imported text appended after
+  // the import (as an edit of the live document).
+  const appends: { pageId: string; html: string }[] = [];
 
-  return transaction(() => {
+  const result = transaction(() => {
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const pageIds = new Map<string, string>();
     const rowIds = new Map<string, string>();
+    const existingDays = new Set<string>();
     let databaseId: string | undefined;
     if (mode === "database") {
       databaseId = createPage(workspaceId, spaceId, user.id, tree.title.slice(0, 200) || "Import", "database");
       for (const { page } of ordered) if (!page.folder) rowIds.set(page.key, id());
-    } else
+    } else {
+      // Journal days: an existing day of that date, or one new day per date.
+      const days = new Map<string, { id: string; existing: boolean }>();
+      const journal = ordered.some(({ page }) => page.journalDate) ? importJournal(user, workspaceId, spaceId) : null;
       for (const { page } of ordered) {
+        if (page.journalDate && journal && mode === "pages") {
+          let day = days.get(page.journalDate);
+          if (!day) {
+            const existing = one<{ id: string }>(
+              "SELECT id FROM pages WHERE parent_id=? AND journal_date=? AND deleted_at IS NULL AND kind='document'",
+              journal.id,
+              page.journalDate,
+            );
+            // A day lives in its journal's space.
+            day = existing
+              ? { id: existing.id, existing: true }
+              : { id: createPage(workspaceId, journal.spaceId, user.id, dayTitle(page.journalDate), "document", journal.id), existing: false };
+            if (!existing)
+              run("UPDATE pages SET journal_date=?,icon='day',position=? WHERE id=?", page.journalDate, -Number(page.journalDate.replaceAll("-", "")), day.id);
+            days.set(page.journalDate, day);
+          }
+          pageIds.set(page.key, day.id);
+          continue;
+        }
         const parent = page.parent ? pageIds.get(page.parent) || null : null;
-        pageIds.set(page.key, createPage(workspaceId, spaceId, user.id, page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"), "document", parent));
+        pageIds.set(
+          page.key,
+          createPage(workspaceId, spaceId, user.id, page.title.slice(0, 200) || ct("Ohne Titel", "Untitled"), page.kind === "whiteboard" || page.kind === "database" ? page.kind : "document", parent),
+        );
       }
+      for (const day of days.values()) if (day.existing) existingDays.add(day.id);
+    }
     // Files: stored once, at the page that uses them first.
     const fileUrls = new Map<string, { url: string; name: string; mime: string }>();
     for (const [key, pageKey] of used) {
@@ -153,9 +222,13 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
     }
     const pageUrl = (key: string) =>
       databaseId ? (rowIds.has(key) ? `/#page=${databaseId}&row=${rowIds.get(key)}` : null) : pageIds.has(key) ? `/#page=${pageIds.get(key)}` : null;
+    // Embedded databases and whiteboards name their page by id.
     const resolveHtml = (html: string) =>
       cleanHtml(
         html
+          .replace(/(data-linked-source|data-whiteboard)="fp-import:\/\/page\/([^"]*)"/g, (_, name: string, key: string) =>
+            pageIds.has(decodeKey(key)) ? `${name}="${pageIds.get(decodeKey(key))}"` : `${name}=""`,
+          )
           // Images of files that are no pictures become links.
           .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (_, key: string) => {
             const file = fileUrls.get(decodeKey(key));
@@ -223,21 +296,72 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
         rows++;
       });
-    } else
+    } else {
+      const placeholders = new Map([...pageIds].map(([key, pid]) => [pageRef(key), pid]));
+      const dayBodies = new Map<string, { title: string; body: string }[]>();
+      const boardBytes = { bytes: preview.bytes };
       for (const { page } of ordered) {
         const pid = pageIds.get(page.key)!;
+        if (page.kind === "whiteboard" && page.board) {
+          const urls = storeBoardImages(user, pid, workspaceId, page.board, boardBytes);
+          writeWhiteboard(pid, boardState(page.board, urls), placeholders);
+          continue;
+        }
+        if (page.kind === "database" && page.database) {
+          const { fields, views, rows: records } = page.database;
+          run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pid);
+          records.slice(0, MAX_IMPORT_ROWS).forEach((record, i) => {
+            const rid = id();
+            const html = record.html ? resolveHtml(record.html) : "";
+            run(
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at) VALUES(?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP))",
+              rid,
+              pid,
+              JSON.stringify(record.cells),
+              i,
+              user.id,
+              user.id,
+              html,
+              sqlTime(record.created),
+            );
+            if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
+            rows++;
+          });
+          continue;
+        }
         const html = resolveHtml(page.html || "");
         // Tags of a page (no property to hold them) stay visible as a line.
         const tagLine = page.tags?.length ? `<p>${page.tags.map((t) => `#${esc(t)}`).join(" ")}</p>` : "";
         const source = page.url && /^https?:\/\//i.test(page.url) ? `<p><a href="${esc(page.url)}">${esc(page.url)}</a></p>` : "";
         const body = cleanHtml(tagLine + source + html);
+        if (page.journalDate) {
+          dayBodies.set(pid, [...(dayBodies.get(pid) || []), { title: page.title, body }]);
+          continue;
+        }
         run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
         if (page.aliases?.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(page.aliases.slice(0, 10)), pid);
         if (page.updated) run("UPDATE pages SET updated_at=? WHERE id=?", sqlTime(page.updated), pid);
       }
+      for (const [pid, bodies] of dayBodies) {
+        // Several documents of one day, or text added to a day that already
+        // has some, follow under their title.
+        const titled = bodies.length > 1 || existingDays.has(pid);
+        const body = cleanHtml(bodies.map((b) => (titled ? `<h2>${esc(b.title)}</h2>` : "") + b.body).join(""));
+        if (existingDays.has(pid)) appends.push({ pageId: pid, html: body });
+        else run("UPDATE documents SET html=?,state=? WHERE page_id=?", body, htmlState(body), pid);
+      }
+    }
     const rootIds = databaseId
       ? [databaseId]
-      : ordered.filter(({ page }) => !page.parent || !pageIds.has(page.parent)).map(({ page }) => pageIds.get(page.key)!);
+      : [...new Set(ordered.filter(({ page }) => !page.parent || !pageIds.has(page.parent)).map(({ page }) => pageIds.get(page.key)!))];
     return { ...preview, rootIds, rows, ...(databaseId ? { databaseId } : {}) };
   }, user);
+  for (const append of appends)
+    try {
+      appendHtmlToPage(user, append);
+    } catch (error) {
+      if (!(error instanceof HttpError)) throw error;
+      result.warnings.push(`Ein Journaltag konnte nicht ergänzt werden: ${error.message}`);
+    }
+  return result;
 }

@@ -1,7 +1,19 @@
 // What every importer produces: a tree of pages with HTML that refers to
 // files and other pages of the import through placeholders
 // (lib/importers/html.ts fileRef/pageRef), plus the files themselves.
-export type ImportSource = "confluence" | "evernote" | "gdocs" | "obsidian";
+// Some sources bring more than documents (AFFiNE): whiteboards, databases
+// and journal days are pages with a kind of their own.
+import type { ImportedBoard } from "../whiteboard-import";
+import type { Field, View } from "../types";
+
+export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "obsidian";
+
+export type ImportDatabase = {
+  fields: Field[];
+  views: View[];
+  // Cells by field id; the HTML is the record's document.
+  rows: { cells: Record<string, unknown>; html: string; created?: string }[];
+};
 
 export type ImportPage = {
   key: string;
@@ -15,6 +27,15 @@ export type ImportPage = {
   tags?: string[];
   aliases?: string[];
   url?: string;
+  // Not a document: a whiteboard (items may name pages of the import by
+  // their pageRef placeholder) or a database. Both only in "pages" mode.
+  kind?: "document" | "whiteboard" | "database";
+  board?: ImportedBoard;
+  database?: ImportDatabase;
+  // A journal day (YYYY-MM-DD): written into that day of the workspace's
+  // journal instead of becoming a page of its own; appended when the day
+  // already exists.
+  journalDate?: string;
 };
 export type ImportFile = { key: string; name: string; mime: string; data: Buffer };
 export type ImportTree = {
@@ -23,6 +44,8 @@ export type ImportTree = {
   pages: ImportPage[];
   files: Map<string, ImportFile>;
   warnings: string[];
+  // Collections and similar pages the source adds (counted in the preview).
+  collections?: number;
 };
 
 export const MAX_IMPORT_PAGES = 500;

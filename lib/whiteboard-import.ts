@@ -9,7 +9,7 @@ import { remapLink } from "./whiteboard-diagram-model";
 
 export type BoardDraft = Omit<WhiteboardItem, "z"> & { z?: number };
 export type ImportedImage = { id: string; mime: string; data: Uint8Array };
-export type BoardFormat = "excalidraw" | "drawio";
+export type BoardFormat = "excalidraw" | "drawio" | "affine";
 export type ImportedBoard = {
   format: BoardFormat;
   items: BoardDraft[];
@@ -128,7 +128,7 @@ function base64Bytes(text: string): Uint8Array | null {
 }
 // The content has to match its type: PNG, JPEG, GIF or WebP only (no SVG,
 // which could carry scripts).
-function imageSignature(mime: string, b: Uint8Array) {
+export function imageSignature(mime: string, b: Uint8Array) {
   if (mime === "image/png") return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
   if (mime === "image/jpeg") return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
   if (mime === "image/gif") return b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38;
@@ -173,7 +173,7 @@ const note = (id: string, x: number, y: number, text: string, w = 200, h = 140):
   fontSize: 14,
 });
 // Positions start at 0/0; the board decides where the content goes.
-function normalise(items: BoardDraft[]) {
+export function normalise(items: BoardDraft[]) {
   let minX = Infinity,
     minY = Infinity;
   for (const item of items) {
