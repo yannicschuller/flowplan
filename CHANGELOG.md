@@ -2,6 +2,31 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.1 – 2026-10-31
+
+- Tests: incident notifications wait for the report, not a fixed pause ([5c04493](https://github.com/yannicschuller/flowplan/commit/5c04493db5df65f8e7052d1c9ef6656dd741c0c3))
+- Import from AFFiNE: workspace file and snapshot ZIP (#65) ([aae7900](https://github.com/yannicschuller/flowplan/commit/aae7900c735d12982c5645ef97232536944f46b8))
+- Phones: the safe areas count once - no empty space at the top and bottom (#61) ([fb23a4a](https://github.com/yannicschuller/flowplan/commit/fb23a4a60138cd5fd94b9dc63102813c22bea0ae))
+- Plain http in the local network: new ids work, the note names the apps ([0476f24](https://github.com/yannicschuller/flowplan/commit/0476f24f3a77ab3d9b54e54885de3a8f52d9443c))
+- Admins choose how they hear about security incidents ([c64b23c](https://github.com/yannicschuller/flowplan/commit/c64b23c3be17b92c19b30276b61ef4810cf4bcbb))
+- Signed out: the tab stops knocking at the server ([1aedbb5](https://github.com/yannicschuller/flowplan/commit/1aedbb5de90ec3b7958d9176f448f168cfa420c9))
+- French: the security incident pages and contacts texts ([633108b](https://github.com/yannicschuller/flowplan/commit/633108b80d3670eac23e97fa7a09fe8508b4b6e8))
+- Contacts: profile card, contacts menu, LDAP import dialog, mention card (#64) ([d75bfb4](https://github.com/yannicschuller/flowplan/commit/d75bfb4f9d2e309b12a66639f7f40e71c6fd2b09))
+- Contacts databases: kind, LDAP import and sync, vCard, CardDAV (#64) ([48774e4](https://github.com/yannicschuller/flowplan/commit/48774e45753d3e5544871e89f5a1a7913fb67f72))
+- Notifications in Telegram, Gotify, ntfy and Matrix (#63) ([09d6b4a](https://github.com/yannicschuller/flowplan/commit/09d6b4a6555d4dc7a406ffc26b84d8b308f2939d))
+- Updates: an outdated stored copy reloads instead of a white page (#61) ([e1b97db](https://github.com/yannicschuller/flowplan/commit/e1b97db3490f9032020fb639959a3567af59e576))
+- Help for Ask AI: current documentation ([bbd1a26](https://github.com/yannicschuller/flowplan/commit/bbd1a26780a0312abea1e17ac9acc61954c060b5))
+- Ask AI: a side panel beside the page instead of a dialog (#59) ([92115d6](https://github.com/yannicschuller/flowplan/commit/92115d66917e417919e90d23f1a894edc5227000))
+- Plain-http instances: styles and scripts load, no password in a URL (#62) ([b2d1510](https://github.com/yannicschuller/flowplan/commit/b2d1510a5499a08006d64b2e8a6fa7a285e953dc))
+- Writing assistant: links existing pages while it writes (#60) ([58d476a](https://github.com/yannicschuller/flowplan/commit/58d476a38dee6c39af0f009f9a64d22c32ebf35a))
+- Notebooks: the pen settings open under the gear, inside the window ([833306e](https://github.com/yannicschuller/flowplan/commit/833306e54d79161815b61184d3c9c98a7ac66a8f))
+- Databases: new records are named after the kind of database ([f5230c5](https://github.com/yannicschuller/flowplan/commit/f5230c51bf2d11a37d0f69f517615165937ba645))
+- Phones: the open drawer stays painted on iOS ([73de0ef](https://github.com/yannicschuller/flowplan/commit/73de0ef9585b284e7de782b5ae95d48b5621573d))
+- Translations: no catalogue in the shared JavaScript ([3c28f0e](https://github.com/yannicschuller/flowplan/commit/3c28f0e1d5fce7b8de656b3bfd7fd1062ffa7e88))
+- Security incidents: their own page with meaning and next steps ([78e707a](https://github.com/yannicschuller/flowplan/commit/78e707a20076f202c2046b10f247351d6b2a9395))
+- Security incidents: details per incident ([d643d7d](https://github.com/yannicschuller/flowplan/commit/d643d7d3df4a46ffd85eea807e72635b52185317))
+- Dependencies: nodemailer 10.2.1, marked 18.1.2, katex 0.19.1, next 16.4.3, isomorphic-git 1.44.6 ([abd8d41](https://github.com/yannicschuller/flowplan/commit/abd8d417682b05e6b9c0ec4d9acaa52268883933))
+
 ## v0.8.0 – 2026-10-30
 
 - README: star history chart ([9dc1fc6](https://github.com/yannicschuller/flowplan/commit/9dc1fc6a9227a30e1aa5baefcc6fb4bcb6908e39))
