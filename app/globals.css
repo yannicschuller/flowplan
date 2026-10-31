@@ -28841,6 +28841,117 @@ label.ws-search input {
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+.security-incident-detail {
+  display: grid;
+  gap: 12px;
+  margin: 4px 0 2px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--surface-2, var(--hover));
+  font-size: 13px;
+}
+.security-reason {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.security-reason svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.security-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+}
+.security-facts dt {
+  color: var(--muted);
+}
+.security-facts dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.security-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.security-chip {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.security-chip.error {
+  border-color: #c2453f;
+  color: #c2453f;
+}
+.security-evidence {
+  display: grid;
+  gap: 8px;
+}
+.security-paths {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.security-paths th,
+.security-paths td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.security-paths .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.security-paths .mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow-wrap: anywhere;
+}
+.security-timeline {
+  display: grid;
+  gap: 6px;
+}
+.security-timeline ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 360px;
+  overflow: auto;
+}
+.security-timeline li {
+  display: grid;
+  grid-template-columns: 3.4em 10px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.security-timeline li time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.security-timeline li span {
+  display: grid;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .security-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .security-facts dd {
+    margin-bottom: 6px;
+  }
+}
 .security-actions {
   display: flex;
   flex-wrap: wrap;

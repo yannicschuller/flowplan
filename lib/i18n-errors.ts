@@ -6,6 +6,8 @@ import { PAGE_LOCALE } from "./locale-tag";
 const exact: Record<string, string> = {
   // Administration → Angriffe & Vorfälle (lib/security-admin.ts).
   "Diese Adresse ist nicht mehr bekannt.": "This address is no longer known.",
+  "Ungültiger Vorfall.": "Invalid incident.",
+  "Vorfall nicht gefunden.": "Incident not found.",
   "Das ist deine eigene Adresse.": "This is your own address.",
   "Bitte ein Netz wie 203.0.113.0/24 oder 2001:db8:1::/48 angeben.": "Please enter a network like 203.0.113.0/24 or 2001:db8:1::/48.",
   "Das ist dein eigenes Netz.": "This is your own network.",

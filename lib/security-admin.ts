@@ -127,6 +127,141 @@ function incidents(now: number) {
   }));
 }
 
+/* ---------- One incident in detail ---------- */
+
+const MINUTE = 60_000;
+// The events a rule looked at: the same address, account or person around
+// the incident's time (the rule's window before the first event).
+function incidentScope(i: { rule: string; key: string; actor_id: string | null; address_key: string; network: string }) {
+  const T = SECURITY_THRESHOLDS;
+  switch (i.rule as SecurityRule) {
+    case "brute_force_account":
+      return { where: "e.subject_key=?", args: [i.key], before: T.window };
+    case "brute_force_address":
+    case "credential_stuffing":
+    case "probing":
+      return i.address_key ? { where: "e.address_key=?", args: [i.address_key], before: T.window } : { where: "e.network=?", args: [i.network], before: T.window };
+    case "injection_attempts":
+      return i.actor_id ? { where: "e.actor_id=?", args: [i.actor_id], before: HOUR } : { where: "e.address_key=?", args: [i.address_key], before: HOUR };
+    case "mass_export":
+      return { where: "e.actor_id=? AND e.kind='data.export'", args: [i.actor_id ?? ""], before: HOUR };
+    case "login_after_failures":
+    case "impossible_travel":
+    case "admin_new_device":
+      return { where: "(e.actor_id=? OR (e.address_key<>'' AND e.address_key=?))", args: [i.actor_id ?? "", i.address_key], before: i.rule === "impossible_travel" ? T.travelWindow : T.window };
+    case "privilege_change":
+      return { where: "(e.actor_id=? OR e.id=?)", args: [i.actor_id ?? "", Number(i.key.replace(/^event:/, "")) || 0], before: 10 * MINUTE };
+  }
+  return { where: "e.address_key=?", args: [i.address_key], before: T.window };
+}
+
+// Why the rule fired, in words, with its thresholds.
+function ruleReason(rule: SecurityRule) {
+  const T = SECURITY_THRESHOLDS;
+  const min = (ms: number) => Math.round(ms / MINUTE);
+  const r: Record<SecurityRule, [string, string]> = {
+    brute_force_account: [`Mindestens ${T.accountFailures} fehlgeschlagene oder abgewiesene Anmeldungen bei demselben Konto innerhalb von ${min(T.window)} Minuten.`, `At least ${T.accountFailures} failed or refused sign-ins on the same account within ${min(T.window)} minutes.`],
+    brute_force_address: [`Mindestens ${T.addressFailures} fehlgeschlagene Anmeldungen von derselben Adresse innerhalb von ${min(T.window)} Minuten.`, `At least ${T.addressFailures} failed sign-ins from the same address within ${min(T.window)} minutes.`],
+    credential_stuffing: [`Von derselben Adresse wurden in ${min(T.window)} Minuten mindestens ${T.stuffingAccounts} verschiedene Konten probiert – typisch für geleakte Passwortlisten.`, `At least ${T.stuffingAccounts} different accounts were tried from the same address within ${min(T.window)} minutes – typical of leaked password lists.`],
+    login_after_failures: [`Eine erfolgreiche Anmeldung direkt nach mindestens ${T.failuresBeforeSuccess} Fehlversuchen beim selben Konto (${min(T.window)} Minuten) – das Passwort könnte erraten worden sein.`, `A successful sign-in right after at least ${T.failuresBeforeSuccess} failures on the same account (${min(T.window)} minutes) – the password may have been guessed.`],
+    admin_new_device: ["Ein Admin hat sich von einem Gerät angemeldet, das in den letzten 90 Tagen nicht benutzt wurde.", "An admin signed in from a device not used in the last 90 days."],
+    impossible_travel: [`Zwei Anmeldungen desselben Kontos aus verschiedenen Ländern innerhalb von ${min(T.travelWindow)} Minuten.`, `Two sign-ins of the same account from different countries within ${min(T.travelWindow)} minutes.`],
+    privilege_change: ["Adminrechte wurden vergeben oder etwas geändert, das bestimmt, wer sich anmelden darf (Verzeichnis, Provisionierung, Wiederherstellung, Erweiterungen, Domains).", "Admin rights were granted or something changed that decides who may sign in (directory, provisioning, restore, extensions, domains)."],
+    mass_export: [`Mindestens ${T.exportsPerHour} Exporte in einer Stunde und ein Vielfaches des Üblichen dieser Person in den letzten 30 Tagen.`, `At least ${T.exportsPerHour} exports in an hour and many times this person's usual amount over the last 30 days.`],
+    probing: [`Mindestens ${T.probes} Anfragen an die API mit der Antwort 401, 403 oder 404 von derselben Adresse innerhalb von ${min(T.probeWindow)} Minuten – jemand probiert Adressen, IDs oder Zugänge durch.`, `At least ${T.probes} API requests answered with 401, 403 or 404 from the same address within ${min(T.probeWindow)} minutes – someone is trying addresses, IDs or access.`],
+    injection_attempts: [`Mindestens ${T.contentAttempts} abgewiesene Versuche in einer Stunde, über Inhalte interne Adressen (SSRF) oder gefährliches Markup einzuschleusen.`, `At least ${T.contentAttempts} refused attempts within an hour to sneak in internal addresses (SSRF) or dangerous markup through content.`],
+  };
+  return r[rule] ?? ["", ""];
+}
+
+export function securityIncident(incidentId: string) {
+  if (!z.string().uuid().safeParse(incidentId).success) throw new HttpError(400, "Ungültiger Vorfall.");
+  const i = one<{
+    id: string;
+    rule: string;
+    key: string;
+    severity: string;
+    actor_id: string | null;
+    name: string | null;
+    email: string | null;
+    network: string;
+    address_key: string;
+    detail: string;
+    first_at: number;
+    last_at: number;
+    count: number;
+    resolved_at: number | null;
+    resolver: string | null;
+    evidence: string;
+  }>(
+    `SELECT i.*,u.name,u.email,r.name resolver FROM security_incidents i LEFT JOIN users u ON u.id=i.actor_id LEFT JOIN users r ON r.id=i.resolved_by WHERE i.id=?`,
+    incidentId,
+  );
+  if (!i) throw new HttpError(404, "Vorfall nicht gefunden.");
+  const scope = incidentScope(i);
+  const from = i.first_at - scope.before,
+    to = i.last_at + MINUTE;
+  const where = `${scope.where} AND e.at>=? AND e.at<=?`;
+  const args = [...scope.args, from, to];
+  const LIMIT = 200;
+  const rows = all<EventRow>(
+    `SELECT e.*,u.name,u.email FROM security_events e LEFT JOIN users u ON u.id=e.actor_id WHERE ${where} ORDER BY e.at DESC,e.id DESC LIMIT ?`,
+    ...args,
+    LIMIT,
+  );
+  const total = count(`SELECT COUNT(*) n FROM security_events e WHERE ${where}`, ...args);
+  const group = (column: "kind" | "subject" | "network" | "country" | "device", extra = "") =>
+    all<{ value: string; n: number }>(
+      `SELECT e.${column} value,COUNT(*) n FROM security_events e WHERE ${where}${extra} AND e.${column}<>'' GROUP BY e.${column} ORDER BY n DESC LIMIT 20`,
+      ...args,
+    );
+  const successes = all<{ subject: string; name: string | null; email: string | null; n: number }>(
+    `SELECT e.subject,u.name,u.email,COUNT(*) n FROM security_events e LEFT JOIN users u ON u.id=e.actor_id WHERE ${where} AND e.kind='login.success' GROUP BY e.actor_id ORDER BY n DESC LIMIT 20`,
+    ...args,
+  );
+  const blocked = all<{ kind: string; label: string; until: number | null }>(
+    "SELECT kind,label,until FROM security_blocks WHERE ((kind='address' AND value=?) OR (kind='network' AND value=?)) AND (until IS NULL OR until>?)",
+    i.address_key,
+    i.network,
+    Date.now(),
+  );
+  let evidence: unknown = null;
+  try {
+    evidence = i.evidence ? JSON.parse(i.evidence) : null;
+  } catch {}
+  const [de, en] = ruleReason(i.rule as SecurityRule);
+  return {
+    id: i.id,
+    rule: i.rule,
+    reason: { de, en },
+    window: { from, to },
+    total,
+    kinds: group("kind"),
+    // Accounts someone failed to sign in to (not the successful sign-ins).
+    accounts: group("subject", " AND e.kind IN ('login.failure','login.refused')"),
+    networks: group("network"),
+    countries: group("country"),
+    devices: group("device"),
+    successes: successes.map((x) => ({ who: x.name || x.email || x.subject, n: x.n })),
+    blocked,
+    evidence: evidence as { since: number; until: number; statuses: Record<string, number>; paths: { path: string; status: number; count: number }[] } | null,
+    events: rows.map((e) => ({
+      id: e.id,
+      at: e.at,
+      kind: e.kind,
+      severity: e.severity,
+      actor: e.actor_id ? { id: e.actor_id, name: e.name || "", email: e.email || "" } : null,
+      subject: e.subject,
+      network: e.network,
+      address: e.address_key ? e.address_key.slice(0, 12) : "",
+      country: e.country,
+      device: e.device,
+      detail: e.detail,
+    })),
+    more: Math.max(0, total - rows.length),
+  };
+}
+
 // Failed sign-ins of the last 24 hours by address: who is trying.
 function topAddresses(now: number) {
   const blocked = blockList(now);

@@ -8,7 +8,7 @@
 // variables are not needed for normal instances.
 import { all, id, one, run } from "./db";
 import { securityRules, type SecurityRule } from "./security-kinds";
-import type { SecurityEvent } from "./security-events";
+import { addressHash, type SecurityEvent } from "./security-events";
 
 const MINUTE = 60_000,
   HOUR = 60 * MINUTE,
@@ -48,7 +48,7 @@ export function detectSecurity(e: SecurityEvent) {
     case "data.export":
       return exports(e);
     case "request.probing":
-      return openIncident("probing", e.addressKey || e.network, e, e.detail);
+      return openIncident("probing", e.addressKey || e.network, e, e.detail, takeProbeEvidence(e.addressKey));
     case "blocked.ssrf":
     case "blocked.content":
       return attempts(e);
@@ -147,7 +147,13 @@ function attempts(e: SecurityEvent) {
 
 /* ---------- Incidents ---------- */
 
-export function openIncident(rule: SecurityRule, key: string, e: Pick<SecurityEvent, "at" | "actorId" | "network" | "addressKey">, detail: string) {
+export function openIncident(
+  rule: SecurityRule,
+  key: string,
+  e: Pick<SecurityEvent, "at" | "actorId" | "network" | "addressKey">,
+  detail: string,
+  evidence?: ProbeEvidence | null,
+) {
   const open = one<{ id: string }>(
     "SELECT id FROM security_incidents WHERE rule=? AND key=? AND resolved_at IS NULL AND last_at>=?",
     rule,
@@ -156,11 +162,12 @@ export function openIncident(rule: SecurityRule, key: string, e: Pick<SecurityEv
   );
   if (open) {
     run("UPDATE security_incidents SET count=count+1,last_at=?,detail=? WHERE id=?", e.at, detail.slice(0, 500), open.id);
+    if (evidence) mergeEvidence(open.id, evidence);
     return open.id;
   }
   const incident = id();
   run(
-    "INSERT INTO security_incidents(id,rule,key,severity,actor_id,network,address_key,detail,first_at,last_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO security_incidents(id,rule,key,severity,actor_id,network,address_key,detail,first_at,last_at,evidence) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
     incident,
     rule,
     key,
@@ -171,6 +178,7 @@ export function openIncident(rule: SecurityRule, key: string, e: Pick<SecurityEv
     detail.slice(0, 500),
     e.at,
     e.at,
+    evidence ? JSON.stringify(evidence) : "",
   );
   void report(rule, detail, e.at);
   return incident;
@@ -213,7 +221,71 @@ async function dispatch() {
 
 /* ---------- Probing: refused requests per address ---------- */
 
-const probes = new Map<string, { since: number; count: number; reported: boolean; sample: string }>();
+// What probing asked for: the refused paths (IDs replaced by ":id") with
+// their answers, kept with the incident.
+export type ProbeEvidence = {
+  since: number;
+  until: number;
+  statuses: Record<string, number>;
+  paths: { path: string; status: number; count: number }[];
+};
+const MAX_PATHS = 40;
+const pathShape = (path: string) =>
+  path
+    .split("?")[0]
+    .slice(0, 120)
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ":id")
+    .replace(/\/\d+(?=\/|$)/g, "/:n")
+    .replace(/\/[A-Za-z0-9_-]{20,}(?=\/|$)/g, "/:token");
+
+type Probe = { since: number; last: number; count: number; reported: boolean; sample: string; statuses: Map<number, number>; paths: Map<string, number> };
+const probes = new Map<string, Probe>();
+// Evidence waiting for its incident, by address key (the event is written
+// asynchronously; detectSecurity picks it up).
+const probeEvidence = new Map<string, ProbeEvidence>();
+
+function evidenceOf(p: Probe): ProbeEvidence {
+  return {
+    since: p.since,
+    until: p.last,
+    statuses: Object.fromEntries([...p.statuses].map(([k, v]) => [String(k), v])),
+    paths: [...p.paths]
+      .map(([k, count]) => {
+        const [status, ...rest] = k.split(" ");
+        return { path: rest.join(" "), status: Number(status), count };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, MAX_PATHS),
+  };
+}
+function takeProbeEvidence(addressKey: string) {
+  const ev = probeEvidence.get(addressKey) ?? null;
+  probeEvidence.delete(addressKey);
+  return ev;
+}
+function mergeEvidence(incidentId: string, add: ProbeEvidence) {
+  let old: ProbeEvidence | null = null;
+  try {
+    old = JSON.parse(one<{ evidence: string }>("SELECT evidence FROM security_incidents WHERE id=?", incidentId)?.evidence || "null");
+  } catch {}
+  if (!old) return run("UPDATE security_incidents SET evidence=? WHERE id=?", JSON.stringify(add), incidentId);
+  const statuses = { ...old.statuses };
+  for (const [k, v] of Object.entries(add.statuses)) statuses[k] = (statuses[k] ?? 0) + v;
+  const paths = new Map(old.paths.map((p) => [`${p.status} ${p.path}`, p]));
+  for (const p of add.paths) {
+    const k = `${p.status} ${p.path}`;
+    const known = paths.get(k);
+    paths.set(k, known ? { ...known, count: known.count + p.count } : p);
+  }
+  const merged: ProbeEvidence = {
+    since: Math.min(old.since, add.since),
+    until: Math.max(old.until, add.until),
+    statuses,
+    paths: [...paths.values()].sort((a, b) => b.count - a.count).slice(0, MAX_PATHS),
+  };
+  run("UPDATE security_incidents SET evidence=? WHERE id=?", JSON.stringify(merged), incidentId);
+}
+
 // Called for every answered request (lib/request-metrics.ts): many 401, 403
 // and 404 answers of the API from one address in ten minutes are recorded
 // as one event, which opens an incident.
@@ -222,13 +294,19 @@ export function noteRefusal(address: string, status: number, path: string, now =
   let entry = probes.get(address);
   if (!entry || now - entry.since > T.probeWindow) {
     if (probes.size > 10_000) probes.clear();
-    entry = { since: now, count: 0, reported: false, sample: "" };
+    entry = { since: now, last: now, count: 0, reported: false, sample: "", statuses: new Map(), paths: new Map() };
     probes.set(address, entry);
   }
   entry.count += 1;
+  entry.last = now;
+  entry.statuses.set(status, (entry.statuses.get(status) ?? 0) + 1);
+  const shape = `${status} ${pathShape(path)}`;
+  if (entry.paths.has(shape) || entry.paths.size < 200) entry.paths.set(shape, (entry.paths.get(shape) ?? 0) + 1);
   if (!entry.sample) entry.sample = `${status} ${path.split("?")[0].slice(0, 80)}`;
   if (entry.count < T.probes || entry.reported) return;
   entry.reported = true;
+  if (probeEvidence.size > 1000) probeEvidence.clear();
+  probeEvidence.set(addressHash(address), evidenceOf(entry));
   record?.(`${entry.count} × 401/403/404, z. B. ${entry.sample}`);
 }
 

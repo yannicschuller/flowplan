@@ -1,12 +1,13 @@
 // Administration → Sicherheit (lib/security-admin.ts): the summary, more
-// events (`?events=1&severity=&kind=&before=`), the export (`?export=csv|json`)
+// events (`?events=1&severity=&kind=&before=`), one incident with its events
+// (`?incident=<id>`), the export (`?export=csv|json`)
 // and the actions (POST). Administrators in the browser only; API tokens
 // never.
 import { z } from "zod";
 import { checkOrigin, HttpError, requireUser } from "@/lib/auth";
 import { withRequestLocale } from "@/lib/content-locale";
 import { requireOpsAdmin } from "@/lib/admin-ops";
-import { securityAction, securityEvents, securityExport, securityOverview } from "@/lib/security-admin";
+import { securityAction, securityEvents, securityExport, securityIncident, securityOverview } from "@/lib/security-admin";
 import { securityEvent } from "@/lib/security-events";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,8 @@ export const GET = withRequestLocale(async (req: Request) => {
         },
       });
     }
+    const incident = params.get("incident");
+    if (incident) return Response.json(securityIncident(incident), noStore);
     if (params.get("events")) return Response.json(securityEvents(Object.fromEntries(params)), noStore);
     return Response.json(securityOverview(), noStore);
   } catch (e) {

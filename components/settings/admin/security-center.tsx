@@ -5,9 +5,9 @@
 // events, signed-in people, open ways in (API tokens, share links, public
 // pages), blocked addresses and how the events leave the instance.
 // Anchors: #admin/threats/<incidents|addresses|events|sessions|access|blocks|setup>.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { CheckCircle, DownloadSimple, Info, ShieldCheck, ShieldWarning, WarningCircle } from "@phosphor-icons/react";
-import type { securityOverview, securityEvents } from "@/lib/security-admin";
+import type { securityIncident, securityOverview, securityEvents } from "@/lib/security-admin";
 import { securityKinds, securityRules, type SecurityKind, type SecurityRule } from "@/lib/security-kinds";
 import { useT } from "../../i18n";
 import { api } from "../../ui";
@@ -24,6 +24,7 @@ type Overview = ReturnType<typeof securityOverview>;
 type EventPage = ReturnType<typeof securityEvents>;
 type SecurityEventRow = EventPage["events"][number];
 type Incident = Overview["incidents"][number];
+type IncidentDetailData = ReturnType<typeof securityIncident>;
 type T = (de: string, en: string) => string;
 
 const URL = "/api/admin/security";
@@ -207,6 +208,7 @@ function Incidents({ d, act, busy }: { d: Overview; act: Act; busy: boolean }) {
 
 function IncidentItem({ i, act, busy }: { i: Incident; act: Act; busy: boolean }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
   return (
     <li className={`security-incident ${i.resolvedAt ? "resolved" : i.severity}`}>
       <div className="security-incident-head">
@@ -224,7 +226,11 @@ function IncidentItem({ i, act, busy }: { i: Incident; act: Act; busy: boolean }
           {i.resolvedAt && ` · ${t("erledigt", "resolved")}${i.resolvedBy ? ` ${t("von", "by")} ${i.resolvedBy}` : ""}`}
         </small>
       </p>
+      {open && <IncidentDetail i={i} />}
       <div className="security-actions">
+        <button type="button" className="text-button" aria-expanded={open} aria-controls={`incident-${i.id}`} onClick={() => setOpen(!open)}>
+          {open ? t("Details ausblenden", "Hide details") : t("Details", "Details")}
+        </button>
         {i.resolvedAt ? (
           <button type="button" className="text-button" disabled={busy} onClick={() => void act({ action: "incident.reopen", id: i.id })}>
             {t("Wieder öffnen", "Reopen")}
@@ -257,6 +263,169 @@ function IncidentItem({ i, act, busy }: { i: Incident; act: Act; busy: boolean }
         )}
       </div>
     </li>
+  );
+}
+
+const duration = (ms: number, t: T) => {
+  const m = Math.round(ms / 60_000);
+  if (m < 1) return t("unter 1 Min.", "under 1 min");
+  if (m < 120) return t(`${m} Min.`, `${m} min`);
+  const h = Math.round(m / 60);
+  return h < 48 ? t(`${h} Std.`, `${h} h`) : t(`${Math.round(h / 24)} Tage`, `${Math.round(h / 24)} days`);
+};
+
+// Counted values as small chips ("alice@… × 12").
+function Counts({ label, rows, tone: chipTone }: { label: string; rows: { value: string; n: number }[]; tone?: "error" }) {
+  if (!rows.length) return null;
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd className="security-chips">
+        {rows.map((r) => (
+          <span key={r.value} className={`security-chip${chipTone ? ` ${chipTone}` : ""}`}>
+            {r.value}
+            {r.n > 1 && <span className="muted"> × {num(r.n)}</span>}
+          </span>
+        ))}
+      </dd>
+    </>
+  );
+}
+
+// What lies behind an incident: why the rule fired, everything involved and
+// the events themselves (/api/admin/security?incident=<id>).
+function IncidentDetail({ i }: { i: Incident }) {
+  const t = useT();
+  const [d, setD] = useState<IncidentDetailData | null>(null);
+  const [error, setError] = useState("");
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    api<IncidentDetailData>(`${URL}?incident=${encodeURIComponent(i.id)}`).then(
+      (x) => alive && setD(x),
+      (e) => alive && setError((e as Error).message),
+    );
+    return () => {
+      alive = false;
+    };
+    // Reloads when the incident counts on.
+  }, [i.id, i.count, i.lastAt]);
+  if (error) return <p className="security-incident-detail muted" id={`incident-${i.id}`}>{error}</p>;
+  if (!d)
+    return (
+      <p className="security-incident-detail muted" id={`incident-${i.id}`} aria-busy="true">
+        {t("Details werden geladen …", "Loading details …")}
+      </p>
+    );
+  const events = all ? d.events : d.events.slice(0, 25);
+  const statuses = d.evidence ? Object.entries(d.evidence.statuses).sort((a, b) => b[1] - a[1]) : [];
+  return (
+    <div className="security-incident-detail" id={`incident-${i.id}`}>
+      <p className="security-reason">
+        <Info size={16} aria-hidden />
+        <span>{t(d.reason.de, d.reason.en)}</span>
+      </p>
+      <dl className="security-facts">
+        <dt>{t("Zeitraum", "Period")}</dt>
+        <dd>
+          {dateTime(i.firstAt)}
+          {i.lastAt > i.firstAt &&
+            ` – ${new Date(i.lastAt).toDateString() === new Date(i.firstAt).toDateString() ? clock(i.lastAt) : dateTime(i.lastAt)} (${duration(i.lastAt - i.firstAt, t)})`}
+        </dd>
+        <dt>{t("Ereignisse", "Events")}</dt>
+        <dd>
+          {t(`${num(d.total)} im Zeitraum der Regel`, `${num(d.total)} in the rule's window`)}
+          {i.count > 1 && t(` · Regel ${num(i.count)}× ausgelöst`, ` · rule fired ${num(i.count)}×`)}
+        </dd>
+        {(i.network || i.address) && (
+          <>
+            <dt>{t("Herkunft", "Origin")}</dt>
+            <dd>
+              {[i.network, i.address && t(`Adresse ${i.address.slice(0, 6)}…`, `address ${i.address.slice(0, 6)}…`)].filter(Boolean).join(" · ")}
+              {d.blocked.length ? (
+                <StatusBadge tone="ok">{d.blocked.map((b) => (b.kind === "network" ? t("Netz gesperrt", "network blocked") : t("Adresse gesperrt", "address blocked"))).join(", ")}</StatusBadge>
+              ) : (
+                <span className="muted"> · {t("nicht gesperrt", "not blocked")}</span>
+              )}
+            </dd>
+          </>
+        )}
+        {i.actor && (
+          <>
+            <dt>{t("Person", "Person")}</dt>
+            <dd>{[i.actor.name, i.actor.email].filter(Boolean).join(" · ")}</dd>
+          </>
+        )}
+        <Counts label={t("Probierte Konten", "Accounts tried")} rows={d.accounts} />
+        {d.successes.length > 0 && (
+          <Counts
+            label={t("Erfolgreich angemeldet", "Signed in successfully")}
+            rows={d.successes.map((x) => ({ value: x.who, n: x.n }))}
+            tone={["brute_force_account", "brute_force_address", "credential_stuffing", "login_after_failures"].includes(d.rule) ? "error" : undefined}
+          />
+        )}
+        <Counts label={t("Netze", "Networks")} rows={d.networks.length > 1 ? d.networks : []} />
+        <Counts label={t("Länder", "Countries")} rows={d.countries} />
+        <Counts label={t("Geräte", "Devices")} rows={d.devices} />
+        <Counts label={t("Arten", "Kinds")} rows={d.kinds.map((k) => ({ value: kindTitle(k.value, t), n: k.n }))} />
+      </dl>
+      {d.evidence && d.evidence.paths.length > 0 && (
+        <div className="security-evidence">
+          <strong>{t("Abgefragte Pfade", "Requested paths")}</strong>
+          <span className="security-chips">
+            {statuses.map(([status, n]) => (
+              <span key={status} className="security-chip">
+                {status} <span className="muted">× {num(n)}</span>
+              </span>
+            ))}
+          </span>
+          <table className="security-paths">
+            <thead>
+              <tr>
+                <th scope="col">{t("Antwort", "Answer")}</th>
+                <th scope="col">{t("Pfad", "Path")}</th>
+                <th scope="col" className="num">{t("Anzahl", "Count")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.evidence.paths.map((p) => (
+                <tr key={`${p.status} ${p.path}`}>
+                  <td>{p.status}</td>
+                  <td className="mono">{p.path}</td>
+                  <td className="num">{num(p.count)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <small className="muted">{t("IDs und Tokens in Pfaden sind durch :id, :n und :token ersetzt.", "IDs and tokens in paths are replaced by :id, :n and :token.")}</small>
+        </div>
+      )}
+      <div className="security-timeline">
+        <strong>{t("Verlauf", "Timeline")}</strong>
+        {d.events.length ? (
+          <ol>
+            {events.map((e) => (
+              <li key={e.id}>
+                <time dateTime={new Date(e.at).toISOString()}>{clock(e.at)}</time>
+                <i className={`security-dot ${e.severity}`} aria-label={e.severity} />
+                <span>
+                  <b>{kindTitle(e.kind, t)}</b>
+                  <small className="muted">{[person(e.actor) || e.subject, e.network, e.country, e.device, e.detail].filter(Boolean).join(" · ")}</small>
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="muted">{t("Die Ereignisse dazu sind nicht mehr gespeichert (Aufbewahrungsdauer).", "Its events are no longer stored (retention).")}</p>
+        )}
+        {d.events.length > events.length && (
+          <button type="button" className="text-button" onClick={() => setAll(true)}>
+            {t(`Alle ${num(d.events.length)} zeigen`, `Show all ${num(d.events.length)}`)}
+          </button>
+        )}
+        {all && d.more > 0 && <small className="muted">{t(`${num(d.more)} ältere nicht angezeigt – siehe Ereignisse oder Export.`, `${num(d.more)} older not shown – see events or the export.`)}</small>}
+      </div>
+    </div>
   );
 }
 

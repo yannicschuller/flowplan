@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 77) return;
+  if (globalDb.flowplanSchema === 78) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -979,7 +979,11 @@ function migrate(d: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS security_incidents_rule ON security_incidents(rule,key,resolved_at);
     CREATE INDEX IF NOT EXISTS security_incidents_last ON security_incidents(last_at);
     CREATE TABLE IF NOT EXISTS security_blocks(id TEXT PRIMARY KEY,kind TEXT NOT NULL,value TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',reason TEXT NOT NULL DEFAULT '',created_by TEXT,created_at INTEGER NOT NULL,until INTEGER,UNIQUE(kind,value));`);
-  globalDb.flowplanSchema = 77;
+  // Schema 78 – what a detection rule saw beyond its events (JSON), e.g. the
+  // refused paths of probing.
+  const incidentColumns = d.prepare("PRAGMA table_info(security_incidents)").all() as { name: string }[];
+  if (!incidentColumns.some((c) => c.name === "evidence")) d.exec("ALTER TABLE security_incidents ADD COLUMN evidence TEXT NOT NULL DEFAULT ''");
+  globalDb.flowplanSchema = 78;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

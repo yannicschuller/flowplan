@@ -9,7 +9,7 @@ process.env.FLOWPLAN_TRUSTED_PROXIES = "1";
 const { run, id, all, one, audit } = await import("../lib/db");
 const events = await import("../lib/security-events");
 const { noteRefusal, SECURITY_THRESHOLDS } = await import("../lib/security-detect");
-const { securityAction, securityOverview, securityExport } = await import("../lib/security-admin");
+const { securityAction, securityOverview, securityExport, securityIncident } = await import("../lib/security-admin");
 const { failed, limited } = await import("../lib/local-auth");
 
 // Events are written right after the current synchronous work.
@@ -148,6 +148,49 @@ test("probing: many refused API requests from one address make one event", () =>
   noteRefusal("192.0.2.98", 404, "/page", 1_000_100, (d) => recorded.push(d));
   assert.equal(recorded.length, 1);
   assert.match(recorded[0], /404 \/api\/pages\/0/);
+});
+
+test("probing keeps the refused paths with their answers on the incident", async () => {
+  reset();
+  const uuid = "5aa9f3fa-1912-4c2b-9e8a-0123456789ab";
+  for (let i = 0; i < SECURITY_THRESHOLDS.probes; i++) {
+    const [status, path] = i % 3 === 0 ? [401, "/api/bootstrap"] : i % 3 === 1 ? [404, `/api/pages/${uuid.slice(0, -2)}${String(i).padStart(2, "0")}`] : [403, `/api/admin/users/${i}`];
+    noteRefusal("198.51.100.77", status, path, 2_000_000 + i, (detail) =>
+      events.securityEvent("request.probing", { headers: headersFrom("198.51.100.77"), detail }),
+    );
+  }
+  await settle();
+  const incident = one<{ id: string }>("SELECT id FROM security_incidents WHERE rule='probing'");
+  assert.ok(incident);
+  const d = securityIncident(incident.id);
+  assert.deepEqual(d.evidence?.statuses, { "401": 20, "404": 20, "403": 20 });
+  assert.deepEqual(
+    d.evidence?.paths.map((p) => `${p.status} ${p.path} ${p.count}`).sort(),
+    ["401 /api/bootstrap 20", "403 /api/admin/users/:n 20", "404 /api/pages/:id 20"],
+  );
+  assert.match(d.reason.de, /401, 403 oder 404/);
+  assert.equal(d.events[0].kind, "request.probing");
+  assert.deepEqual(d.networks.map((n) => n.value), ["198.51.100.0/24"]);
+  assert.throws(() => securityIncident("nope"), /Ungültiger Vorfall/);
+});
+
+test("an incident shows the accounts tried, the successful sign-in and its events", async () => {
+  reset();
+  const carla = person("Carla");
+  for (let i = 0; i < SECURITY_THRESHOLDS.accountFailures; i++) failed(["ip:203.0.113.20", "email:carla@example.test"]);
+  await settle();
+  events.securityEvent("login.success", { actorId: carla.id, subject: "carla@example.test", headers: headersFrom("203.0.113.20") });
+  await settle();
+  const guessing = one<{ id: string }>("SELECT id FROM security_incidents WHERE rule='brute_force_account'");
+  assert.ok(guessing);
+  const d = securityIncident(guessing.id);
+  assert.equal(d.total, SECURITY_THRESHOLDS.accountFailures + 1);
+  assert.equal(d.accounts.length, 1);
+  assert.equal(d.accounts[0].n, SECURITY_THRESHOLDS.accountFailures);
+  assert.deepEqual(d.successes, [{ who: "Carla", n: 1 }]);
+  assert.equal(d.events[0].kind, "login.success");
+  assert.ok(d.kinds.some((k) => k.value === "login.failure" && k.n === SECURITY_THRESHOLDS.accountFailures));
+  assert.equal(d.blocked.length, 0);
 });
 
 test("dangerous HTML is recognised", () => {
