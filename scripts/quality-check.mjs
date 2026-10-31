@@ -24,10 +24,12 @@ import { hasBuild, seedAccount, startProductionServer } from "./production-serve
 // pages and a section, 2026-10-22): 1573.9 KB; the start page (2026-10-25)
 // 1652.4 KB, its editor (about 10 KB) loads only when customizing. LCP on localhost: sign-in 140–280 ms,
 // database 250–500 ms, document 1.0–1.7 s. The JS budgets are about 10 %
-// above the measured values.
+// above the measured values. Since the French catalogue left the shared
+// JavaScript (2026-10-31, lib/i18n-catalogs.ts) sign-in and registration
+// measure 262.1 KB, the signed-in pages about 170 KB less than before.
 const PAGES = [
-  { path: "/login", jsKb: 410 },
-  { path: "/register", jsKb: 410 },
+  { path: "/login", jsKb: 290 },
+  { path: "/register", jsKb: 290 },
   { path: (ids) => `/#page=${ids.documentId}`, name: "document", signedIn: true, jsKb: 2220 },
   { path: (ids) => `/#page=${ids.databaseId}`, name: "database", signedIn: true, jsKb: 1690 },
   // The landing pages of the settings and the administration (tiles), and a
@@ -43,7 +45,7 @@ const PAGES = [
   // The push relay's state (components/settings/admin/push.tsx).
   { path: "/#admin/push", name: "push status", signedIn: true, jsKb: 1730, ready: "#relay" },
 ];
-const BUDGET = { jsKb: 410, lcpMs: 2500 };
+const BUDGET = { jsKb: 290, lcpMs: 2500 };
 const LOCALE = "de-DE";
 // --------------------------------------------------------------------------
 

@@ -9,6 +9,7 @@ import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";
 import { siteUrl } from "@/lib/seo";
 import { LocaleProvider } from "@/components/i18n";
+import { catalogScript } from "@/lib/i18n-catalogs-server";
 import { PdfViewerHost } from "@/components/pdf-viewer";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
@@ -64,11 +65,15 @@ export default async function RootLayout({
   const locale = await requestLocale();
   // The page's own scripts carry the nonce of the Content Security Policy (proxy.ts).
   const nonce = (await headers()).get("x-nonce") || undefined;
+  const catalog = catalogScript(locale);
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
         {/* Light or dark before the first paint (lib/theme.ts). */}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* The catalogue of a language beyond German and English, before the
+            app (lib/i18n-catalogs.ts) – only on such pages. */}
+        {catalog && <script nonce={nonce} src={`/i18n/${locale}?v=${catalog.version}`} />}
         <link
           rel="preload"
           href="/fonts/instrument-sans-latin-standard-normal.woff2"

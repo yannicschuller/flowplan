@@ -4,6 +4,12 @@
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
+import { isMainThread } from "node:worker_threads";
+
+// The server's language catalogues (instrumentation.ts registers them in the
+// app) – in the test itself, not in worker threads (OCR), which load this
+// file without the TypeScript loader.
+if (isMainThread) await import("../../lib/i18n-catalogs-server.ts");
 
 process.on("exit", () => {
   const dir = process.env.FLOWPLAN_DATA_DIR;

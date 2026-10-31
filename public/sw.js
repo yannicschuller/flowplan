@@ -61,6 +61,7 @@ function offlineKind(request, url) {
   if (request.mode === "navigate") return url.pathname === "/" ? "data" : null;
   if (
     url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/i18n/") ||
     url.pathname.startsWith("/icons/") ||
     url.pathname === "/fonts.css" ||
     url.pathname.startsWith("/fonts/")

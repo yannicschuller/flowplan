@@ -4,11 +4,20 @@
 // numbered placeholders – "Group {0}" – and are matched as patterns, so
 // t(`Gruppe ${name}`, `Group ${name}`) needs no change in the code. An
 // empty or missing translation shows the English text.
-import fr from "../locales/fr.json" with { type: "json" };
+//
+// The catalogues are not part of the shared JavaScript: the server registers
+// them at start (lib/i18n-catalogs-server.ts, instrumentation.ts) and a page
+// in such a language loads only its own one as /i18n/<code> before the app
+// (app/layout.tsx), so German and English pages carry none of them.
+export type Catalog = Record<string, string>;
+// One registry per process or page, whichever bundle reads it.
+const store = globalThis as unknown as { flowplanCatalogs?: Record<string, Catalog> };
+const catalogs = (store.flowplanCatalogs ??= {});
 
-type Catalog = Record<string, string>;
-// Register a new language here and in LANGUAGES (lib/i18n.ts).
-const catalogs: Record<string, Catalog> = { fr };
+export function registerCatalog(locale: string, catalog: Catalog) {
+  catalogs[locale] = catalog;
+  compiled.delete(locale);
+}
 
 type Pattern = { regex: RegExp; translation: string; strict: boolean };
 const compiled = new Map<string, { patterns: Pattern[]; cache: Map<string, string> }>();

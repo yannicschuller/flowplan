@@ -3,6 +3,8 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
+    // Catalogues of further languages for server-side texts (lib/i18n-catalogs.ts).
+    await import("./lib/i18n-catalogs-server");
     const { startPushWorker, dispatchPush } = await import("./lib/push");
     startPushWorker();
     const { startReminderWorker } = await import("./lib/date-reminders");
