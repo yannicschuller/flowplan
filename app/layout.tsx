@@ -14,6 +14,8 @@ import { PdfViewerHost } from "@/components/pdf-viewer";
 import { ClipboardFallback } from "@/components/clipboard-fallback";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
+import { runningBuild } from "@/lib/offline-assets-server";
+import { BUILD_META, selfHealScript } from "@/lib/stale-copy";
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await requestLocale();
   const say = translate(locale);
@@ -67,9 +69,14 @@ export default async function RootLayout({
   // The page's own scripts carry the nonce of the Content Security Policy (proxy.ts).
   const nonce = (await headers()).get("x-nonce") || undefined;
   const catalog = catalogScript(locale);
+  const build = runningBuild();
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
+        {/* The build this page belongs to, and what the page does when its
+            files are gone – an outdated stored copy (lib/stale-copy.ts, #61). */}
+        <meta name={BUILD_META} content={build} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: selfHealScript(build) }} />
         {/* Light or dark before the first paint (lib/theme.ts). */}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         {/* The catalogue of a language beyond German and English, before the

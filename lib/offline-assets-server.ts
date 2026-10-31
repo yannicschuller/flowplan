@@ -104,3 +104,9 @@ export function offlineAssets(): OfflineAssets {
   if (process.env.NODE_ENV === "production" && result.files.length) cached = result;
   return result;
 }
+
+// The running build's id (#61): what proxy.ts names in every answer and
+// app/layout.tsx in every page, so a stored copy of an older build can be
+// told from the live one. The same id names the copy's cache of the app's
+// files (flowplan-static-<build>).
+export const runningBuild = () => offlineAssets().build;

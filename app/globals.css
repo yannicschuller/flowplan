@@ -1,4 +1,6 @@
 :root {
+  /* The app's styles arrived (the check in lib/stale-copy.ts, #61). */
+  --flowplan-styles: 1;
   /* Paper and ink: warm neutrals, one confident ultramarine accent. */
   --bg: #fcfbf8;
   --surface: #f6f4ef;

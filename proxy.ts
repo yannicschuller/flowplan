@@ -6,6 +6,7 @@ import {
   type HostState,
 } from "./lib/custom-domain-routing";
 import { upgradeInsecureRequests } from "./lib/instance-https";
+import { BUILD_HEADER } from "./lib/stale-copy";
 
 // Content Security Policy for every page. Scripts run only with the nonce
 // of this request (Next.js adds it to its own scripts), so an injected
@@ -97,6 +98,24 @@ const servedOverHttps = (request: NextRequest) =>
 const prefetch = (request: NextRequest) =>
   request.headers.has("next-router-prefetch") || request.headers.get("purpose") === "prefetch";
 
+// The running build (Next's BUILD_ID, lib/offline-assets-server.ts) in
+// every answer that passes here, pages and API alike: stored copies of the
+// app compare it with the build they belong to (#61, lib/stale-copy.ts).
+// The pages carry the id anyway, so it tells a visitor nothing new.
+let build: string | null = null;
+async function withBuild(response: NextResponse) {
+  if (build === null) {
+    try {
+      const { runningBuild } = await import("./lib/offline-assets-server");
+      build = runningBuild();
+    } catch {
+      build = "";
+    }
+  }
+  if (build) response.headers.set(BUILD_HEADER, build);
+  return response;
+}
+
 // Addresses and networks the administrators blocked (Administration →
 // Sicherheit, lib/security-events.ts) get nothing but a short refusal.
 async function blocked(request: NextRequest) {
@@ -120,10 +139,10 @@ export async function proxy(request: NextRequest) {
   // The custom domain marker is set here only; nobody brings their own.
   const forged = request.headers.has(CUSTOM_HOST_HEADER);
   const pass = () => {
-    if (!forged) return NextResponse.next();
+    if (!forged) return withBuild(NextResponse.next());
     const headers = new Headers(request.headers);
     headers.delete(CUSTOM_HOST_HEADER);
-    return NextResponse.next({ request: { headers } });
+    return withBuild(NextResponse.next({ request: { headers } }));
   };
   // CalDAV speaks PROPFIND and REPORT, which route handlers do not accept.
   if (path.startsWith("/api/caldav") || path.startsWith("/.well-known/caldav")) {
@@ -147,7 +166,7 @@ export async function proxy(request: NextRequest) {
   headers.set("Content-Security-Policy", policy);
   const response = NextResponse.next({ request: { headers } });
   response.headers.set("Content-Security-Policy", policy);
-  return response;
+  return withBuild(response);
 }
 
 async function customHostResponse(request: NextRequest, state: HostState, host: string) {

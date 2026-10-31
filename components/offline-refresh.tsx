@@ -5,6 +5,7 @@
 // server what changed and fetches only that (components/offline.ts).
 import { useEffect, useRef, useState } from "react";
 import { LOCALE_TAG } from "@/lib/locale-tag";
+import { BUILD_META } from "@/lib/stale-copy";
 import { useT } from "./i18n";
 import {
   OFFLINE_CHANGED,
@@ -53,9 +54,12 @@ export function useOfflineRefresh(userId: string, online: boolean, quiet: boolea
       }
     };
     load();
-    // After the first render, so the start stays fast.
+    // After the first render, so the start stays fast – right away when the
+    // copy belongs to another build than this page (an update, #61): its
+    // page and files are stored again before they are needed offline.
     const start = setTimeout(() => {
-      void run(5 * MINUTE);
+      const build = document.querySelector<HTMLMetaElement>(`meta[name="${BUILD_META}"]`)?.content;
+      void offlineMarker().then((current) => run(build && current?.app?.build && current.app.build !== build ? 0 : 5 * MINUTE));
       void registerPeriodicSync();
     }, 3000);
     const back = () => void run(0);

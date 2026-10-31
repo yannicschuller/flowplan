@@ -8,6 +8,7 @@ import { createElement, useCallback, useEffect, useState, type ComponentType, ty
 import { catchError, type ErrorInfo } from "next/error";
 import { CloudSlash, WarningCircle } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { STALE_CHUNK_EVENT } from "@/lib/stale-copy";
 
 const online = () => typeof navigator === "undefined" || navigator.onLine !== false;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,7 +59,12 @@ export function loadView<M extends { default: ComponentType<never> }>(load: () =
       await wait(500);
       try {
         return await load();
-      } catch {}
+      } catch {
+        // Online and still missing: perhaps the page is of an older build
+        // than the server's – the page's check (lib/stale-copy.ts) loads
+        // the live one then.
+        window.dispatchEvent(new Event(STALE_CHUNK_EVENT));
+      }
     }
     type Props = M["default"] extends ComponentType<infer P> ? P : never;
     let loaded: ComponentType<Props> | null = null;

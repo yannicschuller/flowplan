@@ -81,12 +81,29 @@ async function signedOut(request, response) {
   if (request.mode !== "navigate") return false;
   return (await response.clone().text()).includes(SIGNED_OUT);
 }
+// The app's files a stored page loads (its scripts, style sheets and
+// preloads), as the refresh finds them (components/offline.ts).
+function pageAssets(html) {
+  return [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&")))];
+}
+// A stored page is shown only with every file it loads (#61): one of an
+// older build whose files are gone would be a white page without styles.
+async function pageComplete(response) {
+  for (const path of pageAssets(await response.clone().text())) if (!(await caches.match(path))) return false;
+  return true;
+}
 // Network first; the stored copy is used only when the network fails. The
 // app's files are looked up in every build's cache: unchanged files keep
 // their names across releases.
 async function networkFirst(request, cacheName, key, anyCache = false) {
   try {
     const response = await fetch(request);
+    // A file of an older build the server no longer has (#61): the stored
+    // page that asks for it gets it from the copy instead of a 404.
+    if (!response.ok && anyCache) {
+      const cached = await caches.match(key);
+      if (cached) return cached;
+    }
     if (response.ok && response.type === "basic" && !(await signedOut(request, response))) {
       const cache = await caches.open(cacheName);
       await cache.put(key, response.clone());
@@ -94,7 +111,7 @@ async function networkFirst(request, cacheName, key, anyCache = false) {
     return response;
   } catch (error) {
     const cached = anyCache ? await caches.match(key) : await (await caches.open(cacheName)).match(key);
-    if (cached) return cached;
+    if (cached && (request.mode !== "navigate" || (await pageComplete(cached)))) return cached;
     throw error;
   }
 }
