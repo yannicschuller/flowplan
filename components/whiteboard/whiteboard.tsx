@@ -75,7 +75,7 @@ import {
   ClipboardText,
   PlayCircle,
 } from "@phosphor-icons/react";
-import { Modal, api } from "../ui";
+import { Modal, api, sessionEnded } from "../ui";
 import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
 import {
   BOARD_IMPORT_LIMITS,
@@ -490,7 +490,8 @@ export default function Whiteboard({
   }, [view, pageId]);
   // Exchange with the server like documents do; cursors travel along.
   const sync = useCallback(async () => {
-    if (inflight.current) return;
+    // Signed out: the board's changes wait here until the next sign-in.
+    if (inflight.current || sessionEnded()) return;
     inflight.current = true;
     const send = editable && dirty.current;
     const vector = Y.encodeStateVector(doc);
@@ -539,6 +540,7 @@ export default function Whiteboard({
         ),
         cursor: null,
       });
+      if (sessionEnded()) return;
       void fetch("/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

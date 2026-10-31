@@ -190,6 +190,7 @@ import {
   isTransient,
   PageSkeleton,
   endedSession,
+  heldBySession,
   reportError,
   setErrorToaster,
   SIGNED_OUT_EVENT,
@@ -902,8 +903,10 @@ export default function WorkspaceApp({
   useEffect(() => {
     const original = window.fetch;
     window.fetch = async (input, init) => {
-      const response = await original(input, init);
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      // Signed out: answered here, without knocking at the server again.
+      if (heldBySession(url)) return new Response(JSON.stringify({ error: "Bitte melde dich an." }), { status: 401, headers: { "Content-Type": "application/json" } });
+      const response = await original(input, init);
       endedSession(url, response.status);
       return response;
     };

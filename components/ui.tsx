@@ -452,13 +452,26 @@ export const isTransient = (e: unknown) =>
 // A listener that cancels the "flowplan:signed-out" event shows a banner
 // instead, so unsaved changes stay on this device until the reader signs in.
 let signingIn = false;
+// Once the session ended, the tab sends nothing more to the API until the
+// person signs in again (which reloads the page): saving, polling and the
+// offline queue would otherwise keep knocking with 401s – every 1.8 seconds
+// for an open document – and look like probing to the security rules.
+// The changes stay on this device (IndexedDB, the offline queue).
+let sessionGone = false;
+export const sessionEnded = () => sessionGone;
+// Whether a request to this address waits for the next sign-in.
+export const heldBySession = (url: string) => sessionGone && sessionPath(url);
+const sessionPath = (url: string) => {
+  const path = url.startsWith("http") ? new URL(url).pathname : url;
+  return path.startsWith("/api/") && !path.startsWith("/api/auth/");
+};
 export const SIGNED_OUT_EVENT = "flowplan:signed-out";
 export const signedOutMessage = () =>
   tr("Du wurdest abgemeldet – melde dich erneut an, um deine Änderungen zu behalten.", "You were signed out – sign in again to keep your changes.");
 export function endedSession(url: string, status: number) {
   if (status !== 401 || typeof window === "undefined" || location.pathname !== "/") return false;
-  const path = url.startsWith("http") ? new URL(url).pathname : url;
-  if (!path.startsWith("/api/") || path.startsWith("/api/auth/")) return false;
+  if (!sessionPath(url)) return false;
+  sessionGone = true;
   if (!window.dispatchEvent(new CustomEvent(SIGNED_OUT_EVENT, { cancelable: true }))) return false;
   if (!signingIn) {
     signingIn = true;
@@ -499,6 +512,7 @@ export async function api<T = Record<string, unknown>>(
         body: JSON.stringify(body),
       }
     : { cache: "no-store", headers };
+  if (heldBySession(url)) throw new ApiError(signedOutMessage(), 401);
   let r = await fetch(url, init);
   for (let attempt = 0; body && attempt < 5 && (await stillProcessing(r)); attempt++) {
     const wait = Math.min(Number(r.headers.get("Retry-After")) || 1, 5);

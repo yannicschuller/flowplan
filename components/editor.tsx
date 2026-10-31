@@ -152,7 +152,7 @@ import {
   PuzzlePiece,
 } from "@phosphor-icons/react";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
-import { api, isTransient, Modal } from "./ui";
+import { api, isTransient, Modal, sessionEnded } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
@@ -788,7 +788,8 @@ export default function DocumentEditor({
     [doc, editor],
   );
   const sync = useCallback(async () => {
-    if (!editor || !ready.current || inflight.current || !navigator.onLine)
+    // Signed out: the changes wait on this device until the next sign-in.
+    if (!editor || !ready.current || inflight.current || !navigator.onLine || sessionEnded())
       return;
     // A draft day: nothing to poll; created by the first change the person made.
     if (!created.current && !(dirty.current && editable && changedByUser.current)) return;
@@ -848,8 +849,12 @@ export default function DocumentEditor({
       // Server briefly away (e.g. restarting): the changes stay here and
       // go out with the next try, without an error message.
       const away = !navigator.onLine || isTransient(e);
-      onStatus(!navigator.onLine ? "saved-offline" : away ? "retrying" : "failed");
-      if (!away) onError((e as Error).message);
+      // Signed out: the banner says it once; the text stays here (IndexedDB).
+      if (sessionEnded()) onStatus("unsaved");
+      else {
+        onStatus(!navigator.onLine ? "saved-offline" : away ? "retrying" : "failed");
+        if (!away) onError((e as Error).message);
+      }
     } finally {
       inflight.current = false;
       // Typing went on during the request: send the rest right away.
@@ -931,7 +936,7 @@ export default function DocumentEditor({
   );
   const persistOnLeave = useCallback(() => {
     // A draft keeps its text on this device (IndexedDB) until it is created.
-    if (!editable || !ready.current || !dirty.current || !navigator.onLine || !created.current)
+    if (!editable || !ready.current || !dirty.current || !navigator.onLine || !created.current || sessionEnded())
       return;
     const body = JSON.stringify({
       action: rowId ? "row.document.sync" : "document.sync",

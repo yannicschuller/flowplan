@@ -11,7 +11,7 @@ import {
   type QueuedChange,
 } from "@/lib/offline-queue";
 import { cellText } from "@/lib/cell-text";
-import { friendlyError, Modal } from "./ui";
+import { endedSession, friendlyError, Modal, sessionEnded } from "./ui";
 import { IDEMPOTENCY_CODES, IDEMPOTENCY_HEADER, idempotencyKeyOf, newIdempotencyKey } from "@/lib/idempotency-key";
 import type { Field, Row } from "@/lib/types";
 
@@ -34,6 +34,12 @@ async function post(body: Record<string, unknown>, key: string) {
   });
   const result = await response.json().catch(() => ({}));
   if (result?.code === IDEMPOTENCY_CODES.processing) throw new NotYet();
+  // Signed out: the change waits for the next sign-in instead of being
+  // discarded.
+  if (response.status === 401) {
+    endedSession("/api/command", 401);
+    throw new NotYet();
+  }
   if (!response.ok)
     throw new HttpFailure(serverMessage(result.error) || tr("Fehler", "Error"), response.status);
   return result;
@@ -158,7 +164,7 @@ export function useOfflineQueue({
     [store],
   );
   const flush = useCallback(async () => {
-    if (running.current || !queueRef.current.length || !navigator.onLine)
+    if (running.current || !queueRef.current.length || !navigator.onLine || sessionEnded())
       return;
     running.current = true;
     setSyncing(true);
