@@ -69,7 +69,7 @@ test("database records are edited offline and conflicts are resolved on reconnec
     await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect(page.locator(".title-cell")).toHaveText([
     "Alpha",
-    "Neue Aufgabe",
+    "Neuer Eintrag",
   ]);
   await expect(page.locator(".offline-pending")).toContainText(
     "2 Offline-Änderungen warten",
@@ -114,7 +114,7 @@ test("database records are edited offline and conflicts are resolved on reconnec
         )
         .sort(),
     )
-    .toEqual(["Alpha|Offline-Notiz|Hamburg", "Neue Aufgabe||"]);
+    .toEqual(["Alpha|Offline-Notiz|Hamburg", "Neuer Eintrag||"]);
   await page.screenshot({
     path: `test-results/offline-database/${testInfo.project.name}.png`,
   });

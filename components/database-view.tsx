@@ -539,6 +539,13 @@ export default function DatabaseView({
   // Record pages open as the view says (else as the database layout says);
   // "Als Seite öffnen" widens the open record to a page until it closes.
   const recordLayout = data.database.recordLayout || defaultRecordLayout;
+  // What a new record is called: a task in a task list (lib/seed.ts), a
+  // document where records open as a page (notes), otherwise an entry.
+  const newRecordTitle = data.database.fields.some((f) => f.id === "status")
+    ? t("Neue Aufgabe", "New task")
+    : recordLayout.open === "full"
+      ? t("Neues Dokument", "New document")
+      : t("Neuer Eintrag", "New entry");
   const [openAsPage, setOpenAsPage] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false),
     [layoutOpen, setLayoutOpen] = useState(false),
@@ -1532,7 +1539,7 @@ export default function DatabaseView({
         templateId ||
         (templateId !== null && data.rowTemplates?.some((t) => t.is_default))
           ? cells
-          : { [fields[0].id]: t("Neue Aufgabe", "New task"), ...cells },
+          : { [fields[0].id]: newRecordTitle, ...cells },
       templateId,
     })) as { id: string } | null;
     if (r && open) {
@@ -3477,7 +3484,7 @@ export default function DatabaseView({
                   }
                 >
                   <Plus size={16} />
-                  {t("Neue Aufgabe", "New task")}
+                  {newRecordTitle}
                 </button>
               )}
             </section>
