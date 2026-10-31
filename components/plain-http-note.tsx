@@ -14,8 +14,8 @@ export function httpsDocsUrl(locale: string) {
 export function usePlainHttpText() {
   const t = useT();
   return t(
-    "Für einen Test in Ordnung – für den echten Betrieb bitte HTTPS einrichten: Passwörter gehen sonst unverschlüsselt durchs Netz, und Passkeys, die Offline-Kopie, die Apps sowie Kamera und Zwischenablage funktionieren nur mit HTTPS.",
-    "Fine for a test – for real use, please set up HTTPS: otherwise passwords cross the network unencrypted, and passkeys, the offline copy, the apps, the camera and the clipboard only work with HTTPS.",
+    "Für einen Test in Ordnung – für den echten Betrieb bitte HTTPS einrichten: Passwörter gehen sonst unverschlüsselt durchs Netz, und Passkeys, die Offline-Kopie, Kamera und Zwischenablage funktionieren nur mit HTTPS. Die Apps verbinden sich ohne HTTPS nur mit Adressen im eigenen Netz.",
+    "Fine for a test – for real use, please set up HTTPS: otherwise passwords cross the network unencrypted, and passkeys, the offline copy, the camera and the clipboard only work with HTTPS. Without HTTPS, the apps only connect to addresses in your own network.",
   );
 }
 

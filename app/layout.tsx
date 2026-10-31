@@ -15,6 +15,7 @@ import { PdfViewerHost } from "@/components/pdf-viewer";
 import { ClipboardFallback } from "@/components/clipboard-fallback";
 import { headers } from "next/headers";
 import { THEME_SCRIPT } from "@/lib/theme";
+import { UUID_POLYFILL_SCRIPT } from "@/lib/uuid-polyfill";
 import { runningBuild } from "@/lib/offline-assets-server";
 import { BUILD_META, selfHealScript } from "@/lib/stale-copy";
 export async function generateMetadata(): Promise<Metadata> {
@@ -80,6 +81,7 @@ export default async function RootLayout({
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: selfHealScript(build) }} />
         {/* Light or dark before the first paint (lib/theme.ts). */}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: UUID_POLYFILL_SCRIPT }} />
         {/* The catalogue of a language beyond German and English, before the
             app (lib/i18n-catalogs.ts) – only on such pages. */}
         {catalog && <script nonce={nonce} src={`/i18n/${locale}?v=${catalog.version}`} />}

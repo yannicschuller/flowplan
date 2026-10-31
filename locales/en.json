@@ -2722,7 +2722,7 @@
   "finden text treffer strg f find text match ctrl f": "finden text treffer strg f find text match ctrl f",
   "fine": "fine",
   "Fine": "Fine",
-  "Fine for a test – for real use, please set up HTTPS: otherwise passwords cross the network unencrypted, and passkeys, the offline copy, the apps, the camera and the clipboard only work with HTTPS.": "Fine for a test – for real use, please set up HTTPS: otherwise passwords cross the network unencrypted, and passkeys, the offline copy, the apps, the camera and the clipboard only work with HTTPS.",
+  "Fine for a test – for real use, please set up HTTPS: otherwise passwords cross the network unencrypted, and passkeys, the offline copy, the camera and the clipboard only work with HTTPS. Without HTTPS, the apps only connect to addresses in your own network.": "Fine for a test – for real use, please set up HTTPS: otherwise passwords cross the network unencrypted, and passkeys, the offline copy, the camera and the clipboard only work with HTTPS. Without HTTPS, the apps only connect to addresses in your own network.",
   "Fine||pen width": "Fine",
   "Fingerprint, face or device PIN instead of a password. Passkeys cannot be phished.": "Fingerprint, face or device PIN instead of a password. Passkeys cannot be phished.",
   "Fingers then scroll and zoom.": "Fingers then scroll and zoom.",
