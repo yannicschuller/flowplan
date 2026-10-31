@@ -301,7 +301,7 @@
   background: #1d1c22;
   color: #ecebf1;
   outline: none;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  padding: var(--safe-top, 0px) var(--safe-right, 0px) var(--safe-bottom, 0px) var(--safe-left, 0px);
 }
 .wb-player-bar {
   display: flex;

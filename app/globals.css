@@ -7994,7 +7994,7 @@ tr.order-drop-after > td {
 .block-select-bar {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--tab-bar-space, env(safe-area-inset-bottom, 0px)) + 14px);
+  bottom: calc(var(--tab-bar-space, var(--safe-bottom, 0px)) + 14px);
   transform: translateX(-50%);
   z-index: 70;
   display: flex;
@@ -8037,7 +8037,7 @@ tr.order-drop-after > td {
     left: 8px;
     right: 8px;
     transform: none;
-    bottom: calc(var(--tab-bar-space, env(safe-area-inset-bottom, 0px)) + 8px);
+    bottom: calc(var(--tab-bar-space, var(--safe-bottom, 0px)) + 8px);
     flex-wrap: wrap;
     justify-content: space-between;
     gap: 4px 6px;
@@ -12561,7 +12561,7 @@ pre,
   /* Phones: the logo row sits centred above the card, which then needs no
      second logo; less outer margin leaves room for the form. */
   .login {
-    padding: max(28px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    padding: max(28px, var(--safe-top, 0px)) 16px max(24px, var(--safe-bottom, 0px));
   }
   .login-brand {
     align-self: center;
@@ -19938,6 +19938,19 @@ h3 .block-reactions {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
 }
+/* The Android app (flowplan-app) keeps the page clear of the system bars
+   itself, with bars of its own around the web view – newer Android System
+   WebViews report the system bars as safe areas all the same, which doubled
+   the room at the top and bottom (#61). There the page's own insets are
+   zero (data-app-bars: lib/app-safe-areas.ts, before the first paint),
+   unless the app hands the safe areas to the page and draws no bars
+   (data-app-safe-areas="page", set by the app's bridge). */
+:root[data-app-bars]:not([data-app-safe-areas="page"]) {
+  --safe-top: 0px;
+  --safe-right: 0px;
+  --safe-bottom: 0px;
+  --safe-left: 0px;
+}
 .sidebar {
   padding-left: var(--safe-left);
 }
@@ -20932,7 +20945,7 @@ h3 .block-reactions {
 }
 @media (max-width: 700px) {
   .login {
-    padding: max(16px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom));
+    padding: max(16px, var(--safe-top, 0px)) 16px max(14px, var(--safe-bottom, 0px));
   }
   .login-brand {
     margin-bottom: 14px;
@@ -24274,6 +24287,16 @@ tr:hover .row-open-mark,
   /* The tab bar already keeps the home indicator's room below the sidebar. */
   .app-shell:not(.keyboard-open, .focus-mode) .sidebar-bottom {
     padding-bottom: 0;
+  }
+  /* …and below the content: .main ends above the bar, so the room for the
+     home indicator / navigation bar at the end of a scrolled page would come
+     twice – empty space at the bottom on phones with a navigation bar inset,
+     e.g. Chrome on Android 15/16 drawing edge to edge (#61). */
+  .app-shell:not(.keyboard-open, .focus-mode) .main-scroll {
+    scroll-padding-bottom: 0;
+  }
+  .app-shell:not(.keyboard-open, .focus-mode) .main-scroll::after {
+    height: 0;
   }
   .mobile-scrim {
     bottom: var(--tab-bar-space);
