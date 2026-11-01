@@ -9,6 +9,7 @@ import type { Identity, Row, Field } from "./types";
 import { documentChanged } from "./document-live";
 import { recordDocumentAuthors } from "./document-authors";
 import { mentionWebhook } from "./webhooks";
+import { mapHtmlPlaceholders, mapPlaceholders, mapTextCells, storeKey } from "./record-placeholders";
 type StoredDocument = { state: Uint8Array; html: string; generation: string };
 export type RowTemplate = {
   id: string;
@@ -227,6 +228,7 @@ export function saveRowTemplate(
   pageId: string,
   rowId: string,
   name: unknown,
+  replaceId?: unknown,
 ) {
   const { row } = requireRow(user, pageId, rowId, true),
     d = ensureRowDocument(row);
@@ -251,14 +253,34 @@ export function saveRowTemplate(
       ].includes(f.type)
     )
       delete cells[f.id];
+  // Placeholders name properties by id from now on, so renaming a
+  // property keeps the template working (lib/record-placeholders.ts).
+  const store = (key: string) => storeKey(key, fields);
+  const html = mapHtmlPlaceholders(d.html, store);
+  const stored = mapTextCells(cells, fields, (text) => mapPlaceholders(text, store));
+  const title = z.string().trim().min(1).max(200).parse(name);
+  // An edited template replaces the one it came from (same id: default
+  // template and automations keep pointing at it).
+  if (replaceId) {
+    const old = selectedRowTemplate(pageId, replaceId);
+    if (!old) throw new HttpError(404, "Datensatzvorlage nicht gefunden.");
+    run(
+      "UPDATE row_templates SET name=?,cells=?,html=? WHERE id=?",
+      title,
+      JSON.stringify(stored),
+      html,
+      old.id,
+    );
+    return { id: old.id };
+  }
   const tid = id();
   run(
     "INSERT INTO row_templates(id,page_id,name,cells,html,created_by) VALUES(?,?,?,?,?,?)",
     tid,
     pageId,
-    z.string().trim().min(1).max(200).parse(name),
-    JSON.stringify(cells),
-    d.html,
+    title,
+    JSON.stringify(stored),
+    html,
     user.id,
   );
   return { id: tid };

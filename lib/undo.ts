@@ -165,6 +165,37 @@ export function undoFor(b: Command, before: UndoState, openPageId?: string | nul
         ],
       };
     }
+    case "row.template.apply": {
+      // A record template applied by hand: the text as it was before (the
+      // version the command stored) and the properties it filled.
+      const rowId = str(b.rowId),
+        snapshotId = str(b.snapshotId);
+      if (!pageId || !rowId || !snapshotId) return null;
+      const row = data?.rows?.find((r) => r.id === rowId);
+      const name = rowTitle(rowId);
+      return {
+        message: name ? tr(`Vorlage auf „${name}“ angewendet`, `Template applied to “${name}”`) : tr("Vorlage angewendet", "Template applied"),
+        commands: (now) => {
+          const after = now.data?.page.id === pageId ? now.data.rows?.find((r) => r.id === rowId) : undefined;
+          const filled = row && after ? Object.keys(after.cells).filter((key) => isEmptyValue(row.cells[key]) && !isEmptyValue(after.cells[key])) : [];
+          const emptied = (value: unknown) => (Array.isArray(value) ? [] : typeof value === "string" ? "" : typeof value === "boolean" ? false : null);
+          return [
+            { action: "row.snapshot.restore", pageId, rowId, snapshotId },
+            ...(row && after && filled.length
+              ? [
+                  {
+                    action: "row.update",
+                    pageId,
+                    rowId,
+                    version: after.version,
+                    cells: Object.fromEntries(filled.map((key) => [key, row.cells[key] ?? emptied(after.cells[key])])),
+                  },
+                ]
+              : []),
+          ];
+        },
+      };
+    }
     case "row.move": {
       // A record dragged into another column or group.
       const rowId = str(b.rowId);

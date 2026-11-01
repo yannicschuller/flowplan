@@ -64,7 +64,7 @@ export const commandActionNames = [
   "database.update", "database.settings", "database.recordLayout",
   "row.create", "row.update", "row.delete", "row.move", "row.schedule", "row.access", "row.appearance",
   "row.recurrence", "row.repeat", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore",
-  "row.template.save", "row.template.default", "row.template.delete", "row.trash.restore", "row.trash.purge",
+  "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge",
   "rows.import", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link",
   "citation.import", "citation.remove", "whiteboard.sync", "whiteboard.toRecords", "dashboard.save",
   "notebook.paper", "notebook.sheet.add", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete",

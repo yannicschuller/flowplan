@@ -1,7 +1,7 @@
 "use client";
 import { LOCALE_TAG } from "@/lib/locale-tag";
 import { useStatusLabel, useT } from "./i18n";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { ViewBoundary, loadView } from "@/components/view-fallback";
 import { Clock, CloudSlash, Plus, SquaresFour } from "@phosphor-icons/react";
@@ -9,7 +9,9 @@ import { api, Modal } from "./ui";
 import { VersionChanges } from "./version-changes";
 import { RecordSkeleton } from "./skeleton";
 import { appCache, recordCachePolicy, rowKey } from "@/lib/swr-cache";
-import type { Page, User } from "@/lib/types";
+import type { Field, Page, User } from "@/lib/types";
+import { Select } from "./select";
+import { PlaceholderMenu, editorIn } from "./placeholder-menu";
 import type { SaveStatus } from "@/lib/save-status";
 const DocumentEditor = dynamic(() => loadView(() => import("./editor")), { ssr: false });
 type RowDocumentData = {
@@ -25,6 +27,9 @@ export default function RowDocument({
   pages,
   members,
   editable,
+  fields,
+  templates,
+  draftOf,
   onError,
   onChanged,
 }: {
@@ -34,6 +39,12 @@ export default function RowDocument({
   pages: Page[];
   members: User[];
   editable: boolean;
+  // The database's properties, for the placeholder menu of templates.
+  fields?: Field[];
+  // Record templates (an edited one can be replaced).
+  templates?: { id: string; name: string }[];
+  // This record is a template opened for editing.
+  draftOf?: string;
   onError: (s: string) => void;
   onChanged: () => Promise<unknown>;
 }) {
@@ -50,6 +61,8 @@ export default function RowDocument({
     [changes, setChanges] = useState<string | null>(null),
     [saveTemplate, setSaveTemplate] = useState(false),
     [name, setName] = useState(""),
+    // "" saves a new template; an id replaces that template.
+    [replaceId, setReplaceId] = useState(""),
     // Offline and not in the device's copy (#47).
     [unavailable, setUnavailable] = useState(false);
   const refresh = useCallback(async () => {
@@ -87,6 +100,7 @@ export default function RowDocument({
     };
   }, [refresh, onError]);
   const onHtml = useCallback(() => {}, []);
+  const section = useRef<HTMLElement>(null);
   async function act(action: string, extra: Record<string, unknown> = {}) {
     try {
       await api("/api/command", { action, pageId, rowId, ...extra });
@@ -99,7 +113,7 @@ export default function RowDocument({
     }
   }
   return (
-    <section className="row-document">
+    <section className="row-document" ref={section}>
       <div className="row-document-heading">
         <h3>{t("Inhalt", "Content")}</h3>
         <span className="muted" role="status">
@@ -112,16 +126,39 @@ export default function RowDocument({
         >
           <Clock size={18} />
         </button>
+        {editable && fields && fields.length > 0 && (
+          <PlaceholderMenu
+            fields={fields}
+            onInsert={(text) => {
+              const editor = editorIn(section.current);
+              if (!editor) return;
+              editor.chain().focus().insertContent(text).run();
+            }}
+          />
+        )}
         {editable && (
           <button
             className="button compact"
-            onClick={() => setSaveTemplate(true)}
+            onClick={() => {
+              const draft = templates?.find((x) => x.id === draftOf);
+              setReplaceId(draft?.id || "");
+              setName(draft?.name || "");
+              setSaveTemplate(true);
+            }}
           >
             <SquaresFour />
             {t("Als Vorlage speichern", "Save as template")}
           </button>
         )}
       </div>
+      {draftOf && editable && (
+        <p className="row-template-draft muted" role="note">
+          {t(
+            "Entwurf einer Vorlage: Platzhalter bleiben stehen. Mit „Als Vorlage speichern“ ersetzt du die Vorlage.",
+            "Draft of a template: placeholders stay as they are. “Save as template” replaces the template.",
+          )}
+        </p>
+      )}
       {data ? (
         <ViewBoundary key={rowId}>
         <DocumentEditor
@@ -228,12 +265,32 @@ export default function RowDocument({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            if (await act("row.template.save", { name })) {
+            if (await act("row.template.save", { name, ...(replaceId ? { replaceId } : {}) })) {
               setSaveTemplate(false);
               setName("");
             }
           }}
         >
+          {!!templates?.length && (
+            <label>
+              {t("Speichern als", "Save as")}
+              <Select
+                value={replaceId}
+                onChange={(e) => {
+                  setReplaceId(e.target.value);
+                  const replaced = templates.find((x) => x.id === e.target.value);
+                  if (replaced) setName(replaced.name);
+                }}
+              >
+                <option value="">{t("Neue Vorlage", "New template")}</option>
+                {templates.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {t(`„${x.name}“ ersetzen`, `Replace “${x.name}”`)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          )}
           <label>
             {t("Name", "Name")}
             <input
@@ -245,7 +302,7 @@ export default function RowDocument({
             />
           </label>
           <p className="muted">
-            {t("Eigenschaften und gespeicherter Dokumentinhalt werden übernommen. Berechnete Werte entstehen für jeden neuen Eintrag neu.", "Properties and the saved document content are taken over. Calculated values are created anew for every new record.")}
+            {t("Eigenschaften und gespeicherter Dokumentinhalt werden übernommen. Berechnete Werte entstehen für jeden neuen Eintrag neu. Platzhalter wie {{Status}} werden beim Anwenden durch die Werte des Eintrags ersetzt.", "Properties and the saved document content are taken over. Calculated values are created anew for every new record. Placeholders like {{Status}} are replaced with the record's values when the template is applied.")}
           </p>
           <button
             className="button primary"

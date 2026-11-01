@@ -19,7 +19,8 @@ import { groupKey, groupingField } from "./database-groups";
 import type { Field, Identity, Page, Row, View } from "./types";
 import { latestSlot } from "./automation-schedule";
 import { spawnNextRecord } from "./repeat-records";
-import { replaceRowDocument } from "./row-documents";
+import { replaceRowDocument, type RowTemplate } from "./row-documents";
+import { applyTemplate, auditApply, fillNewRecord } from "./record-template-apply";
 import { emitWebhook } from "./webhooks";
 import { queueIssuePush } from "./issue-sync-queue";
 
@@ -140,6 +141,7 @@ export function runAutomations(input: { page: Page; rowId: string; actor: Identi
   const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", input.page.id)!.fields) as Field[];
   const cells = computedCells(row, fields);
   const patch: Cells = {};
+  const templates: { rule: Automation; template: string; mode: "empty" | "append" }[] = [];
   let fired = 0;
   for (const a of automations) {
     if (!triggered(a, input.event, input.before ?? null, row.cells, fields)) continue;
@@ -151,6 +153,7 @@ export function runAutomations(input: { page: Page; rowId: string; actor: Identi
         const field = fields.find((f) => f.id === action.field);
         if (field) patch[field.id] = actionValue(action, field, input.actor, row);
       } else if (action.type === "notify") notify(action, a, input, row, { ...cells, ...patch }, fields);
+      else if (action.type === "template") templates.push({ rule: a, template: action.template, mode: action.mode });
     }
   }
   if (Object.keys(patch).length) {
@@ -161,7 +164,33 @@ export function runAutomations(input: { page: Page; rowId: string; actor: Identi
     );
     recordStatusChange(input.page.id, row.id, fields, settings, row.cells, { ...row.cells, ...patch });
   }
+  // Templates last, so they see the values just set; each rule applies a
+  // template to a record only once (automation_runs).
+  for (const t of templates) applyTemplateOnce(input.page, row.id, t.rule, t.template, t.mode, input.actor, fields, settings);
   return fired;
+}
+
+function applyTemplateOnce(page: Page, rowId: string, rule: Automation, templateId: string, mode: "empty" | "append", actor: Identity | null, fields: Field[], settings: DatabaseSettings) {
+  const template = one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", templateId, page.id);
+  if (!template) return;
+  const fresh = run(
+    "INSERT OR IGNORE INTO automation_runs(automation_id,row_id,key,at) VALUES(?,?,?,?)",
+    rule.id,
+    rowId,
+    `template:${templateId}`,
+    Date.now(),
+  );
+  if (!fresh.changes) return;
+  const raw = one<Row & { cells: string }>("SELECT * FROM rows WHERE id=? AND page_id=?", rowId, page.id);
+  if (!raw) return;
+  const row: Row = { ...raw, cells: JSON.parse(raw.cells) };
+  const applied = applyTemplate({ page, row, template, actor, mode });
+  if (Object.keys(applied.cells).length) {
+    const next = { ...row.cells, ...applied.cells };
+    run("UPDATE rows SET cells=?,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?", JSON.stringify(next), row.id);
+    recordStatusChange(page.id, row.id, fields, settings, row.cells, next);
+  }
+  auditApply(actor?.id || "system", row.id, template, `${rule.name || "Automation"} · ${applied.document}`);
 }
 
 function notify(action: Extract<AutomationAction, { type: "notify" }>, a: Automation, input: { page: Page; actor: Identity | null }, row: Row, cells: Cells, fields: Field[]) {
@@ -296,7 +325,7 @@ export function processScheduledAutomations(now = Date.now()) {
       for (const action of a.actions) {
         if (action.type !== "create") continue;
         const template = action.template
-          ? one<{ cells: string; html: string }>("SELECT cells,html FROM row_templates WHERE id=? AND page_id=?", action.template, page_id)
+          ? one<RowTemplate>("SELECT * FROM row_templates WHERE id=? AND page_id=?", action.template, page_id)
           : undefined;
         const cells: Cells = { ...(template ? JSON.parse(template.cells) : {}), ...action.cells };
         // Dates relative to the run: "due three days later".
@@ -312,7 +341,7 @@ export function processScheduledAutomations(now = Date.now()) {
           who.id,
           who.id,
         );
-        if (template?.html) replaceRowDocument(rid, template.html, who.id);
+        if (template?.html) replaceRowDocument(rid, fillNewRecord({ page, rowId: rid, template, actor: who, zone: a.trigger.timeZone }), who.id);
         runAutomations({ page, rowId: rid, actor: who, event: "created" });
         created++;
       }

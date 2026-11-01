@@ -187,6 +187,7 @@ import {
   saveRowTemplate,
   manageRowTemplate,
 } from "./row-documents";
+import { applyTemplate, fillNewRecord, prepareManualApply, rawTemplate, storeTemplateNames } from "./record-template-apply";
 import { z } from "zod";
 import * as Y from "yjs";
 import { all, one, run, id, transaction, audit } from "./db";
@@ -1800,7 +1801,10 @@ export function command(
           d.fields.some((old) =>
             fields.some((next) => next.id === old.id && next.name !== old.name),
           )
-        )
+        ) {
+          // Record templates saved before placeholders were stored by id:
+          // their "{{Old name}}" becomes the id, so the rename keeps them.
+          storeTemplateNames(pid(), d.fields);
           for (const next of fields) {
             const old = d.fields.find((f) => f.id === next.id);
             if (
@@ -1812,6 +1816,7 @@ export function command(
                 rewriteFormulaReferences(next.formula, d.fields, "store"),
               );
           }
+        }
         const currentFields = new Set(fields.map((f) => f.id)),
           deletedFields = new Set(
             d.fields.filter((f) => !currentFields.has(f.id)).map((f) => f.id),
@@ -1944,7 +1949,13 @@ export function command(
         break;
       case "row.create": {
         autoDatabaseSnapshot(user, write());
-        const template = selectedRowTemplate(pid(), b.templateId);
+        const selectedTemplate = selectedRowTemplate(pid(), b.templateId);
+        // A template opened for editing keeps its placeholders, with the
+        // properties' current names (lib/record-template-apply.ts).
+        const template =
+          selectedTemplate && b.rawTemplate === true
+            ? { ...selectedTemplate, ...rawTemplate(selectedTemplate, database(pid()).fields) }
+            : selectedTemplate;
         const given = z.record(z.string(), z.unknown()).parse(b.cells || {});
         assertFieldsWritable(user, write(), database(pid()).fields, Object.keys(given));
         // Contacts: the display name from the names (lib/contacts.ts).
@@ -1984,7 +1995,14 @@ export function command(
           user.id,
           user.id,
         );
-        if (template) replaceRowDocument(rid, template.html, user.id);
+        if (template)
+          replaceRowDocument(
+            rid,
+            b.rawTemplate === true
+              ? template.html
+              : fillNewRecord({ page: write(), rowId: rid, template, actor: user, zone: typeof b.timeZone === "string" ? b.timeZone : undefined }),
+            user.id,
+          );
         afterContactWrite(pid(), rid);
         rowCreated(user, requirePage(user, pid()), rid);
         result = { id: rid };
@@ -2023,8 +2041,47 @@ export function command(
         restoreRow(user, pid(), uuid.parse(b.rowId), b.snapshotId);
         break;
       case "row.template.save":
-        result = saveRowTemplate(user, pid(), uuid.parse(b.rowId), b.name);
+        result = saveRowTemplate(user, pid(), uuid.parse(b.rowId), b.name, b.replaceId);
         break;
+      case "row.template.apply": {
+        // A record template on an existing record, by hand: fills empty
+        // properties and an empty document, or appends below the text.
+        const { input, page: p, row, template } = prepareManualApply(user, pid(), b);
+        autoDatabaseSnapshot(user, p);
+        const fieldsNow = database(pid()).fields;
+        const applied = applyTemplate({
+          page: p,
+          row,
+          template,
+          actor: user,
+          mode: input.mode,
+          zone: input.timeZone,
+          snapshotId: input.snapshotId,
+          strict: true,
+          // Only properties this person may change, with values that fit.
+          keep: (f, value) => {
+            try {
+              return validateCellPatch(user, p, fieldsNow, { [f.id]: value })[f.id];
+            } catch {
+              return undefined;
+            }
+          },
+        });
+        if (Object.keys(applied.cells).length) {
+          const before = JSON.parse(String(row.cells));
+          const cells = contactCellsFor(pid(), fieldsNow, before, { ...before, ...applied.cells }, Object.keys(applied.cells));
+          run(
+            "UPDATE rows SET cells=?,updated_at=CURRENT_TIMESTAMP,updated_by=?,version=version+1 WHERE id=?",
+            JSON.stringify(cells),
+            user.id,
+            row.id,
+          );
+          rowChanged(user, p, row.id, before, cells, fieldsNow);
+          afterContactWrite(pid(), row.id);
+        }
+        result = { document: applied.document, cells: Object.keys(applied.cells) };
+        break;
+      }
       case "row.template.default":
         manageRowTemplate(
           user,

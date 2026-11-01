@@ -69,7 +69,8 @@ export const timeFormats: Record<string, string> = {
 };
 
 // `decimals` fixes the number of fraction digits for every format.
-export function formatNumber(value: number, format = "", decimals?: number) {
+// `tag` formats in another language than the page's (server-side texts).
+export function formatNumber(value: number, format = "", decimals?: number, tag: string = LOCALE_TAG) {
   if (!Number.isFinite(value)) return String(value);
   const digits =
     decimals === undefined
@@ -77,29 +78,29 @@ export function formatNumber(value: number, format = "", decimals?: number) {
       : { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
   const currency = currencies[format as keyof typeof currencies];
   if (currency)
-    return new Intl.NumberFormat(LOCALE_TAG, {
+    return new Intl.NumberFormat(tag, {
       style: "currency",
       currency: currency[1],
       ...digits,
     }).format(value);
   if (format === "percent")
-    return new Intl.NumberFormat(LOCALE_TAG, {
+    return new Intl.NumberFormat(tag, {
       style: "percent",
       maximumFractionDigits: 2,
       ...digits,
     }).format(value);
   if (format === "plain")
-    return new Intl.NumberFormat(LOCALE_TAG, {
+    return new Intl.NumberFormat(tag, {
       useGrouping: false,
       maximumFractionDigits: 10,
       ...digits,
     }).format(value);
   if (format === "decimal2" && decimals === undefined)
-    return new Intl.NumberFormat(LOCALE_TAG, {
+    return new Intl.NumberFormat(tag, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value);
-  return new Intl.NumberFormat(LOCALE_TAG, {
+  return new Intl.NumberFormat(tag, {
     maximumFractionDigits: 10,
     ...digits,
   }).format(value);

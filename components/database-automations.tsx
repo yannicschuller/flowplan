@@ -25,6 +25,13 @@ const startValue = (f: Field | undefined): unknown =>
   !f ? "" : f.type === "date" ? "@today" : f.type === "person" ? "@actor" : f.type === "checkbox" ? true : f.type === "select" ? f.options?.[0] || "" : "";
 const settable = (f: Field) => !["formula", "rollup", "created_at", "updated_at", "created_by", "updated_by", "id", "files", "relation", "checklist", "aliases"].includes(f.type);
 
+// "Apply template" with the default (or first) record template.
+const templateAction = (templates: RowTemplateRef[]): AutomationAction => ({
+  type: "template",
+  template: (templates.find((x) => x.is_default) || templates[0])?.id || "",
+  mode: "empty",
+});
+
 // Rules of a database: "When …, only if …, then …". Each rule can be
 // switched off; suggestions fill in the usual cases.
 export function DatabaseAutomations({ fields, settings, members, editable, save, templates = [] }: Props) {
@@ -58,6 +65,25 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
         actions: [{ type: "set", field: (dates.find((f) => /erledigt|abgeschlossen|done|closed|fertig/i.test(f.name)) || dates[0]).id, value: "@today" }],
       }),
     });
+  // The status (or another choice) property, e.g. "Status → Genehmigt".
+  const choice =
+    (status?.field.type === "select" ? status.field : undefined) ||
+    fields.find((f) => f.type === "select" && /status|phase|stand|stage|state/i.test(f.name)) ||
+    fields.find((f) => f.type === "select" && f.options?.length);
+  const approved = choice?.options?.find((o) => /genehmigt|freigegeben|approved|accepted|bestätigt|zugesagt|gewonnen|won/i.test(o)) || choice?.options?.[1] || choice?.options?.[0];
+  if (choice && approved && templates.length) {
+    suggestions.push({
+      label: t(`Wenn ${choice.name} → ${approved}, Vorlage anwenden`, `When ${choice.name} → ${approved}, apply a template`),
+      rule: () => ({
+        id: newId(),
+        name: t("Vorlage anwenden", "Apply template"),
+        enabled: true,
+        trigger: { type: "changed", field: choice.id, to: approved },
+        conditions: [],
+        actions: [templateAction(templates)],
+      }),
+    });
+  }
   if (dates.length)
     suggestions.push({
       label: t("Wenn die Fälligkeit überschritten ist, benachrichtigen", "When the due date has passed, notify"),
@@ -115,8 +141,8 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
     <div className="automations">
       <p className="muted">
         {t(
-          "Regeln erledigen wiederkehrende Handgriffe: Wenn etwas passiert und eine Bedingung zutrifft, setzt Flowplan Eigenschaften oder benachrichtigt jemanden.",
-          "Rules take care of recurring steps: when something happens and a condition holds, Flowplan sets properties or notifies someone.",
+          "Regeln erledigen wiederkehrende Handgriffe: Wenn etwas passiert und eine Bedingung zutrifft, setzt Flowplan Eigenschaften, benachrichtigt jemanden oder wendet eine Datensatzvorlage an.",
+          "Rules take care of recurring steps: when something happens and a condition holds, Flowplan sets properties, notifies someone or applies a record template.",
         )}
       </p>
       {rules.length > 0 && (
@@ -126,7 +152,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
               <Lightning weight={rule.enabled ? "fill" : "regular"} aria-hidden />
               <div>
                 <strong>{rule.name || t("Regel", "Rule")}</strong>
-                <span>{describe(rule, fields, members, t)}</span>
+                <span>{describe(rule, fields, members, templates, t)}</span>
               </div>
               {editable && (
                 <>
@@ -176,7 +202,7 @@ export function DatabaseAutomations({ fields, settings, members, editable, save,
 }
 
 // "When Status changes to Done → set Closed on = today"
-function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | "name">[], t: (de: string, en: string) => string) {
+function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | "name">[], templates: RowTemplateRef[], t: (de: string, en: string) => string) {
   const name = (id: string) => fields.find((f) => f.id === id)?.name || "?";
   const tr = rule.trigger;
   const when =
@@ -200,7 +226,14 @@ function describe(rule: Automation, fields: Field[], members: Pick<User, "id" | 
             .join("")
         : a.type === "set"
         ? `${name(a.field)} = ${valueLabel(a.value, members, t)}`
-        : t(`benachrichtigen: ${whoLabel(a.to, fields, members, t)}`, `notify: ${whoLabel(a.to, fields, members, t)}`),
+        : a.type === "template"
+          ? (() => {
+              const tpl = templates.find((x) => x.id === a.template)?.name || "?";
+              return a.mode === "append"
+                ? t(`Vorlage „${tpl}“ anhängen`, `append template “${tpl}”`)
+                : t(`Vorlage „${tpl}“ anwenden`, `apply template “${tpl}”`);
+            })()
+          : t(`benachrichtigen: ${whoLabel(a.to, fields, members, t)}`, `notify: ${whoLabel(a.to, fields, members, t)}`),
     )
     .join(", ");
   const only = rule.conditions.length ? t(` (mit ${rule.conditions.length} Bedingung${rule.conditions.length > 1 ? "en" : ""})`, ` (with ${rule.conditions.length} condition${rule.conditions.length > 1 ? "s" : ""})`) : "";
@@ -383,14 +416,34 @@ function AutomationEditor({
                   i,
                   e.target.value === "set"
                     ? { type: "set", field: (fields.find(settable) || fields[0]).id, value: startValue(fields.find(settable)) }
-                    : { type: "notify", to: "@creator", message: "" },
+                    : e.target.value === "template"
+                      ? templateAction(templates)
+                      : { type: "notify", to: "@creator", message: "" },
                 )
               }
             >
               <option value="set">{t("Eigenschaft setzen", "Set property")}</option>
               <option value="notify">{t("Benachrichtigen", "Notify")}</option>
+              <option value="template" disabled={!templates.length}>
+                {t("Vorlage anwenden", "Apply template")}
+              </option>
             </Select>
-            {a.type === "set" ? (
+            {a.type === "template" ? (
+              <>
+                <Select aria-label={t("Datensatzvorlage", "Record template")} value={a.template} onChange={(e) => setAction(i, { ...a, template: e.target.value })}>
+                  {!templates.some((x) => x.id === a.template) && <option value={a.template}>{t("Vorlage fehlt", "Template missing")}</option>}
+                  {templates.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </Select>
+                <Select aria-label={t("Vorhandener Inhalt", "Existing content")} value={a.mode} onChange={(e) => setAction(i, { ...a, mode: e.target.value === "append" ? "append" : "empty" })}>
+                  <option value="empty">{t("nur wenn der Inhalt leer ist", "only if the content is empty")}</option>
+                  <option value="append">{t("unten anhängen", "append below")}</option>
+                </Select>
+              </>
+            ) : a.type === "set" ? (
               <>
                 <Select aria-label={t("Eigenschaft der Aktion", "Action property")} value={a.field} onChange={(e) => setAction(i, { ...a, field: e.target.value, value: startValue(fields.find((f) => f.id === e.target.value)) })}>
                   {fields.filter(settable).map((f) => (
@@ -435,6 +488,14 @@ function AutomationEditor({
             )}
           </div>
           ),
+        )}
+        {r.actions.some((a) => a.type === "template") && (
+          <p className="muted">
+            {t(
+              "Eine Vorlage wird je Eintrag nur einmal angewendet. Leere Eigenschaften erhalten ihre Werte; vorhandener Text wird nie überschrieben. Platzhalter wie {{Status}} werden ausgefüllt.",
+              "A template is applied only once per record. Empty properties get its values; existing text is never overwritten. Placeholders like {{Status}} are filled in.",
+            )}
+          </p>
         )}
         {r.actions.length < 10 && (
           <button

@@ -5963,4 +5963,4 @@ const undoing = new WeakSet<object>();
 // The commands lib/undo.ts may offer to take back.
 // The journal used last on this device ("Journal: Heute").
 const LAST_JOURNAL = "flowplan:last-journal";
-const UNDOABLE = new Set(["page.delete", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve"]);
+const UNDOABLE = new Set(["page.delete", "page.move", "pages.bulk", "row.delete", "rows.bulk", "row.update", "row.move", "database.update", "comment.resolve", "row.template.apply"]);

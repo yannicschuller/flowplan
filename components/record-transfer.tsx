@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, NotePencil, Trash } from "@phosphor-icons/react";
+import { ArrowSquareOut, Copy, ArrowsLeftRight, CopySimple, NotePencil, SquaresFour, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Modal, PageIcon, api } from "./ui";
 import { ContextMenu, type ContextMenuItem } from "./context-menu";
@@ -18,6 +18,7 @@ export function RecordMenu({
   onDuplicate,
   onTransfer,
   onToPage,
+  onApplyTemplate,
   onDelete,
   onClose,
 }: {
@@ -29,6 +30,8 @@ export function RecordMenu({
   onDuplicate: () => void;
   onTransfer: (mode: "copy" | "move") => void;
   onToPage?: () => void;
+  // "Vorlage anwenden …" (components/apply-template.tsx).
+  onApplyTemplate?: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -42,6 +45,7 @@ export function RecordMenu({
     items.push(
       { icon: <ArrowsLeftRight />, label: many ? t(`${count} verschieben nach …`, `Move ${count} to …`) : t("Verschieben nach …", "Move to …"), run: () => onTransfer("move") },
       ...(onToPage && !many ? [{ icon: <NotePencil />, label: t("In Seite umwandeln …", "Turn into page …"), run: onToPage }] : []),
+      ...(onApplyTemplate && !many ? [{ icon: <SquaresFour />, label: t("Vorlage anwenden …", "Apply template …"), run: onApplyTemplate }] : []),
       "separator",
       { icon: <Trash />, label: many ? t(`${count} löschen`, `Delete ${count}`) : t("Löschen", "Delete"), run: onDelete, danger: true },
     );

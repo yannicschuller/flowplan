@@ -273,6 +273,7 @@ export function mutateLinkedDatabase(
         "row.template.save",
         "row.template.default",
         "row.template.delete",
+        "row.template.apply",
         "row.snapshot",
         "row.snapshot.restore",
         "comment.create",

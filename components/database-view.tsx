@@ -21,6 +21,9 @@ import { RecordTime } from "./record-time";
 import { RecordGit } from "./record-git";
 import { IssueSyncChip } from "./issue-sync-database";
 import { RecordMenu, TransferDialog } from "./record-transfer";
+import { ApplyTemplateDialog } from "./apply-template";
+import { flushOpenDocuments } from "@/lib/document-flush";
+import { appCache, rowKey } from "@/lib/swr-cache";
 import { ContextMenu } from "./context-menu";
 import { formatDuration } from "@/lib/durations";
 import { DatabaseSprints } from "./database-sprints";
@@ -484,6 +487,11 @@ export default function DatabaseView({
   const [transfer, setTransfer] = useState<{ rowIds: string[]; mode: "copy" | "move" } | null>(null);
   // "Turn into page": the record whose dialog is open.
   const [toPage, setToPage] = useState<string | null>(null);
+  // "Vorlage anwenden" on an existing record (components/apply-template.tsx);
+  // a template opened for editing (its draft record and the template).
+  const [applyTo, setApplyTo] = useState<string | null>(null);
+  const [templateDraft, setTemplateDraft] = useState<{ rowId: string; templateId: string } | null>(null);
+  const [documentRevision, setDocumentRevision] = useState(0);
   const [bulk, setBulk] = useState<"update" | "delete" | null>(null),
     [bulkField, setBulkField] = useState(""),
     [bulkValue, setBulkValue] = useState<unknown>(undefined),
@@ -851,6 +859,7 @@ export default function DatabaseView({
           printRoot={() => document.querySelector<HTMLElement>(".modal .row-detail")}
           onError={onError}
           onToPage={editable && row.role !== "viewer" ? () => setToPage(row.id) : undefined}
+          onApplyTemplate={editable && row.role !== "viewer" && data.rowTemplates?.length ? () => setApplyTo(row.id) : undefined}
         />
         {canManageAccess(row) && (
           <button
@@ -1543,20 +1552,41 @@ export default function DatabaseView({
     cells: Record<string, unknown> = {},
     open = true,
     templateId?: string | null,
+    // Editing a template: its placeholders stay (as the current names).
+    rawTemplate = false,
   ) {
+    const withTemplate = templateId || (templateId !== null && data.rowTemplates?.some((t) => t.is_default));
     const r = (await act({
       action: "row.create",
-      cells:
-        templateId ||
-        (templateId !== null && data.rowTemplates?.some((t) => t.is_default))
-          ? cells
-          : { [fields[0].id]: newRecordTitle, ...cells },
+      cells: withTemplate ? cells : { [fields[0].id]: newRecordTitle, ...cells },
       templateId,
+      // Dates of placeholders ({{Heute}}) in the person's time zone.
+      ...(withTemplate ? { timeZone: browserZone() } : {}),
+      ...(rawTemplate ? { rawTemplate: true } : {}),
     })) as { id: string } | null;
     if (r && open) {
       setFreshRowId(r.id);
       setRowId(r.id);
     }
+    return r;
+  }
+  // A record template on an existing record; the previous text becomes a
+  // version that "Undo" restores (lib/undo.ts).
+  async function applyTemplate(rowId: string, templateId: string, mode: "empty" | "append") {
+    await flushOpenDocuments();
+    const result = (await act({
+      action: "row.template.apply",
+      rowId,
+      templateId,
+      mode,
+      timeZone: browserZone(),
+      snapshotId: crypto.randomUUID(),
+    })) as { document: string } | null;
+    if (!result) return false;
+    // The record's text has a new version: load it fresh, not the kept copy.
+    appCache().delete(rowKey(page.id, rowId));
+    setDocumentRevision((n) => n + 1);
+    return true;
   }
   async function uploadFile(file: File) {
     if (file.size > 10 * 1024 * 1024)
@@ -3592,13 +3622,16 @@ export default function DatabaseView({
                     ),
                   document: (
                     <RowDocument
-                      key={r.id}
+                      key={`${r.id}-${documentRevision}`}
                       pageId={page.id}
                       rowId={r.id}
                       userId={userId}
                       pages={pages}
                       members={members}
                       editable={editable}
+                      fields={fields}
+                      templates={editable ? data.rowTemplates : undefined}
+                      draftOf={templateDraft?.rowId === r.id ? templateDraft.templateId : undefined}
                       onError={onError}
                       onChanged={onRefresh}
                     />
@@ -5194,7 +5227,7 @@ export default function DatabaseView({
         title={t("Datensatzvorlagen", "Record templates")}
       >
         <p className="muted">
-          {t("Speichere einen Eintrag mit seinen Eigenschaften und Inhalten als Vorlage.", "Save a record with its properties and content as a template.")}
+          {t("Speichere einen Eintrag mit seinen Eigenschaften und Inhalten als Vorlage. Platzhalter wie {{Firma}} oder {{Heute}} werden beim Anwenden durch die Werte des Eintrags ersetzt.", "Save a record with its properties and content as a template. Placeholders like {{Company}} or {{Today}} are replaced with the record's values when the template is applied.")}
         </p>
         <button
           className="button"
@@ -5231,6 +5264,17 @@ export default function DatabaseView({
                 }}
               >
                 {t("Verwenden", "Use")}
+              </button>
+              <button
+                className="button compact"
+                title={t("Als Entwurf öffnen, ändern und mit „Als Vorlage speichern“ ersetzen", "Open as a draft, change it and replace it with “Save as template”")}
+                onClick={async () => {
+                  setManageTemplates(false);
+                  const created = await createRow({}, true, template.id, true);
+                  if (created) setTemplateDraft({ rowId: created.id, templateId: template.id });
+                }}
+              >
+                {t("Bearbeiten", "Edit")}
               </button>
               <button
                 className="icon-button danger"
@@ -5502,13 +5546,16 @@ export default function DatabaseView({
               </div>
               <div className="row-main">
                 <RowDocument
-                  key={selected.id}
+                  key={`${selected.id}-${documentRevision}`}
                   pageId={page.id}
                   rowId={selected.id}
                   userId={userId}
                   pages={pages}
                   members={members}
                   editable={selectedEditable && !readingRecord}
+                  fields={fields}
+                  templates={editable ? data.rowTemplates : undefined}
+                  draftOf={templateDraft?.rowId === selected.id ? templateDraft.templateId : undefined}
                   onError={onError}
                   onChanged={onRefresh}
                 />
@@ -5756,7 +5803,20 @@ export default function DatabaseView({
               ? () => setToPage(recordMenu.rowIds[0])
               : undefined
           }
+          onApplyTemplate={
+            editable && data.rowTemplates?.length && data.rows.find((r) => r.id === recordMenu.rowIds[0])?.role !== "viewer"
+              ? () => setApplyTo(recordMenu.rowIds[0])
+              : undefined
+          }
           onClose={() => setRecordMenu(null)}
+        />
+      )}
+      {applyTo && data.rowTemplates?.length > 0 && (
+        <ApplyTemplateDialog
+          templates={data.rowTemplates}
+          hasContent={data.rows.find((r) => r.id === applyTo)?.preview?.hasContent}
+          onApply={(templateId, mode) => applyTemplate(applyTo, templateId, mode)}
+          onClose={() => setApplyTo(null)}
         />
       )}
       {toPage && (

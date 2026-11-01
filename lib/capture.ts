@@ -9,6 +9,7 @@ import { pageRole, requireMember, requirePage } from "./permissions";
 import { journalLocked, lockedPageIds } from "./journal-extras";
 import { cleanHtml } from "./document-server";
 import { replaceRowDocument, selectedRowTemplate } from "./row-documents";
+import { fillNewRecord } from "./record-template-apply";
 import { rowCreated } from "./automations";
 import { indexRowTasks } from "./doc-tasks";
 import { autoDatabaseSnapshot } from "./database-operations";
@@ -113,7 +114,8 @@ export function captureRecord(user: Identity, raw: unknown) {
     user.id,
     user.id,
   );
-  const html = [template?.html || "", parts].filter(Boolean).join("");
+  // The template's placeholders get this record's values (lib/record-template-apply.ts).
+  const html = [template ? fillNewRecord({ page, rowId: rid, template, actor: user }) : "", parts].filter(Boolean).join("");
   if (html) {
     replaceRowDocument(rid, html, user.id);
     // A captured task (the desktop app's "As a task for today") counts at once.

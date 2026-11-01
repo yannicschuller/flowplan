@@ -49,7 +49,10 @@ export function updateDatabaseSettings(user: Identity, page: Page, fields: Field
     for (const action of a.actions)
       if ((action.type === "create") !== scheduled)
         throw new HttpError(400, "Geplante Regeln legen nur Datensätze an; Datensätze anlegen nur geplante Regeln.");
-      else if (action.type === "create") {
+      else if (action.type === "template") {
+        if (!one("SELECT 1 FROM row_templates WHERE id=? AND page_id=?", action.template, pageId))
+          throw new HttpError(400, "Datensatzvorlage nicht gefunden.");
+      } else if (action.type === "create") {
         if (action.template && !one("SELECT 1 FROM row_templates WHERE id=? AND page_id=?", action.template, pageId))
           throw new HttpError(400, "Datensatzvorlage nicht gefunden.");
         for (const fieldId of Object.keys(action.dates))

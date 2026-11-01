@@ -457,6 +457,7 @@ const exact: Record<string, string> = {
   "Dieser Eintrag ist für dich schreibgeschützt.": "This record is read-only for you.",
   "Nur Besitzer der Datenbank und wer den Eintrag angelegt hat, ändern seine Rechte.": "Only the database's owners and whoever created the record change its permissions.",
   "Datensatzvorlage nicht gefunden.": "Record template not found.",
+  "Der Eintrag hat schon Inhalt. Wähle „Unten anhängen“, um die Vorlage darunter einzufügen.": "The record already has content. Choose “Append below” to insert the template underneath.",
   "Seite ist gesperrt.": "Page is locked.",
   "Datenbank fehlt.": "Database missing.",
   "Zu viele Einträge für die manuelle Reihenfolge.": "Too many records for the manual order.",

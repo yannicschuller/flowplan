@@ -14,6 +14,7 @@ import { requireUnlocked } from "./journal-extras";
 import { rewriteDocument } from "./document-rewrite";
 import { htmlState } from "./document-server";
 import { selectedRowTemplate } from "./row-documents";
+import { fillTemplateCells } from "./record-template-apply";
 import { rowCreated } from "./automations";
 import { autoDatabaseSnapshot } from "./database-operations";
 import { captureTargets } from "./capture";
@@ -82,8 +83,11 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     autoDatabaseSnapshot(user, database);
     const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", database.id)!.fields) as Field[];
     const template = selectedRowTemplate(database.id, undefined);
-    const cells: Record<string, unknown> = template ? JSON.parse(template.cells) : {};
-    cells[fields[0]?.id || "title"] = page.title;
+    const fromTemplate: Record<string, unknown> = template ? JSON.parse(template.cells) : {};
+    const titleId = fields[0]?.id || "title";
+    fromTemplate[titleId] = page.title;
+    // Placeholders in the template's text properties get this record's values.
+    const cells = fillTemplateCells(database, fromTemplate, Object.keys(fromTemplate).filter((k) => k !== titleId), user);
     // The page's aliases go to the aliases property, when the database has one.
     const aliasProperty = aliasField(fields);
     if (aliasProperty && pageAliases(page).length) cells[aliasProperty.id] = pageAliases(page);

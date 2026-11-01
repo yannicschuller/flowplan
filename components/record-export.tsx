@@ -4,7 +4,7 @@
 // record also Print / PDF.
 import { safeCollisionPadding } from "./safe-area";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
-import { DotsThree, DownloadSimple, FileCsv, FileDoc, FileText, FileZip, NotePencil, Printer } from "@phosphor-icons/react";
+import { DotsThree, DownloadSimple, FileCsv, FileDoc, FileText, FileZip, NotePencil, Printer, SquaresFour } from "@phosphor-icons/react";
 import { useState } from "react";
 import { serverMessage } from "@/lib/i18n-errors";
 import { flushOpenDocuments } from "@/lib/document-flush";
@@ -86,6 +86,7 @@ export function RecordExportMenu({
   printRoot,
   onError,
   onToPage,
+  onApplyTemplate,
 }: {
   pageId: string;
   rowId: string;
@@ -93,6 +94,8 @@ export function RecordExportMenu({
   printRoot: () => HTMLElement | null;
   onError: (message: string) => void;
   onToPage?: () => void;
+  // "Vorlage anwenden …" (components/apply-template.tsx).
+  onApplyTemplate?: () => void;
 }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
@@ -129,14 +132,18 @@ export function RecordExportMenu({
             <Printer />
             {t("Drucken / PDF", "Print / PDF")}
           </Dropdown.Item>
+          {(onToPage || onApplyTemplate) && <Dropdown.Separator className="dropdown-separator" />}
+          {onApplyTemplate && (
+            <Dropdown.Item className="dropdown-item" onSelect={onApplyTemplate}>
+              <SquaresFour />
+              {t("Vorlage anwenden …", "Apply template …")}
+            </Dropdown.Item>
+          )}
           {onToPage && (
-            <>
-              <Dropdown.Separator className="dropdown-separator" />
-              <Dropdown.Item className="dropdown-item" onSelect={onToPage}>
-                <NotePencil />
-                {t("In Seite umwandeln …", "Turn into page …")}
-              </Dropdown.Item>
-            </>
+            <Dropdown.Item className="dropdown-item" onSelect={onToPage}>
+              <NotePencil />
+              {t("In Seite umwandeln …", "Turn into page …")}
+            </Dropdown.Item>
           )}
         </Dropdown.Content>
       </Dropdown.Portal>

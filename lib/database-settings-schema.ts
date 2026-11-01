@@ -54,6 +54,15 @@ export const automationAction = z.discriminatedUnion("type", [
     cells: z.record(fid, z.unknown()).default({}),
     dates: z.record(fid, z.number().int().min(-3650).max(3650)).default({}),
   }),
+  // A record template on the triggering record, once per record and rule:
+  // empty properties get its values, an empty document its text ("empty")
+  // or the text goes below the existing one ("append"); placeholders are
+  // filled (lib/record-template-apply.ts).
+  z.object({
+    type: z.literal("template"),
+    template: z.string().min(1).max(60),
+    mode: z.enum(["empty", "append"]).default("empty"),
+  }),
 ]);
 export const automationSchema = z.object({
   id: z.string().min(1).max(60),
