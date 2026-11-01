@@ -27,6 +27,8 @@ export const SHORTCUT_ACTIONS = [
   "splitView",
   "present",
   "journalToday",
+  "foldAll",
+  "unfoldAll",
 ] as const;
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
 export type Keymap = Record<ShortcutAction, string[]>;
@@ -54,6 +56,12 @@ export const DEFAULT_KEYMAP: Keymap = {
   // Today's page of the journal used last (#49). Not Mod+Alt+J/T/D: the
   // browser console on the Mac, a terminal on Linux, the Dock on the Mac.
   journalToday: ["Mod+Alt+Y"],
+  // Fold or unfold every section of the open document (#71, lib/heading-
+  // folds.ts): X closes, O opens. Not Mod+Alt+[ / ]: ⌥ turns the brackets
+  // into other characters on the Mac (and needs them on German keyboards);
+  // not U/L/W/D: the page source, a locked screen, closing windows, the Dock.
+  foldAll: ["Mod+Alt+X"],
+  unfoldAll: ["Mod+Alt+O"],
 };
 // At most this many combinations per action.
 export const MAX_COMBOS = 3;
@@ -85,6 +93,7 @@ export const EDITOR_SHORTCUTS: { combo: string; id: string }[] = [
   { combo: "Mod+Z", id: "undo" },
   { combo: "Mod+Shift+Z", id: "redo" },
   { combo: "Mod+J", id: "ai" },
+  { combo: "Mod+Alt+Enter", id: "foldSection" },
 ];
 // Combinations the browser keeps for itself (tabs, windows): a page cannot
 // reliably use them.

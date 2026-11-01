@@ -29798,3 +29798,130 @@ label.ws-search input {
   font-family: var(--font-mono);
   font-size: 12.5px;
 }
+/* Folding headings (#71, lib/heading-folds-plugin.ts): the arrow before a
+   top-level heading – left of the block handle while editing, in the
+   handle's place while reading, on the right in right-to-left text – and
+   the folded parts hidden on screen only: printing shows everything.
+   Right-to-left by the dir attribute the editor sets on such blocks (the
+   CSS build rewrites :dir() into language lists). */
+.document-editor > :is(h1, h2, h3, h4, h5, h6) {
+  position: relative;
+}
+.heading-fold {
+  position: absolute;
+  top: 0;
+  left: -26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 1lh;
+  max-height: 44px;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  border-radius: 4px;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.12s ease;
+}
+.heading-fold svg {
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+.heading-fold[aria-expanded="false"] svg {
+  transform: none;
+}
+.document-editor > [dir="rtl"] > .heading-fold {
+  left: auto;
+  right: -26px;
+}
+[dir="rtl"] > .heading-fold[aria-expanded="false"] svg {
+  transform: scaleX(-1);
+}
+.block-editor-surface.with-block-handles .heading-fold {
+  left: -50px;
+}
+.block-editor-surface.with-block-handles [dir="rtl"] > .heading-fold {
+  left: auto;
+  right: -50px;
+}
+.document-editor > :hover > .heading-fold,
+.heading-fold[aria-expanded="false"] {
+  opacity: 0.7;
+}
+.heading-fold:hover {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface);
+}
+@media (prefers-reduced-motion: reduce) {
+  .heading-fold,
+  .heading-fold svg {
+    transition: none;
+  }
+}
+/* Touch: always there (no hover) and at least 32 px to tap. */
+@media (pointer: coarse) {
+  .heading-fold {
+    opacity: 0.55;
+    width: 32px;
+    min-height: 32px;
+    top: calc(0.5lh - 16px);
+    height: 32px;
+    left: -32px;
+  }
+  .document-editor > [dir="rtl"] > .heading-fold {
+    right: -32px;
+  }
+  .block-editor-surface.with-block-handles .heading-fold {
+    left: -58px;
+  }
+  .block-editor-surface.with-block-handles [dir="rtl"] > .heading-fold {
+    right: -58px;
+  }
+}
+/* Phones: no room left of the text – the arrow sits at the end of the
+   heading's line (the start in right-to-left text). */
+@media (max-width: 720px) {
+  .document-editor > :has(> .heading-fold) {
+    padding-inline-end: 34px;
+  }
+  .heading-fold,
+  .block-editor-surface.with-block-handles .heading-fold {
+    left: auto;
+    right: 0;
+  }
+  .document-editor > [dir="rtl"] > .heading-fold,
+  .block-editor-surface.with-block-handles [dir="rtl"] > .heading-fold {
+    left: 0;
+    right: auto;
+  }
+}
+.document-editor > .heading-folded::after {
+  content: attr(data-fold-label);
+  margin-inline-start: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+@media screen {
+  .document-editor > .fold-hidden {
+    display: none !important;
+  }
+}
+@media print {
+  .heading-fold {
+    display: none !important;
+  }
+  .document-editor > .heading-folded::after {
+    content: none;
+  }
+}
+.document-outline-folds {
+  display: flex;
+  margin-inline-start: auto;
+}

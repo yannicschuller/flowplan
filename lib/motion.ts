@@ -5,6 +5,8 @@
 // accepting input. Pure parts (deltas, easing, camera interpolation) are
 // unit-tested in tests/motion.test.ts.
 
+import { unfoldElement } from "./heading-folds";
+
 export const EASE_OUT = "cubic-bezier(0.2, 0.8, 0.2, 1)";
 /** Durations in ms: UI changes stay short, camera moves may take longer. */
 export const DURATION = { fast: 150, base: 200, slow: 250, camera: 360 } as const;
@@ -245,6 +247,9 @@ export function flash(el: Element | null | undefined, duration = 1200) {
 /** Scrolls an element into view (smoothly when allowed), then flashes it. */
 export function reveal(el: Element | null | undefined, block: ScrollLogicalPosition = "center", always = false) {
   if (!el) return;
+  // In a folded section (lib/heading-folds.ts): it opens first (the
+  // editor updates at once), then the block is scrolled to.
+  if (unfoldElement(el)) always = true;
   const box = el.getBoundingClientRect();
   const visible = box.top >= 0 && box.bottom <= window.innerHeight;
   if (visible && !always) return flash(el);

@@ -2,6 +2,7 @@
 import { safeCollisionPadding } from "./safe-area";
 import { applyTheme, setThemeChoice, themeChoice, watchTheme, type ThemeChoice } from "@/lib/theme";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
+import { foldAllSections } from "@/lib/heading-folds";
 import { parseSettingsHash } from "@/lib/settings-sections";
 import { addBackCloser, installAppBack } from "@/lib/app-back";
 import { firstRun, installAppShortcuts } from "@/lib/app-shortcuts";
@@ -150,6 +151,8 @@ import {
   ArrowUpRight,
   ImageSquare,
   TextAa,
+  ArrowsInLineVertical,
+  ArrowsOutLineVertical,
   Printer,
   ClockCounterClockwise,
   Graph,
@@ -1576,6 +1579,10 @@ export default function WorkspaceApp({
       case "journalToday":
         openLastJournalToday();
         break;
+      case "foldAll":
+      case "unfoldAll":
+        foldAllSections(action === "foldAll");
+        break;
     }
   };
   shortcutRef.current = runShortcut;
@@ -2511,6 +2518,23 @@ export default function WorkspaceApp({
           { label: t("Drucken oder als PDF sichern", "Print or save as PDF"), keywords: "pdf print drucken", icon: Printer, run: printPage },
           ...(openPageData.page.kind === "document" && !openPageData.locked
             ? [{ label: t("Präsentieren", "Present"), keywords: t("präsentation folien vortrag beamer", "präsentation folien vortrag beamer presentation slides talk slideshow"), icon: PresentIcon, run: startPresentation }]
+            : []),
+          // Folding headings (lib/heading-folds.ts): the page's text, or an open record's.
+          ...(["document", "journal", "database"].includes(openPageData.page.kind)
+            ? [
+                {
+                  label: t("Alle Abschnitte einklappen", "Collapse all sections"),
+                  keywords: t("überschriften zuklappen falten gliederung abschnitte", "überschriften zuklappen falten gliederung abschnitte headings fold collapse outline sections"),
+                  icon: ArrowsInLineVertical,
+                  run: () => foldAllSections(true),
+                },
+                {
+                  label: t("Alle Abschnitte ausklappen", "Expand all sections"),
+                  keywords: t("überschriften aufklappen entfalten gliederung abschnitte", "überschriften aufklappen entfalten gliederung abschnitte headings unfold expand outline sections"),
+                  icon: ArrowsOutLineVertical,
+                  run: () => foldAllSections(false),
+                },
+              ]
             : []),
           ...(openPageData.page.kind === "document"
             ? [
@@ -3486,6 +3510,18 @@ export default function WorkspaceApp({
                         <SquareSplitHorizontal />
                         {splitShown ? t("Andere Seite daneben öffnen …", "Open another page beside it …") : t("Seite daneben öffnen …", "Open a page beside it …")}
                       </Dropdown.Item>
+                    )}
+                    {data.page.kind === "document" && !sourceOpen && (
+                      <>
+                        <Dropdown.Item className="dropdown-item" onSelect={() => foldAllSections(true)}>
+                          <ArrowsInLineVertical />
+                          {t("Alle Abschnitte einklappen", "Collapse all sections")}
+                        </Dropdown.Item>
+                        <Dropdown.Item className="dropdown-item" onSelect={() => foldAllSections(false)}>
+                          <ArrowsOutLineVertical />
+                          {t("Alle Abschnitte ausklappen", "Expand all sections")}
+                        </Dropdown.Item>
+                      </>
                     )}
                     {data.page.kind === "document" && !data.locked && !data.encrypted && (
                       <Dropdown.Item

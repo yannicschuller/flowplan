@@ -5,7 +5,8 @@
 // published pages have it too (PublicOutline), from the rendered headings.
 import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { ListBullets, X } from "@phosphor-icons/react";
+import { ArrowsInLineVertical, ArrowsOutLineVertical, ListBullets, X } from "@phosphor-icons/react";
+import { setAllFolded } from "@/lib/heading-folds-plugin";
 import { useT } from "./i18n";
 import { reveal } from "@/lib/motion";
 
@@ -93,7 +94,8 @@ export function DocumentOutline({
         let current: number | null = headings[0]?.pos ?? null;
         for (const h of headings) {
           const el = element(h.pos);
-          if (el && el.getBoundingClientRect().top <= line) current = h.pos;
+          // Headings in a folded section (no box) do not count.
+          if (el && el.getClientRects().length && el.getBoundingClientRect().top <= line) current = h.pos;
         }
         setActive(current);
       });
@@ -114,6 +116,28 @@ export function DocumentOutline({
         <strong>
           <ListBullets aria-hidden /> {t("Inhalt", "Contents")}
         </strong>
+        {editor && headings.length > 0 && (
+          <span className="document-outline-folds">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={t("Alle Abschnitte einklappen", "Collapse all sections")}
+              title={t("Alle Abschnitte einklappen", "Collapse all sections")}
+              onClick={() => !editor.isDestroyed && setAllFolded(editor.view, true)}
+            >
+              <ArrowsInLineVertical size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={t("Alle Abschnitte ausklappen", "Expand all sections")}
+              title={t("Alle Abschnitte ausklappen", "Expand all sections")}
+              onClick={() => !editor.isDestroyed && setAllFolded(editor.view, false)}
+            >
+              <ArrowsOutLineVertical size={14} />
+            </button>
+          </span>
+        )}
         <button type="button" className="icon-button" aria-label={t("Inhaltsverzeichnis schließen", "Close table of contents")} onClick={onClose}>
           <X size={14} />
         </button>

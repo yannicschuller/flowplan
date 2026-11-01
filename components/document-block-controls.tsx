@@ -53,6 +53,7 @@ import {
   mapBlockSelection,
 } from "@/lib/block-bookmarks";
 import { applyBlockChange } from "@/lib/block-shortcuts";
+import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
 import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType } from "@/lib/document-schema";
 import { calloutLabels } from "@/lib/callout-types";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
@@ -496,7 +497,8 @@ export function DocumentBlockControls({
       clientX: event.clientX,
       clientY: event.clientY,
       active: false,
-      positions: [...selected.current],
+      // A folded heading takes its hidden section along.
+      positions: foldedBlockPositions(editor.state, [...selected.current]),
     };
     setPointerActive(true);
     event.currentTarget.setPointerCapture(event.pointerId);

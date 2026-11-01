@@ -8,6 +8,7 @@ import {
   changeBlocks,
   selectedDocumentBlock,
 } from "./document-blocks";
+import { foldedBlockPositions } from "./heading-folds-plugin";
 export function applyBlockChange(editor: Editor, transaction: Transaction) {
   const undo = yUndoPluginKey.getState(editor.state)?.undoManager;
   undo?.stopCapturing();
@@ -88,12 +89,14 @@ export function moveSelectedBlock(editor: Editor | null, direction: -1 | 1) {
   if (!editor?.isEditable) return false;
   const block = selectedDocumentBlock(editor.state);
   if (!block) return false;
-  const target = adjacentBlockTarget(editor.state, [block.pos], direction);
-  if (target === undefined) return false;
+  // A folded heading moves with its hidden section.
+  const positions = foldedBlockPositions(editor.state, [block.pos]);
   try {
+    const target = adjacentBlockTarget(editor.state, positions, direction);
+    if (target === undefined) return false;
     applyBlockChange(
       editor,
-      changeBlocks(editor.state, [block.pos], "move", target),
+      changeBlocks(editor.state, positions, "move", target),
     );
     editor.commands.focus();
     return true;

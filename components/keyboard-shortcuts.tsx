@@ -58,6 +58,10 @@ export function actionLabel(action: ShortcutAction, t: T): string {
       return t("Dokument präsentieren", "Present the document");
     case "journalToday":
       return t("Journal: heutigen Tag öffnen", "Journal: open today");
+    case "foldAll":
+      return t("Alle Abschnitte einklappen", "Collapse all sections");
+    case "unfoldAll":
+      return t("Alle Abschnitte ausklappen", "Expand all sections");
   }
 }
 
@@ -86,6 +90,7 @@ const editorLabels: Record<string, [string, string]> = {
   italic: ["Kursiv", "Italic"],
   center: ["Text zentrieren", "Centre the text"],
   ai: ["KI-Schreibassistent", "AI writing assistant"],
+  foldSection: ["Abschnitt ein- oder ausklappen (in der Überschrift)", "Collapse or expand the section (in the heading)"],
 };
 function conflictText(conflict: Conflict, t: T) {
   if (conflict.kind === "action")
@@ -130,6 +135,7 @@ export function fixedShortcutGroups(t: T, ai: boolean, mac: boolean): ShortcutGr
         { label: t("Fußnote", "Footnote"), keys: [k("Mod+Alt+F")] },
         { label: t("Textkommentar", "Text comment"), keys: [k("Mod+Alt+M")] },
         { label: t("Block verschieben", "Move the block"), keys: [k("Mod+Shift+ArrowUp"), k("Mod+Shift+ArrowDown")] },
+        { label: t("Abschnitt ein- oder ausklappen (in der Überschrift)", "Collapse or expand the section (in the heading)"), keys: [k("Mod+Alt+Enter")] },
         { label: t("Rückgängig / Wiederholen", "Undo / redo"), keys: [k("Mod+Z"), k("Mod+Shift+Z")] },
         { label: t("Seitenlink in geteilter Ansicht öffnen", "Open a page link in split view"), keys: [mac ? t("⌘ + Klick", "⌘ + click") : t("Ctrl + Klick", "Ctrl + click")] },
         ...(ai ? [{ label: t("KI-Schreibassistent", "AI writing assistant"), keys: [k("Mod+J")] }] : []),

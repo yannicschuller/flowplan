@@ -63,6 +63,7 @@ import {
   moveSelectedBlock,
 } from "@/lib/block-shortcuts";
 import { registerDocumentFlush } from "@/lib/document-flush";
+import { HeadingFolds } from "@/lib/heading-folds-plugin";
 import { collaborationCursors } from "@/lib/collaboration-cursors";
 import {
   commentMarkedNodeView,
@@ -563,6 +564,8 @@ export default function DocumentEditor({
         drawBlockNode({ pageId, enabled: !rowId }),
         Footnote.configure({ edit: (target) => openFootnote.current(target) }),
         BlockDirectionExtension.configure({ auto: true }),
+        // Folding headings, per person and device (not in a synced block).
+        HeadingFolds.configure({ pageId, rowId, enabled: !embedded }),
         Collaboration.configure({ document: doc }),
         collaborationCursors({ pageId, rowId, generation }, liveId),
         inlineCommentExtension(generation),

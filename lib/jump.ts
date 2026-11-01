@@ -3,6 +3,7 @@
 // has loaded (lib/motion.ts `flash`). Nothing is stored: the highlight is an
 // overlay that removes itself.
 import { reveal } from "./motion";
+import { isFolded } from "./heading-folds";
 import { parsePageLocation } from "./page-location";
 
 /** Text blocks a jump can land on, innermost first wins. */
@@ -78,7 +79,8 @@ export function jumpTo(target: { pageId: string; rowId?: string | null }, find: 
       );
     for (const root of content) {
       const el = find(root);
-      if (el && el.getClientRects().length) {
+      // A block in a folded section counts too: reveal() unfolds it.
+      if (el && (el.getClientRects().length || isFolded(el))) {
         stop();
         reveal(el);
         return;

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretDown, CaretUp, X } from "@phosphor-icons/react";
 import { useT } from "./i18n";
+import { isFolded, unfoldElement } from "@/lib/heading-folds";
 
 const MAX = 2000;
 const SKIP = "script, style, noscript, textarea, input, select, .find-bar, [aria-hidden='true'], [hidden]";
@@ -36,7 +37,8 @@ export function findRanges(root: Node, query: string): Range[] {
   });
   for (let node = walker.nextNode(); node && ranges.length < MAX; node = walker.nextNode()) {
     const parent = node.parentElement!;
-    if (typeof parent.checkVisibility === "function" && !parent.checkVisibility()) continue;
+    // Text in a folded section counts: going to the match unfolds it.
+    if (typeof parent.checkVisibility === "function" && !parent.checkVisibility() && !isFolded(parent)) continue;
     const text = (node.nodeValue || "").toLocaleLowerCase();
     for (let at = text.indexOf(needle); at >= 0 && ranges.length < MAX; at = text.indexOf(needle, at + needle.length)) {
       const range = document.createRange();
@@ -64,6 +66,7 @@ function clearPaint() {
 function scrollTo(range: Range | undefined) {
   const element = range?.startContainer.parentElement;
   if (!element) return;
+  unfoldElement(element);
   const box = range!.getBoundingClientRect();
   // Only when it is not already comfortably in view.
   if (box.top < 80 || box.bottom > window.innerHeight - 80 || box.height === 0)

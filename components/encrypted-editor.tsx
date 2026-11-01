@@ -11,6 +11,7 @@
 // never leaves it.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
+import { HeadingFolds } from "@/lib/heading-folds-plugin";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
@@ -172,6 +173,7 @@ export default function EncryptedEditor({
         Placeholder.configure({ placeholder: t("Schreibe etwas – nur Mitglieder mit Schlüssel können es lesen …", "Write something – only members with the key can read it …") }),
         fileNode,
         Extension.create({ name: "aiTarget", addProseMirrorPlugins: () => [aiTargetPlugin, aiInsertedPlugin] }),
+        HeadingFolds.configure({ pageId }),
         Collaboration.configure({ document: doc }),
       ],
       editorProps: { attributes: { class: "document-editor e2ee-editor", "aria-label": t("Verschlüsselter Dokumentinhalt", "Encrypted document content") } },
