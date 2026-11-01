@@ -107,19 +107,8 @@ button.page-tag:focus-visible,
   background: var(--hover);
   color: var(--text);
 }
-/* Empty: a quiet line that comes forward on hover and focus. */
-.page-properties.empty .page-properties-add {
-  opacity: 0.55;
-}
-.page-properties.empty:hover .page-properties-add,
-.page-properties.empty:focus-within .page-properties-add {
-  opacity: 1;
-}
-@media (hover: none) {
-  .page-properties.empty .page-properties-add {
-    opacity: 0.8;
-  }
-}
+/* Empty: a quiet line in the muted colour – not faded further, so the
+   button keeps a 4.5:1 contrast (quality budgets, axe). */
 .page-properties-list {
   display: grid;
   grid-template-columns: minmax(110px, 170px) minmax(0, 1fr);
