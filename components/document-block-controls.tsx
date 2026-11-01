@@ -18,6 +18,9 @@ import {
   DotsThree,
   Info,
   ListBullets,
+  Palette,
+  Smiley,
+  SmileyXEyes,
   ListNumbers,
   Quotes,
   TextHOne,
@@ -55,7 +58,16 @@ import {
 import { applyBlockChange } from "@/lib/block-shortcuts";
 import { foldedBlockPositions } from "@/lib/heading-folds-plugin";
 import { CALLOUT_TYPES, MEDIA_WIDTHS, calloutType } from "@/lib/document-schema";
-import { calloutLabels } from "@/lib/callout-types";
+import {
+  CALLOUT_COLORS,
+  CALLOUT_COLOR_NAMES,
+  calloutColor,
+  calloutColorLabels,
+  calloutIcon,
+  calloutLabels,
+} from "@/lib/callout-types";
+import { Modal } from "./ui";
+import EmojiPicker from "./emoji-picker";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
 import { BlockMenu, type BlockMenuItem, type BlockMenuView } from "./block-menu";
 type Positioned = DocumentBlock & {
@@ -135,6 +147,9 @@ export function DocumentBlockControls({
     [picking, setPicking] = useState(false);
   const pickingRef = useRef(false);
   pickingRef.current = picking;
+  // The callout whose own symbol is being chosen (block menu → Symbol).
+  const [symbolFor, setSymbolFor] = useState<number | null>(null),
+    [ownSymbol, setOwnSymbol] = useState("");
   const [pointerActive, setPointerActive] = useState(false);
   const [drop, setDrop] = useState<{
     top: number;
@@ -784,6 +799,49 @@ export function DocumentBlockControls({
           run: () => setAttribute(only, { type }),
         })),
       };
+      // Its own symbol and colour (issue #72); the kind stays its title.
+      const icon = calloutIcon(only.node.attrs.icon),
+        color = calloutColor(only.node.attrs.color),
+        colorLabels = calloutColorLabels(t);
+      items.push({ icon: <Smiley />, label: t("Symbol", "Symbol"), view: "calloutSymbol" });
+      views.calloutSymbol = {
+        title: t("Symbol", "Symbol"),
+        items: [
+          {
+            icon: icon ? <span className="block-menu-emoji" aria-hidden>{icon}</span> : <Smiley />,
+            label: icon ? t("Anderes Emoji oder Zeichen …", "Other emoji or character …") : t("Emoji oder Zeichen wählen …", "Choose emoji or character …"),
+            run: () => {
+              setOwnSymbol(icon || "");
+              setSymbolFor(only.pos);
+            },
+          },
+          {
+            icon: <SmileyXEyes />,
+            label: t("Symbol entfernen", "Remove symbol"),
+            disabled: !icon,
+            run: () => setAttribute(only, { icon: null }),
+          },
+        ],
+        note: t("Ohne eigenes Symbol zeigt der Hinweis das Symbol seines Typs.", "Without a symbol of its own, the callout shows the icon of its type."),
+      };
+      items.push({ icon: <Palette />, label: t("Farbe", "Colour"), view: "calloutColor" });
+      views.calloutColor = {
+        title: t("Farbe", "Colour"),
+        items: [
+          {
+            icon: <span className="block-menu-swatch" data-callout={calloutType(only.node.attrs.type)} aria-hidden />,
+            label: t("Standard", "Default"),
+            checked: !color,
+            run: () => setAttribute(only, { color: null }),
+          },
+          ...CALLOUT_COLOR_NAMES.map((name) => ({
+            icon: <span className="block-menu-swatch" style={{ background: CALLOUT_COLORS[name] }} aria-hidden />,
+            label: colorLabels[name],
+            checked: color === name,
+            run: () => setAttribute(only, { color: name }),
+          })),
+        ],
+      };
     }
     if (only?.node.type.name === "media") {
       items.push({ icon: <ArrowsOutLineHorizontal />, label: t("Breite", "Width"), view: "width" });
@@ -847,6 +905,19 @@ export function DocumentBlockControls({
     if (!editor?.isEditable) return;
     const tr = editor.state.tr.setNodeMarkup(block.pos, undefined, { ...block.node.attrs, ...attrs });
     editor.view.dispatch(tr.setMeta(BLOCK_SELECTION_META, [block.pos]));
+    setTick((t) => t + 1);
+  }
+  // The chosen symbol for the callout of the symbol dialog (it may have
+  // moved meanwhile: then it is looked up by its old place only if still a
+  // callout there).
+  function setSymbol(value: string) {
+    const icon = calloutIcon(value),
+      pos = symbolFor;
+    setSymbolFor(null);
+    if (!editor?.isEditable || !icon || pos === null) return;
+    const node = editor.state.doc.nodeAt(pos);
+    if (node?.type.name !== "callout") return;
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, icon }));
     setTick((t) => t + 1);
   }
   function setDirection(turnable: DocumentBlock[], direction: BlockDirection | null) {
@@ -998,6 +1069,46 @@ export function DocumentBlockControls({
           owner={menu.handle}
           onClose={closeMenu}
         />
+      )}
+      {symbolFor !== null && editor && (
+        <Modal
+          open
+          sheet
+          title={t("Symbol des Hinweises", "Callout symbol")}
+          onClose={() => setSymbolFor(null)}
+        >
+          <EmojiPicker
+            allowSymbols={false}
+            selected={calloutIcon(editor.state.doc.nodeAt(symbolFor)?.attrs.icon) || undefined}
+            onSelect={async (emoji) => setSymbol(emoji)}
+          />
+          <form
+            className="callout-symbol-own"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSymbol(ownSymbol);
+            }}
+          >
+            <label htmlFor="callout-symbol-own">{t("Oder ein eigenes Zeichen", "Or a character of your own")}</label>
+            <div className="callout-symbol-own-row">
+              <input
+                id="callout-symbol-own"
+                value={ownSymbol}
+                maxLength={32}
+                placeholder={t("z. B. ★, →, ✓", "e.g. ★, →, ✓")}
+                onChange={(event) => setOwnSymbol(event.target.value)}
+              />
+              <button type="submit" className="button" disabled={!calloutIcon(ownSymbol)}>
+                {t("Übernehmen", "Apply")}
+              </button>
+            </div>
+          </form>
+          {ownSymbol.trim() && !calloutIcon(ownSymbol) && (
+            <p className="muted" role="status">
+              {t("Nur ein einzelnes Emoji oder Symbolzeichen – keine Buchstaben, Ziffern, Satzzeichen oder Leerzeichen.", "Only a single emoji or symbol character – no letters, digits, punctuation or spaces.")}
+            </p>
+          )}
+        </Modal>
       )}
       {picking &&
         editor?.isEditable &&

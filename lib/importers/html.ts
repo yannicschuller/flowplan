@@ -6,6 +6,7 @@
 // pages).
 import { parseDocument, DomUtils } from "htmlparser2";
 import type { ChildNode, Element } from "domhandler";
+import { calloutColor, calloutIcon } from "../callout-types";
 
 export type { ChildNode, Element };
 
@@ -185,8 +186,11 @@ export function renderNodes(nodes: ChildNode[], options: RenderOptions = {}): st
         return `<details><summary>${summary ? esc(text(summary).trim()) : ""}</summary><div>${blocks(rest) || "<p></p>"}</div></details>`;
       }
       case "aside": {
-        const type = el.attribs["data-callout"] || "note";
-        return `<aside data-callout="${esc(type)}">${blocks(el.children) || "<p></p>"}</aside>`;
+        const type = el.attribs["data-callout"] || "note",
+          icon = calloutIcon(el.attribs["data-callout-icon"]),
+          color = calloutColor(el.attribs["data-callout-color"]);
+        const own = (icon ? ` data-callout-icon="${esc(icon)}"` : "") + (color ? ` data-callout-color="${color}"` : "");
+        return `<aside data-callout="${esc(type)}"${own}>${blocks(el.children) || "<p></p>"}</aside>`;
       }
       default:
         if (el.children.some((c) => !isInlineNode(c))) return blocks(el.children);

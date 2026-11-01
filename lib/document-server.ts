@@ -4,6 +4,7 @@ import { prosemirrorJSONToYDoc, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import sanitize from "sanitize-html";
 import { documentExtensions, documentSchema } from "./document-schema";
+import { calloutColor, calloutIcon } from "./callout-types";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 export function cleanHtml(html: string, transform?: sanitize.Transformer) {
   return sanitize(html, {
@@ -80,8 +81,10 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
       ],
       // Text direction of blocks (lib/text-direction.ts), only its values.
       ...Object.fromEntries(
-        ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "aside", "ul", "li", "table", "tr"].map((tag) => [tag, [dir]]),
+        ["p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "li", "table", "tr"].map((tag) => [tag, [dir]]),
       ),
+      // A callout's own symbol and colour name (checked in transformTags).
+      aside: [dir, "data-callout-icon", "data-callout-color"],
       a: ["href", "name", "target", "rel"],
       img: ["src", "alt", "width", "height", "data-original", "data-annotations"],
       input: ["type", "checked", "disabled"],
@@ -122,6 +125,17 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         tagName,
         attribs: { ...attribs, rel: "noopener noreferrer" },
       }),
+      // Only a single emoji or symbol stays a callout's symbol, only a
+      // colour name of the palette its colour.
+      aside: (tagName, attribs) => {
+        const { "data-callout-icon": rawIcon, "data-callout-color": rawColor, ...rest } = attribs;
+        const icon = calloutIcon(rawIcon),
+          color = calloutColor(rawColor);
+        return {
+          tagName,
+          attribs: { ...rest, ...(icon ? { "data-callout-icon": icon } : {}), ...(color ? { "data-callout-color": color } : {}) },
+        };
+      },
     },
     allowedSchemes: ["http", "https", "mailto"],
     allowProtocolRelative: false,

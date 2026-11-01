@@ -4,6 +4,7 @@
 // answers are inserted through it (lib/ai/insert.ts).
 import { Marked, type Tokens, type TokenizerAndRendererExtension } from "marked";
 import type { CalloutType } from "./document-schema";
+import { calloutColor, calloutIcon } from "./callout-types";
 import { footnoteText } from "./footnotes";
 
 const escaped = (text: string) =>
@@ -21,13 +22,61 @@ const ALERTS: Record<string, CalloutType> = {
   warning: "warning", attention: "warning",
   caution: "caution", danger: "caution", error: "caution", bug: "caution", failure: "caution", fail: "caution", missing: "caution",
 };
+// A callout's own colour, written by lib/markdown.ts as
+// <!-- flowplan:callout color=green --> at its end (see the html renderer).
+const CALLOUT_MARK = /\s*<!--flowplan-callout:([a-z]+)-->\s*$/;
 function alert(body: string) {
   const match = /^<p>\[!([A-Za-z]+)\][+-]?[ \t]*([^\n<]*)(?:\n|<br>)?/.exec(body);
   if (!match) return null;
   const type = ALERTS[match[1].toLowerCase()] ?? "note";
   const title = match[2].trim();
-  const rest = ("<p>" + body.slice(match[0].length)).replace(/^<p>\s*<\/p>\s*/, "");
-  return `<aside data-callout="${type}">${title ? `<p><strong>${title}</strong></p>` : ""}${rest || "<p></p>"}</aside>`;
+  let rest = ("<p>" + body.slice(match[0].length)).replace(/^<p>\s*<\/p>\s*/, "");
+  let attrs = "",
+    colour = "";
+  const color = CALLOUT_MARK.exec(rest);
+  if (color) {
+    rest = rest.slice(0, color.index);
+    if (calloutColor(color[1])) colour = ` data-callout-color="${color[1]}"`;
+  }
+  // A single emoji or symbol leading the text is the callout's own symbol
+  // ("> 💡 Text", as Flowplan writes it and Notion shows callouts).
+  const lead = /^<p>([^\s<]{1,32})(?: +|\n|<br>|(?=<\/p>))/.exec(rest);
+  const icon = lead && calloutIcon(decode(lead[1]));
+  if (lead && icon) {
+    rest = ("<p>" + rest.slice(lead[0].length)).replace(/^<p>\s*<\/p>\s*/, "");
+    attrs += ` data-callout-icon="${escaped(icon)}"`;
+  }
+  return `<aside data-callout="${type}"${attrs}${colour}>${title ? `<p><strong>${title}</strong></p>` : ""}${rest || "<p></p>"}</aside>`;
+}
+// Notion's Markdown export writes callouts as <aside>💡 Text</aside>; they
+// become alerts (outside code blocks), so the emoji is their symbol.
+function notionCallouts(markdown: string) {
+  if (!/^<aside>/m.test(markdown)) return markdown;
+  const lines = markdown.split("\n"),
+    out: string[] = [];
+  let fence: string | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i],
+      opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      if (opening && opening[1][0] === fence[0] && opening[1].length >= fence.length) fence = null;
+      out.push(line);
+      continue;
+    }
+    if (opening) fence = opening[1];
+    const start = /^<aside>\s*(.*)$/.exec(line);
+    const end = start ? lines.findIndex((l, j) => j >= i && /<\/aside>\s*$/.test(l)) : -1;
+    if (!start || end < 0 || end - i > 500) {
+      out.push(line);
+      continue;
+    }
+    const inner = end === i ? [start[1]] : [start[1], ...lines.slice(i + 1, end + 1)];
+    inner[inner.length - 1] = inner[inner.length - 1].replace(/<\/aside>\s*$/, "");
+    const body = inner.join("\n").trim();
+    out.push("> [!NOTE]", ...body.split("\n").map((l) => `> ${l}`), "");
+    i = end;
+  }
+  return out.join("\n");
 }
 
 const decode = (text: string) =>
@@ -117,7 +166,7 @@ export function markdownToRawHtml(
     (block, pageId: string, height: string) =>
       options.whiteboard?.(pageId) ? `<!-- flowplan:whiteboard ${pageId} ${height} -->` : block.replace(/^<!--[^\n]*-->\n/, ""),
   );
-  const { markdown: body, notes } = footnoteDefinitions(markdown);
+  const { markdown: body, notes } = footnoteDefinitions(notionCallouts(markdown));
   const footnoteRef: TokenizerAndRendererExtension = {
     name: "footnoteRef",
     level: "inline",
@@ -174,6 +223,10 @@ export function markdownToRawHtml(
         if (board && options.whiteboard?.(board[1]))
           return `<div data-whiteboard="${board[1]}" data-whiteboard-height="${Math.min(2000, Math.max(120, Number(board[2])))}"></div>`;
         if (board) return "";
+        // A callout's own colour; alert() above takes it from the end of
+        // the callout (elsewhere the cleaning drops the comment).
+        const callout = /^<!-- flowplan:callout color=([a-z]+) -->\s*$/.exec(text);
+        if (callout) return calloutColor(callout[1]) ? `<!--flowplan-callout:${callout[1]}-->` : "";
         const kept = BLOCK_MARKER.exec(text);
         if (kept && options.blocks) return options.blocks(Number(kept[1])) ?? "";
         // Toggles: <details><summary>Title</summary> … </details>

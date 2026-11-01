@@ -24,6 +24,7 @@
 // All text is escaped; links keep http, https and mailto only.
 import { randomUUID } from "node:crypto";
 import { ct } from "../content-locale";
+import { calloutIcon } from "../callout-types";
 import { esc, fileRef, mimeOf, pageRef } from "./html";
 import { AText, type ABlock, type ADoc, type AFilter, type AWorkspace, type DeltaOp } from "./affine-read";
 import { affineBoard, edgelessExtras, noteDisplay } from "./affine-board";
@@ -206,13 +207,15 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
       return "<hr>";
     case "affine:callout": {
       const icon = p.icon as { type?: unknown; unicode?: unknown } | undefined;
-      const emoji = icon && typeof icon.unicode === "string" ? `${esc(icon.unicode.slice(0, 16))} ` : "";
+      // An emoji Flowplan takes as a symbol becomes the callout's own one.
+      const symbol = calloutIcon(icon?.unicode);
+      const emoji = !symbol && icon && typeof icon.unicode === "string" ? `${esc(icon.unicode.slice(0, 16))} ` : "";
       const own = inline(p.text, ctx);
       const color = String(p.backgroundColorName || "");
       const type = CALLOUT_COLORS[color] || "note";
       // The icon stays in front of the callout's own text.
       const body = (own ? `<p>${emoji}${own}</p>` : "") + children();
-      return `<aside data-callout="${type}">${body || "<p></p>"}</aside>`;
+      return `<aside data-callout="${type}"${symbol ? ` data-callout-icon="${esc(symbol)}"` : ""}>${body || "<p></p>"}</aside>`;
     }
     case "affine:latex": {
       const latex = typeof p.latex === "string" ? p.latex.trim().slice(0, 20000) : "";

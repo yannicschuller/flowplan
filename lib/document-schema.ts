@@ -28,6 +28,7 @@ import { Bibliography, Citation } from "./citation-nodes";
 import { Footnote } from "./footnotes";
 import { BlockDirectionExtension } from "./text-direction";
 import { ListTidy } from "./list-tidy";
+import { calloutColor, calloutIcon } from "./callout-types";
 // Images that were marked up keep their original and the markings
 // (components/image-annotator.tsx), so they can be edited again.
 export const AnnotatedImage = Image.extend({
@@ -64,6 +65,24 @@ export const Callout = Node.create({
       default: "note",
       parseHTML: (element) => calloutType(element.getAttribute("data-callout")),
       renderHTML: (attributes) => ({ "data-callout": calloutType(attributes.type) }),
+    },
+    // Its own emoji or symbol in place of the kind's icon, and its own
+    // colour from the text palette (issue #72); the kind stays the title.
+    icon: {
+      default: null,
+      parseHTML: (element) => calloutIcon(element.getAttribute("data-callout-icon")),
+      renderHTML: (attributes) => {
+        const icon = calloutIcon(attributes.icon);
+        return icon ? { "data-callout-icon": icon } : {};
+      },
+    },
+    color: {
+      default: null,
+      parseHTML: (element) => calloutColor(element.getAttribute("data-callout-color")),
+      renderHTML: (attributes) => {
+        const color = calloutColor(attributes.color);
+        return color ? { "data-callout-color": color } : {};
+      },
     },
   }),
   parseHTML: () => [{ tag: "aside[data-callout]" }],

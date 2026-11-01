@@ -4,6 +4,7 @@
 // no scripts, no app classes, pictures where the context allows them.
 import type { Node } from "@tiptap/pm/model";
 import { calloutType } from "./document-schema";
+import { CALLOUT_COLORS, calloutColor, calloutFill, calloutIcon } from "./callout-types";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
 import { ct } from "./content-locale";
 import { footnoteText, URL_PATTERN } from "./footnotes";
@@ -198,8 +199,12 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       case "blockquote":
         return `<blockquote${blockAttrs(node)}>${children(node)}</blockquote>`;
       case "callout": {
-        const type = calloutType(node.attrs.type);
-        return `<aside class="callout callout-${type}"><p class="callout-title">${xml(calloutTitle(type))}</p>${children(node)}</aside>`;
+        const type = calloutType(node.attrs.type),
+          icon = calloutIcon(node.attrs.icon),
+          color = calloutColor(node.attrs.color);
+        // Its own colour as inline style (EPUB readers know no color-mix()).
+        const style = color ? ` style="border-color: ${CALLOUT_COLORS[color]}; background: #${calloutFill(CALLOUT_COLORS[color])}"` : "";
+        return `<aside class="callout callout-${type}"${style}><p class="callout-title">${xml((icon ? `${icon} ` : "") + calloutTitle(type))}</p>${children(node)}</aside>`;
       }
       case "toggle":
         return `<section class="toggle"><p class="toggle-title">${xml(String(node.attrs.title || "Details"))}</p>${children(node)}</section>`;

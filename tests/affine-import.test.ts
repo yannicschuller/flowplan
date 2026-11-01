@@ -119,6 +119,8 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.match(planHtml, /<pre><code class="language-typescript">/);
   assert.match(planHtml, /<hr/);
   assert.match(planHtml, /data-callout="caution"/);
+  // Its emoji is the callout's own symbol (issue #72).
+  assert.match(planHtml, /data-callout="caution" data-callout-icon="💡"/);
   assert.match(planHtml, /<table/);
   assert.match(planHtml, /<img src="\/api\/files\/[0-9a-f-]{36}"/);
   assert.match(planHtml, /<a href="\/api\/files\/[0-9a-f-]{36}"[^>]*>Bericht\.pdf<\/a>/);

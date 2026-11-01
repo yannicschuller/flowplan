@@ -9,6 +9,7 @@ import { audit } from "./db";
 import { appUrl, HttpError } from "./auth";
 import { writeZip } from "./archive";
 import { calloutType } from "./document-schema";
+import { CALLOUT_COLORS, calloutColor, calloutFill, calloutIcon } from "./callout-types";
 import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from "./citations";
 import { ct, contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
@@ -468,14 +469,19 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
         });
       case "callout": {
         const type = calloutType(node.attrs.type),
-          colours = CALLOUT_COLOURS[type];
+          own = calloutColor(node.attrs.color),
+          icon = calloutIcon(node.attrs.icon);
+        // Its own colour and symbol (issue #72) instead of the kind's.
+        const colours = own
+          ? { fill: calloutFill(CALLOUT_COLORS[own]).toUpperCase(), line: CALLOUT_COLORS[own].slice(1).toUpperCase() }
+          : CALLOUT_COLOURS[type];
         const inner: Block = {
           ...block,
           indent: block.indent + 240,
           border: `<w:pBdr><w:left w:val="single" w:sz="24" w:space="8" w:color="${colours.line}"/></w:pBdr>`,
           shading: `<w:shd w:val="clear" w:color="auto" w:fill="${colours.fill}"/>`,
         };
-        paragraph(run({ text: calloutTitle(type), props: { b: true, color: colours.line } }), paragraphProps(null, inner));
+        paragraph(run({ text: (icon ? `${icon} ` : "") + calloutTitle(type), props: { b: true, color: colours.line } }), paragraphProps(null, inner));
         return children(node, inner);
       }
       case "toggle":

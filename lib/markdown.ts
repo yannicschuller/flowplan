@@ -1,6 +1,7 @@
 import { generateHTML, generateJSON } from "@tiptap/html/server";
 import type { DOMOutputSpec, Mark, Node } from "@tiptap/pm/model";
 import { calloutType, documentExtensions, documentSchema } from "./document-schema";
+import { calloutColor, calloutIcon } from "./callout-types";
 import { cleanHtml } from "./document-server";
 import { citedWorks, formatReference, pandocCitation } from "./citations";
 import { ct } from "./content-locale";
@@ -363,13 +364,23 @@ export function htmlToMarkdown(
         return result.join("\n");
       }
       case "blockquote":
-      case "callout":
-        // Callouts as GitHub alerts: > [!WARNING] …
-        return (node.type.name === "callout" ? `[!${calloutType(node.attrs.type).toUpperCase()}]\n\n` : "")
-          .concat(children(node, inTable))
+      case "callout": {
+        // Callouts as GitHub alerts: > [!WARNING] …. A callout's own symbol
+        // leads its text ("> 💡 Text", read back by lib/markdown-html.ts);
+        // its own colour follows as a comment GitHub does not show.
+        let body = children(node, inTable);
+        if (node.type.name === "callout") {
+          const icon = calloutIcon(node.attrs.icon),
+            color = calloutColor(node.attrs.color);
+          if (icon) body = node.firstChild?.type.name === "paragraph" && body && !/^\s/.test(body) ? `${icon} ${body}` : `${icon}\n\n${body}`;
+          if (color) body += `\n\n<!-- flowplan:callout color=${color} -->`;
+          body = `[!${calloutType(node.attrs.type).toUpperCase()}]\n\n${body}`;
+        }
+        return body
           .split("\n")
           .map((line) => "> " + line)
           .join("\n");
+      }
       case "toggle":
         return `<details>\n<summary>${htmlText(String(node.attrs.title || "Details")).replaceAll("|", "&#124;")}</summary>\n\n${children(node, inTable)}\n\n</details>`;
       case "columns": {

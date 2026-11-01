@@ -1524,6 +1524,30 @@ aside[data-callout] p:last-child {
 [data-theme="dark"] [data-callout="true"] {
   --callout: #4493f8;
 }
+/* A callout's own symbol (an emoji or a character such as ★) in place of
+   the kind's icon, and its own colour from the text palette (issue #72). */
+aside[data-callout][data-callout-icon]::after {
+  content: attr(data-callout-icon);
+  width: 18px;
+  height: 18px;
+  top: 12px;
+  left: 17px;
+  background: none;
+  mask: none;
+  color: var(--callout, var(--blue));
+  font-size: 15px;
+  line-height: 18px;
+  text-align: center;
+}
+aside[data-callout][data-callout-color="gray"] { --callout: #8b8a92; }
+aside[data-callout][data-callout-color="brown"] { --callout: #b5703c; }
+aside[data-callout][data-callout-color="orange"] { --callout: #ec6c0e; }
+aside[data-callout][data-callout-color="yellow"] { --callout: #d9a400; }
+aside[data-callout][data-callout-color="green"] { --callout: #2f9e44; }
+aside[data-callout][data-callout-color="blue"] { --callout: #1c7ed6; }
+aside[data-callout][data-callout-color="purple"] { --callout: #8f4ad9; }
+aside[data-callout][data-callout-color="pink"] { --callout: #d6336c; }
+aside[data-callout][data-callout-color="red"] { --callout: #e03131; }
 .document-editor details {
   margin: 18px 0;
 }
@@ -8036,6 +8060,34 @@ tr.order-drop-after > td {
   flex-shrink: 0;
   border-radius: 4px;
   background: var(--callout);
+}
+.block-menu-emoji {
+  width: 16px;
+  flex-shrink: 0;
+  font-size: 15px;
+  line-height: 1;
+  text-align: center;
+}
+.block-menu-item > .block-menu-swatch,
+.block-menu-item > .block-menu-emoji {
+  flex: none;
+}
+/* The symbol dialog of a callout: below the emojis, a character of one's own. */
+.callout-symbol-own {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+}
+.callout-symbol-own-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.callout-symbol-own-row input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
 }
 .block-menu-sheet .block-menu-item {
   min-height: 46px;
