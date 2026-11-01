@@ -84,3 +84,21 @@ test("limits, extensions and the maintenance notice", async () => {
   assert.equal(adminSummary(now + 8_000_000).maintenance.state, null);
   saveMaintenance(admin.id, null, now);
 });
+
+test("a failed Markdown export only counts while the export is on (#73)", () => {
+  const set = (key: string, value: unknown) =>
+    run("INSERT INTO instance_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, JSON.stringify(value));
+  const page = id();
+  set("markdownExportRuns", [{ pageId: page, name: "x.zip", at: Date.now(), bytes: 0, error: "push refused" }]);
+  // On, with the failed run as the latest: the tile shows it.
+  set("markdownExport", { userId: admin.id, pageIds: [page] });
+  assert.equal(adminSummary().export.failed, true);
+  // Switched off: the old error is history.
+  set("markdownExport", { userId: admin.id, pageIds: [] });
+  assert.equal(adminSummary().export.failed, false);
+  // On again, the failed run still the latest: it counts until the next good run.
+  set("markdownExport", { userId: admin.id, pageIds: [page] });
+  assert.equal(adminSummary().export.failed, true);
+  set("markdownExportRuns", [{ pageId: page, name: "y.zip", at: Date.now() + 1, bytes: 10, error: null }]);
+  assert.equal(adminSummary().export.failed, false);
+});

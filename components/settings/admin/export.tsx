@@ -23,7 +23,11 @@ export default function ExportSection() {
         }
       : { tone: "off", label: t("Markdown-Export aus", "Markdown export off") },
   ];
-  if (last)
+  // Switched off, the last run is only information – its error no longer
+  // counts (#73).
+  if (last && !m.pages.length)
+    items.push({ tone: "off", label: t(`Letzter Export ${ago(last.at, t)}`, `Last export ${ago(last.at, t)}`) });
+  else if (last)
     items.push(
       last.error
         ? {

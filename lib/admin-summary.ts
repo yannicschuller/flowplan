@@ -104,7 +104,9 @@ export function adminSummary(now = Date.now(), update: UpdateStatus | null = nul
         announcement: !!settings.announcement,
       };
     })(),
-    export: { pages: exports.pages.length, lastAt: lastExport?.at ?? null, failed: !!lastExport?.error },
+    // A failed run only counts while the export is on (#73): switched off, its
+    // last error is history and never goes away on its own.
+    export: { pages: exports.pages.length, lastAt: lastExport?.at ?? null, failed: exports.pages.length > 0 && !!lastExport?.error },
     mail: { configured: mail.configured, pending: mail.pending, failed: mail.failed },
     // The push relay and the deliveries of 24 hours (lib/push-status.ts);
     // the live check is what the route ran before (warmPushChecks).
