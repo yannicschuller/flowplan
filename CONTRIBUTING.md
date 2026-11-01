@@ -44,4 +44,4 @@ Maintainers release from GitHub: **Actions → Release → Run workflow**, then 
 
 ## Continuous integration
 
-Pull requests from collaborators and forks are tested on GitHub's own runners. Only work started by the maintainer runs on the project's self-hosted runner, and only the maintainer can build images or publish releases. Changes to `.github/` (workflows, settings) need the maintainer's review.
+CI, image builds and releases run on GitHub's own runners. Only the maintainer can build images or publish releases; the visual regression tests run on the maintainer's own runner, where their baselines are made. Changes to `.github/` (workflows, settings) need the maintainer's review.
