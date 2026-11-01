@@ -2,7 +2,7 @@
 // lib/live-activity-push.ts; PROTOCOL.md of flowplan-push): end-to-end
 // encryption, request signatures, the key document, device registration,
 // sending through a mocked relay and what its answers do.
-import { test, after } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -106,7 +106,10 @@ const server: Server = createServer((req, res) => {
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 const port = (server.address() as { port: number }).port;
 process.env.PUSH_RELAY_URL = `http://localhost:${port}`;
-after(() => server.close());
+// Not closed in an after() hook: node:test may run a top-level hook while
+// the file still awaits between tests, and later tests would find the
+// server gone. unref() lets the process end without it.
+server.unref();
 
 const messagesOf = (request: Captured) => (JSON.parse(request.body.toString("utf8")) as { messages: Record<string, any>[] }).messages;
 const okAll: Handler = (r) => ({ status: 200, json: { results: messagesOf(r).map(() => ({ status: "ok" })) } });

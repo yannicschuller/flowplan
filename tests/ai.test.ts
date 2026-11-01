@@ -1,4 +1,4 @@
-import { test, after } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -71,7 +71,10 @@ const server = createServer((req, res) => {
 });
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
-after(() => server.close());
+// Not closed in an after() hook: node:test may run a top-level hook while
+// the file still awaits between tests, and later tests would find the
+// server gone. unref() lets the process end without it.
+server.unref();
 
 const ask = { messages: [{ role: "user" as const, content: "Hallo?" }] };
 const setAi = (settings: Record<string, unknown>, extra: Record<string, unknown> = {}) => command(admin, { action: "admin.ai", settings, ...extra });

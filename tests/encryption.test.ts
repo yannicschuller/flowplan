@@ -1,4 +1,4 @@
-import { test, after } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createWriteStream, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -33,7 +33,10 @@ const server = createServer((req, res) => {
   });
 });
 await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-after(() => server.close());
+// Not closed in an after() hook: node:test may run a top-level hook while
+// the file still awaits between tests, and later tests would find the
+// server gone. unref() lets the process end without it.
+server.unref();
 
 const dir = mkdtempSync(join(tmpdir(), "flowplan-encryption-"));
 process.env.FLOWPLAN_DATA_DIR = dir;

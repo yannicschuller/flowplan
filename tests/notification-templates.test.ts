@@ -1,4 +1,4 @@
-import { test, after } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -184,7 +184,10 @@ const server = createServer((req, res) => {
   });
 });
 await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-after(() => server.close());
+// Not closed in an after() hook: node:test may run a top-level hook while
+// the file still awaits between tests, and later tests would find the
+// server gone. unref() lets the process end without it.
+server.unref();
 const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 process.env.FLOWPLAN_WEBHOOK_ALLOW_PRIVATE = "true";
 // Waits until the automatic dispatch started by an event has finished: a

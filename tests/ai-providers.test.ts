@@ -1,4 +1,4 @@
-import { test, after } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -126,7 +126,10 @@ const server = createServer(async (req, res) => {
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
 const port = (server.address() as AddressInfo).port;
 const origin = `http://127.0.0.1:${port}`;
-after(() => server.close());
+// Not closed in an after() hook: node:test may run a top-level hook while
+// the file still awaits between tests, and later tests would find the
+// server gone. unref() lets the process end without it.
+server.unref();
 
 const ask = { system: "Sei knapp.", messages: [{ role: "user" as const, content: "Sag hallo" }], maxTokens: 50 };
 async function collect(iterable: AsyncIterable<string>) {
