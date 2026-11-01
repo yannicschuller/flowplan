@@ -2,6 +2,21 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.2 – 2026-11-01
+
+- Help for Ask AI: current documentation ([f979658](https://github.com/yannicschuller/flowplan/commit/f9796582aed14a12b788ee6b36bb9f451eb440e2))
+- Callouts: own emoji/symbol and colour ([6875249](https://github.com/yannicschuller/flowplan/commit/687524959ad1e5eeb5f358a2c8785420d6ba120e))
+- Tags and custom properties for pages (#70) ([272f6f6](https://github.com/yannicschuller/flowplan/commit/272f6f69c435f2bc7c9c029134beffa44453c3a3))
+- Record templates: placeholders, "apply template" by hand and by rule ([8a2ad6f](https://github.com/yannicschuller/flowplan/commit/8a2ad6f528d9cfef71d7ffa783c9b3e9a7b7d7ff))
+- Documents: collapsible headings (#71) ([65b6877](https://github.com/yannicschuller/flowplan/commit/65b68774c7ee48c12be8c9f534180b8cdbc1d74c))
+- AFFiNE import: large workspace files, no empty wrapper page ([32d930f](https://github.com/yannicschuller/flowplan/commit/32d930fd74b0902b6a57b9bd3326369404763125))
+- French: review of the 0.8 strings (#74) ([5e73dd2](https://github.com/yannicschuller/flowplan/commit/5e73dd2d5956f1b3c9b5f6495cb06049ddb564a3))
+- Records: "/" menu, text menu and outline stay at the text (#75) ([724c00b](https://github.com/yannicschuller/flowplan/commit/724c00bfdd34ee8b842cde9991488b20d3acd9db))
+- URL, email and phone properties open as links (#67) ([cb3e28f](https://github.com/yannicschuller/flowplan/commit/cb3e28fcdb6ac138c0d35e53ac8d19855bfae7ba))
+- Reading mode locks linked databases and other embeds (#67) ([009ad8d](https://github.com/yannicschuller/flowplan/commit/009ad8d6b91f847677a3af83aae0adb2c3123d3c))
+- Sign-in pages: "Other server? Switch profile" inside the mobile app (#69) ([a086ac3](https://github.com/yannicschuller/flowplan/commit/a086ac358276107a5bb0cc36754df999598b64e8))
+- Markdown export switched off: its last error no longer counts (#73) ([ac9cfad](https://github.com/yannicschuller/flowplan/commit/ac9cfadb96fe4fe5793133d8c610f565d0928ac0))
+
 ## v0.8.1 – 2026-10-31
 
 - Tests: incident notifications wait for the report, not a fixed pause ([5c04493](https://github.com/yannicschuller/flowplan/commit/5c04493db5df65f8e7052d1c9ef6656dd741c0c3))
