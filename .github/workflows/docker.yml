@@ -1,7 +1,8 @@
 # Builds the Docker image and publishes it to the GitHub Container Registry:
 #   ghcr.io/yannicschuller/flowplan:latest         the latest release
 #   ghcr.io/yannicschuller/flowplan:1.2.3, :1.2, :1  a release (tag v1.2.3)
-#   ghcr.io/yannicschuller/flowplan:beta           the latest manual build
+#   ghcr.io/yannicschuller/flowplan:beta           the latest manual build, or a
+#                                                  release newer than it
 #   ghcr.io/yannicschuller/flowplan:sha-abc1234    every build
 # For linux/amd64 and linux/arm64, each built natively on GitHub's runners
 # (ubuntu-latest and ubuntu-24.04-arm, free for public repositories) in
@@ -9,7 +10,7 @@
 # (release.yml calls this workflow with the version, or a pushed tag v1.2.3)
 # or by hand: Actions → Docker image → Run workflow builds :beta from the
 # chosen branch, or rebuilds a release when a version is given. Pushes and
-# pull requests build no image; CI (ci.yml) tests them. Every :beta image is
+# pull requests build no image; CI (ci.yml) tests them. Every new :beta image is
 # rolled out on Coolify (COOLIFY_WEBHOOK, COOLIFY_TOKEN; see README).
 name: Docker image
 
@@ -101,6 +102,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       release: ${{ steps.release.outputs.version }}
+      deploy: ${{ steps.newest.outputs.deploy }}
     steps:
       # A release: the version from release.yml or from a pushed tag v1.2.3.
       - id: release
@@ -108,6 +110,12 @@ jobs:
           version="${{ inputs.version }}"
           if [ -z "$version" ] && [ "${{ github.ref_type }}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      # The whole history: a release compares its commit with the :beta one.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release.outputs.version && format('v{0}', steps.release.outputs.version) || '' }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@v7
         with:
           path: ${{ runner.temp }}/digests
@@ -131,21 +139,55 @@ jobs:
             type=raw,value=latest,enable=${{ steps.release.outputs.version != '' }}
             type=raw,value=beta,enable=${{ steps.release.outputs.version == '' }}
             type=sha
+      # Coolify runs :beta. A beta build always moves it; a release moves it
+      # too when it is newer than the current :beta – its commit not already
+      # contained in the beta's (every image notes its commit as the
+      # annotation org.opencontainers.image.revision). So a release built
+      # after the last beta is rolled out as well, an older one is not.
+      - id: newest
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          image="ghcr.io/${{ github.repository }}"
+          release=$(git rev-parse HEAD)
+          echo "commit=$release" >> "$GITHUB_OUTPUT"
+          if [ -z "$VERSION" ]; then echo "deploy=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          beta=$(docker buildx imagetools inspect --raw "$image:beta" 2>/dev/null | jq -r '.annotations["org.opencontainers.image.revision"] // empty' || true)
+          newer=true
+          if [ -z "$beta" ]; then
+            echo ":beta has no commit noted – the release replaces it."
+          elif ! git cat-file -e "$beta^{commit}" 2>/dev/null && ! git fetch -q origin "$beta" 2>/dev/null; then
+            echo ":beta is from $beta, which is no longer in the repository – the release replaces it."
+          elif git merge-base --is-ancestor "$release" "$beta"; then
+            newer=false; echo ":beta ($beta) already contains release $VERSION ($release) – :beta stays."
+          elif git merge-base --is-ancestor "$beta" "$release"; then
+            echo "Release $VERSION ($release) is newer than :beta ($beta)."
+          elif [ "$(git show -s --format=%ct "$release")" -le "$(git show -s --format=%ct "$beta")" ]; then
+            newer=false; echo ":beta ($beta, another branch) is more recent than release $VERSION – :beta stays."
+          else
+            echo "Release $VERSION ($release) is more recent than :beta ($beta, another branch)."
+          fi
+          echo "deploy=$newer" >> "$GITHUB_OUTPUT"
+          if [ "$newer" = true ]; then
+            echo "beta=-t $image:beta" >> "$GITHUB_OUTPUT"
+            echo "Release $VERSION is also tagged :beta and rolled out on Coolify." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Tag the multi-platform image
         working-directory: ${{ runner.temp }}/digests
         run: |
           docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            --annotation "index:org.opencontainers.image.revision=${{ steps.newest.outputs.commit }}" \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") ${{ steps.newest.outputs.beta }} \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
           docker buildx imagetools inspect "ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
 
-  # Rolls out every new :beta image on Coolify (every manual build without
-  # a version; releases only publish :latest). On the own runner: Coolify's
+  # Rolls out every new :beta image on Coolify: every manual build without
+  # a version, and a release newer than the last beta. On the own runner: Coolify's
   # API only answers its address (Settings → Advanced → API access), and
   # GitHub's runners have changing ones. One request – no build there.
   deploy:
     needs: image
-    if: needs.image.outputs.release == ''
+    if: needs.image.outputs.deploy == 'true'
     runs-on: self-hosted
     timeout-minutes: 10
     # The Coolify secrets live in the environment "production", which only
