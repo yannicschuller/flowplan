@@ -3,6 +3,8 @@ import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
 import { serverMessage } from "@/lib/i18n-errors";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
+import { isLinkField } from "@/lib/cell-links";
+import { LinkCellDisplay, LinkValue } from "./link-cell";
 import { CSV_FORMULA } from "@/lib/cell-text";
 import { suggestedPrefix } from "@/lib/ticket-ids";
 import { parentField, treeOrder } from "@/lib/subtasks";
@@ -1595,6 +1597,9 @@ export default function DatabaseView({
       );
     }
     if (f.type === "rollup") return <RollupValue field={f} value={v} />;
+    // Web, mail and phone links open (issue #67).
+    if (isLinkField(f.type))
+      return cellText(v).trim() ? <LinkValue type={f.type} value={cellText(v)} /> : <span className="muted">—</span>;
     if (f.type === "sprint") {
       const sprint = data.database.settings?.sprints?.find((s) => s.id === v);
       return sprint ? <span className={`sprint-chip sprint-${sprint.state}`}>{sprint.name}</span> : null;
@@ -2457,6 +2462,9 @@ export default function DatabaseView({
                   onChange={(v) => updateCell(r, f, v)}
                   upload={editable ? uploadFile : undefined}
                   files={data.files}
+                  links
+                  editing
+                  onCancel={() => setEditingCell(null)}
                 />
               </span>
             ) : (
@@ -2504,6 +2512,13 @@ export default function DatabaseView({
                     <span className="row-title-text">{display(r, f)}</span>
                     <ArrowSquareOut size={14} className="row-open-mark" aria-hidden="true" />
                   </button>
+                ) : isLinkField(f.type) && rowEditable(r) && !fieldLocked(r, f) ? (
+                  <LinkCellDisplay
+                    type={f.type}
+                    name={f.name}
+                    value={cellText(r.cells[f.id])}
+                    onEdit={() => setEditingCell({ rowId: r.id, fieldId: f.id, groupKey })}
+                  />
                 ) : (
                   display(r, f)
                 )}
@@ -3572,6 +3587,7 @@ export default function DatabaseView({
                         onChange={(v) => updateCell(r, f, v)}
                         upload={uploadFile}
                         files={data.files}
+                        links
                       />
                     ),
                   document: (
@@ -5422,6 +5438,7 @@ export default function DatabaseView({
                             members={members}
                             related={related}
                             disabled={!selectedEditable || fieldLocked(selected, f)}
+                            links
                             onChange={(v) => updateCell(selected, f, v)}
                             upload={selectedEditable && !fieldLocked(selected, f) ? uploadFile : undefined}
                             files={data.files}

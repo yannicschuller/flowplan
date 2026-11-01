@@ -15,6 +15,8 @@ import {
 import type { Field, Row, User } from "@/lib/types";
 import { useSprints } from "./sprint-context";
 import { aliasList } from "@/lib/aliases";
+import { isLinkField } from "@/lib/cell-links";
+import { LinkInput } from "./link-cell";
 export type CellFile = { url: string; name: string; mime: string };
 // The label around a CellInput – or, for a date, a group that looks the same:
 // a <label> passes taps on the date's buttons ("Datum entfernen", the time
@@ -33,7 +35,17 @@ export function CellInput({
   upload,
   files = [],
   placeholder,
+  links = false,
+  editing,
+  onCancel,
 }: {
+  // Link properties (url, email, phone) as links with a pencil to edit
+  // (records, list editors, table cells); forms keep the plain input.
+  links?: boolean;
+  // With links: open in the input, focused (a table cell that was clicked).
+  editing?: boolean;
+  // With links: the edit ended without a change (Escape and the like).
+  onCancel?: () => void;
   // Uploads a file to the database page and returns its URL.
   upload?: (file: File) => Promise<string>;
   files?: CellFile[];
@@ -235,6 +247,19 @@ export function CellInput({
       </div>
     );
   }
+  if (links && isLinkField(f.type))
+    return (
+      <LinkInput
+        type={f.type}
+        name={f.name}
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        editing={editing}
+        onChange={onChange}
+        onCancel={onCancel}
+      />
+    );
   return (
     <input
       aria-label={f.name}
@@ -245,7 +270,9 @@ export function CellInput({
             ? "email"
             : f.type === "url"
               ? "url"
-              : "text"
+              : f.type === "phone"
+                ? "tel"
+                : "text"
       }
       step={f.type === "number" ? "any" : undefined}
       disabled={disabled}

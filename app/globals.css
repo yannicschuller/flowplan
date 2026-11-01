@@ -3359,6 +3359,80 @@ tr:hover .row-open,
 .relation-links a:hover {
   text-decoration: underline;
 }
+/* Link properties (url, email, phone; issue #67): a shortened link that
+   opens, the full value as title; a pencil to edit on hover or focus,
+   always shown on touch screens. */
+.cell-link,
+.cell-link-text {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.cell-link {
+  color: var(--blue);
+  text-decoration: none;
+}
+.cell-link:hover {
+  text-decoration: underline;
+}
+.cell-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+.link-cell,
+.link-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+.link-field {
+  display: flex;
+  min-height: 30px;
+  cursor: text;
+}
+.link-field.disabled {
+  cursor: default;
+}
+.link-field > :first-child {
+  min-width: 0;
+}
+.link-cell-edit {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--muted);
+  opacity: 0;
+}
+.link-cell-edit:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.link-cell-edit:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+:is(.link-cell, .link-field):hover .link-cell-edit,
+td:hover .link-cell-edit,
+:is(.link-cell, .link-field):focus-within .link-cell-edit {
+  opacity: 1;
+}
+@media (hover: none) {
+  .link-cell-edit {
+    opacity: 1;
+    width: 32px;
+    height: 32px;
+  }
+}
 .row-backlinks {
   margin: 12px 0;
 }
