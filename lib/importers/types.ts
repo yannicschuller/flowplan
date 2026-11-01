@@ -37,7 +37,11 @@ export type ImportPage = {
   // already exists.
   journalDate?: string;
 };
-export type ImportFile = { key: string; name: string; mime: string; data: Buffer };
+// A file: in memory, or (large AFFiNE workspaces) read from the source when
+// it is written, so only one is in memory at a time.
+export type ImportFile = { key: string; name: string; mime: string } & ({ data: Buffer } | { size: number; read: () => Buffer });
+export const importFileSize = (file: ImportFile) => ("data" in file ? file.data.length : file.size);
+export const importFileData = (file: ImportFile) => ("data" in file ? file.data : file.read());
 export type ImportTree = {
   source: ImportSource;
   title: string;
@@ -46,6 +50,11 @@ export type ImportTree = {
   warnings: string[];
   // Collections and similar pages the source adds (counted in the preview).
   collections?: number;
+  // The page holding everything (AFFiNE: the workspace) when the import
+  // has one; it is not counted as a folder in the preview.
+  wrapper?: string;
+  // Releases the source (an open workspace file) after the import.
+  close?: () => void;
 };
 
 export const MAX_IMPORT_PAGES = 500;

@@ -1,7 +1,8 @@
 "use client";
 // Import from AFFiNE, Confluence, Evernote, Google Docs and Obsidian
-// (lib/importers): the file is uploaded once for a preview (counts and
-// warnings), then again for the import; both show the upload progress.
+// (lib/importers): the file is uploaded once – as the raw request body,
+// streamed to disk on the server (#76) – for a preview (counts and
+// warnings); the import then names that upload instead of sending it again.
 import { useState } from "react";
 import { UploadSimple } from "@phosphor-icons/react";
 import { serverMessage } from "@/lib/i18n-errors";
@@ -22,6 +23,10 @@ type Preview = {
   databases?: number;
   journalDays?: number;
   collections?: number;
+  // The page everything lands below (an AFFiNE workspace with structure).
+  wrapper?: string;
+  // The kept upload, for the import.
+  upload?: string;
 };
 type Result = Preview & { rootIds: string[]; rows: number; databaseId?: string };
 
@@ -31,10 +36,11 @@ const warningText = (warning: string) => {
   return counted ? `${serverMessage(counted[1])} (${counted[2]}×)` : serverMessage(warning);
 };
 
-function send(body: FormData, onProgress: (share: number) => void) {
+function send(query: URLSearchParams, body: File | null, onProgress: (share: number) => void) {
   return new Promise<unknown>((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open("POST", "/api/import/source");
+    request.open("POST", `/api/import/source?${query}`);
+    request.setRequestHeader("Content-Type", "application/octet-stream");
     request.responseType = "json";
     request.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     request.upload.onload = () => onProgress(1);
@@ -81,22 +87,24 @@ export function ImportSources({
     gdocs: "Google Docs",
     obsidian: "Obsidian",
   };
-  const request = async (chosen: File, dryRun: boolean) => {
-    const body = new FormData();
-    body.set("workspaceId", workspaceId);
-    body.set("spaceId", space || spaces[0]?.id || "");
-    body.set("source", source);
-    body.set("mode", mode);
-    if (dryRun) body.set("dryRun", "1");
-    body.set("file", chosen);
-    setProgress({ phase: "upload", share: 0 });
+  const request = async (chosen: File, dryRun: boolean, upload?: string) => {
+    const query = new URLSearchParams({ workspaceId, spaceId: space || spaces[0]?.id || "", source, mode, name: chosen.name });
+    if (dryRun) query.set("dryRun", "1");
+    // The import uses the upload of the preview.
+    if (upload) query.set("upload", upload);
+    setProgress(upload ? { phase: "work", share: 1 } : { phase: "upload", share: 0 });
     try {
-      return await send(body, (share) => setProgress({ phase: share >= 1 ? "work" : "upload", share }));
+      return await send(query, upload ? null : chosen, (share) => setProgress({ phase: share >= 1 ? "work" : "upload", share }));
     } finally {
       setProgress(null);
     }
   };
+  // Drops the kept upload when the preview is left without importing.
+  const discard = (upload?: string) => {
+    if (upload) void send(new URLSearchParams({ upload, discard: "1" }), null, () => {}).catch(() => {});
+  };
   const choose = async (chosen: File) => {
+    discard(preview?.upload);
     setFile(chosen);
     setPreview(null);
     setDone("");
@@ -110,10 +118,10 @@ export function ImportSources({
   const start = async () => {
     if (!file) return;
     try {
-      const result = (await request(file, false)) as Result;
+      const result = (await request(file, false, preview?.upload)) as Result;
       setPreview(null);
       setFile(null);
-      const extra = (result.whiteboards || 0) + (result.databases || 0);
+      const extra = (result.whiteboards || 0) + (result.databases || 0) + (result.wrapper ? 1 : 0);
       setDone(
         mode === "database"
           ? t(`${result.rows} Einträge und ${result.files} Dateien importiert.`, `${result.rows} records and ${result.files} files imported.`)
@@ -126,6 +134,11 @@ export function ImportSources({
       if (result.rootIds[0]) location.hash = `#page=${result.rootIds[0]}`;
     } catch (error) {
       onError((error as Error).message === "network" ? t("Keine Verbindung zum Server.", "No connection to the server.") : (error as Error).message);
+      // A failed import drops the kept upload on the server: choose again.
+      if (preview?.upload) {
+        setPreview(null);
+        setFile(null);
+      }
     }
   };
   const busy = !!progress;
@@ -206,6 +219,9 @@ export function ImportSources({
             {t("Vorschau", "Preview")} · {names[preview.source] || preview.source}: {preview.title}
           </strong>
           <ul>
+            {mode === "pages" && preview.wrapper && (
+              <li>{t(`Alles unter einer Seite „${preview.wrapper}“`, `Everything below a page “${preview.wrapper}”`)}</li>
+            )}
             <li>{mode === "database" ? t(`${preview.pages} Einträge`, `${preview.pages} records`) : t(`${preview.pages} Seiten`, `${preview.pages} pages`)}</li>
             {preview.folders > 0 && mode === "pages" && <li>{t(`${preview.folders} Ordner als Seiten`, `${preview.folders} folders as pages`)}</li>}
             <li>{t(`${preview.files} Dateien (${(preview.bytes / 1048576).toFixed(1)} MB)`, `${preview.files} files (${(preview.bytes / 1048576).toFixed(1)} MB)`)}</li>
@@ -227,6 +243,7 @@ export function ImportSources({
               type="button"
               className="button"
               onClick={() => {
+                discard(preview.upload);
                 setPreview(null);
                 setFile(null);
               }}

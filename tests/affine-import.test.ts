@@ -3,7 +3,7 @@
 // writes them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as Y from "yjs";
@@ -14,7 +14,12 @@ const { createWorkspace, createPage } = await import("../lib/seed");
 const { bootstrap } = await import("../lib/api");
 const { writeZip } = await import("../lib/archive");
 const { importFromSource, parseImport, detectSource } = await import("../lib/importers");
-const { AFFINE_LIMITS } = await import("../lib/importers/affine-read");
+const { AFFINE_LIMITS, affineLimitsFor } = await import("../lib/importers/affine-read");
+const { keepWorkspacePage } = await import("../lib/importers/affine");
+const upload = await import("../lib/importers/upload");
+const { saveInstanceSettings } = await import("../lib/instance-settings");
+const { setUserLimits } = await import("../lib/user-limits");
+const { englishMessage } = await import("../lib/i18n-errors");
 const { parseLinkedAttributes } = await import("../lib/linked-views");
 const { whiteboardItems } = await import("../lib/whiteboard");
 const { affineFileV1, affineFileV2, note, page, para, sqlite, text, PNG } = await import("./helpers/affine-fixture");
@@ -62,6 +67,10 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.equal(preview.collections, 4);
   assert.equal(preview.files, 2);
   assert.equal(preview.tags, 2);
+  // Several top-level items: everything below the workspace page, which is
+  // named apart and not counted as a folder (Projekte, Archiv; #77).
+  assert.equal(preview.wrapper, "Mein Wissen");
+  assert.equal(preview.folders, 2);
   assert.ok(preview.warnings.some((w) => /1 Dokumente im Papierkorb/.test(w)));
   assert.ok(preview.warnings.some((w) => /Elemente auf Whiteboards konnten nicht übernommen werden/.test(w)));
   assert.ok(preview.warnings.some((w) => /HTML-Einbettungen/.test(w)));
@@ -270,6 +279,13 @@ test("snapshot ZIP: documents, links, tags from info.json and assets", async () 
   const zwei = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Zwei' ORDER BY rowid DESC", wid)!;
   assert.ok(html(eins.id).includes(link(zwei.id)));
   assert.match(html(eins.id), /#aus-zip/);
+  // No empty page named after the file above the documents (#77).
+  assert.equal(one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", eins.id)!.parent_id, null);
+  assert.equal(one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", zwei.id)!.parent_id, null);
+  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='snapshot'", wid).length, 0);
+  assert.equal(result.folders, 0);
+  assert.equal(result.wrapper, undefined);
+  assert.deepEqual(new Set(result.rootIds), new Set([eins.id, zwei.id]));
   assert.match(html(zwei.id), /<img src="\/api\/files\//);
   assert.equal(({} as Record<string, unknown>).polluted, undefined);
 });
@@ -315,4 +331,155 @@ test("hostile files: not a workspace, views instead of tables, broken and oversi
   const deepHtml = deepTree.pages.find((p) => p.key === "doc:deep")!.html;
   assert.doesNotMatch(deepHtml, /<script/);
   assert.match(deepHtml, /Ebene 199/);
+});
+
+test("the workspace page only when it carries structure (#77)", async () => {
+  const ROOT = "affine:root";
+  assert.equal(keepWorkspacePage("snapshot", [{ parent: ROOT }, { parent: ROOT }]), false, "a snapshot never gets one");
+  assert.equal(keepWorkspacePage("sqlite-v2", [{ parent: ROOT }]), false, "one item at the top");
+  assert.equal(keepWorkspacePage("sqlite-v2", [{ parent: ROOT }, { parent: ROOT, kind: "whiteboard" }]), false, "a whiteboard belongs to its document");
+  assert.equal(keepWorkspacePage("sqlite-v2", [{ parent: ROOT }, { parent: "folder:x" }, { parent: null }]), false, "journal days and nested pages do not count");
+  assert.equal(keepWorkspacePage("sqlite-v1", [{ parent: ROOT }, { parent: ROOT }]), true);
+
+  // A workspace file with a single document (and its whiteboard): straight
+  // into the space.
+  const ws = sampleWorkspace();
+  ws.docs = ws.docs.filter((d) => d.id === IDS.sketch);
+  ws.folders = [];
+  ws.collections = [];
+  ws.docProperties = {};
+  const bytes = affineFileV2(ws);
+  const tree = await parseImport("Einzeln.affine", bytes);
+  assert.ok(!tree.pages.some((p) => p.key === ROOT));
+  assert.equal(tree.pages.find((p) => p.key === `doc:${IDS.sketch}`)!.parent, null);
+  const preview = await importFromSource(owner, wid, space, { name: "Einzeln.affine", bytes }, { dryRun: true });
+  assert.equal(preview.folders, 0);
+  assert.equal(preview.wrapper, undefined);
+  const result = await importFromSource(owner, wid, space, { name: "Einzeln.affine", bytes });
+  const sketch = one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE id IN (" + result.rootIds.map(() => "?").join(",") + ") AND kind='document'", ...result.rootIds)!;
+  assert.equal(sketch.title, "Skizze");
+  assert.equal(sketch.parent_id, null, "no empty page above the document");
+  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Mein Wissen' AND id IN (" + result.rootIds.map(() => "?").join(",") + ")", wid, ...result.rootIds).length, 0);
+  const board = one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title='Skizze – Whiteboard' ORDER BY rowid DESC", wid)!;
+  assert.equal(board.parent_id, null, "the whiteboard sits next to its document");
+
+  // Database mode is unchanged by it.
+  const asDb = await importFromSource(owner, wid, space, { name: "Einzeln.affine", bytes }, { mode: "database" });
+  assert.equal(asDb.rows, 1);
+});
+
+test("the import limit follows the upload limit, at least 100 MB; FLOWPLAN_IMPORT_MAX_MB replaces it (#76)", () => {
+  assert.equal(upload.importLimitMb(10, null), 100);
+  assert.equal(upload.importLimitMb(100, null), 100);
+  assert.equal(upload.importLimitMb(512, null), 512);
+  assert.equal(upload.importLimitMb(512, 300), 300);
+  assert.equal(upload.importLimitMb(10, 50), 50, "the variable may also lower it");
+  assert.equal(upload.importEnvMb(undefined), null);
+  assert.equal(upload.importEnvMb(""), null);
+  assert.equal(upload.importEnvMb("abc"), null);
+  assert.equal(upload.importEnvMb("0"), null);
+  assert.equal(upload.importEnvMb("1.5"), null);
+  assert.equal(upload.importEnvMb(" 250 "), 250);
+  assert.equal(upload.importEnvMb("999999"), 20480);
+
+  const person = account("affine-limits");
+  const admin = { ...account("affine-admin"), isAdmin: true };
+  const env = process.env.FLOWPLAN_IMPORT_MAX_MB;
+  delete process.env.FLOWPLAN_IMPORT_MAX_MB;
+  try {
+    saveInstanceSettings({ maxUploadMb: 10 });
+    assert.equal(upload.importLimitFor(person), 100);
+    saveInstanceSettings({ maxUploadMb: 400 });
+    assert.equal(upload.importLimitFor(person), 400, "raising the upload limit raises the import limit");
+    assert.equal(upload.importLimitFor(admin), 400);
+    setUserLimits(person.id, { uploadMb: 600 });
+    assert.equal(upload.importLimitFor(person), 600, "a person's own upload limit counts");
+    process.env.FLOWPLAN_IMPORT_MAX_MB = "250";
+    assert.equal(upload.importLimitFor(person), 250);
+  } finally {
+    if (env === undefined) delete process.env.FLOWPLAN_IMPORT_MAX_MB;
+    else process.env.FLOWPLAN_IMPORT_MAX_MB = env;
+    saveInstanceSettings({ maxUploadMb: 10 });
+  }
+  // The refusal names the limit and where to change it, in every language.
+  const refusal = upload.importTooLarge(512, null);
+  assert.equal(refusal.status, 413);
+  assert.match(refusal.message, /512 MB.*Administration → Grenzen & Aufbewahrung/);
+  assert.match(englishMessage(refusal.message), /512 MB.*Largest upload.*Administration → Limits & retention/);
+  assert.match(englishMessage(upload.importTooLarge(300, 300).message), /300 MB \(FLOWPLAN_IMPORT_MAX_MB\)/);
+
+  // Internal limits grow with the file, never below their base values.
+  assert.deepEqual(affineLimitsFor(1000), { totalDocBytes: AFFINE_LIMITS.totalDocBytes, blobBytes: AFFINE_LIMITS.blobBytes });
+  const big = affineLimitsFor(600 * 1024 * 1024);
+  assert.equal(big.totalDocBytes, 600 * 1024 * 1024);
+  assert.equal(big.blobBytes, 600 * 1024 * 1024);
+  assert.equal(affineLimitsFor(5000 * 1024 * 1024).totalDocBytes, 1024 * 1024 * 1024, "documents in memory stay below 1 GB");
+});
+
+test("large uploads: streamed to disk, the workspace file read in place, files read when written (#76)", async () => {
+  const stream = (...chunks: Buffer[]) =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk));
+        controller.close();
+      },
+    });
+  const ws = sampleWorkspace();
+  const big = Buffer.concat([PNG, Buffer.alloc(3 * 1024 * 1024, 7)]);
+  ws.blobs = [...(ws.blobs || []), { key: "bigPng", data: big, mime: "image/png" }];
+  const planDoc = ws.docs.find((d) => d.id === IDS.plan)!;
+  planDoc.doc = page(IDS.plan, "Projektplan", [note([para("Groß"), { id: "bigImg", flavour: "affine:image", props: { sourceId: "bigPng", caption: "Groß" } }])]);
+  const bytes = affineFileV2(ws);
+
+  // Refused beyond the limit; nothing stays behind.
+  const tooLarge = () => upload.importTooLarge(1, null);
+  await assert.rejects(upload.saveImportUpload(owner.id, stream(bytes, Buffer.alloc(1024 * 1024)), bytes.length, tooLarge), /höchstens 1 MB/);
+  const dir = join(process.env.FLOWPLAN_DATA_DIR!, "tmp", "imports");
+  assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], []);
+
+  const saved = await upload.saveImportUpload(owner.id, stream(bytes.subarray(0, 1000), bytes.subarray(1000)), bytes.length, tooLarge);
+  assert.equal(saved.size, bytes.length);
+  // Only its owner can name it again.
+  assert.equal(upload.importUploadPath(owner.id, saved.id), saved.path);
+  const other = account("affine-other");
+  assert.throws(() => upload.importUploadPath(other.id, saved.id), /nicht mehr vorhanden/);
+  assert.throws(() => upload.importUploadPath(owner.id, "../../etc"), /Ungültige Eingabe/);
+
+  // Read from disk: files are not in memory, only read when written.
+  const tree = await parseImport("Gross.affine", { path: saved.path });
+  const file = tree.files.get("bigPng")!;
+  assert.ok(file && !("data" in file) && "read" in file, "files of a workspace on disk are read lazily");
+  assert.equal(file.size, big.length);
+  assert.equal(file.mime, "image/png");
+  tree.close?.();
+
+  const preview = await importFromSource(owner, wid, space, { name: "Gross.affine", path: saved.path }, { dryRun: true });
+  assert.ok(preview.bytes >= big.length);
+  const result = await importFromSource(owner, wid, space, { name: "Gross.affine", path: saved.path });
+  assert.equal(result.files, preview.files);
+  const stored = one<{ id: string; size: number }>("SELECT f.id,f.size FROM files f JOIN pages p ON p.id=f.page_id WHERE p.workspace_id=? AND f.size=?", wid, big.length);
+  assert.ok(stored, "the large file was written");
+  const { readFileSync } = await import("node:fs");
+  assert.ok(readFileSync(join(process.env.FLOWPLAN_DATA_DIR!, "uploads", stored!.id)).equals(big));
+  // The workspace file was closed after the import; the upload goes.
+  upload.discardImportUpload(owner.id, saved.id);
+  assert.ok(!existsSync(saved.path));
+
+  // Other exports from disk stay within the ZIP limit (a sparse file).
+  const zipDir = mkdtempSync(join(tmpdir(), "flowplan-bigzip-"));
+  try {
+    const zipPath = join(zipDir, "big.zip");
+    writeFileSync(zipPath, Buffer.from("PK\u0003\u0004"));
+    truncateSync(zipPath, 101 * 1024 * 1024);
+    await assert.rejects(parseImport("big.zip", { path: zipPath }), /höchstens 100 MB/);
+  } finally {
+    rmSync(zipDir, { recursive: true, force: true });
+  }
+
+  // Uploads that were never imported go after six hours.
+  const old = await upload.saveImportUpload(owner.id, stream(Buffer.from("x")), 10, tooLarge);
+  const folder = join(dir, readdirSync(dir).find((n) => n.endsWith(old.id))!);
+  utimesSync(folder, new Date(Date.now() - 7 * 3600e3), new Date(Date.now() - 7 * 3600e3));
+  upload.sweepImportUploads();
+  assert.ok(!existsSync(old.path));
 });

@@ -23,7 +23,7 @@ import { storedAliases } from "../aliases";
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
-import { MAX_IMPORT_PAGES, MAX_IMPORT_ROWS, type ImportPage, type ImportTree } from "./types";
+import { MAX_IMPORT_PAGES, MAX_IMPORT_ROWS, importFileData, importFileSize, type ImportPage, type ImportTree } from "./types";
 import type { Field, Identity, Page, Space } from "../types";
 
 export type ImportMode = "pages" | "database";
@@ -41,6 +41,8 @@ export type ImportPreview = {
   databases?: number;
   journalDays?: number;
   collections?: number;
+  // The title of the page everything lands below, when there is one.
+  wrapper?: string;
 };
 export type ImportResult = ImportPreview & { rootIds: string[]; rows: number; databaseId?: string };
 const special = (page: ImportPage) => page.kind === "whiteboard" || page.kind === "database";
@@ -91,7 +93,7 @@ export function requireSpace(user: Identity, workspaceId: string, spaceId: strin
 export function previewImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): ImportPreview {
   requireSpace(user, workspaceId, spaceId);
   const used = referencedFiles(tree, mode);
-  const bytes = [...used.keys()].reduce((sum, key) => sum + tree.files.get(key)!.data.length, 0);
+  const bytes = [...used.keys()].reduce((sum, key) => sum + importFileSize(tree.files.get(key)!), 0);
   const warnings = [...tree.warnings];
   const unused = tree.files.size - used.size;
   if (unused > 0) warnings.push(`${unused} Dateien werden von keiner Seite verwendet und nicht übernommen.`);
@@ -116,7 +118,8 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     title: tree.title,
     // Pages: documents of their own (journal days are counted apart).
     pages: mode === "pages" ? tree.pages.filter((p) => !p.folder && !special(p) && !p.journalDate).length : notes,
-    folders: tree.pages.filter((p) => p.folder).length,
+    // Folders of the source; the page holding everything is named apart.
+    folders: tree.pages.filter((p) => p.folder && p.key !== tree.wrapper).length,
     files: used.size,
     bytes,
     tags: new Set(tree.pages.flatMap((p) => p.tags || [])).size,
@@ -125,6 +128,9 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     ...(databases ? { databases } : {}),
     ...(journalDays && mode === "pages" ? { journalDays } : {}),
     ...(tree.collections ? { collections: tree.collections } : {}),
+    ...(tree.wrapper && mode === "pages" && tree.pages.some((p) => p.key === tree.wrapper)
+      ? { wrapper: tree.pages.find((p) => p.key === tree.wrapper)!.title }
+      : {}),
   };
 }
 
@@ -203,11 +209,13 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
     const fileUrls = new Map<string, { url: string; name: string; mime: string }>();
     for (const [key, pageKey] of used) {
       const file = tree.files.get(key)!;
+      // Read here (large workspaces): one file in memory at a time.
+      const data = importFileData(file);
       const fid = id();
       const name = sanitizeFileName(file.name, "datei");
-      const mime = verifiedMime(file.mime, file.data);
+      const mime = verifiedMime(file.mime, data);
       mkdirSync(dir, { recursive: true });
-      writeFileSync(resolve(dir, fid), file.data);
+      writeFileSync(resolve(dir, fid), data);
       onTransactionRollback(() => unlinkSync(resolve(dir, fid)));
       run(
         "INSERT INTO files(id,page_id,name,mime,size,created_by) VALUES(?,?,?,?,?,?)",
@@ -215,7 +223,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         databaseId || pageIds.get(pageKey)!,
         name,
         mime,
-        file.data.length,
+        data.length,
         user.id,
       );
       fileUrls.set(key, { url: `/api/files/${fid}`, name, mime });

@@ -3,8 +3,12 @@
 // .html or .docx) and Obsidian vaults. The file is
 // read with the ZIP reader's limits, recognised (or taken as the source the
 // person chose), turned into an import tree and then previewed or written.
+// A large upload arrives as a file on disk (lib/importers/upload.ts): an
+// AFFiNE workspace file is opened there in place; everything else is read
+// into memory and therefore stays within the ZIP limit.
+import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { posix } from "node:path";
-import { readZip } from "../archive";
+import { ARCHIVE_LIMIT, readZip } from "../archive";
 import { HttpError } from "../auth";
 import { jobProgress } from "../background-jobs";
 import { parseConfluence, isConfluence } from "./confluence";
@@ -18,6 +22,7 @@ import type { ImportSource, ImportTree } from "./types";
 import type { Identity } from "../types";
 
 export const IMPORT_SOURCES: ImportSource[] = ["affine", "confluence", "evernote", "gdocs", "obsidian"];
+const importTitle = (name: string) => posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine)$/i, "") || "Import";
 const isZip = (bytes: Buffer) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 
 // The entries of a ZIP; a single folder around everything is dropped.
@@ -46,13 +51,43 @@ export function detectSource(name: string, bytes: Buffer, entries?: Map<string, 
   return null;
 }
 
-export async function parseImport(name: string, bytes: Buffer, chosen?: ImportSource | "auto"): Promise<ImportTree> {
+// The first bytes of a file on disk (enough to recognise SQLite).
+function fileHead(path: string) {
+  const fd = openSync(path, "r");
+  try {
+    const head = Buffer.alloc(100);
+    return head.subarray(0, readSync(fd, head, 0, 100, 0));
+  } finally {
+    closeSync(fd);
+  }
+}
+// Files other than the AFFiNE workspace file are read into memory.
+export const MEMORY_IMPORT_LIMIT = ARCHIVE_LIMIT;
+
+export async function parseImport(name: string, input: Buffer | { path: string }, chosen?: ImportSource | "auto"): Promise<ImportTree> {
+  if (!Buffer.isBuffer(input)) {
+    const head = fileHead(input.path);
+    // The workspace file stays on disk, however large it is.
+    if (isSqlite(head) && (!chosen || chosen === "auto" || chosen === "affine")) {
+      const ws = readAffineFile(input.path, importTitle(name));
+      try {
+        return parseAffine(ws, importTitle(name));
+      } catch (error) {
+        ws.close?.();
+        throw error;
+      }
+    }
+    if (statSync(input.path).size > MEMORY_IMPORT_LIMIT)
+      throw new HttpError(413, "ZIP- und andere Exporte dürfen höchstens 100 MB groß sein; größer darf nur die AFFiNE-Arbeitsbereichsdatei (.affine) sein.");
+    input = readFileSync(input.path);
+  }
+  const bytes = input;
   const budget = { left: 512 * 1024 * 1024 };
   const zipped = isZip(bytes);
   const entries = zipped ? await zipEntries(bytes, budget) : undefined;
   const source = chosen && chosen !== "auto" ? chosen : detectSource(name, bytes, entries);
   if (!source) throw new HttpError(400, "Das Format der Datei wurde nicht erkannt.");
-  const title = posix.basename(name.replaceAll("\\", "/")).replace(/\.(zip|enex|html?|docx|affine)$/i, "") || "Import";
+  const title = importTitle(name);
   switch (source) {
     case "affine":
       // The workspace file (SQLite) or a snapshot ZIP ("Export → Snapshot").
@@ -82,7 +117,8 @@ export async function parseImport(name: string, bytes: Buffer, chosen?: ImportSo
 }
 
 type ImportOptions = { source?: ImportSource | "auto"; mode?: ImportMode; dryRun?: boolean };
-type ImportFile = { name: string; bytes: Buffer };
+// The upload: its bytes, or (large files) its path on disk.
+type ImportFile = { name: string; bytes: Buffer } | { name: string; path: string };
 export async function importFromSource(user: Identity, workspaceId: string, spaceId: string, file: ImportFile, options: ImportOptions & { dryRun: true }): Promise<ImportPreview>;
 export async function importFromSource(user: Identity, workspaceId: string, spaceId: string, file: ImportFile, options?: ImportOptions & { dryRun?: false }): Promise<ImportResult>;
 export async function importFromSource(user: Identity, workspaceId: string, spaceId: string, file: ImportFile, options?: ImportOptions): Promise<ImportPreview | ImportResult>;
@@ -95,10 +131,14 @@ export async function importFromSource(
 ): Promise<ImportPreview | ImportResult> {
   // Rights first: reading a large archive costs time.
   requireSpace(user, workspaceId, spaceId);
-  const tree = await parseImport(file.name, file.bytes, options.source);
-  // Reading is about half of the work (Live Activity, lib/background-jobs.ts).
-  jobProgress(0.5);
-  return options.dryRun
-    ? previewImport(user, workspaceId, spaceId, tree, options.mode)
-    : writeImport(user, workspaceId, spaceId, tree, options.mode);
+  const tree = await parseImport(file.name, "bytes" in file ? file.bytes : { path: file.path }, options.source);
+  try {
+    // Reading is about half of the work (Live Activity, lib/background-jobs.ts).
+    jobProgress(0.5);
+    return options.dryRun
+      ? previewImport(user, workspaceId, spaceId, tree, options.mode)
+      : writeImport(user, workspaceId, spaceId, tree, options.mode);
+  } finally {
+    tree.close?.();
+  }
 }

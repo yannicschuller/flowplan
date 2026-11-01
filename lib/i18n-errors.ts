@@ -953,6 +953,12 @@ const exact: Record<string, string> = {
   "Der AFFiNE-Arbeitsbereich ist zu groß.": "The AFFiNE workspace is too large.",
   "Die AFFiNE-Datei enthält keinen Arbeitsbereich.": "The AFFiNE file contains no workspace.",
   "Bitte die AFFiNE-Arbeitsbereichsdatei (.affine) oder einen Snapshot-Export (ZIP) hochladen.": "Please upload the AFFiNE workspace file (.affine) or a snapshot export (ZIP).",
+  "Die AFFiNE-Datei ist schon geschlossen.": "The AFFiNE file is already closed.",
+  // Large imports (lib/importers/upload.ts).
+  "Als Formular darf die Datei höchstens 100 MB groß sein; größere Dateien als Anfragekörper senden.": "As a form the file may be at most 100 MB; send larger files as the request body.",
+  "ZIP- und andere Exporte dürfen höchstens 100 MB groß sein; größer darf nur die AFFiNE-Arbeitsbereichsdatei (.affine) sein.": "ZIP and other exports may be at most 100 MB; only the AFFiNE workspace file (.affine) may be larger.",
+  "Die Datei konnte nicht hochgeladen werden.": "The file could not be uploaded.",
+  "Die hochgeladene Datei ist nicht mehr vorhanden. Bitte wähle sie erneut aus.": "The uploaded file is no longer there. Please choose it again.",
   "Ein Dokument konnte nicht gelesen werden.": "A document could not be read.",
   "Ein Dokument ist zu groß und wurde übersprungen.": "A document is too large and was skipped.",
   "Ein Dokument ohne Inhalt wurde nur mit seinem Titel übernommen.": "A document without content was imported with its title only.",
@@ -1081,6 +1087,8 @@ const patterns: [RegExp, string][] = [
   [/^(\d+) Elemente auf Whiteboards konnten nicht übernommen werden\.$/, "$1 elements on whiteboards could not be imported."],
   [/^(\d+) Bilder oder Anhänge fehlen in der Datei\.$/, "$1 images or attachments are missing from the file."],
   [/^Ein Journaltag konnte nicht ergänzt werden: (.+)$/, "A journal day could not be extended: $1"],
+  [/^Die Datei darf höchstens (\d+) MB groß sein \(FLOWPLAN_IMPORT_MAX_MB\)\.$/, "The file may be at most $1 MB (FLOWPLAN_IMPORT_MAX_MB)."],
+  [/^Die Datei darf höchstens (\d+) MB groß sein\. Die Grenze folgt der größten Datei beim Hochladen \(Administration → Grenzen & Aufbewahrung\), mindestens 100 MB\.$/, "The file may be at most $1 MB. The limit follows “Largest upload” (Administration → Limits & retention), at least 100 MB."],
 ];
 
 // An incident of the instance for the administrators (lib/security-detect.ts

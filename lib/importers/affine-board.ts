@@ -122,12 +122,12 @@ export function affineBoard(docId: string, root: ABlock, ctx: BoardContext): Imp
     if (imageIds.has(key)) return imageIds.get(key)!;
     const blob = ctx.blobs.get(key);
     if (!blob) return null;
-    const mime = ["image/png", "image/jpeg", "image/gif", "image/webp"].find((m) => imageSignature(m, blob.data));
-    if (!mime || blob.data.length > BOARD_IMPORT_LIMITS.imageBytes) return null;
-    if (images.length >= BOARD_IMPORT_LIMITS.images || imageBytes + blob.data.length > BOARD_IMPORT_LIMITS.imagesTotal) return null;
+    const mime = ["image/png", "image/jpeg", "image/gif", "image/webp"].find((m) => imageSignature(m, blob.head));
+    if (!mime || blob.size > BOARD_IMPORT_LIMITS.imageBytes) return null;
+    if (images.length >= BOARD_IMPORT_LIMITS.images || imageBytes + blob.size > BOARD_IMPORT_LIMITS.imagesTotal) return null;
     const id = `img${images.length + 1}`;
-    images.push({ id, mime, data: new Uint8Array(blob.data) });
-    imageBytes += blob.data.length;
+    images.push({ id, mime, data: new Uint8Array(blob.read()) });
+    imageBytes += blob.size;
     imageIds.set(key, IMPORT_IMAGE_PREFIX + id);
     return IMPORT_IMAGE_PREFIX + id;
   };

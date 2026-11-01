@@ -1054,9 +1054,14 @@ async function handlePOST(
     checkOrigin(req);
     const { path } = await params;
     // ZIP imports may be as large as content archives. File uploads must
-    // state their size, so the limit holds before anything is read.
-    const maxBody =
-      path[0] === "import" || path[1] === "import" || path[2] === "import-markdown"
+    // state their size, so the limit holds before anything is read. A raw
+    // upload to /api/import/source is checked against the person's import
+    // limit below (lib/importers/upload.ts).
+    const rawImport =
+      path.length === 2 && path[0] === "import" && path[1] === "source" && !req.headers.get("content-type")?.startsWith("multipart/form-data");
+    const maxBody = rawImport
+      ? Number.MAX_SAFE_INTEGER
+      : path[0] === "import" || path[1] === "import" || path[2] === "import-markdown"
         ? ARCHIVE_LIMIT + 1_000_000
         : path[0] === "capture" && path[1] === "save"
           ? 100 * 1024 * 1024 + 1_000_000
@@ -1341,29 +1346,76 @@ async function handlePOST(
         });
       return NextResponse.json(data.get("dryRun") === "1" ? records() : await trackJob(user, "import", files[0].name, records));
     }
-    // Confluence, Evernote, Google Docs and Obsidian (lib/importers):
-    // dryRun=1 answers with a preview (counts and warnings) only.
+    // AFFiNE, Confluence, Evernote, Google Docs and Obsidian (lib/importers):
+    // dryRun=1 answers with a preview (counts and warnings) only. The file
+    // comes as a form (up to 100 MB, held in memory) or as the raw request
+    // body with the fields in the query (up to the import limit, streamed
+    // to disk; lib/importers/upload.ts). A raw preview keeps the upload and
+    // answers with its id: the import then names it as "upload" instead of
+    // sending the file again, "discard=1" drops it.
     if (path.length === 2 && path[0] === "import" && path[1] === "source") {
-      const data = await req.formData();
-      const file = data.get("file");
-      if (!(file instanceof File)) throw new HttpError(400, "Datei fehlt.");
-      if (file.size > ARCHIVE_LIMIT) throw new HttpError(413, "Die Datei darf maximal 100 MB groß sein.");
       const { importFromSource } = await import("@/lib/importers");
-      const dryRun = data.get("dryRun") === "1";
-      const bytes = Buffer.from(await file.arrayBuffer());
+      const upload = await import("@/lib/importers/upload");
+      const limitMb = upload.importLimitFor(user);
+      let fields: { get(name: string): unknown };
+      let file: { name: string; bytes: Buffer } | { name: string; path: string };
+      let kept: string | null = null;
+      if (!rawImport) {
+        const data = await req.formData();
+        const form = data.get("file");
+        if (!(form instanceof File)) throw new HttpError(400, "Datei fehlt.");
+        if (form.size > Math.min(ARCHIVE_LIMIT, upload.importLimitBytes(limitMb)))
+          throw form.size > upload.importLimitBytes(limitMb)
+            ? upload.importTooLarge(limitMb)
+            : new HttpError(413, "Als Formular darf die Datei höchstens 100 MB groß sein; größere Dateien als Anfragekörper senden.");
+        fields = data;
+        file = { name: form.name, bytes: Buffer.from(await form.arrayBuffer()) };
+      } else {
+        const query = new URL(req.url).searchParams;
+        fields = query;
+        const name = (query.get("name") || "import").slice(0, 300);
+        const earlier = query.get("upload");
+        if (earlier && query.get("discard") === "1") {
+          upload.discardImportUpload(user.id, earlier);
+          return NextResponse.json({ ok: true });
+        }
+        if (earlier) file = { name, path: upload.importUploadPath(user.id, earlier) };
+        else {
+          // Rights before a large body is read.
+          const { requireSpace } = await import("@/lib/importers/write");
+          requireSpace(user, z.uuid().parse(query.get("workspaceId")), z.uuid().parse(query.get("spaceId")));
+          // The size must be stated (a body without it would pass proxy.ts).
+          requireBodySize(req, Number.MAX_SAFE_INTEGER, "Anfrage zu groß.");
+          if (Number(req.headers.get("content-length")) > upload.importLimitBytes(limitMb)) throw upload.importTooLarge(limitMb);
+          if (!req.body) throw new HttpError(400, "Datei fehlt.");
+          const saved = await upload.saveImportUpload(user.id, req.body, upload.importLimitBytes(limitMb), () => upload.importTooLarge(limitMb));
+          file = { name, path: saved.path };
+          kept = saved.id;
+        }
+        kept = earlier || kept;
+      }
+      const dryRun = fields.get("dryRun") === "1";
       const imported = () =>
         importFromSource(
           user,
-          z.uuid().parse(data.get("workspaceId")),
-          z.uuid().parse(data.get("spaceId")),
-          { name: file.name, bytes },
+          z.uuid().parse(fields.get("workspaceId")),
+          z.uuid().parse(fields.get("spaceId")),
+          file,
           {
-            source: z.enum(["auto", "affine", "confluence", "evernote", "gdocs", "obsidian"]).catch("auto").parse(data.get("source") || "auto"),
-            mode: data.get("mode") === "database" ? "database" : "pages",
+            source: z.enum(["auto", "affine", "confluence", "evernote", "gdocs", "obsidian"]).catch("auto").parse(fields.get("source") || "auto"),
+            mode: fields.get("mode") === "database" ? "database" : "pages",
             dryRun,
           },
         );
-      return NextResponse.json(dryRun ? await imported() : await trackJob(user, "import", file.name, imported));
+      let keep = false;
+      try {
+        const result = dryRun ? await imported() : await trackJob(user, "import", file.name, imported);
+        // After a preview the upload waits for the import.
+        keep = dryRun && !!kept;
+        return NextResponse.json(keep ? { ...result, upload: kept } : result);
+      } finally {
+        if (kept && !keep) upload.discardImportUpload(user.id, kept);
+      }
     }
     if (path[0] === "import" && path[1] === "zip") {
       const data = await req.formData();

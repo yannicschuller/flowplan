@@ -69,7 +69,10 @@ export default function LimitsSection() {
         <InstanceNumber
           field="maxUploadMb"
           label={t("Größte Datei beim Hochladen", "Largest upload")}
-          description={t("Für jede einzelne Datei; je Person änderbar.", "For each single file; can differ per person.")}
+          description={t(
+            "Für jede einzelne Datei; je Person änderbar. Gilt auch für Importe aus AFFiNE (mindestens 100 MB).",
+            "For each single file; can differ per person. Also applies to imports from AFFiNE (at least 100 MB).",
+          )}
           unit="MB"
           min={1}
           max={1024}

@@ -3,8 +3,10 @@
 //
 // - Folders ("Organize") become pages holding their documents; a document
 //   in several folders lives in the first and is linked from the others.
-//   Everything not in a folder goes below one page named after the
-//   workspace, so the import arrives as one tree.
+//   A workspace file with several top-level items (folders, documents
+//   outside folders, collections) arrives below one page named after the
+//   workspace; a snapshot, or a single item, goes straight into the target
+//   (#77) – an empty page above it would carry nothing.
 // - Documents: the notes shown in the document as HTML (headings, lists,
 //   to-dos, toggles, quotes, code, callouts, dividers, tables, LaTeX,
 //   images, attachments, bookmarks, bold/italic/underline/strike/code,
@@ -510,9 +512,10 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
       return null;
     }
     if (!files.has(key)) {
-      const type = sniff(found.data) || (mime && mime !== "image" ? mime : "") || found.mime || (name ? mimeOf(name) : "application/octet-stream");
+      const type = sniff(found.head) || (mime && mime !== "image" ? mime : "") || found.mime || (name ? mimeOf(name) : "application/octet-stream");
       const fileName = name || `${ct("Bild", "Image")}-${files.size + 1}.${EXT[type] || mimeOf("x").split("/")[1] || "bin"}`;
-      files.set(key, { key, name: fileName, mime: type, data: found.data });
+      // Read when written: large workspaces never hold all files at once.
+      files.set(key, { key, name: fileName, mime: type, size: found.size, read: found.read });
     }
     return fileRef(key);
   };
@@ -640,6 +643,13 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
   // Folders that list more than the documents they hold.
   for (const page of pages) if (extraLinks.has(page.key)) page.html = `<ul>${extraLinks.get(page.key)!.join("")}</ul>`;
   if (!live.length) warnings.add("Keine Dokumente gefunden.");
+  // The workspace page only when it carries structure (#77); otherwise its
+  // children go straight into the target.
+  const wrap = keepWorkspacePage(ws.format, pages);
+  if (!wrap) {
+    pages.splice(pages.indexOf(root), 1);
+    for (const page of pages) if (page.parent === ROOT) page.parent = null;
+  }
   return {
     source: "affine",
     title: root.title,
@@ -647,5 +657,17 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     files,
     warnings: warnings.list(),
     collections: ws.collections.length,
+    ...(wrap ? { wrapper: ROOT } : {}),
+    ...(ws.close ? { close: ws.close } : {}),
   };
+}
+
+// Whether the import keeps the page named after the workspace: only for the
+// workspace file (.affine), and only when more than one item would sit at
+// the top – folders, documents outside folders, collections, databases of
+// journal days. A whiteboard belongs to its document and does not count;
+// journal days go into the journal.
+export function keepWorkspacePage(format: AWorkspace["format"], pages: Pick<ImportPage, "parent" | "kind">[]) {
+  if (format === "snapshot") return false;
+  return pages.filter((p) => p.parent === ROOT && p.kind !== "whiteboard").length > 1;
 }

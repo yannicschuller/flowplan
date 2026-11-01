@@ -45,7 +45,11 @@
 // Everything here is untrusted: sizes, counts and nesting are bounded, a
 // document that cannot be read is skipped with a warning, and object keys
 // that could reach a prototype are dropped.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+//
+// Large workspace files (#76): a file on disk (the upload, streamed there)
+// is opened in place, and its files (blobs) are only read one at a time
+// when the import writes them – memory holds the documents, not the files.
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -64,6 +68,16 @@ export const AFFINE_LIMITS = {
   snapshotBytes: 32 * 1024 * 1024,
   textLength: 200_000,
 };
+const MB = 1024 * 1024;
+// The limits for a workspace file of this size: documents (held in memory
+// while they are converted) may grow with the file up to 1 GB, files
+// (read one at a time) with the file itself. The base values stay the floor.
+export function affineLimitsFor(fileBytes: number) {
+  return {
+    totalDocBytes: Math.max(AFFINE_LIMITS.totalDocBytes, Math.min(fileBytes, 1024 * MB)),
+    blobBytes: Math.max(AFFINE_LIMITS.blobBytes, fileBytes),
+  };
+}
 const TEXT_ID = "$blocksuite:internal:text$";
 const NATIVE_ID = "$blocksuite:internal:native$";
 const SURFACE_TEXT_ID = "affine:surface:text";
@@ -92,7 +106,10 @@ export type ADoc = {
 export type AFolderNode = { id: string; parentId: string | null; type: string; data: string; index: string };
 export type AFilter = { type: string; key: string; method: string; value?: string };
 export type ACollection = { id: string; name: string; filters: AFilter[]; allowList: string[] };
-export type ABlob = { data: Buffer; mime: string };
+// A file of the workspace: its size, the first bytes (to recognise the type)
+// and the content, read when needed (from the open workspace file).
+export type ABlob = { size: number; mime: string; head: Buffer; read: () => Buffer };
+export const memoryBlob = (data: Buffer, mime: string): ABlob => ({ size: data.length, mime, head: data.subarray(0, 16), read: () => data });
 export type AffineFormat = "sqlite-v2" | "sqlite-v1" | "snapshot";
 export type AWorkspace = {
   format: AffineFormat;
@@ -106,6 +123,8 @@ export type AWorkspace = {
   favorites: Set<string>;
   blobs: Map<string, ABlob>;
   warnings: string[];
+  // Closes the workspace file once the import no longer reads files from it.
+  close?: () => void;
 };
 
 const SQLITE_HEADER = Buffer.from("SQLite format 3\0", "latin1");
@@ -337,26 +356,45 @@ function tableRows(doc: Y.Doc) {
 
 /* ---------- the workspace file (SQLite) ---------- */
 
-type Sqlite = { format: "sqlite-v1" | "sqlite-v2"; spaceId: string | null; docs: Map<string, Uint8Array[]>; blobs: Map<string, ABlob> };
-function readSqlite(bytes: Buffer): Sqlite {
-  // node:sqlite opens files only; the copy lives in a private temp folder.
-  const dir = mkdtempSync(join(tmpdir(), "flowplan-affine-"));
-  const path = join(dir, "workspace.affine");
+type Sqlite = { format: "sqlite-v1" | "sqlite-v2"; spaceId: string | null; docs: Map<string, Uint8Array[]>; blobs: Map<string, ABlob>; close: () => void };
+// The workspace file: a path (opened in place, files read lazily until
+// close) or its bytes (copied to a private temp folder, files read at once).
+function readSqlite(input: Buffer | string): Sqlite {
+  let dir: string | null = null;
+  let path: string;
   let db: DatabaseSync | undefined;
+  const close = () => {
+    try {
+      db?.close();
+    } catch {
+      /* already closed */
+    }
+    db = undefined;
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = null;
+  };
   try {
-    writeFileSync(path, bytes, { mode: 0o600 });
+    if (typeof input === "string") path = input;
+    else {
+      // node:sqlite opens files only.
+      dir = mkdtempSync(join(tmpdir(), "flowplan-affine-"));
+      path = join(dir, "workspace.affine");
+      writeFileSync(path, input, { mode: 0o600 });
+    }
+    const limits = affineLimitsFor(typeof input === "string" ? statSync(path).size : input.length);
     try {
       db = new DatabaseSync(path, { readOnly: true });
       db.exec("PRAGMA query_only=1; PRAGMA trusted_schema=0;");
     } catch {
       throw new HttpError(400, "Die AFFiNE-Datei kann nicht gelesen werden.");
     }
+    const open = db;
     const tables = new Map<string, Set<string>>();
     try {
       // Only real tables count: views or triggers in a crafted file never run.
-      for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]) {
+      for (const { name } of open.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[]) {
         if (!/^[A-Za-z_][A-Za-z0-9_]{0,60}$/.test(name)) continue;
-        const columns = new Set((db.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]).map((c) => c.name));
+        const columns = new Set((open.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]).map((c) => c.name));
         tables.set(name, columns);
       }
     } catch {
@@ -373,7 +411,7 @@ function readSqlite(bytes: Buffer): Sqlite {
       const key = docId ?? "";
       if (!docs.has(key) && docs.size >= AFFINE_LIMITS.docs * 2 + 20) return;
       total += data.length;
-      if (total > AFFINE_LIMITS.totalDocBytes) throw new HttpError(413, "Der AFFiNE-Arbeitsbereich ist zu groß.");
+      if (total > limits.totalDocBytes) throw new HttpError(413, "Der AFFiNE-Arbeitsbereich ist zu groß.");
       const list = docs.get(key) || [];
       list.push(data);
       docs.set(key, list);
@@ -383,38 +421,45 @@ function readSqlite(bytes: Buffer): Sqlite {
     const sizes = v2
       ? `SELECT doc_id, SUM(n) n FROM (SELECT doc_id, length(data) n FROM snapshots UNION ALL SELECT doc_id, length(data) n FROM updates) GROUP BY doc_id`
       : `SELECT doc_id, SUM(length(data)) n FROM updates GROUP BY doc_id`;
-    for (const row of db.prepare(sizes).all() as { doc_id: string | null; n: number }[])
+    for (const row of open.prepare(sizes).all() as { doc_id: string | null; n: number }[])
       if (Number(row.n) > AFFINE_LIMITS.docBytes) tooLarge.add(row.doc_id ?? "");
     let spaceId: string | null = null;
     if (v2) {
-      if (has("meta", "space_id")) spaceId = (db.prepare("SELECT space_id FROM meta LIMIT 1").get() as { space_id?: string } | undefined)?.space_id ?? null;
-      for (const row of db.prepare("SELECT doc_id, data FROM snapshots").iterate() as Iterable<{ doc_id: string; data: Uint8Array }>)
+      if (has("meta", "space_id")) spaceId = (open.prepare("SELECT space_id FROM meta LIMIT 1").get() as { space_id?: string } | undefined)?.space_id ?? null;
+      for (const row of open.prepare("SELECT doc_id, data FROM snapshots").iterate() as Iterable<{ doc_id: string; data: Uint8Array }>)
         if (!tooLarge.has(row.doc_id)) add(String(row.doc_id), row.data);
-      for (const row of db.prepare("SELECT doc_id, data FROM updates ORDER BY doc_id, created_at").iterate() as Iterable<{ doc_id: string; data: Uint8Array }>)
+      for (const row of open.prepare("SELECT doc_id, data FROM updates ORDER BY doc_id, created_at").iterate() as Iterable<{ doc_id: string; data: Uint8Array }>)
         if (!tooLarge.has(row.doc_id)) add(String(row.doc_id), row.data);
     } else
-      for (const row of db.prepare("SELECT doc_id, data FROM updates ORDER BY id").iterate() as Iterable<{ doc_id: string | null; data: Uint8Array }>)
+      for (const row of open.prepare("SELECT doc_id, data FROM updates ORDER BY id").iterate() as Iterable<{ doc_id: string | null; data: Uint8Array }>)
         if (!tooLarge.has(row.doc_id ?? "")) add(row.doc_id === null ? null : String(row.doc_id), row.data);
+    // Files: size, type and first bytes now; the content when it is used.
     const blobs = new Map<string, ABlob>();
     let blobBytes = 0;
-    const blobQuery = v2 ? "SELECT key, data, mime FROM blobs WHERE deleted_at IS NULL" : "SELECT key, data FROM blobs";
-    for (const row of db.prepare(blobQuery).iterate() as Iterable<{ key: string; data: Uint8Array; mime?: string }>) {
-      if (blobs.size >= AFFINE_LIMITS.blobs || !(row.data instanceof Uint8Array) || typeof row.key !== "string") continue;
-      if (blobBytes + row.data.length > AFFINE_LIMITS.blobBytes) continue;
-      blobBytes += row.data.length;
-      blobs.set(row.key.slice(0, 200), { data: Buffer.from(row.data), mime: typeof row.mime === "string" ? row.mime.slice(0, 100) : "" });
+    const lazy = typeof input === "string";
+    const content = open.prepare(`SELECT data FROM blobs WHERE rowid=?`);
+    const blobQuery = v2
+      ? "SELECT rowid id, key, length(data) size, substr(data, 1, 16) head, mime FROM blobs WHERE deleted_at IS NULL"
+      : "SELECT rowid id, key, length(data) size, substr(data, 1, 16) head FROM blobs";
+    for (const row of open.prepare(blobQuery).iterate() as Iterable<{ id: number; key: string; size: number; head: Uint8Array; mime?: string }>) {
+      if (blobs.size >= AFFINE_LIMITS.blobs || !(row.head instanceof Uint8Array) || typeof row.key !== "string") continue;
+      const size = Number(row.size);
+      if (blobBytes + size > limits.blobBytes) continue;
+      blobBytes += size;
+      const mime = typeof row.mime === "string" ? row.mime.slice(0, 100) : "";
+      const read = () => {
+        if (!db) throw new HttpError(500, "Die AFFiNE-Datei ist schon geschlossen.");
+        const data = (content.get(row.id) as { data?: unknown } | undefined)?.data;
+        return data instanceof Uint8Array ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : Buffer.alloc(0);
+      };
+      blobs.set(row.key.slice(0, 200), lazy ? { size, mime, head: Buffer.from(row.head), read } : memoryBlob(read(), mime));
     }
-    return { format: v2 ? "sqlite-v2" : "sqlite-v1", spaceId, docs, blobs };
+    if (!lazy) close();
+    return { format: v2 ? "sqlite-v2" : "sqlite-v1", spaceId, docs, blobs, close };
   } catch (error) {
+    close();
     if (error instanceof HttpError) throw error;
     throw new HttpError(400, "Die AFFiNE-Datei kann nicht gelesen werden.");
-  } finally {
-    try {
-      db?.close();
-    } catch {
-      /* already closed */
-    }
-    rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -424,8 +469,11 @@ function yDoc(updates: Uint8Array[]) {
   return doc;
 }
 
-export function readAffineFile(bytes: Buffer, fallbackName: string): AWorkspace {
-  const sqlite = readSqlite(bytes);
+// The workspace file as its bytes or (large uploads) its path on disk; with
+// a path, call close() on the result once the import is written.
+export function readAffineFile(input: Buffer | string, fallbackName: string): AWorkspace {
+  const sqlite = readSqlite(input);
+  let done = false;
   const warnings: string[] = [];
   const opened = new Map<string, Y.Doc>();
   const open = (key: string) => {
@@ -506,7 +554,7 @@ export function readAffineFile(bytes: Buffer, fallbackName: string): AWorkspace 
         for (const row of doc ? tableRows(doc) : []) if (typeof row.key === "string" && row.key.startsWith("doc:")) favorites.add(row.key.slice(4));
       }
     const setting = fromY(root.getMap("setting")) as Record<string, unknown>;
-    return {
+    const workspace: AWorkspace = {
       format: sqlite.format,
       name: str(meta.name, 200).trim() || fallbackName,
       docs,
@@ -517,9 +565,13 @@ export function readAffineFile(bytes: Buffer, fallbackName: string): AWorkspace 
       favorites,
       blobs: sqlite.blobs,
       warnings,
+      close: sqlite.close,
     };
+    done = true;
+    return workspace;
   } finally {
     for (const doc of opened.values()) doc.destroy();
+    if (!done) sqlite.close();
   }
 }
 
@@ -534,7 +586,7 @@ export function readSnapshotZip(entries: Map<string, Buffer>, fallbackName: stri
     const base = posix.basename(name);
     if (name.includes("__MACOSX") || base.startsWith(".")) continue;
     if (/(^|\/)assets\/[^/]+$/.test(name)) {
-      if (blobs.size < AFFINE_LIMITS.blobs) blobs.set(base.replace(/\.[^.]*$/, ""), { data, mime: mimeOf(base) });
+      if (blobs.size < AFFINE_LIMITS.blobs) blobs.set(base.replace(/\.[^.]*$/, ""), memoryBlob(data, mimeOf(base)));
       continue;
     }
     if (base === "info.json") {
