@@ -17,6 +17,7 @@ import {
   startRegistration,
 } from "@simplewebauthn/browser";
 import { BrandMark } from "./brand-mark";
+import { AppProfilesLink } from "./app-profiles-link";
 import { useT } from "./i18n";
 import { SettingRow, StatusBadge } from "./settings-ui";
 import type { TwoFactorStatus } from "@/lib/two-factor";
@@ -531,6 +532,7 @@ export function TwoFactorRequired({
         >
           <SignOut size={15} /> {t("Abmelden", "Sign out")}
         </button>
+        <AppProfilesLink />
       </section>
     </main>
   );

@@ -4,6 +4,7 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useState, type FormEvent } from "react";
 import { BrandMark } from "./brand-mark";
 import { useT } from "./i18n";
+import { AppProfilesLink } from "./app-profiles-link";
 
 export default function ResetPassword({ token }: { token: string }) {
   const t = useT();
@@ -68,6 +69,7 @@ export default function ResetPassword({ token }: { token: string }) {
             </button>
           </form>
         )}
+        <AppProfilesLink />
       </section>
     </main>
   );

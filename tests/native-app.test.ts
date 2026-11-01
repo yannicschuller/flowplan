@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { desktopPageLink, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
+import { APP_PROFILES_LINK, appProfilesAction, desktopPageLink, offerDesktopApp, offlineUnsupportedReason } from "../lib/native-app";
 
 const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 FlowplanMobile/1.4.0";
 const ipad = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) FlowplanMobile/1.4.0";
@@ -27,4 +27,31 @@ test("open in the desktop app: a flowplan://open link, offered in browsers on co
   assert.equal(offerDesktopApp("macos", true, undefined), false, "not inside the desktop app");
   assert.equal(offerDesktopApp("macos", false, { platform: "ios" }), false, "not in the iPad app (iPadOS names itself a Mac)");
   for (const os of ["ios", "ipados", "android", "chromeos", "unknown"] as const) assert.equal(offerDesktopApp(os, false, undefined), false, os);
+});
+
+test("sign-in pages: \"Other server? Switch profile\" only inside the mobile app (#69)", () => {
+  const desktop = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Electron/38.0 Safari/537.36 FlowplanDesktop/1.1.0";
+  const openProfiles = () => {};
+  // Newer apps: their bridge opens the profiles (and brings the person back).
+  assert.equal(appProfilesAction({ platform: "ios", openProfiles }, iphone), "bridge");
+  assert.equal(appProfilesAction({ platform: "android", openProfiles }, android), "bridge");
+  // Older apps: the link every version since 1.0.1 hands to its profiles.
+  assert.equal(appProfilesAction({ platform: "ios" }, iphone), "link");
+  assert.equal(appProfilesAction({ platform: "android" }, android), "link");
+  assert.equal(appProfilesAction(undefined, ipad), "link", "before the bridge, the user agent tells");
+  assert.equal(APP_PROFILES_LINK, "flowplan://change-server");
+  // A broken bridge entry is no bridge.
+  assert.equal(appProfilesAction({ platform: "ios", openProfiles: "yes" }, iphone), "link");
+  // Browsers and the desktop app: nothing.
+  assert.equal(appProfilesAction(undefined, safari), null);
+  assert.equal(appProfilesAction(undefined, desktop), null);
+  assert.equal(appProfilesAction(undefined, ""), null);
+});
+
+test("the profiles link sits on the pages before signing in, not in the signed-in app", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  for (const page of ["components/login.tsx", "components/reset-password.tsx", "components/two-factor.tsx"]) assert.match(read(page), /<AppProfilesLink \/>/, page);
+  // Signed in, the app's settings hold the profiles (Settings → Notifications → Open app settings).
+  assert.doesNotMatch(read("components/workspace-app.tsx"), /AppProfilesLink/);
 });

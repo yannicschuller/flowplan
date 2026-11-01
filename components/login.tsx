@@ -13,6 +13,7 @@ import { LanguageSwitch, useLocale, useT } from "./i18n";
 import type { LoginOptions } from "@/lib/local-auth";
 import type { LegalLinks } from "@/lib/legal-links";
 import { LegalFooter } from "./legal-footer";
+import { AppProfilesLink } from "./app-profiles-link";
 
 // "confirm": registered, waiting for the link from the e-mail.
 // "totp": the password was right, a code from the authenticator app follows.
@@ -432,6 +433,8 @@ export default function Login({
           </p>
         )}
         {plainHttp && <PlainHttpNote />}
+        {/* In the mobile app: back to its profiles (another instance, #69). */}
+        <AppProfilesLink />
         <small>{t("Dein Wissen. Dein Workflow. Dein Flowplan.", "Your knowledge. Your workflow. Your Flowplan.")}</small>
       </section>
       {/* One quiet line: the tagline on the left, legal links and language on the right. */}

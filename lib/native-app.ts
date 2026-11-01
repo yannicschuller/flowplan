@@ -16,6 +16,9 @@ type FlowplanApp = {
   haptic?: (kind: "light" | "success" | "warning" | "error") => void;
   // The app's own settings (server, notifications, app lock).
   openSettings?: () => void;
+  // The app's profiles: switch to or add another instance, or change the
+  // address of one never signed in (#69; app 1.1 and newer).
+  openProfiles?: () => void;
   // Whether "back" (window.FlowplanNavigation, lib/app-back.ts) would do
   // something: the app offers its back gesture only then.
   backState?: (canGoBack: boolean) => void;
@@ -111,6 +114,29 @@ export function offlineUnsupportedReason(
   if (app?.platform === "ios") return "ios-app";
   if (!app && /FlowplanMobile\//.test(agent) && /iPhone|iPad|iPod|Macintosh/.test(agent)) return "ios-app";
   return "browser";
+}
+
+// "Other server? Switch profile" at the bottom of the sign-in pages (#69):
+// inside the iPhone, iPad and Android app the way to its profiles – another
+// instance, or another address for this one before signing in. "bridge":
+// the app's openProfiles (app 1.1+, which brings the person back to this
+// page on Cancel); "link": older apps, whose web view hands the link
+// flowplan://change-server to the app (every version since 1.0.1 opens its
+// profiles with it, the same as the icon's quick action). Nothing in a
+// browser or the desktop app, which keeps its instances itself.
+export const APP_PROFILES_LINK = "flowplan://change-server";
+export function appProfilesAction(
+  app: { platform?: string; openProfiles?: unknown } | undefined = nativeApp(),
+  agent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): "bridge" | "link" | null {
+  if (app && typeof app.openProfiles === "function") return "bridge";
+  if (app?.platform === "ios" || app?.platform === "android" || /\bFlowplanMobile\//.test(agent)) return "link";
+  return null;
+}
+export function openAppProfiles() {
+  try {
+    nativeApp()?.openProfiles?.();
+  } catch {}
 }
 
 // Whether the app here can scan documents (newer iOS apps).
