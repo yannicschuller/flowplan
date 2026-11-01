@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { loadView } from "@/components/view-fallback";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
+import { useEditorEditable } from "./editor-editable";
 import { ArrowsClockwise, ArrowSquareOut, Trash } from "@phosphor-icons/react";
 import { SyncedBlock } from "@/lib/document-schema";
 import type { Page, User } from "@/lib/types";
@@ -68,7 +69,9 @@ function SyncedView({ node, deleteNode, extension, editor, selected }: NodeViewP
     };
   }, [pageId]);
   const others = Math.max(0, (data?.syncedUsage?.count || 1) - 1);
-  const canEdit = context.editable && data?.role !== "viewer" && !data?.page.locked;
+  // Live: reading mode switches the host editor without drawing this again.
+  const hostEditable = useEditorEditable(editor);
+  const canEdit = hostEditable && context.editable && data?.role !== "viewer" && !data?.page.locked;
   return (
     <NodeViewWrapper className={`synced-block${selected ? " selected" : ""}`} data-drag-handle="">
       <div className="synced-block-bar" contentEditable={false}>
@@ -82,7 +85,7 @@ function SyncedView({ node, deleteNode, extension, editor, selected }: NodeViewP
             <ArrowSquareOut size={13} /> {data.syncedUsage.origin.title || t("Ohne Titel", "Untitled")}
           </a>
         )}
-        {editor.isEditable && (
+        {hostEditable && (
           <button
             type="button"
             className="icon-button"

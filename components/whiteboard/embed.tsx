@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { useEffect, useState } from "react";
 import * as Y from "yjs";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
+import { useEditorEditable } from "../editor-editable";
 import type { NodeViewProps } from "@tiptap/react";
 import { ArrowSquareOut, PresentationChart } from "@phosphor-icons/react";
 import { WhiteboardEmbed } from "@/lib/document-schema";
@@ -112,11 +113,12 @@ export function WhiteboardEmbedView({
 function EmbedNodeView({ node, updateAttributes, editor }: NodeViewProps) {
   const t = useT();
   const pageId = String(node.attrs.pageId || ""),
-    height = Number(node.attrs.height) || 360;
+    height = Number(node.attrs.height) || 360,
+    editable = useEditorEditable(editor);
   return (
     <NodeViewWrapper className="whiteboard-embed-node" contentEditable={false}>
       <WhiteboardEmbedView pageId={pageId} height={height} />
-      {editor.isEditable && (
+      {editable && (
         <div
           className="whiteboard-embed-size"
           role="group"

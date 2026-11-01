@@ -1,6 +1,7 @@
 "use client";
 import { useT } from "./i18n";
 import { Select } from "./select";
+import { useEditorEditable } from "./editor-editable";
 import { useState } from "react";
 import {
   NodeViewWrapper,
@@ -18,6 +19,7 @@ function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
   const t = useT();
   const [copyStatus, setCopyStatus] = useState("");
   const language = String(node.attrs.language || "plaintext");
+  const editable = useEditorEditable(editor);
   return (
     <NodeViewWrapper className="code-block-view" data-language={language}>
       <div className="code-block-toolbar" contentEditable={false}>
@@ -26,7 +28,7 @@ function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
           <Select
             aria-label={t("Code-Sprache", "Code language")}
             value={language}
-            disabled={!editor.isEditable}
+            disabled={!editable}
             onChange={(event) =>
               updateAttributes({ language: event.target.value })
             }
@@ -46,7 +48,7 @@ function CodeView({ node, editor, updateAttributes }: NodeViewProps) {
         <button
           type="button"
           aria-pressed={!!node.attrs.wrap}
-          disabled={!editor.isEditable}
+          disabled={!editable}
           onClick={() => updateAttributes({ wrap: !node.attrs.wrap })}
         >
           {t("Zeilenumbruch", "Line wrap")}

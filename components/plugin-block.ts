@@ -7,6 +7,7 @@
 // the "write:block" permission, database queries a granted database and a
 // signed-in reader (never on published pages).
 import { PluginBlock } from "@/lib/plugin-node";
+import { onEditableChange } from "./editor-editable";
 import { tr, PAGE_LOCALE } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
 import {
@@ -229,25 +230,32 @@ export const PluginBlockView = PluginBlock.extend<{ pageId: string; title: () =>
       const dom = document.createElement("div");
       dom.contentEditable = "false";
       dom.dataset.plugin = node.attrs.pluginId;
-      const handle = mountPluginBlock(dom, {
-        pluginId: node.attrs.pluginId,
-        blockType: node.attrs.blockType,
-        label: node.attrs.label,
-        data: node.attrs.data,
-        editable: editor.isEditable,
-        pageId,
-        title,
-        selection: () => {
-          const { from, to } = editor.state.selection;
-          return editor.state.doc.textBetween(from, to, " ").slice(0, 5000);
-        },
-        onData: (data, text) => {
-          const pos = typeof getPos === "function" ? getPos() : undefined;
-          if (typeof pos !== "number" || !editor.isEditable) return;
-          const at = editor.state.doc.nodeAt(pos);
-          if (at?.type.name !== "pluginBlock") return;
-          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...at.attrs, data, text }));
-        },
+      const mount = () =>
+        mountPluginBlock(dom, {
+          pluginId: current.attrs.pluginId,
+          blockType: current.attrs.blockType,
+          label: current.attrs.label,
+          data: current.attrs.data,
+          editable: editor.isEditable,
+          pageId,
+          title,
+          selection: () => {
+            const { from, to } = editor.state.selection;
+            return editor.state.doc.textBetween(from, to, " ").slice(0, 5000);
+          },
+          onData: (data, text) => {
+            const pos = typeof getPos === "function" ? getPos() : undefined;
+            if (typeof pos !== "number" || !editor.isEditable) return;
+            const at = editor.state.doc.nodeAt(pos);
+            if (at?.type.name !== "pluginBlock") return;
+            editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...at.attrs, data, text }));
+          },
+        });
+      let handle = mount();
+      // Reading mode on or off: the block starts again, read-only or not (issue #67).
+      const unsubscribe = onEditableChange(editor, () => {
+        handle.destroy();
+        handle = mount();
       });
       return {
         dom,
@@ -258,7 +266,10 @@ export const PluginBlockView = PluginBlock.extend<{ pageId: string; title: () =>
           current = next;
           return true;
         },
-        destroy: () => handle.destroy(),
+        destroy: () => {
+          unsubscribe();
+          handle.destroy();
+        },
         ignoreMutation: () => true,
         stopEvent: (event) => !(event.type === "dragstart" && (event.target as HTMLElement)?.dataset?.dragHandle !== undefined),
       };

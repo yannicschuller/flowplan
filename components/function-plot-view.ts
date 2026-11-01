@@ -2,6 +2,7 @@
 // saved to the block a moment after typing stops.
 import { FunctionPlot } from "@/lib/function-plot-node";
 import type { PlotConfig } from "@/lib/function-plot";
+import { onEditableChange } from "./editor-editable";
 
 export const FunctionPlotView = FunctionPlot.extend({
   addNodeView() {
@@ -25,13 +26,18 @@ export const FunctionPlotView = FunctionPlot.extend({
         }, 400);
       };
       let destroyed = false;
-      void import("@/lib/function-plot").then(({ mountPlot, parsePlot, plotJson }) => {
-        if (destroyed) return;
-        handle = mountPlot(dom, parsePlot(current.attrs.plot), {
-          editable: editor.isEditable,
-          onChange: (config) => save(plotJson(config)),
+      const mount = () =>
+        void import("@/lib/function-plot").then(({ mountPlot, parsePlot, plotJson }) => {
+          if (destroyed) return;
+          handle?.destroy();
+          handle = mountPlot(dom, parsePlot(current.attrs.plot), {
+            editable: editor.isEditable,
+            onChange: (config) => save(plotJson(config)),
+          });
         });
-      });
+      mount();
+      // Reading mode on or off: the inputs come and go (issue #67).
+      const unsubscribe = onEditableChange(editor, mount);
       return {
         dom,
         update(next) {
@@ -44,6 +50,7 @@ export const FunctionPlotView = FunctionPlot.extend({
         },
         destroy() {
           destroyed = true;
+          unsubscribe();
           clearTimeout(timer);
           handle?.destroy();
         },

@@ -13,6 +13,8 @@ import type { Page, User, Role } from "@/lib/types";
 import type { DatabaseData } from "./database-view";
 import { api } from "./ui";
 import { ViewSkeleton } from "./skeleton";
+import { useEditorEditable } from "./editor-editable";
+import { linkedDatabaseAccess } from "@/lib/embed-access";
 const DatabaseView = dynamic(() => loadView(() => import("./database-view")), {
   ssr: false,
   loading: () => <ViewSkeleton />,
@@ -49,6 +51,19 @@ function LinkedDatabaseView({
     block = String(node.attrs.id);
   const [data, setData] = useState<LinkedData | null>(null),
     [error, setError] = useState("");
+  // Reading mode makes the whole embed read-only (issue #67).
+  const editorEditable = useEditorEditable(editor);
+  const access = data
+    ? linkedDatabaseAccess({
+        editorEditable,
+        role: data.role,
+        locked: !!data.page.locked,
+        hostRole: data.hostRole,
+        hostLocked: data.hostLocked,
+      })
+    : null;
+  const lockedRef = useRef(false);
+  lockedRef.current = !!access?.reading;
   const sequence = useRef(0),
     busy = useRef(false),
     alive = useRef(true);
@@ -87,6 +102,8 @@ function LinkedDatabaseView({
   }, [host, hostRow, block]);
   async function mutate(mutation: Record<string, unknown>) {
     if (!data) throw new Error(t("Datenquelle wird geladen.", "Loading data source."));
+    if (lockedRef.current)
+      throw new Error(t("Im Lesemodus lässt sich die Datenbank nur ansehen.", "In reading mode the database can only be viewed."));
     busy.current = true;
     ++sequence.current;
     setError("");
@@ -116,8 +133,9 @@ function LinkedDatabaseView({
   const current = context();
   return (
     <NodeViewWrapper
-      className="linked-database"
+      className={`linked-database${access?.reading ? " reading" : ""}`}
       data-linked-view={block}
+      data-reading={access?.reading ? "" : undefined}
       contentEditable={false}
     >
       <header className="linked-database-header">
@@ -127,7 +145,7 @@ function LinkedDatabaseView({
             {data.page.title} ↗
           </a>
         )}
-        {editor.isEditable && (
+        {editorEditable && (
           <button
             type="button"
             className="text-button"
@@ -147,7 +165,7 @@ function LinkedDatabaseView({
         </div>
       )}
       {!data && !error && <ViewSkeleton />}
-      {data && (
+      {data && access && (
         <div className="linked-database-body">
           <DatabaseView
             data={data}
@@ -155,8 +173,8 @@ function LinkedDatabaseView({
             userId={current.userId}
             members={current.members}
             pages={current.pages}
-            editable={data.role !== "viewer" && !data.page.locked}
-            viewEditable={data.hostRole !== "viewer" && !data.hostLocked}
+            editable={access.editable}
+            viewEditable={access.viewEditable}
             allowFieldChanges={false}
             mutate={mutate}
             onRefresh={load}

@@ -13,6 +13,7 @@ import { api } from "../ui";
 import { InkLayer } from "./ink-layer";
 import { InkToolbar } from "./ink-toolbar";
 import { useInkEditor, useInkShortcuts } from "./use-ink-editor";
+import { useEditorEditable } from "../editor-editable";
 import { surfaceUrl, useSurfaceSync } from "./use-surface-sync";
 import { convertSelection } from "./convert";
 import { PaperSvg } from "../notebook/paper";
@@ -41,7 +42,8 @@ export default function DrawBlockEditor({ node, editor: doc, extension, updateAt
   const [canEdit, setCanEdit] = useState(false);
   const [active, setActive] = useState(false);
   const [notice, setNotice] = useState("");
-  const editable = doc.isEditable && options.enabled;
+  // Live: reading mode switches the document without drawing this again.
+  const editable = useEditorEditable(doc) && options.enabled;
   const ink = useInkEditor(emptyInk(), { active: active && canEdit });
   useInkShortcuts(ink, active && canEdit);
   const writable = editable && canEdit && !!id;

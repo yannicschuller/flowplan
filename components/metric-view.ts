@@ -3,6 +3,7 @@
 // calculation, property, label). The number is fetched from the server –
 // only for people who can read the database – and refreshed every minute.
 import { MetricBlock } from "@/lib/metric-node";
+import { onEditableChange } from "./editor-editable";
 import { tr } from "@/lib/locale-tag";
 import { serverMessage } from "@/lib/i18n-errors";
 
@@ -202,17 +203,24 @@ export const MetricView = MetricBlock.extend<{ pageId: string }>({
       let saved = node.attrs.metric as string;
       const dom = document.createElement("div");
       dom.contentEditable = "false";
-      const handle = mountMetric(dom, parseMetric(node.attrs.metric), {
-        editable: editor.isEditable,
-        pageId,
-        onChange: (config) => {
-          const pos = typeof getPos === "function" ? getPos() : undefined;
-          if (typeof pos !== "number") return;
-          const at = editor.state.doc.nodeAt(pos);
-          if (at?.type.name !== "metricBlock") return;
-          saved = JSON.stringify(config);
-          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...at.attrs, metric: saved }));
-        },
+      const mount = () =>
+        mountMetric(dom, parseMetric(current.attrs.metric), {
+          editable: editor.isEditable,
+          pageId,
+          onChange: (config) => {
+            const pos = typeof getPos === "function" ? getPos() : undefined;
+            if (typeof pos !== "number" || !editor.isEditable) return;
+            const at = editor.state.doc.nodeAt(pos);
+            if (at?.type.name !== "metricBlock") return;
+            saved = JSON.stringify(config);
+            editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...at.attrs, metric: saved }));
+          },
+        });
+      let handle = mount();
+      // Reading mode on or off: the settings come and go (issue #67).
+      const unsubscribe = onEditableChange(editor, () => {
+        handle.destroy();
+        handle = mount();
       });
       return {
         dom,
@@ -222,7 +230,10 @@ export const MetricView = MetricBlock.extend<{ pageId: string }>({
           current = next;
           return true;
         },
-        destroy: () => handle.destroy(),
+        destroy: () => {
+          unsubscribe();
+          handle.destroy();
+        },
         ignoreMutation: () => true,
         stopEvent: (event) => !(event.type === "dragstart" && (event.target as HTMLElement)?.dataset?.dragHandle !== undefined),
       };
