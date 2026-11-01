@@ -17,12 +17,9 @@ concurrency:
 
 jobs:
   test:
-    # Own runner (label self-hosted) only for the repository owner's own
-    # work: pushes, runs and pull requests started by the owner from a branch
-    # of this repository. Everyone else – collaborators, forks, Dependabot,
-    # re-runs started by someone else – runs on GitHub's runners, so their
-    # code never reaches the self-hosted machine.
-    runs-on: ${{ (github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && (github.event_name != 'pull_request' || (github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository))) && 'self-hosted' || 'ubuntu-latest' }}
+    # GitHub's runners (free for public repositories): no waiting for a
+    # self-hosted machine busy with another workflow.
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7

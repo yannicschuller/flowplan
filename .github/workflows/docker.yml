@@ -3,7 +3,9 @@
 #   ghcr.io/yannicschuller/flowplan:1.2.3, :1.2, :1  a release (tag v1.2.3)
 #   ghcr.io/yannicschuller/flowplan:beta           the latest manual build
 #   ghcr.io/yannicschuller/flowplan:sha-abc1234    every build
-# For linux/amd64 and linux/arm64. Images are only built for a release
+# For linux/amd64 and linux/arm64, each built natively on GitHub's runners
+# (ubuntu-latest and ubuntu-24.04-arm, free for public repositories) in
+# parallel, then joined into one multi-platform image. Images are only built for a release
 # (release.yml calls this workflow with the version, or a pushed tag v1.2.3)
 # or by hand: Actions → Docker image → Run workflow builds :beta from the
 # chosen branch, or rebuilds a release when a version is given. Pushes and
@@ -36,17 +38,67 @@ concurrency:
   cancel-in-progress: ${{ !inputs.version && github.ref_type != 'tag' }}
 
 jobs:
-  image:
+  # One native build per platform on GitHub's runners – no QEMU emulation,
+  # and no waiting for a self-hosted machine busy with another workflow.
+  # Each pushes its image by digest only; "image" below tags them together.
+  build:
     # Only the repository owner builds and publishes images (also via a
     # pushed tag): collaborators and Dependabot can't, and CI tests their work.
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
-    # Own runner (label self-hosted) only for the repository owner's own
-    # work: pushes, runs and pull requests started by the owner from a branch
-    # of this repository. Everyone else – collaborators, forks, Dependabot,
-    # re-runs started by someone else – runs on GitHub's runners, so their
-    # code never reaches the self-hosted machine.
-    runs-on: ${{ (github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && (github.event_name != 'pull_request' || (github.event.pull_request.user.login == github.repository_owner && github.event.pull_request.head.repo.full_name == github.repository))) && 'self-hosted' || 'ubuntu-latest' }}
-    timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - id: platform
+        run: |
+          platform="${{ matrix.platform }}"
+          echo "pair=${platform//\//-}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.version && format('v{0}', inputs.version) || '' }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            FLOWPLAN_SKIP_TYPECHECK=1
+            GIT_COMMIT=${{ github.sha }}
+          # GitHub's Actions cache, one scope per platform, kept between runs.
+          cache-from: type=gha,scope=image-${{ steps.platform.outputs.pair }}
+          cache-to: type=gha,scope=image-${{ steps.platform.outputs.pair }},mode=max
+      - name: Remember the digest
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ steps.platform.outputs.pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Joins both platform images under the tags and rolls out :beta.
+  image:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     # The Coolify secrets live in the environment "production", which only
     # main and tags v* may use (Settings → Environments): a workflow changed
     # on another branch cannot read them.
@@ -58,10 +110,11 @@ jobs:
           version="${{ inputs.version }}"
           if [ -z "$version" ] && [ "${{ github.ref_type }}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
         with:
-          ref: ${{ inputs.version && format('v{0}', inputs.version) || '' }}
-      - uses: docker/setup-qemu-action@v4
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -80,20 +133,13 @@ jobs:
             type=raw,value=latest,enable=${{ steps.release.outputs.version != '' }}
             type=raw,value=beta,enable=${{ steps.release.outputs.version == '' }}
             type=sha
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            FLOWPLAN_SKIP_TYPECHECK=1
-            GIT_COMMIT=${{ github.sha }}
-          # Cache in the registry: fast from the self-hosted runner, kept
-          # between runs.
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+      - name: Tag the multi-platform image
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+          docker buildx imagetools inspect "ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
       # Rolls out every new :beta image on Coolify (every manual build without
       # a version; releases only publish :latest). Without the secrets (forks,
       # other instances) the step does nothing.
@@ -115,7 +161,7 @@ jobs:
   # Known vulnerabilities in the published image (operating system packages
   # and npm dependencies), with Trivy. Reports only – a finding never blocks
   # a release or the beta; it shows in the run's summary. Runs on GitHub's
-  # runners, so nothing is installed on the self-hosted machine.
+  # runners.
   scan:
     needs: image
     runs-on: ubuntu-latest
