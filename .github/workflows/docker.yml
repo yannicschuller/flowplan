@@ -94,15 +94,13 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Joins both platform images under the tags and rolls out :beta.
+  # Joins both platform images under the tags.
   image:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # The Coolify secrets live in the environment "production", which only
-    # main and tags v* may use (Settings → Environments): a workflow changed
-    # on another branch cannot read them.
-    environment: production
+    outputs:
+      release: ${{ steps.release.outputs.version }}
     steps:
       # A release: the version from release.yml or from a pushed tag v1.2.3.
       - id: release
@@ -140,11 +138,22 @@ jobs:
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
           docker buildx imagetools inspect "ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
-      # Rolls out every new :beta image on Coolify (every manual build without
-      # a version; releases only publish :latest). Without the secrets (forks,
-      # other instances) the step does nothing.
+
+  # Rolls out every new :beta image on Coolify (every manual build without
+  # a version; releases only publish :latest). On the own runner: Coolify's
+  # API only answers its address (Settings → Advanced → API access), and
+  # GitHub's runners have changing ones. One request – no build there.
+  deploy:
+    needs: image
+    if: needs.image.outputs.release == ''
+    runs-on: self-hosted
+    timeout-minutes: 10
+    # The Coolify secrets live in the environment "production", which only
+    # main and tags v* may use (Settings → Environments): a workflow changed
+    # on another branch cannot read them.
+    environment: production
+    steps:
       - name: Deploy on Coolify
-        if: steps.release.outputs.version == ''
         env:
           COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
