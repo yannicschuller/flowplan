@@ -193,7 +193,12 @@ test("page aliases go to frontmatter in the export and come back with a vault im
   assert.doesNotMatch(html(imported.id), /aliases/);
   const garage = one<Page>("SELECT * FROM pages WHERE space_id=? AND title='Garage'", space)!;
   assert.deepEqual(pageAliases(garage), ["Carport"]);
-  // Other frontmatter stays in the text, as before.
-  assert.match(html(garage.id), /status/);
+  // Other frontmatter becomes properties of the page (#70, the importer
+  // owns the workspace), so the text stays without it.
+  assert.doesNotMatch(html(garage.id), /status/);
+  assert.equal(
+    one<{ value: string }>("SELECT v.value FROM page_property_values v JOIN page_property_defs d ON d.id=v.property_id WHERE v.page_id=? AND d.name='status'", garage.id)?.value,
+    JSON.stringify("done"),
+  );
   assert.equal(searchWorkspace(owner, wid, "Carport")[0]?.id, garage.id);
 });

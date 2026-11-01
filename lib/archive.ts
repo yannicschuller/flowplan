@@ -79,6 +79,8 @@ import { z } from "zod";
 import { all, one, run, id, transaction, audit } from "./db";
 import { SPACE_ORDER } from "./space-order";
 import { requireMember, pageRole, spaceRole, isGuest } from "./permissions";
+import { applyPortableMeta, canManageTaxonomy, importTaxonomy, portableMeta, portableMetaSchema, workspaceProperties, workspaceTags } from "./page-properties-server";
+import { PAGE_PROPERTY_TYPES } from "./page-properties";
 import { HttpError } from "./auth";
 import { field, view } from "./database-schema";
 import { cleanHtml, htmlState } from "./document-server";
@@ -188,6 +190,14 @@ export const archiveSchema = z.object({
   exportedBy: uid.optional(),
   workspace: z.object({ name: str, icon: str }),
   favorites: z.array(uid).max(500).default([]),
+  // The workspace's tags and property definitions (#70), also those no
+  // exported page uses.
+  pageTaxonomy: z
+    .object({
+      tags: z.array(z.object({ name: z.string().max(1000), color: z.string().max(100).optional() })).max(2000).default([]),
+      properties: z.array(z.object({ name: z.string().max(1000), type: z.enum(PAGE_PROPERTY_TYPES), options: z.array(z.string().max(1000)).max(500).optional() })).max(500).default([]),
+    })
+    .optional(),
   // The exporter's start page of the workspace (lib/home-layout-schema.ts).
   home: z.unknown().optional(),
   templates: z
@@ -260,6 +270,8 @@ export const archiveSchema = z.object({
         review_every_days: z.number().int().min(1).max(3650).nullable().optional(),
         // Other names of the page (lib/aliases.ts).
         aliases: z.array(z.string().max(1000)).max(100).optional(),
+        // Tags and property values by name (lib/page-properties-server.ts).
+        meta: portableMetaSchema,
         locked: z.number().int().min(0).max(1),
         full_width: z.number().int().min(0).max(1),
         font: z.enum(["sans", "serif", "mono"]),
@@ -350,6 +362,15 @@ function snapshotFor(user: Identity, wid: string) {
     exportedAt: new Date().toISOString(),
     exportedBy: user.id,
     workspace: one("SELECT name,icon FROM workspaces WHERE id=?", wid),
+    // Guests export only what their pages carry.
+    ...(isGuest(user, wid)
+      ? {}
+      : {
+          pageTaxonomy: {
+            tags: workspaceTags(wid).map((t) => ({ name: t.name, color: t.color })),
+            properties: workspaceProperties(wid).map((d) => ({ name: d.name, type: d.type, ...(d.options.length ? { options: d.options } : {}) })),
+          },
+        }),
     ...exportHomeLayout(user.id, wid),
     favorites: all<{ page_id: string }>(
       "SELECT page_id FROM favorites WHERE user_id=?",
@@ -432,6 +453,7 @@ function snapshotFor(user: Identity, wid: string) {
         review_at: p.review_at ?? null,
         review_every_days: p.review_every_days ?? null,
         ...(pageAliases(p).length ? { aliases: pageAliases(p) } : {}),
+        ...(portableMeta(p.id) ? { meta: portableMeta(p.id) } : {}),
         locked: p.locked,
         full_width: p.full_width,
         font: p.font,
@@ -1177,11 +1199,16 @@ async function importEntries(
           p.font,
           p.journal_date ?? null,
         );
+      // Tags and property definitions (#70): definitions only by workspace
+      // owners, tags by members who may create them.
+      const manageTaxonomy = canManageTaxonomy(user, wid);
+      importTaxonomy(user, wid, data.pageTaxonomy, manageTaxonomy);
       for (const p of data.pages) {
         const pid = pageMap.get(p.id)!;
         if (p.review_at || p.review_every_days)
           run("UPDATE pages SET review_at=?,review_every_days=? WHERE id=?", p.review_at ?? null, p.review_every_days ?? null, pid);
         if (p.aliases?.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliasList(p.aliases)), pid);
+        applyPortableMeta(user, { id: pid, workspace_id: wid, space_id: spaceMap.get(p.space_id)! }, p.meta, { createDefinitions: manageTaxonomy });
         if (p.form && p.kind === "database")
           run(
             "INSERT INTO forms(page_id,token,enabled,internal,anonymous,config) VALUES(?,?,0,?,?,?)",

@@ -659,6 +659,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     collections: ws.collections.length,
     ...(wrap ? { wrapper: ROOT } : {}),
     ...(ws.close ? { close: ws.close } : {}),
+    tagColors: Object.fromEntries([...ws.tags.values()].flatMap((t) => (t.color ? [[t.name, t.color]] : []))),
   };
 }
 

@@ -11,6 +11,8 @@ import { footnoteTexts } from "./footnotes";
 import { matchedAlias, pageAliases, recordAliases } from "./aliases";
 import { pageInkSearchText } from "./page-ink-store";
 import { parseRecognizedMap } from "./ink/recognized";
+import { filteredPageIds, pageMetaSearchText, workspaceProperties, workspaceTags } from "./page-properties-server";
+import { parseSearchTokens } from "./page-properties";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -83,7 +85,8 @@ function indexPage(pageId: string) {
     titleColumn(page.title, pageAliases(page)),
     // Handwriting: typed text and what the device recognised (notebook
     // sheets, drawing blocks still in the document).
-    [documentText(page.html || ""), pageInkSearchText(pageId, page.kind, page.html || "")].filter(Boolean).join("\n").slice(0, 400000),
+    // Tags and property values (#70) as words of the page.
+    [documentText(page.html || ""), pageInkSearchText(pageId, page.kind, page.html || ""), pageMetaSearchText(pageId)].filter(Boolean).join("\n").slice(0, 400000),
   );
 }
 function indexRow(pageId: string, rowId: string, fields: Field[]) {
@@ -240,10 +243,14 @@ export function searchWorkspace(
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
   for (let i = 0; i < 10 && processSearchIndex(); i++);
-  const query = rawQuery
-    .replace(/[\u0000-\u001f]/g, " ")
-    .trim()
-    .slice(0, 200);
+  // `#tag`, `-#tag` and `name:value` keep the pages with these tags and
+  // values (lib/page-properties.ts); the rest is searched as text.
+  const tokens = parseSearchTokens(rawQuery.replace(/[\u0000-\u001f]/g, " ").slice(0, 400), {
+    tags: workspaceTags(workspaceId),
+    properties: workspaceProperties(workspaceId),
+  });
+  const only = filteredPageIds(user, workspaceId, tokens);
+  const query = tokens.text.trim().slice(0, 200);
   const kind = options.kind || "all";
   const roles = new Map<string, boolean>();
   // Journals behind a PIN stay out of the results until unlocked.
@@ -332,12 +339,11 @@ export function searchWorkspace(
   };
   const scope =
     "p.workspace_id=? AND p.deleted_at IS NULL" +
-    (options.spaceId ? " AND p.space_id=?" : "");
-  const scopeArgs = options.spaceId
-    ? [workspaceId, options.spaceId]
-    : [workspaceId];
+    (options.spaceId ? " AND p.space_id=?" : "") +
+    (only ? " AND p.id IN (SELECT value FROM json_each(?))" : "");
+  const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : []), ...(only ? [JSON.stringify([...only])] : [])];
   if (!query) {
-    if (!["all", "document", "database"].includes(kind)) return [];
+    if (!["all", "document", "database", ...(only ? ["whiteboard"] : [])].includes(kind)) return [];
     for (const page of all<Page>(
       `SELECT p.* FROM pages p WHERE ${scope} ORDER BY p.updated_at DESC LIMIT 500`,
       ...scopeArgs,

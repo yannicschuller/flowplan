@@ -50,6 +50,10 @@ import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { activeKeymap, matchAction, setKeymapOverrides, shortcutHint, subscribeKeymap, type KeymapOverrides, type ShortcutAction } from "@/lib/keymap";
 import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
+import { PagePropertyBar } from "./page-properties";
+import { TagView } from "./tag-view";
+import { parseSearchTokens, tagToken } from "@/lib/page-properties";
+import { Tag as TagIcon } from "@phosphor-icons/react";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import { AiBlockToggle } from "./ai-settings";
 import { ASK_WIDTH_KEY, AskPanel, clampAsk, type AskRequest } from "./ai-ask";
@@ -301,6 +305,8 @@ type PageData = DatabaseData & {
   draft?: { journalId: string; date: string };
   // A page of an end-to-end encrypted space (components/e2ee.tsx).
   encrypted?: { spaceId: string; keyVersion: number; encryptTitles: boolean };
+  // Tags and property values (#70, lib/page-properties-server.ts).
+  properties?: import("@/lib/page-properties").PageMeta;
   sinceVisit?: SinceVisit | null;
   readers?: Reader[];
   following?: boolean;
@@ -359,7 +365,9 @@ type Screen =
   | "graph"
   | "media"
   | "settings"
-  | "admin";
+  | "admin"
+  // Pages by tag (#70, components/tag-view.tsx): #tags, #tags/<id>.
+  | "tags";
 // Page tree → page header: the icon and the title of the page opened fly
 // to their place (lib/view-transition.ts). Without a header yet (the page
 // is still loading) they simply fade.
@@ -699,6 +707,12 @@ export default function WorkspaceApp({
     setQuery("");
     setSearchName(null);
   };
+  // `#tag` and `name:value` in the search (lib/page-properties.ts), shown
+  // as chips under the input.
+  const searchTokens = useMemo(
+    () => parseSearchTokens(query.startsWith(">") ? "" : query, { tags: boot.taxonomy?.tags ?? [], properties: boot.taxonomy?.properties ?? [] }),
+    [query, boot.taxonomy],
+  );
   // A search is on its way: placeholders instead of "Nothing found".
   const [searching, setSearching] = useState(false);
   useEffect(() => {
@@ -1302,9 +1316,10 @@ export default function WorkspaceApp({
         if (currentId.current !== target.pageId || screenRef.current !== "page")
           void openPage(target.pageId, target);
       } else if (
-        ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin"].includes(
+        ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags"].includes(
           fragment,
         ) ||
+        /^tags\/[0-9a-f-]{36}$/.test(fragment) ||
         // A section of the settings or the administration: #settings/account
         // (components/settings/shell.tsx reads the rest).
         parseSettingsHash(fragment)
@@ -2473,6 +2488,7 @@ export default function WorkspaceApp({
     },
     { label: t("Posteingang öffnen", "Open inbox"), keywords: "inbox benachrichtigungen", icon: Bell, run: () => go("inbox") },
     { label: t("Meine Aufgaben", "My tasks"), keywords: t("tasks todo fällig", "tasks todo fällig due aufgaben"), icon: CheckSquare, run: () => go("tasks") },
+    { label: t("Tags", "Tags"), keywords: t("tags schlagwörter eigenschaften", "tags labels properties schlagwörter"), icon: TagIcon, run: () => go("tags") },
     { label: t("Medien", "Media"), keywords: t("bilder dateien", "bilder dateien images files media"), icon: ImageSquare, run: () => go("media") },
     { label: t("Graph der Verlinkungen", "Graph of links"), keywords: "graph netz verbindungen links karte", icon: Graph, run: () => go("graph") },
     { label: t("Papierkorb", "Trash"), keywords: t("trash gelöscht wiederherstellen", "trash gelöscht wiederherstellen papierkorb deleted restore"), icon: Trash, run: () => go("trash") },
@@ -3082,6 +3098,14 @@ export default function WorkspaceApp({
               <Images size={18} />
             </button>
             <button
+              aria-label={t("Tags", "Tags")}
+              title={t("Seiten nach Tags", "Pages by tag")}
+              className={screen === "tags" ? "selected" : ""}
+              onClick={() => go("tags")}
+            >
+              <TagIcon size={18} />
+            </button>
+            <button
               aria-label={t("Graph", "Graph")}
               title={t("Graph der Verlinkungen", "Graph of links")}
               className={screen === "graph" ? "selected" : ""}
@@ -3261,6 +3285,7 @@ export default function WorkspaceApp({
                     trash: t("Papierkorb", "Trash"),
                     inbox: t("Posteingang", "Inbox"),
                     tasks: t("Meine Aufgaben", "My tasks"),
+                    tags: t("Tags", "Tags"),
                     graph: t("Graph", "Graph"),
                     media: t("Medien", "Media"),
                     settings: t("Einstellungen", "Settings"),
@@ -3776,7 +3801,11 @@ export default function WorkspaceApp({
                       )}
                     </p>
                   ) : (
-                    <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
+                    <>
+                      <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
+                      {/* Tags and properties (#70). */}
+                      <PagePropertyBar page={data.page} taxonomy={boot.taxonomy} meta={data.properties} members={boot.members} editable={editable} act={act} />
+                    </>
                   )}
                   {since?.pageId === data.page.id && since.value && (
                     <SinceVisitBanner
@@ -4132,6 +4161,14 @@ export default function WorkspaceApp({
             <MediaLibrary
               workspaceId={boot.workspace.id}
               onOpen={(id) => void openPage(id)}
+            />
+          )}
+          {screen === "tags" && (
+            <TagView
+              boot={boot}
+              pages={activePages}
+              onOpen={(id) => void openPage(id)}
+              onError={notifyError}
             />
           )}
           {screen === "graph" && (
@@ -4510,6 +4547,23 @@ export default function WorkspaceApp({
           />
           <kbd>esc</kbd>
         </div>
+        {searchTokens.tokens.length > 0 && (
+          <div className="search-tokens" role="group" aria-label={t("Aktive Filter", "Active filters")}>
+            {searchTokens.tokens.map((token) => (
+              <span key={token} className="chip active search-token">
+                {token}
+                <button
+                  type="button"
+                  className="search-token-remove"
+                  aria-label={t(`Filter ${token} entfernen`, `Remove filter ${token}`)}
+                  onClick={() => setQuery((q) => q.replace(token, " ").replace(/\s+/g, " ").trimStart())}
+                >
+                  <X size={11} weight="bold" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {paletteSplit && (
           <p className="palette-split-hint" role="note">
             <SquareSplitHorizontal size={15} aria-hidden="true" />
@@ -4562,6 +4616,24 @@ export default function WorkspaceApp({
               </option>
             ))}
           </Select>
+          {/* Tags (#70): adds #tag to the search; recognised tokens show below. */}
+          {!!boot.taxonomy?.tags.length && (
+            <Select
+              aria-label={t("Nach Tag filtern", "Filter by tag")}
+              value=""
+              onChange={(e) => {
+                const tag = boot.taxonomy?.tags.find((x) => x.id === e.target.value);
+                if (tag) setQuery((q) => `${q.trim()} ${tagToken(tag.name)} `.trimStart());
+              }}
+            >
+              <option value="">{t("Tag …", "Tag …")}</option>
+              {boot.taxonomy.tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  #{tag.name}
+                </option>
+              ))}
+            </Select>
+          )}
           {canAsk && query.trim() && !query.startsWith(">") && (
             <button
               className="button compact"

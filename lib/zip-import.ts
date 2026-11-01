@@ -10,6 +10,7 @@ import { htmlState } from "./document-server";
 import { markdownToHtml } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
 import { frontmatterAliases, storedAliases } from "./aliases";
+import { applyPortableMeta, canManageTaxonomy, frontmatterMeta, memberByName } from "./page-properties-server";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
 import { boardState, storeBoardImages } from "./whiteboard-import-server";
@@ -330,6 +331,8 @@ export async function importZip(
         uploaded.set(target, url);
         return url;
       };
+    const manageProperties = canManageTaxonomy(user, workspaceId),
+      people = memberByName(workspaceId);
     let rowCount = 0,
       boardImages = 0;
     const imageBytes = { bytes: 0 };
@@ -349,10 +352,15 @@ export async function importZip(
         const { data, body: rest } = splitFrontmatter(text(node.path));
         const aliases = frontmatterAliases(data);
         if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pid);
+        // Tags and properties (#70): known properties by name; other keys
+        // become properties when the person manages them.
+        const { meta, consumed } = frontmatterMeta(data, workspaceId, people, { createDefinitions: manageProperties });
+        applyPortableMeta(user, { id: pid, workspace_id: workspaceId, space_id: spaceId }, meta, { createDefinitions: manageProperties });
         // Flowplan's own keys (a journal day's id and date) go too.
+        const taken = new Set(consumed.map((key) => key.trim().toLowerCase()));
         const keys = Object.keys(data).map((key) => key.trim().toLowerCase());
         const onlyAliases =
-          (aliases.length || keys.includes("flowplan")) && keys.every((key) => ["aliases", "alias", "flowplan"].includes(key));
+          (aliases.length || keys.includes("flowplan") || taken.size > 0) && keys.every((key) => ["aliases", "alias", "flowplan"].includes(key) || taken.has(key));
         // The first heading repeats the page title.
         let body = (onlyAliases ? rest.replace(/^\s*\n/, "") : text(node.path)).replace(/^#\s+[^\n]*\n?/, "");
         // A journal lists its days below; they are its days again.

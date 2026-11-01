@@ -29,6 +29,7 @@ import { documentChanged } from "./document-live";
 import { markdownToHtml } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
 import { frontmatterAliases, pageAliases, storedAliases } from "./aliases";
+import { syncMetaFromFrontmatter } from "./page-properties-server";
 import { importMarkdownRecords } from "./markdown-records";
 import type { Identity } from "./types";
 
@@ -165,6 +166,8 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
   const aliases = frontmatterAliases(data);
   const aliasesChanged = JSON.stringify(aliases) !== JSON.stringify(pageAliases(page));
   if (aliasesChanged) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), page.id);
+  // So do tags and property values (#70).
+  const metaChanged = syncMetaFromFrontmatter(user, page, data);
   const body = text.replace(/^\s*#\s+[^\n]*\n+/, "")
     .replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "");
   const html = markdownToHtml(
@@ -174,7 +177,7 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
     { whiteboard: (id) => one<{ workspace_id: string; kind: string }>("SELECT workspace_id,kind FROM pages WHERE id=? AND deleted_at IS NULL", id)?.workspace_id === page.workspace_id && readableBoard(user, id) },
   );
   const current = one<{ html: string; state: Uint8Array | null }>("SELECT html,state FROM documents WHERE page_id=?", page.id);
-  if (!current || current.html === html) return aliasesChanged;
+  if (!current || current.html === html) return aliasesChanged || metaChanged;
   run(
     "INSERT INTO snapshots(id,page_id,state,html,title,created_by,kind) VALUES(?,?,?,?,?,?,'manual')",
     id(),

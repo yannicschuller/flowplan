@@ -82,6 +82,7 @@ import {
 import { one, all, run, id, audit } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
+import { tagListing } from "@/lib/page-properties-server";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
 import { importWhiteboardFile } from "@/lib/whiteboard-import-server";
@@ -317,6 +318,13 @@ async function handleGET(
       return NextResponse.json(notificationFeed(user, parseSince(url.searchParams.get("since"))), {
         headers: { "Cache-Control": "no-store" },
       });
+    // Tags and property definitions of pages (#70); /api/tags/<id> also
+    // lists the readable pages with that tag.
+    if (path[0] === "tags" && path.length <= 2)
+      return NextResponse.json(
+        tagListing(user, z.uuid().parse(url.searchParams.get("workspace")), path[1] ? z.uuid().parse(path[1]) : undefined),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     if (path[0] === "bootstrap")
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),

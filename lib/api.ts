@@ -306,6 +306,9 @@ export function bootstrap(user: Identity, wid?: string) {
       user.id,
     ).map((f) => f.page_id),
     savedSearches: savedSearches(user, workspace.id),
+    // Tags and property definitions, and the tags of the pages shown
+    // (lib/page-properties-server.ts).
+    taxonomy: workspaceTaxonomy(user, workspace.id, pages),
     recentVisits: recentVisits(user, workspace.id, 8),
     dueTasks: dueTaskCount(user, workspace.id),
     notificationPrefs: notificationPrefs(user),
@@ -372,6 +375,14 @@ export function bootstrap(user: Identity, wid?: string) {
   };
 }
 export function pageData(user: Identity, pid: string, options: { presence?: boolean } = {}) {
+  const data = pageContent(user, pid, options);
+  // Tags and property values (#70); none behind a journal PIN or for
+  // encrypted pages.
+  if ((data as { locked?: unknown }).locked) return data;
+  const properties = pageMetaFor(data.page);
+  return properties ? { ...data, properties } : data;
+}
+function pageContent(user: Identity, pid: string, options: { presence?: boolean } = {}) {
   const p = requirePage(user, pid);
   const role = pageRole(user, p);
   // Behind a journal PIN: only what the lock screen needs.
@@ -783,13 +794,28 @@ export function command(
         )
           throw new HttpError(403, "Kein Zugriff");
         const content = z.string().max(2_000_000).parse(b.content);
+        // Markdown: tags and properties of the frontmatter (#70); a
+        // frontmatter with nothing else is not repeated in the text.
+        const front = b.format === "markdown" ? splitFrontmatter(content) : null;
+        const frontMeta = front
+          ? frontmatterMeta(front.data, wid(), memberByName(wid()), { createDefinitions: canManageTaxonomy(user, wid()) })
+          : null;
+        const frontTaken =
+          !!front &&
+          Object.keys(front.data).length > 0 &&
+          Object.keys(front.data).every((key) => frontMeta!.consumed.includes(key) || ["aliases", "alias"].includes(key.trim().toLowerCase()));
         const html =
           b.format === "html"
             ? (noteDangerousHtml(content, { actorId: user.id, detail: "page import" }), cleanHtml(content))
             : b.format === "markdown"
-              ? markdownHtml(content)
+              ? markdownHtml(frontTaken ? front!.body : content)
               : `<p>${escaped(content).replaceAll("\n", "</p><p>")}</p>`;
         const np = createPage(wid(), sid, user.id, str.parse(b.title));
+        if (front && frontMeta) {
+          applyPortableMeta(user, { id: np, workspace_id: wid(), space_id: sid }, frontMeta.meta, { createDefinitions: canManageTaxonomy(user, wid()) });
+          const aliases = frontmatterAliases(front.data);
+          if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), np);
+        }
         run(
           "UPDATE documents SET html=?,state=? WHERE page_id=?",
           html,
@@ -2366,6 +2392,18 @@ export function command(
       case "page.aliases":
         result = setPageAliases(user, b);
         break;
+      // Tags and custom properties (#70, lib/page-properties-server.ts).
+      case "page.properties":
+      case "pages.tag":
+      case "tag.save":
+      case "tag.delete":
+      case "tag.merge":
+      case "tag.reorder":
+      case "property.save":
+      case "property.delete":
+      case "property.reorder":
+        result = pagePropertiesCommand(user, action, b, write);
+        break;
       case "row.detachOccurrence":
         result = detachOccurrence(user, b);
         break;
@@ -2789,6 +2827,8 @@ export function command(
                 // Only the records this person sees go into the template.
                 rows: visibleRows(user, p, rows(p.id)),
                 ...databaseTemplateExtras(p.id),
+                // Tags and property values (lib/page-properties-server.ts).
+                meta: portableMeta(p.id),
               })
             : JSON.stringify({
                 appearance: pageAppearance(p),
@@ -2799,6 +2839,7 @@ export function command(
                   )?.html || "",
                 // Notebooks: their sheets' paper and handwriting.
                 ...(p.kind === "notebook" ? { notebook: notebookArchive(p.id) } : {}),
+                meta: portableMeta(p.id),
               });
         const templateId = id();
         if (payload.length > 20_000_000)
@@ -3230,6 +3271,18 @@ import { setRowRepeat } from "./repeat-records";
 import { parseRepeat } from "./recurrence";
 import { reviewsDue, setPageOwner, setPageReview } from "./page-review";
 import { parseAliases, setPageAliases } from "./page-aliases";
+import {
+  applyPortableMeta,
+  canManageTaxonomy,
+  frontmatterMeta,
+  memberByName,
+  pageMetaFor,
+  pagePropertiesCommand,
+  portableMeta,
+  workspaceTaxonomy,
+} from "./page-properties-server";
+import { splitFrontmatter } from "./frontmatter";
+import { frontmatterAliases, storedAliases } from "./aliases";
 import { aliasField, aliasList } from "./aliases";
 import { copyPublication } from "./publication-copy";
 import { purgeTrashedRow, restoreTrashedRow, trashRow } from "./row-trash";

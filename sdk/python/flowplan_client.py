@@ -590,7 +590,7 @@ CommandResult = dict[str, Any]
 
 # Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source.
 CommandOther = TypedDict("CommandOther", {
-    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title"]],
+    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "tag.delete", "tag.merge", "tag.reorder", "property.delete", "property.reorder", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title"]],
 }, total=False)
 
 # Create a workspace
@@ -706,6 +706,63 @@ CommandPageAliases = TypedDict("CommandPageAliases", {
 CommandPageAliasesResult = TypedDict("CommandPageAliasesResult", {
     "ok": Required[Literal[True]],
     "aliases": Required[list[str]],
+}, total=False)
+
+# Set the tags and property values of a page. Needs editor rights on the page. `tags` replaces the page's tags, `addTags` and `removeTags` change them; each entry is a tag ID or a name (a new name creates the tag – members with edit rights, not guests). `values` sets property values by property ID or name; `null` removes a value. Values follow the property type: text, url, email and phone as text (at most 2000 characters), number, date (YYYY-MM-DD or with time), select (one option), multiselect (options), checkbox (boolean), person (member ID). created_at/updated_at/created_by/updated_by are read-only. Not for pages of end-to-end encrypted spaces (409). The definitions and tags of a workspace: GET /api/tags.
+CommandPageProperties = TypedDict("CommandPageProperties", {
+    "action": Required[Literal["page.properties"]],
+    "pageId": Required[str],
+    "tags": list[str],
+    "addTags": list[str],
+    "removeTags": list[str],
+    "values": dict[str, Any],
+}, total=False)
+
+CommandPagePropertiesResult = TypedDict("CommandPagePropertiesResult", {
+    "ok": Required[Literal[True]],
+    "tags": Required[list[str]],
+    "values": Required[dict[str, Any]],
+}, total=False)
+
+# Add or remove tags on several pages. Needs editor rights on every page. Tags by ID or name, as in page.properties.
+CommandPagesTag = TypedDict("CommandPagesTag", {
+    "action": Required[Literal["pages.tag"]],
+    "workspaceId": Required[str],
+    "pageIds": Required[list[str]],
+    "addTags": list[str],
+    "removeTags": list[str],
+}, total=False)
+
+CommandPagesTagResult = TypedDict("CommandPagesTagResult", {
+    "ok": Required[Literal[True]],
+    "pages": Required[int],
+}, total=False)
+
+# Create or change a tag. Without `tagId` a new tag (members with edit rights); with `tagId` rename or recolour it (workspace owners). Names are unique in the workspace ignoring case (409). Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Owners also send tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} and tag.reorder {workspaceId, order}.
+CommandTagSave = TypedDict("CommandTagSave", {
+    "action": Required[Literal["tag.save"]],
+    "workspaceId": Required[str],
+    "tagId": str,
+    "name": Required[str],
+    "color": Literal["gray", "blue", "green", "red", "yellow", "orange", "purple", "pink", "teal"],
+}, total=False)
+
+CommandTagSaveResult = TypedDict("CommandTagSaveResult", {
+    "id": Required[str],
+}, total=False)
+
+# Create or change a page property. Workspace owners. A property every page of the workspace can have a value for. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}.
+CommandPropertySave = TypedDict("CommandPropertySave", {
+    "action": Required[Literal["property.save"]],
+    "workspaceId": Required[str],
+    "propertyId": str,
+    "name": Required[str],
+    "type": Literal["text", "number", "date", "select", "multiselect", "checkbox", "person", "url", "email", "phone", "created_at", "updated_at", "created_by", "updated_by"],
+    "options": list[str],
+}, total=False)
+
+CommandPropertySaveResult = TypedDict("CommandPropertySaveResult", {
+    "id": Required[str],
 }, total=False)
 
 # Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule.
@@ -1130,7 +1187,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1172,6 +1229,14 @@ OfflineChangesQuery = TypedDict("OfflineChangesQuery", {
 GraphQuery = TypedDict("GraphQuery", {
     "workspace": Required[str],  # Workspace ID
     "days": Literal["hide", "month", "show"],  # Journal days: left out, one node per journal and month, or each day
+}, total=False)
+
+TagsQuery = TypedDict("TagsQuery", {
+    "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+TagPagesQuery = TypedDict("TagPagesQuery", {
+    "workspace": Required[str],  # Workspace ID
 }, total=False)
 
 RelatedQuery = TypedDict("RelatedQuery", {
@@ -1596,7 +1661,7 @@ class FlowplanClient:
         return self._json("GET", "/api/bootstrap", query=dict(query) if query else None, headers=headers)
 
     def search(self, query: "SearchQuery", headers: Optional[dict[str, str]] = None) -> list["SearchResult"]:
-        """Full-text search — Pages, records, comments and file contents of a workspace. Answered with `Cache-Control: no-store`. (GET /api/search)"""
+        """Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Answered with `Cache-Control: no-store`. (GET /api/search)"""
         return self._json("GET", "/api/search", query=dict(query) if query else None, headers=headers)
 
     def notifications(self, query: Optional["NotificationsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
@@ -1626,6 +1691,14 @@ class FlowplanClient:
     def graph(self, query: "GraphQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Links between pages as a graph (GET /api/graph)"""
         return self._json("GET", "/api/graph", query=dict(query) if query else None, headers=headers)
+
+    def tags(self, query: "TagsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `pages`: how many readable pages carry it) and the property definitions (`id`, `name`, `type`, `options`). Guests see only the tags and properties of pages shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags)"""
+        return self._json("GET", "/api/tags", query=dict(query) if query else None, headers=headers)
+
+    def tag_pages(self, id: str, query: "TagPagesQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Pages with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, latest change first. Answered with `Cache-Control: no-store`. (GET /api/tags/{id})"""
+        return self._json("GET", "/api/tags/" + _p(id), query=dict(query) if query else None, headers=headers)
 
     def related(self, query: Optional["RelatedQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Related pages, or pages with a similar title — With `page` (and `row`): related pages and records (`items` with their `reasons`) – by meaning when semantic search is on for you, else by links, backlinks, shared links, tags and title. With `workspace` and `title`: existing pages, or records of `database`, with a similar title (duplicate hint). Only what you may read. Answered with `Cache-Control: no-store`. (GET /api/related)"""

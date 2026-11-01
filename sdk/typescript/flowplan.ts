@@ -843,7 +843,7 @@ export type CommandResult = Record<string, unknown>;
 
 /** Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source. */
 export type CommandOther = {
-  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title";
+  action: "workspace.update" | "workspace.delete" | "workspace.leave" | "workspace.import" | "profile.onboarded" | "profile.language" | "notification.reset" | "notification.email" | "home.reset" | "home.note" | "home.default" | "account.deletePlan" | "account.delete" | "space.update" | "space.delete" | "space.restore" | "space.purge" | "space.duplicate" | "space.gitExport" | "page.import" | "pages.bulk" | "page.snapshot" | "page.publish" | "page.share" | "page.shareUpdate" | "page.fromShare" | "page.toRecord" | "record.toPage" | "tag.delete" | "tag.merge" | "tag.reorder" | "property.delete" | "property.reorder" | "favorite.row" | "task.update" | "synced.create" | "mention.link" | "journal.settings" | "journal.lock" | "journal.unlock" | "journal.relock" | "journal.entry" | "journal.roll" | "journal.link" | "journal.removeEmpty" | "journal.summary" | "linked.command" | "document.sync" | "document.markdown" | "document.markdown.apply" | "snapshot.restoreBlock" | "snapshot.restore" | "database.recordLayout" | "row.move" | "row.schedule" | "row.access" | "row.appearance" | "row.recurrence" | "row.detachOccurrence" | "row.document.sync" | "row.snapshot" | "row.snapshot.restore" | "row.template.save" | "row.template.default" | "row.template.delete" | "row.template.apply" | "row.trash.restore" | "row.trash.purge" | "rows.bulk" | "rows.transfer" | "timeline.cascade" | "timeline.link" | "citation.import" | "citation.remove" | "whiteboard.sync" | "notebook.paper" | "notebook.sheet.duplicate" | "notebook.sheet.delete" | "notebook.sheet.move" | "notebook.sheet.paper" | "notebook.import" | "search.save" | "search.delete" | "thread.create" | "thread.reply" | "thread.resolve" | "thread.edit" | "thread.deleteMessage" | "thread.react" | "comment.react" | "reminder.set" | "notification.prefs" | "notification.read" | "notification.mark" | "notification.delete" | "share.create" | "share.revoke" | "share.protect" | "publication.protect" | "publication.copy" | "publication.theme" | "domain.add" | "domain.remove" | "plugin.update" | "plugin.delete" | "form.update" | "form.submit" | "survey.save" | "sprint.setup" | "sprint.create" | "sprint.update" | "sprint.start" | "sprint.complete" | "sprint.delete" | "sprint.points" | "recordView.save" | "recordView.delete" | "git.setup" | "git.disable" | "time.start" | "time.stop" | "time.add" | "time.delete" | "ticket.reply" | "invite.cancel" | "invite.resend" | "member.role" | "member.guest" | "sso.mapping.add" | "sso.mapping.delete" | "grant.set" | "group.create" | "group.member" | "template.save" | "template.update" | "template.delete" | "template.restore" | "template.apply" | "capture.record" | "capture.target" | "bookmarks.import" | "calendar.caldav" | "calendar.caldav.revoke" | "e2ee.identity.setup" | "e2ee.identity.update" | "e2ee.identity.reset" | "e2ee.member.add" | "e2ee.member.remove" | "e2ee.rotate" | "e2ee.compact" | "e2ee.title";
   [key: string]: unknown;
 };
 
@@ -979,6 +979,63 @@ export type CommandPageAliases = {
 export type CommandPageAliasesResult = {
   ok: true;
   aliases: string[];
+};
+
+/** Set the tags and property values of a page. Needs editor rights on the page. `tags` replaces the page's tags, `addTags` and `removeTags` change them; each entry is a tag ID or a name (a new name creates the tag – members with edit rights, not guests). `values` sets property values by property ID or name; `null` removes a value. Values follow the property type: text, url, email and phone as text (at most 2000 characters), number, date (YYYY-MM-DD or with time), select (one option), multiselect (options), checkbox (boolean), person (member ID). created_at/updated_at/created_by/updated_by are read-only. Not for pages of end-to-end encrypted spaces (409). The definitions and tags of a workspace: GET /api/tags. */
+export type CommandPageProperties = {
+  action: "page.properties";
+  pageId: string;
+  tags?: string[];
+  addTags?: string[];
+  removeTags?: string[];
+  values?: Record<string, unknown>;
+};
+
+export type CommandPagePropertiesResult = {
+  ok: true;
+  tags: string[];
+  values: Record<string, unknown>;
+};
+
+/** Add or remove tags on several pages. Needs editor rights on every page. Tags by ID or name, as in page.properties. */
+export type CommandPagesTag = {
+  action: "pages.tag";
+  workspaceId: string;
+  pageIds: string[];
+  addTags?: string[];
+  removeTags?: string[];
+};
+
+export type CommandPagesTagResult = {
+  ok: true;
+  pages: number;
+};
+
+/** Create or change a tag. Without `tagId` a new tag (members with edit rights); with `tagId` rename or recolour it (workspace owners). Names are unique in the workspace ignoring case (409). Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Owners also send tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} and tag.reorder {workspaceId, order}. */
+export type CommandTagSave = {
+  action: "tag.save";
+  workspaceId: string;
+  tagId?: string;
+  name: string;
+  color?: "gray" | "blue" | "green" | "red" | "yellow" | "orange" | "purple" | "pink" | "teal";
+};
+
+export type CommandTagSaveResult = {
+  id: string;
+};
+
+/** Create or change a page property. Workspace owners. A property every page of the workspace can have a value for. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}. */
+export type CommandPropertySave = {
+  action: "property.save";
+  workspaceId: string;
+  propertyId?: string;
+  name: string;
+  type?: "text" | "number" | "date" | "select" | "multiselect" | "checkbox" | "person" | "url" | "email" | "phone" | "created_at" | "updated_at" | "created_by" | "updated_by";
+  options?: string[];
+};
+
+export type CommandPropertySaveResult = {
+  id: string;
 };
 
 /** Make a record repeat when it is done. Needs editor rights on the record. When the record becomes done (the database's done rule), a copy is created with `field` (a date property) moved to the next occurrence and other dates moved by as many days. Monthly and yearly rules keep the day of the month (`day`, default: the current date's day); `weekdays` (1 = Monday) picks days of a weekly rule. `repeat: null` removes the rule. */
@@ -1949,10 +2006,10 @@ export type CommandHomeSaveResult = {
 };
 
 /** One action of the interface, as sent by POST /api/command. */
-export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
+export type Command = CommandWorkspaceCreate | CommandSpaceCreate | CommandSpaceReorder | CommandPageCreate | CommandPageUpdate | CommandE2eeAppend | CommandPageOwner | CommandPageReview | CommandPageAliases | CommandPageProperties | CommandPagesTag | CommandTagSave | CommandPropertySave | CommandRowRepeat | CommandDatabaseSettings | CommandPageMove | CommandPageDelete | CommandPageRestore | CommandPageDuplicate | CommandPageFollow | CommandFavorite | CommandDatabaseUpdate | CommandRowCreate | CommandRowUpdate | CommandRowDelete | CommandWhiteboardToRecords | CommandRowsImport | CommandCommentCreate | CommandCommentResolve | CommandMemberInvite | CommandCalendarFeed | CommandCalendarFeedRevoke | CommandDashboardSave | CommandNotebookSheetAdd | CommandWebhookDelete | CommandInboundSave | CommandInboundRotate | CommandInboundDelete | CommandIssueSyncConnect | CommandIssueSyncDisconnect | CommandIssueSyncMap | CommandIssueSyncUnmap | CommandCalendarSyncMap | CommandCalendarSyncUnmap | CommandCalendarSyncDisconnect | CommandMeetingNote | CommandNotificationWeekly | CommandShortcutsSave | CommandHomeSave | CommandOther;
 
 /** The result of a command action, by the action sent. */
-export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
+export type CommandResultOf<A extends Command> = A extends { action: "workspace.create" } ? CommandWorkspaceCreateResult : A extends { action: "space.create" } ? CommandSpaceCreateResult : A extends { action: "space.reorder" } ? CommandSpaceReorderResult : A extends { action: "page.create" } ? CommandPageCreateResult : A extends { action: "page.update" } ? CommandPageUpdateResult : A extends { action: "e2ee.append" } ? CommandE2eeAppendResult : A extends { action: "page.owner" } ? CommandPageOwnerResult : A extends { action: "page.review" } ? CommandPageReviewResult : A extends { action: "page.aliases" } ? CommandPageAliasesResult : A extends { action: "page.properties" } ? CommandPagePropertiesResult : A extends { action: "pages.tag" } ? CommandPagesTagResult : A extends { action: "tag.save" } ? CommandTagSaveResult : A extends { action: "property.save" } ? CommandPropertySaveResult : A extends { action: "row.repeat" } ? CommandRowRepeatResult : A extends { action: "page.move" } ? CommandPageMoveResult : A extends { action: "page.delete" } ? CommandPageDeleteResult : A extends { action: "page.restore" } ? CommandPageRestoreResult : A extends { action: "page.follow" } ? CommandPageFollowResult : A extends { action: "favorite" } ? CommandFavoriteResult : A extends { action: "database.update" } ? CommandDatabaseUpdateResult : A extends { action: "row.create" } ? CommandRowCreateResult : A extends { action: "row.update" } ? CommandRowUpdateResult : A extends { action: "row.delete" } ? CommandRowDeleteResult : A extends { action: "whiteboard.toRecords" } ? CommandWhiteboardToRecordsResult : A extends { action: "rows.import" } ? CommandRowsImportResult : A extends { action: "comment.create" } ? CommandCommentCreateResult : A extends { action: "comment.resolve" } ? CommandCommentResolveResult : A extends { action: "calendar.feed.revoke" } ? CommandCalendarFeedRevokeResult : A extends { action: "dashboard.save" } ? CommandDashboardSaveResult : A extends { action: "notebook.sheet.add" } ? CommandNotebookSheetAddResult : A extends { action: "webhook.delete" } ? CommandWebhookDeleteResult : A extends { action: "inbound.save" } ? CommandInboundSaveResult : A extends { action: "inbound.rotate" } ? CommandInboundRotateResult : A extends { action: "inbound.delete" } ? CommandInboundDeleteResult : A extends { action: "issueSync.connect" } ? CommandIssueSyncConnectResult : A extends { action: "issueSync.disconnect" } ? CommandIssueSyncDisconnectResult : A extends { action: "issueSync.map" } ? CommandIssueSyncMapResult : A extends { action: "issueSync.unmap" } ? CommandIssueSyncUnmapResult : A extends { action: "calendarSync.map" } ? CommandCalendarSyncMapResult : A extends { action: "calendarSync.unmap" } ? CommandCalendarSyncUnmapResult : A extends { action: "calendarSync.disconnect" } ? CommandCalendarSyncDisconnectResult : A extends { action: "meeting.note" } ? CommandMeetingNoteResult : A extends { action: "notification.weekly" } ? CommandNotificationWeeklyResult : A extends { action: "shortcuts.save" } ? CommandShortcutsSaveResult : A extends { action: "home.save" } ? CommandHomeSaveResult : CommandResult;
 
 // ---- Client ----
 
@@ -2111,7 +2168,7 @@ export class FlowplanClient {
     return this.json<Bootstrap>("GET", `/api/bootstrap`, { query }, options);
   }
 
-  /** Full-text search — Pages, records, comments and file contents of a workspace. Answered with `Cache-Control: no-store`. (GET /api/search) */
+  /** Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Answered with `Cache-Control: no-store`. (GET /api/search) */
   async search(query: { workspace: string; q: string; kind?: "all" | "document" | "database" | "whiteboard" | "row" | "comment" | "file"; space?: string; days?: "0" | "1" }, options?: RequestOptions): Promise<SearchResult[]> {
     return this.json<SearchResult[]>("GET", `/api/search`, { query }, options);
   }
@@ -2211,6 +2268,16 @@ export class FlowplanClient {
   /** Links between pages as a graph (GET /api/graph) */
   async graph(query: { workspace: string; days?: "hide" | "month" | "show" }, options?: RequestOptions): Promise<Record<string, unknown>> {
     return this.json<Record<string, unknown>>("GET", `/api/graph`, { query }, options);
+  }
+
+  /** Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `pages`: how many readable pages carry it) and the property definitions (`id`, `name`, `type`, `options`). Guests see only the tags and properties of pages shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags) */
+  async tags(query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/tags`, { query }, options);
+  }
+
+  /** Pages with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, latest change first. Answered with `Cache-Control: no-store`. (GET /api/tags/{id}) */
+  async tagPages(id: string, query: { workspace: string }, options?: RequestOptions): Promise<Record<string, unknown>> {
+    return this.json<Record<string, unknown>>("GET", `/api/tags/${encodeURIComponent(id)}`, { query }, options);
   }
 
   /** Related pages, or pages with a similar title — With `page` (and `row`): related pages and records (`items` with their `reasons`) – by meaning when semantic search is on for you, else by links, backlinks, shared links, tags and title. With `workspace` and `title`: existing pages, or records of `database`, with a similar title (duplicate hint). Only what you may read. Answered with `Cache-Control: no-store`. (GET /api/related) */

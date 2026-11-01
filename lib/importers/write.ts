@@ -20,6 +20,7 @@ import { enforceQuota } from "../instance-ops";
 import { enforceUserStorage } from "../user-limits";
 import { sanitizeFileName, verifiedMime } from "../upload-safety";
 import { storedAliases } from "../aliases";
+import { applyPortableMeta, canManageTaxonomy, frontmatterMeta, memberByName } from "../page-properties-server";
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
@@ -338,10 +339,11 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           continue;
         }
         const html = resolveHtml(page.html || "");
-        // Tags of a page (no property to hold them) stay visible as a line.
-        const tagLine = page.tags?.length ? `<p>${page.tags.map((t) => `#${esc(t)}`).join(" ")}</p>` : "";
+        // Tags and frontmatter properties become the page's (#70,
+        // lib/page-properties-server.ts).
+        importPageMeta(user, workspaceId, pid, page, tree.tagColors);
         const source = page.url && /^https?:\/\//i.test(page.url) ? `<p><a href="${esc(page.url)}">${esc(page.url)}</a></p>` : "";
-        const body = cleanHtml(tagLine + source + html);
+        const body = cleanHtml(source + html);
         if (page.journalDate) {
           dayBodies.set(pid, [...(dayBodies.get(pid) || []), { title: page.title, body }]);
           continue;
@@ -372,4 +374,22 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       result.warnings.push(`Ein Journaltag konnte nicht ergänzt werden: ${error.message}`);
     }
   return result;
+}
+
+// The tags (with the source's colours) and frontmatter properties of an
+// imported page; new properties only for workspace owners.
+function importPageMeta(user: Identity, workspaceId: string, pageId: string, page: ImportPage, colors: Record<string, string> = {}) {
+  const space = one<{ space_id: string }>("SELECT space_id FROM pages WHERE id=?", pageId);
+  if (!space) return;
+  const manage = canManageTaxonomy(user, workspaceId);
+  const fromFront = page.properties ? frontmatterMeta(page.properties, workspaceId, memberByName(workspaceId), { createDefinitions: manage }).meta : {};
+  applyPortableMeta(
+    user,
+    { id: pageId, workspace_id: workspaceId, space_id: space.space_id },
+    {
+      tags: [...(page.tags || []).map((name) => ({ name, color: colors[name] })), ...(fromFront.tags || [])],
+      properties: fromFront.properties,
+    },
+    { createDefinitions: manage },
+  );
 }

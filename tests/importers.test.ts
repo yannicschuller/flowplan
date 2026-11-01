@@ -31,6 +31,9 @@ const walk = (dir: string): string[] =>
 const zipDir = (dir: string, extra: Record<string, Buffer> = {}) =>
   writeZip(new Map([...walk(join(fixtures, dir)).map((f) => [relative(join(fixtures, dir), f), readFileSync(f)] as [string, Buffer]), ...Object.entries(extra)]));
 const pageHtml = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
+// The names of a page's tags (#70: importers set real tags).
+const tagsOf = (pageId: string) =>
+  all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position", pageId).map((t) => t.name);
 const pageByTitle = (title: string) =>
   one<{ id: string; parent_id: string | null; aliases: string | null; updated_at: string }>(
     "SELECT id,parent_id,aliases,updated_at FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1",
@@ -64,7 +67,7 @@ test("Evernote: notes with ENML, tasks, resources by hash, tags and dates", asyn
   assert.equal(result.rootIds.length, 2);
   const page = pageByTitle("Einkaufsliste & Ideen");
   const html = pageHtml(page.id);
-  assert.match(html, /#privat #listen/);
+  assert.deepEqual(tagsOf(page.id), ["privat", "listen"]);
   assert.match(html, /https:\/\/example\.com\/rezept/);
   assert.match(html, /<strong>Wichtig:<\/strong> Milch kaufen/);
   assert.match(html, /data-type="taskList"/);
@@ -176,7 +179,7 @@ test("Obsidian: wikilinks, embeds, callouts, tags, aliases and folders as page t
   assert.match(html, /sowie Fehlt\./);
   assert.match(html, /<img src="\/api\/files\/[0-9a-f-]{36}"/);
   assert.match(html, /<aside data-callout="warning">/);
-  assert.match(html, /#projekt #wichtig #idee/);
+  assert.deepEqual(tagsOf(start.id), ["projekt", "wichtig", "idee"]);
   assert.match(pageHtml(notes.id), /data-type="taskList"/);
   // The same picture, referenced twice, is stored once.
   assert.equal(all("SELECT id FROM files WHERE name='diagramm.png' AND page_id IN (?,?)", start.id, notes.id).length, 1);

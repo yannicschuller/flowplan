@@ -5,6 +5,7 @@
 // and journal days are pages with a kind of their own.
 import type { ImportedBoard } from "../whiteboard-import";
 import type { Field, View } from "../types";
+import type { FrontmatterValue } from "../frontmatter";
 
 export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "obsidian";
 
@@ -26,6 +27,9 @@ export type ImportPage = {
   updated?: string;
   tags?: string[];
   aliases?: string[];
+  // Further frontmatter keys (Obsidian): properties of the page (#70,
+  // lib/page-properties-server.ts frontmatterMeta).
+  properties?: Record<string, FrontmatterValue>;
   url?: string;
   // Not a document: a whiteboard (items may name pages of the import by
   // their pageRef placeholder) or a database. Both only in "pages" mode.
@@ -48,6 +52,8 @@ export type ImportTree = {
   pages: ImportPage[];
   files: Map<string, ImportFile>;
   warnings: string[];
+  // Colours of tags by name, as the source names them (AFFiNE).
+  tagColors?: Record<string, string>;
   // Collections and similar pages the source adds (counted in the preview).
   collections?: number;
   // The page holding everything (AFFiNE: the workspace) when the import

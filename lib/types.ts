@@ -80,6 +80,8 @@ export type Page = {
   review_every_days?: number | null;
   // Other names of the page as a JSON array (lib/aliases.ts).
   aliases?: string | null;
+  // When the page was created (schema 82; null for older pages).
+  created_at?: string | null;
 };
 export type FieldType =
   | "text"
@@ -278,6 +280,9 @@ export type Bootstrap = {
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
   savedSearches?: import("./saved-searches").SavedSearch[];
+  // Tags and property definitions of pages, the tags of the pages shown
+  // (lib/page-properties-server.ts workspaceTaxonomy).
+  taxonomy?: import("./page-properties").WorkspaceTaxonomy;
   recentVisits?: { pageId: string; seenAt: number }[];
   // Open tasks given to the person that are due today or overdue.
   dueTasks?: number;

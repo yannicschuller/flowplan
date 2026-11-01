@@ -246,6 +246,19 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "bereiche teamspace privat freigeben farbe", en: "spaces teamspace private share colour" },
   },
   {
+    id: "tags",
+    area: "settings",
+    group: "workspace",
+    icon: "Tag",
+    title: { de: "Tags & Eigenschaften", en: "Tags & properties" },
+    description: { de: "Tags und Seiteneigenschaften des Arbeitsbereichs: umbenennen, einfärben, zusammenführen.", en: "The workspace's tags and page properties: rename, colour, merge." },
+    keywords: { de: "tags schlagwörter etiketten eigenschaften felder metadaten farbe zusammenführen", en: "tags labels properties fields metadata colour merge" },
+    entries: [
+      { title: { de: "Tags", en: "Tags" }, anchor: "tags" },
+      { title: { de: "Seiteneigenschaften", en: "Page properties" }, anchor: "properties" },
+    ],
+  },
+  {
     id: "extensions",
     area: "settings",
     group: "workspace",

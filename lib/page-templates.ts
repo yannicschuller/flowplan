@@ -6,6 +6,7 @@ import { quotaCheckpoint } from "./instance-ops";
 import { applyAppearance } from "./page-covers";
 import { remapViewReferences } from "./view-references";
 import { instantiateTemplateFiles } from "./template-files";
+import { applyPortableMeta, portableMetaSchema } from "./page-properties-server";
 import { z } from "zod";
 import { all, one, run, id } from "./db";
 import { HttpError } from "./auth";
@@ -330,6 +331,9 @@ export function applyPageTemplate(
     .object({ appearance: appearanceSchema.optional() })
     .parse(JSON.parse(payload)).appearance;
   if (appearance) applyAppearance(page.id, appearance);
+  // Tags and property values of the template's page (lib/page-properties-server.ts).
+  const meta = z.object({ meta: portableMetaSchema }).safeParse(JSON.parse(payload));
+  if (meta.success) applyPortableMeta(user, page, meta.data.meta);
   return { ok: true, snapshotId };
 }
 

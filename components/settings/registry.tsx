@@ -28,6 +28,7 @@ import {
   SlidersHorizontal,
   Sparkle,
   Stack,
+  Tag,
   Timer,
   UserCircle,
   Users,
@@ -50,6 +51,7 @@ import WorkspaceSection from "./user/workspace";
 import MembersSection from "./user/members";
 import GroupsSection from "./user/groups";
 import SpacesSection from "./user/spaces";
+import TagsSection from "./user/tags";
 import ExtensionsSection from "./user/extensions";
 import DataSection from "./user/data";
 import TimeSection from "./user/time";
@@ -96,6 +98,7 @@ export const ICONS: Record<string, Icon> = {
   SlidersHorizontal,
   Sparkle,
   Stack,
+  Tag,
   Timer,
   UserCircle,
   Users,
@@ -118,6 +121,7 @@ const USER_COMPONENTS: Record<string, ComponentType> = {
   members: MembersSection,
   groups: GroupsSection,
   spaces: SpacesSection,
+  tags: TagsSection,
   extensions: ExtensionsSection,
   data: DataSection,
   time: TimeSection,

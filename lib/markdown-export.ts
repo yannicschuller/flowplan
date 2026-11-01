@@ -33,6 +33,7 @@ import { notebookPdf, notebookPdfSheets } from "./ink/notebook-pdf";
 import { commentText } from "./comment-content";
 import { toFrontmatter, type Frontmatter, type FrontmatterValue } from "./frontmatter";
 import { aliasList, pageAliases } from "./aliases";
+import { metaFrontmatter } from "./page-properties-server";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { whiteboardSvg } from "./whiteboard-svg";
 import type { Identity, Page, Row, Field, Space } from "./types";
@@ -569,12 +570,15 @@ function collect(user: Identity, options: MarkdownExportOptions) {
   for (const page of selected) {
     const path = paths.get(page.id)!,
       ctx = context(path, page);
-    // Pages have frontmatter only for their aliases (as Obsidian reads them);
-    // journal days also name their page and date, so an import finds them.
+    // Pages have frontmatter for their aliases, tags and properties (as
+    // Obsidian reads them); journal days also name their page and date, so
+    // an import finds them.
     const aliases = pageAliases(page);
     const day = isExportedDay(path) ? page.journal_date! : null;
     const front: Frontmatter = {
       ...(aliases.length ? { aliases } : {}),
+      // Tags and property values (#70), read back by the import.
+      ...metaFrontmatter(page.id, (uid) => members.get(uid)),
       ...(day ? { flowplan: { id: page.id, date: day } } : {}),
     };
     // A day's own title in the language of the export (it was named in the

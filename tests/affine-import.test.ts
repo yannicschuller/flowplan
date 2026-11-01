@@ -38,6 +38,10 @@ const pageByTitle = (title: string) =>
   one<PageRow>("SELECT id,parent_id,kind,title,journal_date FROM pages WHERE workspace_id=? AND title=? AND deleted_at IS NULL ORDER BY rowid DESC LIMIT 1", wid, title)!;
 const html = (pageId: string) => one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)!.html;
 const link = (pageId: string) => `/#page=${pageId}`;
+// The names of a page's tags (#70: importers set real tags).
+const tagsOf = (pageId: string) =>
+  all<{ name: string }>("SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position", pageId).map((t) => t.name);
+
 
 test("the formats are recognised", async () => {
   const file = affineFileV2(sampleWorkspace());
@@ -98,7 +102,8 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
 
   // Rich text, links and tags.
   const planHtml = html(plan.id);
-  assert.match(planHtml, /#projekt/);
+  assert.ok(tagsOf(plan.id).includes("projekt"));
+  assert.doesNotMatch(planHtml, /#projekt/);
   assert.match(planHtml, /<h1>Ziele<\/h1>/);
   assert.match(planHtml, /<strong>Fett<\/strong>/);
   assert.match(planHtml, /<em>kursiv<\/em>/);
@@ -278,7 +283,7 @@ test("snapshot ZIP: documents, links, tags from info.json and assets", async () 
   const eins = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Eins' ORDER BY rowid DESC", wid)!;
   const zwei = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND title='Zwei' ORDER BY rowid DESC", wid)!;
   assert.ok(html(eins.id).includes(link(zwei.id)));
-  assert.match(html(eins.id), /#aus-zip/);
+  assert.ok(tagsOf(eins.id).includes("aus-zip"));
   // No empty page named after the file above the documents (#77).
   assert.equal(one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", eins.id)!.parent_id, null);
   assert.equal(one<{ parent_id: string | null }>("SELECT parent_id FROM pages WHERE id=?", zwei.id)!.parent_id, null);

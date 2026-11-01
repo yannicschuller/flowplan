@@ -17,6 +17,7 @@ import { relationPairs, insertRelationPair } from "./relation-sync";
 import { copyDashboard, dashboardTiles } from "./dashboard";
 import { copyNotebook } from "./notebook";
 import { copyPageInk } from "./page-ink-store";
+import { copyPageMeta } from "./page-properties-server";
 import type { Identity, Page, Field, Row } from "./types";
 // Called inside the command transaction. Permission-check the complete source
 // tree before copying anything; never silently copy a restricted descendant.
@@ -66,6 +67,8 @@ export function duplicatePages(
         p.kind,
       ),
     );
+    // Tags and property values (lib/page-properties-server.ts).
+    copyPageMeta(user, p.id, { id: pageIds.get(p.id)!, workspace_id: workspaceId, space_id: spaceId });
     if (p.journal_date)
       run(
         "UPDATE pages SET journal_date=? WHERE id=?",

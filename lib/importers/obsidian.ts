@@ -157,7 +157,7 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
       if (!found && kind === "image") warnings.add("Bild ohne Datei im Tresor übersprungen.");
       return found?.href ?? null;
     });
-    pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data) });
+    pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data });
   }
   if (!notes.length) warnings.add("Keine Notizen (.md) gefunden.");
   return { source: "obsidian", title: name, pages, files, warnings: warnings.list() };

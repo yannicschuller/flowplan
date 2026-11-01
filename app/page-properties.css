@@ -1,0 +1,460 @@
+/* Tags and properties of pages (issue #70): the bar under the title
+   (components/page-properties.tsx), the tag view (components/tag-view.tsx)
+   and Settings → Tags & Eigenschaften (components/settings/user/tags.tsx). */
+
+/* ---- Tag chips: nine colours, light and dark ---- */
+.page-tag {
+  --tag-bg: #eff0f3;
+  --tag-fg: #555a66;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 0 9px;
+  background: var(--tag-bg);
+  color: var(--tag-fg);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.page-tag-blue { --tag-bg: #e6eefc; --tag-fg: #335d9c; }
+.page-tag-green { --tag-bg: #e3f2e8; --tag-fg: #2f6544; }
+.page-tag-red { --tag-bg: #fbe9e9; --tag-fg: #9e4246; }
+.page-tag-yellow { --tag-bg: #faf0d6; --tag-fg: #725f22; }
+.page-tag-orange { --tag-bg: #fcebdc; --tag-fg: #8f4d1c; }
+.page-tag-purple { --tag-bg: #efe8fb; --tag-fg: #64449e; }
+.page-tag-pink { --tag-bg: #fbe7f1; --tag-fg: #95386a; }
+.page-tag-teal { --tag-bg: #dff3f1; --tag-fg: #276761; }
+[data-theme="dark"] .page-tag { --tag-bg: rgba(170, 175, 190, 0.18); --tag-fg: #c9cdd6; }
+[data-theme="dark"] .page-tag-blue { --tag-bg: rgba(110, 140, 240, 0.22); --tag-fg: #b8c9f6; }
+[data-theme="dark"] .page-tag-green { --tag-bg: rgba(90, 170, 120, 0.2); --tag-fg: #a9dbbc; }
+[data-theme="dark"] .page-tag-red { --tag-bg: rgba(235, 110, 110, 0.2); --tag-fg: #f4b4b4; }
+[data-theme="dark"] .page-tag-yellow { --tag-bg: rgba(240, 200, 100, 0.17); --tag-fg: #ead08f; }
+[data-theme="dark"] .page-tag-orange { --tag-bg: rgba(240, 150, 90, 0.2); --tag-fg: #f2c19c; }
+[data-theme="dark"] .page-tag-purple { --tag-bg: rgba(170, 130, 240, 0.22); --tag-fg: #d3c0f6; }
+[data-theme="dark"] .page-tag-pink { --tag-bg: rgba(235, 120, 175, 0.2); --tag-fg: #f2b6d3; }
+[data-theme="dark"] .page-tag-teal { --tag-bg: rgba(80, 190, 180, 0.2); --tag-fg: #a3ddd7; }
+.page-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.page-tag-name,
+button.page-tag {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  border-radius: 999px;
+}
+button.page-tag {
+  padding: 0 9px;
+  color: var(--tag-fg);
+}
+button.page-tag-name:hover,
+button.page-tag:hover {
+  text-decoration: underline;
+}
+button.page-tag-name:focus-visible,
+button.page-tag:focus-visible,
+.page-tag-remove:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.page-tag-remove {
+  width: 18px;
+  height: 18px;
+  margin-right: -5px;
+  padding: 0;
+  border-radius: 50%;
+  color: inherit;
+  opacity: 0.7;
+}
+.page-tag-remove:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--tag-fg) 15%, transparent);
+}
+
+/* ---- The bar under the title ---- */
+.page-properties {
+  display: grid;
+  gap: 6px;
+  margin: -4px 0 18px;
+  font-size: 13px;
+  color: var(--secondary);
+}
+.page-properties-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+.page-properties-icon {
+  color: var(--muted);
+  flex: none;
+}
+.page-properties-add {
+  min-height: 26px;
+  padding: 2px 8px;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  border-radius: 999px;
+}
+.page-properties-add:hover,
+.page-properties-add[data-state="open"] {
+  background: var(--hover);
+  color: var(--text);
+}
+/* Empty: a quiet line that comes forward on hover and focus. */
+.page-properties.empty .page-properties-add {
+  opacity: 0.55;
+}
+.page-properties.empty:hover .page-properties-add,
+.page-properties.empty:focus-within .page-properties-add {
+  opacity: 1;
+}
+@media (hover: none) {
+  .page-properties.empty .page-properties-add {
+    opacity: 0.8;
+  }
+}
+.page-properties-list {
+  display: grid;
+  grid-template-columns: minmax(110px, 170px) minmax(0, 1fr);
+  margin: 0;
+  max-width: 720px;
+}
+.page-property {
+  display: contents;
+}
+.page-property dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding-right: 10px;
+  color: var(--muted);
+  overflow: hidden;
+}
+.page-property dt span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-property dt svg {
+  flex: none;
+}
+.page-property dd {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  color: var(--text);
+}
+.page-property dd > :first-child:not(.page-property-remove) {
+  flex: 1;
+  min-width: 0;
+}
+.page-property dd input:not([type="checkbox"]),
+.page-property dd .select-trigger,
+.page-property dd select {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.page-property dd input:not([type="checkbox"]):hover,
+.page-property dd .select-trigger:hover {
+  background: var(--hover);
+}
+.page-property dd input:not([type="checkbox"]):focus {
+  border-color: var(--border);
+  background: var(--bg);
+}
+.page-property-checkbox dd > input[type="checkbox"] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+}
+.page-property dd .multi-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 4px 8px;
+}
+.page-property-value {
+  padding: 4px 8px;
+  overflow-wrap: anywhere;
+}
+.page-property-remove {
+  width: 26px;
+  height: 26px;
+  opacity: 0;
+}
+.page-property:hover .page-property-remove,
+.page-property-remove:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .page-property-remove {
+    opacity: 0.6;
+  }
+}
+@media (max-width: 600px) {
+  .page-properties-list {
+    grid-template-columns: minmax(90px, 38%) minmax(0, 1fr);
+  }
+  .page-properties-add {
+    min-height: 32px;
+  }
+  .page-tag {
+    min-height: 28px;
+  }
+}
+
+/* ---- "+ Tag": the picker ---- */
+.tag-picker {
+  position: relative;
+  display: inline-flex;
+}
+.tag-picker > input {
+  width: 190px;
+  max-width: 60vw;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.tag-picker > input:focus {
+  outline: 2px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  outline-offset: 0;
+}
+.tag-picker-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  max-width: min(320px, 86vw);
+  max-height: 280px;
+  overflow: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.tag-picker-list li {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tag-picker-list li.active {
+  background: var(--hover);
+}
+.tag-picker-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+/* ---- Property dialog ---- */
+.property-form {
+  display: grid;
+  gap: 12px;
+}
+.property-form label {
+  display: grid;
+  gap: 5px;
+}
+.property-form label > span {
+  font-size: 13px;
+  color: var(--secondary);
+}
+.property-form textarea {
+  resize: vertical;
+}
+
+/* ---- Tag view (#tags) ---- */
+.tag-view-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+.tag-view-chip {
+  gap: 6px;
+  min-height: 30px;
+  font-size: 13px;
+}
+.tag-view-cloud .current .tag-view-chip {
+  box-shadow: 0 0 0 2px var(--tag-fg);
+}
+.tag-view-count {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.tag-view-manage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+}
+.tag-view-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.tag-view .tag-view-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 200px;
+  max-width: 320px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+}
+.tag-view .tag-view-search input {
+  flex: 1;
+  width: auto;
+  padding: 0;
+  min-width: 0;
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.tag-view-search input:focus {
+  outline: none;
+}
+.tag-view-search:focus-within {
+  outline: 2px solid color-mix(in srgb, var(--blue) 45%, transparent);
+}
+.tag-view-related {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.tag-view-pages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tag-view-page {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border-radius: 0;
+  color: var(--text);
+}
+.tag-view-page:hover {
+  background: var(--hover);
+}
+.tag-view-page:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.tag-view-page > strong {
+  display: grid;
+  min-width: 0;
+}
+.tag-view-page-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: 0 1 auto !important;
+}
+@media (max-width: 600px) {
+  .tag-view-page-tags {
+    display: none;
+  }
+}
+
+/* ---- Settings → Tags & Eigenschaften ---- */
+.tag-settings-add {
+  display: flex;
+  gap: 8px;
+  padding: 4px 22px 14px;
+}
+.tag-settings-add input {
+  flex: 1;
+  max-width: 280px;
+}
+.ws-item.tag-settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.tag-settings-row > .page-tag {
+  flex: none;
+  max-width: 160px;
+}
+.tag-settings-name {
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 240px;
+}
+.tag-settings-count {
+  white-space: nowrap;
+}
+/* Name, colour and count on the first line, the actions on the second. */
+.tag-settings-row .ws-item-controls {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- Search: recognised #tag and name:value tokens ---- */
+.search-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 8px;
+}
+.search-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.search-token-remove {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  color: inherit;
+}
+.search-token-remove:hover {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}

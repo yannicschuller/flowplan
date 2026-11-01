@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 81) return;
+  if (globalDb.flowplanSchema === 82) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1067,7 +1067,32 @@ function migrate(d: DatabaseSync) {
     d.exec(`ALTER TABLE notification_prefs ADD COLUMN min_severity TEXT;
       INSERT OR IGNORE INTO notification_prefs(user_id,kind,inbox,push,email,messenger)
         SELECT user_id,'incident',inbox,push,email,messenger FROM notification_prefs WHERE kind='security';`);
-  globalDb.flowplanSchema = 81;
+  // Schema 82 – tags and custom properties of pages (#70,
+  // lib/page-properties-server.ts): tags and property definitions of the
+  // workspace, the tags and values of each page (gone with the page, the tag
+  // or the definition), the page's creation time (for "Erstellt am"; pages
+  // from before read their first version or last change, without rewriting
+  // every page here) and search entries that follow tags and values.
+  d.exec(`CREATE TABLE IF NOT EXISTS page_tags(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,color TEXT NOT NULL DEFAULT 'gray',position REAL NOT NULL DEFAULT 0,created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS page_tags_name ON page_tags(workspace_id,name COLLATE NOCASE);
+    CREATE TABLE IF NOT EXISTS page_tag_links(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,tag_id TEXT NOT NULL REFERENCES page_tags(id) ON DELETE CASCADE,position INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(page_id,tag_id));
+    CREATE INDEX IF NOT EXISTS page_tag_links_tag ON page_tag_links(tag_id);
+    CREATE TABLE IF NOT EXISTS page_property_defs(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,type TEXT NOT NULL,options TEXT NOT NULL DEFAULT '[]',position REAL NOT NULL DEFAULT 0,created_by TEXT,created_at INTEGER NOT NULL);
+    CREATE UNIQUE INDEX IF NOT EXISTS page_property_defs_name ON page_property_defs(workspace_id,name COLLATE NOCASE);
+    CREATE TABLE IF NOT EXISTS page_property_values(page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,property_id TEXT NOT NULL REFERENCES page_property_defs(id) ON DELETE CASCADE,value TEXT NOT NULL,PRIMARY KEY(page_id,property_id));
+    CREATE INDEX IF NOT EXISTS page_property_values_property ON page_property_values(property_id);
+    CREATE TRIGGER IF NOT EXISTS search_page_tag_add AFTER INSERT ON page_tag_links BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_tag_remove AFTER DELETE ON page_tag_links BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE EXISTS(SELECT 1 FROM pages WHERE id=OLD.page_id) AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_tag_rename AFTER UPDATE OF name ON page_tags BEGIN INSERT INTO search_dirty SELECT l.page_id,'' FROM page_tag_links l WHERE l.tag_id=NEW.id AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=l.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_value_add AFTER INSERT ON page_property_values BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_value_change AFTER UPDATE ON page_property_values BEGIN INSERT INTO search_dirty SELECT NEW.page_id,'' WHERE NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=NEW.page_id AND row_id=''); END;
+    CREATE TRIGGER IF NOT EXISTS search_page_value_remove AFTER DELETE ON page_property_values BEGIN INSERT INTO search_dirty SELECT OLD.page_id,'' WHERE EXISTS(SELECT 1 FROM pages WHERE id=OLD.page_id) AND NOT EXISTS(SELECT 1 FROM search_dirty WHERE page_id=OLD.page_id AND row_id=''); END;`);
+  if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "created_at"))
+    d.exec("ALTER TABLE pages ADD COLUMN created_at TEXT");
+  d.exec(`CREATE TRIGGER IF NOT EXISTS pages_created_at AFTER INSERT ON pages WHEN NEW.created_at IS NULL BEGIN
+      UPDATE pages SET created_at=CURRENT_TIMESTAMP WHERE id=NEW.id;
+    END;`);
+  globalDb.flowplanSchema = 82;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";
