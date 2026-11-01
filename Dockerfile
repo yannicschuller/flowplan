@@ -1,5 +1,11 @@
 # syntax=docker/dockerfile:1
-FROM node:26-bookworm-slim AS deps
+# The build stages run once, natively on the build machine's platform: the
+# Next.js build is JavaScript and the same for every architecture, and
+# building it again for linux/arm64 under QEMU emulation took about 25 of
+# the image's 35 minutes. Only the stage "standalone" adapts the result to
+# each target platform (native packages such as sharp, see
+# scripts/standalone-arch.mjs).
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # npm's download cache survives between builds (BuildKit cache mount).
@@ -18,6 +24,13 @@ ARG SOURCE_COMMIT=""
 ARG FLOWPLAN_SKIP_TYPECHECK=""
 # Next's build cache survives between builds as well.
 RUN --mount=type=cache,target=/app/.next/cache npm run build
+# Per target platform, still without emulation: packages built for another
+# CPU are swapped for their twin of the target (e.g. sharp for arm64).
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS standalone
+ARG TARGETARCH
+COPY --from=build /app/.next/standalone /out
+COPY scripts/standalone-arch.mjs /tmp/standalone-arch.mjs
+RUN --mount=type=cache,target=/root/.npm node /tmp/standalone-arch.mjs /out "$TARGETARCH"
 FROM litestream/litestream:0.5.17 AS litestream
 FROM node:26-bookworm-slim AS runtime
 LABEL org.opencontainers.image.title="Flowplan" \
@@ -37,7 +50,7 @@ COPY --chmod=644 docker/litestream.yml /etc/litestream.yml
 COPY --chmod=755 docker/entrypoint.sh /app/entrypoint.sh
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 FLOWPLAN_DATA_DIR=/app/data
 RUN mkdir /app/data && chown node:node /app/data
-COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=standalone --chown=node:node /out ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
 # Emergency decryption of encrypted backups and objects (docs: storage).
