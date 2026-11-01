@@ -3,8 +3,8 @@
 # machines, so the baselines are made on GitHub's ubuntu-latest runner, where
 # the job runs – on demand (Actions → Visual regression → Run workflow) or
 # for the owner's pushes to main. After an intended change: run it by hand
-# with "update" – the new baselines come as the artifact
-# "visual-baselines" to commit under tests/visual/__screenshots__.
+# with "update" – the new baselines come as the artifact "visual-baselines"
+# and as a commit on the branch visual-baselines, to merge into main.
 name: Visual regression
 
 on:
@@ -29,6 +29,9 @@ jobs:
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Write access only for "update": it pushes the branch visual-baselines.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,6 +56,17 @@ jobs:
         with:
           name: visual-baselines
           path: tests/visual/__screenshots__
+      - name: Baselines as a commit on the branch visual-baselines
+        if: ${{ inputs.update }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B visual-baselines
+          git add tests/visual/__screenshots__
+          git commit -m "Visual baselines from ubuntu-latest" || { echo "Baselines unchanged."; exit 0; }
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" visual-baselines
       # The differences of a failed comparison.
       - uses: actions/upload-artifact@v7
         if: failure()
