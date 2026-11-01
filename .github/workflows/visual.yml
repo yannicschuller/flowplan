@@ -1,13 +1,19 @@
 # Visual regression tests (tests/visual): screenshots of key screens
 # compared with the committed baselines. Screens differ a little between
-# machines, so the baselines are made on the owner's own runner and the job
-# runs only there – on demand (Actions → Visual regression → Run workflow)
-# or for the owner's pushes to main. It downloads no browser: without an
-# installed Chromium it ends with a notice.
+# machines, so the baselines are made on GitHub's ubuntu-latest runner, where
+# the job runs – on demand (Actions → Visual regression → Run workflow) or
+# for the owner's pushes to main. After an intended change: run it by hand
+# with "update" – the new baselines come as the artifact
+# "visual-baselines" to commit under tests/visual/__screenshots__.
 name: Visual regression
 
 on:
   workflow_dispatch:
+    inputs:
+      update:
+        description: Make new baselines (artifact "visual-baselines") instead of comparing
+        type: boolean
+        default: false
   push:
     branches: [main]
 
@@ -21,7 +27,7 @@ concurrency:
 jobs:
   visual:
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -33,14 +39,24 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - name: Chromium on this runner
-        id: browser
-        run: |
-          if node scripts/chromium.mjs --check; then echo "ok=true" >> "$GITHUB_OUTPUT"
-          else echo "::notice::No Chromium on this runner – visual tests skipped. Install one or set QUALITY_CHROMIUM."; fi
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
       - run: npm run build
-        if: steps.browser.outputs.ok == 'true'
         env:
           NEXT_TELEMETRY_DISABLED: "1"
       - run: npm run test:visual
-        if: steps.browser.outputs.ok == 'true'
+        if: ${{ !inputs.update }}
+      - run: npm run test:visual:update
+        if: ${{ inputs.update }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ inputs.update }}
+        with:
+          name: visual-baselines
+          path: tests/visual/__screenshots__
+      # The differences of a failed comparison.
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: visual-differences
+          path: test-results
+          if-no-files-found: ignore

@@ -40,7 +40,7 @@ concurrency:
 
 jobs:
   # One native build per platform on GitHub's runners – no QEMU emulation,
-  # and no waiting for a self-hosted machine busy with another workflow.
+  # and no waiting for a busy machine.
   # Each pushes its image by digest only; "image" below tags them together.
   build:
     # Only the repository owner builds and publishes images (also via a
@@ -182,13 +182,13 @@ jobs:
           docker buildx imagetools inspect "ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
 
   # Rolls out every new :beta image on Coolify: every manual build without
-  # a version, and a release newer than the last beta. On the own runner: Coolify's
-  # API only answers its address (Settings → Advanced → API access), and
-  # GitHub's runners have changing ones. One request – no build there.
+  # a version, and a release newer than the last beta. Coolify's API must
+  # accept GitHub's runners (Settings → Advanced → API access: allowed IPs);
+  # the token still guards it.
   deploy:
     needs: image
     if: needs.image.outputs.deploy == 'true'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     # The Coolify secrets live in the environment "production", which only
     # main and tags v* may use (Settings → Environments): a workflow changed
