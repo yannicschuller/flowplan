@@ -12,18 +12,17 @@
 }
 @media (max-width: 600px) {
   .modal.modal-sheet {
-    top: auto;
-    bottom: 0;
-    left: 0;
+    inset: auto 0 0;
+    margin: 0;
     width: 100%;
     max-width: none;
     max-height: min(92dvh, calc(100dvh - var(--safe-top) - 12px));
-    transform: none;
     border-bottom-width: 0;
     border-radius: 16px 16px 0 0;
     padding: 0 calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(20px + var(--safe-left));
     overscroll-behavior-y: contain;
-    animation: sheet-in 0.34s cubic-bezier(0.32, 0.72, 0, 1) both;
+    /* Backwards only: a held translate would capture fixed children (#75). */
+    animation: sheet-in 0.34s cubic-bezier(0.32, 0.72, 0, 1) backwards;
   }
   .modal.modal-sheet > .sheet-handle {
     display: block;

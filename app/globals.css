@@ -3073,12 +3073,18 @@ tr:hover .row-open,
   z-index: 50;
   animation: fade-in 0.12s ease;
 }
+/* Centred by insets and auto margins, not a transform: a transformed dialog
+   (or one held by an animation's fill on scale/translate) becomes the
+   containing block of its position: fixed children – the "/" menu, the text
+   menu and the outline in a record would then be placed against the
+   dialog's scrolled content instead of the window (#75). The variants
+   (side panel, full page, bottom sheets) reset inset and margin. */
 .modal {
   position: fixed;
   z-index: 51;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  margin: auto;
+  height: fit-content;
   width: min(510px, calc(100% - 32px));
   max-height: 85dvh;
   overflow: auto;
@@ -3508,8 +3514,8 @@ td:hover .link-cell-edit,
   max-width: 100vw;
   height: 100dvh;
   max-height: 100dvh;
-  top: 0;
-  transform: translateX(-50%);
+  inset: 0;
+  margin: 0 auto;
   border-radius: 0;
 }
 .row-trash {
@@ -6071,6 +6077,24 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
 @media (prefers-reduced-motion: reduce) {
   .document-outline {
     animation: none;
+  }
+}
+/* In a dialog (a record): at the dialog's right edge instead of the
+   window's, always as a card, and the text makes room for it. The dialog's
+   box comes from components/document-outline.tsx (--dialog-*). Phones keep
+   the card above the bottom edge. */
+@media (min-width: 901px) {
+  .modal .document-outline {
+    top: calc(var(--dialog-top, 0px) + 110px);
+    right: calc(var(--dialog-right, 0px) + 20px);
+    max-height: calc(100dvh - var(--dialog-top, 0px) - var(--dialog-bottom, 0px) - 130px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+    box-shadow: var(--shadow);
+  }
+  .modal .editor-wrapper.with-outline {
+    padding-right: 236px;
   }
 }
 .document-outline-head {
@@ -8862,10 +8886,8 @@ img.inline-comment-mark {
   max-width: 100vw;
   height: 100dvh;
   max-height: 100dvh;
-  top: 0;
-  left: auto;
-  right: 0;
-  transform: none;
+  inset: 0 0 0 auto;
+  margin: 0;
   border-radius: 0;
 }
 .record-layout {
@@ -8903,8 +8925,19 @@ img.inline-comment-mark {
 .row-columns.properties-side .row-main {
   min-width: 0;
 }
-.row-detail {
+/* A narrow record (up to 640 px) shows the properties above the text.
+   Measured in components/database-view.tsx (data-narrow), not with a
+   container query: a size container is the containing block of its fixed
+   children, the "/" menu, text menu and outline of the record's text
+   (#75). The printed copy has no such children and keeps the query. */
+.print-view .row-detail {
   container-type: inline-size;
+}
+body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side {
+  display: block;
+}
+body:not(.print-view) .row-detail[data-narrow] .row-columns.properties-side .row-properties {
+  position: static;
 }
 @container (max-width: 640px) {
   .row-columns.properties-side {
@@ -9373,15 +9406,17 @@ textarea {
     border-color 0.15s ease,
     box-shadow 0.15s ease;
 }
-/* Dialogs rise in; side panels slide in from the right. */
+/* Dialogs rise in; side panels slide in from the right. Only backwards
+   fill: a scale or translate held after the end would make the dialog the
+   containing block of its fixed children (#75, see .modal). */
 .modal-overlay {
   animation: fade-in 0.18s ease both;
 }
 .modal {
-  animation: modal-in 0.2s var(--ease-spring) both;
+  animation: modal-in 0.2s var(--ease-spring) backwards;
 }
 .modal.modal-side {
-  animation: side-in 0.24s var(--ease-out) both;
+  animation: side-in 0.24s var(--ease-out) backwards;
 }
 .modal.modal-full {
   animation: fade-in 0.18s ease both;
@@ -20159,8 +20194,7 @@ h3 .block-reactions {
   --modal-margin: 16px;
 }
 .modal {
-  top: calc(50% + (var(--safe-top) - var(--safe-bottom)) / 2);
-  left: calc(50% + (var(--safe-left) - var(--safe-right)) / 2);
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 2 * var(--modal-margin));
   max-height: min(85dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 2 * var(--modal-margin)));
 }
@@ -20179,7 +20213,7 @@ h3 .block-reactions {
   padding-right: calc(23px + var(--safe-right));
 }
 .modal.modal-full {
-  left: 50%;
+  inset: 0;
   padding-left: calc(23px + var(--safe-left));
 }
 @media (max-width: 767px) {
@@ -24387,11 +24421,13 @@ tr:hover .row-open-mark,
   .comments-panel {
     bottom: var(--tab-bar-space);
   }
+  /* Dialogs (records) live outside the shell, where the bar's room is not
+     defined: there, above the home indicator. */
   .outline-toggle {
-    bottom: calc(72px + var(--tab-bar-space));
+    bottom: calc(72px + var(--tab-bar-space, var(--safe-bottom, 0px)));
   }
   .author-legend {
-    bottom: calc(16px + var(--tab-bar-space));
+    bottom: calc(16px + var(--tab-bar-space, var(--safe-bottom, 0px)));
   }
   .error-alert {
     flex-wrap: wrap;
@@ -26596,13 +26632,11 @@ label.ws-search input {
 /* Phones: a bottom sheet instead of a centred dialog. */
 @media (max-width: 600px) {
   .modal.ws-sheet {
-    top: auto;
-    bottom: 0;
-    left: 0;
+    inset: auto 0 0;
+    margin: 0;
     width: 100%;
     max-width: none;
     max-height: min(92dvh, calc(100dvh - var(--safe-top) - 12px));
-    transform: none;
     border-radius: 16px 16px 0 0;
     padding: 20px calc(20px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(20px + var(--safe-left));
   }

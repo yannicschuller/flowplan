@@ -5273,7 +5273,7 @@ export default function DatabaseView({
         }`}
       >
         {selected && (
-          <div className="row-detail">
+          <div className="row-detail" ref={watchRecordWidth}>
             {occurrence?.rowId === selected.id &&
               parseRecurrence(selected.recurrence) && (
                 <div className="occurrence-banner" role="status">
@@ -5909,6 +5909,20 @@ function RowTitle({
   );
 }
 
+// Marks a narrow record (up to 640 px) with data-narrow: its side
+// properties move above the text (app/globals.css, "A narrow record"). A
+// container query would make the record the containing block of the fixed
+// menus in its text (#75). The first measurement lands before the first
+// paint.
+function watchRecordWidth(el: HTMLDivElement | null) {
+  if (!el || typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(([entry]) => {
+    const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+    el.toggleAttribute("data-narrow", width <= 640);
+  });
+  observer.observe(el);
+  return () => observer.disconnect();
+}
 function PropertyRow({
   group,
   children,

@@ -81,19 +81,13 @@ export function SlashMenu({
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [onClose]);
   // Inside a dialog the menu lives in the dialog (its focus trap and
-  // outside-click handling); the dialog is transformed, so positions are
-  // relative to it.
-  const frame = container?.getBoundingClientRect() || {
-    left: 0,
-    top: 0,
-    width: window.innerWidth,
-    height: window.innerHeight,
-  };
+  // outside-click handling). Dialogs are no containing block for fixed
+  // children (app/globals.css, .modal), so window coordinates hold there too.
   const height = 360,
-    fitsBelow = anchor.bottom + 6 + height < Math.min(window.innerHeight, frame.top + frame.height) - 8;
+    fitsBelow = anchor.bottom + 6 + height < window.innerHeight - 8;
   const style = {
-    left: Math.max(8, Math.min(anchor.left - frame.left, frame.width - 328)),
-    top: fitsBelow ? anchor.bottom - frame.top + 6 : anchor.top - frame.top - 6,
+    left: Math.max(8, Math.min(anchor.left, window.innerWidth - 328)),
+    top: fitsBelow ? anchor.bottom + 6 : anchor.top - 6,
     ...(fitsBelow ? {} : { transform: "translateY(-100%)" }),
   };
   const label = t("Block hinzufügen", "Add block");

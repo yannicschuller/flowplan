@@ -39,6 +39,31 @@ const headingElement = (editor: Editor, pos: number) => {
   }
 };
 
+// In a dialog (a record) the list stays beside the dialog's text, not the
+// window's edge: the dialog's box goes to --dialog-top, --dialog-right and
+// --dialog-bottom (app/globals.css, ".modal .document-outline"). Layout
+// offsets, not the drawn box: the opening animation scales the dialog.
+function followDialog(nav: HTMLElement | null) {
+  const dialog = nav?.parentElement?.closest<HTMLElement>(".modal");
+  if (!nav || !dialog) return;
+  const place = () => {
+    const root = document.documentElement,
+      top = dialog.offsetTop + dialog.clientTop,
+      left = dialog.offsetLeft + dialog.clientLeft;
+    nav.style.setProperty("--dialog-top", `${top}px`);
+    nav.style.setProperty("--dialog-right", `${Math.max(0, root.clientWidth - left - dialog.clientWidth)}px`);
+    nav.style.setProperty("--dialog-bottom", `${Math.max(0, root.clientHeight - top - dialog.clientHeight)}px`);
+  };
+  place();
+  const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+  observer?.observe(dialog);
+  window.addEventListener("resize", place);
+  return () => {
+    observer?.disconnect();
+    window.removeEventListener("resize", place);
+  };
+}
+
 export function DocumentOutline({
   editor,
   headings,
@@ -84,7 +109,7 @@ export function DocumentOutline({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, key]);
   return (
-    <nav className="document-outline" aria-label={t("Inhaltsverzeichnis", "Table of contents")}>
+    <nav ref={followDialog} className="document-outline" aria-label={t("Inhaltsverzeichnis", "Table of contents")}>
       <div className="document-outline-head">
         <strong>
           <ListBullets aria-hidden /> {t("Inhalt", "Contents")}
