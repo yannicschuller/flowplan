@@ -1346,6 +1346,19 @@ kbd,
 .document-editor ul[data-type="taskList"] li > label {
   margin: 3px 0 0;
 }
+/* What reacts to a click shows the pointer (#87): task checkboxes, and links
+   and people in the text – inside editable text browsers otherwise keep the
+   text cursor, though a click opens the page, the link or the card
+   (components/link-preview.tsx). */
+.document-editor ul[data-type="taskList"] li > label,
+.document-editor ul[data-type="taskList"] li > label input[type="checkbox"],
+[contenteditable="true"] a[href],
+[contenteditable="true"] span[data-mention] {
+  cursor: pointer;
+}
+.document-editor ul[data-type="taskList"] li > label input[type="checkbox"]:disabled {
+  cursor: default;
+}
 .document-editor ul[data-type="taskList"] li > div {
   flex: 1;
 }
