@@ -2,6 +2,24 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.3 – 2026-11-02
+
+- Help for Ask AI: database records in AI requests (#80) ([f109f57](https://github.com/yannicschuller/flowplan/commit/f109f571a34134018c21843cfd0d39bcfeab6136))
+- AI reads the records of databases the person refers to ([16ceae5](https://github.com/yannicschuller/flowplan/commit/16ceae568b89c65d13cd9d0f26592ea10545727a))
+- Help for Ask AI: tag multi-selects (#79) ([8a79b02](https://github.com/yannicschuller/flowplan/commit/8a79b02ba5ff4856f4eb842608d58e71fe244aa6))
+- Multi-select properties with the workspace's tags as options (#79) ([6ca9acf](https://github.com/yannicschuller/flowplan/commit/6ca9acfbcffa01f7e33b3e4e98a3da639682fb3e))
+- SSO: accept HS256 ID tokens; log why a sign-in failed (#78) ([796e828](https://github.com/yannicschuller/flowplan/commit/796e82838672b432c7c6ea692781af571f597c43))
+- Page properties: the empty add button keeps its contrast ([2c9fa5c](https://github.com/yannicschuller/flowplan/commit/2c9fa5c03eede872ceab67ddcec3b1a3ff5ddfe8))
+- Visual baselines from GitHub's ubuntu-latest runner ([87fee66](https://github.com/yannicschuller/flowplan/commit/87fee66bb7c73e7a1d102f68e63f6ef60efdcb48))
+- Visual regression: "update" also pushes the baselines to a branch ([64d7139](https://github.com/yannicschuller/flowplan/commit/64d71391427174e9b2693cbd40b4fe620a373fb7))
+- Tests: fake servers are unref'd instead of closed in after() ([ef5da67](https://github.com/yannicschuller/flowplan/commit/ef5da679d57c5077383d70bb312a9ec4452c1646))
+- Workflows without the own runner ([fd841d9](https://github.com/yannicschuller/flowplan/commit/fd841d9117ff17c28c29cde838fc12a3f223032b))
+- Docker image: a release newer than the beta is rolled out too ([9a8bb72](https://github.com/yannicschuller/flowplan/commit/9a8bb727431f05d157c4ecb7005c554e214c15cc))
+- Docker image: deploy :beta on Coolify from the own runner ([24fe0d3](https://github.com/yannicschuller/flowplan/commit/24fe0d3eb228cabae00d76c07fb7cae4001f53ec))
+- Contributing: CI and images run on GitHub's runners ([7d71a0a](https://github.com/yannicschuller/flowplan/commit/7d71a0a79e3416e3fd0f8960d85e3f8175fc793f))
+- CI, releases and images on GitHub's runners ([7b4f81a](https://github.com/yannicschuller/flowplan/commit/7b4f81a9ea433a3cf2a1927aa726599dcefdf3c2))
+- Docker image: build once natively, adapt sharp per architecture ([4fd09fa](https://github.com/yannicschuller/flowplan/commit/4fd09fa69c76c1aa8a58de801a75a7f5fbbe3130))
+
 ## v0.8.2 – 2026-11-01
 
 - Help for Ask AI: current documentation ([f979658](https://github.com/yannicschuller/flowplan/commit/f9796582aed14a12b788ee6b36bb9f451eb440e2))
