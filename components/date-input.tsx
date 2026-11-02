@@ -133,7 +133,8 @@ export default function DateInput({
         <button
           type="button"
           className="date-clear"
-          aria-label={t(`${name} entfernen`, `Remove ${name}`)}
+          // The accessible name starts with the visible text (WCAG 2.5.3).
+          aria-label={t(`Datum entfernen: ${name}`, `Remove date: ${name}`)}
           title={t("Datum entfernen", "Remove date")}
           // A tap must not reach the date input: inside a <label> WebKit
           // hands the click on to it, which opens the picker and keeps the date.

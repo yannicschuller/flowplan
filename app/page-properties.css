@@ -61,10 +61,12 @@ button.page-tag:focus-visible,
   outline: 2px solid var(--blue);
   outline-offset: 1px;
 }
+/* 24 px target (WCAG 2.5.8) that still looks like the small ✕: the
+   negative margins keep the chip's size. */
 .page-tag-remove {
-  width: 18px;
-  height: 18px;
-  margin-right: -5px;
+  width: 24px;
+  height: 24px;
+  margin: -3px -8px -3px -3px;
   padding: 0;
   border-radius: 50%;
   color: inherit;
