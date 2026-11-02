@@ -159,7 +159,7 @@ async function handlePOST(req: Request, { params }: { params: Promise<{ path: st
       const response = await aiStreamResponse(
         user,
         "ask",
-        { system: prepared.system, messages: prepared.messages, maxTokens: 1500, temperature: 0.2 },
+        { system: prepared.system, messages: prepared.messages, maxTokens: prepared.maxTokens, temperature: 0.2 },
         { workspaceId: b.workspaceId, signal: req.signal },
       );
       response.headers.set("X-Flowplan-Sources", sources);

@@ -22,6 +22,8 @@ import { defaultTranslateTarget, WRITE_ACTIONS, WRITE_LANGUAGES, WRITE_TONES, ty
 import { aiTarget, setAiTarget } from "@/lib/ai/target";
 import { useLocale, useT } from "./i18n";
 import { AiProviderFooter, DeviceAiChip, useAi, useAiRoute } from "./ai-context";
+import { DatabaseNotes } from "./ai-database-notes";
+import { DATABASES_HEADER, decodeDatabaseNotes, type DatabaseNote } from "@/lib/ai/database-note";
 import { AiActionsPanel, type AiActionsRequest } from "./ai-actions";
 import { aiPageReadable, aiUsable } from "@/lib/ai/client";
 import { DeviceAiError, deviceErrorText, deviceSummary, deviceSummaryFits, runOnDevice, runRouted } from "@/lib/ai/device";
@@ -119,6 +121,8 @@ export function AiWriter({
   const linksUsable = !encrypted && aiUsable(ai.status, "links");
   const [linkPages, setLinkPages] = useState(storedLinkChoice);
   const [targets, setTargets] = useState<LinkTarget[]>([]);
+  // Databases whose records went into the prompt (#80).
+  const [databases, setDatabases] = useState<DatabaseNote[]>([]);
 
   // Mark the text in the editor while the panel is open.
   useEffect(() => {
@@ -169,6 +173,7 @@ export function AiWriter({
       setError("");
       setRanOn(null);
       setTargets([]);
+      setDatabases([]);
       setPhase("running");
       const onText = (all: string) => {
         if (controller.current === abort) setAnswer(all);
@@ -200,7 +205,9 @@ export function AiWriter({
               onText: (_piece, all) => onText(all),
               // The pages offered to the model, by handle (only those become links).
               onResponse: (response) => {
-                if (controller.current === abort) setTargets(decodeLinkTargets(response.headers.get(LINKS_HEADER)));
+                if (controller.current !== abort) return;
+                setTargets(decodeLinkTargets(response.headers.get(LINKS_HEADER)));
+                setDatabases(decodeDatabaseNotes(response.headers.get(DATABASES_HEADER)));
               },
             });
           },
@@ -432,6 +439,7 @@ export function AiWriter({
               </p>
             )}
           </div>
+          <DatabaseNotes notes={databases} />
           {linked.length > 0 && (
             <p className="ai-writer-linked">
               <LinkIcon size={13} aria-hidden /> <span>{t("Verlinkt:", "Linked:")}</span>{" "}

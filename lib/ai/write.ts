@@ -9,10 +9,13 @@
 // them into page links (lib/ai/links.ts).
 import { z } from "zod";
 import { HttpError } from "../auth";
+import { one } from "../db";
 import { requirePage } from "../permissions";
 import { requireRow } from "../row-documents";
 import type { Identity } from "../types";
 import { aiPageMarkdown } from "./content";
+import { databaseContext, databaseNotes } from "./database-context";
+import { DATABASES_HEADER, encodeDatabaseNotes } from "./database-note";
 import { encodeLinkTargets, findLinkCandidates } from "./link-candidates";
 import { LINKS_HEADER } from "./links";
 import { WRITE_ACTION_IDS, WRITE_LANGUAGES, WRITE_TONES, writePrompt, type WriteAction } from "./prompts";
@@ -60,6 +63,19 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
     const markdown = await aiPageMarkdown(user, page, b.rowId);
     context = { title: page.title, markdown: markdown.length > limit ? markdown.slice(0, limit) + "\n\n[…]" : markdown };
   }
+  // Records of databases the instruction names or links (#80) – within the
+  // same budget as the page context. Links in the open page count when the
+  // page goes along as context and the instruction speaks of a table.
+  const data =
+    b.action === "prompt" || b.action === "custom"
+      ? databaseContext(user, {
+          workspaceId: page.workspace_id,
+          instruction: b.instruction || "",
+          texts: [b.text],
+          document: b.context && b.action === "prompt" ? storedHtml(page.id, b.rowId) : null,
+          maxChars: local ? WRITE_LIMITS.contextChars.local : WRITE_LIMITS.contextChars.remote,
+        })
+      : [];
   // Pages to link: found with the instruction, the selection and the page's title.
   const links = b.links
     ? await findLinkCandidates(user, {
@@ -83,9 +99,18 @@ export async function aiWriteResponse(user: Identity, raw: unknown, signal: Abor
       page: context,
       locale: b.locale,
       links: links?.prompt,
+      databases: data.length ? data.map((d) => d.block).join("\n\n") : null,
     }),
     options,
   );
   if (links?.targets.length) response.headers.set(LINKS_HEADER, encodeLinkTargets(links.targets));
+  if (data.length) response.headers.set(DATABASES_HEADER, encodeDatabaseNotes(databaseNotes(data)));
   return response;
+}
+
+// The open page's or record's stored document (its links to databases).
+function storedHtml(pageId: string, rowId?: string) {
+  return rowId
+    ? one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", rowId)?.html || null
+    : one<{ html: string }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || null;
 }

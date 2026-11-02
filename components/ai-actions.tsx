@@ -12,6 +12,8 @@ import { AiProviderFooter } from "./ai-context";
 import { proposeAiActions, runAiActions, type ActionPreview, type ActionResult } from "@/lib/ai/client";
 import { serverMessage } from "@/lib/i18n-errors";
 import { pageLocationHash } from "@/lib/page-location";
+import type { DatabaseNote } from "@/lib/ai/database-note";
+import { DatabaseNotes } from "./ai-database-notes";
 
 export type AiActionsRequest = {
   instruction: string;
@@ -43,6 +45,8 @@ export function AiActionsPanel({
   const [results, setResults] = useState<ActionResult[]>([]);
   const [undone, setUndone] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
+  // Databases whose records were in the prompt.
+  const [databases, setDatabases] = useState<DatabaseNote[]>([]);
   const controller = useRef<AbortController | null>(null);
 
   const toolLabel = (tool: string) =>
@@ -63,10 +67,12 @@ export function AiActionsPanel({
     setError("");
     setResults([]);
     setUndone(new Set());
+    setDatabases([]);
     try {
-      const list = await proposeAiActions({ workspaceId, ...request, signal: abort.signal });
+      const { actions: list, databases: read } = await proposeAiActions({ workspaceId, ...request, signal: abort.signal });
       if (controller.current !== abort) return;
       setPreviews(list);
+      setDatabases(read);
       setChosen(new Set(list.filter((p) => p.ok).map((p) => p.index)));
       setPhase("preview");
     } catch (e) {
@@ -134,6 +140,7 @@ export function AiActionsPanel({
               ? t("Wähle, was ausgeführt werden soll. Erst „Ausführen“ ändert etwas – mit deinen Rechten.", "Choose what to run. Nothing changes before “Run” – and only with your permissions.")
               : t("Die KI hat keine Aktion vorgeschlagen.", "The AI proposed no action.")}
           </p>
+          <DatabaseNotes notes={databases} />
           <ul className="ai-action-list">
             {previews.map((p) => {
               const Icon = ICONS[p.tool as keyof typeof ICONS] || CheckSquare;

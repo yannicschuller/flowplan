@@ -37,6 +37,7 @@ import { requireAi } from "./run";
 import { resolveAi } from "./resolve";
 import { semanticCandidates, semanticQueryVector } from "./semantic";
 import { nameLookup, pageSubtree, sourceText } from "./sources";
+import { databaseContext, type DatabaseData } from "./database-context";
 
 export const ASK_LIMITS = {
   questionChars: 2000,
@@ -100,7 +101,8 @@ Regeln:
 - Die Nummern gelten nur für die Quellen der letzten Nachricht.
 - Quellen mit einem Datum (datum="JJJJ-MM-TT") sind Tage eines Journals oder Einträge mit diesem Datum. Fragt jemand nach dem Letzten, Neuesten oder Aktuellsten, nimm die passende Quelle mit dem jüngsten Datum und nenne das Datum.
 - Quellen mit art="hilfe" stammen aus der offiziellen Flowplan-Hilfe: Nutze sie für Fragen, wie Flowplan funktioniert und wo man etwas einstellt – sie sind kein Inhalt des Arbeitsbereichs. Nenne dabei die Wege durch die Oberfläche genau so, wie sie dort stehen.
-- Formatiere mit Markdown: **fett** für Wichtiges, Listen mit „- “, keine Überschriften für kurze Antworten.`;
+- Formatiere mit Markdown: **fett** für Wichtiges, Listen mit „- “, keine Überschriften für kurze Antworten.
+- Quellen mit art="datenbank" enthalten die Einträge einer Datenbank als Daten (eine Zeile je Eintrag, Eigenschaften als „Name: Wert“). Nutze ihre echten Werte; wird nach allen Einträgen, einer Liste, Tabelle oder Dokumentation gefragt, darf die Antwort länger sein und eine Markdown-Tabelle mit den tatsächlichen Werten enthalten. Schreibe nie Platzhalter statt vorhandener Werte. Steht dort „… weitere Einträge“, sage, dass nicht alle Einträge berücksichtigt sind.`;
 // The prompt for one question: the rules above and today's date (for
 // "last", "yesterday", "this week").
 export const askSystem = (today = new Date()) => `${ASK_SYSTEM}\nHeute ist ${today.toISOString().slice(0, 10)}.`;
@@ -174,7 +176,8 @@ function history(messages: ChatMessage[]): ChatMessage[] {
 
 const escapeAttr = (text: string) => text.replace(/["<>\n]/g, " ").slice(0, 200);
 
-export type PreparedAsk = { sources: AskSource[]; system: string; messages: ChatMessage[]; nothing: boolean; semantic: boolean };
+export type PreparedAsk = { sources: AskSource[]; system: string; messages: ChatMessage[]; nothing: boolean; semantic: boolean; maxTokens: number };
+const ANSWER_TOKENS = { plain: 1500, data: 4000 } as const;
 
 // Everything for the answer; the prompt contains only what aiFilter let through.
 export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSignal): Promise<PreparedAsk> {
@@ -316,15 +319,40 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
   // Passages without a single matching term and without meaning search are
   // noise: better "nothing found" than an answer from unrelated text.
   const useful = chosen.filter((p) => p.matched > 0 || (p.boost || 0) > 0);
-  if (!useful.length) return { sources: [], system: askSystem(), messages: [], nothing: true, semantic };
+
+  // Records of databases the question names or links, of the database the
+  // question is limited to, and of databases found as a whole (#80): their
+  // rows as data instead of a one-line description. Only in the current
+  // workspace.
+  const data: DatabaseData[] = onlyHelp
+    ? []
+    : databaseContext(user, {
+        workspaceId: input.workspaceId,
+        instruction: input.question,
+        within: scope.pages,
+        pageIds: [
+          ...(input.scope.kind === "page" ? [input.scope.pageId] : []),
+          ...useful.filter((p) => !help.has(p.key) && meta.get(p.key)?.kind === "database" && !meta.get(p.key)?.rowId).map((p) => meta.get(p.key)!.pageId),
+        ],
+      });
+  if (!useful.length && !data.length) return { sources: [], system: askSystem(), messages: [], nothing: true, semantic, maxTokens: ANSWER_TOKENS.plain };
 
   // Numbered in the order of their best passage; passages of a source in
-  // document order.
+  // document order. Databases with records not found as a source come last.
   const order: string[] = [];
   for (const p of useful) if (!order.includes(p.key)) order.push(p.key);
+  const records = new Map<string, DatabaseData>();
+  for (const d of data) {
+    const k = key(d.pageId, "");
+    records.set(k, d);
+    if (!order.includes(k)) order.push(k);
+    meta.set(k, { ...(meta.get(k) || {}), pageId: d.pageId, title: d.title || ct("Ohne Titel", "Untitled"), kind: "database" });
+  }
   const sources: AskSource[] = order.map((k, i) => ({ n: i + 1, ...meta.get(k)! }));
   const blocks = order.map((k, i) => {
     const s = sources[i];
+    const table = records.get(k);
+    if (table) return `<quelle nr="${s.n}" art="datenbank" titel="${escapeAttr(s.title)}" einträge="${table.total}">\n${table.body}\n</quelle>`;
     const parts = useful
       .filter((p) => p.key === k)
       .sort((a, b) => (a.index || 0) - (b.index || 0))
@@ -336,7 +364,7 @@ export async function prepareAsk(user: Identity, raw: AskInput, signal?: AbortSi
     return `<quelle nr="${s.n}" titel="${escapeAttr(label)}"${date ? ` datum="${date}"` : ""}>\n${parts.join("\n…\n")}\n</quelle>`;
   });
   const prompt = `Quellen:\n${blocks.join("\n\n")}\n\nFrage: ${input.question}`;
-  return { sources, system: askSystem(), messages: [...previous, { role: "user", content: prompt }], nothing: false, semantic };
+  return { sources, system: askSystem(), messages: [...previous, { role: "user", content: prompt }], nothing: false, semantic, maxTokens: data.length ? ANSWER_TOKENS.data : ANSWER_TOKENS.plain };
 }
 
 // Citations in an answer that point to existing sources: [1], [2][3], [1, 2].

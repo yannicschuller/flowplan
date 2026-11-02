@@ -23,7 +23,7 @@ export type SourceText = {
 
 // Property types whose value is no text of the record itself: links to
 // other records, computed values and files (their text is indexed apart).
-const SKIPPED: Field["type"][] = ["relation", "rollup", "formula", "files", "progress", "time", "sprint"];
+export const SKIPPED: Field["type"][] = ["relation", "rollup", "formula", "files", "progress", "time", "sprint"];
 
 const checkboxText = (v: unknown) => (v === true ? "ja" : "nein");
 // A property value as people read it (persons by name).

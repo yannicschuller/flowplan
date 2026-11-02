@@ -2,6 +2,7 @@
 // page, and streaming an answer from POST /api/ai/run (see lib/ai/index.ts).
 import { serverMessage } from "../i18n-errors";
 import { AI_REASON_TEXT, type AiFeature, type AiReason, type AiStatus } from "./features";
+import type { DatabaseNote } from "./database-note";
 
 export { aiProviderLabel, AI_FEATURES, type AiFeature, type AiStatus } from "./features";
 
@@ -179,7 +180,8 @@ export type ProposeActionsOptions = {
 export async function proposeAiActions({ signal, ...body }: ProposeActionsOptions) {
   const local = new Date();
   const today = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`;
-  return (await postJson<{ actions: ActionPreview[] }>("/api/ai/actions/propose", { ...body, today }, signal)).actions;
+  const answer = await postJson<{ actions: ActionPreview[]; databases?: DatabaseNote[] }>("/api/ai/actions/propose", { ...body, today }, signal);
+  return { actions: answer.actions, databases: answer.databases || [] };
 }
 // Runs the confirmed actions (checked again on the server).
 export async function runAiActions(workspaceId: string, actions: unknown[]) {
