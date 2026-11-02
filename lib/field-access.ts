@@ -3,6 +3,7 @@ import { HttpError } from "./auth";
 import { pageRole } from "./permissions";
 import { formulaReferences } from "./formula";
 import type { Field, Identity, Page, Role } from "./types";
+import { guestTagOptions } from "./tag-fields";
 
 // Field-level permissions: a property may be readable or writable only for
 // some people. Rules, per property (`Field.access`):
@@ -186,9 +187,11 @@ export function hiddenFieldsFor(
   );
 }
 // The properties a person sees, in order.
+// Guests see as options of tag-backed properties only the tags used in the
+// records they see (lib/tag-fields.ts).
 export function visibleFields(user: Identity, page: Page, fields: Field[]) {
   const hidden = hiddenFieldsFor(user, page, fields);
-  return hidden.size ? fields.filter((f) => !hidden.has(f.id)) : fields;
+  return guestTagOptions(user, page, hidden.size ? fields.filter((f) => !hidden.has(f.id)) : fields);
 }
 export function readableDatabase<D extends { fields: Field[] }>(user: Identity, page: Page, d: D): D {
   return { ...d, fields: visibleFields(user, page, d.fields) };

@@ -17,12 +17,15 @@ import { useSprints } from "./sprint-context";
 import { aliasList } from "@/lib/aliases";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkInput } from "./link-cell";
+import { TagCellInput } from "./tag-cell-input";
 export type CellFile = { url: string; name: string; mime: string };
 // The label around a CellInput – or, for a date, a group that looks the same:
 // a <label> passes taps on the date's buttons ("Datum entfernen", the time
 // switch) to the date input in WebKit, which opens the picker instead.
-export function FieldLabel({ field, children }: { field: Pick<Field, "type">; children: ReactNode }) {
-  return field.type === "date" ? <div className="field-group">{children}</div> : <label>{children}</label>;
+// Tag-backed multi-selects (chips with remove buttons) are no <label> either:
+// a tap on "+ Tag" would remove the first tag.
+export function FieldLabel({ field, children }: { field: Pick<Field, "type" | "tagOptions">; children: ReactNode }) {
+  return field.type === "date" || (field.type === "multiselect" && field.tagOptions) ? <div className="field-group">{children}</div> : <label>{children}</label>;
 }
 export function CellInput({
   field: f,
@@ -165,6 +168,9 @@ export function CellInput({
       </Select>
     );
   }
+  // The workspace's tags as options (#79).
+  if (f.type === "multiselect" && f.tagOptions)
+    return <TagCellInput field={f} value={value} disabled={disabled} onChange={onChange} />;
   if (f.type === "multiselect")
     return (
       <div className="multi-options">

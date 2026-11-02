@@ -160,6 +160,8 @@ const fieldInfo = (f: Field) => ({
   name: f.name,
   type: f.type,
   ...(f.options?.length ? { options: f.options } : {}),
+  // The workspace's tags are the options; a new name creates a tag (#79).
+  ...(f.tagOptions ? { tagOptions: true } : {}),
   ...(f.relationPage ? { relationDatabaseId: f.relationPage } : {}),
 });
 // Properties keyed by name, as an AI reads them; people by name.
@@ -508,7 +510,7 @@ const tools: Tool[] = [
     name: "create_record",
     title: "Create a database record",
     description:
-      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options, true/false, person (e-mail or name), relation (record IDs).",
+      "Adds a record to a database. Properties by name (or ID): text, number, date (YYYY-MM-DD), select option, list of options (for a property with tagOptions: tag names, a new name creates the tag), true/false, person (e-mail or name), relation (record IDs).",
     input: z.object({
       databaseId: id("Page ID of the database"),
       properties: z.record(z.string().max(200), z.unknown()).describe("e.g. {\"Name\": \"Call Anna\", \"Status\": \"Open\"}"),

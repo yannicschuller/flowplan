@@ -447,3 +447,36 @@ button.page-tag:focus-visible,
 .search-token-remove:hover {
   background: color-mix(in srgb, currentColor 15%, transparent);
 }
+
+/* ---- Database properties with the workspace's tags as options (#79) ---- */
+/* Cells and board columns: the chip in the tag's colour (the defaults have
+   no weight, so page-tag-<colour> sets the colour). */
+:where(.tag-from-tags) {
+  --tag-bg: #eff0f3;
+  --tag-fg: #555a66;
+}
+[data-theme="dark"] :where(.tag-from-tags) {
+  --tag-bg: rgba(170, 175, 190, 0.18);
+  --tag-fg: #c9cdd6;
+}
+.tag.tag-from-tags {
+  background: var(--tag-bg);
+  color: var(--tag-fg);
+}
+.tag-cell-input {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.tag-cell-input .tag-picker {
+  min-width: min(220px, 100%);
+}
+.tag-view-heading {
+  margin: 22px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--secondary);
+}

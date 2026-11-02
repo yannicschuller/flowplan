@@ -52,6 +52,9 @@ export function validateCellPatch(
         throw new HttpError(400, `${f.name}: ${(e as Error).message}`);
       }
     } else if (f.type === "checkbox") result[key] = z.boolean().parse(value);
+    else if (isTagField(f))
+      // The workspace's tags; new names create tags when allowed (#79).
+      result[key] = tagCell(user, page, f, z.array(z.string().max(1000)).max(100).parse(value));
     else if (f.type === "multiselect") {
       const values = z.array(z.string()).max(100).parse(value);
       if (values.some((v) => !f.options?.includes(v)))
@@ -301,3 +304,4 @@ export function bulkRows(
 import { exportInlineComments } from "./inline-comment-archive";
 import { rowChanged } from "./automations";
 import { databaseSettings } from "./database-settings";
+import { isTagField, tagCell } from "./tag-fields";

@@ -30,6 +30,8 @@ import { cellText } from "./cell-text";
 import { fileUrls } from "./file-cells";
 import { ct } from "./content-locale";
 import type { Field, Identity, Page, Space } from "./types";
+import { applyPortableMeta } from "./page-properties-server";
+import { isTagField } from "./page-properties";
 
 // Values the database computes (or that only make sense inside it) do not
 // become text.
@@ -221,8 +223,20 @@ export function recordToPage(
   // The record's aliases stay the page's aliases.
   {
     const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", database.id)!.fields) as Field[];
-    const aliases = recordAliases(fields, (typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells) as Record<string, unknown>);
+    const cells = (typeof row.cells === "string" ? JSON.parse(row.cells) : row.cells) as Record<string, unknown>;
+    const aliases = recordAliases(fields, cells);
     if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pageId);
+    // The tags of its tag-backed properties (those the person reads) become
+    // the page's tags (#79).
+    const hidden = hiddenFieldsFor(user, database, fields);
+    const tags = fields
+      .filter((f) => isTagField(f) && !hidden.has(f.id))
+      .flatMap((f) => (Array.isArray(cells[f.id]) ? (cells[f.id] as unknown[]) : []))
+      .filter((v): v is string => typeof v === "string");
+    if (tags.length) {
+      const page = one<Page>("SELECT * FROM pages WHERE id=?", pageId)!;
+      applyPortableMeta(user, page, { tags: tags.map((name) => ({ name })) }, { createTags: false });
+    }
   }
   const creator = row.created_by && one("SELECT 1 FROM users WHERE id=?", row.created_by) ? row.created_by : user.id;
   // The same document: its Yjs state and generation stay, so text comments

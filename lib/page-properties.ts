@@ -67,6 +67,10 @@ export type PortableMeta = {
   properties?: { name: string; type: PagePropertyType; options?: string[]; value: unknown }[];
 };
 
+// A multi-select property of a database whose options are the workspace's
+// tags (issue #79, lib/tag-fields.ts).
+export const isTagField = (field: { type: string; tagOptions?: boolean }) => field.type === "multiselect" && !!field.tagOptions;
+
 // Names are compared without case and surrounding space.
 export const foldName = (name: string) => name.replace(/\s+/g, " ").trim().toLocaleLowerCase();
 export const cleanName = (name: string, max: number) => name.replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);

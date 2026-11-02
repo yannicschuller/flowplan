@@ -52,6 +52,7 @@ import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
 import { PagePropertyBar } from "./page-properties";
 import { TagView } from "./tag-view";
+import { TagOptionsContext } from "./tag-options-context";
 import { parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
 import { openPageAliases, AliasIcon } from "./page-aliases";
@@ -792,6 +793,11 @@ export default function WorkspaceApp({
   );
   const navigationVersion = useRef(0);
   const navigationPending = useRef(false);
+  // The tags for multi-selects with the workspace's tags as options (#79).
+  const tagOptions = useMemo(
+    () => ({ tags: boot.taxonomy?.tags ?? [], createTags: !!boot.taxonomy?.createTags }),
+    [boot.taxonomy],
+  );
   const refresh = useCallback(async () => {
     if (navigationPending.current) return;
     const version = navigationVersion.current;
@@ -2662,6 +2668,7 @@ export default function WorkspaceApp({
   );
   return (
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
+    <TagOptionsContext.Provider value={tagOptions}>
     <div
       className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? " ask-open" : ""}`}
       style={
@@ -5903,6 +5910,7 @@ export default function WorkspaceApp({
         }}
       />
     )}
+    </TagOptionsContext.Provider>
     </AiProvider>
   );
 }

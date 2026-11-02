@@ -143,6 +143,9 @@ export type Field = {
   // Who reads and who changes this property (lib/field-access.ts); unset
   // means everyone with access reads and editors write.
   access?: import("./field-access").FieldAccess;
+  // "multiselect": the workspace's tags are the options (issue #79,
+  // lib/tag-fields.ts); cells keep the tag names, `options` mirrors them.
+  tagOptions?: boolean;
 };
 export type Row = {
   id: string;

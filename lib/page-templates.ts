@@ -1,3 +1,4 @@
+import { reconcileTagFields } from "./tag-fields";
 import { reindexRowTasks } from "./doc-tasks";
 import { hiddenRowIds } from "./row-access";
 import { appearanceSchema } from "./page-appearance";
@@ -293,6 +294,8 @@ export function applyPageTemplate(
     }
     // Tasks in the template's records count in "My tasks" right away.
     reindexRowTasks(user, page, rows.map((row) => rowMap.get(row.id)!));
+    // Tag-backed properties use this workspace's tags (#79).
+    reconcileTagFields(user, page.id);
     for (const pair of source.relationPairs) {
       const copied = {
         ...pair,

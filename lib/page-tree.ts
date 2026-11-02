@@ -1,3 +1,4 @@
+import { reconcileTagFields } from "./tag-fields";
 import { ct } from "./content-locale";
 import { copyWhiteboard } from "./whiteboard";
 import { visibleRows } from "./row-access";
@@ -281,6 +282,8 @@ export function duplicatePages(
             t.is_default,
             user.id,
           );
+        // Copied into another workspace: tag-backed properties use its tags (#79).
+        if (workspaceId !== p.workspace_id) reconcileTagFields(user, target);
         const form = one<{
           config: string;
           internal: number;

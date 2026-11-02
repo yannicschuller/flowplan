@@ -293,6 +293,7 @@ Field = TypedDict("Field", {
     "name": Required[str],
     "type": Required[Literal["text", "number", "date", "select", "multiselect", "checkbox", "url", "email", "phone", "checklist", "person", "relation", "rollup", "formula", "created_at", "updated_at", "created_by", "updated_by", "files", "id", "progress", "time", "sprint", "aliases"]],
     "options": list[str],
+    "tagOptions": bool,
     "formula": str,
     "relationPage": str,
     "relationField": str,
@@ -738,7 +739,7 @@ CommandPagesTagResult = TypedDict("CommandPagesTagResult", {
     "pages": Required[int],
 }, total=False)
 
-# Create or change a tag. Without `tagId` a new tag (members with edit rights); with `tagId` rename or recolour it (workspace owners). Names are unique in the workspace ignoring case (409). Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Owners also send tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} and tag.reorder {workspaceId, order}.
+# Create or change a tag. Without `tagId` a new tag (members with edit rights); with `tagId` rename or recolour it (workspace owners). Names are unique in the workspace ignoring case (409). Colours: gray, blue, green, red, yellow, orange, purple, pink, teal. Owners also send tag.delete {workspaceId, tagId}, tag.merge {workspaceId, tagId, into} and tag.reorder {workspaceId, order}. Renaming, merging and deleting also change the values of database properties with the tags as options (`tagOptions`).
 CommandTagSave = TypedDict("CommandTagSave", {
     "action": Required[Literal["tag.save"]],
     "workspaceId": Required[str],
@@ -847,7 +848,7 @@ CommandFavoriteResult = TypedDict("CommandFavoriteResult", {
     "ok": Required[Literal[True]],
 }, total=False)
 
-# Change the properties and views of a database. `version` must be the database's current version (optimistic locking, 409 otherwise).
+# Change the properties and views of a database. `version` must be the database's current version (optimistic locking, 409 otherwise). A multiselect with `tagOptions: true` offers the workspace's tags as its options (its `options` are set by the server); cells keep the tag names, and a new name creates the tag (members with edit rights, not guests). Switching an existing multiselect to `tagOptions` maps its options to tags (missing ones are created) and keeps the values; switching back makes the tags in use its own options. Not in end-to-end encrypted spaces (409).
 CommandDatabaseUpdate = TypedDict("CommandDatabaseUpdate", {
     "action": Required[Literal["database.update"]],
     "pageId": Required[str],
@@ -1693,11 +1694,11 @@ class FlowplanClient:
         return self._json("GET", "/api/graph", query=dict(query) if query else None, headers=headers)
 
     def tags(self, query: "TagsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `pages`: how many readable pages carry it) and the property definitions (`id`, `name`, `type`, `options`). Guests see only the tags and properties of pages shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags)"""
+        """Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `pages`: how many readable pages carry it, `records`: how many readable database records carry it in a property with the tags as options) and the property definitions (`id`, `name`, `type`, `options`). Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags)"""
         return self._json("GET", "/api/tags", query=dict(query) if query else None, headers=headers)
 
     def tag_pages(self, id: str, query: "TagPagesQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
-        """Pages with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, latest change first. Answered with `Cache-Control: no-store`. (GET /api/tags/{id})"""
+        """Pages and records with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, and `records`: the readable database records carrying it in a property with the tags as options, latest change first. Answered with `Cache-Control: no-store`. (GET /api/tags/{id})"""
         return self._json("GET", "/api/tags/" + _p(id), query=dict(query) if query else None, headers=headers)
 
     def related(self, query: Optional["RelatedQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:

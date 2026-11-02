@@ -6,6 +6,7 @@
 // records with their content and files; a move keeps the record itself –
 // content, comments, versions, time and Git links travel with it – and
 // gives it a number in the new database.
+import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable, hiddenFieldsFor } from "./field-access";
 import { aliasList } from "./aliases";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
@@ -63,7 +64,8 @@ function convert(value: unknown, from: Field, to: Field, addOption: (f: Field, o
     }
     case "multiselect": {
       const list = (Array.isArray(value) ? value : [value]).map(String).filter(Boolean);
-      options(list);
+      // Tag-backed: the workspace's tags, created where allowed (tagCells).
+      if (!isTagField(to)) options(list);
       return list;
     }
     case "aliases":
@@ -127,7 +129,7 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
     if (NOT_COPIED.has(f.type) || f.parent || hidden.has(f.id)) return;
     let to = match(f, targetFields, i === 0);
     if (!to && b.addMissing && !["relation", "time"].includes(f.type) && targetFields.length < 80) {
-      to = { id: `t${id().slice(0, 7)}`, name: f.name, type: f.type, ...(f.options ? { options: [...f.options] } : {}), ...(f.format ? { format: f.format } : {}), ...(f.decimals !== undefined ? { decimals: f.decimals } : {}) };
+      to = { id: `t${id().slice(0, 7)}`, name: f.name, type: f.type, ...(f.options ? { options: [...f.options] } : {}), ...(isTagField(f) ? { tagOptions: true } : {}), ...(f.format ? { format: f.format } : {}), ...(f.decimals !== undefined ? { decimals: f.decimals } : {}) };
       targetFields.push(to);
       created.push(f.name);
     }
@@ -153,13 +155,15 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
   const results: string[] = [];
   let position = (one<{ p: number }>("SELECT COALESCE(MAX(position),0) p FROM rows WHERE page_id=?", target.id)?.p || 0) + 1;
   for (const row of rows) {
-    const cells: Record<string, unknown> = {};
+    let cells: Record<string, unknown> = {};
     const old = JSON.parse(row.cells as unknown as string) as Record<string, unknown>;
     for (const [fid, to] of mapping) {
       const from = sourceFields.find((f) => f.id === fid)!;
       const value = convert(old[fid], from, to, addOption);
       if (value !== undefined) cells[to.id] = value;
     }
+    // Tag-backed properties: missing tags created where allowed (#79).
+    cells = tagCells(user, target, targetFields, cells, false);
     const html = String(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", row.id)?.html ?? row.content ?? "");
     const fileIds = new Set([...JSON.stringify(cells).matchAll(FILE_URL), ...html.matchAll(FILE_URL)].map((m) => m[1].toLowerCase()));
     if (b.mode === "copy") {
@@ -204,6 +208,7 @@ export function transferRows(user: Identity, sourcePageId: string, raw: unknown)
   }
   if (created.length || optionsAdded)
     run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(targetFields), target.id);
+  if (targetFields.some(isTagField)) syncTagFieldOptions(target.workspace_id);
   run("UPDATE pages SET updated_at=CURRENT_TIMESTAMP WHERE id IN (?,?)", source.id, target.id);
   maintainRowOrders(target.id);
   if (b.mode === "move") maintainRowOrders(source.id);

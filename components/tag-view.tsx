@@ -3,15 +3,21 @@
 // each, and – for a tag (#tags/<id>, a click on a tag chip) – the pages with
 // it, newest change first, narrowed by further tags or a few words. Only
 // pages one may read appear (the bootstrap's page list and tag links).
+// Records of databases whose multi-select has the tags as options (#79)
+// come from GET /api/tags (the server applies the record permissions).
 import { useEffect, useMemo, useState } from "react";
-import { GearSix, MagnifyingGlass, Tag as TagIcon } from "@phosphor-icons/react";
+import { GearSix, MagnifyingGlass, Rows, Tag as TagIcon } from "@phosphor-icons/react";
 import { useT } from "./i18n";
-import { PageIcon } from "./ui";
+import { api, PageIcon } from "./ui";
+import { pageLocationHash } from "@/lib/page-location";
 import { TagChip } from "./page-properties";
 import { foldName, type PageTag } from "@/lib/page-properties";
 import type { Bootstrap, Page } from "@/lib/types";
 
 const tagOfHash = () => /^#tags\/([0-9a-f-]{36})$/.exec(location.hash)?.[1] ?? null;
+
+type TaggedRecord = { page_id: string; row_id: string; title: string; icon: string; database: string; space_id: string; updated_at: string; tags: string[] };
+type Listing = { tags: { id: string; records?: number }[]; records?: TaggedRecord[] };
 
 export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[]; onOpen: (pageId: string) => void; onError?: (e: unknown) => void }) {
   const t = useT();
@@ -29,6 +35,19 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
     return () => window.removeEventListener("hashchange", follow);
   }, []);
   const links = useMemo(() => taxonomy?.links ?? {}, [taxonomy]);
+  // Records with tags: counts for the cloud, the records of the chosen tag.
+  const [listing, setListing] = useState<Listing | null>(null);
+  useEffect(() => {
+    let live = true;
+    const path = selected ? `/api/tags/${selected}` : "/api/tags";
+    api<Listing>(`${path}?workspace=${boot.workspace.id}`)
+      .then((result) => live && setListing(result))
+      .catch(() => live && setListing(null));
+    return () => {
+      live = false;
+    };
+  }, [selected, boot.workspace.id, taxonomy]);
+  const recordCounts = useMemo(() => new Map((listing?.tags ?? []).map((x) => [x.id, x.records ?? 0])), [listing]);
   const counts = useMemo(() => {
     const live = new Set(pages.map((p) => p.id));
     const map = new Map<string, number>();
@@ -47,12 +66,19 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
       .filter((p) => !words || foldName(p.title).includes(words))
       .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
   }, [tag, also, filter, pages, links]);
-  // Further tags that occur on these pages narrow the list.
+  const records = useMemo(() => {
+    if (!tag || !listing?.records) return [];
+    const words = foldName(filter);
+    return listing.records
+      .filter((r) => also.every((id) => r.tags.includes(id)))
+      .filter((r) => !words || foldName(`${r.title} ${r.database}`).includes(words));
+  }, [tag, listing, also, filter]);
+  // Further tags that occur on these pages and records narrow the list.
   const related = useMemo(() => {
     if (!tag) return [];
-    const ids = new Set(tagged.flatMap((p) => links[p.id] || []));
+    const ids = new Set([...tagged.flatMap((p) => links[p.id] || []), ...records.flatMap((r) => r.tags)]);
     return tags.filter((x) => ids.has(x.id) && x.id !== tag.id && !also.includes(x.id));
-  }, [tag, tagged, tags, links, also]);
+  }, [tag, tagged, records, tags, links, also]);
   const open = (id: string | null) => {
     location.hash = id ? `tags/${id}` : "tags";
   };
@@ -63,10 +89,22 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
         <h1>{tag ? `#${tag.name}` : t("Tags", "Tags")}</h1>
         <p>
           {tag
-            ? tagged.length === 1
-              ? t("1 Seite mit diesem Tag.", "1 page with this tag.")
-              : t(`${tagged.length} Seiten mit diesem Tag.`, `${tagged.length} pages with this tag.`)
-            : t("Seiten nach Tags. In der Suche findet #Tag dasselbe.", "Pages by tag. In the search, #tag finds the same.")}
+            ? (tagged.length === 1
+                ? t("1 Seite mit diesem Tag.", "1 page with this tag.")
+                : tagged.length || !records.length
+                  ? t(`${tagged.length} Seiten mit diesem Tag.`, `${tagged.length} pages with this tag.`)
+                  : "") +
+              (records.length && tagged.length
+                ? " " +
+                  (records.length === 1
+                    ? t("1 Eintrag aus Datenbanken.", "1 record from databases.")
+                    : t(`${records.length} Einträge aus Datenbanken.`, `${records.length} records from databases.`))
+                : records.length
+                  ? records.length === 1
+                    ? t("1 Eintrag mit diesem Tag.", "1 record with this tag.")
+                    : t(`${records.length} Einträge mit diesem Tag.`, `${records.length} records with this tag.`)
+                  : "")
+            : t("Seiten und Einträge nach Tags. In der Suche findet #Tag dasselbe.", "Pages and records by tag. In the search, #tag finds the same.")}
         </p>
       </div>
       <div className="tag-view-cloud" role="list" aria-label={t("Alle Tags", "All tags")}>
@@ -79,7 +117,7 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
               onClick={() => open(x.id === selected ? null : x.id)}
             >
               <span className="page-tag-name">{x.name}</span>
-              <span className="tag-view-count">{counts.get(x.id) || 0}</span>
+              <span className="tag-view-count">{(counts.get(x.id) || 0) + (recordCounts.get(x.id) || 0)}</span>
             </button>
           </span>
         ))}
@@ -105,7 +143,7 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
             })}
             <label className="tag-view-search">
               <MagnifyingGlass size={15} aria-hidden />
-              <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("Seiten filtern", "Filter pages")} aria-label={t("Seiten filtern", "Filter pages")} />
+              <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("Filtern", "Filter")} aria-label={t("Seiten und Einträge filtern", "Filter pages and records")} />
             </label>
             {related.length > 0 && (
               <span className="tag-view-related">
@@ -141,7 +179,38 @@ export function TagView({ boot, pages, onOpen }: { boot: Bootstrap; pages: Page[
               </li>
             ))}
           </ul>
-          {!tagged.length && <p className="muted">{t("Keine Seiten gefunden.", "No pages found.")}</p>}
+          {records.length > 0 && (
+            <>
+              <h2 className="tag-view-heading">{t("Einträge", "Records")}</h2>
+              <ul className="tag-view-pages tag-view-records" aria-label={t("Einträge", "Records")}>
+                {records.map((r) => (
+                  <li key={r.row_id}>
+                    <a className="utility-row tag-view-page" href={pageLocationHash({ pageId: r.page_id, rowId: r.row_id })}>
+                      {r.icon ? <PageIcon name={r.icon} /> : <Rows size={18} aria-hidden />}
+                      <strong>
+                        {r.title || t("Ohne Titel", "Untitled")}
+                        <small>
+                          {r.database}
+                          {spaceName(r.space_id) ? ` · ${spaceName(r.space_id)}` : ""}
+                        </small>
+                      </strong>
+                      <span className="tag-view-page-tags">
+                        {r.tags
+                          .filter((id) => id !== tag.id)
+                          .map((id) => tags.find((x) => x.id === id))
+                          .filter((x): x is PageTag => !!x)
+                          .slice(0, 4)
+                          .map((x) => (
+                            <TagChip key={x.id} tag={x} />
+                          ))}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!tagged.length && !records.length && <p className="muted">{t("Keine Seiten oder Einträge gefunden.", "No pages or records found.")}</p>}
         </>
       )}
     </div>

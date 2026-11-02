@@ -46,6 +46,7 @@ import {
   type WorkspaceTaxonomy,
 } from "./page-properties";
 import type { Identity, Page } from "./types";
+import { rewriteTagValues, syncTagFieldOptions, taggedRecords } from "./tag-fields";
 
 type TagRow = { id: string; workspace_id: string; name: string; color: string; position: number };
 type DefRow = { id: string; workspace_id: string; name: string; type: string; options: string; position: number };
@@ -109,7 +110,9 @@ export function workspaceTaxonomy(user: Identity, workspaceId: string, visiblePa
   let tags = workspaceTags(workspaceId),
     properties = workspaceProperties(workspaceId);
   if (isGuest(user, workspaceId)) {
-    const used = new Set(Object.values(links).flat());
+    // Tags of the pages and of the records (tag-backed properties, #79)
+    // shared with the guest.
+    const used = new Set([...Object.values(links).flat(), ...taggedRecords(user, workspaceId).flatMap((r) => r.tags)]);
     tags = tags.filter((t) => used.has(t.id));
     const valued = new Set(
       all<{ page_id: string; property_id: string }>(
@@ -221,7 +224,7 @@ function findTag(workspaceId: string, ref: string): string | undefined {
   return one<{ id: string }>("SELECT id FROM page_tags WHERE workspace_id=? AND (id=? OR name=? COLLATE NOCASE)", workspaceId, ref, cleanTagName(ref))?.id;
 }
 // A tag by id or name; a new name creates the tag when the person may.
-function resolveTag(user: Identity | null, workspaceId: string, ref: string, color?: string): string | null {
+export function resolveTag(user: Identity | null, workspaceId: string, ref: string, color?: string): string | null {
   const byId = one<{ id: string }>("SELECT id FROM page_tags WHERE id=? AND workspace_id=?", ref, workspaceId);
   if (byId) return byId.id;
   const name = cleanTagName(ref);
@@ -242,6 +245,8 @@ function resolveTag(user: Identity | null, workspaceId: string, ref: string, col
     user?.id ?? null,
     Date.now(),
   );
+  // Tag-backed database properties offer it at once (lib/tag-fields.ts).
+  syncTagFieldOptions(workspaceId);
   return tagId;
 }
 // New tags take the colours in turn, so neighbours differ.
@@ -273,6 +278,14 @@ function setPageValue(pageId: string, propertyId: string, value: unknown) {
       propertyId,
       JSON.stringify(value),
     );
+}
+
+// The names of a page's tags, in its order.
+export function pageTagNames(pageId: string): string[] {
+  return all<{ name: string }>(
+    "SELECT t.name FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE l.page_id=? ORDER BY l.position,t.position",
+    pageId,
+  ).map((t) => t.name);
 }
 
 // ---- Commands ----
@@ -377,7 +390,11 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       requireManage(user, b.workspaceId);
       if (!one("SELECT 1 FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId)) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
       if (clash && clash.id !== b.tagId) throw new HttpError(409, "Diesen Tag gibt es schon. Zum Zusammenführen „Zusammenführen“ wählen.");
+      const before = one<TagRow>("SELECT * FROM page_tags WHERE id=?", b.tagId)!;
       run("UPDATE page_tags SET name=?,color=COALESCE(?,color) WHERE id=?", name, b.color ?? null, b.tagId);
+      // Records of tag-backed properties keep the tag under its new name.
+      if (before.name !== name) rewriteTagValues(user, b.workspaceId, before.name, name);
+      syncTagFieldOptions(b.workspaceId);
       audit(user.id, "tag.save", b.tagId, name);
       return { ok: true, id: b.tagId };
     }
@@ -387,6 +404,9 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       const tag = one<TagRow>("SELECT * FROM page_tags WHERE id=? AND workspace_id=?", b.tagId, b.workspaceId);
       if (!tag) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
       run("DELETE FROM page_tags WHERE id=?", tag.id);
+      // The tag leaves the records of tag-backed properties too.
+      rewriteTagValues(user, b.workspaceId, tag.name, null);
+      syncTagFieldOptions(b.workspaceId);
       audit(user.id, "tag.delete", tag.id, tag.name);
       return { ok: true };
     }
@@ -403,6 +423,9 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
         from.id,
       );
       run("DELETE FROM page_tags WHERE id=?", from.id);
+      // Records with the source carry the target (once).
+      rewriteTagValues(user, b.workspaceId, from.name, into.name);
+      syncTagFieldOptions(b.workspaceId);
       audit(user.id, "tag.merge", into.id, `${from.name} → ${into.name}`);
       return { ok: true };
     }
@@ -412,6 +435,7 @@ export function pagePropertiesCommand(user: Identity, action: string, input: Rec
       requireManage(user, b.workspaceId);
       const table = action === "tag.reorder" ? "page_tags" : "page_property_defs";
       b.order.forEach((itemId, i) => run(`UPDATE ${table} SET position=? WHERE id=? AND workspace_id=?`, i + 1, itemId, b.workspaceId));
+      if (action === "tag.reorder") syncTagFieldOptions(b.workspaceId);
       return { ok: true };
     }
     // { workspaceId, propertyId?, name, type, options? }
@@ -775,8 +799,9 @@ function guessType(raw: unknown): PagePropertyType {
   return "text";
 }
 
-// GET /api/tags: the workspace's tags with how many readable pages carry
-// each, the property definitions and – with `tagId` – those pages.
+// GET /api/tags: the workspace's tags with how many readable pages and
+// records (tag-backed database properties, #79) carry each, the property
+// definitions and – with `tagId` – those pages and records.
 export function tagListing(user: Identity, workspaceId: string, tagId?: string) {
   requireMember(user, workspaceId);
   const locked = lockedPageIds(user, workspaceId);
@@ -784,17 +809,33 @@ export function tagListing(user: Identity, workspaceId: string, tagId?: string) 
     (p) => !locked.has(p.id) && !isEncryptedPage(p) && !!pageRole(user, p),
   );
   const taxonomy = workspaceTaxonomy(user, workspaceId, pages);
-  const counts = new Map<string, number>();
+  const counts = new Map<string, number>(),
+    recordCounts = new Map<string, number>();
   for (const ids of Object.values(taxonomy.links)) for (const t of ids) counts.set(t, (counts.get(t) || 0) + 1);
+  const records = taggedRecords(user, workspaceId);
+  for (const r of records) for (const t of r.tags) recordCounts.set(t, (recordCounts.get(t) || 0) + 1);
   if (tagId && !taxonomy.tags.some((t) => t.id === tagId)) throw new HttpError(404, "Schlagwort (Tag) nicht gefunden.");
   return {
-    tags: taxonomy.tags.map((t) => ({ ...t, pages: counts.get(t.id) || 0 })),
+    tags: taxonomy.tags.map((t) => ({ ...t, pages: counts.get(t.id) || 0, records: recordCounts.get(t.id) || 0 })),
     properties: taxonomy.properties,
     ...(tagId
       ? {
           pages: pages
             .filter((p) => taxonomy.links[p.id]?.includes(tagId))
             .map((p) => ({ id: p.id, title: p.title, icon: p.icon, kind: p.kind, space_id: p.space_id, parent_id: p.parent_id, updated_at: p.updated_at, tags: taxonomy.links[p.id] })),
+          records: records
+            .filter((r) => r.tags.includes(tagId))
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+            .map((r) => ({
+              page_id: r.pageId,
+              row_id: r.rowId,
+              title: r.title,
+              icon: r.icon,
+              database: r.databaseTitle,
+              space_id: r.spaceId,
+              updated_at: r.updatedAt,
+              tags: r.tags,
+            })),
         }
       : {}),
   };

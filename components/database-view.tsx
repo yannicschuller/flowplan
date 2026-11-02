@@ -27,6 +27,8 @@ import { appCache, rowKey } from "@/lib/swr-cache";
 import { ContextMenu } from "./context-menu";
 import { formatDuration } from "@/lib/durations";
 import { DatabaseSprints } from "./database-sprints";
+import { tagByName, useTagOptions } from "./tag-options-context";
+import { isTagField } from "@/lib/page-properties";
 import { SprintContext } from "./sprint-context";
 import { RecordLayoutEditor } from "./record-layout-editor";
 import {
@@ -357,6 +359,7 @@ export default function DatabaseView({
   onError: (s: string) => void;
 }) {
   const t = useT();
+  const tagOptions = useTagOptions();
   const keyHints = useKeyboardHints();
   // "Mit KI zusammenfassen" for the view's records or one record.
   const aiSummarize = useAiAvailability("summarize", page.id);
@@ -1600,6 +1603,10 @@ export default function DatabaseView({
     primePlaceholder(result.url, result.placeholder);
     return result.url as string;
   }
+  // Chips of options; the workspace's tags with their colours (#79).
+  function chipClass(f: Field | undefined, value: string) {
+    return f && isTagField(f) ? `tag tag-from-tags page-tag-${tagByName(tagOptions.tags, value).color}` : `tag tag-${tagColor(value)}`;
+  }
   function display(r: Row, f: Field) {
     const v = r.cells[f.id];
     if (f.type === "files") {
@@ -1672,7 +1679,7 @@ export default function DatabaseView({
           {values.map((s, i) => (
             <span
               key={String(s) + i}
-              className={`tag tag-${tagColor(String(s))}`}
+              className={chipClass(f, String(s))}
             >
               {String(s)}
             </span>
@@ -3279,7 +3286,7 @@ export default function DatabaseView({
                     }}
                   />
                 </button>
-                <span className={`tag tag-${tagColor(g.label)}`}>
+                <span className={g.value === null ? `tag tag-${tagColor(g.label)}` : chipClass(groupField, g.label)}>
                   {g.label}
                 </span>
                 <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
@@ -3456,7 +3463,7 @@ export default function DatabaseView({
                     }}
                   />
                 </button>
-                <span className={`tag tag-${tagColor(g.label)}`}>
+                <span className={g.value === null ? `tag tag-${tagColor(g.label)}` : chipClass(groupField, g.label)}>
                   {g.label}
                 </span>
                 <WipCount count={g.rows.length} limit={view.wip?.[g.key]} />
@@ -3556,12 +3563,16 @@ export default function DatabaseView({
           {viewEditable &&
             groupField &&
             (groupField.type === "select" ||
-              groupField.type === "multiselect") && (
+              groupField.type === "multiselect") &&
+            (!isTagField(groupField) || tagOptions.createTags) && (
               <AddBoardGroup
                 disabled={schemaBusy}
                 existing={groupField.options || []}
                 onAdd={(name) =>
-                  updateSchema(
+                  // A new column of the workspace's tags is a new tag (#79).
+                  isTagField(groupField)
+                    ? act({ action: "tag.save", workspaceId: page.workspace_id, name }).then(() => onRefresh?.())
+                    : updateSchema(
                     fields.map((f) =>
                       f.id === groupField.id
                         ? { ...f, options: [...(f.options || []), name] }
@@ -4652,7 +4663,34 @@ export default function DatabaseView({
               </small>
             </label>
           )}
-          {["select", "multiselect"].includes(fieldDraft.type) && (
+          {fieldDraft.type === "multiselect" && (
+            <label>
+              {t("Optionen", "Options")}
+              <Select
+                aria-label={t("Herkunft der Optionen", "Source of the options")}
+                aria-describedby="tag-options-hint"
+                value={fieldDraft.tagOptions ? "tags" : "own"}
+                onChange={(e) =>
+                  setFieldDraft((f) => ({ ...f, tagOptions: e.target.value === "tags" ? true : undefined }))
+                }
+              >
+                <option value="own">{t("Eigene Liste", "Own list")}</option>
+                <option value="tags">{t("Tags des Arbeitsbereichs", "Workspace tags")}</option>
+              </Select>
+              <small id="tag-options-hint" className="muted">
+                {fieldDraft.tagOptions
+                  ? t(
+                      "Die Tags des Arbeitsbereichs mit ihren Farben. Einträge erscheinen in der Tag-Ansicht und unter #Tag in der Suche; ein neuer Wert legt einen Tag an.",
+                      "The workspace's tags with their colours. Records appear in the tag view and under #tag in the search; a new value creates a tag.",
+                    )
+                  : t(
+                      "Mit den Tags des Arbeitsbereichs werden die bisherigen Optionen zu Tags.",
+                      "With the workspace's tags, the current options become tags.",
+                    )}
+              </small>
+            </label>
+          )}
+          {["select", "multiselect"].includes(fieldDraft.type) && !(fieldDraft.type === "multiselect" && fieldDraft.tagOptions) && (
             <label>
               {t("Optionen, durch Komma getrennt", "Options, separated by commas")}
               <input
@@ -5454,7 +5492,7 @@ export default function DatabaseView({
               <div className="row-properties">
                 {recordFields.map((f) => (
                   <Fragment key={`${selected.id}-${f.id}`}>
-                    <PropertyRow group={f.type === "files" || f.type === "date"}>
+                    <PropertyRow group={f.type === "files" || f.type === "date" || isTagField(f)}>
                       <span>
                         {f.name}
                         {contactLocked(data.contacts, selected.id, f.id) && <LdapMarker />}

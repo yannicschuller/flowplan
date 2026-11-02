@@ -2,6 +2,7 @@
 // Obsidian keeps notes): the title from "title:", the first heading or the
 // file name, properties from the frontmatter by name, the rest as the
 // record document. Missing properties can be created with a guessed type.
+import { isTagField, syncTagFieldOptions, tagCells } from "./tag-fields";
 import { assertFieldsWritable } from "./field-access";
 import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { posix, resolve } from "node:path";
@@ -237,6 +238,9 @@ export function importMarkdownRecords(
         case "select":
           return option(field, list[0] || "") ?? undefined;
         case "multiselect":
+          // The workspace's tags: missing ones created where allowed (#79).
+          if (isTagField(field))
+            return tagCells(user, page, [field], { [field.id]: list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))) }, false)[field.id];
           return [...new Set(list.flatMap((v) => (isList(value) ? [v] : v.split(",").map((x) => x.trim()))).map((v) => option(field, v)).filter((v): v is string => !!v))];
         case "person": {
           const ids = list.map(member).filter((v): v is string => !!v);
@@ -323,6 +327,7 @@ export function importMarkdownRecords(
     assertFieldsWritable(user, page, next, new Set(rows.flatMap((r) => Object.keys(r.cells))));
     if (JSON.stringify(next) !== raw.fields)
       run("UPDATE databases SET fields=?,version=version+1 WHERE page_id=?", JSON.stringify(next), page.id);
+    syncTagFieldOptions(page.workspace_id);
     let updated = 0;
     rows.forEach(({ file, cells }, i) => {
       const rid = rowIds.get(file.path)!;

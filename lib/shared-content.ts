@@ -1,3 +1,4 @@
+import { isTagField } from "./page-properties";
 import { parseAliases } from "./page-aliases";
 import {
   applyHtml,
@@ -222,7 +223,15 @@ export function sharedContent(token: string, pageId?: string, rowId?: string) {
       writablePublicField(s.fields[0])
         ? s.fields[0].id
         : undefined,
-    fields: s.row ? fields : [],
+    // Tag-backed properties offer only the tags of this record (#79): the
+    // workspace's other tags stay unknown to the link.
+    fields: s.row
+      ? fields.map((f) =>
+          isTagField(f)
+            ? { ...f, options: (f.options || []).filter((o) => Array.isArray(s.cells[f.id]) && (s.cells[f.id] as unknown[]).includes(o)) }
+            : f,
+        )
+      : [],
     cells: s.row
       ? Object.fromEntries(
           fields.map((f) => [
@@ -310,9 +319,12 @@ function validatedCells(
     } else if (f.type === "checkbox") cells[key] = z.boolean().parse(value);
     else if (f.type === "multiselect") {
       const values = z.array(z.string()).max(100).parse(value);
-      if (values.some((v) => !f.options?.includes(v)))
+      // Tag-backed: only the record's own tags (removing works, new or
+      // other tags do not).
+      const allowed = isTagField(f) ? (Array.isArray(current[key]) ? (current[key] as unknown[]) : []) : f.options || [];
+      if (values.some((v) => !allowed.includes(v)))
         throw new HttpError(400, "Ungültige Auswahl.");
-      cells[key] = values;
+      cells[key] = [...new Set(values)];
     } else if (f.type === "aliases") cells[key] = parseAliases(value);
     else if (f.type === "checklist")
       cells[key] = z

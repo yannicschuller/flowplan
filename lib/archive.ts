@@ -1,3 +1,4 @@
+import { reconcileTagFields } from "./tag-fields";
 import { copyDashboard, dashboardTiles } from "./dashboard";
 import { importNotebook, notebookArchive, notebookArchiveSchema } from "./notebook";
 import { pageInkDocs, writeSurface, inkBlockIds } from "./page-ink-store";
@@ -1293,6 +1294,8 @@ async function importEntries(
           }
           importDatabaseSettings(pid, d.settings, { user: user.id, fields: d.fields, members, templates: templateIds, person });
           importDatabaseHistory(pid, d, { user: user.id, rows: rowMap, fields: d.fields });
+          // Tag-backed properties use this workspace's tags (#79).
+          reconcileTagFields(user, pid);
         } else if (p.kind === "whiteboard") {
           writeWhiteboard(
             pid,

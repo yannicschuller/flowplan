@@ -13,6 +13,7 @@ import { pageInkSearchText } from "./page-ink-store";
 import { parseRecognizedMap } from "./ink/recognized";
 import { filteredPageIds, pageMetaSearchText, workspaceProperties, workspaceTags } from "./page-properties-server";
 import { parseSearchTokens } from "./page-properties";
+import { taggedRecords } from "./tag-fields";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -250,6 +251,27 @@ export function searchWorkspace(
     properties: workspaceProperties(workspaceId),
   });
   const only = filteredPageIds(user, workspaceId, tokens);
+  // Records carry the tags of their tag-backed properties (#79) and those
+  // of their database: #tag finds them, -#tag leaves them out.
+  const records = tokens.tags.length ? taggedRecords(user, workspaceId) : [];
+  const recordTags = new Map(records.map((r) => [`${r.pageId}:${r.rowId}`, r.tags]));
+  const pageTags = new Map<string, Set<string>>();
+  if (tokens.tags.length)
+    for (const link of all<{ page_id: string; tag_id: string }>(
+      "SELECT l.page_id,l.tag_id FROM page_tag_links l JOIN page_tags t ON t.id=l.tag_id WHERE t.workspace_id=?",
+      workspaceId,
+    ))
+      (pageTags.get(link.page_id) ?? pageTags.set(link.page_id, new Set()).get(link.page_id)!).add(link.tag_id);
+  const recordPasses = (pageId: string, rowId: string) => {
+    if (!only) return true;
+    if (tokens.properties.length && !only.has(pageId)) return false;
+    const own = recordTags.get(`${pageId}:${rowId}`) ?? [];
+    return tokens.tags.every((f) => (own.includes(f.tagId) || !!pageTags.get(pageId)?.has(f.tagId)) !== f.exclude);
+  };
+  const isRecordKey = (key: string) => !!key && !/^[cmf]:/.test(key);
+  const tagged = records.filter((r) => recordPasses(r.pageId, r.rowId));
+  // Databases whose records may pass, besides the pages that pass.
+  const scoped = only ? new Set([...only, ...tagged.map((r) => r.pageId)]) : null;
   const query = tokens.text.trim().slice(0, 200);
   const kind = options.kind || "all";
   const roles = new Map<string, boolean>();
@@ -310,6 +332,9 @@ export function searchWorkspace(
     }
     const rowId = recordOf(key),
       type = hitKind(page, key);
+    // With tag or property tokens: pages (and their comments and files)
+    // that pass, records whose own or database tags pass.
+    if (only && (isRecordKey(key) ? !recordPasses(page.id, key) : !only.has(page.id))) return;
     // Records hidden by their own permissions do not appear, nor files
     // used only by them.
     if (rowId && page.kind === "database") {
@@ -340,17 +365,29 @@ export function searchWorkspace(
   const scope =
     "p.workspace_id=? AND p.deleted_at IS NULL" +
     (options.spaceId ? " AND p.space_id=?" : "") +
-    (only ? " AND p.id IN (SELECT value FROM json_each(?))" : "");
-  const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : []), ...(only ? [JSON.stringify([...only])] : [])];
+    (scoped ? " AND p.id IN (SELECT value FROM json_each(?))" : "");
+  const scopeArgs = [workspaceId, ...(options.spaceId ? [options.spaceId] : []), ...(scoped ? [JSON.stringify([...scoped])] : [])];
   if (!query) {
-    if (!["all", "document", "database", ...(only ? ["whiteboard"] : [])].includes(kind)) return [];
+    if (!["all", "document", "database", ...(only ? ["whiteboard", "row"] : [])].includes(kind)) return [];
     for (const page of all<Page>(
       `SELECT p.* FROM pages p WHERE ${scope} ORDER BY p.updated_at DESC LIMIT 500`,
       ...scopeArgs,
     )) {
-      if (page.synced || !allowed(page) || !matchesKind(page, "")) continue;
+      if (page.synced || !allowed(page) || !matchesKind(page, "") || (only && !only.has(page.id))) continue;
       push(page, "", page.title, "");
       if (done()) break;
+    }
+    // #tag alone: the records with the tag follow the pages.
+    if ((kind === "all" || kind === "row") && tokens.tags.some((f) => !f.exclude)) {
+      const databases = new Map<string, Page>();
+      for (const r of tagged.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
+        if (done()) break;
+        if (options.spaceId && r.spaceId !== options.spaceId) continue;
+        if (!databases.has(r.pageId)) databases.set(r.pageId, one<Page>("SELECT * FROM pages WHERE id=?", r.pageId)!);
+        const page = databases.get(r.pageId)!;
+        if (!allowed(page)) continue;
+        push(page, r.rowId, r.title || "Ohne Titel", "");
+      }
     }
     return finish();
   }

@@ -1003,6 +1003,8 @@ export function command(
                 user.id,
                 user.id,
               );
+            // Tag-backed properties use this workspace's tags (#79).
+            reconcileTagFields(user, np);
           }
         }
         result = {
@@ -1794,6 +1796,8 @@ export function command(
                 c.created_at,
               );
           restoreRelationPairs(user, p.id, data.relationPairs);
+          // Tag-backed properties: values become tags again where allowed (#79).
+          reconcileTagFields(user, p.id);
         }
         run(
           "UPDATE pages SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -1890,6 +1894,8 @@ export function command(
         if (aliasField(fields)?.id !== aliasField(d.fields)?.id)
           run("INSERT OR IGNORE INTO search_dirty SELECT page_id,id FROM rows WHERE page_id=?", pid());
         prepareSubtaskFields(write(), fields, databaseSettings(pid()));
+        // Multi-selects with the workspace's tags as options (#79).
+        prepareTagFields(user, write(), fields, d.fields);
         validateDatabaseRelations(user, write(), fields, d.fields);
         validateTicketPrefix(write(), fields);
         for (const v of views) {
@@ -1984,6 +1990,8 @@ export function command(
             : selectedTemplate;
         const given = z.record(z.string(), z.unknown()).parse(b.cells || {});
         assertFieldsWritable(user, write(), database(pid()).fields, Object.keys(given));
+        // Tag-backed properties: tag names, new ones only where allowed (#79).
+        Object.assign(given, tagCells(user, write(), database(pid()).fields, given, true));
         // Contacts: the display name from the names (lib/contacts.ts).
         const cells = contactCellsFor(pid(), database(pid()).fields, {}, {
           ...(template ? JSON.parse(template.cells) : {}),
@@ -2132,12 +2140,15 @@ export function command(
           database(pid()).fields,
           new Set(imported.flatMap((cells) => Object.keys(cells))),
         );
+        const importFields = database(pid()).fields;
         imported.forEach((cells, i) =>
           run(
             "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by) VALUES(?,?,?,?,?,?)",
             id(),
             pid(),
-            JSON.stringify(cells),
+            // Tag-backed properties create missing tags where allowed (#79);
+            // names that may not become tags are left out.
+            JSON.stringify(tagCells(user, write(), importFields, cells, false)),
             Date.now() + i,
             user.id,
             user.id,
@@ -3281,6 +3292,7 @@ import {
   portableMeta,
   workspaceTaxonomy,
 } from "./page-properties-server";
+import { prepareTagFields, reconcileTagFields, tagCells } from "./tag-fields";
 import { splitFrontmatter } from "./frontmatter";
 import { frontmatterAliases, storedAliases } from "./aliases";
 import { aliasField, aliasList } from "./aliases";

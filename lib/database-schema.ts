@@ -47,7 +47,10 @@ export const field = z.object({
     "sprint",
     "aliases",
   ]),
-  options: z.array(z.string().max(100)).max(100).optional(),
+  // Up to 100 own options; a property with the workspace's tags as its
+  // options (`tagOptions`) mirrors all tags (lib/tag-fields.ts).
+  options: z.array(z.string().max(100)).max(1000).optional(),
+  tagOptions: z.boolean().optional(),
   formula: z.string().max(2000).optional(),
   relationPage: z.string().optional(),
   relationField: z.string().optional(),

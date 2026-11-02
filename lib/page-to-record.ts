@@ -19,6 +19,9 @@ import { rowCreated } from "./automations";
 import { autoDatabaseSnapshot } from "./database-operations";
 import { captureTargets } from "./capture";
 import type { Field, Identity, Page } from "./types";
+import { hiddenFieldsFor, readOnlyFieldIds } from "./field-access";
+import { pageTagNames } from "./page-properties-server";
+import { isTagField } from "./page-properties";
 
 // What the move changes, for the confirmation.
 export function pageToRecordPlan(user: Identity, pageId: string) {
@@ -91,6 +94,14 @@ export function pageToRecord(user: Identity, pageId: string, databaseId: string)
     // The page's aliases go to the aliases property, when the database has one.
     const aliasProperty = aliasField(fields);
     if (aliasProperty && pageAliases(page).length) cells[aliasProperty.id] = pageAliases(page);
+    // The page's tags go to the database's (first) tag-backed property the
+    // person may change (#79).
+    const tagged = pageTagNames(page.id);
+    const tagProperty = fields.find((f) => isTagField(f) && !readOnlyFieldIds(user, database, fields).includes(f.id) && !hiddenFieldsFor(user, database, fields).has(f.id));
+    if (tagProperty && tagged.length) {
+      const current = Array.isArray(cells[tagProperty.id]) ? (cells[tagProperty.id] as string[]) : [];
+      cells[tagProperty.id] = [...current, ...tagged.filter((n) => !current.some((c) => c.toLocaleLowerCase() === n.toLocaleLowerCase()))].slice(0, 100);
+    }
     const doc = one<{ state: Uint8Array | null; html: string; generation: string | null }>("SELECT state,html,generation FROM documents WHERE page_id=?", page.id);
     const html = doc?.html || "";
     const rid = id();
