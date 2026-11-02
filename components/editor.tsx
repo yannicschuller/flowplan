@@ -37,6 +37,21 @@ import { aiTargetPlugin } from "@/lib/ai/target";
 import { aiInsertedPlugin, aiInsertTransaction, aiMarkdownToHtml, selectionText } from "@/lib/ai/insert";
 import { registerAiInserter, registerAiReader } from "@/lib/ai/editor-bridge";
 import { BlockReactionAttribute, BlockReactions } from "@/lib/block-reactions";
+import {
+  BlockIdAttribute,
+  blockLinkHref,
+  blockLinkLabel,
+  blockText,
+  linkableBlockAt,
+  linkableBlocks,
+  newBlockId,
+  parseBlockLink,
+  validBlockId,
+  withoutTakenBlockIds,
+  type BlockTarget,
+} from "@/lib/block-ids";
+import { BlockIds, HeadingLinks } from "@/lib/block-ids-plugin";
+import { showToast } from "./toast";
 import { whiteboardEmbedNode } from "./whiteboard/embed";
 import { drawBlockNode } from "./ink/draw-block";
 import { newDrawBlockId } from "@/lib/draw-block-node";
@@ -485,6 +500,9 @@ export default function DocumentEditor({
       setSlashActive(0);
     }
   });
+  // Block links (#88): copy the link of a block, paste one as "Page › text".
+  const copyBlockLink = useRef(async (_pos: number) => {});
+  const pasteBlockLink = useRef(async (_target: BlockTarget) => {});
   const editor = useEditor(
     {
       immediatelyRender: false,
@@ -516,6 +534,10 @@ export default function DocumentEditor({
           }),
         }),
         BlockReactionAttribute,
+        // Stable block ids and their links (#88).
+        BlockIdAttribute,
+        BlockIds,
+        HeadingLinks.configure({ copy: (pos) => void copyBlockLink.current(pos), enabled: () => !embedded }),
         BlockReactions.configure({
           userId,
           names: () => memberNames.current,
@@ -554,7 +576,14 @@ export default function DocumentEditor({
         Subscript,
         Spoiler,
         Indent,
-        TextAlign.configure({ types: ["heading", "paragraph"] }),
+        // ⌘⇧L copies the block's link (#88), not "align left" (the
+        // default alignment, also in the toolbar).
+        TextAlign.extend({
+          addKeyboardShortcuts() {
+            const { "Mod-Shift-l": _left, ...rest } = this.parent?.() || {};
+            return rest;
+          },
+        }).configure({ types: ["heading", "paragraph"] }),
         Typography,
         Callout,
         Toggle,
@@ -588,7 +617,12 @@ export default function DocumentEditor({
         Extension.create({ name: "aiTarget", addProseMirrorPlugins: () => [aiTargetPlugin, aiInsertedPlugin] }),
       ],
       editorProps: {
-        transformPasted: freshLinkedIds,
+        // Copies of blocks pasted into the same document get new ids;
+        // moved (dragged or cut) blocks keep theirs.
+        transformPasted: (slice, view) => {
+          const fresh = freshLinkedIds(slice);
+          return view.dragging?.move ? fresh : withoutTakenBlockIds(fresh, view.state.doc);
+        },
         // Formulas rendered with KaTeX on copied pages come back as LaTeX.
         transformPastedHTML: mathFromPastedHtml,
         attributes: {
@@ -604,6 +638,13 @@ export default function DocumentEditor({
           // tables formatted (rich HTML from a page goes the usual way).
           const plain = data?.getData("text/plain") || "";
           const rich = data?.getData("text/html") || "";
+          // A block link of this Flowplan: a link with "Page › text" (#88).
+          const blockLink = editable && !files.length ? parseBlockLink(plain, location.origin) : null;
+          if (blockLink && _view.state.selection.$from.parent.type.name !== "codeBlock") {
+            event.preventDefault();
+            void pasteBlockLink.current(blockLink);
+            return true;
+          }
           if (
             editable &&
             !files.length &&
@@ -655,6 +696,20 @@ export default function DocumentEditor({
           ) {
             event.preventDefault();
             openAi.current();
+            return true;
+          }
+          // ⌘⇧L / Ctrl+Shift+L: the link of the block at the cursor (#88).
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            event.shiftKey &&
+            !event.altKey &&
+            event.key.toLowerCase() === "l" &&
+            !embedded
+          ) {
+            event.preventDefault();
+            const { selection } = _view.state;
+            const block = linkableBlockAt(_view.state.doc, selection instanceof NodeSelection ? selection.from : selection.$from.pos);
+            if (block) void copyBlockLink.current(block.pos);
             return true;
           }
           if (_view.state.selection.$from.parent.type.name === "codeBlock")
@@ -1918,6 +1973,92 @@ export default function DocumentEditor({
     }
   }
   const referenceMembers = members.filter((u) => !referenceTerm || u.name.toLowerCase().includes(referenceTerm));
+  const workspaceId = pages.find((p) => p.id === pageId)?.workspace_id || pages[0]?.workspace_id || "";
+  // The id of the block at `pos`: its own, a new one (written into the
+  // document, not undone with ⌘Z), or – reading only – one the server
+  // gives the blocks of the stored document.
+  async function blockIdAt(pos: number) {
+    if (!editor) return null;
+    const doc = editor.state.doc;
+    const blocks = linkableBlocks(doc);
+    const block = blocks.find((b) => b.pos === pos) || linkableBlockAt(doc, pos);
+    if (!block) return null;
+    const own = validBlockId(block.node.attrs.blockId);
+    if (own) return { id: own, node: block.node };
+    if (editor.isEditable) {
+      const id = newBlockId();
+      editor.view.dispatch(
+        editor.state.tr.setNodeAttribute(block.pos, "blockId", id).setMeta("addToHistory", false),
+      );
+      return { id, node: block.node };
+    }
+    const result = await api<{ blockId: string | null }>("/api/command", {
+      action: "block.ids",
+      pageId,
+      ...(rowId ? { rowId } : {}),
+      index: blocks.indexOf(block),
+      text: blockText(block.node, 200),
+    });
+    return result.blockId ? { id: result.blockId, node: block.node } : null;
+  }
+  copyBlockLink.current = async (pos: number) => {
+    try {
+      const found = await blockIdAt(pos);
+      if (!found) throw new Error(t("Dieser Block lässt sich nicht verlinken.", "This block cannot be linked."));
+      const url = `${location.origin}${blockLinkHref({ pageId, ...(rowId ? { rowId } : {}), blockId: found.id })}`;
+      const label = blockLinkLabel(pages.find((p) => p.id === pageId)?.title || "", blockText(found.node));
+      const escape = (text: string) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
+      // As text the address; as rich text a link with "Page › text".
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([url], { type: "text/plain" }),
+            "text/html": new Blob([`<a href="${escape(url)}">${escape(label)}</a>`], { type: "text/html" }),
+          }),
+        ]);
+      } catch {
+        await navigator.clipboard.writeText(url);
+      }
+      showToast({ text: t("Link zum Block kopiert", "Link to block copied") });
+    } catch (e) {
+      onError(serverMessage((e as Error).message) || t("Der Link konnte nicht kopiert werden.", "The link could not be copied."));
+    }
+  };
+  // A pasted block link: "Page › start of the block" as a page link. The
+  // server answers only with what this person may read.
+  pasteBlockLink.current = async (target: BlockTarget) => {
+    if (!editor) return;
+    const href = blockLinkHref(target);
+    const { from, to, empty } = editor.state.selection;
+    if (!empty) {
+      editor.chain().focus().setTextSelection({ from, to }).setLink({ href }).run();
+      return;
+    }
+    let label = "";
+    const here = target.pageId === pageId && (target.rowId || "") === (rowId || "");
+    try {
+      const preview = await api<{ workspaceId: string; title: string; text: string; found: boolean }>(
+        `/api/pages/${target.pageId}/blocks/${encodeURIComponent(target.blockId)}${target.rowId ? `?row=${target.rowId}` : ""}`,
+      );
+      // Another workspace: a plain link with the address.
+      if (preview.workspaceId && workspaceId && preview.workspaceId !== workspaceId) label = "";
+      else {
+        const local = here ? linkableBlocks(editor.state.doc).find((b) => b.node.attrs.blockId === target.blockId) : undefined;
+        const title = preview.title || pages.find((p) => p.id === target.pageId)?.title || "";
+        label = blockLinkLabel(title || t("Ohne Titel", "Untitled"), local ? blockText(local.node) : preview.text);
+      }
+    } catch {
+      label = t("Verlinkter Block", "Linked block");
+    }
+    if (editor.isDestroyed) return;
+    const at = Math.min(editor.state.selection.empty ? editor.state.selection.from : from, editor.state.doc.content.size);
+    if (!label) {
+      const url = `${location.origin}${href}`;
+      editor.chain().focus().insertContentAt(at, { type: "text", text: url, marks: [{ type: "link", attrs: { href: url } }] }).run();
+      return;
+    }
+    editor.chain().focus().insertContentAt(at, { type: "text", text: label, marks: [{ type: "link", attrs: { href } }] }).run();
+  };
   return (
     <div className={`editor-wrapper${embedded ? " embedded" : ""}${!embedded && outline ? " with-outline" : ""}`}>
       <div className={`document-writing-surface${suggesting && editable ? " suggesting" : ""}`}>
@@ -2287,7 +2428,7 @@ export default function DocumentEditor({
         {!embedded && !source && (outline || headings.length > 0) && (
           <OutlineToggle open={outline} count={headings.length} onToggle={() => setOutline(!outline)} />
         )}
-        {!embedded && outline && <DocumentOutline editor={editor} headings={headings} onClose={() => setOutline(false)} />}
+        {!embedded && outline && <DocumentOutline editor={editor} headings={headings} onClose={() => setOutline(false)} onCopyLink={(pos) => void copyBlockLink.current(pos)} />}
         {source && !embedded && editor && (
           <MarkdownSourceView
             editor={editor}
@@ -2302,7 +2443,7 @@ export default function DocumentEditor({
           {embedded ? (
             <EditorContent editor={editor} />
           ) : (
-            <DocumentBlockControls editor={editor}>
+            <DocumentBlockControls editor={editor} onCopyLink={(pos) => void copyBlockLink.current(pos)}>
               <EditorContent editor={editor} />
             </DocumentBlockControls>
           )}
@@ -2725,6 +2866,43 @@ export default function DocumentEditor({
                 {alias && <span className="alias-hit"> · {alias}</span>}
               </button>
             ))}
+          <BlockReferences
+            workspaceId={workspaceId}
+            query={referenceQuery}
+            pageId={pageId}
+            pageTitle={pages.find((p) => p.id === pageId)?.title || ""}
+            headings={rowId ? [] : headings}
+            onPick={async (hit) => {
+              try {
+                let blockId = hit.blockId;
+                // This page's heading: its id here (a new one if needed).
+                if (hit.pos !== undefined) blockId = (await blockIdAt(hit.pos))?.id || null;
+                else if (!blockId) {
+                  const result = await api<{ blockId: string | null }>("/api/command", {
+                    action: "block.ids",
+                    pageId: hit.pageId,
+                    index: hit.index,
+                    text: hit.text,
+                  });
+                  blockId = result.blockId;
+                }
+                if (!blockId) throw new Error(t("Dieser Block lässt sich nicht verlinken.", "This block cannot be linked."));
+                editor
+                  ?.chain()
+                  .focus()
+                  .insertContent({
+                    type: "text",
+                    text: blockLinkLabel(hit.pageTitle || t("Ohne Titel", "Untitled"), hit.text),
+                    marks: [{ type: "link", attrs: { href: blockLinkHref({ pageId: hit.pageId, blockId }) } }],
+                  })
+                  .run();
+                setReferences(false);
+                setReferenceQuery("");
+              } catch (e) {
+                onError(serverMessage((e as Error).message) || t("Der Link konnte nicht eingefügt werden.", "The link could not be inserted."));
+              }
+            }}
+          />
           <RecordReferences
             workspaceId={pages.find((p) => p.id === pageId)?.workspace_id}
             query={referenceQuery}
@@ -3002,6 +3180,78 @@ function RecordReferences({
             {hit.title || t("Ohne Titel", "Untitled")}
             {hit.alias && <span className="alias-hit"> · {hit.alias}</span>}
             {hit.pageTitle && <small className="muted"> · {hit.pageTitle}</small>}
+          </span>
+        </button>
+      ))}
+    </>
+  );
+}
+
+// Headings and blocks for "@" (#88): this page's headings, and the
+// headings and blocks of other pages the server finds ("Page › Heading").
+type BlockHit = {
+  pageId: string;
+  pageTitle: string;
+  blockId: string | null;
+  // Among the page's linkable blocks (for a block without an id yet).
+  index: number;
+  text: string;
+  level: number | null;
+  // A heading of this page: its position here.
+  pos?: number;
+};
+function BlockReferences({
+  workspaceId,
+  query,
+  pageId,
+  pageTitle,
+  headings,
+  onPick,
+}: {
+  workspaceId: string;
+  query: string;
+  pageId: string;
+  pageTitle: string;
+  headings: { text: string; pos: number; level: number }[];
+  onPick: (hit: BlockHit) => void;
+}) {
+  const t = useT();
+  const [hits, setHits] = useState<BlockHit[]>([]);
+  const term = query.trim();
+  useEffect(() => {
+    if (!workspaceId || [...term].length < 2) {
+      setHits([]);
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      api<BlockHit[]>(`/api/blocks?workspace=${workspaceId}&q=${encodeURIComponent(term)}&exclude=${pageId}`)
+        .then((found) => active && setHits(found.slice(0, 20)))
+        .catch(() => active && setHits([]));
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [workspaceId, term, pageId]);
+  const lower = term.toLowerCase();
+  const own: BlockHit[] = term
+    ? headings
+        .filter((h) => h.text.trim() && h.text.toLowerCase().includes(lower))
+        .slice(0, 8)
+        .map((h) => ({ pageId, pageTitle, blockId: null, index: -1, text: h.text.trim(), level: h.level, pos: h.pos }))
+    : [];
+  const all = [...own, ...hits];
+  if (!all.length) return null;
+  return (
+    <>
+      <h3>{t("Überschriften und Blöcke", "Headings and blocks")}</h3>
+      {all.map((hit) => (
+        <button key={`${hit.pageId}-${hit.pos ?? ""}-${hit.blockId || hit.index}`} onClick={() => onPick(hit)}>
+          {hit.level ? <TextHTwo /> : <Rows />}
+          <span>
+            <small className="muted">{hit.pos !== undefined ? t("Diese Seite", "This page") : hit.pageTitle || t("Ohne Titel", "Untitled")} › </small>
+            {hit.text || t("Ohne Text", "No text")}
           </span>
         </button>
       ))}

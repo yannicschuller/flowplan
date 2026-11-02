@@ -916,9 +916,10 @@ export function command(
               },
             );
             if (attrs.href) {
-              const match = /^\/?#page=(.+)$/.exec(attrs.href);
+              // Page links and block links (#88) to copied pages.
+              const match = /^\/?#page=([^&]+)((?:&block=[\w-]{1,64})?)$/.exec(attrs.href);
               if (match && mapped.has(match[1]))
-                attrs.href = `/#page=${mapped.get(match[1])}`;
+                attrs.href = `/#page=${mapped.get(match[1])}${match[2]}`;
             }
             return { tagName, attribs: attrs };
           });
@@ -1443,6 +1444,20 @@ export function command(
         break;
       }
       // "@heute", "@gestern", "@2026-10-27": the journal day to link to.
+      // Block links (#88): ids for the blocks of an older document, for
+      // people who only read it (editors give a block its id themselves).
+      case "block.ids": {
+        const ensured = ensureBlockIds(
+          user,
+          pid(),
+          b.rowId ? uuid.parse(b.rowId) : null,
+          z.number().int().min(0).max(100000).catch(0).parse(b.index),
+          z.string().max(500).catch("").parse(b.text ?? ""),
+        );
+        if ("publish" in ensured && ensured.publish) afterCommit.push(ensured.publish);
+        result = { blockId: ensured.blockId };
+        break;
+      }
       case "journal.link": {
         requireMember(user, wid());
         result = journalDayLink(user, wid(), {
@@ -1593,7 +1608,8 @@ export function command(
         const p = requirePage(user, pid());
         requireUnlocked(user, p);
         if (p.kind !== "document") throw new HttpError(400, "Kein Dokument.");
-        result = markdownSource(z.string().max(8_000_000).parse(b.html));
+        const linked = linkedBlockIds(p.workspace_id).get(p.id);
+        result = markdownSource(z.string().max(8_000_000).parse(b.html), (blockId) => !!linked?.has(blockId));
         break;
       }
       // …and back: the HTML the editor puts in place of its content (one
@@ -3341,3 +3357,4 @@ import { quotaCheckpoint, setWorkspaceQuota } from "./instance-ops";
 import { rowChanged, rowCreated } from "./automations";
 import { applyDatabaseProposal, forgetAiFields, prepareAiFields } from "./ai/database-fields";
 import { ct } from "./content-locale";
+import { ensureBlockIds, linkedBlockIds } from "./block-links";

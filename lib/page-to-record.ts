@@ -45,7 +45,7 @@ export function pageToRecordPlan(user: Identity, pageId: string) {
   };
 }
 
-const address = /^(.*#page=)([0-9a-f-]{36})$/i;
+const address = /^(.*#page=)([0-9a-f-]{36})((?:&block=[\w-]{1,64})?)$/i;
 // Changes the href of link marks (page and record links, @ links); `href`
 // returns the new address or null to keep a link as it is.
 export function relinkDocument(doc: PMNode, href: (current: string) => string | null) {
@@ -69,7 +69,8 @@ export function relinkDocument(doc: PMNode, href: (current: string) => string | 
 function relinked(doc: PMNode, pageId: string, target: string) {
   return relinkDocument(doc, (href) => {
     const match = address.exec(href);
-    return match && match[2] === pageId ? `${match[1]}${target}` : null;
+    // A block link (#88) keeps its block: it moves along into the record.
+    return match && match[2] === pageId ? `${match[1]}${target}${match[3]}` : null;
   });
 }
 

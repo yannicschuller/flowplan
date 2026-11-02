@@ -99,10 +99,11 @@ export function copyPublication(user: Identity, input: unknown) {
           if (copied) attrs[key] = copied;
           else delete attrs[key];
         }
-        const link = /^\/?#page=([\w-]+)$/.exec(attrs[key] || "");
+        // Page and block links (#88): the copy's blocks keep their ids.
+        const link = /^\/?#page=([\w-]+)((?:&block=[\w-]{1,64})?)$/.exec(attrs[key] || "");
         if (link) {
           if (pageIds.has(link[1]))
-            attrs[key] = `/#page=${pageIds.get(link[1])}`;
+            attrs[key] = `/#page=${pageIds.get(link[1])}${link[2]}`;
           else delete attrs[key];
         }
       }

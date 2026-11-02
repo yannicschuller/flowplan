@@ -81,9 +81,12 @@ function parseConfluenceHtml(entries: Map<string, Buffer>): ImportTree {
     const dir = posix.dirname(path);
     const target = (href: string) => {
       if (/^(https?:|mailto:)/i.test(href)) return href;
-      if (!href || /^[a-z]+:/i.test(href) || href.startsWith("#")) return null;
+      // Anchors (#PageTitle-Heading, #id) lead to that heading or block (#88).
+      const anchor = href.includes("#") ? href.slice(href.indexOf("#") + 1) : "";
+      if (href.startsWith("#")) return anchor ? pageRef(path, anchor) : null;
+      if (!href || /^[a-z]+:/i.test(href)) return null;
       const resolved = posix.normalize(posix.join(dir, decodePath(href)));
-      if (known.has(resolved)) return pageRef(resolved);
+      if (known.has(resolved)) return pageRef(resolved, anchor);
       if (entries.has(resolved) && !resolved.startsWith("images/")) {
         if (!files.has(resolved)) files.set(resolved, { key: resolved, name: posix.basename(resolved), mime: mimeOf(resolved), data: entries.get(resolved)! });
         return fileRef(resolved);
@@ -234,11 +237,14 @@ function parseConfluenceXml(entries: Map<string, Buffer>): ImportTree {
         const fileEl = children(node).find((c) => c.name === "ri:attachment");
         const bodyEl = children(node).find((c) => c.name === "ac:link-body" || c.name === "ac:plain-text-link-body");
         const label = bodyEl ? (bodyEl.name === "ac:link-body" ? render(bodyEl.children) : esc(text(bodyEl))) : "";
+        // ac:anchor: a heading or anchor of that page, or of this one (#88).
+        const anchor = attr(node, "ac:anchor");
         if (pageEl) {
           const title = attr(pageEl, "ri:content-title");
           const target = titleIds.get(title.toLowerCase());
-          return target ? `<a href="${pageRef(target)}">${label || esc(title)}</a>` : label || esc(title);
+          return target ? `<a href="${esc(pageRef(target, anchor))}">${label || esc(title)}</a>` : label || esc(title);
         }
+        if (anchor && !fileEl) return `<a href="${esc(pageRef(pid, anchor))}">${label || esc(anchor)}</a>`;
         if (fileEl) {
           const href = attachmentOf(fileEl, pid);
           const shown = label || esc(attr(fileEl, "ri:filename"));

@@ -66,6 +66,8 @@ export function LinkPreview({
   const t = useT();
   const [card, setCard] = useState<Card | null>(null);
   const cache = useRef(new Map<string, Preview | string>());
+  // Block links (#88): the block's text in place of the page's beginning.
+  const blocks = useRef(new Map<string, { text: string; found: boolean } | null>());
   // Records: their contact card, or null for records of other databases.
   const contacts = useRef(new Map<string, ContactCardData | null>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,9 +115,25 @@ export function LinkPreview({
             return;
           }
         }
+        const withBlock = async (preview: Preview): Promise<Preview> => {
+          if (!location.blockId) return preview;
+          const key = `${location.pageId}:${location.rowId || ""}:${location.blockId}`;
+          let block = blocks.current.get(key);
+          if (block === undefined) {
+            block = await api<{ text: string; found: boolean; encrypted?: boolean }>(
+              `/api/pages/${location.pageId}/blocks/${encodeURIComponent(location.blockId)}${location.rowId ? `?row=${location.rowId}` : ""}`,
+            )
+              .then((r) => (r.encrypted ? null : { text: r.text, found: r.found }))
+              .catch(() => null);
+            blocks.current.set(key, block);
+          }
+          if (!block) return preview;
+          return { ...preview, excerpt: block.found ? block.text : t("Dieser Block existiert nicht mehr.", "This block no longer exists.") };
+        };
         const cached = cache.current.get(location.pageId);
         if (cached && typeof cached !== "string") {
-          setCard({ kind: "page", rect, preview: cached });
+          const shown = await withBlock(cached);
+          if (current.current === target) setCard({ kind: "page", rect, preview: shown });
           return;
         }
         setCard({ kind: "page", rect, preview: null });
@@ -126,8 +144,9 @@ export function LinkPreview({
               : null;
           if (!preview) throw new Error(String(cached));
           cache.current.set(location.pageId, preview);
+          const shown = await withBlock(preview);
           if (current.current === target)
-            setCard({ kind: "page", rect, preview });
+            setCard({ kind: "page", rect, preview: shown });
         } catch (e) {
           const message = (e as Error).message || t("Nicht verfügbar", "Not available");
           cache.current.set(location.pageId, message);

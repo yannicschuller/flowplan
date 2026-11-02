@@ -28,7 +28,15 @@ export type MarkdownContext = {
   plugin?: (pluginId: string) => { name: string; url: string } | null;
   // Drawing blocks: a picture (SVG in the ZIP export) and their text.
   ink?: (attrs: Record<string, unknown>) => { image: string | null; text: string } | null;
+  // Blocks whose id is written as a marker (#88): those that links point
+  // to. A text block ends with " ^id" (Obsidian's block reference), any
+  // other block is followed by a line "^id"; lib/markdown-import.ts reads
+  // both back.
+  blockIds?: (blockId: string) => boolean;
 };
+const MARKER_ID = /^[A-Za-z0-9-]{1,64}$/;
+// Text blocks carry the marker at the end of their (last) line.
+const LINE_MARKED = new Set(["paragraph", "heading"]);
 export function markdownText(text: string) {
   return text
     .replaceAll("&", "&amp;")
@@ -308,7 +316,19 @@ export function htmlToMarkdown(
     });
     return result.filter(Boolean).join("\n\n");
   }
+  // The block's id as a marker, when wanted (not inside tables, and only
+  // ids Obsidian accepts: letters, digits and dashes).
+  function marker(node: Node, inTable: boolean) {
+    const id = String(node.attrs.blockId || "");
+    return !inTable && MARKER_ID.test(id) && context.blockIds?.(id) ? id : "";
+  }
   function block(node: Node, inTable = false): string {
+    const text = blockBody(node, inTable);
+    const id = node.type.name === "listItem" || node.type.name === "taskItem" ? "" : marker(node, inTable);
+    if (!id || !text) return text;
+    return LINE_MARKED.has(node.type.name) ? `${text} ^${id}` : `${text}\n\n^${id}`;
+  }
+  function blockBody(node: Node, inTable = false): string {
     const kept = placeholder(node);
     if (kept !== null) return kept;
     lose(node);
@@ -374,6 +394,9 @@ export function htmlToMarkdown(
           // Due dates as in Obsidian Tasks: "- [ ] Call 📅 2026-05-04".
           if (node.type.name === "taskList" && /^\d{4}-\d{2}-\d{2}$/.test(String(item.attrs.due || "")))
             content[0] += ` 📅 ${item.attrs.due}`;
+          // The item's id at the end of its line (#88).
+          const itemId = marker(item, inTable);
+          if (itemId) content[0] += ` ^${itemId}`;
           result.push(
             prefix +
               content[0] +
@@ -509,7 +532,8 @@ export function htmlToMarkdown(
   return (definitions ? `${withReferences}\n\n${definitions}` : withReferences) + "\n";
 }
 // The page as Markdown for the source view, and the blocks kept aside.
-export function markdownSource(html: string) {
+// `blockIds`: the blocks links point to keep their id (#88).
+export function markdownSource(html: string, blockIds?: (blockId: string) => boolean) {
   const source: MarkdownSource = { blocks: [], lossy: new Set() };
   const markdown = htmlToMarkdown(
     html,
@@ -517,6 +541,7 @@ export function markdownSource(html: string) {
       // Links and files stay as they are (relative to Flowplan).
       url: (url) => (/^(https?:|mailto:|\/)/i.test(url) ? url : null),
       linked: () => null,
+      blockIds,
     },
     { source },
   );

@@ -293,7 +293,8 @@ export function markdownToRawHtml(
           /<li><input([^>]*)>\s*([\s\S]*?)<\/li>/g,
           (_m: string, attrs: string, body: string) => {
             let due = "";
-            body = body.replace(/\s*📅\s*(\d{4}-\d{2}-\d{2})(?=\s*(?:<\/p>|<ul|<ol|$))/, (_d: string, date: string) => {
+            // (A block marker " ^id" may follow, #88.)
+            body = body.replace(/\s*📅\s*(\d{4}-\d{2}-\d{2})(?=(?:\s+\^[A-Za-z0-9-]{1,64})?\s*(?:<\/p>|<ul|<ol|$))/, (_d: string, date: string) => {
               due = ` data-due="${date}"`;
               return "";
             });

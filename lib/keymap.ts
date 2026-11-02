@@ -94,6 +94,9 @@ export const EDITOR_SHORTCUTS: { combo: string; id: string }[] = [
   { combo: "Mod+Shift+Z", id: "redo" },
   { combo: "Mod+J", id: "ai" },
   { combo: "Mod+Alt+Enter", id: "foldSection" },
+  // The link of the block with the cursor (#88). Was "align left" in
+  // TipTap; the default alignment needs no shortcut.
+  { combo: "Mod+Shift+L", id: "blockLink" },
 ];
 // Combinations the browser keeps for itself (tabs, windows): a page cannot
 // reliably use them.
