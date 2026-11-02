@@ -4080,7 +4080,7 @@ export default function Whiteboard({
             <button
               key={c}
               className={`wb-swatch line${penColor === c ? " active" : ""}`}
-              style={{ background: c }}
+              style={{ borderColor: c }}
               aria-label={t(`Stiftfarbe ${c}`, `Pen colour ${c}`)}
               onClick={() => setPenColor(c)}
             />
