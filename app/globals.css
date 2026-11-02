@@ -486,6 +486,8 @@ kbd,
   gap: 6px;
 }
 .nav-section-title .space-name {
+  flex: 1 1 auto;
+  text-align: left;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -506,6 +508,9 @@ kbd,
   flex: 1 1 0;
   display: flex;
   align-items: center;
+  /* Safari centres a button's content unless the flex start is explicit
+     (#85): the name stays at the left however wide the sidebar is. */
+  justify-content: flex-start;
   align-self: stretch;
   gap: 6px;
   padding: 0;
