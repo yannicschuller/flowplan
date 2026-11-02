@@ -2,6 +2,27 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.4 – 2026-11-02
+
+- Help docs: links to blocks (#88) ([2a63d2b](https://github.com/yannicschuller/flowplan/commit/2a63d2b2f97cadc3bb658e9735b47131903e8b03))
+- Links to blocks: copy, paste, jump, and keep them through imports and exports ([2940658](https://github.com/yannicschuller/flowplan/commit/29406588a2d0963556666ed7b6ecfcfd635eef8d))
+- Help docs: AFFiNE docs from database rows (#82) ([c7e7adf](https://github.com/yannicschuller/flowplan/commit/c7e7adfd0e4f6419bc7551926e67d19838c060d0))
+- AFFiNE import: docs created from database rows become the record's content ([c24a551](https://github.com/yannicschuller/flowplan/commit/c24a5517f0efed8d97a26f6765ea5364f54b006b))
+- Visual baselines: collections section in the sidebar (#86) ([38d6d60](https://github.com/yannicschuller/flowplan/commit/38d6d60e0a358f74f381c15df3d03d8907276c22))
+- Help for Ask AI: collections (#86) ([36c9651](https://github.com/yannicschuller/flowplan/commit/36c9651f2ea7714340684f0dad5efc533b12ce38))
+- Collections: saved queries with AND/OR/NOT in the sidebar ([5484a09](https://github.com/yannicschuller/flowplan/commit/5484a09a205697278d9fcfdac96f212142ecca13))
+- Editor: pointer cursor on task checkboxes, links and people ([ff54150](https://github.com/yannicschuller/flowplan/commit/ff54150e4140679ef42dc56adce62288e5fb6222))
+- Help for Ask AI: block captions (#84) ([55ca13b](https://github.com/yannicschuller/flowplan/commit/55ca13b1e96ab2a8cda1dc116480d0b0d152eb23))
+- Captions for images, tables and code blocks ([b125c61](https://github.com/yannicschuller/flowplan/commit/b125c61522e39180dca106ad5cf85aa83a64ae0f))
+- Sidebar: space names stay left-aligned in Safari ([2870430](https://github.com/yannicschuller/flowplan/commit/28704300add93a1e60453e21e600b481bd950cc4))
+- Locales: catalogue entry for the date clear button's new name ([624fe94](https://github.com/yannicschuller/flowplan/commit/624fe94a78b0ab1fd74979a451395ae1d875fdbd))
+- Help for Ask AI: collapsible properties bar (#83) ([5ac29ac](https://github.com/yannicschuller/flowplan/commit/5ac29ac704d7c6f1bfb0b1145cf6d197064357ab))
+- Page properties: 24 px tag remove targets; date clear button name ([a19658a](https://github.com/yannicschuller/flowplan/commit/a19658a9a9252e92f783029018e699d73dad20a8))
+- Collapsible tags and properties bar under the page title ([35b9913](https://github.com/yannicschuller/flowplan/commit/35b9913f7a0ed6f6ced23e24e74049eab81ddc80))
+- Help for Ask AI: AFFiNE import and limits (#82) ([05dff70](https://github.com/yannicschuller/flowplan/commit/05dff70d409898d836b1b890ce34fe5463775f8b))
+- AFFiNE import: icons, attachments as blocks, column order, configurable limits ([e642a0d](https://github.com/yannicschuller/flowplan/commit/e642a0d7deb38ec95f6646ac270a94fc578d6f82))
+- Whiteboard: pen colours show in the pen menu ([bc71c9e](https://github.com/yannicschuller/flowplan/commit/bc71c9e1c8989f6a77696b5a7d9bb1bc841888b1))
+
 ## v0.8.3 – 2026-11-02
 
 - Help for Ask AI: database records in AI requests (#80) ([f109f57](https://github.com/yannicschuller/flowplan/commit/f109f571a34134018c21843cfd0d39bcfeab6136))
