@@ -46,6 +46,8 @@ export type ImportPreview = {
   // Page properties (by name) and page icons the import sets.
   properties?: number;
   icons?: number;
+  // Documents that become the content of a database record (AFFiNE, #82).
+  rowDocuments?: number;
   // The title of the page everything lands below, when there is one.
   wrapper?: string;
   // More pages (records) than one import may bring: the import is refused.
@@ -53,6 +55,10 @@ export type ImportPreview = {
 };
 export type ImportResult = ImportPreview & { rootIds: string[]; rows: number; databaseId?: string };
 const special = (page: ImportPage) => page.kind === "whiteboard" || page.kind === "database";
+// The pages a mode writes: databases and whiteboards only as pages; a
+// document that is a record's content (#82) only in database mode, where
+// databases are left out.
+const pagesFor = (tree: ImportTree, mode: ImportMode) => tree.pages.filter((p) => (mode === "database" ? !special(p) : !p.inRecord));
 
 const PLACEHOLDER = /fp-import:\/\/(file|page)\/([^"'\s<>)]*)/g;
 const decodeKey = (key: string) => {
@@ -66,8 +72,7 @@ const decodeKey = (key: string) => {
 // order of first use, with the page.
 function referencedFiles(tree: ImportTree, mode: ImportMode = "pages") {
   const used = new Map<string, string>();
-  for (const page of tree.pages) {
-    if (mode === "database" && special(page)) continue;
+  for (const page of pagesFor(tree, mode)) {
     for (const html of [page.html, ...(page.database?.rows.map((r) => r.html) || [])])
       for (const match of html.matchAll(PLACEHOLDER))
         if (match[1] === "file") {
@@ -104,18 +109,21 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
   const warnings = [...tree.warnings];
   const unused = tree.files.size - used.size;
   if (unused > 0) warnings.push(`${unused} Dateien werden von keiner Seite verwendet und nicht übernommen.`);
+  const pages = pagesFor(tree, mode);
   const boards = tree.pages.filter((p) => p.kind === "whiteboard").length;
   const databases = tree.pages.filter((p) => p.kind === "database").length;
   const journalDays = new Set(tree.pages.filter((p) => p.journalDate).map((p) => p.journalDate)).size;
   if (mode === "database" && boards + databases)
     warnings.push("Whiteboards und Datenbanken werden nur beim Import als Seiten übernommen.");
   const notes = tree.pages.filter((p) => !p.folder && !special(p)).length;
-  const count = mode === "database" ? notes : tree.pages.length;
+  const count = mode === "database" ? notes : pages.length;
   const limit = maxImportPages();
   const tooMany = !!tree.tooMany || count > limit;
   if (tooMany) warnings.unshift(mode === "database" ? tooManyRecords(count, limit) : tooManyPages(count, limit));
-  const properties = new Set(tree.pages.flatMap((p) => Object.keys(p.properties || {}))).size;
-  const icons = tree.pages.filter((p) => importIcon(p.icon)).length;
+  const properties = new Set(pages.flatMap((p) => Object.keys(p.properties || {}))).size;
+  const records = tree.pages.flatMap((p) => p.database?.rows || []);
+  const rowDocuments = mode === "pages" ? records.filter((r) => r.key).length : 0;
+  const icons = pages.filter((p) => importIcon(p.icon)).length + (mode === "pages" ? records.filter((r) => importIcon(r.icon)).length : 0);
   try {
     enforceQuota(workspaceId, bytes);
     enforceUserStorage(user, bytes);
@@ -127,12 +135,12 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     source: tree.source,
     title: tree.title,
     // Pages: documents of their own (journal days are counted apart).
-    pages: mode === "pages" ? tree.pages.filter((p) => !p.folder && !special(p) && !p.journalDate).length : notes,
+    pages: mode === "pages" ? pages.filter((p) => !p.folder && !special(p) && !p.journalDate).length : notes,
     // Folders of the source; the page holding everything is named apart.
     folders: tree.pages.filter((p) => p.folder && p.key !== tree.wrapper).length,
     files: used.size,
     bytes,
-    tags: new Set(tree.pages.flatMap((p) => p.tags || [])).size,
+    tags: new Set(pages.flatMap((p) => p.tags || [])).size,
     warnings,
     ...(boards ? { whiteboards: boards } : {}),
     ...(databases ? { databases } : {}),
@@ -140,6 +148,7 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     ...(tree.collections ? { collections: tree.collections } : {}),
     ...(properties && mode === "pages" ? { properties } : {}),
     ...(icons && mode === "pages" ? { icons } : {}),
+    ...(rowDocuments ? { rowDocuments } : {}),
     ...(tooMany ? { tooMany } : {}),
     ...(tree.wrapper && mode === "pages" && tree.pages.some((p) => p.key === tree.wrapper)
       ? { wrapper: tree.pages.find((p) => p.key === tree.wrapper)!.title }
@@ -154,11 +163,11 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
   const preview = previewImport(user, workspaceId, spaceId, tree, mode);
   if (!tree.pages.length) throw new HttpError(400, "In der Datei wurden keine Seiten gefunden.");
   if (preview.tooMany)
-    throw new HttpError(413, mode === "database" ? tooManyRecords(preview.pages) : tooManyPages(tree.pages.length));
+    throw new HttpError(413, mode === "database" ? tooManyRecords(preview.pages) : tooManyPages(pagesFor(tree, mode).length));
   enforceQuota(workspaceId, preview.bytes);
   enforceUserStorage(user, preview.bytes);
   const used = referencedFiles(tree, mode);
-  const pagesOf = mode === "database" ? tree.pages.filter((p) => !special(p)) : tree.pages;
+  const pagesOf = pagesFor(tree, mode);
   const byKey = new Map(pagesOf.map((p) => [p.key, p]));
   // Parents before children; a parent outside the tree means the root.
   const depth = (page: ImportPage) => {
@@ -181,6 +190,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const pageIds = new Map<string, string>();
     const rowIds = new Map<string, string>();
+    const records = new Map<string, { pageId: string; rowId: string }>();
     const existingDays = new Set<string>();
     let databaseId: string | undefined;
     if (mode === "database") {
@@ -217,6 +227,11 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         );
       }
       for (const day of days.values()) if (day.existing) existingDays.add(day.id);
+      // Records that carry a document of the import (#82): their ids now, so
+      // links to the document lead to them.
+      for (const { page } of ordered)
+        for (const record of page.kind === "database" ? page.database?.rows.slice(0, MAX_IMPORT_ROWS) || [] : [])
+          if (record.key && !pageIds.has(record.key) && !records.has(record.key)) records.set(record.key, { pageId: pageIds.get(page.key)!, rowId: id() });
       // Icons of documents, folders and collections (journal days keep theirs).
       for (const { page } of ordered) {
         const icon = importIcon(page.icon);
@@ -246,8 +261,12 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       );
       fileUrls.set(key, { url: `/api/files/${fid}`, name, mime });
     }
-    const pageUrl = (key: string) =>
-      databaseId ? (rowIds.has(key) ? `/#page=${databaseId}&row=${rowIds.get(key)}` : null) : pageIds.has(key) ? `/#page=${pageIds.get(key)}` : null;
+    const pageUrl = (key: string) => {
+      if (databaseId) return rowIds.has(key) ? `/#page=${databaseId}&row=${rowIds.get(key)}` : null;
+      if (pageIds.has(key)) return `/#page=${pageIds.get(key)}`;
+      const record = records.get(key);
+      return record ? `/#page=${record.pageId}&row=${record.rowId}` : null;
+    };
     // Embedded databases and whiteboards name their page by id.
     const resolveHtml = (html: string) =>
       cleanHtml(
@@ -334,17 +353,23 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         const pid = pageIds.get(page.key)!;
         if (page.kind === "whiteboard" && page.board) {
           const urls = storeBoardImages(user, pid, workspaceId, page.board, boardBytes);
-          writeWhiteboard(pid, boardState(page.board, urls), placeholders);
+          // Cards of documents that are records' content show the record.
+          const recordOf = new Map([...records].map(([key, record]) => [pageRef(key), record]));
+          const board = recordOf.size
+            ? { ...page.board, items: page.board.items.map((item) => (item.type === "card" && item.pageId && recordOf.has(item.pageId) ? { ...item, ...recordOf.get(item.pageId)! } : item)) }
+            : page.board;
+          writeWhiteboard(pid, boardState(board, urls), placeholders);
           continue;
         }
         if (page.kind === "database" && page.database) {
-          const { fields, views, rows: records } = page.database;
+          const { fields, views, rows: rowsOf } = page.database;
           run("UPDATE databases SET fields=?,views=? WHERE page_id=?", JSON.stringify(fields), JSON.stringify(views), pid);
-          records.slice(0, MAX_IMPORT_ROWS).forEach((record, i) => {
-            const rid = id();
+          rowsOf.slice(0, MAX_IMPORT_ROWS).forEach((record, i) => {
+            const own = record.key ? records.get(record.key) : undefined;
+            const rid = own?.pageId === pid ? own.rowId : id();
             const html = record.html ? resolveHtml(record.html) : "";
             run(
-              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at) VALUES(?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP))",
+              "INSERT INTO rows(id,page_id,cells,position,created_by,updated_by,content,created_at,icon) VALUES(?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),?)",
               rid,
               pid,
               JSON.stringify(record.cells),
@@ -353,6 +378,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
               user.id,
               html,
               sqlTime(record.created),
+              importIcon(record.icon) || "",
             );
             if (html) run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", rid, htmlState(html), html, id());
             rows++;

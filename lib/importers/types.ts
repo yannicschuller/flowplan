@@ -12,8 +12,11 @@ export type ImportSource = "affine" | "confluence" | "evernote" | "gdocs" | "obs
 export type ImportDatabase = {
   fields: Field[];
   views: View[];
-  // Cells by field id; the HTML is the record's document.
-  rows: { cells: Record<string, unknown>; html: string; created?: string }[];
+  // Cells by field id; the HTML is the record's document. A record that
+  // carries a document of the import (AFFiNE: a database row turned into a
+  // doc, #82) has that document's key: links to it lead to the record. Its
+  // icon is an emoji, as a page's.
+  rows: { cells: Record<string, unknown>; html: string; created?: string; key?: string; icon?: string }[];
 };
 
 export type ImportPage = {
@@ -43,6 +46,12 @@ export type ImportPage = {
   // The page's icon: an emoji (AFFiNE's document, folder and collection
   // icons, #82).
   icon?: string;
+  // The document's content is that of a record of a database of this
+  // import (the record has this page's key): in "pages" mode it
+  // gets no page of its own and links to it lead to the record; in
+  // "database" mode, where databases are left out, it is a record as any
+  // other page (AFFiNE, #82).
+  inRecord?: boolean;
 };
 // A file: in memory, or (large AFFiNE workspaces) read from the source when
 // it is written, so only one is in memory at a time.

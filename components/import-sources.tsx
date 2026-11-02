@@ -26,6 +26,8 @@ type Preview = {
   // Page properties (by name) and page icons the import sets.
   properties?: number;
   icons?: number;
+  // Documents that become the content of a database record (AFFiNE).
+  rowDocuments?: number;
   // More pages than one import may bring: importing is refused.
   tooMany?: boolean;
   // The page everything lands below (an AFFiNE workspace with structure).
@@ -237,6 +239,9 @@ export function ImportSources({
             {!!preview.journalDays && <li>{t(`${preview.journalDays} Tage ins Journal`, `${preview.journalDays} days into the journal`)}</li>}
             {mode === "pages" && !!preview.properties && <li>{t(`${preview.properties} Eigenschaften`, `${preview.properties} properties`)}</li>}
             {mode === "pages" && !!preview.icons && <li>{t(`${preview.icons} Seitensymbole`, `${preview.icons} page icons`)}</li>}
+            {mode === "pages" && !!preview.rowDocuments && (
+              <li>{t(`${preview.rowDocuments} Dokumente als Inhalt von Datenbankeinträgen`, `${preview.rowDocuments} documents as content of database records`)}</li>
+            )}
           </ul>
           {preview.warnings.length > 0 && (
             <ul className="import-sources-warnings">

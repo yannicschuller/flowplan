@@ -15,7 +15,7 @@ const { bootstrap } = await import("../lib/api");
 const { writeZip } = await import("../lib/archive");
 const { importFromSource, parseImport, detectSource } = await import("../lib/importers");
 const { AFFINE_LIMITS, affineLimitsFor } = await import("../lib/importers/affine-read");
-const { keepWorkspacePage } = await import("../lib/importers/affine");
+const { keepWorkspacePage, rowDocRef } = await import("../lib/importers/affine");
 const upload = await import("../lib/importers/upload");
 const { saveInstanceSettings } = await import("../lib/instance-settings");
 const { setUserLimits } = await import("../lib/user-limits");
@@ -23,7 +23,8 @@ const { englishMessage } = await import("../lib/i18n-errors");
 const { parseLinkedAttributes } = await import("../lib/linked-views");
 const { whiteboardItems } = await import("../lib/whiteboard");
 const { portableMeta } = await import("../lib/page-properties-server");
-const { affineFileV1, affineFileV2, note, page, para, sqlite, text, PNG, PDF } = await import("./helpers/affine-fixture");
+const { affineFileV1, affineFileV2, note, page, para, sqlite, text, uid, PNG, PDF } = await import("./helpers/affine-fixture");
+import type { BlockSpec, Workspace } from "./helpers/affine-fixture";
 const { readAffineFile } = await import("../lib/importers/affine-read");
 const { importZip } = await import("../lib/zip-import");
 const { sampleWorkspace, IDS } = await import("./helpers/affine-sample");
@@ -715,4 +716,208 @@ test("older workspaces: properties in the root document; deep folders (#82)", as
   assert.ok(tree.warnings.some((w) => /Ordner tiefer als 50 Ebenen werden zusammengefasst/.test(w)));
   assert.equal(tree.pages.filter((p) => p.key.startsWith("folder:deep")).length, 50);
   assert.equal(notes.parent, "folder:deep49", "the document stays in the deepest folder taken over");
+});
+
+const boardDoc = (pageId: string) => {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, one<{ state: Uint8Array }>("SELECT state FROM whiteboards WHERE page_id=?", pageId)!.state);
+  return doc;
+};
+// A database row turned into a document of its own (#82): its title is a
+// reference ({type: "LinkedPage", pageId}), or its content a doc card.
+function rowDocsWorkspace(): Workspace {
+  const ref = (pageId: string) => ({ insert: " ", attributes: { reference: { type: "LinkedPage", pageId } } });
+  const database: BlockSpec = {
+    id: "rdDb",
+    flavour: "affine:database",
+    props: {
+      title: text("Angebote"),
+      views: [{ id: "rv1", name: "Alle", mode: "table", columns: [] }],
+      columns: [
+        { id: "kTitle", type: "title", name: "Angebot", data: {} },
+        { id: "kTags", type: "multi-select", name: "Tags", data: { options: [{ id: "x1", value: "Alt" }] } },
+        { id: "kKunde", type: "rich-text", name: "Kunde", data: {} },
+        { id: "kOk", type: "checkbox", name: "Fertig", data: {} },
+      ],
+      cells: { rowA: { kOk: { columnId: "kOk", value: true } }, rowD: { kKunde: { columnId: "kKunde", value: text("Aus der Zelle") } } },
+    },
+    children: [
+      { id: "rowA", flavour: "affine:paragraph", props: { type: "text", text: text([ref("rdA")]) } },
+      { id: "rowB", flavour: "affine:paragraph", props: { type: "text", text: text([ref("rdA")]) }, children: [para("Eigene Notiz von B")] },
+      { id: "rowC", flavour: "affine:paragraph", props: { type: "text", text: text("Mit Karte") }, children: [{ id: "cardC", flavour: "affine:embed-synced-doc", props: { pageId: "rdC" } }] },
+      { id: "rowD", flavour: "affine:paragraph", props: { type: "text", text: text([{ insert: "Vorgang " }, ref("rdD")]) } },
+      { id: "rowJ", flavour: "affine:paragraph", props: { type: "text", text: text([ref("rdDay")]) } },
+      { id: "rowS", flavour: "affine:paragraph", props: { type: "text", text: text([ref("rdHome")]) } },
+    ],
+  };
+  const nested: BlockSpec = {
+    id: "rdNested",
+    flavour: "affine:database",
+    props: { title: text("Positionen"), views: [], columns: [{ id: "nTitle", type: "title", name: "Position", data: {} }], cells: {} },
+    children: [{ id: "nRow", flavour: "affine:paragraph", props: { type: "text", text: text("Beratung") } }],
+  };
+  return {
+    id: "rdWs",
+    name: "Zeilen-Dokumente",
+    docs: [
+      { id: "rdHome", title: "Vertrieb", doc: page("rdHome", "Vertrieb", [note([para("Alle Angebote:"), database])]) },
+      {
+        id: "rdA",
+        title: "Angebot ACME",
+        tags: ["tg1"],
+        doc: page("rdA", "Angebot ACME", [
+          note([para("Inhalt von A"), { id: uid(), flavour: "affine:image", props: { sourceId: "rdPng" } }, para([{ insert: "siehe " }, ref("rdC")]), nested]),
+        ]),
+      },
+      { id: "rdC", title: "Karte C", doc: page("rdC", "Karte C", [note([para("Inhalt von C")])]) },
+      { id: "rdD", title: "Dokument D", tags: ["tg2"], doc: page("rdD", "Dokument D", [note([para("Inhalt von D")])]) },
+      { id: "rdDay", title: "Tag", doc: page("rdDay", "Tag", [note([para("Am Tag")])]) },
+      { id: "rdOver", title: "Übersicht Angebote", doc: page("rdOver", "Übersicht Angebote", [note([para([{ insert: "Zu " }, ref("rdA")]), { id: uid(), flavour: "affine:embed-linked-doc", props: { pageId: "rdD" } }])]) },
+    ],
+    tags: [
+      { id: "tg1", value: "Wichtig" },
+      { id: "tg2", value: "Neu" },
+    ],
+    folders: [
+      { id: "rdF", parentId: null, type: "folder", data: "Kunden", index: "a0" },
+      { id: "rdF-a", parentId: "rdF", type: "doc", data: "rdA", index: "a0" },
+      { id: "rdF-o", parentId: "rdF", type: "doc", data: "rdOver", index: "a1" },
+    ],
+    docProperties: { rdA: { "custom:pK": "ACME", "custom:pB": "1200", primaryMode: "edgeless" }, rdD: { "custom:pK": "Aus dem Dokument" }, rdDay: { journal: "2026-10-05" } },
+    propertyInfo: { pK: { name: "Kunde", type: "text" }, pB: { name: "Budget", type: "number" } },
+    icons: { "doc:rdA": { type: "emoji", unicode: "💼" } },
+    blobs: [{ key: "rdPng", data: PNG, mime: "image/png" }],
+  };
+}
+
+test("documents made from database rows become the record's content (#82)", async () => {
+  const { AText } = await import("../lib/importers/affine-read");
+  const row = (delta: { insert: string; attributes?: Record<string, unknown> }[], children: { id: string; flavour: string; props: Record<string, unknown>; children: [] }[] = []) =>
+    rowDocRef({ id: "r", flavour: "affine:paragraph", props: { text: new AText(delta) }, children });
+  const r = (pageId: string) => ({ insert: " ", attributes: { reference: { type: "LinkedPage", pageId } } });
+  assert.equal(row([{ insert: "Nur Text" }]), null);
+  assert.equal(row([r("x")])!.pageId, "x");
+  assert.equal(row([r("x"), { insert: " und " }, r("y")]), null, "a title naming two documents names none");
+  assert.equal(row([{ insert: "A" }], [{ id: "k", flavour: "affine:embed-linked-doc", props: { pageId: "z" }, children: [] }])!.pageId, "z");
+  assert.equal(
+    row([{ insert: "A" }], [{ id: "k", flavour: "affine:embed-linked-doc", props: { pageId: "z" }, children: [] }, { id: "p", flavour: "affine:paragraph", props: { text: new AText([{ insert: "mehr" }]) }, children: [] }]),
+    null,
+    "a card among other content is a link, not the row's document",
+  );
+  assert.equal(rowDocRef({ id: "r", flavour: "affine:embed-synced-doc", props: { pageId: "s" }, children: [] })!.pageId, "s");
+  const bytes = affineFileV2(rowDocsWorkspace());
+  const tree = await parseImport("z.affine", bytes);
+  assert.ok(tree.pages.find((p) => p.key === "doc:rdA")!.inRecord);
+  assert.ok(!tree.pages.find((p) => p.key === "doc:rdDay")!.inRecord, "a journal day stays a journal day");
+  assert.ok(!tree.pages.find((p) => p.key === "doc:rdHome")!.inRecord, "the document holding the database stays a page");
+  assert.equal(tree.pages.find((p) => p.key === "db:rdA:rdNested")!.parent, "folder:rdF", "the document's own database goes where the document was");
+  assert.ok(tree.warnings.some((w) => /^1 Eigenschaften von Dokumenten in Datenbankeinträgen haben keine passende Spalte/.test(w)));
+  assert.match(englishMessage(tree.warnings.find((w) => /Eigenschaften von Dokumenten in Datenbankeinträgen/.test(w))!), /^1 properties of documents in database records have no matching column/);
+
+  const preview = await importFromSource(owner, wid, space, { name: "z.affine", bytes }, { dryRun: true });
+  assert.equal(preview.rowDocuments, 3);
+  // Vertrieb and Übersicht (and a journal day); A, C and D are records.
+  assert.equal(preview.pages, 2);
+  assert.equal(preview.journalDays, 1);
+  assert.equal(preview.icons, 1, "the document's icon becomes the record's");
+  assert.equal(preview.files, 1);
+
+  const result = await importFromSource(owner, wid, space, { name: "z.affine", bytes });
+  assert.ok(result.rootIds.length);
+  for (const title of ["Angebot ACME", "Karte C", "Dokument D"])
+    assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title=? AND kind='document'", wid, title).length, 0, `${title} is no page of its own`);
+  const db = pageByTitle("Angebote");
+  type Rec = { id: string; cells: string; content: string; icon: string };
+  const recs = all<Rec>("SELECT id,cells,content,icon FROM rows WHERE page_id=? ORDER BY position", db.id);
+  const cells = recs.map((r) => JSON.parse(r.cells) as Record<string, unknown>);
+  const fields = JSON.parse(one<{ fields: string }>("SELECT fields FROM databases WHERE page_id=?", db.id)!.fields) as { id: string; name: string; options?: string[] }[];
+  const fid = (name: string) => fields.find((f) => f.name === name)!.id;
+  const [a, b, c, d, j, s] = recs;
+  // The first row: the document's content, title, icon, tags, properties.
+  assert.equal(cells[0].title, "Angebot ACME");
+  assert.match(a.content, /Inhalt von A/);
+  assert.match(a.content, /<img src="\/api\/files\//);
+  assert.match(a.content, /data-linked-source="[0-9a-f-]{36}"/, "the document's own database stays embedded");
+  assert.match(a.content, new RegExp(`/#page=${db.id}&amp;row=${c.id}`), "a link to another row's document leads to that record");
+  assert.equal(a.icon, "💼");
+  assert.deepEqual(cells[0][fid("Tags")], ["Wichtig"]);
+  assert.ok(fields.find((f) => f.name === "Tags")!.options!.includes("Wichtig"));
+  assert.equal(cells[0][fid("Kunde")], "ACME");
+  assert.equal(cells[0][fid("Fertig")], true, "the row's own cells stay");
+  assert.equal(one<{ html: string }>("SELECT html FROM row_documents WHERE row_id=?", a.id)!.html.includes("Inhalt von A"), true);
+  // A second row naming the same document links to the first.
+  assert.equal(cells[1].title, "Angebot ACME");
+  assert.match(b.content, new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
+  assert.match(b.content, /Eigene Notiz von B/);
+  // A synced-doc card as the row's content; a title with more than the reference.
+  assert.equal(cells[2].title, "Mit Karte");
+  assert.match(c.content, /Inhalt von C/);
+  assert.doesNotMatch(c.content, /Karte C/, "the card is not shown again");
+  assert.equal(cells[3].title, "Vorgang Dokument D");
+  assert.match(d.content, /Inhalt von D/);
+  assert.deepEqual(cells[3][fid("Tags")], ["Neu"]);
+  assert.equal(cells[3][fid("Kunde")], "Aus der Zelle", "a property never overwrites the row's cell");
+  // A journal day and the database's own document: links.
+  const day = one<{ id: string }>("SELECT id FROM pages WHERE workspace_id=? AND journal_date='2026-10-05' AND deleted_at IS NULL", wid)!;
+  assert.match(j.content, new RegExp(link(day.id)));
+  assert.match(s.content, new RegExp(link(pageByTitle("Vertrieb").id)));
+  // Links from elsewhere and the folder lead to the record.
+  const over = pageByTitle("Übersicht Angebote");
+  assert.match(html(over.id), new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
+  assert.match(html(over.id), new RegExp(`/#page=${db.id}&amp;row=${d.id}`));
+  const folder = pageByTitle("Kunden");
+  assert.equal(over.parent_id, folder.id);
+  assert.match(html(folder.id), new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
+  assert.equal(pageByTitle("Positionen").parent_id, folder.id);
+  // The document's whiteboard shows the record on its card.
+  const board = pageByTitle("Angebot ACME – Whiteboard");
+  assert.equal(board.kind, "whiteboard");
+  const card = whiteboardItems(boardDoc(board.id)).find((i) => i.type === "card")!;
+  assert.equal(card.pageId, db.id);
+  assert.equal(card.rowId, a.id);
+
+  // Imported as one database, the documents are records like any other.
+  const flat = await importFromSource(owner, wid, space, { name: "z.affine", bytes }, { mode: "database" });
+  const flatRows = all<{ id: string; cells: string }>("SELECT id,cells FROM rows WHERE page_id=?", flat.databaseId!);
+  assert.ok(flatRows.some((r) => JSON.parse(r.cells).title === "Angebot ACME"));
+  const overRow = flatRows.find((r) => JSON.parse(r.cells).title === "Übersicht Angebote")!;
+  const accept = flatRows.find((r) => JSON.parse(r.cells).title === "Angebot ACME")!;
+  assert.match(one<{ content: string }>("SELECT content FROM rows WHERE id=?", overRow.id)!.content, new RegExp(`row=${accept.id}`));
+});
+
+test("snapshot ZIP: a database row's document becomes its record's content (#82)", async () => {
+  const delta = (ops: unknown[]) => ({ "$blocksuite:internal:text$": true, delta: ops });
+  const home = snapshotDoc("snHome", "Projekte Snapshot", [
+    {
+      type: "block",
+      id: "snDb",
+      flavour: "affine:database",
+      version: 3,
+      props: {
+        title: delta([{ insert: "Projektliste" }]),
+        views: [{ id: "sv", name: "Tabelle", mode: "table", columns: [] }],
+        columns: [{ id: "sTitle", type: "title", name: "Projekt", data: {} }],
+        cells: {},
+      },
+      children: [
+        { type: "block", id: "snRow", flavour: "affine:paragraph", version: 1, props: { type: "text", text: delta([{ insert: " ", attributes: { reference: { type: "LinkedPage", pageId: "snRowDoc" } } }]) }, children: [] },
+      ],
+    },
+  ]);
+  const rowDoc = snapshotDoc("snRowDoc", "Projekt Alpha", [
+    { type: "block", id: "snP", flavour: "affine:paragraph", version: 1, props: { type: "text", text: delta([{ insert: "Alpha im Detail" }]) }, children: [] },
+  ]);
+  const zip = await writeZip(
+    new Map([
+      ["Projekte-snHome.snapshot.json", Buffer.from(JSON.stringify(home))],
+      ["Alpha-snRowDoc.snapshot.json", Buffer.from(JSON.stringify(rowDoc))],
+    ]),
+  );
+  const preview = await importFromSource(owner, wid, space, { name: "sn.zip", bytes: zip }, { dryRun: true });
+  assert.equal(preview.rowDocuments, 1);
+  await importFromSource(owner, wid, space, { name: "sn.zip", bytes: zip });
+  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Projekt Alpha'", wid).length, 0);
+  const rec = one<{ cells: string; content: string }>("SELECT cells,content FROM rows WHERE page_id=?", pageByTitle("Projektliste").id)!;
+  assert.equal(JSON.parse(rec.cells).title, "Projekt Alpha");
+  assert.match(rec.content, /Alpha im Detail/);
 });

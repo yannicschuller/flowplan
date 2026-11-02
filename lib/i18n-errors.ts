@@ -1122,6 +1122,8 @@ const patterns: [RegExp, string][] = [
   [/^(\d+) Dokumente im Papierkorb werden nicht übernommen\.$/, "$1 documents in the trash are not imported."],
   [/^(\d+) Elemente auf Whiteboards konnten nicht übernommen werden\.$/, "$1 elements on whiteboards could not be imported."],
   [/^(\d+) Bilder oder Anhänge fehlen in der Datei\.$/, "$1 images or attachments are missing from the file."],
+  [/^(\d+) Dokumente in Datenbankeinträgen haben Tags, die Datenbank aber keine Spalte „Tags“; diese Tags werden nicht übernommen\.$/, "$1 documents in database records have tags, but the database has no “Tags” column; these tags are not imported."],
+  [/^(\d+) Eigenschaften von Dokumenten in Datenbankeinträgen haben keine passende Spalte und werden nicht übernommen\.$/, "$1 properties of documents in database records have no matching column and are not imported."],
   [/^Ein Journaltag konnte nicht ergänzt werden: (.+)$/, "A journal day could not be extended: $1"],
   [/^Die Datei darf höchstens (\d+) MB groß sein \(FLOWPLAN_IMPORT_MAX_MB\)\.$/, "The file may be at most $1 MB (FLOWPLAN_IMPORT_MAX_MB)."],
   [/^Die Datei darf höchstens (\d+) MB groß sein\. Die Grenze folgt der größten Datei beim Hochladen \(Administration → Grenzen & Aufbewahrung\), mindestens 100 MB\.$/, "The file may be at most $1 MB. The limit follows “Largest upload” (Administration → Limits & retention), at least 100 MB."],
