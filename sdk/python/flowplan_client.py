@@ -282,6 +282,7 @@ Page = TypedDict("Page", {
     "locked": Required[int],  # 1 when locked
     "public_token": Required[Optional[str]],
     "full_width": Required[int],
+    "caption_numbers": int,  # 1 when captions of images, tables and code blocks are numbered
     "icon_size": Literal["", "small", "medium", "large"],
     "font": Required[str],
     "journal_date": Optional[str],  # Day pages of a journal: YYYY-MM-DD

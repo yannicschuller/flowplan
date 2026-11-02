@@ -9,6 +9,7 @@ import { citedWorks, formatReference, inlineCitation, parseItemAttribute } from 
 import { ct } from "./content-locale";
 import { footnoteText, URL_PATTERN } from "./footnotes";
 import { documentNode } from "./export-content";
+import { captionCounter, captionText } from "./block-captions";
 
 export type XhtmlContext = {
   // The address a link may keep (absolute, or relative within the export),
@@ -24,6 +25,8 @@ export type XhtmlContext = {
   ink?: (attrs: Record<string, unknown>) => { image: string | null; text: string } | null;
   // Prefix for ids (footnotes), unique per document in a combined file.
   prefix?: string;
+  // The page numbers its captions (Figure 1, Table 1, Listing 1).
+  captionNumbers?: boolean;
 };
 export const xml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
@@ -47,6 +50,13 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
   const doc = documentNode(html);
   const prefix = context.prefix ? `${context.prefix}-` : "";
   const notes: string[] = [];
+  // Captions of images, tables and code (lib/block-captions.ts).
+  const nextLabel = captionCounter(!!context.captionNumbers, ct);
+  const caption = (node: Node) => {
+    const label = nextLabel(node),
+      text = captionText(node.attrs.caption);
+    return text ? (label ? `<span class="caption-label">${xml(label)}:</span> ` : "") + xml(text) : "";
+  };
   const cited: { key: string; item: string }[] = [];
   let bibliographies = 0;
   doc.descendants((node) => {
@@ -144,8 +154,11 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
       }
       case "horizontalRule":
         return "<hr/>";
-      case "codeBlock":
-        return `<pre><code${attr("class", node.attrs.language ? `language-${String(node.attrs.language)}` : "")}>${xml(node.textContent)}</code></pre>`;
+      case "codeBlock": {
+        const label = caption(node);
+        const code = `<pre><code${attr("class", node.attrs.language ? `language-${String(node.attrs.language)}` : "")}>${xml(node.textContent)}</code></pre>`;
+        return label ? `<figure class="listing">${code}<figcaption>${label}</figcaption></figure>` : code;
+      }
       case "mathBlock":
         return `<pre class="math">${xml(String(node.attrs.expression || ""))}</pre>`;
       case "mermaidBlock":
@@ -158,10 +171,12 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         return bibliography(String(node.attrs.title || ct("Literaturverzeichnis", "References")));
       case "image": {
         const src = context.image(String(node.attrs.src || "")),
-          alt = String(node.attrs.alt || "");
-        if (!src) return `<p class="placeholder">${xml(alt || ct("Bild", "Image"))} ${xml(ct("(nicht verfügbar)", "(not available)"))}</p>`;
+          alt = String(node.attrs.alt || ""),
+          label = caption(node);
+        if (!src) return `<p class="placeholder">${xml(alt || ct("Bild", "Image"))} ${xml(ct("(nicht verfügbar)", "(not available)"))}${label ? ` – ${label}` : ""}</p>`;
         const width = /^\d+$/.test(String(node.attrs.width || "")) ? ` width="${node.attrs.width}"` : "";
-        return `<figure><img src="${xml(src)}" alt="${xml(alt)}"${width}/>${node.attrs.title ? `<figcaption>${xml(String(node.attrs.title))}</figcaption>` : ""}</figure>`;
+        const below = label || (node.attrs.title ? xml(String(node.attrs.title)) : "");
+        return `<figure><img src="${xml(src)}" alt="${xml(alt)}"${width}/>${below ? `<figcaption>${below}</figcaption>` : ""}</figure>`;
       }
       case "media": {
         const url = context.url(String(node.attrs.src || "")),
@@ -239,7 +254,8 @@ export function documentXhtml(html: string, context: XhtmlContext): string {
         }</p>`;
       }
       case "table": {
-        let rows = "";
+        const label = caption(node);
+        let rows = label ? `<caption>${label}</caption>` : "";
         node.forEach((row) => {
           let cells = "";
           row.forEach((cell) => {

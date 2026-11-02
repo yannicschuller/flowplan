@@ -67,6 +67,8 @@ export type Page = {
   locked: number;
   public_token: string | null;
   full_width: number;
+  // Captions of images, tables and code blocks numbered (lib/block-captions.ts).
+  caption_numbers?: number;
   icon_size?: "" | "small" | "medium" | "large";
   font: string;
   // Day pages of a journal: the day they belong to (YYYY-MM-DD).

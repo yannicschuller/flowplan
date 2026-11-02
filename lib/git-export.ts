@@ -28,6 +28,7 @@ import { htmlState } from "./document-server";
 import { documentChanged } from "./document-live";
 import { markdownToHtml } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
+import { numberedInFrontmatter } from "./block-captions";
 import { frontmatterAliases, pageAliases, storedAliases } from "./aliases";
 import { syncMetaFromFrontmatter } from "./page-properties-server";
 import { importMarkdownRecords } from "./markdown-records";
@@ -166,8 +167,13 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
   const aliases = frontmatterAliases(data);
   const aliasesChanged = JSON.stringify(aliases) !== JSON.stringify(pageAliases(page));
   if (aliasesChanged) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), page.id);
-  // So do tags and property values (#70).
-  const metaChanged = syncMetaFromFrontmatter(user, page, data);
+  // So do tags and property values (#70) and numbered captions (#84).
+  let metaChanged = syncMetaFromFrontmatter(user, page, data);
+  const numbered = numberedInFrontmatter(data) ? 1 : 0;
+  if (numbered !== (page.caption_numbers || 0)) {
+    run("UPDATE pages SET caption_numbers=? WHERE id=?", numbered, page.id);
+    metaChanged = true;
+  }
   const body = text.replace(/^\s*#\s+[^\n]*\n+/, "")
     .replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "");
   const html = markdownToHtml(

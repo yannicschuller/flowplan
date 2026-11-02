@@ -19,8 +19,11 @@ export function ReadOnlyDocument({
   shareToken,
   pageId,
   title = "",
+  captionNumbers = false,
 }: {
   html: string;
+  // The page numbers the captions of images, tables and code blocks.
+  captionNumbers?: boolean;
   className?: string;
   // Published pages: block extensions are asked for through the link.
   shareToken?: string;
@@ -34,7 +37,7 @@ export function ReadOnlyDocument({
     const root = ref.current;
     if (!root) return;
     // Right-to-left blocks and footnotes (numbers, list at the end).
-    finishDocumentHtml(root);
+    finishDocumentHtml(root, { captionNumbers });
     const diagrams = Array.from(
       root.querySelectorAll<HTMLElement>("[data-mermaid]"),
     ).map((element) => mountDiagram(element, element.dataset.mermaid || ""));
@@ -233,7 +236,7 @@ export function ReadOnlyDocument({
       // Unmount after React finishes this commit.
       setTimeout(() => boards.forEach((board) => board.unmount()));
     };
-  }, [html, shareToken, pageId, title]);
+  }, [html, shareToken, pageId, title, captionNumbers]);
   return (
     <div
       ref={ref}

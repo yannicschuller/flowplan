@@ -1406,6 +1406,131 @@ kbd,
 .document-editor .tableWrapper table {
   table-layout: auto;
 }
+/* Captions below images, tables and code blocks (#84, lib/block-captions.ts):
+   small and muted. Read-only views show the stored <figcaption> and table
+   <caption>; the editor its own line below the block
+   (components/block-captions-view.ts) and hides the stored ones. */
+.document-editor figure.block-figure {
+  margin: 0 0 14px;
+}
+.document-editor figure.block-figure > pre {
+  margin-bottom: 0;
+}
+.document-editor figure.block-figure > figcaption,
+.document-editor table > caption,
+.block-caption {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.document-editor figure.block-figure > figcaption {
+  margin-top: 6px;
+}
+.document-editor table > caption {
+  caption-side: bottom;
+  padding-top: 6px;
+}
+.caption-label,
+.block-caption-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.block-caption-label {
+  margin-inline-end: 0.35em;
+}
+.ProseMirror figure.block-figure > figcaption,
+.ProseMirror table > caption {
+  display: none;
+}
+.block-caption {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  margin: 6px 0 14px;
+}
+.block-caption[data-kind="table"] {
+  margin-top: -9px;
+}
+.block-caption[data-state="none"] {
+  display: none;
+}
+/* Without a caption: "Add caption" while the block is pointed at or
+   selected, taking no room. */
+.block-caption[data-state="add"] {
+  height: 0;
+  margin: 0;
+}
+.block-caption[data-kind="table"][data-state="add"] {
+  margin-top: -15px;
+  height: 15px;
+}
+.block-caption-add {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0s linear 0.3s;
+}
+.block-caption[data-kind="table"] .block-caption-add {
+  top: 2px;
+}
+*:hover + .block-caption[data-state="add"] .block-caption-add,
+.block-caption[data-state="add"]:hover .block-caption-add,
+.block-caption[data-state="add"][data-active] .block-caption-add,
+.block-caption-add:focus-visible {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.block-caption-add:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.block-caption-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 1.45em;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  resize: none;
+  overflow: hidden;
+}
+.block-caption-field::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.block-caption-field:focus {
+  outline: none;
+  border-bottom-color: var(--border);
+}
+@media print {
+  .block-caption[data-state="add"],
+  .block-caption-add {
+    display: none;
+  }
+}
+.print-view .block-caption[data-state="add"] {
+  display: none;
+}
 /* Callouts in the five kinds of GitHub alerts: a coloured left border, a
    light background and a title line with icon, in the reader's language. */
 .editor-callout,
@@ -29966,7 +30091,8 @@ label.ws-search input {
   vertical-align: middle;
 }
 @media screen {
-  .document-editor > .fold-hidden {
+  .document-editor > .fold-hidden,
+  .document-editor > .fold-hidden + .block-caption {
     display: none !important;
   }
 }

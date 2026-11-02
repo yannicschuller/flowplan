@@ -1140,6 +1140,7 @@ export function command(
             cover_position: z.number().finite().min(0).max(100).optional(),
             locked: z.boolean().optional(),
             full_width: z.boolean().optional(),
+            caption_numbers: z.boolean().optional(),
             font: z.enum(["sans", "serif", "mono"]).optional(),
             icon_size: iconSizeSchema.optional(),
           })

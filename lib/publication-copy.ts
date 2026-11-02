@@ -135,11 +135,12 @@ export function copyPublication(user: Identity, input: unknown) {
     const icon = imageFileId(p.icon) ? copyFile(p.icon) : p.icon;
     const cover = imageFileId(p.cover) ? copyFile(p.cover) : p.cover;
     run(
-      "UPDATE pages SET icon=?,cover=?,cover_position=?,full_width=?,font=?,position=? WHERE id=?",
+      "UPDATE pages SET icon=?,cover=?,cover_position=?,full_width=?,caption_numbers=?,font=?,position=? WHERE id=?",
       icon || "file",
       cover,
       p.cover_position ?? 50,
       p.full_width,
+      p.caption_numbers || 0,
       p.font,
       p.position,
       copy,

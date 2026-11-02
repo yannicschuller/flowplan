@@ -21,6 +21,7 @@ import { DEFAULT_DIAGRAM } from "@/lib/mermaid-source";
 import { DocumentBlockControls } from "./document-block-controls";
 import { BlockShortcuts } from "@/lib/block-shortcuts";
 import { EditableCodeBlock } from "./code-block";
+import { BlockCaptions } from "./block-captions-view";
 import { embedProvider } from "@/lib/embed-providers";
 import { guestCursors } from "@/lib/guest-cursors";
 export type GuestUpload = { url: string; name: string; mime: string };
@@ -120,6 +121,8 @@ export default function SharedEditor({
               ? BlockDirectionExtension.configure({ auto: true })
               : e,
         ),
+      // Captions below images, tables and code (lib/block-captions.ts).
+      BlockCaptions,
       ...(ydoc ? [Collaboration.configure({ document: ydoc })] : []),
       ...(ydoc && presence ? [guestCursors(presence)] : []),
     ],

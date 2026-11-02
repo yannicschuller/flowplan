@@ -209,7 +209,9 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
     }
     case "affine:code": {
       const language = typeof p.language === "string" && /^[\w+#.-]{1,30}$/.test(p.language) ? ` class="language-${esc(p.language.toLowerCase())}"` : "";
-      return `<pre><code${language}>${esc(plainOf(p.text, ctx))}</code></pre>`;
+      const code = `<pre><code${language}>${esc(plainOf(p.text, ctx))}</code></pre>`;
+      const caption = typeof p.caption === "string" ? p.caption.trim().slice(0, 500) : "";
+      return caption ? `<figure class="block-figure">${code}<figcaption>${esc(caption)}</figcaption></figure>` : code;
     }
     case "affine:divider":
       return "<hr>";
@@ -235,7 +237,8 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
       const src = ctx.blob(p.sourceId, undefined, "image");
       const caption = typeof p.caption === "string" ? p.caption.slice(0, 500) : "";
       if (!src) return caption ? `<p>${esc(caption)}</p>` : "";
-      return `<img src="${src}" alt="${esc(caption)}">${caption ? `<p><em>${esc(caption)}</em></p>` : ""}`;
+      // The caption becomes the image's caption (lib/block-captions.ts).
+      return caption ? `<figure class="block-figure"><img src="${src}"><figcaption>${esc(caption)}</figcaption></figure>` : `<img src="${src}">`;
     }
     case "affine:attachment": {
       // Written as the block an upload creates (lib/importers/write.ts

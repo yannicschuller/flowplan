@@ -275,6 +275,8 @@ export const archiveSchema = z.object({
         meta: portableMetaSchema,
         locked: z.number().int().min(0).max(1),
         full_width: z.number().int().min(0).max(1),
+        // Numbered captions (#84); left out when off.
+        caption_numbers: z.number().int().min(0).max(1).optional(),
         font: z.enum(["sans", "serif", "mono"]),
         html: html.optional(),
         // Whiteboards: the Yjs state, base64.
@@ -457,6 +459,7 @@ function snapshotFor(user: Identity, wid: string) {
         ...(portableMeta(p.id) ? { meta: portableMeta(p.id) } : {}),
         locked: p.locked,
         full_width: p.full_width,
+        ...(p.caption_numbers ? { caption_numbers: 1 } : {}),
         font: p.font,
         form: (() => {
           const form = one<{
@@ -1200,6 +1203,8 @@ async function importEntries(
           p.font,
           p.journal_date ?? null,
         );
+      for (const p of data.pages)
+        if (p.caption_numbers) run("UPDATE pages SET caption_numbers=1 WHERE id=?", pageMap.get(p.id)!);
       // Tags and property definitions (#70): definitions only by workspace
       // owners, tags by members who may create them.
       const manageTaxonomy = canManageTaxonomy(user, wid);

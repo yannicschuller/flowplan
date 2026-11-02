@@ -35,7 +35,10 @@ p { margin: 0 0 0.8em; }
 a { color: #1f3fbf; }
 img { max-width: 100%; height: auto; }
 figure { margin: 1em 0; text-align: center; }
-figcaption { font-size: 0.85em; color: #555; }
+figcaption, caption { font-size: 0.85em; color: #555; }
+caption { caption-side: bottom; text-align: left; padding-top: 0.4em; }
+figure.listing { text-align: left; }
+.caption-label { font-weight: bold; }
 pre { white-space: pre-wrap; word-wrap: break-word; font-family: Menlo, Consolas, monospace; font-size: 0.85em; background: #f4f4f2; padding: 0.7em; border-radius: 4px; }
 code { font-family: Menlo, Consolas, monospace; font-size: 0.9em; background: #f4f4f2; padding: 0 0.2em; }
 pre code { background: none; padding: 0; font-size: inherit; }
@@ -192,6 +195,7 @@ export function epubChapters(content: ExportContent) {
         url,
         image: (raw) => picture(raw) || (/^https:\/\//.test(raw) ? raw : null),
         prefix: `c${index + 1}`,
+        captionNumbers: !!entry.page.caption_numbers,
         whiteboard: (pageId) => {
           const page = content.readable(pageId);
           if (!page || page.kind !== "whiteboard") return null;

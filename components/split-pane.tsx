@@ -236,6 +236,7 @@ export function SplitPane({
         pageId={data.page.id}
         userId={userId}
         pages={pages}
+        captionNumbers={!!data.page.caption_numbers}
         members={members}
         state={data.state}
         html={data.html}

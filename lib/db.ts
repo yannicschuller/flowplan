@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 83) return;
+  if (globalDb.flowplanSchema === 84) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1098,7 +1098,11 @@ function migrate(d: DatabaseSync) {
   // default applies). Gone with the person or the page.
   d.exec(`CREATE TABLE IF NOT EXISTS page_view_prefs(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,properties_collapsed INTEGER,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,page_id));
     CREATE INDEX IF NOT EXISTS page_view_prefs_page ON page_view_prefs(page_id);`);
-  globalDb.flowplanSchema = 83;
+  // Schema 84 – numbered captions of images, tables and code blocks (#84,
+  // lib/block-captions.ts), switched on per page.
+  if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "caption_numbers"))
+    d.exec("ALTER TABLE pages ADD COLUMN caption_numbers INTEGER NOT NULL DEFAULT 0");
+  globalDb.flowplanSchema = 84;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

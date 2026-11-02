@@ -15,6 +15,7 @@ import { ct, contentLocale } from "./content-locale";
 import { localeTag } from "./i18n";
 import { footnoteText } from "./footnotes";
 import { exportName } from "./export-name";
+import { CAPTION_KINDS, captionCounter, captionText, type CaptionKind } from "./block-captions";
 import { collectExportContent, documentNode, imageExtension, type ExportFile } from "./export-content";
 import type { Identity } from "./types";
 
@@ -26,6 +27,8 @@ export type DocxSection = {
   // Drawing blocks and notebook sheets: their typed and recognised text
   // (the picture is not part of the Word file).
   ink?: (attrs: Record<string, unknown>) => { text: string } | null;
+  // The page numbers its captions (Figure 1, Table 1, Listing 1).
+  captionNumbers?: boolean;
 };
 export type DocxOptions = {
   title: string;
@@ -310,6 +313,24 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
     paragraph(runs, paragraphProps(null, block));
   };
   const codeParagraph = (source: string, block: Block) => paragraph(run({ text: source.replace(/\n$/, "") }), paragraphProps(null, block, "Code"));
+  // Captions (lib/block-captions.ts) in Word's "Caption" style, the number
+  // as a SEQ field (Word's own captions: lists of figures pick them up).
+  let nextCaption = captionCounter(false, ct);
+  const SEQ: Record<CaptionKind, string> = { figure: "Figure", table: "Table", listing: "Listing" };
+  const captionParagraph = (node: Node, block: Block, fallback = "") => {
+    const text = captionText(node.attrs.caption) || fallback;
+    const label = captionText(node.attrs.caption) ? nextCaption(node) : null;
+    if (!text) return false;
+    const numbered = label && /^(.*) (\d+)$/.exec(label);
+    const prefix = numbered
+      ? run({ text: `${numbered[1]} ` }) +
+        `<w:fldSimple w:instr=" SEQ ${SEQ[CAPTION_KINDS[node.type.name]]} \\* ARABIC "><w:r><w:t>${numbered[2]}</w:t></w:r></w:fldSimple>` +
+        run({ text: ": " })
+      : "";
+    // Centred below a picture, at the left below tables and code.
+    paragraph(prefix + run({ text }), paragraphProps(null, block, "Caption", node.type.name === "image" ? {} : { jc: "left" }));
+    return true;
+  };
   function children(node: Node, block: Block) {
     node.forEach((child) => blockNode(child, block));
   }
@@ -406,8 +427,9 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
       `<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>` +
         `<w:tblGrid>${Array.from({ length: width }, () => `<w:gridCol w:w="${columnWidth}"/>`).join("")}</w:tblGrid>${rows}</w:tbl>`,
     );
-    // Word needs a paragraph after a table (and before the next one).
-    body.push("<w:p/>");
+    // Word needs a paragraph after a table (and before the next one): its
+    // caption or an empty one.
+    if (!captionParagraph(node, block)) body.push("<w:p/>");
   }
   function blockNode(node: Node, block: Block) {
     switch (node.type.name) {
@@ -420,7 +442,9 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
       case "horizontalRule":
         return paragraph("", `<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="BFBFBF"/></w:pBdr>`);
       case "codeBlock":
-        return codeParagraph(node.textContent, block);
+        codeParagraph(node.textContent, block);
+        captionParagraph(node, block);
+        return;
       case "mathBlock":
         return codeParagraph(String(node.attrs.expression || ""), block);
       case "mermaidBlock":
@@ -441,10 +465,12 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
           entry = picture(src);
         if (!entry) {
           const url = options.url(src);
-          return linkParagraph(`${alt || ct("Bild", "Image")} ${url ? "" : ct("(nicht verfügbar)", "(not available)")}`.trim(), url, block);
+          linkParagraph(`${alt || ct("Bild", "Image")} ${url ? "" : ct("(nicht verfügbar)", "(not available)")}`.trim(), url, block);
+          captionParagraph(node, block);
+          return;
         }
         paragraph(pictureRun(entry, alt, block), paragraphProps(null, block, undefined, block.inTable ? {} : { jc: "center" }));
-        if (node.attrs.title) paragraph(run({ text: String(node.attrs.title) }), paragraphProps(null, block, "Caption"));
+        captionParagraph(node, block, String(node.attrs.title || ""));
         return;
       }
       case "media": {
@@ -518,6 +544,7 @@ export async function buildDocx(options: DocxOptions): Promise<Buffer> {
   let currentInk: DocxSection["ink"];
   options.sections.forEach((section, index) => {
     currentInk = section.ink;
+    nextCaption = captionCounter(!!section.captionNumbers, ct);
     if (index === 0) paragraph(run({ text: section.title }), '<w:pStyle w:val="Title"/>');
     else paragraph(run({ text: section.title }), '<w:pStyle w:val="Heading1"/><w:pageBreakBefore/>');
     if (section.cover) {
@@ -646,7 +673,7 @@ export async function exportDocx(user: Identity, options: { pageId: string; rowI
   const bytes = await buildDocx({
     title: content.name,
     creator: user.name,
-    sections: [{ title: page.title, html: page.html, svg: page.svg, cover: page.cover, ink: (attrs) => content.ink(page.page.id, attrs) }],
+    sections: [{ title: page.title, html: page.html, svg: page.svg, cover: page.cover, ink: (attrs) => content.ink(page.page.id, attrs), captionNumbers: !!page.page.caption_numbers }],
     file: content.file,
     url: (raw) => exportUrl(raw, content.readable, content.pageUrl),
     whiteboard: (pageId) => {

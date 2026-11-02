@@ -497,6 +497,7 @@ async function renderPublishedPage({
           <PublicOutline />
           <ReadOnlyDocument
             className={`font-${page.font}`}
+            captionNumbers={!record && !!page.caption_numbers}
             shareToken={token}
             title={page.title}
             html={(record ? (value: string) => value : (value: string) => withInkPictures(value, page))(

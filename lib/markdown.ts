@@ -7,6 +7,18 @@ import { citedWorks, formatReference, pandocCitation } from "./citations";
 import { ct } from "./content-locale";
 import { URL_PATTERN, footnoteText } from "./footnotes";
 import { ct as tr } from "./content-locale";
+import { captionText } from "./block-captions";
+// Captions (lib/block-captions.ts) in Markdown: an image's as its title,
+// ![Alt](<file.png> "Caption"); a table's as Pandoc writes it, a line
+// "Table: Caption" right below; a code block's likewise "Listing: Caption".
+// lib/markdown-html.ts reads all three back.
+export const CAPTION_LINE = { table: "Table", codeBlock: "Listing" } as const;
+const imageTitle = (text: string) => ` "${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("&", "&amp;")}"`;
+const captionLine = (node: Node) => {
+  const caption = captionText(node.attrs.caption);
+  const name = CAPTION_LINE[node.type.name as keyof typeof CAPTION_LINE];
+  return caption && name ? `\n\n${name}: ${markdownText(caption)}` : "";
+};
 export type MarkdownContext = {
   url: (url: string) => string | null;
   linked: (source: string) => { title: string; url: string } | null;
@@ -284,7 +296,16 @@ export function htmlToMarkdown(
   }
   function children(node: Node, inTable = false) {
     const result: string[] = [];
-    node.forEach((child) => result.push(block(child, inTable)));
+    let previous: Node | null = null;
+    node.forEach((child) => {
+      let text = block(child, inTable);
+      // A paragraph below a table or code block that would read as its
+      // caption ("Table: …") keeps its colon escaped.
+      if (previous && child.type.name === "paragraph" && previous.type.name in CAPTION_LINE && !captionText(previous.attrs.caption))
+        text = text.replace(/^((?:table|listing)?):/i, "$1\\:");
+      previous = child;
+      result.push(text);
+    });
     return result.filter(Boolean).join("\n\n");
   }
   function block(node: Node, inTable = false): string {
@@ -307,7 +328,7 @@ export function htmlToMarkdown(
       case "codeBlock":
         return inTable
           ? inlineCode(node.textContent, true)
-          : fencedCode(node.textContent, String(node.attrs.language || ""));
+          : fencedCode(node.textContent, String(node.attrs.language || "")) + captionLine(node);
       case "mathBlock":
         return inTable
           ? inlineCode(String(node.attrs.expression || ""), true)
@@ -319,9 +340,10 @@ export function htmlToMarkdown(
       case "image": {
         const url = context.url(String(node.attrs.src || "")),
           alt = String(node.attrs.alt || ct("Bild", "Image"));
+        const caption = captionText(node.attrs.caption);
         return url
-          ? `![${markdownText(alt)}](<${markdownUrl(url)}>)`
-          : `${markdownText(alt)} ${ct("(nicht verfügbar)", "(not available)")}`;
+          ? `![${markdownText(alt)}](<${markdownUrl(url)}>${caption ? imageTitle(caption) : ""})`
+          : `${markdownText(alt)} ${ct("(nicht verfügbar)", "(not available)")}` + (caption ? ` – ${markdownText(caption)}` : "");
       }
       case "media": {
         const url = context.url(String(node.attrs.src || "")),
@@ -467,7 +489,7 @@ export function htmlToMarkdown(
         )
           lines.unshift("| " + " | ".repeat(width - 1) + " |");
         lines.splice(1, 0, "| " + Array(width).fill("---").join(" | ") + " |");
-        return lines.join("\n");
+        return lines.join("\n") + (inTable ? "" : captionLine(node));
       }
       default:
         return children(node, inTable);

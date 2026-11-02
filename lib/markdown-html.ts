@@ -2,7 +2,7 @@
 // import uses (lib/markdown-import.ts adds sanitizing on the server). Safe
 // for the browser – the editor's schema drops what it does not know, and AI
 // answers are inserted through it (lib/ai/insert.ts).
-import { Marked, type Tokens, type TokenizerAndRendererExtension } from "marked";
+import { Marked, Renderer, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked";
 import type { CalloutType } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { footnoteText } from "./footnotes";
@@ -138,6 +138,33 @@ function footnoteDefinitions(markdown: string) {
     notes: new Map([...notes].map(([label, text]) => [label, plainNote(text)])),
   };
 }
+// Captions (lib/block-captions.ts) as lib/markdown.ts writes them: an
+// image's title; "Table: …" (or Pandoc's ": …") in the paragraph right
+// below a table, "Listing: …" below a code block.
+const TABLE_CAPTION = /^(?:table)?:[ \t]+(\S[^\n]*)$/i,
+  LISTING_CAPTION = /^listing:[ \t]+(\S[^\n]*)$/i;
+type Captioned = { flowplanCaption?: string };
+const captionPlain = (markdown: string) =>
+  decode((new Marked({ gfm: true, async: false }).parseInline(markdown) as string).replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim().slice(0, 500);
+function attachCaptions(tokens: Token[]) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.type === "blockquote") attachCaptions((token as Tokens.Blockquote).tokens);
+    if (token.type === "list") for (const item of (token as Tokens.List).items) attachCaptions(item.tokens);
+    const language = token.type === "code" ? String((token as Tokens.Code).lang || "").trim().split(/\s+/)[0].toLowerCase() : "";
+    const pattern = token.type === "table" ? TABLE_CAPTION : token.type === "code" && language !== "math" && language !== "mermaid" ? LISTING_CAPTION : null;
+    if (!pattern) continue;
+    let next = i + 1;
+    while (tokens[next]?.type === "space") next++;
+    const line = tokens[next]?.type === "paragraph" ? pattern.exec((tokens[next] as Tokens.Paragraph).text.trim()) : null;
+    const caption = line && captionPlain(line[1]);
+    if (!caption) continue;
+    (token as Captioned).flowplanCaption = caption;
+    tokens.splice(next, 1);
+  }
+  return tokens;
+}
+
 const footnote = (note: string) => `<sup data-footnote="${escaped(footnoteText(note))}"></sup>`;
 
 export type MarkdownImportOptions = {
@@ -188,17 +215,25 @@ export function markdownToRawHtml(
   const marked = new Marked({ gfm: true, breaks: false, async: false });
   marked.use({
     extensions: [footnoteRef],
+    hooks: { processAllTokens: (tokens) => attachCaptions(tokens as Token[]) },
     renderer: {
       link({ href, tokens }: Tokens.Link) {
         const text = this.parser.parseInline(tokens);
         const target = resolve(href, "link");
         return target ? `<a href="${escaped(target)}">${text}</a>` : text;
       },
-      image({ href, text }: Tokens.Image) {
+      image({ href, text, title }: Tokens.Image) {
         const target = resolve(href, "image");
-        return target
-          ? `<img src="${escaped(target)}" alt="${escaped(text)}">`
-          : escaped(text);
+        if (!target) return escaped(text);
+        const image = `<img src="${escaped(target)}" alt="${escaped(text)}">`;
+        // The title is the caption (lib/markdown.ts writes it so).
+        const caption = title ? decode(title).replace(/\s+/g, " ").trim().slice(0, 500) : "";
+        return caption ? `<figure class="block-figure">${image}<figcaption>${escaped(caption)}</figcaption></figure>` : image;
+      },
+      table(token: Tokens.Table) {
+        const html = Renderer.prototype.table.call(this, token);
+        const caption = (token as Captioned).flowplanCaption;
+        return caption ? html.replace(/^<table>/, `<table><caption>${escaped(caption)}</caption>`) : html;
       },
       blockquote({ tokens }: Tokens.Blockquote) {
         const body = this.parser.parse(tokens);
@@ -209,10 +244,13 @@ export function markdownToRawHtml(
         return `<s>${this.parser.parseInline(tokens)}</s>`;
       },
       // Formulas and diagrams from math and mermaid fences.
-      code({ text, lang }: Tokens.Code) {
+      code(token: Tokens.Code) {
+        const { text, lang } = token;
         const language = (lang || "").trim().split(/\s+/)[0].toLowerCase();
         if (language === "math") return `<div data-math="${escaped(text)}">${escaped(text)}</div>`;
         if (language === "mermaid") return `<div class="mermaid-block" data-mermaid="${escaped(text)}">${escaped(text)}</div>`;
+        const caption = (token as Captioned).flowplanCaption;
+        if (caption) return `<figure class="block-figure">${Renderer.prototype.code.call(this, token).trim()}<figcaption>${escaped(caption)}</figcaption></figure>`;
         return false;
       },
       // Raw HTML in Markdown is shown as text, never interpreted – except
@@ -242,6 +280,8 @@ export function markdownToRawHtml(
     },
   });
   const html = (marked.parse(body) as string)
+    // A captioned image alone in its paragraph stands on its own.
+    .replace(/<p>(<figure class="block-figure"><img [^>]*><figcaption>[^<]*<\/figcaption><\/figure>)<\/p>/g, "$1")
     // Inline formulas: $`a^2`$
     .replace(/\$<code>([^<]*)<\/code>\$/g, (_, expression: string) => `<span data-math="${expression}">${expression}</span>`)
     // Task list items become editor task items; "📅 2026-05-04" (Obsidian

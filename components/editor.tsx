@@ -81,7 +81,6 @@ import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
 import {
-  Table,
   TableCell,
   TableHeader,
   TableRow,
@@ -177,7 +176,9 @@ import {
   MEDIA_WIDTHS,
   CALLOUT_TYPES,
   AnnotatedImage,
+  CaptionedTable,
 } from "@/lib/document-schema";
+import { BlockCaptions, refreshCaptions } from "./block-captions-view";
 import { compressImage } from "@/lib/image-compress";
 import { primePlaceholder } from "./image-placeholder";
 import { imagePlaceholderView } from "./image-placeholder-view";
@@ -221,7 +222,10 @@ export default function DocumentEditor({
   sourceNotice,
   onSourceClose,
   draft,
+  captionNumbers = false,
 }: {
+  // The page numbers the captions of images, tables and code blocks.
+  captionNumbers?: boolean;
   // A journal day that is only a draft (lib/journal-days.ts): nothing is
   // stored until the person changes something; then ensure() creates the
   // day under this page id and generation (false: it opens another page).
@@ -410,6 +414,10 @@ export default function DocumentEditor({
   // Names for reaction tooltips (read by the reactions plugin).
   const memberNames = useRef(new Map<string, string>());
   memberNames.current = new Map(members.map((m) => [m.id, m.name]));
+  // The page's "Number captions" switch (not in record documents).
+  const numberCaptions = !rowId && captionNumbers;
+  const captionsNumbered = useRef(numberCaptions);
+  captionsNumbered.current = numberCaptions;
   const syncedContext = useRef<SyncedContext>(null!);
   syncedContext.current = { userId, pages, members, editable, onError };
   function insertSynced(id: string) {
@@ -512,7 +520,7 @@ export default function DocumentEditor({
           userId,
           names: () => memberNames.current,
         }),
-        Table.configure({ resizable: true }),
+        CaptionedTable.configure({ resizable: true }),
         TableRow,
         TableCell,
         TableHeader,
@@ -534,6 +542,9 @@ export default function DocumentEditor({
               }
             : false,
         }),
+        // Captions below images, tables and code (lib/block-captions.ts),
+        // numbered when the page says so.
+        BlockCaptions.configure({ numbered: () => captionsNumbered.current }),
         Placeholder.configure({
           placeholder: t("Schreibe etwas oder tippe / für Befehle …", "Write something or type / for commands …"),
         }),
@@ -725,6 +736,9 @@ export default function DocumentEditor({
     },
     [doc],
   );
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) refreshCaptions(editor.view);
+  }, [editor, numberCaptions]);
   // Who wrote what: the people behind the sessions, from the server (only
   // for people who may read the page); this session counts as oneself.
   const loadAuthors = useCallback(async () => {

@@ -41,7 +41,10 @@ body { margin: 0; background: #fff; }
 .print-book .chapter-title .number { color: #999; margin-right: 0.4em; }
 .print-book img { max-width: 100%; height: auto; }
 .print-book figure { margin: 1em 0; text-align: center; break-inside: avoid; page-break-inside: avoid; }
-.print-book figcaption { font-size: 9pt; color: #555; }
+.print-book figcaption, .print-book caption { font-size: 9pt; color: #555; }
+.print-book caption { caption-side: bottom; text-align: left; padding-top: 0.4em; }
+.print-book figure.listing { text-align: left; }
+.print-book .caption-label { font-weight: bold; }
 .print-book pre { white-space: pre-wrap; word-wrap: break-word; font: 9pt/1.4 Menlo, Consolas, monospace; background: #f4f4f2; padding: 0.7em; border-radius: 4px; break-inside: avoid; page-break-inside: avoid; }
 .print-book code { font-family: Menlo, Consolas, monospace; font-size: 0.9em; background: #f4f4f2; padding: 0 0.2em; }
 .print-book pre code { background: none; padding: 0; font-size: inherit; }
@@ -107,6 +110,7 @@ export function printHtml(content: ExportContent, author: string) {
         url,
         image,
         prefix: `c${index + 1}`,
+        captionNumbers: !!entry.page.caption_numbers,
         whiteboard: (pageId) => {
           const page = content.readable(pageId);
           if (!page || page.kind !== "whiteboard") return null;

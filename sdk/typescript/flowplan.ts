@@ -290,6 +290,8 @@ export type Page = {
   locked: number;
   public_token: string | null;
   full_width: number;
+  /** 1 when captions of images, tables and code blocks are numbered */
+  caption_numbers?: number;
   icon_size?: "" | "small" | "medium" | "large";
   font: string;
   /** Day pages of a journal: YYYY-MM-DD */
@@ -920,6 +922,8 @@ export type CommandPageUpdate = {
     cover_position?: number;
     locked?: boolean;
     full_width?: boolean;
+    /** Number the captions of images, tables and code blocks (Figure 1, Table 1, Listing 1) */
+    caption_numbers?: boolean;
     font?: "sans" | "serif" | "mono";
     icon_size?: "" | "small" | "medium" | "large";
   };

@@ -4,6 +4,7 @@ import { BlockReactionAttribute } from "./block-reactions";
 import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { embedProvider } from "./embed-providers";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
@@ -29,8 +30,10 @@ import { Footnote } from "./footnotes";
 import { BlockDirectionExtension } from "./text-direction";
 import { ListTidy } from "./list-tidy";
 import { calloutColor, calloutIcon } from "./callout-types";
+import { blockFigcaption, captionAttribute, captionText } from "./block-captions";
 // Images that were marked up keep their original and the markings
-// (components/image-annotator.tsx), so they can be edited again.
+// (components/image-annotator.tsx), so they can be edited again. A caption
+// (lib/block-captions.ts) makes the image a <figure> with <figcaption>.
 export const AnnotatedImage = Image.extend({
   addAttributes() {
     return {
@@ -45,7 +48,38 @@ export const AnnotatedImage = Image.extend({
         parseHTML: (el) => el.getAttribute("data-annotations"),
         renderHTML: (attrs) => (attrs.annotations ? { "data-annotations": attrs.annotations } : {}),
       },
+      caption: captionAttribute(),
     };
+  },
+  parseHTML() {
+    return [
+      ...(this.parent?.() || []),
+      // The figure's caption is the image's (read by its attribute).
+      { tag: "figcaption", ignore: true, getAttrs: (el) => (blockFigcaption(el as HTMLElement) ? null : false) },
+    ];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    const image: DOMOutputSpec = ["img", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)];
+    const caption = captionText(node.attrs.caption);
+    return caption ? ["figure", { class: "block-figure" }, image, ["figcaption", {}, caption]] : image;
+  },
+});
+// Tables with a caption: <caption> as their first child.
+export const CaptionedTable = Table.extend({
+  addAttributes() {
+    return { ...this.parent?.(), caption: captionAttribute() };
+  },
+  parseHTML() {
+    return [...(this.parent?.() || []), { tag: "caption", ignore: true }];
+  },
+  renderHTML(props) {
+    const spec = this.parent?.(props) as DOMOutputSpec;
+    const caption = captionText(props.node.attrs.caption);
+    if (!caption || !Array.isArray(spec)) return spec;
+    // [table, attrs, colgroup, tbody] (or a wrapper around it).
+    const withCaption = (table: readonly unknown[]): DOMOutputSpec =>
+      [table[0], table[1], ["caption", {}, caption], ...table.slice(2)] as unknown as DOMOutputSpec;
+    return spec[0] === "table" ? withCaption(spec) : ([...spec.slice(0, 2), withCaption(spec[2] as unknown[])] as unknown as DOMOutputSpec);
   },
 });
 
@@ -531,7 +565,7 @@ export const documentExtensions = [
   BlockReactionAttribute,
   SyncedBlock,
   Suggestion,
-  Table.configure({ resizable: true }),
+  CaptionedTable.configure({ resizable: true }),
   TableRow,
   TableCell,
   TableHeader,

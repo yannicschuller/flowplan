@@ -1,6 +1,10 @@
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { mergeAttributes } from "@tiptap/core";
+import type { DOMOutputSpec } from "@tiptap/pm/model";
 import { codeHighlighter } from "./code-highlight";
+import { captionAttribute, captionText } from "./block-captions";
+// A caption (lib/block-captions.ts) puts the code into a <figure> with
+// <figcaption> below it.
 export const FlowCodeBlock = CodeBlockLowlight.extend({
   addAttributes() {
     return {
@@ -10,10 +14,11 @@ export const FlowCodeBlock = CodeBlockLowlight.extend({
         parseHTML: (el) => el.getAttribute("data-code-wrap") === "true",
         rendered: false,
       },
+      caption: captionAttribute(),
     };
   },
   renderHTML({ node, HTMLAttributes }) {
-    return [
+    const pre: DOMOutputSpec = [
       "pre",
       mergeAttributes(
         this.options.HTMLAttributes,
@@ -28,6 +33,8 @@ export const FlowCodeBlock = CodeBlockLowlight.extend({
         0,
       ],
     ];
+    const caption = captionText(node.attrs.caption);
+    return caption ? ["figure", { class: "block-figure" }, pre, ["figcaption", {}, caption]] : pre;
   },
 }).configure({
   lowlight: codeHighlighter,

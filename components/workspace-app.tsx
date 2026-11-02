@@ -121,6 +121,7 @@ import {
   SidebarSimple,
   DotsThree,
   ArrowSquareOut,
+  ListNumbers,
   AppWindow,
   Desktop,
   ShareNetwork,
@@ -3442,6 +3443,21 @@ export default function WorkspaceApp({
                       <ArrowSquareOut />
                       {t("Volle Breite", "Full width")}{" "}{data.page.full_width ? "✓" : ""}
                     </Dropdown.Item>
+                    {data.page.kind === "document" && !data.encrypted && (
+                      <Dropdown.Item
+                        className="dropdown-item"
+                        onSelect={() =>
+                          act({
+                            action: "page.update",
+                            pageId,
+                            patch: { caption_numbers: !data.page.caption_numbers },
+                          })
+                        }
+                      >
+                        <ListNumbers />
+                        {t("Beschriftungen nummerieren", "Number captions")}{" "}{data.page.caption_numbers ? "✓" : ""}
+                      </Dropdown.Item>
+                    )}
                     <Dropdown.Item
                       className="dropdown-item"
                       onSelect={() =>
@@ -3944,6 +3960,7 @@ export default function WorkspaceApp({
                       pages={activePages}
                       members={boot.members}
                       state={data.state}
+                      captionNumbers={!!data.page.caption_numbers}
                       html={data.html}
                       editable={editable}
                       onStatus={setStatus}
@@ -5851,7 +5868,7 @@ export default function WorkspaceApp({
             if (data.page.kind === "document")
               download(
                 `${data.page.title}.html`,
-                `<!doctype html><html lang="de"><meta charset="utf-8"><title>${data.page.title.replace(/[<>&]/g, "")}</title><body>${exportDocumentHtml(html.current)}</body></html>`,
+                `<!doctype html><html lang="de"><meta charset="utf-8"><title>${data.page.title.replace(/[<>&]/g, "")}</title><body>${exportDocumentHtml(html.current, { captionNumbers: !!data.page.caption_numbers })}</body></html>`,
                 "text/html",
               );
             else

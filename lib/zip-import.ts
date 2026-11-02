@@ -10,6 +10,7 @@ import { htmlState } from "./document-server";
 import { markdownToHtml } from "./markdown-import";
 import { splitFrontmatter } from "./frontmatter";
 import { frontmatterAliases, storedAliases } from "./aliases";
+import { numberedInFrontmatter } from "./block-captions";
 import { applyPortableMeta, canManageTaxonomy, frontmatterMeta, memberByName } from "./page-properties-server";
 import { enforceQuota } from "./instance-ops";
 import { enforceUserStorage } from "./user-limits";
@@ -352,6 +353,7 @@ export async function importZip(
         const { data, body: rest } = splitFrontmatter(text(node.path));
         const aliases = frontmatterAliases(data);
         if (aliases.length) run("UPDATE pages SET aliases=? WHERE id=?", storedAliases(aliases), pid);
+        if (numberedInFrontmatter(data)) run("UPDATE pages SET caption_numbers=1 WHERE id=?", pid);
         // Tags and properties (#70): known properties by name; other keys
         // become properties when the person manages them.
         const { meta, consumed } = frontmatterMeta(data, workspaceId, people, { createDefinitions: manageProperties });

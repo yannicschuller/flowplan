@@ -579,7 +579,10 @@ function collect(user: Identity, options: MarkdownExportOptions) {
       ...(aliases.length ? { aliases } : {}),
       // Tags and property values (#70), read back by the import.
       ...metaFrontmatter(page.id, (uid) => members.get(uid)),
-      ...(day ? { flowplan: { id: page.id, date: day } } : {}),
+      // A day's page and date; numbered captions (#84).
+      ...(day || page.caption_numbers
+        ? { flowplan: { ...(day ? { id: page.id, date: day } : {}), ...(page.caption_numbers ? { captions: "numbered" } : {}) } }
+        : {}),
     };
     // A day's own title in the language of the export (it was named in the
     // language of whoever opened it first), unless somebody renamed it.

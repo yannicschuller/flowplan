@@ -21,6 +21,8 @@ import {
   Palette,
   Smiley,
   SmileyXEyes,
+  Subtitles,
+  SubtitlesSlash,
   ListNumbers,
   Quotes,
   TextHOne,
@@ -70,6 +72,8 @@ import { Modal } from "./ui";
 import EmojiPicker from "./emoji-picker";
 import { TEXT_DIRECTION_TYPES, setBlockDirection, textDirection, type BlockDirection } from "@/lib/text-direction";
 import { BlockMenu, type BlockMenuItem, type BlockMenuView } from "./block-menu";
+import { CAPTION_KINDS, captionText } from "@/lib/block-captions";
+import { editCaption } from "./block-captions-view";
 type Positioned = DocumentBlock & {
   left: number;
   top: number;
@@ -854,6 +858,18 @@ export function DocumentBlockControls({
           run: () => setAttribute(only, { width: w }),
         })),
       };
+    }
+    // Captions of images, tables and code (lib/block-captions.ts).
+    if (only && CAPTION_KINDS[only.node.type.name]) {
+      const caption = captionText(only.node.attrs.caption);
+      // After the menu has closed (the sheet keeps the focus until then).
+      const edit = () => setTimeout(() => editor && !editor.isDestroyed && editCaption(editor.view, only.pos), 60);
+      items.push({ icon: <Subtitles />, label: caption ? t("Beschriftung bearbeiten", "Edit caption") : t("Beschriftung hinzufügen", "Add caption"), run: edit });
+      if (only.node.attrs.caption !== null)
+        items.push({ icon: <SubtitlesSlash />, label: t("Beschriftung entfernen", "Remove caption"), run: () => setAttribute(only, { caption: null }) });
+      // The caption also as the image's description for screen readers.
+      if (only.node.type.name === "image" && caption && caption !== only.node.attrs.alt)
+        items.push({ icon: <Subtitles />, label: t("Beschriftung als Alternativtext", "Use caption as alt text"), run: () => setAttribute(only, { alt: caption }) });
     }
     // Text direction: automatic (by the text), left to right, right to left
     // – for the blocks and everything inside them.
