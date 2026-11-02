@@ -17,9 +17,13 @@
 // 2. The BlockSuite snapshot ZIP ("Export → Snapshot", ZipTransformer in
 //    blocksuite/affine/widgets/linked-doc/src/transformers/zip.ts): one
 //    "<title>-<id>.snapshot.json" per document ({type: "page", meta, blocks})
-//    and the files as "assets/<blob id>.<ext>"; older versions add an
-//    info.json with the tag names. Folders, collections and journals are not
-//    part of it.
+//    and the files as "assets/<blob id>.<ext>" (a blob id with "/" makes a
+//    sub-folder). Versions before January 2025 add an info.json with the
+//    workspace's tags ({properties: {tags: {options}}}) and keep the tag ids
+//    in meta.tags; since then BlockSuite's Transformer writes "tags: []" and
+//    no info.json (framework/store/src/transformer/transformer.ts
+//    _exportDocMeta). Folders, collections, journals, properties and icons
+//    are never part of it (#82).
 //
 // The Yjs documents (verified against the BlockSuite / AFFiNE sources):
 // - root document: map "meta" {name, pages: [{id, title, createDate,
@@ -38,17 +42,27 @@
 // - workspace database (AFFiNE's ORM on Yjs, one document per table):
 //   "db$folders" (folders and the links in them: {id, parentId, type:
 //   folder|doc|tag|collection, data: name or target id, index}),
-//   "db$docProperties" ({id, journal: "YYYY-MM-DD", primaryMode, …});
+//   "db$docProperties" ({id, journal: "YYYY-MM-DD", primaryMode, …,
+//   "custom:<property id>": value as text}), "db$docCustomPropertyInfo"
+//   (the properties: {id, name, type: text|number|checkbox|date|…,
+//   isDeleted}), "db$explorerIcon" ({id: "doc|folder|collection|tag:<id>",
+//   icon: {type: "emoji", unicode} | {type: "affine-icon", name, color}});
 //   every row is a top-level map named by its key, deleted rows carry
 //   "$$DELETED". Favourites: "userdata$<user>$favorite" ({key: "doc:<id>"}).
+//   Older workspaces keep properties in the root document's map
+//   "affine:workspace-properties": schema.pageProperties.custom {<id>: {name,
+//   type}} and pageProperties {<doc id>: {custom: {<id>: {value}}}}
+//   (packages/frontend/core/src/modules/db/schema/schema.ts,
+//   doc/stores/doc-properties.ts, explorer-icon/store/explorer-icon.ts).
 //
 // Everything here is untrusted: sizes, counts and nesting are bounded, a
 // document that cannot be read is skipped with a warning, and object keys
 // that could reach a prototype are dropped.
 //
-// Large workspace files (#76): a file on disk (the upload, streamed there)
-// is opened in place, and its files (blobs) are only read one at a time
-// when the import writes them – memory holds the documents, not the files.
+// Large workspace files (#76, #82): a file on disk (the upload, streamed
+// there) is opened in place; a document is read from it when it is
+// converted and its files (blobs) when the import writes them – memory holds
+// one document and one file at a time, plus the converted pages.
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
@@ -56,17 +70,23 @@ import { DatabaseSync } from "node:sqlite";
 import * as Y from "yjs";
 import { HttpError } from "../auth";
 import { mimeOf } from "./html";
+import { maxImportFiles, tooManyFiles } from "./types";
 
+// How many documents and files an import may bring is set per instance
+// (lib/importers/types.ts maxImportPages, maxImportFiles).
 export const AFFINE_LIMITS = {
-  docs: 3000,
   docBytes: 32 * 1024 * 1024,
   totalDocBytes: 256 * 1024 * 1024,
   blocks: 20000,
   depth: 60,
-  blobs: 5000,
   blobBytes: 100 * 1024 * 1024,
   snapshotBytes: 32 * 1024 * 1024,
   textLength: 200_000,
+  // Rows of the workspace file read for its documents (snapshots and
+  // updates); a crafted file with more is refused.
+  parts: 5_000_000,
+  // Entries of the document list; far above any import limit.
+  metas: 1_000_000,
 };
 const MB = 1024 * 1024;
 // The limits for a workspace file of this size: documents (held in memory
@@ -93,16 +113,19 @@ export class AText {
   }
 }
 export type ABlock = { id: string; flavour: string; props: Record<string, unknown>; children: ABlock[] };
-export type ADoc = {
+export type ADocMeta = {
   id: string;
   title: string;
   created?: number;
   updated?: number;
   tags: string[];
   trash: boolean;
-  root: ABlock | null;
-  unreadable?: boolean;
 };
+// A document: its meta data, the blocks read when it is converted (null:
+// not readable) – never all documents' blocks at once.
+export type ADoc = ADocMeta & { load: () => ABlock | null };
+// A property of documents (AFFiNE's "custom" doc properties).
+export type AProperty = { name: string; type: string };
 export type AFolderNode = { id: string; parentId: string | null; type: string; data: string; index: string };
 export type AFilter = { type: string; key: string; method: string; value?: string };
 export type ACollection = { id: string; name: string; filters: AFilter[]; allowList: string[] };
@@ -120,6 +143,11 @@ export type AWorkspace = {
   collections: ACollection[];
   // Per document: journal date, primary mode (page/edgeless), …
   docProps: Map<string, Record<string, unknown>>;
+  // Property definitions by id; values are docProps["custom:<id>"].
+  properties: Map<string, AProperty>;
+  // Icons by "doc:<id>", "folder:<id>", "collection:<id>": an emoji, or
+  // "affine-icon" for one of AFFiNE's own symbols (not taken over).
+  icons: Map<string, string>;
   favorites: Set<string>;
   blobs: Map<string, ABlob>;
   warnings: string[];
@@ -263,11 +291,11 @@ export function readSnapshotBlocks(raw: unknown): ABlock | null {
 
 const str = (value: unknown, max = 1000) => (typeof value === "string" ? value.slice(0, max) : "");
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
-function docMetas(pages: unknown): Omit<ADoc, "root">[] {
+function docMetas(pages: unknown): ADocMeta[] {
   if (!Array.isArray(pages)) return [];
   return pages
     .filter((p): p is Record<string, unknown> => !!p && typeof p === "object" && typeof (p as { id?: unknown }).id === "string")
-    .slice(0, AFFINE_LIMITS.docs)
+    .slice(0, AFFINE_LIMITS.metas)
     .map((p) => ({
       id: str(p.id, 200),
       title: str(p.title, 500),
@@ -354,11 +382,60 @@ function tableRows(doc: Y.Doc) {
   return rows;
 }
 
+// Icons of the navigation (table "explorerIcon"): emojis, AFFiNE's own
+// symbols only as a marker.
+function explorerIcons(rows: Record<string, unknown>[]) {
+  const icons = new Map<string, string>();
+  for (const row of rows.slice(0, 50000)) {
+    const icon = row.icon as { type?: unknown; unicode?: unknown } | undefined;
+    if (typeof row.id !== "string" || !/^(doc|folder|collection|tag):/.test(row.id) || !icon || typeof icon !== "object") continue;
+    if (icon.type === "emoji" && typeof icon.unicode === "string" && icon.unicode.trim()) icons.set(row.id.slice(0, 220), icon.unicode.trim().slice(0, 32));
+    else if (icon.type === "affine-icon" || icon.type === "blob") icons.set(row.id.slice(0, 220), "affine-icon");
+  }
+  return icons;
+}
+// The value of a property as Flowplan takes it, or undefined. AFFiNE stores
+// every value as text (checkbox "true"/"false", date "YYYY-MM-DD").
+export function propertyValue(type: string, raw: unknown): string | number | boolean | undefined {
+  if (raw === null || raw === undefined || raw === "") return undefined;
+  const text = typeof raw === "string" ? raw.trim().slice(0, 10000) : typeof raw === "number" || typeof raw === "boolean" ? String(raw) : "";
+  if (!text) return undefined;
+  switch (type) {
+    case "number":
+    case "progress": {
+      const n = Number(text);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case "checkbox":
+      return text === "true";
+    case "date":
+      return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : undefined;
+    case "text":
+      return text;
+    default:
+      // Tags, journal, mode, people, dates of creation: imported elsewhere
+      // or not meaningful outside AFFiNE.
+      return undefined;
+  }
+}
+
 /* ---------- the workspace file (SQLite) ---------- */
 
-type Sqlite = { format: "sqlite-v1" | "sqlite-v2"; spaceId: string | null; docs: Map<string, Uint8Array[]>; blobs: Map<string, ABlob>; close: () => void };
-// The workspace file: a path (opened in place, files read lazily until
-// close) or its bytes (copied to a private temp folder, files read at once).
+
+// The documents of the workspace file: their keys, and their Yjs updates
+// (snapshot first, then the updates in order) read when asked for.
+type Sqlite = {
+  format: "sqlite-v1" | "sqlite-v2";
+  spaceId: string | null;
+  keys: string[];
+  updates: (key: string) => Uint8Array[] | null;
+  blobs: Map<string, ABlob>;
+  skippedBlobs: number;
+  close: () => void;
+};
+// The workspace file: a path (opened in place, documents and files read
+// when needed until close) or its bytes (copied to a private temp folder,
+// everything read at once – the bytes are in memory anyway).
 function readSqlite(input: Buffer | string): Sqlite {
   let dir: string | null = null;
   let path: string;
@@ -381,7 +458,8 @@ function readSqlite(input: Buffer | string): Sqlite {
       path = join(dir, "workspace.affine");
       writeFileSync(path, input, { mode: 0o600 });
     }
-    const limits = affineLimitsFor(typeof input === "string" ? statSync(path).size : input.length);
+    const lazy = typeof input === "string";
+    const limits = affineLimitsFor(lazy ? statSync(path).size : input.length);
     try {
       db = new DatabaseSync(path, { readOnly: true });
       db.exec("PRAGMA query_only=1; PRAGMA trusted_schema=0;");
@@ -404,58 +482,86 @@ function readSqlite(input: Buffer | string): Sqlite {
     const v2 = has("snapshots", "doc_id", "data") && has("updates", "doc_id", "data", "created_at") && has("blobs", "key", "data", "mime");
     const v1 = !v2 && has("updates", "id", "data", "doc_id") && has("blobs", "key", "data");
     if (!v1 && !v2) throw new HttpError(400, "Die Datei ist keine AFFiNE-Arbeitsbereichsdatei.");
-    const docs = new Map<string, Uint8Array[]>();
-    let total = 0;
-    const add = (docId: string | null, data: unknown) => {
-      if (!(data instanceof Uint8Array)) return;
-      const key = docId ?? "";
-      if (!docs.has(key) && docs.size >= AFFINE_LIMITS.docs * 2 + 20) return;
-      total += data.length;
-      if (total > limits.totalDocBytes) throw new HttpError(413, "Der AFFiNE-Arbeitsbereich ist zu groß.");
-      const list = docs.get(key) || [];
-      list.push(data);
-      docs.set(key, list);
-    };
     // Sizes first, so a huge document is never read into memory.
     const tooLarge = new Set<string>();
     const sizes = v2
       ? `SELECT doc_id, SUM(n) n FROM (SELECT doc_id, length(data) n FROM snapshots UNION ALL SELECT doc_id, length(data) n FROM updates) GROUP BY doc_id`
       : `SELECT doc_id, SUM(length(data)) n FROM updates GROUP BY doc_id`;
-    for (const row of open.prepare(sizes).all() as { doc_id: string | null; n: number }[])
+    let total = 0;
+    for (const row of open.prepare(sizes).all() as { doc_id: string | null; n: number }[]) {
       if (Number(row.n) > AFFINE_LIMITS.docBytes) tooLarge.add(row.doc_id ?? "");
+      else total += Number(row.n) || 0;
+    }
+    // In memory, all documents together stay within the limit; read from
+    // disk one at a time, a document only within its own.
+    if (!lazy && total > limits.totalDocBytes) throw new HttpError(413, "Der AFFiNE-Arbeitsbereich ist zu groß.");
     let spaceId: string | null = null;
+    if (v2 && has("meta", "space_id")) spaceId = (open.prepare("SELECT space_id FROM meta LIMIT 1").get() as { space_id?: string } | undefined)?.space_id ?? null;
+    // Where each document's rows are (row ids only, never the data).
+    type Part = [table: 0 | 1, row: number];
+    const parts = new Map<string, Part[]>();
+    let count = 0;
+    const note = (docId: string | null, table: 0 | 1, row: number) => {
+      const key = docId === null ? "" : String(docId);
+      if (tooLarge.has(key)) return;
+      if (++count > AFFINE_LIMITS.parts) throw new HttpError(413, "Der AFFiNE-Arbeitsbereich ist zu groß.");
+      const list = parts.get(key);
+      if (list) list.push([table, Number(row)]);
+      else parts.set(key, [[table, Number(row)]]);
+    };
     if (v2) {
-      if (has("meta", "space_id")) spaceId = (open.prepare("SELECT space_id FROM meta LIMIT 1").get() as { space_id?: string } | undefined)?.space_id ?? null;
-      for (const row of open.prepare("SELECT doc_id, data FROM snapshots").iterate() as Iterable<{ doc_id: string; data: Uint8Array }>)
-        if (!tooLarge.has(row.doc_id)) add(String(row.doc_id), row.data);
-      for (const row of open.prepare("SELECT doc_id, data FROM updates ORDER BY doc_id, created_at").iterate() as Iterable<{ doc_id: string; data: Uint8Array }>)
-        if (!tooLarge.has(row.doc_id)) add(String(row.doc_id), row.data);
-    } else
-      for (const row of open.prepare("SELECT doc_id, data FROM updates ORDER BY id").iterate() as Iterable<{ doc_id: string | null; data: Uint8Array }>)
-        if (!tooLarge.has(row.doc_id ?? "")) add(row.doc_id === null ? null : String(row.doc_id), row.data);
+      for (const row of open.prepare("SELECT rowid r, doc_id FROM snapshots").iterate() as Iterable<{ r: number; doc_id: string }>) note(row.doc_id, 0, row.r);
+      for (const row of open.prepare("SELECT rowid r, doc_id FROM updates ORDER BY doc_id, created_at").iterate() as Iterable<{ r: number; doc_id: string }>) note(row.doc_id, 1, row.r);
+    } else for (const row of open.prepare("SELECT rowid r, doc_id FROM updates ORDER BY id").iterate() as Iterable<{ r: number; doc_id: string | null }>) note(row.doc_id, 1, row.r);
+    const data = [v2 ? open.prepare("SELECT data FROM snapshots WHERE rowid=?") : null, open.prepare("SELECT data FROM updates WHERE rowid=?")];
+    const readDoc = (key: string) => {
+      const list = parts.get(key);
+      if (!list || !db) return null;
+      const out: Uint8Array[] = [];
+      for (const [table, row] of list) {
+        const value = (data[table]?.get(row) as { data?: unknown } | undefined)?.data;
+        if (value instanceof Uint8Array) out.push(value);
+      }
+      return out;
+    };
+    // Bytes in memory: everything now.
+    const loaded = lazy ? null : new Map([...parts.keys()].map((key) => [key, readDoc(key) || []]));
     // Files: size, type and first bytes now; the content when it is used.
     const blobs = new Map<string, ABlob>();
-    let blobBytes = 0;
-    const lazy = typeof input === "string";
+    let blobBytes = 0,
+      skippedBlobs = 0;
+    const maxFiles = maxImportFiles();
     const content = open.prepare(`SELECT data FROM blobs WHERE rowid=?`);
     const blobQuery = v2
       ? "SELECT rowid id, key, length(data) size, substr(data, 1, 16) head, mime FROM blobs WHERE deleted_at IS NULL"
       : "SELECT rowid id, key, length(data) size, substr(data, 1, 16) head FROM blobs";
     for (const row of open.prepare(blobQuery).iterate() as Iterable<{ id: number; key: string; size: number; head: Uint8Array; mime?: string }>) {
-      if (blobs.size >= AFFINE_LIMITS.blobs || !(row.head instanceof Uint8Array) || typeof row.key !== "string") continue;
+      if (!(row.head instanceof Uint8Array) || typeof row.key !== "string") continue;
+      if (blobs.size >= maxFiles) {
+        skippedBlobs++;
+        continue;
+      }
       const size = Number(row.size);
       if (blobBytes + size > limits.blobBytes) continue;
       blobBytes += size;
       const mime = typeof row.mime === "string" ? row.mime.slice(0, 100) : "";
       const read = () => {
         if (!db) throw new HttpError(500, "Die AFFiNE-Datei ist schon geschlossen.");
-        const data = (content.get(row.id) as { data?: unknown } | undefined)?.data;
-        return data instanceof Uint8Array ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : Buffer.alloc(0);
+        const value = (content.get(row.id) as { data?: unknown } | undefined)?.data;
+        return value instanceof Uint8Array ? Buffer.from(value.buffer, value.byteOffset, value.byteLength) : Buffer.alloc(0);
       };
       blobs.set(row.key.slice(0, 200), lazy ? { size, mime, head: Buffer.from(row.head), read } : memoryBlob(read(), mime));
     }
     if (!lazy) close();
-    return { format: v2 ? "sqlite-v2" : "sqlite-v1", spaceId, docs, blobs, close };
+    return {
+      format: v2 ? "sqlite-v2" : "sqlite-v1",
+      spaceId,
+      keys: [...parts.keys()],
+      updates: (key) => (loaded ? (loaded.get(key) ?? null) : readDoc(key)),
+      blobs,
+      skippedBlobs,
+      close,
+    };
   } catch (error) {
     close();
     if (error instanceof HttpError) throw error;
@@ -475,50 +581,69 @@ export function readAffineFile(input: Buffer | string, fallbackName: string): AW
   const sqlite = readSqlite(input);
   let done = false;
   const warnings: string[] = [];
-  const opened = new Map<string, Y.Doc>();
+  if (sqlite.skippedBlobs) warnings.push(tooManyFiles(sqlite.skippedBlobs));
+  const keys = new Set(sqlite.keys);
+  // Opened documents of the workspace (root, tables); destroyed at the end.
+  const opened: Y.Doc[] = [];
   const open = (key: string) => {
-    if (opened.has(key)) return opened.get(key)!;
-    const updates = sqlite.docs.get(key);
+    const updates = sqlite.updates(key);
     if (!updates) return null;
     try {
-      const doc = yDoc(updates);
-      opened.set(key, doc);
-      return doc;
+      return yDoc(updates);
     } catch {
       warnings.push("Ein Dokument konnte nicht gelesen werden.");
       return null;
     }
   };
+  const keep = (doc: Y.Doc | null) => {
+    if (doc) opened.push(doc);
+    return doc;
+  };
   try {
     // The root document: the space id (v2), no id (v1), else the one with
     // the list of documents.
-    const rootKey =
-      (sqlite.spaceId && sqlite.docs.has(sqlite.spaceId) ? sqlite.spaceId : null) ??
-      (sqlite.format === "sqlite-v1" && sqlite.docs.has("") ? "" : null) ??
-      [...sqlite.docs.keys()].find((key) => !/^(db|userdata)\$/.test(key) && open(key)?.getMap("meta").has("pages")) ??
-      null;
-    const root = rootKey !== null ? open(rootKey) : null;
+    let root: Y.Doc | null = null;
+    if (sqlite.spaceId && keys.has(sqlite.spaceId)) root = keep(open(sqlite.spaceId));
+    else if (sqlite.format === "sqlite-v1" && keys.has("")) root = keep(open(""));
+    else
+      for (const key of keys) {
+        if (/^(db|userdata)\$/.test(key)) continue;
+        const doc = open(key);
+        if (doc?.getMap("meta").has("pages")) {
+          root = keep(doc);
+          break;
+        }
+        doc?.destroy();
+      }
     if (!root) throw new HttpError(400, "Die AFFiNE-Datei enthält keinen Arbeitsbereich.");
     const meta = fromY(root.getMap("meta")) as Record<string, unknown>;
     const metas = docMetas(meta.pages);
     // Older versions keep each document as a sub-document with its own guid.
     const guids = new Map<string, string>();
     for (const [id, sub] of root.getMap<unknown>("spaces").entries()) if (sub instanceof Y.Doc) guids.set(id, sub.guid);
+    // A document is read when it is converted, then let go.
     const docs: ADoc[] = metas.map((m) => {
-      const key = [m.id, guids.get(m.id), `space:${m.id}`].find((k): k is string => !!k && sqlite.docs.has(k));
-      const doc = key !== undefined ? open(key) : null;
-      let blocks: ABlock | null = null;
-      try {
-        blocks = doc ? readDocBlocks(doc) : null;
-      } catch {
-        warnings.push("Ein Dokument konnte nicht gelesen werden.");
-      }
-      return { ...m, root: blocks, unreadable: !blocks };
+      const key = [m.id, guids.get(m.id), `space:${m.id}`].find((k): k is string => !!k && keys.has(k));
+      return {
+        ...m,
+        load: () => {
+          const doc = key !== undefined ? open(key) : null;
+          if (!doc) return null;
+          try {
+            return readDocBlocks(doc);
+          } catch {
+            warnings.push("Ein Dokument konnte nicht gelesen werden.");
+            return null;
+          } finally {
+            doc.destroy();
+          }
+        },
+      };
     });
     // The workspace database: one document per table.
     const table = (name: string) => {
-      const key = [...sqlite.docs.keys()].find((k) => k === `db$${name}` || new RegExp(`^db\\$[^$]+\\$${name}$`).test(k));
-      const doc = key ? open(key) : null;
+      const key = [...keys].find((k) => k === `db$${name}` || new RegExp(`^db\\$[^$]+\\$${name}$`).test(k));
+      const doc = key ? keep(open(key)) : null;
       return doc ? tableRows(doc) : [];
     };
     const folders = table("folders")
@@ -532,25 +657,37 @@ export function readAffineFile(input: Buffer | string, fallbackName: string): AW
         index: str(r.index, 200),
       }));
     const docProps = new Map<string, Record<string, unknown>>();
-    // Legacy properties in the root document first, the table overrides.
+    const properties = new Map<string, AProperty>();
+    // Legacy properties in the root document first, the tables override.
     const legacy = fromY(root.getMap("affine:workspace-properties")) as Record<string, unknown>;
-    const pageProperties = legacy?.pageProperties as Record<string, { system?: Record<string, { value?: unknown }> }> | undefined;
+    type LegacyValues = Record<string, { value?: unknown }>;
+    const pageProperties = legacy?.pageProperties as Record<string, { system?: LegacyValues; custom?: LegacyValues }> | undefined;
     if (pageProperties && typeof pageProperties === "object")
-      for (const [id, props] of Object.entries(pageProperties).slice(0, AFFINE_LIMITS.docs)) {
+      for (const [id, props] of Object.entries(pageProperties).slice(0, AFFINE_LIMITS.metas)) {
         const out = record();
         for (const [key, info] of Object.entries(props?.system || {})) if (info?.value != null && !UNSAFE_KEYS.has(key)) out[key] = String(info.value);
+        for (const [key, info] of Object.entries(props?.custom || {})) if (info?.value != null && !UNSAFE_KEYS.has(key)) out[`custom:${key}`] = String(info.value);
         docProps.set(id, out);
       }
+    const legacyDefs = (legacy?.schema as { pageProperties?: { custom?: Record<string, { name?: unknown; type?: unknown }> } } | undefined)?.pageProperties?.custom;
+    if (legacyDefs && typeof legacyDefs === "object")
+      for (const [id, def] of Object.entries(legacyDefs).slice(0, 500))
+        if (def && typeof def.type === "string") properties.set(id, { name: str(def.name, 200), type: str(def.type, 40) });
     for (const row of table("docProperties"))
       if (typeof row.id === "string") {
         const out = docProps.get(row.id) || record();
         for (const [key, value] of Object.entries(row)) if (value != null) out[key] = value;
         docProps.set(row.id, out);
       }
+    for (const row of table("docCustomPropertyInfo").slice(0, 500))
+      if (typeof row.id === "string" && typeof row.type === "string") {
+        if (row.isDeleted === true) properties.delete(row.id);
+        else properties.set(row.id, { name: str(row.name, 200) || properties.get(row.id)?.name || "", type: str(row.type, 40) });
+      }
     const favorites = new Set<string>();
-    for (const key of sqlite.docs.keys())
+    for (const key of keys)
       if (/^userdata\$[^$]+\$favorite$/.test(key)) {
-        const doc = open(key);
+        const doc = keep(open(key));
         for (const row of doc ? tableRows(doc) : []) if (typeof row.key === "string" && row.key.startsWith("doc:")) favorites.add(row.key.slice(4));
       }
     const setting = fromY(root.getMap("setting")) as Record<string, unknown>;
@@ -562,6 +699,8 @@ export function readAffineFile(input: Buffer | string, fallbackName: string): AW
       folders,
       collections: collections(setting.collections),
       docProps,
+      properties,
+      icons: explorerIcons(table("explorerIcon")),
       favorites,
       blobs: sqlite.blobs,
       warnings,
@@ -570,7 +709,7 @@ export function readAffineFile(input: Buffer | string, fallbackName: string): AW
     done = true;
     return workspace;
   } finally {
-    for (const doc of opened.values()) doc.destroy();
+    for (const doc of opened) doc.destroy();
     if (!done) sqlite.close();
   }
 }
@@ -581,23 +720,30 @@ export function readSnapshotZip(entries: Map<string, Buffer>, fallbackName: stri
   const warnings: string[] = [];
   const docs: ADoc[] = [];
   let tags = new Map<string, { name: string; color?: string }>();
+  let info = false;
   const blobs = new Map<string, ABlob>();
+  const maxFiles = maxImportFiles();
+  let skippedBlobs = 0;
   for (const [name, data] of entries) {
     const base = posix.basename(name);
     if (name.includes("__MACOSX") || base.startsWith(".")) continue;
-    if (/(^|\/)assets\/[^/]+$/.test(name)) {
-      if (blobs.size < AFFINE_LIMITS.blobs) blobs.set(base.replace(/\.[^.]*$/, ""), memoryBlob(data, mimeOf(base)));
+    // "assets/<blob id>.<ext>"; a blob id with "/" is a sub-folder.
+    const asset = /(?:^|\/)assets\/(.+)$/.exec(name);
+    if (asset) {
+      if (blobs.size >= maxFiles) skippedBlobs++;
+      else blobs.set(asset[1].replace(/\.[^./]*$/, "").slice(0, 200), memoryBlob(data, mimeOf(base)));
       continue;
     }
     if (base === "info.json") {
       try {
         tags = tagOptions((fromSnapshotJson(JSON.parse(data.toString("utf8"))) as { properties?: unknown })?.properties);
+        info = true;
       } catch {
         /* without tag names */
       }
       continue;
     }
-    if (!/\.snapshot\.json$/i.test(base) || docs.length >= AFFINE_LIMITS.docs) continue;
+    if (!/\.snapshot\.json$/i.test(base) || docs.length >= AFFINE_LIMITS.metas) continue;
     if (data.length > AFFINE_LIMITS.snapshotBytes) {
       warnings.push("Ein Dokument ist zu groß und wurde übersprungen.");
       continue;
@@ -611,9 +757,17 @@ export function readSnapshotZip(entries: Map<string, Buffer>, fallbackName: stri
     }
     if (!snapshot || snapshot.type !== "page" || !snapshot.meta || typeof snapshot.meta.id !== "string") continue;
     const [meta] = docMetas([snapshot.meta]);
-    const root = readSnapshotBlocks(snapshot.blocks);
-    docs.push({ ...meta, root, unreadable: !root });
+    // The blocks are read again when the document is converted.
+    docs.push({ ...meta, load: () => readSnapshotBlocks((JSON.parse(data.toString("utf8")) as { blocks?: unknown }).blocks) });
   }
+  if (skippedBlobs) warnings.push(tooManyFiles(skippedBlobs));
+  // What only the workspace file carries (#82): since 2025 AFFiNE's
+  // snapshots have no tags either.
+  warnings.push(
+    info
+      ? "Ordner, Sammlungen, Journale, Eigenschaften und Symbole von Dokumenten enthält nur die Arbeitsbereichsdatei (.affine)."
+      : "Tags, Ordner, Sammlungen, Journale, Eigenschaften und Symbole von Dokumenten enthält nur die Arbeitsbereichsdatei (.affine); AFFiNE schreibt sie nicht in Snapshots.",
+  );
   return {
     format: "snapshot",
     name: fallbackName,
@@ -622,6 +776,8 @@ export function readSnapshotZip(entries: Map<string, Buffer>, fallbackName: stri
     folders: [],
     collections: [],
     docProps: new Map(),
+    properties: new Map(),
+    icons: new Map(),
     favorites: new Set(),
     blobs,
     warnings,

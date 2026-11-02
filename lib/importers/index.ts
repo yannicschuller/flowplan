@@ -18,7 +18,7 @@ import { parseEnex } from "./evernote";
 import { isGoogleTakeout, parseGoogleDocs, resolveDocx } from "./google-docs";
 import { isObsidianVault, parseObsidian } from "./obsidian";
 import { previewImport, requireSpace, writeImport, type ImportMode, type ImportPreview, type ImportResult } from "./write";
-import type { ImportSource, ImportTree } from "./types";
+import { maxImportEntries, type ImportSource, type ImportTree } from "./types";
 import type { Identity } from "../types";
 
 export const IMPORT_SOURCES: ImportSource[] = ["affine", "confluence", "evernote", "gdocs", "obsidian"];
@@ -27,7 +27,7 @@ const isZip = (bytes: Buffer) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 
 // The entries of a ZIP; a single folder around everything is dropped.
 export async function zipEntries(bytes: Buffer, budget = { left: 512 * 1024 * 1024 }) {
-  let entries = await readZip(bytes, { foreign: true, maxEntries: 12000, budget });
+  let entries = await readZip(bytes, { foreign: true, maxEntries: maxImportEntries(), budget });
   const names = [...entries.keys()];
   const tops = new Set(names.map((n) => n.split("/")[0]));
   if (tops.size === 1 && names.every((n) => n.includes("/"))) {

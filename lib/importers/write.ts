@@ -24,7 +24,8 @@ import { applyPortableMeta, canManageTaxonomy, frontmatterMeta, memberByName } f
 import { ct } from "../content-locale";
 import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
-import { MAX_IMPORT_PAGES, MAX_IMPORT_ROWS, importFileData, importFileSize, type ImportPage, type ImportTree } from "./types";
+import { MAX_IMPORT_ROWS, importFileData, importFileSize, maxImportPages, tooManyPages, tooManyRecords, type ImportPage, type ImportTree } from "./types";
+import { pageIconSchema } from "../page-appearance";
 import type { Field, Identity, Page, Space } from "../types";
 
 export type ImportMode = "pages" | "database";
@@ -42,8 +43,13 @@ export type ImportPreview = {
   databases?: number;
   journalDays?: number;
   collections?: number;
+  // Page properties (by name) and page icons the import sets.
+  properties?: number;
+  icons?: number;
   // The title of the page everything lands below, when there is one.
   wrapper?: string;
+  // More pages (records) than one import may bring: the import is refused.
+  tooMany?: boolean;
 };
 export type ImportResult = ImportPreview & { rootIds: string[]; rows: number; databaseId?: string };
 const special = (page: ImportPage) => page.kind === "whiteboard" || page.kind === "database";
@@ -105,8 +111,11 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     warnings.push("Whiteboards und Datenbanken werden nur beim Import als Seiten übernommen.");
   const notes = tree.pages.filter((p) => !p.folder && !special(p)).length;
   const count = mode === "database" ? notes : tree.pages.length;
-  const limit = mode === "database" ? MAX_IMPORT_ROWS : MAX_IMPORT_PAGES;
-  if (count > limit) warnings.push(mode === "database" ? `Maximal ${MAX_IMPORT_ROWS} Einträge je Import.` : `Maximal ${MAX_IMPORT_PAGES} Seiten je Import.`);
+  const limit = maxImportPages();
+  const tooMany = !!tree.tooMany || count > limit;
+  if (tooMany) warnings.unshift(mode === "database" ? tooManyRecords(count, limit) : tooManyPages(count, limit));
+  const properties = new Set(tree.pages.flatMap((p) => Object.keys(p.properties || {}))).size;
+  const icons = tree.pages.filter((p) => importIcon(p.icon)).length;
   try {
     enforceQuota(workspaceId, bytes);
     enforceUserStorage(user, bytes);
@@ -129,6 +138,9 @@ export function previewImport(user: Identity, workspaceId: string, spaceId: stri
     ...(databases ? { databases } : {}),
     ...(journalDays && mode === "pages" ? { journalDays } : {}),
     ...(tree.collections ? { collections: tree.collections } : {}),
+    ...(properties && mode === "pages" ? { properties } : {}),
+    ...(icons && mode === "pages" ? { icons } : {}),
+    ...(tooMany ? { tooMany } : {}),
     ...(tree.wrapper && mode === "pages" && tree.pages.some((p) => p.key === tree.wrapper)
       ? { wrapper: tree.pages.find((p) => p.key === tree.wrapper)!.title }
       : {}),
@@ -141,8 +153,8 @@ const day = (iso?: string) => (iso ? iso.slice(0, 10) : null);
 export function writeImport(user: Identity, workspaceId: string, spaceId: string, tree: ImportTree, mode: ImportMode = "pages"): ImportResult {
   const preview = previewImport(user, workspaceId, spaceId, tree, mode);
   if (!tree.pages.length) throw new HttpError(400, "In der Datei wurden keine Seiten gefunden.");
-  if (mode === "database" ? preview.pages > MAX_IMPORT_ROWS : tree.pages.length > MAX_IMPORT_PAGES)
-    throw new HttpError(413, mode === "database" ? `Maximal ${MAX_IMPORT_ROWS} Einträge je Import.` : `Maximal ${MAX_IMPORT_PAGES} Seiten je Import.`);
+  if (preview.tooMany)
+    throw new HttpError(413, mode === "database" ? tooManyRecords(preview.pages) : tooManyPages(tree.pages.length));
   enforceQuota(workspaceId, preview.bytes);
   enforceUserStorage(user, preview.bytes);
   const used = referencedFiles(tree, mode);
@@ -205,6 +217,11 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
         );
       }
       for (const day of days.values()) if (day.existing) existingDays.add(day.id);
+      // Icons of documents, folders and collections (journal days keep theirs).
+      for (const { page } of ordered) {
+        const icon = importIcon(page.icon);
+        if (icon && !page.journalDate) run("UPDATE pages SET icon=? WHERE id=?", icon, pageIds.get(page.key)!);
+      }
     }
     // Files: stored once, at the page that uses them first.
     const fileUrls = new Map<string, { url: string; name: string; mime: string }>();
@@ -244,6 +261,10 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
             if (!file) return "";
             return isImage(file.mime) ? `<img src="${esc(file.url)}" alt="${esc(file.name)}">` : `<a href="${esc(file.url)}">${esc(file.name)}</a>`;
           })
+          // Attachments become the block an upload in the editor creates (#82).
+          .replace(/<div data-import-file="fp-import:\/\/file\/([^"]*)" data-title="([^"]*)"><\/div>/g, (_, key: string, title: string) =>
+            attachmentHtml(fileUrls.get(decodeKey(key)), title),
+          )
           .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/page\/[^"]*"[^>]*>/g, "")
           .replace(/(href|src)="fp-import:\/\/(file|page)\/([^"]*)"/g, (_, name: string, kind: string, key: string) => {
             const target = kind === "file" ? fileUrls.get(decodeKey(key))?.url : pageUrl(decodeKey(key));
@@ -374,6 +395,28 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       result.warnings.push(`Ein Journaltag konnte nicht ergänzt werden: ${error.message}`);
     }
   return result;
+}
+
+// An attachment of an import as the editor inserts an upload
+// (components/editor.tsx upload): a PDF with its preview, audio and video
+// with a player, anything else as a link. The title arrives escaped.
+export function attachmentHtml(file: { url: string; mime: string } | undefined, title: string) {
+  if (!file) return `<p>${title}</p>`;
+  const url = esc(file.url);
+  if (file.mime === "application/pdf") return `<div data-pdf="${url}" data-title="${title}"><a href="${url}">${title}</a></div>`;
+  if (/^audio\//.test(file.mime)) return `<audio src="${url}" controls></audio>`;
+  if (/^video\//.test(file.mime)) return `<video src="${url}" controls></video>`;
+  return `<p><a href="${url}">${title}</a></p>`;
+}
+
+// A page icon from another tool: one emoji (a sequence such as a flag or a
+// family counts as one), never a link or a file.
+const EMOJI = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)/u;
+export function importIcon(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const icon = value.trim();
+  if (!icon || icon.length > 32 || /\s/.test(icon) || !EMOJI.test(icon)) return null;
+  return pageIconSchema.safeParse(icon).success ? icon : null;
 }
 
 // The tags (with the source's colours) and frontmatter properties of an

@@ -23,6 +23,11 @@ type Preview = {
   databases?: number;
   journalDays?: number;
   collections?: number;
+  // Page properties (by name) and page icons the import sets.
+  properties?: number;
+  icons?: number;
+  // More pages than one import may bring: importing is refused.
+  tooMany?: boolean;
   // The page everything lands below (an AFFiNE workspace with structure).
   wrapper?: string;
   // The kept upload, for the import.
@@ -230,6 +235,8 @@ export function ImportSources({
             {mode === "pages" && !!preview.databases && <li>{t(`${preview.databases} Datenbanken`, `${preview.databases} databases`)}</li>}
             {!!preview.collections && <li>{t(`${preview.collections} Sammlungen als Seiten`, `${preview.collections} collections as pages`)}</li>}
             {!!preview.journalDays && <li>{t(`${preview.journalDays} Tage ins Journal`, `${preview.journalDays} days into the journal`)}</li>}
+            {mode === "pages" && !!preview.properties && <li>{t(`${preview.properties} Eigenschaften`, `${preview.properties} properties`)}</li>}
+            {mode === "pages" && !!preview.icons && <li>{t(`${preview.icons} Seitensymbole`, `${preview.icons} page icons`)}</li>}
           </ul>
           {preview.warnings.length > 0 && (
             <ul className="import-sources-warnings">
@@ -250,7 +257,7 @@ export function ImportSources({
             >
               {t("Abbrechen", "Cancel")}
             </button>
-            <button type="button" className="button primary" onClick={() => void start()} disabled={!canWrite || (!preview.pages && !preview.folders)}>
+            <button type="button" className="button primary" onClick={() => void start()} disabled={!canWrite || preview.tooMany || (!preview.pages && !preview.folders)}>
               {t("Importieren", "Import")}
             </button>
           </div>

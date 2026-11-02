@@ -2,7 +2,7 @@
 // tags, links between documents, a collection with rules, a database,
 // images and attachments, an edgeless canvas, journal days, a document in
 // the trash – and some hostile text.
-import { boxed, list, note, page, para, PDF, PNG, raw, text, uid, type BlockSpec, type Workspace } from "./affine-fixture";
+import { boxed, list, MP3, MP4, note, page, para, PDF, PNG, raw, text, uid, type BlockSpec, type Workspace } from "./affine-fixture";
 
 export const IDS = { plan: "docPlan01", notes: "docNotes02", sketch: "docSketch03", canvas: "docCanvas04", day1: "docDay05", day2: "docDay06", trash: "docTrash07" };
 
@@ -14,8 +14,23 @@ export function sampleWorkspace(): Workspace {
     props: {
       title: text("Aufgaben"),
       views: [
-        { id: "v1", name: "Alle", mode: "table", columns: [], filter: { type: "group", op: "and", conditions: [] } },
-        { id: "v2", name: "Board", mode: "kanban", groupBy: { type: "groupBy", columnId: "cStatus", name: "select" } },
+        // The view's order differs from the order of creation (#82): Status
+        // first, the title second, hours hidden; Labels and the rest follow
+        // in the database's order.
+        {
+          id: "v1",
+          name: "Alle",
+          mode: "table",
+          columns: [
+            { id: "cStatus", width: 240 },
+            { id: "cTitle", width: 320 },
+            { id: "cHours", width: 100, hide: true },
+            { id: "cNote", width: 5000 },
+            { id: "cGone", width: 180 },
+          ],
+          filter: { type: "group", op: "and", conditions: [] },
+        },
+        { id: "v2", name: "Board", mode: "kanban", groupBy: { type: "groupBy", columnId: "cStatus", name: "select" }, columns: [{ id: "cDue", hide: false }, { id: "cLabels", hide: true }] },
       ],
       columns: [
         { id: "cTitle", type: "title", name: "Aufgabe", data: {} },
@@ -91,6 +106,10 @@ export function sampleWorkspace(): Workspace {
       { id: uid(), flavour: "affine:image", props: { sourceId: "blobPng", caption: "Ein Bild", width: 1, height: 1 } },
       { id: uid(), flavour: "affine:attachment", props: { sourceId: "blobPdf", name: "Bericht.pdf", type: "application/pdf", size: PDF.length } },
       { id: uid(), flavour: "affine:attachment", props: { sourceId: "blobMissing", name: "Fehlt.pdf", type: "application/pdf" } },
+      // Audio, video and other files as an upload in the editor makes them (#82).
+      { id: uid(), flavour: "affine:attachment", props: { sourceId: "blobMp3", name: "Ton.mp3", type: "audio/mpeg", size: MP3.length } },
+      { id: uid(), flavour: "affine:attachment", props: { sourceId: "blobMp4", name: "Film.mp4", type: "video/mp4", size: MP4.length } },
+      { id: uid(), flavour: "affine:attachment", props: { sourceId: "blobZip", name: "Daten.zip", type: "application/zip", size: 4 } },
       { id: uid(), flavour: "affine:bookmark", props: { url: "https://example.org/artikel", title: "Artikel" } },
       { id: uid(), flavour: "affine:bookmark", props: { url: "javascript:alert(2)", title: "Böse" } },
       { id: uid(), flavour: "affine:embed-linked-doc", props: { pageId: notes } },
@@ -169,14 +188,35 @@ export function sampleWorkspace(): Workspace {
       { id: "coll4", name: "Alt", filterList: [{ left: { name: "Tags" }, funcName: "is not empty", args: [] }], allowList: [] },
     ],
     docProperties: {
+      // Properties (#82): values as AFFiNE stores them, as text.
+      [plan]: { "custom:pPhase": "Planung", "custom:pBudget": "1200.5", "custom:pOk": "true", "custom:pDue": "2026-12-01", "custom:pGone": "weg", "custom:pBad": "kein Datum" },
       [canvas]: { primaryMode: "edgeless" },
       [day1]: { journal: "2026-10-01" },
       [day2]: { journal: "2026-10-02" },
+    },
+    propertyInfo: {
+      pPhase: { name: "Phase", type: "text", index: "a1" },
+      pBudget: { name: "Budget", type: "number", index: "a2" },
+      pOk: { name: "Freigegeben", type: "checkbox", index: "a3" },
+      pDue: { name: "Abgabe", type: "date", index: "a4" },
+      pGone: { name: "Gelöscht", type: "text", isDeleted: true },
+      pBad: { name: "Termin", type: "date" },
+    },
+    // Icons of the navigation (#82); AFFiNE's own symbols are not emojis.
+    icons: {
+      [`doc:${plan}`]: { type: "emoji", unicode: "🚀" },
+      "folder:F1": { type: "emoji", unicode: "📁" },
+      "collection:coll1": { type: "emoji", unicode: "⭐" },
+      [`doc:${notes}`]: { type: "affine-icon", name: "Book", color: "blue" },
+      [`doc:${sketch}`]: { type: "emoji", unicode: "javascript:alert(1)" },
     },
     favorites: [plan],
     blobs: [
       { key: "blobPng", data: PNG, mime: "image/png" },
       { key: "blobPdf", data: PDF, mime: "application/pdf" },
+      { key: "blobMp3", data: MP3, mime: "audio/mpeg" },
+      { key: "blobMp4", data: MP4, mime: "video/mp4" },
+      { key: "blobZip", data: Buffer.from("PK\u0005\u0006", "latin1"), mime: "application/zip" },
     ],
   };
 }

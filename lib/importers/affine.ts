@@ -12,23 +12,31 @@
 //   images, attachments, bookmarks, bold/italic/underline/strike/code,
 //   links, text and highlight colours). Links to other documents (inline
 //   references, linked-doc and synced-doc cards, AFFiNE app links) point to
-//   the imported pages. Tags become the page's tags.
+//   the imported pages. Tags become the page's tags, the document's
+//   properties its page properties (#70), an emoji as icon of a document,
+//   folder or collection the page's icon. Attachments become the block an
+//   upload in the editor creates: PDFs with preview, audio and video with a
+//   player (#82).
 // - Databases (affine:database) become a database page below the document,
-//   shown in it as an embedded (linked) database; rows keep their content.
+//   shown in it as an embedded (linked) database; rows keep their content,
+//   columns the order, width and visibility of AFFiNE's views (#82).
 // - The edgeless canvas: when it holds more than the document's note (or
 //   the document opens as edgeless), a whiteboard "<Name> – Whiteboard"
 //   next to it, linked both ways (link in the document, card on the board).
 // - Collections: a page "Sammlung: <Name>" listing its documents as of the
 //   import (fixed ones and those the rules match) with the rules as text.
 // - Journals: into the matching day of the workspace's journal.
-// All text is escaped; links keep http, https and mailto only.
+// All text is escaped; links keep http, https and mailto only. Documents
+// are read one at a time (ADoc.load); a workspace with more pages than one
+// import may bring is only counted (#82).
 import { randomUUID } from "node:crypto";
 import { ct } from "../content-locale";
 import { calloutIcon } from "../callout-types";
 import { esc, fileRef, mimeOf, pageRef } from "./html";
-import { AText, type ABlock, type ADoc, type AFilter, type AWorkspace, type DeltaOp } from "./affine-read";
+import { AText, propertyValue, type ABlock, type ADoc, type AFilter, type AWorkspace, type DeltaOp } from "./affine-read";
 import { affineBoard, edgelessExtras, noteDisplay } from "./affine-board";
-import { warningList, MAX_IMPORT_ROWS, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { warningList, MAX_IMPORT_DEPTH, MAX_IMPORT_ROWS, maxImportPages, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import type { FrontmatterValue } from "../frontmatter";
 import type { Field, View } from "../types";
 
 const ROOT = "affine:root";
@@ -230,9 +238,11 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
       return `<img src="${src}" alt="${esc(caption)}">${caption ? `<p><em>${esc(caption)}</em></p>` : ""}`;
     }
     case "affine:attachment": {
+      // Written as the block an upload creates (lib/importers/write.ts
+      // attachmentHtml): PDF preview, audio and video player, else a link.
       const name = typeof p.name === "string" && p.name.trim() ? p.name.slice(0, 200) : ct("Anhang", "Attachment");
       const href = ctx.blob(p.sourceId, name, typeof p.type === "string" ? p.type : undefined);
-      return href ? `<p><a href="${href}">${esc(name)}</a></p>` : `<p>${esc(name)}</p>`;
+      return href ? `<div data-import-file="${href}" data-title="${esc(name)}"></div>` : `<p>${esc(name)}</p>`;
     }
     case "affine:embed-linked-doc":
     case "affine:embed-synced-doc": {
@@ -288,10 +298,30 @@ function renderTable(block: ABlock, ctx: Ctx) {
 /* ---------- databases ---------- */
 
 type Column = { id: string; type: string; name: string; data: Record<string, unknown> };
+type ViewColumn = { id: string; width?: number; hide?: boolean };
+type RawView = { name?: unknown; mode?: unknown; groupBy?: { columnId?: unknown }; columns?: unknown };
+const viewColumns = (view: RawView | undefined): ViewColumn[] =>
+  (Array.isArray(view?.columns) ? view.columns : [])
+    .filter((c): c is ViewColumn => !!c && typeof c === "object" && typeof (c as { id?: unknown }).id === "string")
+    .slice(0, 200);
+// The columns as a view of AFFiNE shows them: those the view lists in its
+// order, then the others in the order of the database
+// (data-view/src/view-presets/table/table-view-manager.ts propertiesRaw$).
+export function columnOrder(ids: string[], view: RawView | undefined) {
+  const known = new Set(ids);
+  const ordered = viewColumns(view)
+    .map((c) => c.id)
+    .filter((id) => known.delete(id));
+  return [...ordered, ...ids.filter((id) => known.has(id))];
+}
 function convertDatabase(block: ABlock, ctx: Ctx) {
-  const columns: Column[] = (Array.isArray(block.props.columns) ? block.props.columns : [])
+  const rawViews = (Array.isArray(block.props.views) ? block.props.views : []).slice(0, 10) as RawView[];
+  const declared: Column[] = (Array.isArray(block.props.columns) ? block.props.columns : [])
     .filter((c): c is Column => !!c && typeof c === "object" && typeof c.id === "string" && typeof c.type === "string")
     .slice(0, 80);
+  // Fields in the order of the first view (#82), not of creation.
+  const byColumn = new Map(declared.map((c) => [c.id, c]));
+  const columns = columnOrder(declared.map((c) => c.id), rawViews[0]).map((id) => byColumn.get(id)!);
   const cells = (block.props.cells as Record<string, Record<string, { value?: unknown }>>) || {};
   const options = (column: Column) =>
     new Map(
@@ -302,8 +332,11 @@ function convertDatabase(block: ABlock, ctx: Ctx) {
   const fields: Field[] = [];
   const convert = new Map<string, (value: unknown) => unknown>();
   const fieldOf = new Map<string, string>();
+  // Every column that became a field (also the title and computed ones).
+  const fieldIdOf = new Map<string, string>();
   const titleColumn = columns.find((c) => c.type === "title");
   fields.push({ id: "title", name: (titleColumn?.name || ct("Titel", "Title")).slice(0, 200), type: "text" });
+  if (titleColumn) fieldIdOf.set(titleColumn.id, "title");
   let n = 0;
   for (const column of columns) {
     if (column.type === "title") continue;
@@ -357,6 +390,7 @@ function convertDatabase(block: ABlock, ctx: Ctx) {
         });
     }
     if (convert.has(column.id)) fieldOf.set(column.id, fid);
+    if (fields.some((f) => f.id === fid)) fieldIdOf.set(column.id, fid);
   }
   const rowBlocks = block.children.slice(0, MAX_IMPORT_ROWS);
   if (block.children.length > MAX_IMPORT_ROWS) ctx.warn(`Maximal ${MAX_IMPORT_ROWS} Einträge je Tabelle.`);
@@ -373,14 +407,34 @@ function convertDatabase(block: ABlock, ctx: Ctx) {
     return { cells: out, html: renderBlocks(row.children, ctx), ...(created ? { created } : {}) };
   });
   // Table views stay tables; kanban views become boards by their column.
+  // Each keeps its column order, hidden columns and (tables) widths.
   const views: View[] = [];
-  for (const raw of (Array.isArray(block.props.views) ? block.props.views : []).slice(0, 10)) {
-    const view = raw as { name?: unknown; mode?: unknown; groupBy?: { columnId?: unknown } };
+  for (const view of rawViews) {
     const name = (typeof view?.name === "string" && view.name.trim() ? view.name : ct("Tabelle", "Table")).slice(0, 100);
     const group = typeof view?.groupBy?.columnId === "string" ? fieldOf.get(view.groupBy.columnId) : undefined;
     const groupField = fields.find((f) => f.id === group && (f.type === "select" || f.type === "checkbox"));
-    if (view?.mode === "kanban" && groupField) views.push({ id: randomUUID(), name, type: "board", groupBy: groupField.id, filters: [], sorts: [] });
-    else views.push({ id: randomUUID(), name, type: "table", filters: [], sorts: [] });
+    const board = view?.mode === "kanban" && !!groupField;
+    const layout = viewColumns(view);
+    const fieldOrder = columnOrder(declared.map((c) => c.id), view)
+      .map((id) => fieldIdOf.get(id))
+      .filter((id): id is string => !!id);
+    const hiddenFields = layout.filter((c) => c.hide === true && fieldIdOf.has(c.id) && fieldIdOf.get(c.id) !== "title").map((c) => fieldIdOf.get(c.id)!);
+    const columnWidths = Object.fromEntries(
+      layout
+        .filter((c) => fieldIdOf.has(c.id) && typeof c.width === "number" && Number.isFinite(c.width))
+        .map((c) => [fieldIdOf.get(c.id)!, Math.max(80, Math.min(800, Math.round(c.width!)))]),
+    );
+    views.push({
+      id: randomUUID(),
+      name,
+      type: board ? "board" : "table",
+      ...(board ? { groupBy: groupField!.id } : {}),
+      filters: [],
+      sorts: [],
+      ...(fieldOrder.length > 1 ? { fieldOrder } : {}),
+      ...(hiddenFields.length ? { hiddenFields } : {}),
+      ...(!board && Object.keys(columnWidths).length ? { columnWidths } : {}),
+    });
   }
   if (!views.length) views.push({ id: randomUUID(), name: ct("Tabelle", "Table"), type: "table", filters: [], sorts: [] });
   return { fields, views, rows, title: plainOf(block.props.title, ctx).trim().slice(0, 200) || dbTitle() };
@@ -488,20 +542,70 @@ const sniff = (data: Buffer): string | null => {
 };
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf" };
 
+// The properties of a document (AFFiNE's custom doc properties) by name.
+function docProperties(ws: AWorkspace, docId: string): Record<string, FrontmatterValue> | undefined {
+  const values = ws.docProps.get(docId);
+  if (!values) return undefined;
+  const out: Record<string, FrontmatterValue> = {};
+  for (const [id, def] of ws.properties) {
+    const value = propertyValue(def.type, values[`custom:${id}`]);
+    if (value === undefined) continue;
+    const fallback: Record<string, () => string> = {
+      text: () => ct("Text", "Text"),
+      number: () => ct("Zahl", "Number"),
+      checkbox: () => ct("Kontrollkästchen", "Checkbox"),
+      date: () => ct("Datum", "Date"),
+      progress: () => ct("Fortschritt", "Progress"),
+    };
+    const name = (def.name.trim() || fallback[def.type]?.() || def.type).slice(0, 100);
+    if (!(name in out)) out[name] = value;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
   const warnings = warningList();
-  for (const w of ws.warnings) warnings.add(w);
   const live = ws.docs.filter((d) => !d.trash);
   const trashed = ws.docs.length - live.length;
   if (trashed) warnings.add(`${trashed} Dokumente im Papierkorb werden nicht übernommen.`);
-  if (ws.format === "snapshot") warnings.add("Ordner, Sammlungen und Journale enthält nur die Arbeitsbereichsdatei (.affine).");
+  // More documents than one import may bring (#82): counted, not converted.
+  if (live.length > maxImportPages()) {
+    for (const w of ws.warnings) warnings.add(w);
+    return {
+      source: "affine",
+      title: (ws.name || fallbackTitle).slice(0, 200) || "AFFiNE",
+      pages: live.map((d) => ({ key: docKey(d.id), parent: null, title: d.title.trim().slice(0, 200) || ct("Ohne Titel", "Untitled"), html: "" })),
+      files: new Map(),
+      warnings: warnings.list(),
+      tooMany: true,
+      ...(ws.close ? { close: ws.close } : {}),
+    };
+  }
   const byId = new Map(live.map((d) => [d.id, d]));
   const untitled = ct("Ohne Titel", "Untitled");
+  // A document without a title in the list shows the one in its text; that
+  // document is read once for it.
+  const ownTitles = new Map<string, string>();
   const titleOf = (id: string) => {
     const doc = byId.get(id) ?? ws.docs.find((d) => d.id === id);
     if (!doc) return untitled;
-    const own = doc.title.trim() || (doc.root ? plainOf(doc.root.props.title, { title: () => "" }).trim() : "");
+    let own = doc.title.trim();
+    if (!own) {
+      if (!ownTitles.has(id)) {
+        const root = doc.load();
+        ownTitles.set(id, root ? plainOf(root.props.title, { title: () => "" }).trim() : "");
+      }
+      own = ownTitles.get(id)!;
+    }
     return own.slice(0, 200) || untitled;
+  };
+  // Emoji icons of documents, folders and collections; AFFiNE's own symbols
+  // have no counterpart.
+  let affineIcons = 0;
+  const iconOf = (key: string) => {
+    const icon = ws.icons.get(key);
+    if (icon === "affine-icon") affineIcons++;
+    return icon && icon !== "affine-icon" ? { icon } : {};
   };
   const journalOf = (id: string) => validDate(ws.docProps.get(id)?.journal);
   const docLink = (id: string) => (byId.has(id) ? pageRef(docKey(id)) : null);
@@ -533,13 +637,21 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
   for (const node of ws.folders) byParent.set(node.parentId, [...(byParent.get(node.parentId) || []), node]);
   for (const list of byParent.values()) list.sort((a, b) => (a.index < b.index ? -1 : a.index > b.index ? 1 : 0));
   const seenFolders = new Set<string>();
+  // Folders nested deeper than MAX_IMPORT_DEPTH hold their content at the
+  // deepest level.
+  let tooDeep = false;
   const walk = (parentId: string | null, parentKey: string, depth: number) => {
     for (const node of byParent.get(parentId) || []) {
       if (node.type === "folder") {
-        if (seenFolders.has(node.id) || depth > 20 || seenFolders.size > 2000) continue;
+        if (seenFolders.has(node.id) || seenFolders.size > 20000) continue;
         seenFolders.add(node.id);
+        if (depth >= MAX_IMPORT_DEPTH) {
+          tooDeep = true;
+          walk(node.id, parentKey, depth);
+          continue;
+        }
         const key = `folder:${node.id}`;
-        pages.push({ key, parent: parentKey, title: node.data.trim().slice(0, 200) || untitled, html: "", folder: true });
+        pages.push({ key, parent: parentKey, title: node.data.trim().slice(0, 200) || untitled, html: "", folder: true, ...iconOf(`folder:${node.id}`) });
         walk(node.id, key, depth + 1);
         continue;
       }
@@ -557,17 +669,19 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     }
   };
   walk(null, ROOT, 0);
+  if (tooDeep) warnings.add(`Ordner tiefer als ${MAX_IMPORT_DEPTH} Ebenen werden zusammengefasst.`);
 
   // Documents, with their databases and whiteboards.
   let dropped = 0;
   const boardFor = new Set<string>();
   for (const doc of live) {
-    if (doc.root && (edgelessExtras(doc.root) > 0 || ws.docProps.get(doc.id)?.primaryMode === "edgeless")) boardFor.add(doc.id);
-  }
-  for (const doc of live) {
+    // Read now, let go after the document is converted.
+    const docRoot = doc.load();
+    if (docRoot && (edgelessExtras(docRoot) > 0 || ws.docProps.get(doc.id)?.primaryMode === "edgeless")) boardFor.add(doc.id);
     const key = docKey(doc.id);
     const title = titleOf(doc.id);
     const journalDate = journalOf(doc.id);
+    const properties = docProperties(ws, doc.id);
     const parent = journalDate ? null : placeOf.get(key) || ROOT;
     const subpages: ImportPage[] = [];
     const ctx: Ctx = {
@@ -589,12 +703,12 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
       },
     };
     let html = "";
-    if (doc.root) {
-      const notes = doc.root.children.filter((b) => b.flavour === "affine:note" && noteDisplay(b) !== "edgeless");
+    if (docRoot) {
+      const notes = docRoot.children.filter((b) => b.flavour === "affine:note" && noteDisplay(b) !== "edgeless");
       html = notes.map((note) => renderBlocks(note.children, ctx)).join("");
     } else warnings.add("Ein Dokument ohne Inhalt wurde nur mit seinem Titel übernommen.");
-    if (boardFor.has(doc.id) && doc.root) {
-      const board = affineBoard(doc.id, doc.root, {
+    if (boardFor.has(doc.id) && docRoot) {
+      const board = affineBoard(doc.id, docRoot, {
         blobs: ws.blobs,
         pageRef: docLink,
         docTitle: titleOf,
@@ -614,9 +728,12 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
       ...(iso(doc.updated) ? { updated: iso(doc.updated) } : {}),
       tags: [...new Set(doc.tags.map((t) => ws.tags.get(t)?.name).filter((t): t is string => !!t))],
       ...(journalDate ? { journalDate } : {}),
+      ...(properties ? { properties } : {}),
+      ...iconOf(`doc:${doc.id}`),
     });
     pages.push(...subpages);
   }
+  if (affineIcons) warnings.add(`${affineIcons} Symbole aus AFFiNEs Symbolbibliothek werden nicht übernommen (nur Emojis).`);
   if (dropped) warnings.add(`${dropped} Elemente auf Whiteboards konnten nicht übernommen werden.`);
   if (missingFiles) warnings.add(`${missingFiles} Bilder oder Anhänge fehlen in der Datei.`);
 
@@ -641,11 +758,13 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
       if (!resolved) html += `<p><em>${esc(ct("Nicht alle Regeln konnten beim Import ausgewertet werden; aufgeführt sind die fest hinzugefügten Dokumente.", "Not every rule could be evaluated during the import; listed are the documents added by hand."))}</em></p>`;
     }
     html += `<h2>${esc(ct("Dokumente", "Documents"))}</h2>${list.length ? `<ul>${list.join("")}</ul>` : `<p>${esc(ct("Keine Dokumente.", "No documents."))}</p>`}`;
-    pages.push({ key, parent: placeOf.get(key) || ROOT, title: ct(`Sammlung: ${collection.name}`, `Collection: ${collection.name}`).slice(0, 200), html });
+    pages.push({ key, parent: placeOf.get(key) || ROOT, title: ct(`Sammlung: ${collection.name}`, `Collection: ${collection.name}`).slice(0, 200), html, ...iconOf(key) });
   }
   // Folders that list more than the documents they hold.
   for (const page of pages) if (extraLinks.has(page.key)) page.html = `<ul>${extraLinks.get(page.key)!.join("")}</ul>`;
   if (!live.length) warnings.add("Keine Dokumente gefunden.");
+  // The reader's warnings, also those of documents read meanwhile.
+  for (const w of ws.warnings) warnings.add(w);
   // The workspace page only when it carries structure (#77); otherwise its
   // children go straight into the target.
   const wrap = keepWorkspacePage(ws.format, pages);

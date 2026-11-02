@@ -86,8 +86,8 @@ export default function DataSection() {
         <SettingRow
           label={t("Notion, AppFlowy oder Markdown-Export (ZIP)", "Notion, AppFlowy or Markdown export (ZIP)")}
           description={t(
-            "Markdown wird zu Seiten, CSV zu Datenbanken, Excalidraw- und draw.io-Zeichnungen zu Whiteboards, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Maximal 100 MB, 500 Seiten und 5.000 Einträge je Tabelle.",
-            "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. At most 100 MB, 500 pages and 5,000 records per table.",
+            "Markdown wird zu Seiten, CSV zu Datenbanken, Excalidraw- und draw.io-Zeichnungen zu Whiteboards, Ordner zu Unterseiten. Bilder und Dateien, auf die Markdown verweist, werden hochgeladen; Datensatzseiten aus Notion werden den Einträgen zugeordnet. Maximal 100 MB, 10.000 Seiten (vom Betreiber einstellbar) und 5.000 Einträge je Tabelle.",
+            "Markdown becomes pages, CSV databases, Excalidraw and draw.io drawings whiteboards, folders sub-pages. Images and files referenced in Markdown are uploaded; Notion record pages are matched to their records. At most 100 MB, 10,000 pages (adjustable by the operator) and 5,000 records per table.",
           )}
         >
           <Stack>

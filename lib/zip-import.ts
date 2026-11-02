@@ -17,12 +17,12 @@ import { boardState, storeBoardImages } from "./whiteboard-import-server";
 import { writeWhiteboard } from "./whiteboard";
 import { BoardImportError, parseBoardFile, type ImportedBoard } from "./whiteboard-import";
 import type { Field, Identity, Space } from "./types";
+import { maxImportEntries, maxImportPages, tooManyPages } from "./importers/types";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
 // page holds its subpages; files referenced from Markdown become attachments;
 // Excalidraw and draw.io drawings become whiteboards.
-export const MAX_IMPORT_PAGES = 500;
 export const MAX_IMPORT_ROWS = 5000;
 const NOTION_ID = /\s+([0-9a-f]{32})$/i;
 const mimeTypes: Record<string, string> = {
@@ -63,14 +63,14 @@ function nodeKey(path: string) {
 async function entriesOf(bytes: Buffer) {
   // One budget for the outer ZIP and every inner one.
   const budget = { left: 512 * 1024 * 1024 };
-  let entries = await readZip(bytes, { foreign: true, maxEntries: 5000, budget });
+  let entries = await readZip(bytes, { foreign: true, maxEntries: maxImportEntries(), budget });
   const names = [...entries.keys()];
   if (names.length && names.every((n) => /\.zip$/i.test(n))) {
     const merged = new Map<string, Buffer>();
     for (const inner of entries.values())
       for (const [name, data] of await readZip(inner, {
         foreign: true,
-        maxEntries: 5000,
+        maxEntries: maxImportEntries(),
         budget,
       }))
         merged.set(name, data);
@@ -235,8 +235,8 @@ export async function importZip(
       400,
       "Die ZIP-Datei enthält keine Markdown-, CSV-, Excalidraw- oder draw.io-Dateien.",
     );
-  if (nodes.size > MAX_IMPORT_PAGES)
-    throw new HttpError(413, `Maximal ${MAX_IMPORT_PAGES} Seiten je Import.`);
+  // The same page limit as the other importers (#82).
+  if (nodes.size > maxImportPages()) throw new HttpError(413, tooManyPages(nodes.size));
   const text = (path: string) =>
     entries.get(path)!.toString("utf8").replace(/^﻿/, "");
   // Journals of a Flowplan export (#49): days at <journal folder>/2026/10/

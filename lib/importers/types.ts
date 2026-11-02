@@ -40,6 +40,9 @@ export type ImportPage = {
   // journal instead of becoming a page of its own; appended when the day
   // already exists.
   journalDate?: string;
+  // The page's icon: an emoji (AFFiNE's document, folder and collection
+  // icons, #82).
+  icon?: string;
 };
 // A file: in memory, or (large AFFiNE workspaces) read from the source when
 // it is written, so only one is in memory at a time.
@@ -61,10 +64,41 @@ export type ImportTree = {
   wrapper?: string;
   // Releases the source (an open workspace file) after the import.
   close?: () => void;
+  // Set when the source has more pages than one import may bring: the
+  // preview counts them, nothing is converted (AFFiNE, #82).
+  tooMany?: boolean;
 };
 
-export const MAX_IMPORT_PAGES = 500;
 export const MAX_IMPORT_ROWS = 5000;
+
+// Limits of one import (#82), the same for every importer (also the
+// Markdown/Notion ZIP import, lib/zip-import.ts). An instance sets them with
+// FLOWPLAN_IMPORT_MAX_DOCS (pages: documents, folders, databases,
+// whiteboards, collections; records in database mode) and
+// FLOWPLAN_IMPORT_MAX_FILES (images and attachments). Documents are
+// converted one at a time and files read when written, so a high limit
+// costs time, not memory.
+export const IMPORT_DEFAULT_PAGES = 10000;
+export const IMPORT_DEFAULT_FILES = 20000;
+const IMPORT_HARD_MAX = 1_000_000;
+// Folders below folders: deeper ones land at the level above.
+export const MAX_IMPORT_DEPTH = 50;
+function envCount(raw: string | undefined, fallback: number) {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw.trim());
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, IMPORT_HARD_MAX) : fallback;
+}
+export const maxImportPages = (raw = process.env.FLOWPLAN_IMPORT_MAX_DOCS) => envCount(raw, IMPORT_DEFAULT_PAGES);
+export const maxImportFiles = (raw = process.env.FLOWPLAN_IMPORT_MAX_FILES) => envCount(raw, IMPORT_DEFAULT_FILES);
+// Entries of a ZIP export: its documents and files.
+export const maxImportEntries = () => Math.max(12000, maxImportPages() + maxImportFiles());
+// The refusals name the count, the limit and the variable that raises it.
+export const tooManyPages = (count: number, limit = maxImportPages()) =>
+  `Die Datei ergibt ${count} Seiten; erlaubt sind höchstens ${limit} je Import (FLOWPLAN_IMPORT_MAX_DOCS).`;
+export const tooManyRecords = (count: number, limit = maxImportPages()) =>
+  `Die Datei ergibt ${count} Einträge; erlaubt sind höchstens ${limit} je Import (FLOWPLAN_IMPORT_MAX_DOCS).`;
+export const tooManyFiles = (skipped: number, limit = maxImportFiles()) =>
+  `${skipped} Dateien über der Grenze von ${limit} je Import werden nicht übernommen (FLOWPLAN_IMPORT_MAX_FILES).`;
 
 // Collects warnings without repeating the same one a hundred times.
 export function warningList() {

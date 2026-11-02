@@ -201,10 +201,17 @@ test("rights, page limit and quota are checked before anything is written", asyn
   const bytes = readFileSync(join(fixtures, "evernote/Notizbuch.enex"));
   await assert.rejects(importFromSource(viewer, wid, space, { name: "n.enex", bytes }), /Rechte|Schreibrechte|editor|Keine/);
   const pages = Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n);
-  const many = `<en-export>${"<note><title>x</title><content><![CDATA[<en-note><div>x</div></en-note>]]></content></note>".repeat(501)}</en-export>`;
-  const preview = await importFromSource(owner, wid, space, { name: "viele.enex", bytes: Buffer.from(many) }, { dryRun: true });
-  assert.ok(preview.warnings.some((w) => /500/.test(w)));
-  await assert.rejects(importFromSource(owner, wid, space, { name: "viele.enex", bytes: Buffer.from(many) }), /500/);
+  // The page limit is the instance's (FLOWPLAN_IMPORT_MAX_DOCS, #82).
+  const many = `<en-export>${"<note><title>x</title><content><![CDATA[<en-note><div>x</div></en-note>]]></content></note>".repeat(21)}</en-export>`;
+  process.env.FLOWPLAN_IMPORT_MAX_DOCS = "20";
+  try {
+    const preview = await importFromSource(owner, wid, space, { name: "viele.enex", bytes: Buffer.from(many) }, { dryRun: true });
+    assert.ok(preview.warnings.some((w) => /21 Seiten.*höchstens 20 .*FLOWPLAN_IMPORT_MAX_DOCS/.test(w)));
+    assert.equal(preview.tooMany, true);
+    await assert.rejects(importFromSource(owner, wid, space, { name: "viele.enex", bytes: Buffer.from(many) }), /höchstens 20/);
+  } finally {
+    delete process.env.FLOWPLAN_IMPORT_MAX_DOCS;
+  }
   run("UPDATE workspaces SET quota_mb=? WHERE id=?", 0.000001, wid);
   try {
     const limited = await importFromSource(owner, wid, space, { name: "n.enex", bytes }, { dryRun: true });

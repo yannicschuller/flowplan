@@ -2,7 +2,8 @@
 // (see lib/importers/affine-read.ts for the format and where it is
 // verified): Y.Docs with a "blocks" map ("sys:*" / "prop:*" keys, Y.Text
 // with deltas, boxed surface elements), a root document with "meta" and
-// "setting", the ORM tables as "db$folders" / "db$docProperties", packed
+// "setting", the ORM tables as "db$folders" / "db$docProperties" /
+// "db$docCustomPropertyInfo" / "db$explorerIcon", packed
 // into the SQLite workspace file (version 2 or 1) or a snapshot ZIP.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -109,6 +110,12 @@ export type Workspace = {
   collections?: unknown[];
   folders?: { id: string; parentId: string | null; type: string; data: string; index: string }[];
   docProperties?: Record<string, Record<string, unknown>>;
+  // Property definitions (table docCustomPropertyInfo) by id.
+  propertyInfo?: Record<string, Record<string, unknown>>;
+  // Icons (table explorerIcon) by "doc:<id>", "folder:<id>", "collection:<id>".
+  icons?: Record<string, Record<string, unknown>>;
+  // Older workspaces: map "affine:workspace-properties" of the root document.
+  legacyProperties?: Record<string, unknown>;
   favorites?: string[];
   blobs?: { key: string; data: Buffer; mime: string }[];
   // Extra documents by doc_id (for broken data in tests).
@@ -128,6 +135,10 @@ export function rootDoc(ws: Workspace) {
   const collections = new Y.Array<unknown>();
   doc.getMap("setting").set("collections", collections);
   for (const c of ws.collections || []) collections.push([c]);
+  if (ws.legacyProperties) {
+    const legacy = doc.getMap<unknown>("affine:workspace-properties");
+    for (const [key, value] of Object.entries(ws.legacyProperties)) setValue(legacy, key, value);
+  }
   return doc;
 }
 function table(rows: Record<string, Record<string, unknown>>) {
@@ -146,6 +157,10 @@ export function workspaceUpdates(ws: Workspace) {
   if (ws.folders) out.set("db$folders", Y.encodeStateAsUpdate(table(Object.fromEntries(ws.folders.map((f) => [f.id, f])))));
   if (ws.docProperties)
     out.set("db$docProperties", Y.encodeStateAsUpdate(table(Object.fromEntries(Object.entries(ws.docProperties).map(([id, p]) => [id, { id, ...p }])))));
+  if (ws.propertyInfo)
+    out.set("db$docCustomPropertyInfo", Y.encodeStateAsUpdate(table(Object.fromEntries(Object.entries(ws.propertyInfo).map(([id, p]) => [id, { id, ...p }])))));
+  // JSON fields (the icon) are stored as plain values of the row.
+  if (ws.icons) out.set("db$explorerIcon", Y.encodeStateAsUpdate(table(Object.fromEntries(Object.entries(ws.icons).map(([id, icon]) => [id, { id, icon }])))));
   if (ws.favorites)
     out.set("userdata$__local__$favorite", Y.encodeStateAsUpdate(table(Object.fromEntries(ws.favorites.map((id, i) => [`doc:${id}`, { key: `doc:${id}`, index: `a${i}` }])))));
   for (const [id, data] of Object.entries(ws.extra || {})) out.set(id, data);
@@ -220,3 +235,5 @@ export const PNG = Buffer.from(
   "base64",
 );
 export const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
+export const MP3 = Buffer.concat([Buffer.from("ID3\u0003\u0000\u0000\u0000\u0000\u0000\u0000", "latin1"), Buffer.alloc(64, 0)]);
+export const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypmp42", "latin1"), Buffer.alloc(64, 0)]);

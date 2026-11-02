@@ -22,7 +22,10 @@ const { setUserLimits } = await import("../lib/user-limits");
 const { englishMessage } = await import("../lib/i18n-errors");
 const { parseLinkedAttributes } = await import("../lib/linked-views");
 const { whiteboardItems } = await import("../lib/whiteboard");
-const { affineFileV1, affineFileV2, note, page, para, sqlite, text, PNG } = await import("./helpers/affine-fixture");
+const { portableMeta } = await import("../lib/page-properties-server");
+const { affineFileV1, affineFileV2, note, page, para, sqlite, text, PNG, PDF } = await import("./helpers/affine-fixture");
+const { readAffineFile } = await import("../lib/importers/affine-read");
+const { importZip } = await import("../lib/zip-import");
 const { sampleWorkspace, IDS } = await import("./helpers/affine-sample");
 
 function account(name: string) {
@@ -69,8 +72,12 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.equal(preview.databases, 1);
   assert.equal(preview.journalDays, 2);
   assert.equal(preview.collections, 4);
-  assert.equal(preview.files, 2);
+  assert.equal(preview.files, 5);
   assert.equal(preview.tags, 2);
+  // Properties of documents and emoji icons (#82).
+  assert.equal(preview.properties, 4);
+  assert.equal(preview.icons, 3);
+  assert.ok(preview.warnings.some((w) => /1 Symbole aus AFFiNEs Symbolbibliothek/.test(w)));
   // Several top-level items: everything below the workspace page, which is
   // named apart and not counted as a folder (Projekte, Archiv; #77).
   assert.equal(preview.wrapper, "Mein Wissen");
@@ -124,6 +131,45 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.match(planHtml, /<table/);
   assert.match(planHtml, /<img src="\/api\/files\/[0-9a-f-]{36}"/);
   assert.match(planHtml, /<a href="\/api\/files\/[0-9a-f-]{36}"[^>]*>Bericht\.pdf<\/a>/);
+  // Attachments are the blocks an upload in the editor creates (#82): the
+  // PDF with its preview, audio and video with a player, others a link.
+  assert.match(planHtml, /<div data-pdf="\/api\/files\/[0-9a-f-]{36}" data-title="Bericht\.pdf"/);
+  assert.match(planHtml, /<audio src="\/api\/files\/[0-9a-f-]{36}" controls/);
+  assert.match(planHtml, /<video src="\/api\/files\/[0-9a-f-]{36}" controls/);
+  assert.match(planHtml, /<p><a href="\/api\/files\/[0-9a-f-]{36}"[^>]*>Daten\.zip<\/a><\/p>/);
+  assert.match(planHtml, /<p>Fehlt\.pdf<\/p>/, "a missing file stays its name");
+  assert.doesNotMatch(planHtml, /data-import-file|fp-import:/);
+  {
+    // As the editor reads them: media nodes, like an upload.
+    const { htmlState } = await import("../lib/document-server");
+    const state = new Y.Doc();
+    Y.applyUpdate(state, htmlState(planHtml));
+    const kinds = state.getXmlFragment("default").toString();
+    state.destroy();
+    for (const kind of ["pdf", "audio", "video"]) assert.match(kinds, new RegExp(`kind="${kind}"`), kind);
+    const mimes = all<{ name: string; mime: string }>("SELECT name,mime FROM files WHERE page_id=? ORDER BY name", plan.id);
+    assert.deepEqual(
+      mimes.filter((f) => /Bericht|Ton|Film/.test(f.name)).map((f) => f.mime),
+      ["application/pdf", "video/mp4", "audio/mpeg"],
+    );
+  }
+  // Icons: an emoji of a document, folder or collection; never anything else.
+  const iconOf = (pageId: string) => one<{ icon: string }>("SELECT icon FROM pages WHERE id=?", pageId)!.icon;
+  assert.equal(iconOf(plan.id), "🚀");
+  assert.equal(iconOf(projects.id), "📁");
+  assert.equal(iconOf(pageByTitle("Sammlung: Wichtig").id), "⭐");
+  // Otherwise the default icon of a new page.
+  assert.equal(iconOf(notes.id), iconOf(archive.id), "AFFiNE's own symbols have no counterpart");
+  assert.equal(iconOf(sketch.id), iconOf(archive.id), "no links as icons");
+  // Properties as page properties (#70) with their types.
+  const meta = portableMeta(plan.id)!;
+  const props = Object.fromEntries((meta.properties || []).map((p) => [p.name, { type: p.type, value: p.value }]));
+  assert.deepEqual(props.Phase, { type: "text", value: "Planung" });
+  assert.deepEqual(props.Budget, { type: "number", value: 1200.5 });
+  assert.deepEqual(props.Freigegeben, { type: "checkbox", value: true });
+  assert.deepEqual(props.Abgabe, { type: "date", value: "2026-12-01" });
+  assert.equal(props["Gelöscht"], undefined, "deleted properties stay behind");
+  assert.equal(props.Termin, undefined, "a date that is none is left out");
   assert.match(planHtml, /href="https:\/\/example\.org\/artikel"/);
   // Hostile input stays text.
   assert.doesNotMatch(planHtml, /javascript:|<script|<img src=x/);
@@ -152,6 +198,22 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.equal(byName.Fortschritt.format, "percent");
   assert.equal(byName.Bild, undefined, "image columns are left out");
   assert.deepEqual((JSON.parse(views) as { type: string }[]).map((v) => v.type), ["table", "board"]);
+  // The columns in AFFiNE's order, not the order of creation (#82): the
+  // view's, then the others in the database's order; hidden ones and
+  // widths kept (within Flowplan's 80–800 px).
+  const viewList = JSON.parse(views) as { fieldOrder?: string[]; hiddenFields?: string[]; columnWidths?: Record<string, number> }[];
+  const named = (ids: string[] = []) => ids.map((fid) => (JSON.parse(fields) as { id: string; name: string }[]).find((f) => f.id === fid)!.name);
+  assert.deepEqual(named(viewList[0].fieldOrder), ["Status", "Aufgabe", "Stunden", "Notiz", "Labels", "Fällig", "Fertig", "Link", "Fortschritt"]);
+  assert.deepEqual(named(viewList[0].hiddenFields), ["Stunden"]);
+  assert.deepEqual(viewList[0].columnWidths, { [byName.Status.id]: 240, title: 320, [byName.Stunden.id]: 100, [byName.Notiz.id]: 800 });
+  assert.deepEqual(
+    (JSON.parse(fields) as { name: string }[]).map((f) => f.name),
+    ["Aufgabe", "Status", "Stunden", "Notiz", "Labels", "Fällig", "Fertig", "Link", "Fortschritt"],
+    "the title first, the others in the view's order",
+  );
+  assert.deepEqual(named(viewList[1].fieldOrder).slice(0, 2), ["Fällig", "Labels"]);
+  assert.deepEqual(named(viewList[1].hiddenFields), ["Labels"]);
+  assert.equal(viewList[1].columnWidths, undefined);
   const rows = all<{ cells: string; content: string; id: string }>("SELECT id,cells,content FROM rows WHERE page_id=? ORDER BY position", db.id);
   assert.equal(rows.length, 2);
   const first = JSON.parse(rows[0].cells);
@@ -489,4 +551,168 @@ test("large uploads: streamed to disk, the workspace file read in place, files r
   utimesSync(folder, new Date(Date.now() - 7 * 3600e3), new Date(Date.now() - 7 * 3600e3));
   upload.sweepImportUploads();
   assert.ok(!existsSync(old.path));
+});
+
+// A snapshot ZIP as AFFiNE writes it (blocksuite/affine/widgets/linked-doc/
+// src/transformers/zip.ts): "<title>-<id>.snapshot.json" per document,
+// "assets/<blob id>.<ext>" (a blob id with "/" makes a sub-folder), before
+// 2025 an info.json with the workspace's tags.
+function snapshotDoc(id: string, title: string, children: unknown[], tags: string[] = []) {
+  return {
+    type: "page",
+    meta: { id, title, createDate: 1717384163413, tags },
+    blocks: {
+      type: "block",
+      id: `${id}-root`,
+      flavour: "affine:page",
+      version: 2,
+      props: { title: { "$blocksuite:internal:text$": true, delta: [{ insert: title }] } },
+      children: [
+        { type: "block", id: `${id}-surface`, flavour: "affine:surface", version: 5, props: { elements: {} }, children: [] },
+        { type: "block", id: `${id}-note`, flavour: "affine:note", version: 1, props: { xywh: "[0,0,800,95]", displayMode: "both" }, children },
+      ],
+    },
+  };
+}
+
+test("snapshot ZIP: attachments as blocks, nested assets, tag colours; what only the workspace file has is named (#82)", async () => {
+  const children = [
+    { type: "block", id: "img", flavour: "affine:image", version: 1, props: { sourceId: "FwBs2WApEGkiFmu1XR4fHZ/7fOlSsSBdYEyGs2lDeLk=", caption: "Bild" }, children: [] },
+    { type: "block", id: "att", flavour: "affine:attachment", version: 1, props: { sourceId: "pdf-1", name: "Vertrag.pdf", type: "application/pdf", size: PDF.length, embed: false }, children: [] },
+  ];
+  const info = {
+    type: "info",
+    id: "9d803d4f",
+    pageVersion: 2,
+    workspaceVersion: 2,
+    properties: { tags: { options: [{ id: "IFKrGsidLRHUP0TOoQMo4", value: "WebClips", color: "var(--affine-palette-line-magenta)", createDate: 1, updateDate: 1 }] } },
+  };
+  const old = await writeZip(
+    new Map([
+      ["info.json", Buffer.from(JSON.stringify(info))],
+      ["Alt-oldDoc1.snapshot.json", Buffer.from(JSON.stringify(snapshotDoc("oldDoc1", "Alter Snapshot", children, ["IFKrGsidLRHUP0TOoQMo4"])))],
+      ["assets/FwBs2WApEGkiFmu1XR4fHZ/7fOlSsSBdYEyGs2lDeLk=.png", PNG],
+      ["assets/pdf-1.pdf", PDF],
+    ]),
+  );
+  const preview = await importFromSource(owner, wid, space, { name: "alt.zip", bytes: old }, { dryRun: true });
+  assert.equal(preview.files, 2, "a blob id with a slash is found in its sub-folder");
+  assert.equal(preview.tags, 1);
+  assert.ok(preview.warnings.some((w) => /^Ordner, Sammlungen, Journale, Eigenschaften und Symbole von Dokumenten enthält nur die Arbeitsbereichsdatei/.test(w)));
+  await importFromSource(owner, wid, space, { name: "alt.zip", bytes: old });
+  const doc = pageByTitle("Alter Snapshot");
+  assert.match(html(doc.id), /<img src="\/api\/files\//);
+  assert.match(html(doc.id), /<div data-pdf="\/api\/files\/[0-9a-f-]{36}" data-title="Vertrag\.pdf"/);
+  assert.deepEqual(tagsOf(doc.id), ["WebClips"]);
+  assert.equal(one<{ color: string }>("SELECT color FROM page_tags WHERE workspace_id=? AND name='WebClips'", wid)!.color, "purple", "the tag keeps its colour");
+
+  // Since 2025 a snapshot has no tags (meta.tags is empty, no info.json):
+  // the preview says where they are.
+  const current = await writeZip(new Map([["Neu-newDoc1.snapshot.json", Buffer.from(JSON.stringify(snapshotDoc("newDoc1", "Neuer Snapshot", [])))]]));
+  const tree = await parseImport("neu.zip", current);
+  const warning = tree.warnings.find((w) => /^Tags, Ordner/.test(w))!;
+  assert.ok(warning);
+  assert.match(englishMessage(warning), /^Only the workspace file \(\.affine\) contains tags, folders, collections, journals, properties and icons of documents/);
+});
+
+test("more than 500 documents; the limit is the instance's and named (#82)", async () => {
+  const many = sampleWorkspace();
+  many.folders = [];
+  many.collections = [];
+  many.docProperties = {};
+  many.docs = Array.from({ length: 520 }, (_, i) => ({ id: `many${i}`, title: `Viele ${i}`, doc: page(`many${i}`, `Viele ${i}`, [note([para(`Text ${i}`)])]) }));
+  const bytes = affineFileV2(many);
+  // By default far more than 500 (10,000).
+  const preview = await importFromSource(owner, wid, space, { name: "Viele.affine", bytes }, { dryRun: true });
+  assert.equal(preview.pages, 520);
+  assert.equal(preview.tooMany, undefined);
+  const result = await importFromSource(owner, wid, space, { name: "Viele.affine", bytes });
+  assert.equal(result.pages, 520);
+  const wrapper = pageByTitle("Mein Wissen");
+  assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages WHERE parent_id=? AND title LIKE 'Viele %'", wrapper.id)!.n), 520);
+  assert.match(html(pageByTitle("Viele 519").id), /Text 519/);
+
+  // A lower limit: the preview counts and names the setting, the import is
+  // refused; nothing was converted.
+  process.env.FLOWPLAN_IMPORT_MAX_DOCS = "100";
+  try {
+    const tree = await parseImport("Viele.affine", bytes);
+    assert.equal(tree.tooMany, true);
+    assert.ok(tree.pages.every((p) => p.html === ""));
+    const limited = await importFromSource(owner, wid, space, { name: "Viele.affine", bytes }, { dryRun: true });
+    assert.equal(limited.pages, 520, "the preview shows how many there are");
+    assert.equal(limited.tooMany, true);
+    const message = limited.warnings[0];
+    assert.match(message, /520 Seiten; erlaubt sind höchstens 100 je Import \(FLOWPLAN_IMPORT_MAX_DOCS\)/);
+    assert.equal(englishMessage(message), "The file makes 520 pages; at most 100 are allowed per import (FLOWPLAN_IMPORT_MAX_DOCS).");
+    const before = Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n);
+    await assert.rejects(importFromSource(owner, wid, space, { name: "Viele.affine", bytes }), (e: { status?: number; message: string }) => e.status === 413 && /FLOWPLAN_IMPORT_MAX_DOCS/.test(e.message));
+    await assert.rejects(importFromSource(owner, wid, space, { name: "Viele.affine", bytes }, { mode: "database" }), /520 Einträge; erlaubt sind höchstens 100/);
+    assert.equal(Number(one<{ n: number }>("SELECT COUNT(*) n FROM pages")!.n), before);
+    // Folders, databases and whiteboards count as pages too.
+    process.env.FLOWPLAN_IMPORT_MAX_DOCS = "12";
+    const sample = await importFromSource(owner, wid, space, { name: "Probe.affine", bytes: affineFileV2(sampleWorkspace()) }, { dryRun: true });
+    assert.equal(sample.tooMany, true);
+    assert.ok(sample.pages < 12, "fewer documents than the limit, but more pages");
+    // The Markdown/Notion import shares the limit.
+    const md = await writeZip(new Map(Array.from({ length: 13 }, (_, i) => [`Seite ${i}.md`, Buffer.from(`# Seite ${i}`)] as [string, Buffer])));
+    await assert.rejects(importZip(owner, wid, space, md), /13 Seiten; erlaubt sind höchstens 12 je Import \(FLOWPLAN_IMPORT_MAX_DOCS\)/);
+  } finally {
+    delete process.env.FLOWPLAN_IMPORT_MAX_DOCS;
+  }
+  // Files above their limit stay behind, and the preview names it.
+  process.env.FLOWPLAN_IMPORT_MAX_FILES = "2";
+  try {
+    const files = await importFromSource(owner, wid, space, { name: "Probe.affine", bytes: affineFileV2(sampleWorkspace()) }, { dryRun: true });
+    const note = files.warnings.find((w) => /FLOWPLAN_IMPORT_MAX_FILES/.test(w))!;
+    assert.match(note, /^3 Dateien über der Grenze von 2 je Import werden nicht übernommen/);
+    assert.match(englishMessage(note), /^3 files above the limit of 2 per import are not imported \(FLOWPLAN_IMPORT_MAX_FILES\)\.$/);
+  } finally {
+    delete process.env.FLOWPLAN_IMPORT_MAX_FILES;
+  }
+  // Invalid values fall back to the defaults.
+  const { maxImportPages, maxImportFiles } = await import("../lib/importers/types");
+  assert.equal(maxImportPages(undefined), 10000);
+  assert.equal(maxImportPages("abc"), 10000);
+  assert.equal(maxImportPages("0"), 10000);
+  assert.equal(maxImportPages(" 50000 "), 50000);
+  assert.equal(maxImportFiles(undefined), 20000);
+});
+
+test("a workspace on disk: documents are read one at a time, when converted (#82)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "flowplan-affine-lazy-"));
+  try {
+    const path = join(dir, "ws.affine");
+    writeFileSync(path, affineFileV2(sampleWorkspace()));
+    const ws = readAffineFile(path, "x");
+    const plan = ws.docs.find((d) => d.id === IDS.plan)!;
+    const first = plan.load();
+    assert.ok(first && plan.load() !== first, "read again on every load, never kept");
+    ws.close!();
+    assert.equal(plan.load(), null, "read from the file, not from memory");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("older workspaces: properties in the root document; deep folders (#82)", async () => {
+  const ws = sampleWorkspace();
+  ws.docs = ws.docs.filter((d) => d.id === IDS.plan || d.id === IDS.notes);
+  ws.collections = [];
+  ws.docProperties = {};
+  ws.propertyInfo = undefined;
+  ws.icons = undefined;
+  ws.legacyProperties = {
+    schema: { pageProperties: { custom: { lp1: { id: "lp1", name: "Kunde", source: "custom", type: "text", icon: "", order: 1 }, lp2: { id: "lp2", name: "Stunden", source: "custom", type: "number", icon: "", order: 2 } } } },
+    pageProperties: { [IDS.notes]: { custom: { lp1: { id: "lp1", visibility: "visible", value: "ACME", order: "a0" }, lp2: { id: "lp2", visibility: "visible", value: 7, order: "a1" } }, system: {} } },
+  };
+  // 60 folders inside each other, the notes in the deepest.
+  ws.folders = Array.from({ length: 60 }, (_, i) => ({ id: `deep${i}`, parentId: i ? `deep${i - 1}` : null, type: "folder", data: `Ebene ${i}`, index: "a0" }));
+  ws.folders.push({ id: "deepDoc", parentId: "deep59", type: "doc", data: IDS.notes, index: "a0" });
+  const tree = await parseImport("Alt.affine", affineFileV2(ws));
+  const notes = tree.pages.find((p) => p.key === `doc:${IDS.notes}`)!;
+  assert.deepEqual(notes.properties, { Kunde: "ACME", Stunden: 7 });
+  assert.ok(tree.warnings.some((w) => /Ordner tiefer als 50 Ebenen werden zusammengefasst/.test(w)));
+  assert.equal(tree.pages.filter((p) => p.key.startsWith("folder:deep")).length, 50);
+  assert.equal(notes.parent, "folder:deep49", "the document stays in the deepest folder taken over");
 });
