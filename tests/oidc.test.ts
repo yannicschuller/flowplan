@@ -149,3 +149,73 @@ test("OIDC discovery, PKCE, signed ID token and nonce verification", async () =>
     await new Promise<void>((r) => server.close(() => r()));
   }
 });
+
+// Authentik without a signing key (#78): ID tokens signed with the client
+// secret (HS256), no keys published. Sign-in works; the alg is still checked.
+test("OIDC with an HS256-only provider (Authentik without a signing key)", async () => {
+  const { createHmac } = await import("node:crypto");
+  const { symmetricOnly, oidcFailure } = await import("../lib/oidc");
+  assert.equal(symmetricOnly(["HS256"]), true);
+  assert.equal(symmetricOnly(["RS256", "HS256"]), false);
+  assert.equal(symmetricOnly(undefined), false);
+  let issuer = "",
+    nonce = "",
+    alg = "HS256";
+  const server = createServer(async (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    if (req.url === "/.well-known/openid-configuration") {
+      res.end(
+        JSON.stringify({
+          issuer,
+          authorization_endpoint: issuer + "/authorize",
+          token_endpoint: issuer + "/token",
+          response_types_supported: ["code"],
+          subject_types_supported: ["public"],
+          id_token_signing_alg_values_supported: ["HS256"],
+          token_endpoint_auth_methods_supported: ["client_secret_post"],
+          code_challenge_methods_supported: ["S256"],
+        }),
+      );
+    } else if (req.url === "/token") {
+      for await (const chunk of req) void chunk;
+      const now = Math.floor(Date.now() / 1000);
+      const data =
+        Buffer.from(JSON.stringify({ alg, typ: "JWT" })).toString("base64url") +
+        "." +
+        Buffer.from(JSON.stringify({ iss: issuer, sub: "authentik-user", aud: "flowplan-test", iat: now, exp: now + 300, nonce, groups: ["flowplan-admins"] })).toString("base64url");
+      const sig = createHmac("sha256", "test-only-secret").update(data).digest("base64url");
+      res.end(JSON.stringify({ access_token: "test-access", token_type: "Bearer", id_token: data + "." + sig }));
+    } else {
+      res.statusCode = 404;
+      res.end("{}");
+    }
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  issuer = `http://127.0.0.1:${address.port}`;
+  process.env.OIDC_ISSUER = issuer;
+  process.env.OIDC_CLIENT_ID = "flowplan-test";
+  process.env.OIDC_CLIENT_SECRET = "test-only-secret";
+  process.env.OIDC_ALLOW_LOCAL_HTTP = "true";
+  try {
+    const c = await oidcConfig(),
+      verifier = oidc.randomPKCECodeVerifier(),
+      state = oidc.randomState();
+    nonce = oidc.randomNonce();
+    const callback = new URL(`http://localhost/callback?code=test&state=${state}`);
+    const grant = () => oidc.authorizationCodeGrant(c, callback, { pkceCodeVerifier: verifier, expectedState: state, expectedNonce: nonce, idTokenExpected: true });
+    const tokens = await grant();
+    assert.equal(tokens.claims()!.sub, "authentik-user");
+    assert.deepEqual(extractGroups(tokens.claims()!), ["flowplan-admins"]);
+    // Another algorithm than the provider announces is still refused, and
+    // the log names why.
+    alg = "none";
+    const error = await grant().then(() => null, (e: unknown) => e);
+    assert.ok(error);
+    assert.match(oidcFailure(error), /alg|JWT/i);
+    assert.doesNotMatch(oidcFailure(error), /test-only-secret|test-access/);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});

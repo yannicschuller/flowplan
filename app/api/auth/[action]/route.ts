@@ -31,7 +31,7 @@ import { sweepSpaceGitCopies } from "@/lib/space-git-export";
 import { directoryPasswordLogin } from "@/lib/ldap-auth";
 import { claimProvisionedAccount } from "@/lib/scim";
 export const runtime = "nodejs";
-import { oidcConfig as config } from "@/lib/oidc";
+import { oidcConfig as config, oidcFailure } from "@/lib/oidc";
 import {
   changePassword,
   updateLocalProfile,
@@ -280,7 +280,7 @@ async function handleGET(
     }
     return NextResponse.json({ error: "Nicht gefunden" }, { status: 404 });
   } catch (e) {
-    console.error("OIDC sign-in failed", e instanceof Error ? e.name : "Error");
+    console.error("OIDC sign-in failed:", oidcFailure(e));
     return NextResponse.redirect(
       new URL(
         `/?authError=${encodeURIComponent(e instanceof HttpError ? e.message : "Anmeldung fehlgeschlagen. Bitte erneut versuchen.")}${new URL(returnTo, appUrl()).hash}`,
