@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 82) return;
+  if (globalDb.flowplanSchema === 83) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1092,7 +1092,13 @@ function migrate(d: DatabaseSync) {
   d.exec(`CREATE TRIGGER IF NOT EXISTS pages_created_at AFTER INSERT ON pages WHEN NEW.created_at IS NULL BEGIN
       UPDATE pages SET created_at=CURRENT_TIMESTAMP WHERE id=NEW.id;
     END;`);
-  globalDb.flowplanSchema = 82;
+  // Schema 83 – how a person looks at a page, stored in their account and
+  // so the same on all their devices (#83, lib/page-view-prefs.ts): whether
+  // the bar with tags and properties is collapsed (NULL: never chosen, the
+  // default applies). Gone with the person or the page.
+  d.exec(`CREATE TABLE IF NOT EXISTS page_view_prefs(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,properties_collapsed INTEGER,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,page_id));
+    CREATE INDEX IF NOT EXISTS page_view_prefs_page ON page_view_prefs(page_id);`);
+  globalDb.flowplanSchema = 83;
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

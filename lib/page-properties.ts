@@ -246,3 +246,38 @@ function compare(diff: number, op: PropertyFilter["op"]) {
 export function tagToken(name: string) {
   return /^[^\s"#]+$/.test(name) && !/[.,;:!?)]$/.test(name) ? `#${name}` : `#"${name.replace(/"/g, "")}"`;
 }
+
+// ---- Collapsing the bar (#83) ----
+//
+// The bar under the title can be collapsed into one line: a few tags as
+// small chips ("+3" for the rest) and "N Eigenschaften". Whether it is, is
+// the person's own choice per page, stored in their account
+// (lib/page-view-prefs.ts). Until they choose, it is open while small and
+// collapsed when the page shows more than COLLAPSE_AFTER properties
+// (filled ones and the automatic ones – what the bar would list).
+export const COLLAPSE_AFTER = 4;
+// Tags shown in the collapsed line (fewer on phones).
+export const SUMMARY_TAGS = 3,
+  SUMMARY_TAGS_NARROW = 2;
+
+// The properties the bar lists: automatic ones and those with a value.
+export const visibleProperties = (defs: PagePropertyDef[], values: Record<string, unknown>) =>
+  defs.filter((def) => isComputedProperty(def.type) || !isEmptyValue(values[def.id]));
+
+// Whether the bar is collapsed: the person's choice (true/false) wins,
+// otherwise (null) collapsed when more than COLLAPSE_AFTER properties show.
+export function isBarCollapsed(choice: boolean | null | undefined, visibleCount: number): boolean {
+  return typeof choice === "boolean" ? choice : visibleCount > COLLAPSE_AFTER;
+}
+
+// The tags of the collapsed line: the first `max`, and how many more.
+export function summaryTags<T>(tags: readonly T[], max = SUMMARY_TAGS): { shown: T[]; more: number } {
+  const n = Math.max(0, Math.floor(max));
+  return { shown: tags.slice(0, n), more: Math.max(0, tags.length - n) };
+}
+
+// "1 Eigenschaft" / "5 Eigenschaften" ("" for none).
+export function propertyCountLabel(count: number, t: (de: string, en: string) => string): string {
+  if (count <= 0) return "";
+  return count === 1 ? t("1 Eigenschaft", "1 property") : t(`${count} Eigenschaften`, `${count} properties`);
+}

@@ -66,6 +66,7 @@ const PERSONAL = [
   "home_layouts",
   "page_follows",
   "page_visits",
+  "page_view_prefs",
   "presence",
   "editor_presence",
   "record_views",

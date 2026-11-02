@@ -308,6 +308,8 @@ type PageData = DatabaseData & {
   encrypted?: { spaceId: string; keyVersion: number; encryptTitles: boolean };
   // Tags and property values (#70, lib/page-properties-server.ts).
   properties?: import("@/lib/page-properties").PageMeta;
+  // Whether this person collapsed that bar (#83; null: never chose).
+  propertiesCollapsed?: boolean | null;
   sinceVisit?: SinceVisit | null;
   readers?: Reader[];
   following?: boolean;
@@ -3811,7 +3813,7 @@ export default function WorkspaceApp({
                     <>
                       <PageReview page={data.page} members={boot.members} editable={editable} act={act} />
                       {/* Tags and properties (#70). */}
-                      <PagePropertyBar page={data.page} taxonomy={boot.taxonomy} meta={data.properties} members={boot.members} editable={editable} act={act} />
+                      <PagePropertyBar page={data.page} taxonomy={boot.taxonomy} meta={data.properties} collapsedChoice={data.propertiesCollapsed} members={boot.members} editable={editable} act={act} />
                     </>
                   )}
                   {since?.pageId === data.page.id && since.value && (

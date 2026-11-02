@@ -210,6 +210,174 @@ button.page-tag:focus-visible,
   }
 }
 
+/* ---- Collapsing the bar (#83) ----
+   A chevron at the start of the bar folds it into one line (a button:
+   chevron, small tag chips, "+3", "5 Eigenschaften") that opens it again.
+   The content stays in the page – shrunk to no height and inert – so the
+   open and close can glide, and so printing shows it in full. Opening a
+   page never animates (.animated only after a toggle). */
+.page-properties.collapsible {
+  gap: 0;
+}
+.page-properties-body {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.page-properties-inner {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  min-width: 0;
+}
+.page-properties.collapsed .page-properties-body {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+}
+.page-properties.collapsed .page-properties-inner {
+  overflow: hidden;
+}
+.page-properties.animated .page-properties-body {
+  transition:
+    grid-template-rows 0.18s ease,
+    visibility 0s linear 0s;
+}
+.page-properties.animated.collapsed .page-properties-body {
+  transition:
+    grid-template-rows 0.18s ease,
+    visibility 0s linear 0.18s;
+}
+/* While opening, the content is clipped; afterwards dropdowns and the tag
+   picker may hang out of the bar again. */
+.page-properties.animated:not(.collapsed) .page-properties-inner {
+  animation: page-properties-clip 0.18s step-end;
+}
+@keyframes page-properties-clip {
+  from { overflow: hidden; }
+  to { overflow: hidden; }
+}
+.page-properties-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.page-properties-head > .page-properties-tags {
+  flex: 1;
+  min-width: 0;
+}
+.page-properties-toggle {
+  width: 26px;
+  height: 26px;
+  margin-left: -5px;
+  padding: 0;
+  color: var(--muted);
+  border-radius: 6px;
+}
+.page-properties-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.page-properties-caret {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.page-properties-toggle .page-properties-caret {
+  transform: rotate(90deg);
+}
+.page-properties-summary {
+  justify-content: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 26px;
+  margin-left: -5px;
+  padding: 0 8px 0 6px;
+  overflow: hidden;
+  border-radius: 6px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: start;
+  white-space: nowrap;
+  animation: page-properties-in 0.16s ease;
+}
+.page-properties:not(.animated) .page-properties-summary {
+  animation: none;
+}
+@keyframes page-properties-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.page-properties-summary:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.page-properties-summary:focus-visible,
+.page-properties-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.page-properties-summary .page-properties-caret {
+  margin-right: 1px;
+}
+.page-tag-small {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 14ch;
+  min-height: 20px;
+  padding: 0 7px;
+  font-size: 11.5px;
+}
+.page-properties-more,
+.page-properties-count {
+  flex: none;
+}
+.page-properties-count {
+  color: var(--secondary);
+}
+[dir="rtl"] .page-properties-summary .page-properties-caret {
+  transform: scaleX(-1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-properties.animated .page-properties-body,
+  .page-properties.animated.collapsed .page-properties-body,
+  .page-properties-caret {
+    transition: none;
+  }
+  .page-properties-summary,
+  .page-properties.animated:not(.collapsed) .page-properties-inner {
+    animation: none;
+  }
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .page-properties-toggle,
+  .page-properties-summary {
+    min-height: 32px;
+  }
+  .page-properties-toggle {
+    width: 32px;
+    height: 32px;
+  }
+  .page-tag-small {
+    max-width: 10ch;
+  }
+}
+/* Printed as it was before: the whole bar, never the summary. */
+@media print {
+  .page-properties-summary,
+  .page-properties-toggle {
+    display: none !important;
+  }
+  .page-properties.collapsed .page-properties-body {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition: none;
+  }
+  .page-properties.collapsed .page-properties-inner {
+    overflow: visible;
+  }
+}
+
 /* ---- "+ Tag": the picker ---- */
 .tag-picker {
   position: relative;

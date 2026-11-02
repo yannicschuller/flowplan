@@ -4,10 +4,19 @@
 // with the database cell editors (components/cell-input.tsx). Empty, it is
 // one quiet line with "+ Tag" and "+ Eigenschaft" – and gone when the page
 // cannot be edited (read mode, viewers).
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+//
+// Collapsible (#83): a chevron folds the bar into one line – a few tags as
+// small chips, "+3" for the rest, and "5 Eigenschaften" – that opens it
+// again. The person's choice is stored per page in their account
+// (lib/page-view-prefs.ts, command page.collapseProperties); without one the
+// bar starts collapsed when the page shows more than four properties
+// (lib/page-properties.ts isBarCollapsed), decided when the page opens so it
+// never folds away while one is filling it in.
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import {
   CalendarBlank,
+  CaretRight,
   CheckSquare,
   Clock,
   Hash,
@@ -23,16 +32,23 @@ import {
 import { useT } from "./i18n";
 import { CellInput } from "./cell-input";
 import { LinkValue } from "./link-cell";
-import { Modal } from "./ui";
+import { Modal, api } from "./ui";
 import { Select } from "./select";
 import { safeCollisionPadding } from "./safe-area";
 import { formatDateValue } from "@/lib/date-values";
+import { appCache, pageKey } from "@/lib/swr-cache";
 import { isLinkField } from "@/lib/cell-links";
 import {
   foldName,
+  isBarCollapsed,
   isComputedProperty,
   isEmptyValue,
   PAGE_PROPERTY_TYPES,
+  propertyCountLabel,
+  SUMMARY_TAGS,
+  SUMMARY_TAGS_NARROW,
+  summaryTags,
+  visibleProperties,
   type PageMeta,
   type PagePropertyDef,
   type PagePropertyType,
@@ -108,10 +124,29 @@ const sqlTime = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 };
 
+// Choices made in this tab, ahead of page data that may still be cached
+// from before (switching pages back and forth, offline).
+const sessionChoices = new Map<string, boolean>();
+
+// Phones get fewer chips in the collapsed line.
+const NARROW = "(max-width: 600px)";
+function useNarrow() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia?.(NARROW);
+      query?.addEventListener("change", onChange);
+      return () => query?.removeEventListener("change", onChange);
+    },
+    () => !!window.matchMedia?.(NARROW).matches,
+    () => false,
+  );
+}
+
 export function PagePropertyBar({
   page,
   taxonomy,
   meta,
+  collapsedChoice,
   members,
   editable,
   act,
@@ -119,19 +154,47 @@ export function PagePropertyBar({
   page: Page;
   taxonomy: WorkspaceTaxonomy | undefined;
   meta: PageMeta | undefined;
+  // The person's stored choice (#83); null: none, the default applies.
+  collapsedChoice?: boolean | null;
   members: Member[];
   editable: boolean;
   act: Act;
 }) {
   const t = useT();
+  const bodyId = useId();
+  const narrow = useNarrow();
   // Properties picked with "+ Eigenschaft" that have no value yet.
   const [added, setAdded] = useState<string[]>([]);
   const [tagging, setTagging] = useState(false);
   const [creating, setCreating] = useState(false);
+  // Collapsed or not, for the open page: decided once when it opens (null
+  // until the data is there); `moved` only after a toggle, so opening a
+  // page never animates. `choice` is the stored choice it was decided
+  // from: page data shown from the kept copy first may carry an older one – the fresh one
+  // decides again, unless the person toggled meanwhile.
+  const [fold, setFold] = useState<{ pageId: string; collapsed: boolean | null; moved: boolean; choice?: boolean | null }>({
+    pageId: page.id,
+    collapsed: null,
+    moved: false,
+  });
+  const summaryRef = useRef<HTMLButtonElement>(null);
+  const chevronRef = useRef<HTMLButtonElement>(null);
+  const focusAfter = useRef<"summary" | "chevron" | null>(null);
   useEffect(() => {
     setAdded([]);
     setTagging(false);
   }, [page.id]);
+  useEffect(() => {
+    const target = focusAfter.current === "summary" ? summaryRef.current : focusAfter.current === "chevron" ? chevronRef.current : null;
+    focusAfter.current = null;
+    target?.focus();
+  }, [fold.collapsed]);
+  const ready = !!taxonomy && !!meta;
+  const visibleCount = ready ? visibleProperties(taxonomy.properties, meta.values).length : 0;
+  const stored = sessionChoices.get(page.id) ?? collapsedChoice ?? null;
+  if (fold.pageId !== page.id) setFold({ pageId: page.id, collapsed: null, moved: false });
+  else if (ready && (fold.collapsed === null || (!fold.moved && fold.choice !== stored)))
+    setFold({ ...fold, collapsed: isBarCollapsed(stored, visibleCount), choice: stored });
   if (!taxonomy || !meta) return null;
   const tags = meta.tags.map((tid) => taxonomy.tags.find((x) => x.id === tid)).filter((x): x is PageTag => !!x);
   const shown = taxonomy.properties.filter((p) => isComputedProperty(p.type) || !isEmptyValue(meta.values[p.id]) || added.includes(p.id));
@@ -144,82 +207,159 @@ export function PagePropertyBar({
     location.hash = `tags/${tagId}`;
   };
   const empty = !tags.length && !shown.length;
+  // Only a bar with something in it folds; an empty one is a single line.
+  const collapsible = !empty;
+  const collapsed = collapsible && fold.pageId === page.id && fold.collapsed === true;
+  const toggle = () => {
+    const next = !collapsed;
+    sessionChoices.set(page.id, next);
+    focusAfter.current = next ? "summary" : "chevron";
+    setFold({ pageId: page.id, collapsed: next, moved: true, choice: next });
+    if (!next) setTagging(false);
+    // The kept copy of the page (lib/swr-cache.ts) opens it the same way
+    // next time, before the fresh data is there.
+    const cache = appCache();
+    const kept = cache.get<Record<string, unknown>>(pageKey(page.id));
+    if (kept)
+      cache.set(pageKey(page.id), { ...kept.value, propertiesCollapsed: next }, { version: kept.version, policy: kept.persist ? "persist" : "memory" });
+    // Stored in the account; a failure (offline) keeps it for this tab.
+    void api("/api/command", { action: "page.collapseProperties", pageId: page.id, collapsed: next }).catch(() => {});
+  };
+  const summary = summaryTags(tags, narrow ? SUMMARY_TAGS_NARROW : SUMMARY_TAGS);
+  const count = propertyCountLabel(shown.length, t);
+  const label = t("Tags und Eigenschaften", "Tags and properties");
   return (
-    <section className={`page-properties${empty ? " empty" : ""}`} aria-label={t("Tags und Eigenschaften", "Tags and properties")}>
-      {(tags.length > 0 || editable) && (
-        <div className="page-properties-tags" role="group" aria-label={t("Tags", "Tags")}>
-          {tags.length > 0 && <TagIcon size={15} className="page-properties-icon" aria-hidden />}
-          {tags.map((tag) => (
-            <TagChip
-              key={tag.id}
-              tag={tag}
-              onOpen={() => openTag(tag.id)}
-              onRemove={editable ? () => void removeTag(tag.id) : undefined}
-            />
+    <section
+      className={`page-properties${empty ? " empty" : ""}${collapsible ? " collapsible" : ""}${collapsed ? " collapsed" : ""}${fold.moved ? " animated" : ""}`}
+      aria-label={label}
+    >
+      {collapsed && (
+        <button
+          ref={summaryRef}
+          type="button"
+          className="page-properties-summary"
+          aria-expanded={false}
+          aria-controls={bodyId}
+          title={t("Tags und Eigenschaften ausklappen", "Expand tags and properties")}
+          onClick={toggle}
+        >
+          <CaretRight size={13} weight="bold" className="page-properties-caret" aria-hidden />
+          <span className="sr-only">{t("Ausklappen:", "Expand:")} </span>
+          {summary.shown.map((tag) => (
+            <span key={tag.id} className={`page-tag page-tag-small page-tag-${tag.color}`}>
+              <span className="page-tag-name">{tag.name}</span>
+            </span>
           ))}
-          {editable &&
-            (tagging ? (
-              <TagPicker
-                taxonomy={taxonomy}
-                exclude={meta.tags}
-                onPick={addTag}
-                onClose={() => setTagging(false)}
-              />
-            ) : (
-              <button type="button" className="page-properties-add" onClick={() => setTagging(true)}>
-                <Plus size={13} aria-hidden /> {t("Tag", "Tag")}
-              </button>
-            ))}
-          {editable && (addable.length > 0 || taxonomy.manage) && (
-            <Dropdown.Root modal={false}>
-              <Dropdown.Trigger asChild>
-                <button type="button" className="page-properties-add">
-                  <Plus size={13} aria-hidden /> {t("Eigenschaft", "Property")}
+          {summary.more > 0 && (
+            <span className="page-properties-more">
+              <span aria-hidden>+{summary.more}</span>
+              <span className="sr-only">{summary.more === 1 ? t("1 weiterer Tag", "1 more tag") : t(`${summary.more} weitere Tags`, `${summary.more} more tags`)}</span>
+            </span>
+          )}
+          {count && (
+            <span className="page-properties-count">
+              {tags.length > 0 && <span aria-hidden>· </span>}
+              {count}
+            </span>
+          )}
+        </button>
+      )}
+      <div className="page-properties-body" id={bodyId} inert={collapsed}>
+        <div className="page-properties-inner">
+          {(tags.length > 0 || editable || collapsible) && (
+            <div className="page-properties-head">
+              {collapsible && (
+                <button
+                  ref={chevronRef}
+                  type="button"
+                  className="icon-button page-properties-toggle"
+                  aria-expanded={!collapsed}
+                  aria-controls={bodyId}
+                  aria-label={t("Tags und Eigenschaften einklappen", "Collapse tags and properties")}
+                  title={t("Einklappen", "Collapse")}
+                  onClick={toggle}
+                >
+                  <CaretRight size={13} weight="bold" className="page-properties-caret" aria-hidden />
                 </button>
-              </Dropdown.Trigger>
-              <Dropdown.Portal>
-                <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="start" sideOffset={4}>
-                  {addable.map((def) => {
-                    const TypeIcon = TYPE_ICONS[def.type];
-                    return (
-                      <Dropdown.Item key={def.id} className="dropdown-item" onSelect={() => setAdded((list) => [...list, def.id])}>
-                        <TypeIcon size={15} aria-hidden />
-                        {def.name}
-                      </Dropdown.Item>
-                    );
-                  })}
-                  {addable.length > 0 && taxonomy.manage && <Dropdown.Separator className="dropdown-separator" />}
-                  {taxonomy.manage && (
-                    <Dropdown.Item className="dropdown-item" onSelect={() => setCreating(true)}>
-                      <Plus size={15} aria-hidden />
-                      {t("Neue Eigenschaft …", "New property …")}
-                    </Dropdown.Item>
+              )}
+              {(tags.length > 0 || editable) && (
+                <div className="page-properties-tags" role="group" aria-label={t("Tags", "Tags")}>
+                  {tags.length > 0 && <TagIcon size={15} className="page-properties-icon" aria-hidden />}
+                  {tags.map((tag) => (
+                    <TagChip
+                      key={tag.id}
+                      tag={tag}
+                      onOpen={() => openTag(tag.id)}
+                      onRemove={editable ? () => void removeTag(tag.id) : undefined}
+                    />
+                  ))}
+                  {editable &&
+                    (tagging ? (
+                      <TagPicker
+                        taxonomy={taxonomy}
+                        exclude={meta.tags}
+                        onPick={addTag}
+                        onClose={() => setTagging(false)}
+                      />
+                    ) : (
+                      <button type="button" className="page-properties-add" onClick={() => setTagging(true)}>
+                        <Plus size={13} aria-hidden /> {t("Tag", "Tag")}
+                      </button>
+                    ))}
+                  {editable && (addable.length > 0 || taxonomy.manage) && (
+                    <Dropdown.Root modal={false}>
+                      <Dropdown.Trigger asChild>
+                        <button type="button" className="page-properties-add">
+                          <Plus size={13} aria-hidden /> {t("Eigenschaft", "Property")}
+                        </button>
+                      </Dropdown.Trigger>
+                      <Dropdown.Portal>
+                        <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="start" sideOffset={4}>
+                          {addable.map((def) => {
+                            const TypeIcon = TYPE_ICONS[def.type];
+                            return (
+                              <Dropdown.Item key={def.id} className="dropdown-item" onSelect={() => setAdded((list) => [...list, def.id])}>
+                                <TypeIcon size={15} aria-hidden />
+                                {def.name}
+                              </Dropdown.Item>
+                            );
+                          })}
+                          {addable.length > 0 && taxonomy.manage && <Dropdown.Separator className="dropdown-separator" />}
+                          {taxonomy.manage && (
+                            <Dropdown.Item className="dropdown-item" onSelect={() => setCreating(true)}>
+                              <Plus size={15} aria-hidden />
+                              {t("Neue Eigenschaft …", "New property …")}
+                            </Dropdown.Item>
+                          )}
+                        </Dropdown.Content>
+                      </Dropdown.Portal>
+                    </Dropdown.Root>
                   )}
-                </Dropdown.Content>
-              </Dropdown.Portal>
-            </Dropdown.Root>
+                </div>
+              )}
+            </div>
+          )}
+          {shown.length > 0 && (
+            <dl className="page-properties-list">
+              {shown.map((def) => (
+                <PropertyRow
+                  key={def.id}
+                  def={def}
+                  value={meta.values[def.id]}
+                  meta={meta}
+                  members={members}
+                  editable={editable}
+                  onChange={(value) => setValue(def, value)}
+                  onRemove={() => {
+                    setAdded((list) => list.filter((x) => x !== def.id));
+                    if (!isEmptyValue(meta.values[def.id])) void setValue(def, null);
+                  }}
+                />
+              ))}
+            </dl>
           )}
         </div>
-      )}
-      {shown.length > 0 && (
-        <dl className="page-properties-list">
-          {shown.map((def) => (
-            <PropertyRow
-              key={def.id}
-              def={def}
-              value={meta.values[def.id]}
-              meta={meta}
-              members={members}
-              editable={editable}
-              onChange={(value) => setValue(def, value)}
-              onRemove={() => {
-                setAdded((list) => list.filter((x) => x !== def.id));
-                if (!isEmptyValue(meta.values[def.id])) void setValue(def, null);
-              }}
-            />
-          ))}
-        </dl>
-      )}
+      </div>
       {creating && (
         <PropertyDialog
           workspaceId={page.workspace_id}

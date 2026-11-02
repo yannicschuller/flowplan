@@ -56,7 +56,7 @@ export const commandActionNames = [
   "account.deletePlan", "account.delete",
   "space.create", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "space.reorder",
   "page.create", "page.update", "page.delete", "page.restore", "page.duplicate", "page.move", "page.import",
-  "pages.bulk", "page.follow", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
+  "pages.bulk", "page.follow", "page.collapseProperties", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
   "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "property.save", "property.delete", "property.reorder", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
   "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary",
@@ -336,6 +336,12 @@ export const commandActions: ActionDoc[] = [
     summary: "Follow or unfollow a page (notifications about changes)",
     input: z.object({ action: z.literal("page.follow"), pageId: uuid, follow: z.boolean() }),
     result: z.object({ following: z.boolean() }),
+  },
+  {
+    action: "page.collapseProperties",
+    summary: "Collapse or open the bar with tags and properties of a page, for yourself on all devices (null: back to the default)",
+    input: z.object({ action: z.literal("page.collapseProperties"), pageId: uuid, collapsed: z.boolean().nullable() }),
+    result: z.object({ collapsed: z.boolean().nullable() }),
   },
   {
     action: "favorite",

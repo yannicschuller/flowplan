@@ -38,6 +38,7 @@ import {
 import { journalDate, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
+import { propertiesCollapsed, setPropertiesCollapsed } from "./page-view-prefs";
 import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
@@ -380,7 +381,9 @@ export function pageData(user: Identity, pid: string, options: { presence?: bool
   // encrypted pages.
   if ((data as { locked?: unknown }).locked) return data;
   const properties = pageMetaFor(data.page);
-  return properties ? { ...data, properties } : data;
+  // Whether this person collapsed the bar (#83; null: the default applies),
+  // so the bar opens in the right state without a jump.
+  return properties ? { ...data, properties, propertiesCollapsed: propertiesCollapsed(user, data.page.id) } : data;
 }
 function pageContent(user: Identity, pid: string, options: { presence?: boolean } = {}) {
   const p = requirePage(user, pid);
@@ -1349,6 +1352,10 @@ export function command(
         recordPageEdit(user, pid());
         break;
       }
+      // The bar with tags and properties, collapsed or open (#83).
+      case "page.collapseProperties":
+        result = setPropertiesCollapsed(user, b);
+        break;
       case "page.follow": {
         const page = requirePage(user, pid());
         setFollowing(user, page.id, z.boolean().parse(b.follow));
