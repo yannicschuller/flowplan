@@ -6,6 +6,7 @@ import "./whiteboard-board.css";
 import "./whiteboard-facilitation.css";
 import "./contacts.css";
 import "./page-properties.css";
+import "./collections.css";
 import "katex/dist/katex.min.css";
 import { requestLocale } from "@/lib/i18n-server";
 import { localeTag, translate } from "@/lib/i18n";

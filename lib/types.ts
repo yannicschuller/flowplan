@@ -284,7 +284,7 @@ export type Bootstrap = {
   journalSidebar?: Record<string, import("./journal-nav").SidebarMode>;
   favorites: string[];
   favoriteRows?: { pageId: string; rowId: string; title: string }[];
-  savedSearches?: import("./saved-searches").SavedSearch[];
+  collections?: import("./collections").CollectionInfo[];
   // Tags and property definitions of pages, the tags of the pages shown
   // (lib/page-properties-server.ts workspaceTaxonomy).
   taxonomy?: import("./page-properties").WorkspaceTaxonomy;

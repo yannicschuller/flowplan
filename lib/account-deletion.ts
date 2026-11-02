@@ -74,6 +74,8 @@ const PERSONAL = [
   "date_reminders",
   "user_avatars",
   "saved_searches",
+  // Own order of the collections in the sidebar (#86).
+  "collection_order",
   "group_members",
   "comment_reactions",
   // Directory links: SCIM provisioning and LDAP sign-in.
@@ -247,6 +249,8 @@ function removeAccount(userId: string, removed: { id: string }[], successors: Re
     try {
       run(`DELETE FROM ${table} WHERE user_id=?`, userId);
     } catch {}
+  // Own collections (#86), shared ones too: they are queries of this person.
+  run("DELETE FROM collections WHERE owner_id=?", userId);
   run("DELETE FROM grants WHERE user_id=?", userId);
   run("DELETE FROM members WHERE user_id=?", userId);
   run("UPDATE spaces SET owner_id=NULL WHERE owner_id=?", userId);

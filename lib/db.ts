@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 84) return;
+  if (globalDb.flowplanSchema === 85) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1102,7 +1102,54 @@ function migrate(d: DatabaseSync) {
   // lib/block-captions.ts), switched on per page.
   if (!(d.prepare("PRAGMA table_info(pages)").all() as { name: string }[]).some((c) => c.name === "caption_numbers"))
     d.exec("ALTER TABLE pages ADD COLUMN caption_numbers INTEGER NOT NULL DEFAULT 0");
-  globalDb.flowplanSchema = 84;
+  // Schema 85 – collections (#86, lib/collections.ts): saved queries in
+  // the sidebar, private or shared with the workspace, each person's order
+  // of them. The personal saved searches become collections once (their
+  // kind and space as type: and in: in the query) and leave saved_searches.
+  d.exec(`CREATE TABLE IF NOT EXISTS collections(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,icon TEXT NOT NULL DEFAULT '',query TEXT NOT NULL,shared INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER);
+    CREATE INDEX IF NOT EXISTS collections_workspace ON collections(workspace_id,owner_id);
+    CREATE TABLE IF NOT EXISTS collection_order(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,position REAL NOT NULL,PRIMARY KEY(user_id,collection_id));
+    CREATE INDEX IF NOT EXISTS collection_order_collection ON collection_order(collection_id);`);
+  migrateSavedSearches(d);
+  globalDb.flowplanSchema = 85;
+}
+// Saved searches (before #86) → collections, keeping their id and order.
+export function migrateSavedSearches(d: DatabaseSync) {
+  const saved = d
+    .prepare(
+      "SELECT s.id,s.user_id,s.workspace_id,s.name,s.query,s.kind,s.created_at,sp.name space_name FROM saved_searches s LEFT JOIN spaces sp ON sp.id=s.space_id AND sp.deleted_at IS NULL ORDER BY s.created_at,s.rowid",
+    )
+    .all() as { id: string; user_id: string; workspace_id: string; name: string; query: string; kind: string; created_at: string; space_name: string | null }[];
+  if (!saved.length) return;
+  const kinds: Record<string, string> = { document: "document", database: "database", whiteboard: "whiteboard", row: "record" };
+  const positions = new Map<string, number>();
+  d.exec("BEGIN IMMEDIATE");
+  try {
+    for (const s of saved) {
+      const at = Date.parse(`${s.created_at.replace(" ", "T")}Z`) || Date.now();
+      let query = s.query;
+      if (kinds[s.kind]) query += ` type:${kinds[s.kind]}`;
+      if (s.space_name) query += ` in:"${s.space_name.replace(/"/g, "")}"`;
+      d.prepare("INSERT OR IGNORE INTO collections(id,workspace_id,owner_id,name,icon,query,shared,created_at,updated_at) VALUES(?,?,?,?,'',?,0,?,?)").run(
+        s.id,
+        s.workspace_id,
+        s.user_id,
+        s.name,
+        query,
+        at,
+        at,
+      );
+      const key = `${s.user_id}:${s.workspace_id}`;
+      const position = (positions.get(key) ?? 0) + 1;
+      positions.set(key, position);
+      d.prepare("INSERT OR IGNORE INTO collection_order(user_id,collection_id,position) VALUES(?,?,?)").run(s.user_id, s.id, position);
+      d.prepare("DELETE FROM saved_searches WHERE id=?").run(s.id);
+    }
+    d.exec("COMMIT");
+  } catch (error) {
+    d.exec("ROLLBACK");
+    throw error;
+  }
 }
 function cleanDeletedFiles(d: DatabaseSync) {
   let cursor = "";

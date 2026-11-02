@@ -151,7 +151,16 @@ import { homeLayout, resetHomeLayout, saveHomeLayout, saveHomeNote, setTeamDefau
 import { sharePage, updatePageShare } from "./page-share";
 import { limitInviter, mailAllowed } from "./action-limits";
 import { templateCategoryIds } from "./template-categories";
-import { deleteSavedSearch, saveSearch, savedSearches } from "./saved-searches";
+import {
+  createCollection,
+  deleteCollection,
+  duplicateCollection,
+  listCollections,
+  reorderCollections,
+  restoreCollection,
+  saveSearchAsCollection,
+  updateCollection,
+} from "./collections";
 import {
   requireTemplate,
   applyPageTemplate,
@@ -306,7 +315,8 @@ export function bootstrap(user: Identity, wid?: string) {
       "SELECT page_id FROM favorites WHERE user_id=?",
       user.id,
     ).map((f) => f.page_id),
-    savedSearches: savedSearches(user, workspace.id),
+    // Own and shared collections, in the person's order (lib/collections.ts).
+    collections: listCollections(user, workspace.id),
     // Tags and property definitions, and the tags of the pages shown
     // (lib/page-properties-server.ts).
     taxonomy: workspaceTaxonomy(user, workspace.id, pages),
@@ -2277,11 +2287,30 @@ export function command(
       case "row.trash.purge":
         result = purgeTrashedRow(user, b);
         break;
+      // Saved searches became collections (#86); the old actions stay.
       case "search.save":
-        result = saveSearch(user, b);
+        result = saveSearchAsCollection(user, b);
         break;
       case "search.delete":
-        deleteSavedSearch(user, b.searchId);
+        deleteCollection(user, b.searchId);
+        break;
+      case "collection.create":
+        result = createCollection(user, b);
+        break;
+      case "collection.update":
+        result = updateCollection(user, b);
+        break;
+      case "collection.delete":
+        result = deleteCollection(user, b.collectionId);
+        break;
+      case "collection.restore":
+        result = restoreCollection(user, b.collectionId);
+        break;
+      case "collection.duplicate":
+        result = duplicateCollection(user, b);
+        break;
+      case "collection.reorder":
+        reorderCollections(user, b);
         break;
       case "favorite.row": {
         const { row } = requireRow(user, pid(), uuid.parse(b.rowId));

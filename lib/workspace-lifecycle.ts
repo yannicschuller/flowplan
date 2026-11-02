@@ -262,6 +262,8 @@ export function removeFromWorkspace(userId: string, wid: string, spacesTo?: stri
     wid,
   );
   run("DELETE FROM group_members WHERE user_id=? AND group_id IN (SELECT id FROM groups WHERE workspace_id=?)", userId, wid);
+  // Own collections of the workspace (#86) leave with the person.
+  run("DELETE FROM collections WHERE owner_id=? AND workspace_id=?", userId, wid);
   for (const table of ["favorites", "date_reminders", "notifications", "presence", "page_follows", "page_view_prefs"])
     run(`DELETE FROM ${table} WHERE user_id=? AND page_id IN (SELECT id FROM pages WHERE workspace_id=?)`, userId, wid);
   const email = one<{ email: string }>("SELECT email FROM users WHERE id=?", userId)?.email || "";

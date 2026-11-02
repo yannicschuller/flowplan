@@ -592,7 +592,7 @@ CommandResult = dict[str, Any]
 
 # Every other action the interface sends. The server validates the fields of each; see lib/api.ts command() in the source.
 CommandOther = TypedDict("CommandOther", {
-    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "tag.delete", "tag.merge", "tag.reorder", "property.delete", "property.reorder", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title"]],
+    "action": Required[Literal["workspace.update", "workspace.delete", "workspace.leave", "workspace.import", "profile.onboarded", "profile.language", "notification.reset", "notification.email", "home.reset", "home.note", "home.default", "account.deletePlan", "account.delete", "space.update", "space.delete", "space.restore", "space.purge", "space.duplicate", "space.gitExport", "page.import", "pages.bulk", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare", "page.toRecord", "record.toPage", "tag.delete", "tag.merge", "tag.reorder", "property.delete", "property.reorder", "favorite.row", "task.update", "synced.create", "mention.link", "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "linked.command", "document.sync", "document.markdown", "document.markdown.apply", "snapshot.restoreBlock", "snapshot.restore", "database.recordLayout", "row.move", "row.schedule", "row.access", "row.appearance", "row.recurrence", "row.detachOccurrence", "row.document.sync", "row.snapshot", "row.snapshot.restore", "row.template.save", "row.template.default", "row.template.delete", "row.template.apply", "row.trash.restore", "row.trash.purge", "rows.bulk", "rows.transfer", "timeline.cascade", "timeline.link", "citation.import", "citation.remove", "whiteboard.sync", "notebook.paper", "notebook.sheet.duplicate", "notebook.sheet.delete", "notebook.sheet.move", "notebook.sheet.paper", "notebook.import", "search.save", "search.delete", "collection.delete", "collection.restore", "collection.duplicate", "collection.reorder", "thread.create", "thread.reply", "thread.resolve", "thread.edit", "thread.deleteMessage", "thread.react", "comment.react", "reminder.set", "notification.prefs", "notification.read", "notification.mark", "notification.delete", "share.create", "share.revoke", "share.protect", "publication.protect", "publication.copy", "publication.theme", "domain.add", "domain.remove", "plugin.update", "plugin.delete", "form.update", "form.submit", "survey.save", "sprint.setup", "sprint.create", "sprint.update", "sprint.start", "sprint.complete", "sprint.delete", "sprint.points", "recordView.save", "recordView.delete", "git.setup", "git.disable", "time.start", "time.stop", "time.add", "time.delete", "ticket.reply", "invite.cancel", "invite.resend", "member.role", "member.guest", "sso.mapping.add", "sso.mapping.delete", "grant.set", "group.create", "group.member", "template.save", "template.update", "template.delete", "template.restore", "template.apply", "capture.record", "capture.target", "bookmarks.import", "calendar.caldav", "calendar.caldav.revoke", "e2ee.identity.setup", "e2ee.identity.update", "e2ee.identity.reset", "e2ee.member.add", "e2ee.member.remove", "e2ee.rotate", "e2ee.compact", "e2ee.title"]],
 }, total=False)
 
 # Create a workspace
@@ -751,6 +751,36 @@ CommandTagSave = TypedDict("CommandTagSave", {
 
 CommandTagSaveResult = TypedDict("CommandTagSaveResult", {
     "id": Required[str],
+}, total=False)
+
+# Create a collection. A saved query in the search language (see GET /api/search): pages and database records that match it whenever it is run (GET /api/collections/{id}). Private unless `shared` – then every member of the workspace (not guests) sees it; guests cannot share. The query is stored in its canonical form (returned as `query`). At most 100 collections per person and workspace and 100 shared ones per workspace (409).
+CommandCollectionCreate = TypedDict("CommandCollectionCreate", {
+    "action": Required[Literal["collection.create"]],
+    "workspaceId": Required[str],
+    "name": Required[str],
+    "query": Required[str],
+    "icon": str,  # An emoji
+    "shared": bool,
+}, total=False)
+
+CommandCollectionCreateResult = TypedDict("CommandCollectionCreateResult", {
+    "id": Required[str],
+    "query": Required[str],
+}, total=False)
+
+# Change a collection. Its creator, and workspace owners for shared collections. Only the creator shares or unshares it. Also: collection.delete {collectionId} (into the trash for 30 days), collection.restore {collectionId}, collection.duplicate {collectionId, name?} (a private copy, for anyone who sees it) and collection.reorder {workspaceId, order} (the person's own order of the collections they see).
+CommandCollectionUpdate = TypedDict("CommandCollectionUpdate", {
+    "action": Required[Literal["collection.update"]],
+    "collectionId": Required[str],
+    "name": str,
+    "query": str,
+    "icon": str,
+    "shared": bool,
+}, total=False)
+
+CommandCollectionUpdateResult = TypedDict("CommandCollectionUpdateResult", {
+    "id": Required[str],
+    "query": Required[str],
 }, total=False)
 
 # Create or change a page property. Workspace owners. A property every page of the workspace can have a value for. Types: text, number, date, select, multiselect, checkbox, person, url, email, phone, created_at, updated_at, created_by, updated_by (the last four are read from the page). `options` for select and multiselect. Changing the type or removing options converts the values where possible and removes the others. Also property.delete {workspaceId, propertyId} and property.reorder {workspaceId, order}.
@@ -1200,7 +1230,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1214,6 +1244,7 @@ SearchQuery = TypedDict("SearchQuery", {
     "kind": Literal["all", "document", "database", "whiteboard", "row", "comment", "file"],  # Only this kind
     "space": str,  # Only in this space
     "days": Literal["0", "1"],  # 0: leave out journal days (they are ranked after other pages otherwise)
+    "tz": str,  # IANA time zone for relative dates such as created:today (default UTC)
 }, total=False)
 
 NotificationsQuery = TypedDict("NotificationsQuery", {
@@ -1246,6 +1277,20 @@ GraphQuery = TypedDict("GraphQuery", {
 
 TagsQuery = TypedDict("TagsQuery", {
     "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+CollectionsQuery = TypedDict("CollectionsQuery", {
+    "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+RunCollectionQuery = TypedDict("RunCollectionQuery", {
+    "tz": str,  # IANA time zone for relative dates (default UTC)
+}, total=False)
+
+PreviewCollectionQuery = TypedDict("PreviewCollectionQuery", {
+    "workspace": Required[str],  # Workspace ID
+    "q": Required[str],  # The query
+    "tz": str,  # IANA time zone for relative dates (default UTC)
 }, total=False)
 
 TagPagesQuery = TypedDict("TagPagesQuery", {
@@ -1674,7 +1719,7 @@ class FlowplanClient:
         return self._json("GET", "/api/bootstrap", query=dict(query) if query else None, headers=headers)
 
     def search(self, query: "SearchQuery", headers: Optional[dict[str, str]] = None) -> list["SearchResult"]:
-        """Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Answered with `Cache-Control: no-store`. (GET /api/search)"""
+        """Full-text search — Pages, records, comments and file contents of a workspace. In `q`, `#tag` (or `#"two words"`) keeps pages with that tag, `-#tag` leaves them out, and `name:value` compares a page property (text contains; select and multiselect equal an option; numbers and dates also `>`, `<`, `>=`, `<=`, `a..b`; checkboxes yes/no; people by name or `me`; `name:*` set, `name:-` empty). Tokens that name no tag or property are searched as words; with only tokens, the matching pages are listed by last change. Also `OR` (or `|`), `AND` (implicit), `NOT` or `-` before any term or group, parentheses (NOT binds tightest, then AND, then OR), `created_by:`/`creator:` and `updated_by:`/`editor:` (a name or `me`), `created:` and `updated:` (`2026-03`, `>2026-01-01`, `a..b`, `-7d`, `-2w`, `-3m`, `-1y`, `today`, `yesterday`, `this-week`, `last-week`, `this-month`, `last-month`, `this-year`, `last-year`), `type:document|database|whiteboard|record`, `in:"Space name"` and `title:`; such queries list the matching pages and records (without snippets) by last change. Answered with `Cache-Control: no-store`. (GET /api/search)"""
         return self._json("GET", "/api/search", query=dict(query) if query else None, headers=headers)
 
     def notifications(self, query: Optional["NotificationsQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
@@ -1708,6 +1753,18 @@ class FlowplanClient:
     def tags(self, query: "TagsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Tags and page properties of a workspace — The tags (`id`, `name`, `color`, `position`, `pages`: how many readable pages carry it, `records`: how many readable database records carry it in a property with the tags as options) and the property definitions (`id`, `name`, `type`, `options`). Guests see only the tags and properties of pages and records shared with them. A page's own tags and values come with GET /api/pages/{id} as `properties` (`tags`: tag IDs, `values`: by property ID, `info`: created and changed at and by). Answered with `Cache-Control: no-store`. (GET /api/tags)"""
         return self._json("GET", "/api/tags", query=dict(query) if query else None, headers=headers)
+
+    def collections(self, query: "CollectionsQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
+        """Collections of a workspace — The person's own collections and those shared with the workspace (not for guests), in their order: `id`, `name`, `icon`, `query`, `shared`, `mine`, `canEdit`, `ownerName`. Change them with the command actions collection.*. Answered with `Cache-Control: no-store`. (GET /api/collections)"""
+        return self._json("GET", "/api/collections", query=dict(query) if query else None, headers=headers)
+
+    def run_collection(self, id: str, query: Optional["RunCollectionQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Run a collection — The collection and its current results: `items` (pages and database records with `pageId`, `rowId`, `type`, `title`, `icon`, `spaceId`, `database`, `tags`, `createdAt`, `updatedAt`, `createdBy`, `creatorName`; latest change first, at most 500), `total`, `truncated` and `encryptedLeftOut` (end-to-end encrypted spaces the reader may read are not searched). Results follow the reader's own permissions, also for collections shared by others. Answered with `Cache-Control: no-store`. (GET /api/collections/{id})"""
+        return self._json("GET", "/api/collections/" + _p(id), query=dict(query) if query else None, headers=headers)
+
+    def preview_collection(self, query: "PreviewCollectionQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Results of a query — Like GET /api/collections/{id} for a query that is not saved: `query` (its canonical form) and the first 50 results. Answered with `Cache-Control: no-store`. (GET /api/collections/preview)"""
+        return self._json("GET", "/api/collections/preview", query=dict(query) if query else None, headers=headers)
 
     def tag_pages(self, id: str, query: "TagPagesQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Pages and records with a tag — Like /api/tags, plus `pages`: the readable pages with this tag, and `records`: the readable database records carrying it in a property with the tags as options, latest change first. Answered with `Cache-Control: no-store`. (GET /api/tags/{id})"""

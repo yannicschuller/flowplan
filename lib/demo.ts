@@ -142,10 +142,11 @@ export function endDemo(userId: string) {
       userId,
     ))
       purgeWorkspace(w.id);
-    for (const table of ["notifications", "favorites", "row_favorites", "push_subscriptions", "saved_searches", "notification_prefs"])
+    for (const table of ["notifications", "favorites", "row_favorites", "push_subscriptions", "saved_searches", "collection_order", "notification_prefs"])
       try {
         run(`DELETE FROM ${table} WHERE user_id=?`, userId);
       } catch {}
+    run("DELETE FROM collections WHERE owner_id=?", userId);
     // What the demo did is no activity of the instance.
     run("DELETE FROM audit WHERE actor_id=?", userId);
     run("DELETE FROM sessions WHERE user_id=?", userId);

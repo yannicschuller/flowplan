@@ -82,6 +82,7 @@ import {
 import { one, all, run, id, audit } from "@/lib/db";
 import type { Page } from "@/lib/types";
 import { searchWorkspace } from "@/lib/search-index";
+import { listCollections, previewQuery, runCollection } from "@/lib/collections";
 import { tagListing } from "@/lib/page-properties-server";
 import { rowSnapshotChanges, snapshotChanges } from "@/lib/version-history";
 import { importZip } from "@/lib/zip-import";
@@ -325,6 +326,22 @@ async function handleGET(
         tagListing(user, z.uuid().parse(url.searchParams.get("workspace")), path[1] ? z.uuid().parse(path[1]) : undefined),
         { headers: { "Cache-Control": "no-store" } },
       );
+    // Collections (#86, lib/collections.ts): the list, a collection's
+    // current results (as this person may read them) and the results of a
+    // query not saved yet. `tz` is the reader's time zone for "today".
+    if (path[0] === "collections" && path.length <= 2) {
+      const timeZone = url.searchParams.get("tz") || undefined;
+      const headers = { "Cache-Control": "no-store" };
+      if (path[1] === "preview")
+        return NextResponse.json(
+          previewQuery(user, z.uuid().parse(url.searchParams.get("workspace")), z.string().max(1000).parse(url.searchParams.get("q") || ""), { timeZone }),
+          { headers },
+        );
+      if (path[1]) return NextResponse.json(runCollection(user, z.uuid().parse(path[1]), { timeZone }), { headers });
+      const wid = z.uuid().parse(url.searchParams.get("workspace"));
+      requireMember(user, wid);
+      return NextResponse.json(listCollections(user, wid), { headers });
+    }
     if (path[0] === "bootstrap")
       return NextResponse.json(
         bootstrap(user, url.searchParams.get("workspace") || undefined),
@@ -640,6 +657,8 @@ async function handleGET(
             : undefined,
           // "Ohne Journaltage"
           excludeDays: url.searchParams.get("days") === "0",
+          // For created:today and the like (#86).
+          timeZone: url.searchParams.get("tz") || undefined,
         }),
         { headers: { "Cache-Control": "no-store" } },
       );

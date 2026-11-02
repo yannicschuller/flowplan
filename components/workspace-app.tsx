@@ -52,6 +52,10 @@ import { PagePeople } from "./page-people";
 import { PageReview, openPageReview } from "./page-review";
 import { PagePropertyBar } from "./page-properties";
 import { TagView } from "./tag-view";
+import { CollectionView } from "./collection-view";
+import { CollectionsNav } from "./collections-nav";
+import type { CollectionDraft } from "./collection-editor";
+import type { CollectionInfo } from "@/lib/collections";
 import { TagOptionsContext } from "./tag-options-context";
 import { parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
@@ -281,6 +285,8 @@ const DocumentEditor = dynamic(() => loadView(() => import("./editor")), {
   ssr: false,
   loading: () => <Loading what="document" />,
 });
+// The collection editor with its filter builder (#86): loaded when opened.
+const CollectionEditor = dynamic(() => loadView(() => import("./collection-editor")), { ssr: false });
 const DashboardView = dynamic(() => loadView(() => import("./dashboard-view")), { ssr: false });
 // Notebooks bring the ink engine: loaded with the first notebook.
 const NotebookView = dynamic(() => loadView(() => import("./notebook/notebook-view")), { ssr: false, loading: () => <PageSkeleton compact /> });
@@ -371,7 +377,9 @@ type Screen =
   | "settings"
   | "admin"
   // Pages by tag (#70, components/tag-view.tsx): #tags, #tags/<id>.
-  | "tags";
+  | "tags"
+  // A collection's results (#86, components/collection-view.tsx): #collection/<id>.
+  | "collection";
 // Page tree → page header: the icon and the title of the page opened fly
 // to their place (lib/view-transition.ts). Without a header yet (the page
 // is still loading) they simply fade.
@@ -694,7 +702,9 @@ export default function WorkspaceApp({
       return !on;
     });
   const [inboxFilter, setInboxFilter] = useState<"all" | "unread">("all");
-  const [searchName, setSearchName] = useState<string | null>(null);
+  // Collections (#86): the one shown and the editor's draft.
+  const [collectionId, setCollectionId] = useState<string | null>(null),
+    [collectionDraft, setCollectionDraft] = useState<CollectionDraft | null>(null);
   // The element that opened the quick search gets the focus back when it
   // closes (the search button, a tree item or the editor).
   const searchOpener = useRef<HTMLElement | null>(null),
@@ -709,7 +719,6 @@ export default function WorkspaceApp({
     setSearch(false);
     setPaletteSplit(false);
     setQuery("");
-    setSearchName(null);
   };
   // `#tag` and `name:value` in the search (lib/page-properties.ts), shown
   // as chips under the input.
@@ -731,6 +740,8 @@ export default function WorkspaceApp({
           kind: searchKind,
           ...(searchSpace ? { space: searchSpace } : {}),
           ...(searchNoDays ? { days: "0" } : {}),
+          // For created:today and the like (#86).
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         })}`,
         { signal: controller.signal },
       )
@@ -1125,6 +1136,21 @@ export default function WorkspaceApp({
     },
     [mutate, notifyError],
   );
+  // Collections (#86): open, create, duplicate, delete (with undo), order.
+  const openCollection = (id: string) => {
+    location.hash = `collection/${id}`;
+  };
+  const newCollection = (query = "") => setCollectionDraft({ name: "", icon: "", query, shared: false });
+  const duplicateCollection = async (c: CollectionInfo) => {
+    const result = (await act({ action: "collection.duplicate", collectionId: c.id })) as { id: string } | null;
+    if (result?.id) openCollection(result.id);
+  };
+  const deleteCollection = async (c: CollectionInfo) => {
+    if (!(await act({ action: "collection.delete", collectionId: c.id }))) return;
+    if (screenRef.current === "collection" && collectionId === c.id) go("home");
+    showUndo(t(`Sammlung „${c.name}“ gelöscht.`, `Collection “${c.name}” deleted.`), () => act({ action: "collection.restore", collectionId: c.id }));
+  };
+  const reorderCollections = (order: string[]) => void act({ action: "collection.reorder", workspaceId: boot.workspace.id, order });
   // "Rückgängig" in the toast (or Mod+Z while it shows): the inverse
   // commands, built from the current state, one after the other.
   undoRef.current = async (plan: UndoPlan) => {
@@ -1329,11 +1355,13 @@ export default function WorkspaceApp({
           fragment,
         ) ||
         /^tags\/[0-9a-f-]{36}$/.test(fragment) ||
+        /^collection\/[0-9a-f-]{36}$/.test(fragment) ||
         // A section of the settings or the administration: #settings/account
         // (components/settings/shell.tsx reads the rest).
         parseSettingsHash(fragment)
       ) {
         const base = fragment.split("/")[0] as Screen;
+        if (base === "collection") setCollectionId(fragment.split("/")[1]);
         if (screenRef.current !== base) {
           screenRef.current = base;
           transitionView(
@@ -2873,6 +2901,18 @@ export default function WorkspaceApp({
               ))}
             </section>
           )}
+          {!filterMatches && (
+            <CollectionsNav
+              collections={boot.collections ?? []}
+              current={screen === "collection" ? collectionId : null}
+              onOpen={openCollection}
+              onNew={() => newCollection()}
+              onEdit={(c) => setCollectionDraft(c)}
+              onDuplicate={(c) => void duplicateCollection(c)}
+              onDelete={(c) => void deleteCollection(c)}
+              onReorder={(order) => reorderCollections(order)}
+            />
+          )}
           {(selecting || selectedPages.length > 0) && (
             <div
               className="page-selection-bar"
@@ -3296,6 +3336,7 @@ export default function WorkspaceApp({
                     inbox: t("Posteingang", "Inbox"),
                     tasks: t("Meine Aufgaben", "My tasks"),
                     tags: t("Tags", "Tags"),
+                    collection: boot.collections?.find((c) => c.id === collectionId)?.name ?? t("Sammlung", "Collection"),
                     graph: t("Graph", "Graph"),
                     media: t("Medien", "Media"),
                     settings: t("Einstellungen", "Settings"),
@@ -4189,6 +4230,16 @@ export default function WorkspaceApp({
               onOpen={(id) => void openPage(id)}
             />
           )}
+          {screen === "collection" && collectionId && (
+            <CollectionView
+              boot={boot}
+              collectionId={collectionId}
+              onOpen={(id) => void openPage(id)}
+              onEdit={(c) => setCollectionDraft(c)}
+              onDuplicate={(c) => void duplicateCollection(c)}
+              onDelete={(c) => void deleteCollection(c)}
+            />
+          )}
           {screen === "tags" && (
             <TagView
               boot={boot}
@@ -4672,86 +4723,23 @@ export default function WorkspaceApp({
               <Sparkle size={15} /> {t("KI fragen", "Ask AI")}
             </button>
           )}
-          {query.trim() && searchName === null && (
+          {query.trim() && !query.startsWith(">") && (
             <button
               className="button compact"
-              onClick={() => setSearchName(query.trim().slice(0, 120))}
+              onClick={() => {
+                // The kind and space chosen above become part of the query.
+                const space = boot.spaces.find((x) => x.id === searchSpace);
+                const kinds: Record<string, string> = { document: "document", database: "database", whiteboard: "whiteboard", row: "record" };
+                const extra = [kinds[searchKind] ? `type:${kinds[searchKind]}` : "", space ? `in:"${space.name.replace(/"/g, "")}"` : ""].filter(Boolean).join(" ");
+                newCollection(extra ? `${/\bOR\b|\|/.test(query) ? `(${query.trim()})` : query.trim()} ${extra}` : query.trim());
+                setCollectionDraft((d) => d && { ...d, name: query.trim().slice(0, 120) });
+                closeSearch();
+              }}
             >
-              <BookmarkSimple size={15} /> {t("Suche speichern", "Save search")}
+              <BookmarkSimple size={15} /> {t("Als Sammlung speichern", "Save as collection")}
             </button>
           )}
         </div>
-        {searchName !== null && (
-          <form
-            className="saved-search-form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const saved = await act({
-                action: "search.save",
-                workspaceId: boot.workspace.id,
-                name: searchName,
-                query,
-                kind: searchKind,
-                spaceId: searchSpace || null,
-              });
-              if (saved) setSearchName(null);
-            }}
-          >
-            <input
-              aria-label={t("Name der gespeicherten Suche", "Name of the saved search")}
-              value={searchName}
-              maxLength={120}
-              autoFocus
-              onChange={(e) => setSearchName(e.target.value)}
-            />
-            <button
-              className="button compact primary"
-              disabled={!searchName.trim()}
-            >
-              {t("Speichern", "Save")}
-            </button>
-            <button
-              type="button"
-              className="button compact"
-              onClick={() => setSearchName(null)}
-            >
-              {t("Abbrechen", "Cancel")}
-            </button>
-          </form>
-        )}
-        {!!boot.savedSearches?.length && (
-          <div
-            className="saved-searches"
-            role="list"
-            aria-label={t("Gespeicherte Suchen", "Saved searches")}
-          >
-            {boot.savedSearches.map((s) => (
-              <span className="chip saved-search" role="listitem" key={s.id}>
-                <button
-                  onClick={() => {
-                    setQuery(s.query);
-                    setSearchKind(s.kind);
-                    setSearchSpace(
-                      s.spaceId && boot.spaces.some((x) => x.id === s.spaceId)
-                        ? s.spaceId
-                        : "",
-                    );
-                  }}
-                >
-                  <BookmarkSimple size={13} /> {s.name}
-                </button>
-                <button
-                  aria-label={t(`Gespeicherte Suche ${s.name} löschen`, `Delete saved search ${s.name}`)}
-                  onClick={() =>
-                    void act({ action: "search.delete", searchId: s.id })
-                  }
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
         {/* One list for hits, recent pages and commands: the input keeps the
             focus and names the highlighted row (aria-activedescendant). */}
         <div
@@ -5425,6 +5413,18 @@ export default function WorkspaceApp({
       )}
       <E2eeSetupDialog open={e2eeDialog === "setup"} onClose={() => setE2eeDialog(null)} />
       <E2eeUnlockDialog open={e2eeDialog === "unlock"} onClose={() => setE2eeDialog(null)} />
+      {collectionDraft && (
+        <CollectionEditor
+          boot={boot}
+          draft={collectionDraft}
+          act={act}
+          onClose={() => setCollectionDraft(null)}
+          onSaved={(id) => {
+            setCollectionDraft(null);
+            openCollection(id);
+          }}
+        />
+      )}
       {spaceKeys && (
         <EncryptedSpaceMembers spaceId={spaceKeys} userId={boot.user.id} open onClose={() => setSpaceKeys(null)} onChanged={() => void refresh()} />
       )}

@@ -166,7 +166,7 @@ export function parseSearchTokens(
   return { text: text.replace(/\s+/g, " ").trim(), tags, properties, tokens };
 }
 
-function propertyFilter(propertyId: string, type: PagePropertyType, raw: string, quoted: boolean): PropertyFilter | null {
+export function propertyFilter(propertyId: string, type: PagePropertyType, raw: string, quoted: boolean): PropertyFilter | null {
   // name:* and a bare name: → set; name:- and name:"" → empty.
   if (!quoted && (raw === "*" || raw === "")) return { propertyId, op: "has", value: "" };
   if ((!quoted && raw === "-") || (quoted && raw === "")) return { propertyId, op: "empty", value: "" };

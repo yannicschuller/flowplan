@@ -23,6 +23,7 @@ import { markdownToHtml } from "./markdown-import";
 import { cleanHtml, htmlState } from "./document-server";
 import { documentExtensions, documentSchema } from "./document-schema";
 import { searchWorkspace, MARK_START, MARK_END } from "./search-index";
+import { listCollections, runCollection } from "./collections";
 import { myTasks } from "./doc-tasks";
 import { lockedPageIds, requireUnlocked } from "./journal-extras";
 import { validateCellPatch } from "./database-operations";
@@ -256,6 +257,32 @@ function search(user: Identity, args: { workspaceId: string; query: string; kind
     })),
   };
 }
+// Collections (#86): saved queries, run with the person's own rights.
+function collections(user: Identity, args: { workspaceId: string }) {
+  requireMember(user, args.workspaceId);
+  return { collections: listCollections(user, args.workspaceId) };
+}
+function collectionResults(user: Identity, args: { collectionId: string; timeZone?: string }) {
+  const result = runCollection(user, args.collectionId, { timeZone: args.timeZone });
+  return {
+    collection: result.collection,
+    total: result.total,
+    truncated: result.truncated,
+    encryptedLeftOut: result.encryptedLeftOut,
+    results: result.items.map((i) => ({ ...i, url: i.rowId ? `${pageLink(i.pageId)}&row=${i.rowId}` : pageLink(i.pageId) })),
+  };
+}
+type CollectionArgs = { workspaceId?: string; collectionId?: string; name?: string; query?: string; icon?: string; shared?: boolean };
+function saveCollection(user: Identity, args: CollectionArgs) {
+  if (args.collectionId) {
+    const { workspaceId: _ignored, ...rest } = args;
+    return command(user, { action: "collection.update", ...rest });
+  }
+  return command(user, { action: "collection.create", ...args });
+}
+function removeCollection(user: Identity, args: { collectionId: string }) {
+  return command(user, { action: "collection.delete", collectionId: args.collectionId });
+}
 function tasks(user: Identity, args: { workspaceId?: string; includeDone?: boolean }) {
   const ids = args.workspaceId
     ? [args.workspaceId]
@@ -424,15 +451,59 @@ const tools: Tool[] = [
     name: "search",
     title: "Search",
     description:
-      "Full-text search across pages, database records, comments and file contents in a workspace. Returns page and record IDs with a snippet.",
+      "Full-text search across pages, database records, comments and file contents in a workspace. Returns page and record IDs with a snippet. Understands #tag, -#tag, Property:value, OR, NOT/-, parentheses, created_by:/updated_by: (name or me), created:/updated: (-7d, this-week, 2026-03, >2026-01-01), type:document|database|whiteboard|record, in:\"Space\" and title:.",
     input: z.object({
       workspaceId: id("Workspace ID"),
-      query: z.string().min(1).max(200).describe("Search words"),
+      query: z.string().min(1).max(500).describe("Search words and filters"),
       kind: z.enum(["all", "document", "database", "whiteboard", "row", "comment", "file"]).optional(),
       spaceId: id("Only in this space").optional(),
     }),
     write: false,
     run: search as Tool["run"],
+  },
+  {
+    name: "list_collections",
+    title: "List collections",
+    description:
+      "The saved collections of a workspace (own ones and those shared with the workspace) with their query in the search language: words, #tag, -#tag, Property:value, OR, NOT, parentheses, created_by:, updated_by:, created:/updated: (-7d, this-week, 2026-03 …), type:, in:, title:.",
+    input: z.object({ workspaceId: id("Workspace ID") }),
+    write: false,
+    run: collections as Tool["run"],
+  },
+  {
+    name: "run_collection",
+    title: "Run a collection",
+    description: "The pages and database records that match a collection now, as this person may read them (latest change first, at most 500).",
+    input: z.object({
+      collectionId: id("Collection ID from list_collections"),
+      timeZone: z.string().max(100).optional().describe("IANA time zone for relative dates (default UTC)"),
+    }),
+    write: false,
+    run: collectionResults as Tool["run"],
+  },
+  {
+    name: "save_collection",
+    title: "Create or change a collection",
+    description:
+      "Without collectionId: a new collection in the workspace (private unless shared). With collectionId: changes its name, query, icon or sharing (its creator; workspace owners for shared ones).",
+    input: z.object({
+      workspaceId: id("Workspace ID (for a new collection)").optional(),
+      collectionId: id("Collection ID to change").optional(),
+      name: z.string().trim().min(1).max(120).optional(),
+      query: z.string().trim().min(1).max(1000).optional().describe("e.g. created_by:me #project -#done updated:-7d"),
+      icon: z.string().max(16).optional(),
+      shared: z.boolean().optional().describe("Share with all members of the workspace"),
+    }),
+    write: true,
+    run: saveCollection as Tool["run"],
+  },
+  {
+    name: "delete_collection",
+    title: "Delete a collection",
+    description: "Moves a collection to the trash (its creator; workspace owners for shared ones).",
+    input: z.object({ collectionId: id("Collection ID") }),
+    write: true,
+    run: removeCollection as Tool["run"],
   },
   {
     name: "read_page",

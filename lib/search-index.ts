@@ -14,6 +14,8 @@ import { parseRecognizedMap } from "./ink/recognized";
 import { filteredPageIds, pageMetaSearchText, workspaceProperties, workspaceTags } from "./page-properties-server";
 import { parseSearchTokens } from "./page-properties";
 import { taggedRecords } from "./tag-fields";
+import { isClassicQuery, parseQuery, type ItemType } from "./collection-query";
+import { evaluateQuery } from "./collections";
 
 // Full-text index over page titles, document text, record cells and record
 // documents. Triggers (see db.ts) only mark changed pages/rows as dirty; the
@@ -239,11 +241,17 @@ export function searchWorkspace(
   workspaceId: string,
   rawQuery: string,
   // excludeDays: "Ohne Journaltage" – no hits on journal days at all.
-  options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean } = {},
+  options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean; timeZone?: string } = {},
 ): SearchResult[] {
   // Keep the index current for this request; a large backlog is also
   // drained by the background worker.
   for (let i = 0; i < 10 && processSearchIndex(); i++);
+  // OR, NOT, parentheses, created_by:, created:, type:, in:, title: (#86,
+  // lib/collection-query.ts): the pages and records that match, as a
+  // collection finds them, latest change first. Queries the search knew
+  // before keep their ranking and snippets below.
+  const parsed = parseQuery(rawQuery.slice(0, 1000));
+  if (!isClassicQuery(parsed.node)) return queryResults(user, workspaceId, parsed.node, options);
   // `#tag`, `-#tag` and `name:value` keep the pages with these tags and
   // values (lib/page-properties.ts); the rest is searched as text.
   const tokens = parseSearchTokens(rawQuery.replace(/[\u0000-\u001f]/g, " ").slice(0, 400), {
@@ -423,6 +431,34 @@ export function searchWorkspace(
     if (done()) break;
   }
   return finish();
+}
+
+function queryResults(
+  user: Identity,
+  workspaceId: string,
+  node: ReturnType<typeof parseQuery>["node"],
+  options: { kind?: SearchKind; spaceId?: string; excludeDays?: boolean; timeZone?: string },
+): SearchResult[] {
+  const kind = options.kind || "all";
+  if (kind === "comment" || kind === "file") return [];
+  const types: ItemType[] | undefined = kind === "all" ? undefined : [kind === "row" ? "record" : kind];
+  const { items } = evaluateQuery(user, workspaceId, node, {
+    types,
+    spaceId: options.spaceId,
+    timeZone: options.timeZone,
+    excludeDays: options.excludeDays,
+    limit: SEARCH_LIMIT,
+  });
+  return items.map((item) => ({
+    id: item.pageId,
+    ...(item.rowId ? { rowId: item.rowId, pageTitle: item.database ?? "" } : {}),
+    title: item.title,
+    icon: item.icon,
+    space_id: item.spaceId,
+    kind: item.type === "record" ? "row" : item.type === "database" || item.type === "whiteboard" ? item.type : "document",
+    snippet: "",
+    ...(item.journalDate ? { journalDate: item.journalDate } : {}),
+  }));
 }
 
 const runtime = globalThis as typeof globalThis & {
