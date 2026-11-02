@@ -40,7 +40,37 @@ export const hasClass = (el: Element, name: string) => (el.attribs.class || "").
 // Placeholders the importers write for files and pages of the import; the
 // writer replaces them with real addresses (or drops them).
 export const fileRef = (key: string) => `fp-import://file/${encodeURIComponent(key)}`;
-export const pageRef = (key: string) => `fp-import://page/${encodeURIComponent(key)}`;
+// A link to a block or heading of a page (#88) carries the source's anchor
+// (a block id or heading); lib/importers/write.ts resolves it.
+export const pageRef = (key: string, anchor?: string | null) =>
+  `fp-import://page/${encodeURIComponent(key)}${anchor ? `#${encodeURIComponent(anchor)}` : ""}`;
+
+// Elements the source names by an id (id="…", or an empty <a name="…">
+// inside them) keep it as their block id, so links to them can be found
+// (lib/import-anchors.ts).
+const ANCHOR = /<!--fp-anchor:([^>]*?)-->/g;
+const BLOCK_START = /^<(p|h[1-6]|li|blockquote|table|pre|ul|ol|aside|details|img|hr|div)\b(?![^>]*data-block-id)/;
+const BLOCK_TAG = /^<(p|h[1-6]|li|blockquote|table|pre|ul|ol|aside|details)\b/;
+const BLOCK_TAGS = /^(p|h[1-6]|li|blockquote|table|pre|ul|ol|aside|details)$/;
+export function withBlockId(html: string, id: string | undefined) {
+  const clean = (id || "").trim().slice(0, 200);
+  if (!clean) return html;
+  // A captioned image or code block: the id goes on the image or code.
+  const figure = /^<figure\b[^>]*>(<img|<pre)\b(?![^>]*data-block-id)/.exec(html);
+  if (figure) return html.slice(0, figure.index + figure[0].length) + ` data-block-id="${esc(clean)}"` + html.slice(figure.index + figure[0].length);
+  // Attachments are replaced by the writer as a whole.
+  if (!BLOCK_START.test(html) || html.startsWith("<div data-import-file=")) return html;
+  return html.replace(BLOCK_START, (start) => `${start} data-block-id="${esc(clean)}"`);
+}
+// The first anchor inside rendered content, and the content without them.
+function takeAnchor(html: string) {
+  let first = "";
+  const rest = html.replace(ANCHOR, (_all, id: string) => {
+    first ||= id;
+    return "";
+  });
+  return { first, rest };
+}
 
 const INLINE = new Set([
   "a", "abbr", "b", "br", "cite", "code", "del", "em", "font", "i", "img", "kbd", "mark", "q", "s", "samp",
@@ -99,8 +129,9 @@ export function renderNodes(nodes: ChildNode[], options: RenderOptions = {}): st
     let out = "",
       run: ChildNode[] = [];
     const flush = () => {
-      const inline = render(run).trim();
-      if (inline && inline.replace(/<br\s*\/?>/g, "").trim()) out += `<p>${inline.replace(/^(<br>)+|(<br>)+$/g, "")}</p>`;
+      const { first, rest } = takeAnchor(render(run));
+      const inline = rest.trim();
+      if (inline && inline.replace(/<br\s*\/?>/g, "").trim()) out += withBlockId(`<p>${inline.replace(/^(<br>)+|(<br>)+$/g, "")}</p>`, first);
       run = [];
     };
     for (const node of list) {
@@ -122,6 +153,19 @@ export function renderNodes(nodes: ChildNode[], options: RenderOptions = {}): st
     const inner = () => render(el.children);
     const custom = rule?.(el, inner, render);
     if (custom !== undefined) return custom;
+    const rendered = element(el, tag, inner);
+    // The source's id (Google Docs headings, Confluence and Notion blocks …):
+    // on the block it became, or passed on to the block around it.
+    const own = (el.attribs.id || "").replace(/-->/g, "");
+    const block = BLOCK_TAG.test(rendered);
+    if (BLOCK_TAGS.test(tag) || (block && (own || rendered.includes("<!--fp-anchor:")))) {
+      const { first, rest } = takeAnchor(rendered);
+      return withBlockId(rest, own || first);
+    }
+    if (own && rendered && tag !== "a") return `<!--fp-anchor:${esc(own)}-->${rendered}`;
+    return rendered;
+  }
+  function element(el: Element, tag: string, inner: () => string): string {
     if (DROP.has(tag)) return "";
     const marks = { ...styleMarks(el.attribs.style || ""), ...(extraMarks?.(el) || {}) };
     if (CONTAINERS.has(tag)) {
@@ -158,6 +202,9 @@ export function renderNodes(nodes: ChildNode[], options: RenderOptions = {}): st
       case "a": {
         const href = el.attribs.href || "";
         const content = inner();
+        // An anchor without a link names the block around it.
+        const name = !href ? (el.attribs.name || el.attribs.id || "").replace(/-->/g, "") : "";
+        if (name) return `<!--fp-anchor:${esc(name)}-->${content}`;
         return href ? `<a href="${esc(href)}">${content || esc(href)}</a>` : content;
       }
       case "img": {

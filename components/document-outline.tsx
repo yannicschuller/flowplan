@@ -5,7 +5,7 @@
 // published pages have it too (PublicOutline), from the rendered headings.
 import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { ArrowsInLineVertical, ArrowsOutLineVertical, ListBullets, X } from "@phosphor-icons/react";
+import { ArrowsInLineVertical, ArrowsOutLineVertical, Link as LinkIcon, ListBullets, X } from "@phosphor-icons/react";
 import { setAllFolded } from "@/lib/heading-folds-plugin";
 import { useT } from "./i18n";
 import { reveal } from "@/lib/motion";
@@ -70,10 +70,13 @@ export function DocumentOutline({
   headings,
   onClose,
   locate,
+  onCopyLink,
 }: {
   editor: Editor | null;
   headings: OutlineHeading[];
   onClose: () => void;
+  // Copies the link to a heading (#88); only in the app's editor.
+  onCopyLink?: (pos: number) => void;
   // Without an editor: the element of a heading (a read-only document).
   locate?: (pos: number) => HTMLElement | null;
 }) {
@@ -161,6 +164,17 @@ export function DocumentOutline({
               >
                 {h.text || t("Überschrift", "Heading")}
               </button>
+              {onCopyLink && (
+                <button
+                  type="button"
+                  className="icon-button document-outline-link"
+                  aria-label={t(`Link zu „${h.text || "Überschrift"}“ kopieren`, `Copy link to “${h.text || "heading"}”`)}
+                  title={t("Link zur Überschrift kopieren", "Copy link to heading")}
+                  onClick={() => onCopyLink(h.pos)}
+                >
+                  <LinkIcon size={13} />
+                </button>
+              )}
             </li>
           ))}
         </ol>

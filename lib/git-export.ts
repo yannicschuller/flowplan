@@ -157,7 +157,31 @@ function readableBoard(user: Identity, id: string) {
 }
 // A document page from its exported file: the text below the title, without
 // the list of sub-pages. The previous state is kept as a version.
-function updateDocument(user: Identity, pageId: string, markdown: string) {
+// A link of an exported file back to what it named (#88): other pages of
+// the export by their path (index.md of a folder, pages/<title>-<id>.md),
+// a block by its marker ("other.md#^id"). Links leaving the export stay
+// as they are when they are web addresses or Flowplan links.
+export function exportedLink(href: string, file: string, folders: Map<string, string>): string | null {
+  if (/^(https?:|mailto:|\/#page=)/i.test(href)) return href;
+  if (/^[a-z]+:/i.test(href) || href.startsWith("//")) return null;
+  const [rawPath, anchor = ""] = href.split("#", 2);
+  let target = file;
+  if (rawPath) {
+    try {
+      target = posix.normalize(posix.join(posix.dirname(file), decodeURIComponent(rawPath)));
+    } catch {
+      return null;
+    }
+  }
+  const [folder, ...rest] = target.split("/");
+  const rootId = folders.get(folder.split("-").pop() || "");
+  const inside = rest.join("/");
+  const pageId = !rootId ? null : inside === "index.md" ? rootId : /^pages\/[^/]*-([0-9a-f-]{36})\.md$/.exec(inside)?.[1];
+  if (!pageId) return null;
+  const block = /^\^([A-Za-z0-9-]{1,64})$/.exec(decodeURIComponent(anchor))?.[1];
+  return `/#page=${pageId}${block ? `&block=${block}` : ""}`;
+}
+function updateDocument(user: Identity, pageId: string, markdown: string, link: (href: string) => string | null = (href) => (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null)) {
   const page = requirePage(user, pageId, true);
   if (page.kind !== "document" || page.locked) return false;
   // Journal days behind a PIN stay untouched.
@@ -178,7 +202,7 @@ function updateDocument(user: Identity, pageId: string, markdown: string) {
     .replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "");
   const html = markdownToHtml(
     body.replace(/^!\[Cover\]\([^)]*\)\n+/, ""),
-    (href) => (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null),
+    (href, kind) => (kind === "image" ? (/^(https?:|mailto:|\/#page=)/i.test(href) ? href : null) : link(href)),
     // Embedded boards come back as embeds when this person may read them.
     { whiteboard: (id) => one<{ workspace_id: string; kind: string }>("SELECT workspace_id,kind FROM pages WHERE id=? AND deleted_at IS NULL", id)?.workspace_id === page.workspace_id && readableBoard(user, id) },
   );
@@ -242,7 +266,7 @@ async function importChanges(user: Identity, folders: Map<string, string>, from:
       }
       const page =
         inside === "index.md" ? rootId : /^pages\/[^/]*-([0-9a-f-]{36})\.md$/.exec(inside)?.[1] || journalDayOf(rootId, inside, text);
-      if (page && transaction(() => updateDocument(user, page, text), user)) imported++;
+      if (page && transaction(() => updateDocument(user, page, text, (href) => exportedLink(href, path, folders)), user)) imported++;
     } catch (error) {
       console.error("Git import skipped", path, (error as Error).message);
     }

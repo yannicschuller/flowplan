@@ -1,11 +1,14 @@
 // Obsidian vaults: notes become pages, folders parent pages (a folder note
 // – "Folder/Folder.md" or "Folder.md" next to the folder – is the folder's
 // page), [[Page]], [[Page|label]] and [[Page#Heading]] become links to the
-// imported pages, ![[image.png]] images and ![[file.pdf]] file links,
+// imported pages ([[Page#Heading]] and [[Page#^blockid]] links to that
+// heading or block, whose "^blockid" marker becomes its id, #88),
+// ![[image.png]] images and ![[file.pdf]] file links,
 // callouts (> [!note]) callouts, and tags from the frontmatter and the
 // text (#tag) the page's tags.
 import { posix } from "node:path";
 import { markdownToRawHtml } from "../markdown-html";
+import { blockMarkers } from "../markdown-import";
 import { splitFrontmatter, type FrontmatterValue } from "../frontmatter";
 import { frontmatterAliases } from "../aliases";
 import { fileRef, mimeOf, pageRef } from "./html";
@@ -46,19 +49,22 @@ const mdEscape = (text: string) => text.replace(/([\\[\]])/g, "\\$1");
 export type WikiTarget = { href: string; kind: "page" | "file" } | null;
 // [[…]] and ![[…]] as Markdown links to what `lookup` finds; links to
 // nothing stay as their text.
-export function convertWikilinks(markdown: string, lookup: (target: string) => WikiTarget, onEmbedNote?: () => void) {
+// `self`: the note itself, for [[#Heading]] and [[#^blockid]].
+export function convertWikilinks(markdown: string, lookup: (target: string) => WikiTarget, onEmbedNote?: () => void, self?: string) {
   return outsideCode(markdown, (text) =>
     text.replace(/(!?)\[\[([^\]\n|]*?)(?:\|([^\]\n]*))?\]\]/g, (_, embed: string, rawTarget: string, label?: string) => {
       const cut = rawTarget.search(/[#^]/);
       const target = cut < 0 ? rawTarget : rawTarget.slice(0, cut),
         anchor = cut < 0 ? "" : rawTarget.slice(cut);
       const shown = (label && !/^\d+(x\d+)?$/.test(label) ? label : "") || (target ? target.replace(/^.*\//, "") : anchor.replace(/^[#^]/, ""));
-      if (!target.trim()) return mdEscape(shown);
+      // "#Heading#Subheading": the last heading; "#^id" (or "^id"): the block.
+      const part = anchor.replace(/^#/, "").split("#").pop()!.trim();
+      if (!target.trim()) return self && part ? `[${mdEscape(shown)}](${self}#${encodeURIComponent(part)})` : mdEscape(shown);
       const found = lookup(target.trim());
       if (!found) return mdEscape(shown);
       if (embed && found.kind === "file") return `![${mdEscape(shown)}](${found.href})`;
       if (embed && found.kind === "page") onEmbedNote?.();
-      return `[${mdEscape(shown)}](${found.href})`;
+      return `[${mdEscape(shown)}](${found.href}${found.kind === "page" && part ? `#${encodeURIComponent(part)}` : ""})`;
     }),
   );
 }
@@ -142,11 +148,14 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
     const folder = folderOfNote(path);
     const parent = folderKey(posix.dirname(folder ?? path));
     const text = body.replace(new RegExp(`^\\s*#\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\n`), "");
-    const markdown = convertWikilinks(text, lookup(path), () => warnings.add("Eingebettete Notizen werden als Link übernommen."));
-    const html = markdownToRawHtml(markdown, (href, kind) => {
+    const markdown = convertWikilinks(text, lookup(path), () => warnings.add("Eingebettete Notizen werden als Link übernommen."), pageRef(path));
+    const html = blockMarkers(markdownToRawHtml(markdown, (href, kind) => {
       if (href.startsWith("fp-import://")) return href;
       if (/^(https?:|mailto:)/i.test(href)) return href;
-      if (/^[a-z]+:/i.test(href) || href.startsWith("#")) return null;
+      // [text](#Heading) on the same note, [text](Other.md#^id) (#88).
+      const anchor = href.includes("#") ? href.slice(href.indexOf("#") + 1) : "";
+      if (href.startsWith("#")) return anchor && kind === "link" ? `${pageRef(path)}#${anchor}` : null;
+      if (/^[a-z]+:/i.test(href)) return null;
       let target: string;
       try {
         target = decodeURIComponent(href.split("#")[0]);
@@ -155,8 +164,8 @@ export function parseObsidian(entries: Map<string, Buffer>, name = "Obsidian"): 
       }
       const found = lookup(path)(target);
       if (!found && kind === "image") warnings.add("Bild ohne Datei im Tresor übersprungen.");
-      return found?.href ?? null;
-    });
+      return found ? found.href + (found.kind === "page" && anchor ? `#${anchor}` : "") : null;
+    }));
     pages.push({ key: path, parent, title, html, tags: noteTags(data, body), aliases: frontmatterAliases(data), properties: data });
   }
   if (!notes.length) warnings.add("Keine Notizen (.md) gefunden.");

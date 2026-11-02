@@ -269,7 +269,8 @@ export function publishedHtml(
           hide(attrs, attr);
         }
       }
-      const link = /^\/?#page=([\w-]+)$/.exec(attrs[attr] || "");
+      // Page and block links (#88: the block part stays behind).
+      const link = /^\/?#page=([\w-]+)(?:&block=[\w-]{1,64})?$/.exec(attrs[attr] || "");
       if (link) {
         if (pageIds.has(link[1])) attrs[attr] = `/share/${token}/${link[1]}`;
         else hide(attrs, attr);

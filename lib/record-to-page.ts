@@ -173,7 +173,7 @@ function withProperties(doc: PMNode, properties: Property[]) {
   return doc.type.create(doc.attrs, list.content.append(rest));
 }
 
-const recordAddress = /^(.*#page=)([0-9a-f-]{36})&row=([0-9a-f-]{36})((?:&thread=[0-9a-f-]{36})?)$/i;
+const recordAddress = /^(.*#page=)([0-9a-f-]{36})&row=([0-9a-f-]{36})((?:&thread=[0-9a-f-]{36}|&block=[\w-]{1,64})?)$/i;
 const uploadsDir = () => resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
 
 // The page gets its own copies of the database's files the record refers

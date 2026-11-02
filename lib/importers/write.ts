@@ -26,6 +26,7 @@ import { requirePlaintextSpace } from "../e2ee-server";
 import { esc, isImage, pageRef } from "./html";
 import { MAX_IMPORT_ROWS, importFileData, importFileSize, maxImportPages, tooManyPages, tooManyRecords, type ImportPage, type ImportTree } from "./types";
 import { pageIconSchema } from "../page-appearance";
+import { documentAnchors, findAnchor, type DocumentAnchors } from "../import-anchors";
 import type { Field, Identity, Page, Space } from "../types";
 
 export type ImportMode = "pages" | "database";
@@ -246,6 +247,18 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       );
       fileUrls.set(key, { url: `/api/files/${fid}`, name, mime });
     }
+    // Block ids (#88): every document's blocks get Flowplan ids; a link to
+    // a block or heading of a page of the import (pageRef with an anchor)
+    // becomes a block link, or the page link when nothing matches.
+    const sources = new Map(tree.pages.map((page) => [page.key, page]));
+    const anchored = new Map<string, DocumentAnchors>();
+    const prepared = (key: string) => {
+      if (!anchored.has(key)) {
+        const page = sources.get(key);
+        anchored.set(key, documentAnchors(page?.html || "", page?.title || "", true));
+      }
+      return anchored.get(key)!;
+    };
     const pageUrl = (key: string) =>
       databaseId ? (rowIds.has(key) ? `/#page=${databaseId}&row=${rowIds.get(key)}` : null) : pageIds.has(key) ? `/#page=${pageIds.get(key)}` : null;
     // Embedded databases and whiteboards name their page by id.
@@ -256,18 +269,23 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
             pageIds.has(decodeKey(key)) ? `${name}="${pageIds.get(decodeKey(key))}"` : `${name}=""`,
           )
           // Images of files that are no pictures become links.
-          .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (_, key: string) => {
+          .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/file\/([^"]*)"[^>]*>/g, (tag: string, key: string) => {
             const file = fileUrls.get(decodeKey(key));
             if (!file) return "";
-            return isImage(file.mime) ? `<img src="${esc(file.url)}" alt="${esc(file.name)}">` : `<a href="${esc(file.url)}">${esc(file.name)}</a>`;
+            // The image keeps its block id (#88).
+            const block = /\bdata-block-id="([\w-]{1,64})"/.exec(tag)?.[1];
+            return isImage(file.mime) ? `<img src="${esc(file.url)}" alt="${esc(file.name)}"${block ? ` data-block-id="${block}"` : ""}>` : `<a href="${esc(file.url)}">${esc(file.name)}</a>`;
           })
           // Attachments become the block an upload in the editor creates (#82).
           .replace(/<div data-import-file="fp-import:\/\/file\/([^"]*)" data-title="([^"]*)"><\/div>/g, (_, key: string, title: string) =>
             attachmentHtml(fileUrls.get(decodeKey(key)), title),
           )
           .replace(/<img\b[^>]*?\bsrc="fp-import:\/\/page\/[^"]*"[^>]*>/g, "")
-          .replace(/(href|src)="fp-import:\/\/(file|page)\/([^"]*)"/g, (_, name: string, kind: string, key: string) => {
-            const target = kind === "file" ? fileUrls.get(decodeKey(key))?.url : pageUrl(decodeKey(key));
+          .replace(/(href|src)="fp-import:\/\/(file|page)\/([^"]*)"/g, (_, name: string, kind: string, ref: string) => {
+            const [key, anchor] = ref.split("#", 2);
+            let target = kind === "file" ? fileUrls.get(decodeKey(key))?.url : pageUrl(decodeKey(key));
+            const blockId = target && kind === "page" && anchor && sources.has(decodeKey(key)) ? findAnchor(prepared(decodeKey(key)).anchors, decodeKey(anchor)) : null;
+            if (blockId) target += `&block=${blockId}`;
             return target ? `${name}="${esc(target)}"` : "";
           }),
       );
@@ -301,7 +319,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
       );
       notes.forEach(({ page }, i) => {
         const rid = rowIds.get(page.key)!;
-        const html = page.html ? resolveHtml(page.html) : "";
+        const html = page.html ? resolveHtml(prepared(page.key).html) : "";
         const folder = folderOf(page);
         const cells = {
           title: page.title.slice(0, 1000),
@@ -359,7 +377,7 @@ export function writeImport(user: Identity, workspaceId: string, spaceId: string
           });
           continue;
         }
-        const html = resolveHtml(page.html || "");
+        const html = resolveHtml(prepared(page.key).html);
         // Tags and frontmatter properties become the page's (#70,
         // lib/page-properties-server.ts).
         importPageMeta(user, workspaceId, pid, page, tree.tagColors);

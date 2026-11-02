@@ -17,6 +17,7 @@ import {
   Copy,
   DotsThree,
   Info,
+  Link as LinkIcon,
   ListBullets,
   Palette,
   Smiley,
@@ -127,10 +128,13 @@ export function DocumentBlockControls({
   editor,
   children,
   allowLinkedCopies = true,
+  onCopyLink,
 }: {
   editor: Editor | null;
   children: ReactNode;
   allowLinkedCopies?: boolean;
+  // "Link zum Block kopieren" (#88), for the block at this position.
+  onCopyLink?: (pos: number) => void;
 }) {
   const t = useT();
   const surface = useRef<HTMLDivElement>(null);
@@ -903,6 +907,9 @@ export function DocumentBlockControls({
       };
     }
     items.push("separator");
+    // The link of a block, for every kind of block (#88).
+    if (only && onCopyLink)
+      items.push({ icon: <LinkIcon />, label: t("Link zum Block kopieren", "Copy link to block"), run: () => onCopyLink(only.pos) });
     if (!pickingRef.current)
       items.push({ icon: <CheckCircle />, label: t("Mehrere auswählen", "Select several"), run: startPicking });
     items.push({ icon: <Trash />, label: t("Löschen", "Delete"), danger: true, disabled: !rangeValid, run: () => perform("delete") });

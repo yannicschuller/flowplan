@@ -105,6 +105,7 @@ import { trackJob } from "@/lib/background-jobs";
 import { recordBacklinks } from "@/lib/relation-backlinks";
 import { hiddenFileIds } from "@/lib/row-files";
 import { pagePreview } from "@/lib/page-preview";
+import { blockPreview, searchBlocks } from "@/lib/block-links";
 import { withActivity } from "@/lib/page-activity";
 import { myTasks, otherWorkspaceTasks } from "@/lib/doc-tasks";
 import { homeAction, homeData, homeOptions } from "@/lib/home-widgets";
@@ -524,6 +525,22 @@ async function handleGET(
       }
       events.sort((a, b) => Number(a.timed) - Number(b.timed) || a.start.localeCompare(b.start));
       return NextResponse.json({ events: withMeetingNotes(user, day, events), calendarError }, { headers: { "Cache-Control": "no-store" } });
+    }
+    // A pasted block link: title and start of the block (#88).
+    if (path[0] === "pages" && path[1] && path[2] === "blocks" && path[3] && !path[4]) {
+      const row = url.searchParams.get("row");
+      return NextResponse.json(blockPreview(user, z.uuid().parse(path[1]), path[3], row ? z.uuid().parse(row) : null), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    // Headings and blocks of other pages for "@" (#88).
+    if (path[0] === "blocks" && !path[1]) {
+      const wid = url.searchParams.get("workspace") || "";
+      requireMember(user, wid);
+      const exclude = url.searchParams.get("exclude");
+      return NextResponse.json(searchBlocks(user, wid, url.searchParams.get("q") || "", exclude && /^[0-9a-f-]{36}$/i.test(exclude) ? exclude : null), {
+        headers: { "Cache-Control": "no-store" },
+      });
     }
     if (path[0] === "pages" && path[1] && path[2] === "preview")
       return NextResponse.json(pagePreview(user, z.uuid().parse(path[1])), {

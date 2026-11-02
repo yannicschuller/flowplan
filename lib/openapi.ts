@@ -59,7 +59,7 @@ export const commandActionNames = [
   "pages.bulk", "page.follow", "page.collapseProperties", "page.snapshot", "page.publish", "page.share", "page.shareUpdate", "page.fromShare",
   "page.toRecord", "record.toPage", "page.owner", "page.review", "page.aliases",
   "page.properties", "pages.tag", "tag.save", "tag.delete", "tag.merge", "tag.reorder", "property.save", "property.delete", "property.reorder", "favorite", "favorite.row", "task.update", "synced.create", "mention.link",
-  "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary",
+  "journal.settings", "journal.lock", "journal.unlock", "journal.relock", "journal.entry", "journal.roll", "journal.link", "journal.removeEmpty", "journal.summary", "block.ids",
   "linked.command", "document.sync", "document.markdown", "document.markdown.apply",
   "snapshot.restoreBlock", "snapshot.restore",
   "database.update", "database.settings", "database.recordLayout",
@@ -147,6 +147,20 @@ export const commandActions: ActionDoc[] = [
       starterTemplate: z.string().max(100).optional().describe("A built-in starter template key"),
     }),
     result: idResult,
+  },
+  {
+    action: "block.ids",
+    summary: "Give the blocks of a document their ids",
+    description:
+      "For a link to a block (#88) of an older document whose block has no id yet: every linkable block of the page (or with `rowId` the record) gets one; the answer names the id of the `index`-th block (from GET /api/blocks), or of the block with that `text`. Needs read access only and does not count as an edit. Refused for end-to-end encrypted pages.",
+    input: z.object({
+      action: z.literal("block.ids"),
+      pageId: uuid,
+      rowId: uuid.optional(),
+      index: z.number().int().min(0).max(100000),
+      text: z.string().max(500).optional().describe("The start of the block's text, to find it when the document changed"),
+    }),
+    result: z.object({ blockId: z.string() }),
   },
   {
     action: "page.update",
@@ -1202,6 +1216,8 @@ const operations: { path: string; method: "get" | "post"; op: Op }[] = [
   { path: "/api/command", method: "post", op: { id: "command", tag: "Workspace", summary: "Change something", description: "The same actions the interface sends: one JSON object with `action` and its fields. Write tokens only; `admin.*`, `token.*` and `ai.*` are refused for every token. Bodies up to 10 MB. Actions that send mail (`member.invite`, `page.share`) are limited to 40 per hour per person (429).", write: true, body: { content: "application/json", schema: ref("Command"), required: true }, ok: { schema: ref("CommandResult"), description: "The result of the action" }, errors: [400, 401, 403, 404, 409, 413, 429] } },
   // Pages
   { path: "/api/pages/{pageId}", method: "get", op: { id: "getPage", tag: "Pages", summary: "A page with its content", description: "Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts).", params: [p("pageId", "Page ID")], ok: { schema: ref("PageData"), description: "The page" }, errors: [401, 403, 404] } },
+  { path: "/api/pages/{pageId}/blocks/{blockId}", method: "get", op: { id: "blockPreview", tag: "Pages", summary: "Preview of a block link", description: `What a pasted block link shows: the page's (or with \`row\` the record's) title and the start of the block's text, as \`Page › text\` (#88). A block link is the page address with the block: \`/#page=<page>&block=<blockId>\` (records: \`/#page=<database>&row=<record>&block=<blockId>\`). \`found\` is false for a block that no longer exists. End-to-end encrypted pages have no text on the server: \`encrypted\` is true and title and text stay empty. ${noStore}`, params: [p("pageId", "Page ID (the database for a record)"), p("blockId", "Block ID", { type: "string", pattern: "^[A-Za-z0-9_-]{1,64}$" }), q("row", "Record ID, for a block of a record's document", { type: "string", format: "uuid" })], ok: { schema: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, rowId: { type: "string", format: "uuid" }, workspaceId: { type: "string", format: "uuid" }, blockId: { type: "string" }, title: { type: "string" }, text: { type: "string" }, found: { type: "boolean" }, encrypted: { type: "boolean" } }, required: ["pageId", "workspaceId", "blockId", "title", "text", "found", "encrypted"] }, description: "Title and text" }, errors: [400, 401, 403, 404] } },
+  { path: "/api/blocks", method: "get", op: { id: "blockSearch", tag: "Workspace", summary: "Headings and blocks of documents", description: `For links to a block: headings and blocks of the documents a person may read whose text matches \`q\` (at least two characters). \`Page › Heading\` (or \`Page#Heading\`) lists the headings of the pages whose title matches the first part. A hit without \`blockId\` has no id yet; \`block.ids\` (POST /api/command with \`pageId\`, \`index\` and \`text\`) gives it one. ${noStore}`, params: [workspace, q("q", "Search words", { type: "string" }, true), q("exclude", "Leave out this page", { type: "string", format: "uuid" })], ok: { schema: { type: "array", items: { type: "object", properties: { pageId: { type: "string", format: "uuid" }, pageTitle: { type: "string" }, blockId: { type: ["string", "null"] }, index: { type: "integer", minimum: 0 }, text: { type: "string" }, level: { type: ["integer", "null"], description: "Heading level, null for other blocks" } }, required: ["pageId", "pageTitle", "blockId", "index", "text", "level"] } }, description: "Matches" }, errors: [400, 401, 403] } },
   { path: "/api/pages/{pageId}/preview", method: "get", op: { id: "pagePreview", tag: "Pages", summary: "Short preview of a page", description: noStore, params: [p("pageId", "Page ID")], ok: { schema: { type: "object", additionalProperties: true }, description: "Title, icon and the first lines" }, errors: [401, 403, 404] } },
   { path: "/api/pages/{pageId}/shares", method: "get", op: { id: "pageShares", tag: "Pages", summary: "Who has access to exactly this page", params: [p("pageId", "Page ID")], ok: { schema: { type: "object", additionalProperties: true }, description: "People, groups and links" }, errors: [401, 403, 404] } },
   { path: "/api/pages/{pageId}/unlinked", method: "get", op: { id: "unlinkedMentions", tag: "Pages", summary: "Texts naming this page without a link", params: [p("pageId", "Page ID")], ok: { schema: { type: "object", properties: { mentions: { type: "array", items: { type: "object", additionalProperties: true } } }, required: ["mentions"] }, description: "Mentions" }, errors: [401, 403, 404] } },

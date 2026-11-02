@@ -6326,6 +6326,40 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   background: var(--blue-light);
   color: var(--accent-strong);
 }
+/* "Link zur Überschrift kopieren" beside each entry (#88). */
+.document-outline li:has(> .document-outline-link) {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+.document-outline li:has(> .document-outline-link) > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.document-outline li button.document-outline-link {
+  display: grid;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-left: 0;
+  border-radius: 6px;
+  place-items: center;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.document-outline li:hover > .document-outline-link,
+.document-outline li button.document-outline-link:focus-visible {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .document-outline li button.document-outline-link {
+    width: 32px;
+    height: 32px;
+    opacity: 0.7;
+  }
+}
 .outline-toggle {
   position: sticky;
   z-index: 5;
@@ -10558,6 +10592,13 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13 M6 8h5 M6 11h5' stroke='black' stroke-width='1.4' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E")
     center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13 M6 8h5 M6 11h5' stroke='black' stroke-width='1.4' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+/* A link to a block (#88): a paragraph mark in place of the page. */
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel) a[href*="#page="][href*="block="]::before {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9 2.5v11M12 2.5v11M13.5 2.5H7a3 3 0 0 0 0 6h2' stroke='black' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9 2.5v11M12 2.5v11M13.5 2.5H7a3 3 0 0 0 0 6h2' stroke='black' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
 .whiteboard.wb-fullscreen {
@@ -30049,6 +30090,42 @@ label.ws-search input {
   opacity: 1;
   color: var(--text);
   background: var(--surface);
+}
+/* The link of a heading (#88): after its text, while the pointer is on it. */
+.heading-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-inline-start: 6px;
+  border-radius: 4px;
+  color: var(--muted);
+  vertical-align: middle;
+  cursor: pointer;
+  opacity: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.12s ease;
+}
+.document-editor :is(h1, h2, h3, h4, h5, h6):hover > .heading-link {
+  opacity: 0.7;
+}
+.heading-link:hover {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface);
+}
+/* Touch: the block menu and the outline copy the link. */
+@media (pointer: coarse) {
+  .heading-link {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heading-link {
+    transition: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .heading-fold,

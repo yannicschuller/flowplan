@@ -33,6 +33,7 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-journal-since",
         "data-due",
         "data-reactions",
+        "data-block-id",
         "data-synced-block",
         "data-suggestion",
         "data-suggestion-id",

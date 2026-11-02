@@ -7,7 +7,7 @@ import { posix } from "node:path";
 import { readZip } from "../archive";
 import { docxEntriesToHtml } from "./docx";
 import {
-  attr, byTag, children, esc, fileRef, findOne, isElement, mimeOf, nestedList, parseHtml, renderNodes, styleMarks, text,
+  attr, byTag, children, esc, fileRef, findOne, isElement, mimeOf, nestedList, pageRef, parseHtml, renderNodes, styleMarks, text,
   type ChildNode, type Element, type ListItem, type Rule,
 } from "./html";
 import { warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
@@ -37,7 +37,11 @@ export function googleHtmlToHtml(source: string, path: string, entries: Map<stri
   const rule: Rule = (el, inner) => {
     if (el.name === "a") {
       const href = unwrapGoogleLink(attr(el, "href"));
+      // Bookmarks (<a id="…">) name the block around them (#88).
+      if (!href && (el.attribs.id || el.attribs.name)) return undefined;
       const content = inner();
+      // A link to a heading or bookmark of the document (#88).
+      if (href.length > 1 && href.startsWith("#") && !/^#(ftnt|cmnt)/.test(href)) return `<a href="${esc(pageRef(path, href.slice(1)))}">${content}</a>`;
       if (!href || href.startsWith("#") || !/^(https?:|mailto:)/i.test(href)) return content;
       return `<a href="${esc(href)}">${content}</a>`;
     }

@@ -1,6 +1,7 @@
 import { DrawBlock } from "./draw-block-node";
 import { Suggestion } from "./suggestions";
 import { BlockReactionAttribute } from "./block-reactions";
+import { BlockIdAttribute } from "./block-ids";
 import { Extension, Mark, Node, mergeAttributes, getSchema, getMarkRange } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -563,6 +564,7 @@ export const documentExtensions = [
   FlowTaskItem.configure({ nested: true }),
   ListTidy,
   BlockReactionAttribute,
+  BlockIdAttribute,
   SyncedBlock,
   Suggestion,
   CaptionedTable.configure({ resizable: true }),

@@ -19,6 +19,7 @@ import { writeWhiteboard } from "./whiteboard";
 import { BoardImportError, parseBoardFile, type ImportedBoard } from "./whiteboard-import";
 import type { Field, Identity, Space } from "./types";
 import { maxImportEntries, maxImportPages, tooManyPages } from "./importers/types";
+import { documentAnchors, findAnchor, pendingAnchor, resolvePendingAnchors } from "./import-anchors";
 
 // Imports Markdown/CSV exports (Notion, AppFlowy, Obsidian-like folders):
 // every .md becomes a document, every .csv a database; a folder named like a
@@ -289,12 +290,26 @@ export async function importZip(
     const dir = resolve(process.env.FLOWPLAN_DATA_DIR || "./data", "uploads");
     const uploaded = new Map<string, string>();
     let bytesAdded = 0;
+    // Notion links to its pages (and their blocks) by the id at the end of
+    // a file name: https://www.notion.so/Title-<id>#<block>.
+    const notionPages = new Map<string, string>();
+    for (const node of ordered) {
+      const match = NOTION_ID.exec(posix.basename(node.key));
+      if (match && !notionPages.has(match[1].toLowerCase())) notionPages.set(match[1].toLowerCase(), pageIds.get(node.key)!);
+    }
     // Resolves a Markdown link relative to its file inside the export.
+    // Links to a block or heading (other.md#^id, other.md#Heading, #Heading
+    // on the same page; #88) wait for the targets' ids (resolvePendingAnchors).
     const resolver =
-      (from: string, pageId: string) =>
+      (from: string, pageId: string, self?: string) =>
       (href: string, kind: "link" | "image") => {
+        const notion = kind === "link" ? /^https?:\/\/(?:www\.)?notion\.so\/[^?#\s]*?([0-9a-f]{32})(?:\?[^#\s]*)?(?:#([0-9a-f]{32}))?$/i.exec(href) : null;
+        const notionPage = notion && notionPages.get(notion[1].toLowerCase());
+        if (notionPage) return notion![2] ? pendingAnchor(`/#page=${notionPage}`, notion![2]) : `/#page=${notionPage}`;
         if (/^(https?:|mailto:)/i.test(href)) return href;
+        if (href.startsWith("#") && self && kind === "link" && href.length > 1) return pendingAnchor(`/#page=${self}`, href.slice(1));
         if (/^[a-z]+:/i.test(href) || href.startsWith("#")) return null;
+        const fragment = href.includes("#") ? href.slice(href.indexOf("#") + 1) : "";
         let target: string;
         try {
           target = posix.normalize(
@@ -307,7 +322,7 @@ export async function importZip(
           return null;
         }
         const page = pageIds.get(nodeKey(target));
-        if (page && kind === "link") return `/#page=${page}`;
+        if (page && kind === "link") return fragment ? pendingAnchor(`/#page=${page}`, fragment) : `/#page=${page}`;
         const data = entries.get(target);
         if (!data || /\.(md|csv)$/i.test(target)) return null;
         if (uploaded.has(target)) return uploaded.get(target)!;
@@ -336,6 +351,9 @@ export async function importZip(
       people = memberByName(workspaceId);
     let rowCount = 0,
       boardImages = 0;
+    const anchors = new Map<string, Map<string, string>>();
+    const documents: { pid: string; html: string }[] = [];
+    const recordDocs: { rid: string; html: string }[] = [];
     const imageBytes = { bytes: 0 };
     for (const node of ordered) {
       const pid = pageIds.get(node.key)!;
@@ -367,13 +385,10 @@ export async function importZip(
         let body = (onlyAliases ? rest.replace(/^\s*\n/, "") : text(node.path)).replace(/^#\s+[^\n]*\n?/, "");
         // A journal lists its days below; they are its days again.
         if (journals.has(node.key)) body = body.replace(/\n+## (Unterseiten|Sub-pages)\n[\s\S]*$/, "\n");
-        const html = markdownToHtml(body, resolver(node.path, pid));
-        run(
-          "UPDATE documents SET html=?,state=? WHERE page_id=?",
-          html,
-          htmlState(html),
-          pid,
-        );
+        // Stored once all documents are read (block links, #88).
+        const converted = documentAnchors(markdownToHtml(body, resolver(node.path, pid, pid)), node.title, false);
+        anchors.set(pid, converted.anchors);
+        documents.push({ pid, html: converted.html });
         continue;
       }
       const parsed = Papa.parse<string[]>(text(node.path), {
@@ -429,15 +444,19 @@ export async function importZip(
           user.id,
           html,
         );
-        if (html)
-          run(
-            "INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)",
-            rid,
-            htmlState(html),
-            html,
-            id(),
-          );
+        if (html) recordDocs.push({ rid, html });
       });
+    }
+    // Links to blocks and headings, now that every document has its ids.
+    const lookup = (pageId: string, anchor: string) => findAnchor(anchors.get(pageId), anchor);
+    for (const doc of documents) {
+      const html = resolvePendingAnchors(doc.html, lookup);
+      run("UPDATE documents SET html=?,state=? WHERE page_id=?", html, htmlState(html), doc.pid);
+    }
+    for (const record of recordDocs) {
+      const html = resolvePendingAnchors(record.html, lookup);
+      if (html !== record.html) run("UPDATE rows SET content=? WHERE id=?", html, record.rid);
+      run("INSERT INTO row_documents(row_id,state,html,generation) VALUES(?,?,?,?)", record.rid, htmlState(html), html, id());
     }
     return {
       rootIds: ordered

@@ -151,7 +151,8 @@ test("Google Docs: Takeout HTML with classes, nested lists, images and a DOCX", 
   assert.match(html, /<ul><li><p>Punkt A<\/p><ul><li><p>Unterpunkt<\/p><\/li><\/ul><\/li><li><p>Punkt B<\/p><\/li><\/ul>/);
   assert.equal((html.match(/<img src="\/api\/files\//g) || []).length, 2, "file and data: images are stored");
   assert.doesNotMatch(html, /data:image/);
-  const report = pageHtml(pageByTitle("Bericht").id);
+  // Headings carry their block ids (#88); left out here.
+  const report = pageHtml(pageByTitle("Bericht").id).replace(/ data-block-id="[^"]*"/g, "");
   assert.match(report, /<h1>Bericht<\/h1>/);
   assert.match(report, /<ol><li><p>Erstens<\/p><ol><li><p>Unterpunkt<\/p><\/li><\/ol><\/li><li><p>Aufzählung<\/p><\/li><\/ol>/);
   assert.match(report, /<td colspan="2"/);

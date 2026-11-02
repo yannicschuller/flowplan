@@ -7,6 +7,7 @@ import {
   type Transaction,
 } from "@tiptap/pm/state";
 import { freshLinkedIds } from "./linked-paste";
+import { withoutBlockIds } from "./block-ids";
 export type DocumentBlock = {
   pos: number;
   end: number;
@@ -149,7 +150,8 @@ export function changeBlocks(
 ) {
   const range = blockRange(state.doc, positions);
   if (action === "duplicate") {
-    const content = freshLinkedIds(new Slice(range.content, 0, 0)).content;
+    // Copies get block ids of their own (#88).
+    const content = withoutBlockIds(freshLinkedIds(new Slice(range.content, 0, 0))).content;
     const $pos = state.doc.resolve(range.to);
     if (!$pos.parent.canReplace($pos.index(), $pos.index(), content))
       throw new Error("Diese Blöcke können hier nicht dupliziert werden.");

@@ -91,6 +91,7 @@ const editorLabels: Record<string, [string, string]> = {
   center: ["Text zentrieren", "Centre the text"],
   ai: ["KI-Schreibassistent", "AI writing assistant"],
   foldSection: ["Abschnitt ein- oder ausklappen (in der Überschrift)", "Collapse or expand the section (in the heading)"],
+  blockLink: ["Link zum Block kopieren", "Copy link to block"],
 };
 function conflictText(conflict: Conflict, t: T) {
   if (conflict.kind === "action")

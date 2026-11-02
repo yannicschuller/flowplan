@@ -5,24 +5,28 @@ export type PageLocation = {
   threadId?: string;
   // An element of a whiteboard (element links, lib/whiteboard-links.ts).
   itemId?: string;
+  // A block of the document (block links, lib/block-ids.ts).
+  blockId?: string;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parsePageLocation(hash: string): PageLocation | null {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   if (
-    [...params.keys()].some((key) => !["page", "row", "thread", "item"].includes(key))
+    [...params.keys()].some((key) => !["page", "row", "thread", "item", "block"].includes(key))
   )
     return null;
-  if (["page", "row", "thread", "item"].some((key) => params.getAll(key).length > 1))
+  if (["page", "row", "thread", "item", "block"].some((key) => params.getAll(key).length > 1))
     return null;
   const pageId = params.get("page"),
     rowId = params.get("row"),
     threadId = params.get("thread"),
-    itemId = params.get("item");
+    itemId = params.get("item"),
+    blockId = params.get("block");
   if (
     !pageId ||
     !uuid.test(pageId) ||
     (itemId !== null && !/^[\w-]{1,64}$/.test(itemId)) ||
+    (blockId !== null && !/^[\w-]{1,64}$/.test(blockId)) ||
     (rowId !== null && !uuid.test(rowId)) ||
     (threadId !== null && !uuid.test(threadId))
   )
@@ -32,6 +36,7 @@ export function parsePageLocation(hash: string): PageLocation | null {
     ...(rowId ? { rowId } : {}),
     ...(threadId ? { threadId } : {}),
     ...(itemId ? { itemId } : {}),
+    ...(blockId ? { blockId } : {}),
   };
 }
 export function pageLocationHash(target: PageLocation): string {
@@ -39,6 +44,7 @@ export function pageLocationHash(target: PageLocation): string {
   if (target.rowId) params.set("row", target.rowId);
   if (target.threadId) params.set("thread", target.threadId);
   if (target.itemId) params.set("item", target.itemId);
+  if (target.blockId) params.set("block", target.blockId);
   const hash = `#${params}`;
   return parsePageLocation(hash) ? hash : "#inbox";
 }

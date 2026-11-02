@@ -37,6 +37,7 @@ import { metaFrontmatter } from "./page-properties-server";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { whiteboardSvg } from "./whiteboard-svg";
 import type { Identity, Page, Row, Field, Space } from "./types";
+import { linkedBlockIds } from "./block-links";
 export type MarkdownExportOptions = {
   // One page (with its sub-pages) or a whole space: every top-level page
   // in a folder of its own, named like the scheduled export
@@ -250,9 +251,14 @@ function collect(user: Identity, options: MarkdownExportOptions) {
     }
     return { image, text: picture.text };
   };
-  function context(from: string, page?: Page): MarkdownContext {
+  // Blocks other texts link to keep their id as a marker ("^id", #88).
+  let linkedBlocks: ReturnType<typeof linkedBlockIds> | null = null;
+  const linked = (owner: string, blockId: string) => !!(linkedBlocks ??= linkedBlockIds(workspaceId)).get(owner)?.has(blockId);
+  function context(from: string, page?: Page, record?: string): MarkdownContext {
+    const owner = record || page?.id;
     return {
       ...(page ? { ink: (attrs: Record<string, unknown>) => inkImage(page, from, attrs) } : {}),
+      ...(owner ? { blockIds: (blockId: string) => linked(owner, blockId) } : {}),
       url(raw) {
         let url: URL;
         try {
@@ -298,8 +304,21 @@ function collect(user: Identity, options: MarkdownExportOptions) {
             return relative(from, path);
           }
           if (url.hash.startsWith("#page=")) {
-            const id = new URLSearchParams(url.hash.slice(1)).get("page") || "";
-            return readable(id) ? pageUrl(id, from) : null;
+            const params = new URLSearchParams(url.hash.slice(1));
+            const id = params.get("page") || "",
+              row = params.get("row"),
+              block = params.get("block");
+            if (!readable(id)) return null;
+            // A block link (#88): the file with the block's marker as
+            // anchor ("other.md#^id", as Obsidian links blocks), or the
+            // address in Flowplan.
+            if (block && /^[\w-]{1,64}$/.test(block)) {
+              if (!zip) return `${appUrl().replace(/\/$/, "")}/${url.hash}`;
+              if (row && rowPaths.has(row)) return `${relative(from, rowPaths.get(row)!)}#^${block}`;
+              if (!row && paths.has(id)) return `${pageUrl(id, from)}#^${block}`;
+              return `${appUrl().replace(/\/$/, "")}/${url.hash}`;
+            }
+            return pageUrl(id, from);
           }
         }
         return url.href;
@@ -703,7 +722,7 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         );
       for (const row of data.rows) {
         const recordPath = zip ? rowPaths.get(row.id)! : path,
-          recordContext = context(recordPath),
+          recordContext = context(recordPath, undefined, row.id),
           computed = computedCells(
             row,
             fields,

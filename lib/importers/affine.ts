@@ -32,7 +32,7 @@
 import { randomUUID } from "node:crypto";
 import { ct } from "../content-locale";
 import { calloutIcon } from "../callout-types";
-import { esc, fileRef, mimeOf, pageRef } from "./html";
+import { esc, fileRef, mimeOf, pageRef, withBlockId } from "./html";
 import { AText, propertyValue, type ABlock, type ADoc, type AFilter, type AWorkspace, type DeltaOp } from "./affine-read";
 import { affineBoard, edgelessExtras, noteDisplay } from "./affine-board";
 import { warningList, MAX_IMPORT_DEPTH, MAX_IMPORT_ROWS, maxImportPages, type ImportFile, type ImportPage, type ImportTree } from "./types";
@@ -61,7 +61,7 @@ export function safeHref(url: unknown, docLink?: (docId: string) => string | nul
   const app = /^https?:\/\/[^/]+\/workspace\/[^/?#]+\/([A-Za-z0-9_-]{3,100})(?:[/?#]|$)/i.exec(trimmed);
   if (app && docLink) {
     const page = docLink(app[1]);
-    if (page) return page;
+    if (page) return withAffineAnchor(page, affineUrlAnchor(trimmed));
   }
   try {
     const parsed = new URL(trimmed);
@@ -92,6 +92,29 @@ function paletteColor(value: unknown, palette: Record<string, string>) {
 const CALLOUT_COLORS: Record<string, string> = { red: "caution", orange: "warning", yellow: "warning", green: "tip", teal: "tip", blue: "note", purple: "important", magenta: "important" };
 const dbTitle = () => ct("Datenbank", "Database");
 
+/* ---------- block links (#88) ---------- */
+// AFFiNE names a block of a document by its id: references and linked-doc
+// cards carry params {mode, blockIds, elementIds}, app links
+// "?blockIds=…". The blocks keep their AFFiNE id as data-block-id; the
+// writer (lib/importers/write.ts, lib/import-anchors.ts) gives them
+// Flowplan ids and turns such links into block links. Element ids name
+// shapes of the canvas: those lead to the document.
+const AFFINE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export function affineParamsAnchor(params: unknown): string | null {
+  const ids = (params as { blockIds?: unknown } | null | undefined)?.blockIds;
+  const first = Array.isArray(ids) ? ids.find((id) => typeof id === "string" && AFFINE_ID.test(id)) : null;
+  return typeof first === "string" ? first : null;
+}
+export function affineUrlAnchor(url: string): string | null {
+  try {
+    const ids = new URL(url).searchParams.get("blockIds")?.split(",") || [];
+    return ids.find((id) => AFFINE_ID.test(id)) || null;
+  } catch {
+    return null;
+  }
+}
+const withAffineAnchor = (href: string | null, anchor: string | null) => (href && anchor ? `${href}#${encodeURIComponent(anchor)}` : href);
+
 type Ctx = {
   ws: AWorkspace;
   warn: (message: string) => void;
@@ -113,10 +136,10 @@ function inline(text: unknown, ctx: Ctx): string {
 function inlineOp(op: DeltaOp, ctx: Ctx) {
   if (typeof op.insert !== "string") return "";
   const a = op.attributes || {};
-  const reference = a.reference as { pageId?: unknown; title?: unknown } | undefined;
+  const reference = a.reference as { pageId?: unknown; title?: unknown; params?: unknown } | undefined;
   if (reference && typeof reference.pageId === "string") {
     const shown = typeof reference.title === "string" && reference.title.trim() ? reference.title : ctx.title(reference.pageId);
-    const href = ctx.docLink(reference.pageId);
+    const href = withAffineAnchor(ctx.docLink(reference.pageId), affineParamsAnchor(reference.params));
     return href ? `<a href="${esc(href)}">${esc(shown)}</a>` : esc(shown);
   }
   if (typeof a.latex === "string" && a.latex.trim()) return `<span data-math="${esc(a.latex.slice(0, 5000))}"></span>`;
@@ -177,16 +200,20 @@ function renderBlocks(blocks: ABlock[], ctx: Ctx, depth = 0): string {
         .map((item) => {
           const children = renderBlocks(item.children, ctx, depth + 1);
           const text = `<p>${inline(item.props.text, ctx)}</p>`;
-          return type === "todo"
-            ? `<li data-type="taskItem" data-checked="${item.props.checked === true}">${text}${children}</li>`
-            : `<li>${text}${children}</li>`;
+          return withBlockId(
+            type === "todo"
+              ? `<li data-type="taskItem" data-checked="${item.props.checked === true}">${text}${children}</li>`
+              : `<li>${text}${children}</li>`,
+            item.id,
+          );
         })
         .join("");
       const start = typeof items[0].props.order === "number" && items[0].props.order > 1 ? ` start="${Math.floor(items[0].props.order)}"` : "";
       html += type === "todo" ? `<ul data-type="taskList">${body}</ul>` : type === "numbered" ? `<ol${start}>${body}</ol>` : `<ul>${body}</ul>`;
       continue;
     }
-    html += renderBlock(block, ctx, depth);
+    // The block keeps its AFFiNE id (#88).
+    html += withBlockId(renderBlock(block, ctx, depth), block.id);
   }
   return html;
 }
@@ -251,7 +278,7 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
     case "affine:embed-synced-doc": {
       if (typeof p.pageId !== "string") return "";
       if (block.flavour === "affine:embed-synced-doc") ctx.warn("Synchronisierte Dokumente werden als Link übernommen.");
-      const href = ctx.docLink(p.pageId);
+      const href = withAffineAnchor(ctx.docLink(p.pageId), affineParamsAnchor(p.params));
       const shown = typeof p.title === "string" && p.title.trim() ? p.title : ctx.title(p.pageId);
       return href ? `<p><a href="${esc(href)}">${esc(shown)}</a></p>` : `<p>${esc(shown)}</p>`;
     }

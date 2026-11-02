@@ -108,7 +108,8 @@ test("workspace file: folders, links, tags, collections, database, files, whiteb
   assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Weg damit'", wid).length, 0, "the trash stays behind");
 
   // Rich text, links and tags.
-  const planHtml = html(plan.id);
+  // Blocks carry their ids (#88, tests/block-links.test.ts); left out here.
+  const planHtml = html(plan.id).replace(/ data-block-id="[^"]*"/g, "");
   assert.ok(tagsOf(plan.id).includes("projekt"));
   assert.doesNotMatch(planHtml, /#projekt/);
   assert.match(planHtml, /<h1>Ziele<\/h1>/);
@@ -309,7 +310,7 @@ test("documents are their snapshot plus later updates; version 1 files and sub-d
 
   const v1 = await parseImport("old.affine", affineFileV1(sampleWorkspace(), { [IDS.plan]: "guid-of-plan" }));
   const plan = v1.pages.find((p) => p.key === `doc:${IDS.plan}`)!;
-  assert.match(plan.html, /<h1>Ziele<\/h1>/, "documents under their sub-document guid are found");
+  assert.match(plan.html, /<h1[^>]*>Ziele<\/h1>/, "documents under their sub-document guid are found");
   assert.ok(v1.files.has("blobPng"));
   assert.equal(v1.files.get("blobPng")!.mime, "image/png", "version 1 blobs get their type from the content");
 });

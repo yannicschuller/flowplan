@@ -648,6 +648,19 @@ CommandPageCreateResult = TypedDict("CommandPageCreateResult", {
     "id": Required[str],
 }, total=False)
 
+# Give the blocks of a document their ids. For a link to a block (#88) of an older document whose block has no id yet: every linkable block of the page (or with `rowId` the record) gets one; the answer names the id of the `index`-th block (from GET /api/blocks), or of the block with that `text`. Needs read access only and does not count as an edit. Refused for end-to-end encrypted pages.
+CommandBlockIds = TypedDict("CommandBlockIds", {
+    "action": Required[Literal["block.ids"]],
+    "pageId": Required[str],
+    "rowId": str,
+    "index": Required[int],
+    "text": str,  # The start of the block's text, to find it when the document changed
+}, total=False)
+
+CommandBlockIdsResult = TypedDict("CommandBlockIdsResult", {
+    "blockId": Required[str],
+}, total=False)
+
 # Change title, icon, cover or settings of a page
 CommandPageUpdate = TypedDict("CommandPageUpdate", {
     "action": Required[Literal["page.update"]],
@@ -1230,7 +1243,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1336,6 +1349,16 @@ RowTrashQuery = TypedDict("RowTrashQuery", {
 
 WorkspaceSettingsQuery = TypedDict("WorkspaceSettingsQuery", {
     "workspace": Required[str],  # Workspace ID
+}, total=False)
+
+BlockPreviewQuery = TypedDict("BlockPreviewQuery", {
+    "row": str,  # Record ID, for a block of a record's document
+}, total=False)
+
+BlockSearchQuery = TypedDict("BlockSearchQuery", {
+    "workspace": Required[str],  # Workspace ID
+    "q": Required[str],  # Search words
+    "exclude": str,  # Leave out this page
 }, total=False)
 
 SnapshotChangesQuery = TypedDict("SnapshotChangesQuery", {
@@ -1825,6 +1848,14 @@ class FlowplanClient:
     def get_page(self, page_id: str, headers: Optional[dict[str, str]] = None) -> "PageData":
         """A page with its content — Documents with their HTML, databases with properties, views and the records you may see (`rows`, with `preview` instead of the full document), whiteboards with their elements. The header `X-Flowplan-Visit: 1` records a visit (read receipts). (GET /api/pages/{pageId})"""
         return self._json("GET", "/api/pages/" + _p(page_id), headers=headers)
+
+    def block_preview(self, page_id: str, block_id: str, query: Optional["BlockPreviewQuery"] = None, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Preview of a block link — What a pasted block link shows: the page's (or with `row` the record's) title and the start of the block's text, as `Page › text` (#88). A block link is the page address with the block: `/#page=<page>&block=<blockId>` (records: `/#page=<database>&row=<record>&block=<blockId>`). `found` is false for a block that no longer exists. End-to-end encrypted pages have no text on the server: `encrypted` is true and title and text stay empty. Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/blocks/{blockId})"""
+        return self._json("GET", "/api/pages/" + _p(page_id) + "/blocks/" + _p(block_id), query=dict(query) if query else None, headers=headers)
+
+    def block_search(self, query: "BlockSearchQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
+        """Headings and blocks of documents — For links to a block: headings and blocks of the documents a person may read whose text matches `q` (at least two characters). `Page › Heading` (or `Page#Heading`) lists the headings of the pages whose title matches the first part. A hit without `blockId` has no id yet; `block.ids` (POST /api/command with `pageId`, `index` and `text`) gives it one. Answered with `Cache-Control: no-store`. (GET /api/blocks)"""
+        return self._json("GET", "/api/blocks", query=dict(query) if query else None, headers=headers)
 
     def page_preview(self, page_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Short preview of a page — Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview)"""

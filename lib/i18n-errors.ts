@@ -334,6 +334,9 @@ const exact: Record<string, string> = {
   "Hier können keine Spalten entstehen.": "Columns cannot be created here.",
   "Die Blöcke passen hier nicht in Spalten.": "The blocks do not fit into columns here.",
   "Dokument nicht gefunden.": "Document not found.",
+  // Block links (#88, lib/block-links.ts).
+  "Ungültiger Blocklink.": "Invalid block link.",
+  "Block nicht gefunden.": "Block not found.",
   "Neue Dokumentversion verfügbar.": "New document version available.",
   "Diese Cursorinstanz gehört zu einem anderen Dokument.": "This cursor instance belongs to another document.",
   "Ungültige Zahl.": "Invalid number.",

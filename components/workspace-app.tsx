@@ -95,7 +95,7 @@ import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
 import { ListSkeleton, viewShapeOf } from "./skeleton";
-import { anyOf, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
+import { anyOf, byBlockId, byText, bySelector, jumpTo, snippetHit } from "@/lib/jump";
 import { flipList, installTaskFeedback, sameRelativeOrder, type Point } from "@/lib/motion";
 import { Collapse, CrossFade, useLeaving } from "./motion";
 import dynamic from "next/dynamic";
@@ -1350,6 +1350,25 @@ export default function WorkspaceApp({
         }
         if (currentId.current !== target.pageId || screenRef.current !== "page")
           void openPage(target.pageId, target);
+        // A block link (#88): scroll to the block, which flashes; the block
+        // then leaves the address, so the same link works again.
+        if (target.blockId) {
+          const blockId = target.blockId;
+          jumpTo(target, byBlockId(blockId), 8000, {
+            onMissing: () =>
+              showToast({
+                text: t(
+                  "Diesen Block gibt es nicht mehr – die Seite ist geöffnet.",
+                  "This block no longer exists – the page is open.",
+                ),
+              }),
+            onDone: () => {
+              const here = parsePageLocation(location.hash);
+              if (here?.blockId === blockId)
+                window.history.replaceState(null, "", `${location.pathname}${location.search}${pageLocationHash({ ...here, blockId: undefined })}`);
+            },
+          });
+        }
       } else if (
         ["home", "inbox", "tasks", "graph", "trash", "media", "settings", "admin", "tags"].includes(
           fragment,

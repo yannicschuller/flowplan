@@ -49,6 +49,9 @@ import { aiInsertedPlugin, selectionText } from "@/lib/ai/insert";
 import { registerAiReader } from "@/lib/ai/editor-bridge";
 import { AiWriter, type AiWriterRequest } from "./ai-writer";
 import { useAiAvailability } from "./ai-context";
+import { BlockIdAttribute, blockLinkHref, linkableBlockAt, linkableBlocks, newBlockId, validBlockId } from "@/lib/block-ids";
+import { BlockIds, HeadingLinks } from "@/lib/block-ids-plugin";
+import { showToast } from "./toast";
 
 type LogEntry = { seq: number; version: number; data: string };
 type Log = { keyVersion: number; snapshot: { upto: number; version: number; data: string } | null; updates: LogEntry[]; more: boolean; pending: number };
@@ -156,6 +159,10 @@ export default function EncryptedEditor({
   const context = useRef({ spaceId, pageId });
   context.current = { spaceId, pageId };
   const fileNode = useMemo(() => encryptedFileNode(() => context.current), []);
+  // Block links work inside encrypted pages too (#88); the server cannot
+  // show a preview of them, and only people with the key can give a block
+  // its id.
+  const copyBlockLink = useRef((_pos: number) => {});
 
   const editor = useEditor(
     {
@@ -174,13 +181,41 @@ export default function EncryptedEditor({
         fileNode,
         Extension.create({ name: "aiTarget", addProseMirrorPlugins: () => [aiTargetPlugin, aiInsertedPlugin] }),
         HeadingFolds.configure({ pageId }),
+        BlockIdAttribute,
+        BlockIds,
+        HeadingLinks.configure({ copy: (pos) => copyBlockLink.current(pos) }),
         Collaboration.configure({ document: doc }),
       ],
-      editorProps: { attributes: { class: "document-editor e2ee-editor", "aria-label": t("Verschlüsselter Dokumentinhalt", "Encrypted document content") } },
+      editorProps: {
+        handleKeyDown: (view, event) => {
+          if ((event.metaKey || event.ctrlKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === "l") {
+            event.preventDefault();
+            const block = linkableBlockAt(view.state.doc, view.state.selection.from);
+            if (block) copyBlockLink.current(block.pos);
+            return true;
+          }
+          return false;
+        },
+        attributes: { class: "document-editor e2ee-editor", "aria-label": t("Verschlüsselter Dokumentinhalt", "Encrypted document content") } },
     },
     [doc, editable],
   );
   useEffect(() => () => doc.destroy(), [doc]);
+  copyBlockLink.current = (pos: number) => {
+    if (!editor) return;
+    const block = linkableBlocks(editor.state.doc).find((b) => b.pos === pos);
+    if (!block) return;
+    let id = validBlockId(block.node.attrs.blockId);
+    if (!id && editor.isEditable) {
+      id = newBlockId();
+      editor.view.dispatch(editor.state.tr.setNodeAttribute(pos, "blockId", id).setMeta("addToHistory", false));
+    }
+    if (!id) return onError(t("Dieser Block lässt sich nicht verlinken.", "This block cannot be linked."));
+    void navigator.clipboard
+      ?.writeText(`${location.origin}${blockLinkHref({ pageId, blockId: id })}`)
+      .then(() => showToast({ text: t("Link zum Block kopiert", "Link to block copied") }))
+      .catch(() => onError(t("Der Link konnte nicht kopiert werden.", "The link could not be copied.")));
+  };
   // The writing assistant on the device only (never the server's: encrypted).
   const aiWrite = useAiAvailability("write", pageId, { device: true, encrypted: true });
   const [aiRequest, setAiRequest] = useState<AiWriterRequest | null>(null);
