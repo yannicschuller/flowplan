@@ -3,6 +3,7 @@ import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { safeCollisionPadding } from "./safe-area";
 import { serverMessage } from "@/lib/i18n-errors";
 import { readModeIds, toggleReadMode } from "@/lib/read-mode";
+import { pinnedColumnLeft, pinnedColumnWidth, SELECTION_COLUMN, tableWidth } from "@/lib/pinned-column";
 import { isLinkField } from "@/lib/cell-links";
 import { LinkCellDisplay, LinkValue } from "./link-cell";
 import { CSV_FORMULA } from "@/lib/cell-text";
@@ -623,8 +624,10 @@ export default function DatabaseView({
   const recordMode: RecordOpenMode = openAsPage ? "full" : viewRecordMode;
   // The first column (and the selection cell before it) stays in place while
   // the table scrolls sideways.
-  // Next to the selection column (wider on touch screens: --selection-column).
-  const stickyOffset = editable ? "var(--selection-column, 76px)" : 0;
+  // Next to the selection column (wider on touch screens: --selection-column);
+  // on phones the selection column scrolls away and the pinned column is at
+  // most about 60 % of the table wide (lib/pinned-column.ts, #98).
+  const stickyOffset = pinnedColumnLeft(editable);
   const stickyCell = (field: Field, index: number) =>
     index === 0
       ? { className: "sticky-col sticky-col-end", style: { left: stickyOffset } }
@@ -2936,7 +2939,7 @@ export default function DatabaseView({
       <>
       {view.type === "table" && (
         <ScrollFade
-          className="data-table-scroll"
+          className="data-table-scroll pinned-table-scroll"
           onScroll={(e) => {
             // Scrolled sideways: the pinned first column casts a shadow.
             const el = e.currentTarget;
@@ -2949,16 +2952,20 @@ export default function DatabaseView({
             className="data-table configurable-table"
             style={{
               // The selection column is wider on touch screens
-              // (--selection-column, app/mobile-ux.css).
-              width: editable
-                ? `calc(${visibleFields.reduce((sum, f) => sum + columnWidth(f), 42)}px + var(--selection-column, 76px))`
-                : visibleFields.reduce((sum, f) => sum + columnWidth(f), 0),
+              // (--selection-column, app/mobile-ux.css); the pinned first
+              // column narrower on phones (lib/pinned-column.ts).
+              width: tableWidth(visibleFields.map(columnWidth), editable),
             }}
           >
             <colgroup>
-              {editable && <col style={{ width: "var(--selection-column, 76px)" }} />}
-              {visibleFields.map((f) => (
-                <col key={f.id} style={{ width: columnWidth(f) }} />
+              {editable && <col style={{ width: SELECTION_COLUMN }} />}
+              {visibleFields.map((f, index) => (
+                <col
+                  key={f.id}
+                  style={{
+                    width: index === 0 ? pinnedColumnWidth(columnWidth(f)) : columnWidth(f),
+                  }}
+                />
               ))}
               {editable && <col style={{ width: 42 }} />}
             </colgroup>
@@ -3078,11 +3085,20 @@ export default function DatabaseView({
                           e.preventDefault();
                           e.stopPropagation();
                           e.currentTarget.setPointerCapture(e.pointerId);
+                          // From the width it has on screen: the pinned
+                          // column may be cut short on phones.
+                          const shown = Math.round(
+                            e.currentTarget.closest("th")?.getBoundingClientRect().width || 0,
+                          );
+                          const startWidth =
+                            index === 0 && shown >= 80
+                              ? Math.min(columnWidth(f), shown)
+                              : columnWidth(f);
                           setResize({
                             id: f.id,
                             startX: e.clientX,
-                            startWidth: columnWidth(f),
-                            width: columnWidth(f),
+                            startWidth,
+                            width: startWidth,
                           });
                         }}
                         onPointerMove={(e) => {

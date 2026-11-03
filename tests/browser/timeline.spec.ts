@@ -104,6 +104,7 @@ async function fixture(page: Page, name: string) {
 }
 async function drag(page: Page, locator: Locator, dx: number, mobile: boolean) {
   await expect(locator).toBeEnabled();
+  await locator.scrollIntoViewIfNeeded();
   const box = (await locator.boundingBox())!,
     x = box.x + Math.min(20, box.width / 2),
     y = box.y + box.height / 2;
@@ -113,6 +114,9 @@ async function drag(page: Page, locator: Locator, dx: number, mobile: boolean) {
       type: "touchStart",
       touchPoints: [{ x, y, id: 1 }],
     });
+    // A bar moves by touch once it has been held (a swipe scrolls); its
+    // edge handles move at once, holding does not hurt there.
+    await page.waitForTimeout(500);
     for (let i = 1; i <= 6; i++)
       await cdp.send("Input.dispatchTouchEvent", {
         type: "touchMove",
@@ -365,9 +369,11 @@ test("timeline conflicts retain date drafts, remote changes cancel active gestur
     const bar = timeline.locator(
         `[data-row-id="${f.a.id}"] .timeline-range-body`,
       ),
-      box = (await bar.boundingBox())!;
+      box = await bar.scrollIntoViewIfNeeded().then(async () => (await bar.boundingBox())!);
     await page.mouse.move(box.x + 20, box.y + 12);
     await page.mouse.down();
+    // Phones emulate touch: there a bar moves once it has been held.
+    if (info.project.name === "mobile") await page.waitForTimeout(500);
     await page.mouse.move(box.x + 40, box.y + 12);
     const current = (await f.read()).rows.find((r: any) => r.id === f.a.id);
     await f.command({

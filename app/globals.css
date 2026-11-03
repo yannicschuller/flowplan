@@ -2938,6 +2938,14 @@ tr:hover .row-open,
   text-align: left;
   font-size: 11px;
   user-select: none;
+  /* Held to move it (components/database-timeline.tsx): no callout. */
+  -webkit-touch-callout: none;
+}
+/* The hint on holding a bar is for touch screens. */
+@media (hover: hover) and (pointer: fine) {
+  .timeline-touch-help {
+    display: none;
+  }
 }
 .timeline-resize {
   position: absolute;
@@ -24383,6 +24391,33 @@ td.ai-filled {
   box-shadow:
     inset -1px 0 0 var(--border),
     8px 0 12px -8px #00000040;
+}
+/* Phones (also turned sideways): what stays pinned takes at most about 60 %
+   of the table's width (of the screen where container units are missing),
+   so a swipe sideways always shows the other columns moving (#98). The
+   title column is cut short with an ellipsis (its width,
+   lib/pinned-column.ts) and the selection column scrolls away. */
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) {
+  .pinned-table-scroll {
+    container-type: inline-size;
+  }
+  .configurable-table {
+    --pinned-column-max: 60vw;
+    --pinned-column-left: 0px;
+  }
+  @supports (width: 1cqw) {
+    .configurable-table {
+      --pinned-column-max: 60cqw;
+    }
+  }
+  .configurable-table .selection-cell.sticky-col {
+    position: static;
+  }
+  .configurable-table td.sticky-col-end,
+  .configurable-table th.sticky-col-end {
+    min-width: 0;
+    max-width: var(--pinned-column-max);
+  }
 }
 /* Rows take the keyboard: arrows move, Enter opens. */
 .configurable-table tbody tr:focus-visible {
