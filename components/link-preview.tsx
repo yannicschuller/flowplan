@@ -3,6 +3,8 @@ import { serverMessage } from "@/lib/i18n-errors";
 import { useT } from "./i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, PageIcon } from "./ui";
+import { shownPageIcon } from "@/lib/page-link-icons";
+import { linkTargetInfo } from "./page-link-icons";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import type { ContactCardData } from "@/lib/contacts-io";
 import { ContactAvatar } from "./contacts";
@@ -275,10 +277,9 @@ export function LinkPreview({
       ) : card.preview ? (
         <>
           <strong>
+            {/* The page's own icon, as it is now (#96). */}
             <PageIcon
-              name={
-                card.preview.kind === "database" ? "table" : card.preview.icon
-              }
+              name={shownPageIcon(linkTargetInfo({ pageId: card.preview.id })?.icon ?? card.preview.icon, card.preview.kind)}
               size={16}
             />
             {card.preview.title}

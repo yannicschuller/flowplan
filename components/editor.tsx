@@ -167,7 +167,7 @@ import {
   PuzzlePiece,
 } from "@phosphor-icons/react";
 import { PluginBlockView, pagePlugins, type PluginInfo } from "./plugin-block";
-import { api, isTransient, Modal, sessionEnded } from "./ui";
+import { api, isTransient, Modal, PageIcon, sessionEnded } from "./ui";
 import { calloutDescriptions, calloutLabels } from "@/lib/callout-types";
 import { pageLocationHash } from "@/lib/page-location";
 import { withPdfView } from "./pdf-node";
@@ -206,6 +206,8 @@ import { Footnote, footnoteText, MAX_FOOTNOTE, type FootnoteEdit } from "@/lib/f
 import { BlockDirectionExtension } from "@/lib/text-direction";
 import { ListTidy } from "@/lib/list-tidy";
 import { MarkdownSourceView } from "./markdown-source";
+import { PageLinkIcons } from "./page-link-icons";
+import { shownPageIcon } from "@/lib/page-link-icons";
 import { idempotencyHeaders } from "@/lib/idempotency-key";
 // The symbol a plugin's manifest names for a block type, as a menu icon.
 function emojiIcon(symbol: string) {
@@ -593,6 +595,8 @@ export default function DocumentEditor({
         MetricView.configure({ pageId }),
         PluginBlockView.configure({ pageId, title: () => linkedContext.current?.pages.find((p) => p.id === pageId)?.title || "" }),
         Mention,
+        // The linked page's or record's own icon in front of the link (#96).
+        PageLinkIcons,
         Columns,
         Column,
         withPdfView(Media),
@@ -2861,7 +2865,7 @@ export default function DocumentEditor({
                   setReferences(false);
                 }}
               >
-                <LinkIcon />
+                <PageIcon name={shownPageIcon(p.icon, p.kind)} />
                 {p.title}
                 {alias && <span className="alias-hit"> · {alias}</span>}
               </button>
@@ -3124,7 +3128,7 @@ function from64(value: string) {
 const dayFormat = new Intl.DateTimeFormat(LOCALE_TAG, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 const dayLabel = (date: string) => dayFormat.format(new Date(`${date}T00:00:00Z`));
 
-type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string; alias?: string };
+type RecordHit = { id: string; rowId: string; title: string; pageTitle?: string; alias?: string; icon?: string };
 // Records for the mention dialog: the workspace search (kind "row") finds
 // them and leaves out what the person may not read.
 function RecordReferences({
@@ -3175,7 +3179,7 @@ function RecordReferences({
       {!term && <p className="muted reference-hint">{t("Tippe, um Einträge aus Datenbanken zu finden.", "Type to find records in databases.")}</p>}
       {hits.map((hit) => (
         <button key={hit.rowId} onClick={() => onPick(hit)}>
-          <Rows />
+          <PageIcon name={shownPageIcon(hit.icon, "record")} />
           <span>
             {hit.title || t("Ohne Titel", "Untitled")}
             {hit.alias && <span className="alias-hit"> · {hit.alias}</span>}

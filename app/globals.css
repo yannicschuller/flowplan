@@ -10601,6 +10601,47 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9 2.5v11M12 2.5v11M13.5 2.5H7a3 3 0 0 0 0 6h2' stroke='black' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
+/* The linked page's or record's own icon (#96, components/page-link-icons.tsx)
+   takes the place of the plain link symbol. A real element, not ::before
+   content: emoji keep their colour font in Safari too. */
+:is(.document-editor, .shared-rich-editor, .comment-body, .inline-comment-panel)
+  :is(a[href*="#page="], a[href^="/share/"]):has(.page-link-icon)::before {
+  content: none;
+  display: none;
+}
+.page-link-icon {
+  white-space: nowrap;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--secondary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.page-link-glyph {
+  display: inline-block;
+  min-width: 1em;
+  height: 1em;
+  margin-right: 4px;
+  line-height: 1;
+  vertical-align: -0.12em;
+  text-align: center;
+}
+.page-link-emoji .page-link-glyph {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 0.95em;
+  vertical-align: -0.05em;
+}
+.page-link-glyph > svg,
+.page-link-glyph > img {
+  display: block;
+  width: 0.95em;
+  height: 0.95em;
+  margin: 0.025em auto 0;
+}
+.page-link-glyph > img {
+  object-fit: cover;
+  border-radius: 3px;
+}
 .whiteboard.wb-fullscreen {
   position: fixed;
   inset: 0;

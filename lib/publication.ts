@@ -226,6 +226,24 @@ export function publicFile(token: string, fileId: string) {
     throw new HttpError(404, "Datei nicht veröffentlicht.");
   return file;
 }
+// The published pages with the icons links to them show (#96): uploaded
+// pictures through the share's own file address, or none when the picture
+// is not published.
+export function publishedLinkPages(token: string, pages: Pick<Page, "id" | "icon" | "kind">[]) {
+  return pages.map((p) => {
+    let icon = p.icon || "";
+    const fileId = imageFileId(icon);
+    if (fileId) {
+      try {
+        publicFile(token, fileId);
+        icon = `/api/share/${token}/files/${fileId}`;
+      } catch {
+        icon = "";
+      }
+    }
+    return { id: p.id, icon, kind: p.kind };
+  });
+}
 // Links and files outside the share are removed. For guest editing, pass
 // `hidden`: they become stable placeholders that saving maps back, so a
 // guest edit never drops what the guest cannot see.

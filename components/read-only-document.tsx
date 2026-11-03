@@ -12,6 +12,7 @@ import { tr } from "@/lib/locale-tag";
 import { emptyBibliography, renderReferences } from "./citation-views";
 import { finishDocumentHtml } from "@/lib/document-html";
 import { mountPluginBlock } from "./plugin-block";
+import { decorateLinkIcons, setLinkTargetPages } from "./page-link-icons";
 // Callers provide server-sanitized HTML. Generated math is never stored as document content.
 export function ReadOnlyDocument({
   html,
@@ -20,7 +21,11 @@ export function ReadOnlyDocument({
   pageId,
   title = "",
   captionNumbers = false,
+  linkPages,
 }: {
+  // Published pages: the pages of the publication, for the icons of links
+  // between them (#96). In the app the sidebar's pages are known already.
+  linkPages?: { id: string; icon: string; kind: string }[];
   html: string;
   // The page numbers the captions of images, tables and code blocks.
   captionNumbers?: boolean;
@@ -38,6 +43,9 @@ export function ReadOnlyDocument({
     if (!root) return;
     // Right-to-left blocks and footnotes (numbers, list at the end).
     finishDocumentHtml(root, { captionNumbers });
+    // Page links: the target's own icon in front (#96).
+    if (linkPages) setLinkTargetPages(linkPages, "share");
+    const undecorate = decorateLinkIcons(root);
     const diagrams = Array.from(
       root.querySelectorAll<HTMLElement>("[data-mermaid]"),
     ).map((element) => mountDiagram(element, element.dataset.mermaid || ""));
@@ -229,6 +237,7 @@ export function ReadOnlyDocument({
       }),
     );
     return () => {
+      undecorate();
       pluginHandles.forEach((handle) => handle.destroy());
       diagrams.forEach((cancel) => cancel());
       unmounted = true;
@@ -236,7 +245,7 @@ export function ReadOnlyDocument({
       // Unmount after React finishes this commit.
       setTimeout(() => boards.forEach((board) => board.unmount()));
     };
-  }, [html, shareToken, pageId, title, captionNumbers]);
+  }, [html, shareToken, pageId, title, captionNumbers, linkPages]);
   return (
     <div
       ref={ref}

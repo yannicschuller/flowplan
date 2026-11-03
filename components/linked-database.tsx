@@ -11,7 +11,8 @@ import { loadView } from "@/components/view-fallback";
 import { LinkedDatabase } from "@/lib/document-schema";
 import type { Page, User, Role } from "@/lib/types";
 import type { DatabaseData } from "./database-view";
-import { api } from "./ui";
+import { api, PageIcon } from "./ui";
+import { shownPageIcon } from "@/lib/page-link-icons";
 import { ViewSkeleton } from "./skeleton";
 import { useEditorEditable } from "./editor-editable";
 import { linkedDatabaseAccess } from "@/lib/embed-access";
@@ -142,6 +143,12 @@ function LinkedDatabaseView({
         <span>{t("Verknüpfte Datenbank", "Linked database")}</span>
         {data && (
           <a href={`/#page=${data.page.id}`} title={t("Datenquelle öffnen", "Open data source")}>
+            {/* The database's own icon (#96), in place of the plain link symbol. */}
+            <span className="page-link-icon" aria-hidden="true">
+              <span className="page-link-glyph">
+                <PageIcon name={shownPageIcon(data.page.icon, "database")} size={14} />
+              </span>
+            </span>
             {data.page.title} ↗
           </a>
         )}

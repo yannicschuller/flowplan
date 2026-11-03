@@ -24,6 +24,7 @@ import { EditableCodeBlock } from "./code-block";
 import { BlockCaptions } from "./block-captions-view";
 import { embedProvider } from "@/lib/embed-providers";
 import { guestCursors } from "@/lib/guest-cursors";
+import { PageLinkIcons } from "./page-link-icons";
 export type GuestUpload = { url: string; name: string; mime: string };
 export default function SharedEditor({
   html,
@@ -50,6 +51,8 @@ export default function SharedEditor({
     extensions: [
       EditableCodeBlock,
       BlockShortcuts,
+      // Links between published pages show the page's icon (#96).
+      PageLinkIcons,
       mermaidNodeView(setDiagram),
       ...mathNodeViews(setMath),
       ...documentExtensions

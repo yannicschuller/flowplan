@@ -12,6 +12,8 @@ export type TextBacklink = {
   id: string;
   title: string;
   icon: string;
+  // The page's kind, "record" for records (their default icon, #96).
+  kind: string;
   // Set when the link is in a record's text.
   rowId?: string;
   pageTitle?: string;
@@ -44,11 +46,11 @@ export function textBacklinks(
   )) {
     if (links.length >= limit) return links;
     if ((!rowId && page.id === target.id) || !linksHere(page.html) || !readable(page)) continue;
-    links.push({ id: page.id, title: page.title, icon: page.icon });
+    links.push({ id: page.id, title: page.title, icon: page.icon, kind: page.kind });
   }
   const databases = new Map<string, { page: Page; fields: Field[]; visible: ReturnType<typeof rowRoleResolver> } | null>();
-  for (const row of all<Page & { row_id: string; row_cells: string; row_access: string; row_by: string | null; db_fields: string; row_html: string }>(
-    `SELECT p.*,r.id row_id,r.cells row_cells,r.access row_access,r.created_by row_by,db.fields db_fields,COALESCE(rd.html,r.content,'') row_html
+  for (const row of all<Page & { row_id: string; row_cells: string; row_access: string; row_by: string | null; row_icon: string | null; db_fields: string; row_html: string }>(
+    `SELECT p.*,r.id row_id,r.icon row_icon,r.cells row_cells,r.access row_access,r.created_by row_by,db.fields db_fields,COALESCE(rd.html,r.content,'') row_html
      FROM rows r JOIN pages p ON p.id=r.page_id JOIN databases db ON db.page_id=p.id
      LEFT JOIN row_documents rd ON rd.row_id=r.id
      WHERE p.workspace_id=? AND p.deleted_at IS NULL AND COALESCE(rd.html,r.content,'') LIKE ? ESCAPE '\\'
@@ -73,7 +75,9 @@ export function textBacklinks(
       rowId: row.row_id,
       pageTitle: row.title,
       title: cellText(cells[database.fields[0]?.id || "title"]) || "Ohne Titel",
-      icon: row.icon,
+      // The record's own icon, not its database's (#96).
+      icon: row.row_icon || "",
+      kind: "record",
     });
   }
   return links;
