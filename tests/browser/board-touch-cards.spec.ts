@@ -95,13 +95,20 @@ test("touch devices drag board cards into another column", async ({
       return box ? box.x + box.width / 2 : Infinity;
     })
     .toBeLessThan(width - 20);
+  // Away from the edge, so the board stops scrolling before the target is
+  // measured.
+  await touch("touchMove", width / 2, from.y + from.height / 2);
   await page.waitForTimeout(300);
   const box = (await target.boundingBox())!;
+  // Where the card sits without the gap that may already be open above it
+  // (the drop target is found from the places at the start of the drag).
+  const gap = await target.evaluate((el) => parseFloat(getComputedStyle(el).translate.split(" ")[1] || "0") || 0);
+  // On the card, out of the edges, where the board would scroll again.
   for (let i = 1; i <= 4; i++)
     await touch(
       "touchMove",
-      Math.min(box.x + box.width / 2, width - 60),
-      box.y + 5 + i,
+      Math.min(Math.max(box.x + box.width / 2, box.x + box.width - 40, 80), width - 80),
+      box.y - gap + 5 + i,
     );
   await expect(target).toHaveClass(/order-drop-before/);
   await touch("touchEnd");

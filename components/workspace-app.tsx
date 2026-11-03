@@ -78,6 +78,7 @@ import { iconPixels } from "@/lib/page-appearance";
 import { VersionChanges } from "./version-changes";
 import { LinkPreview } from "./link-preview";
 import { edgeScroller } from "./edge-scroll";
+import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, type RecordDropDetail, type RecordOverDetail } from "./pointer-drag";
 import { MediaLibrary } from "./media-library";
 import {
   checkOfflineOwner,
@@ -1936,6 +1937,37 @@ export default function WorkspaceApp({
     setTreeDrop(target && target.id !== drag.source ? target : null);
   }
   touchHoverRef.current = touchHover;
+  // A record dragged out of a database (components/database-view.tsx, with
+  // pointer events since #100) onto another database in the sidebar moves
+  // there; with Alt (⌥) held it is copied.
+  const recordDropRef = useRef((_detail: RecordDropDetail) => {});
+  recordDropRef.current = (from) => {
+    const target = titledPages.find((p) => p.id === from.targetPageId);
+    if (!target || target.kind !== "database" || !from.pageId || !from.rowId || from.pageId === target.id) return;
+    const mode = from.copy ? "copy" : "move";
+    void act({ action: "rows.transfer", pageId: from.pageId, rowIds: [from.rowId], targetPageId: target.id, mode }).then((result) => {
+      if (result)
+        notify(mode === "move" ? t(`Eintrag nach „${target.title}“ verschoben.`, `Record moved to “${target.title}”.`) : t(`Eintrag nach „${target.title}“ kopiert.`, `Record copied to “${target.title}”.`));
+    });
+  };
+  useEffect(() => {
+    const over = (e: Event) => {
+      const id = (e as CustomEvent<RecordOverDetail>).detail.targetPageId;
+      setTreeDrop((current) =>
+        id ? { id, placement: "records" } : current?.placement === "records" ? null : current,
+      );
+    };
+    const drop = (e: Event) => {
+      setTreeDrop(null);
+      recordDropRef.current((e as CustomEvent<RecordDropDetail>).detail);
+    };
+    window.addEventListener(RECORD_OVER_EVENT, over);
+    window.addEventListener(RECORD_DROP_EVENT, drop);
+    return () => {
+      window.removeEventListener(RECORD_OVER_EVENT, over);
+      window.removeEventListener(RECORD_DROP_EVENT, drop);
+    };
+  }, []);
   // Touch: holding a page for half a second opens its menu (phones have no
   // right click); moving the finger scrolls instead.
   const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; opened: boolean } | null>(null);
@@ -2294,14 +2326,10 @@ export default function WorkspaceApp({
                 setTreeDrop(null);
                 setPageDrag(false);
               }}
+              // A record dragged from a database onto another database
+              // (see recordDropRef).
+              data-record-drop-page={p.kind === "database" ? p.id : undefined}
               onDragOver={(e) => {
-                // A record dragged from a database onto another database.
-                if (p.kind === "database" && e.dataTransfer.types.includes("application/x-flowplan-row-order")) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
-                  setTreeDrop({ id: p.id, placement: "records" });
-                  return;
-                }
                 if (
                   !canCreate ||
                   !e.dataTransfer.types.includes("application/x-flowplan-page")
@@ -2325,22 +2353,6 @@ export default function WorkspaceApp({
                 if (e.dataTransfer.types.includes("application/x-flowplan-space")) return;
                 e.preventDefault();
                 e.stopPropagation();
-                const record = e.dataTransfer.getData("application/x-flowplan-row-order");
-                if (record && p.kind === "database") {
-                  setTreeDrop(null);
-                  let from: { pageId?: string; rowId?: string } = {};
-                  try {
-                    from = JSON.parse(record);
-                  } catch {}
-                  if (!from.pageId || !from.rowId || from.pageId === p.id) return;
-                  // Moves; with Alt (⌥) held it copies.
-                  const mode = e.altKey ? "copy" : "move";
-                  void act({ action: "rows.transfer", pageId: from.pageId, rowIds: [from.rowId], targetPageId: p.id, mode }).then((result) => {
-                    if (result)
-                      notify(mode === "move" ? t(`Eintrag nach „${p.title}“ verschoben.`, `Record moved to “${p.title}”.`) : t(`Eintrag nach „${p.title}“ kopiert.`, `Record copied to “${p.title}”.`));
-                  });
-                  return;
-                }
                 const source = e.dataTransfer.getData(
                   "application/x-flowplan-page",
                 );

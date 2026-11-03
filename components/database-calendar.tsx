@@ -17,6 +17,7 @@ import {
   DotsSixVertical,
 } from "@phosphor-icons/react";
 import { Modal } from "./ui";
+import { dragCursor, usePointerDrag } from "./pointer-drag";
 import { CalendarSubscribe } from "./calendar-subscribe";
 import DateInput from "./date-input";
 import {
@@ -176,15 +177,12 @@ export default function DatabaseCalendar({
       ),
     [rows, fields, view, zone],
   );
-  // Touch devices move whole-day entries with a handle; the day under the
-  // finger is the target (month cells and all-day rows carry data-day).
+  // Whole-day entries are dragged with pointer events (components/
+  // pointer-drag.ts, #100): with the mouse by the entry, on touch devices by
+  // its handle. The day under the pointer is the target (month cells and
+  // all-day rows carry data-day).
   const [touchTarget, setTouchTarget] = useState<string | null>(null);
-  const touchMove = useRef<{
-    row: Row;
-    version: number;
-    from: string;
-    pointer: number;
-  } | null>(null);
+  const startDrag = usePointerDrag();
   const dayAt = (x: number, y: number) =>
     document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-day]")?.dataset
       .day || null;
@@ -194,6 +192,25 @@ export default function DatabaseCalendar({
     scroller = useRef<HTMLDivElement>(null);
   const title = (row: Row) =>
     cellText(row.cells[fields[0]?.id]) || t("Ohne Titel", "Untitled");
+  // While an entry is dragged the cursor is the closed hand everywhere, and
+  // Escape puts it back (#100).
+  const dragged = drag !== null;
+  useEffect(() => {
+    if (!dragged) return;
+    dragCursor(true);
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancel();
+    };
+    window.addEventListener("keydown", key, true);
+    return () => {
+      dragCursor(false);
+      window.removeEventListener("keydown", key, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragged]);
   useEffect(() => {
     setZoneDraft(zone);
   }, [zone]);
@@ -406,29 +423,34 @@ export default function DatabaseCalendar({
         timeZone: zone,
       });
   }
-  function drop(event: React.DragEvent, day: CalendarDay) {
-    event.preventDefault();
-    if (!canEdit || busy) return;
-    try {
-      const moved = JSON.parse(
-          event.dataTransfer.getData("application/x-flowplan-calendar"),
-        ),
-        row = rows.find((r) => r.id === moved.rowId);
-      if (
-        moved.pageId !== pageId ||
-        moved.viewId !== view.id ||
-        dateDay(moved.day) === null ||
-        !row
-      )
-        return;
-      void apply({ ...row, version: moved.rowVersion }, moved.version, {
-        operation: "move-calendar",
-        days: dateDay(day.date)! - dateDay(moved.day)!,
-        timeZone: zone,
-      });
-    } catch {
-      /* Ignore unrelated drag payloads. */
-    }
+  function moveChip(row: Row, schemaVersion: number, from: string, to: string | null) {
+    if (!to || to === from) return;
+    void apply(row, schemaVersion, {
+      operation: "move-calendar",
+      days: dateDay(to)! - dateDay(from)!,
+      timeZone: zone,
+    });
+  }
+  function beginChipDrag(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    row: Row,
+    day: CalendarDay,
+  ) {
+    if (!canEdit || busy || occurrence(row.id)) return;
+    const chip = event.currentTarget.closest<HTMLElement>(".calendar-chip");
+    // The row and versions as they were when the drag began.
+    const schemaVersion = version;
+    startDrag(event, {
+      touch: event.currentTarget.classList.contains("calendar-drag") ? "move" : "none",
+      preview: chip,
+      source: chip,
+      onMove: (point) => setTouchTarget(dayAt(point.x, point.y)),
+      onDrop: (point) => {
+        setTouchTarget(null);
+        moveChip(row, schemaVersion, day.date, dayAt(point.x, point.y));
+      },
+      onCancel: () => setTouchTarget(null),
+    });
   }
   function eventChip(row: Row, day: CalendarDay) {
     const range = ranges.get(row.id);
@@ -439,25 +461,22 @@ export default function DatabaseCalendar({
       >
         <button
           className="calendar-event"
-          draggable={canEdit && !busy && !occurrence(row.id)}
           title={
             range
               ? `${formatDateValue(range.start, zone)} – ${formatDateValue(range.end, zone)}`
               : title(row)
           }
-          onDragStart={(e) =>
-            e.dataTransfer.setData(
-              "application/x-flowplan-calendar",
-              JSON.stringify({
-                pageId,
-                viewId: view.id,
-                version,
-                rowId: row.id,
-                rowVersion: row.version,
-                day: day.date,
-              }),
-            )
-          }
+          onPointerDown={(e) => {
+            if (e.pointerType !== "touch") beginChipDrag(e, row, day);
+          }}
+          onKeyDown={(e) => {
+            // Alt + ←/→ moves the entry by a day, Alt + ↑/↓ by a week.
+            if (!e.altKey || !canEdit || busy || occurrence(row.id)) return;
+            const days = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+            if (!days) return;
+            e.preventDefault();
+            void apply(row, version, { operation: "move-calendar", days, timeZone: zone });
+          }}
           onClick={() => openRow(row.id)}
         >
           {range?.timed && (
@@ -480,37 +499,8 @@ export default function DatabaseCalendar({
             className="calendar-drag"
             aria-label={`${title(row)} verschieben`}
             disabled={busy}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              touchMove.current = {
-                row,
-                version,
-                from: day.date,
-                pointer: e.pointerId,
-              };
-            }}
-            onPointerMove={(e) => {
-              if (touchMove.current?.pointer !== e.pointerId) return;
-              setTouchTarget(dayAt(e.clientX, e.clientY));
-            }}
-            onPointerUp={(e) => {
-              const moving = touchMove.current;
-              touchMove.current = null;
-              setTouchTarget(null);
-              if (moving?.pointer !== e.pointerId) return;
-              const target = dayAt(e.clientX, e.clientY);
-              if (!target || target === moving.from) return;
-              void apply(moving.row, moving.version, {
-                operation: "move-calendar",
-                days: dateDay(target)! - dateDay(moving.from)!,
-                timeZone: zone,
-              });
-            }}
-            onPointerCancel={() => {
-              touchMove.current = null;
-              setTouchTarget(null);
-            }}
+            data-no-edge-swipe=""
+            onPointerDown={(e) => beginChipDrag(e, row, day)}
           >
             <DotsSixVertical size={13} />
           </button>
@@ -689,8 +679,6 @@ export default function DatabaseCalendar({
                     key={day.date}
                     data-day={day.date}
                     className={`calendar-day ${day.date.slice(0, 7) !== anchor.slice(0, 7) ? "other-month" : ""} ${touchTarget === day.date ? "touch-target" : ""}`}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => drop(e, day)}
                   >
                     <button
                       className={day.date === dateInZone(zone) ? "today" : ""}
@@ -750,8 +738,6 @@ export default function DatabaseCalendar({
                         <div
                           className={`calendar-all-day ${touchTarget === day.date ? "touch-target" : ""}`}
                           data-day={day.date}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => drop(e, day)}
                         >
                           <button
                             className="calendar-all-day-label"

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Flag, Play, CheckCircle, PencilSimple, Trash, Plus, ChartLine } from "@phosphor-icons/react";
+import { Flag, Play, CheckCircle, PencilSimple, Trash, Plus, ChartLine, DotsSixVertical } from "@phosphor-icons/react";
 import { useT, useLocale } from "./i18n";
 import { localeTag } from "@/lib/i18n";
 import { Select } from "./select";
@@ -8,6 +8,8 @@ import { Modal, api } from "./ui";
 import { cellText } from "@/lib/cell-text";
 import { doneRule, isDone, type Sprint } from "@/lib/database-settings-schema";
 import { ticketId } from "@/lib/ticket-ids";
+import { usePointerDrag, type DragPoint } from "./pointer-drag";
+import { keyboardStep } from "@/lib/pointer-drag";
 import type { Database, Field, Row, User } from "@/lib/types";
 
 type Charts = {
@@ -19,10 +21,11 @@ type Charts = {
   total: number;
   velocity: { name: string; completed: number; committed: number }[];
 };
-const dragType = "application/x-flowplan-sprint-row";
-
 // Sprint planning: the running sprint, planned sprints and the backlog.
-// Records move between them by drag and drop or the "move to" choice.
+// Records move between them by dragging (pointer events, components/
+// pointer-drag.ts: the mouse on the record, by touch a long press on its
+// handle), with the keyboard (Space on the handle, arrows, Space) or the
+// "move to" choice.
 export function DatabaseSprints({
   pageId,
   database,
@@ -53,6 +56,10 @@ export function DatabaseSprints({
   const [editing, setEditing] = useState<Sprint | null>(null);
   const [completing, setCompleting] = useState<Sprint | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  // A record lifted with the keyboard and the section it would go to.
+  const [lifted, setLifted] = useState<{ id: string; at: number } | null>(null);
+  const [status, setStatus] = useState("");
+  const startDrag = usePointerDrag();
   const [busy, setBusy] = useState(false);
   const run = async (b: Record<string, unknown>) => {
     setBusy(true);
@@ -94,34 +101,100 @@ export function DatabaseSprints({
     if (target === sprintOf(row)) return;
     await run({ action: "row.update", rowId: row.id, version: row.version, cells: { [field.id]: target } });
   };
-  const dropZone = (key: string) => ({
-    onDragOver: (e: React.DragEvent) => {
-      if (!editable || !e.dataTransfer.types.includes(dragType)) return;
+  // The sections in order: the open sprints, then the backlog.
+  const zones = [...open.map((s) => ({ key: s.id, name: s.name })), { key: "backlog", name: t("Backlog", "Backlog") }];
+  const zoneOf = (r: Row) => (closedIds.has(sprintOf(r)) || !sprintOf(r) ? "backlog" : sprintOf(r));
+  const zoneAt = (point: DragPoint) =>
+    point.target?.closest<HTMLElement>("[data-sprint-zone]")?.dataset.sprintZone ?? null;
+  const dropZone = (key: string) => ({ "data-sprint-zone": key });
+  function beginDrag(e: React.PointerEvent<HTMLElement>, row: Row, touch: "hold" | "none") {
+    if (!editable || busy) return;
+    if ((e.target as Element).closest("select")) return;
+    const item = e.currentTarget.closest<HTMLElement>("li");
+    startDrag(e, {
+      touch,
+      preview: item,
+      source: item,
+      onStart: () => setLifted(null),
+      onMove: (point) => setOver(zoneAt(point)),
+      onDrop: (point) => {
+        setOver(null);
+        const key = zoneAt(point);
+        if (key) void move(row, key === "backlog" ? "" : key);
+      },
+      onCancel: () => setOver(null),
+    });
+  }
+  function liftKey(e: React.KeyboardEvent<HTMLElement>, row: Row) {
+    const name = cellText(row.cells[fields[0].id]) || t("Ohne Titel", "Untitled");
+    if (lifted?.id !== row.id) {
+      if (e.key !== " " || !editable || busy) return;
       e.preventDefault();
-      setOver(key);
-    },
-    onDragLeave: (e: React.DragEvent) => {
-      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((k) => (k === key ? null : k));
-    },
-    onDrop: (e: React.DragEvent) => {
-      setOver(null);
-      const row = rows.find((r) => r.id === e.dataTransfer.getData(dragType));
-      if (row) void move(row, key === "backlog" ? "" : key);
-    },
-  });
+      const at = Math.max(0, zones.findIndex((z) => z.key === zoneOf(row)));
+      setLifted({ id: row.id, at });
+      setOver(zones[at].key);
+      setStatus(t(`${name} angehoben, in „${zones[at].name}“. Pfeil hoch/runter wählt den Abschnitt, Leertaste oder Eingabe legt ab, Escape bricht ab.`, `${name} lifted, in “${zones[at].name}”. Arrow up/down chooses the section, Space or Enter drops, Escape cancels.`));
+      return;
+    }
+    const step = keyboardStep({ list: 0, index: lifted.at }, e.key, [zones.length]);
+    if (step.command === "none") return;
+    e.preventDefault();
+    if (step.command === "move") {
+      setLifted({ id: row.id, at: step.position.index });
+      setOver(zones[step.position.index].key);
+      setStatus(zones[step.position.index].name);
+      return;
+    }
+    setLifted(null);
+    setOver(null);
+    const key = zones[lifted.at].key;
+    if (step.command === "cancel" || key === zoneOf(row)) {
+      setStatus(step.command === "cancel" ? t(`Verschieben von ${name} abgebrochen.`, `Moving ${name} cancelled.`) : t(`${name} bleibt in „${zones[lifted.at].name}“.`, `${name} stays in “${zones[lifted.at].name}”.`));
+      return;
+    }
+    setStatus(t(`${name} nach „${zones[lifted.at].name}“ verschoben.`, `${name} moved to “${zones[lifted.at].name}”.`));
+    void move(row, key === "backlog" ? "" : key);
+  }
   const list = (items: Row[]) =>
     items.length ? (
       <ul className="sprint-rows">
         {items.map((r) => (
           <li
             key={r.id}
-            draggable={editable}
             data-done={isDone(rule, r.cells)}
-            onDragStart={(e) => {
-              e.dataTransfer.setData(dragType, r.id);
-              e.dataTransfer.effectAllowed = "move";
+            data-lifted={lifted?.id === r.id ? "" : undefined}
+            onPointerDown={(e) => {
+              if (e.pointerType !== "touch") beginDrag(e, r, "none");
             }}
           >
+            {editable && (
+              <button
+                type="button"
+                className="sprint-row-handle"
+                aria-label={t(`${cellText(r.cells[fields[0].id]) || "Ohne Titel"} verschieben`, `Move ${cellText(r.cells[fields[0].id]) || "Untitled"}`)}
+                title={t("Ziehen (auf Touchscreens kurz halten) · Leertaste hebt an, Pfeiltasten wählen den Abschnitt", "Drag (on touch screens hold briefly) · Space lifts, arrow keys choose the section")}
+                aria-keyshortcuts="Space"
+                aria-pressed={lifted?.id === r.id ? true : undefined}
+                disabled={busy}
+                data-no-edge-swipe=""
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  beginDrag(e, r, "hold");
+                }}
+                onKeyDown={(e) => liftKey(e, r)}
+                onKeyUp={(e) => {
+                  if (e.key === " ") e.preventDefault();
+                }}
+                onBlur={() => {
+                  if (lifted?.id === r.id) {
+                    setLifted(null);
+                    setOver(null);
+                  }
+                }}
+              >
+                <DotsSixVertical size={16} aria-hidden="true" />
+              </button>
+            )}
             {idField && <span className="sprint-row-id">{ticketId(idField, r.number)}</span>}
             <button type="button" className="sprint-row-title" onClick={() => onOpen(r.id)}>
               {cellText(r.cells[fields[0].id]) || t("Ohne Titel", "Untitled")}
@@ -228,6 +301,9 @@ export function DatabaseSprints({
         {list(backlog)}
       </section>
       {sprints.some((s) => s.state === "closed") && <Velocity sprints={sprints} unit={unit} />}
+      <p role="status" className="sr-only">
+        {status}
+      </p>
       <Modal open={!!editing} onClose={() => setEditing(null)} title={t("Sprint bearbeiten", "Edit sprint")}>
         {editing && (
           <SprintForm

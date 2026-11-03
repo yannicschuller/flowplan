@@ -40,6 +40,7 @@ import {
   type TimelineConfig,
 } from "@/lib/database-timeline";
 import type { Field, Row, View } from "@/lib/types";
+import { dragCursor } from "./pointer-drag";
 import { glide, layoutPosition, motionAllowed, prefersReducedMotion, type Point } from "@/lib/motion";
 // Touch: how long a finger rests on a bar before it moves it, and how far
 // it may wander meanwhile (further, it is a swipe that scrolls).
@@ -362,6 +363,25 @@ export default function DatabaseTimeline({
     return () => root.removeEventListener("touchmove", hold);
   }, [canEdit]);
   useEffect(() => () => clearHold(), []);
+  // While an entry is dragged the cursor is the closed hand everywhere, and
+  // Escape puts it back (#100).
+  const dragged = drag !== null;
+  useEffect(() => {
+    if (!dragged) return;
+    dragCursor(true);
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancel();
+    };
+    window.addEventListener("keydown", key, true);
+    return () => {
+      dragCursor(false);
+      window.removeEventListener("keydown", key, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragged]);
   function clearHold() {
     if (held.current) window.clearTimeout(held.current.timer);
     held.current = null;

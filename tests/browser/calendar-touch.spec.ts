@@ -152,10 +152,8 @@ test("weekly repeating entries show occurrences that open the original record", 
   const occurrence = page.locator(
     `.calendar-day[data-day="${month}-17"] .calendar-chip.occurrence`,
   );
-  await expect(occurrence.locator(".calendar-event")).toHaveAttribute(
-    "draggable",
-    "false",
-  );
+  // Occurrences cannot be moved: no drag handle (#100: no native drag).
+  await expect(occurrence.locator(".calendar-drag")).toHaveCount(0);
   await page.screenshot({
     path: `test-results/calendar-touch-verification/${testInfo.project.name}-series.png`,
   });

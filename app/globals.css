@@ -2235,7 +2235,7 @@ tr:hover .row-open,
   padding: 4px;
   margin-left: -4px;
 }
-.board-column > header[draggable="true"] {
+.board-column > header.column-draggable {
   cursor: grab;
 }
 .board-column.group-drop {
@@ -7027,6 +7027,10 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
   padding: 4px;
   cursor: grab;
   border-radius: 4px;
+  /* Held to lift the record on touch screens: no callout or selection. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .row-order-handle:active {
   cursor: grabbing;
@@ -13419,10 +13423,91 @@ pre,
   background: var(--bg);
   transform-origin: 30% 50%;
 }
-html.card-grabbing,
-html.card-grabbing * {
+/* ---------- Dragging with the pointer (components/pointer-drag.ts, #100) ----------
+   The closed hand over everything while something is dragged: the browser's
+   own drag and drop took the cursor away (Safari showed the arrow). */
+html.pointer-dragging,
+html.pointer-dragging * {
   cursor: grabbing !important;
   user-select: none !important;
+  -webkit-user-select: none !important;
+}
+/* The light, slightly lifted copy that follows the pointer. */
+.pointer-drag-preview {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  pointer-events: none;
+  will-change: transform;
+}
+.pointer-drag-lift {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow:
+    0 0 0 1px #1d1a1414,
+    0 14px 32px #1d1a1430,
+    0 2px 6px #1d1a141a;
+  transform: scale(1.015);
+  animation: pointer-drag-lift 0.14s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+[data-theme="dark"] .pointer-drag-lift {
+  background: var(--hover);
+  box-shadow:
+    0 0 0 1px #ffffff14,
+    0 14px 32px #0009,
+    0 2px 6px #0006;
+}
+@keyframes pointer-drag-lift {
+  from {
+    transform: none;
+    box-shadow: 0 0 0 1px #1d1a1414;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pointer-drag-lift {
+    animation: none;
+  }
+}
+.pointer-drag-face {
+  pointer-events: none;
+}
+/* What is dragged stays behind, faded. */
+[data-drag-source]:not(tr),
+tr[data-drag-source] > td {
+  opacity: 0.4;
+  transition: opacity 0.12s ease;
+}
+/* A finger resting on a handle: about to lift it. */
+[data-drag-pressing] {
+  color: var(--blue);
+  background: var(--blue-light);
+  /* Not for a quick tap. */
+  transition:
+    color 0.2s ease 0.1s,
+    background-color 0.2s ease 0.1s;
+}
+/* Lifted with the keyboard (Space on the handle). */
+.row-lifted {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+tr.row-lifted > td {
+  background: var(--blue-light);
+}
+/* A group header or cell that takes the record after its last one. */
+[data-zone-hint] {
+  outline: 2px dashed var(--blue);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+/* A table column dropped here lands before it. */
+th[data-field-drop] {
+  box-shadow: inset 3px 0 var(--blue);
 }
 
 /* ---------- Journal ---------- */
@@ -19150,6 +19235,37 @@ h3 .block-reactions {
   border-radius: 8px;
   background: var(--bg);
   cursor: grab;
+}
+.sprint-rows li[data-lifted] {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
+}
+.sprint-row-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 28px;
+  margin: -4px -4px -4px -2px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: grab;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.sprint-row-handle:hover,
+.sprint-row-handle:focus-visible {
+  color: var(--blue);
+  background: var(--blue-light);
+}
+@media (pointer: coarse) {
+  .sprint-row-handle {
+    width: 44px;
+    height: 44px;
+  }
 }
 .sprint-rows li[data-done="true"] .sprint-row-title {
   color: var(--muted);

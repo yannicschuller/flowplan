@@ -45,7 +45,8 @@ import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { parsePageLocation, pageLocationHash } from "@/lib/page-location";
 import { scheduleFields } from "@/lib/database-timeline";
 import DatabaseTimeline from "./database-timeline";
-import { edgeScroller } from "./edge-scroll";
+import { RECORD_DROP_EVENT, RECORD_OVER_EVENT, usePointerDrag, type DragPoint, type RecordDropDetail } from "./pointer-drag";
+import { keyboardStep, nearestIndex, placementIn, slotFor, type KeyPosition } from "@/lib/pointer-drag";
 import { Reactions } from "./reactions";
 import { startBoardCardDrag, type BoardCardDrag } from "./board-card-drag";
 import DatabaseCalendar from "./database-calendar";
@@ -86,7 +87,6 @@ import {
   useEffect,
   startTransition,
   ViewTransition,
-  type DragEvent,
 } from "react";
 import {
   appear,
@@ -288,7 +288,23 @@ type RowMove = {
   group?: { from: string; to: string };
   subgroup?: { from: string; to: string };
 };
-const rowDragType = "application/x-flowplan-row-order";
+// Where a dragged record would land in the view.
+type RowDrop = {
+  targetId?: string;
+  placement: "before" | "after" | "end";
+  groupKey?: string;
+  // A group's header or cell: after its last record.
+  zone?: string;
+};
+// A record lifted with the keyboard (Space on its handle).
+type KeyLift = {
+  rowId: string;
+  groupKey?: string;
+  lists: { key?: string; label?: string; ids: string[] }[];
+  from: KeyPosition;
+  at: KeyPosition;
+  across: boolean;
+};
 // i18n-table: 1 – [German, English] pairs
 const viewTypeNames: Record<View["type"], [string, string]> = {
   table: ["Tabelle", "Table"],
@@ -315,7 +331,6 @@ const viewTypeHints: Record<View["type"], [string, string]> = {
   feed: ["Einträge mit Inhalt untereinander", "Records with their content"],
   sprint: ["Backlog und Sprintplanung", "Backlog and sprint planning"],
 };
-const groupDragType = "application/x-flowplan-group-order";
 const computedTypes = [
   "id",
   "progress",
@@ -397,25 +412,24 @@ export default function DatabaseView({
       rowId: string;
       date: string;
     } | null>(null);
-  // Board cards are dragged with pointer events (mouse on the card, touch on
-  // the handle); see board-card-drag.ts. A tap without movement still opens
-  // the record or the position dialog.
+  // Everything in the view is dragged with pointer events
+  // (components/pointer-drag.ts, #100): rows, cards, columns, view tabs. A
+  // click or tap without movement still opens the record or the position
+  // dialog. Board cards also open a gap where they land (board-card-drag.ts).
+  const startDrag = usePointerDrag();
   const cardDrag = useRef<BoardCardDrag | null>(null),
     // A dropped card waits in its gap until the re-render with the move.
-    cardLanding = useRef<{ drag: BoardCardDrag; rows: unknown } | null>(null),
-    // Handle of the row whose finished drag may still send a click.
-    suppressClick = useRef<string | null>(null),
-    cardHoverRef = useRef((_x: number, _y: number) => {}),
-    [cardScroll] = useState(() =>
-      edgeScroller((x, y) => cardHoverRef.current(x, y), "x"),
-    );
-  // Touch devices move board columns with a handle; the board scrolls
-  // sideways while the finger rests at its edge.
-  const columnDrag = useRef<{ key: string; pointer: number } | null>(null),
-    columnHoverRef = useRef((_x: number, _y: number) => {}),
-    [columnScroll] = useState(() =>
-      edgeScroller((x, y) => columnHoverRef.current(x, y), "x"),
-    );
+    cardLanding = useRef<{ drag: BoardCardDrag; rows: unknown } | null>(null);
+  // The group headers and cells a record can be dropped on (after their
+  // last record), filled while rendering.
+  const rowZones = useRef(new Map<string, DatabaseGroup>());
+  rowZones.current = new Map();
+  // Whether a save is running, as of now: a drag is refused when it starts
+  // (after the threshold), not when the button went down.
+  const busyNow = useRef({ order: false, schema: false });
+  const [zoneHint, setZoneHint] = useState<string | null>(null),
+    [fieldDrop, setFieldDrop] = useState<string | null>(null),
+    [keyLift, setKeyLift] = useState<KeyLift | null>(null);
   // A record just created opens with its title ready for typing.
   const [freshRowId, setFreshRowId] = useState<string | null>(null);
   // The record last opened: its row or card takes the focus back after closing.
@@ -1215,103 +1229,165 @@ export default function DatabaseView({
         : {}),
     });
   }
-  function dragStart(e: DragEvent, row: Row, groupKey?: string) {
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData(
-      rowDragType,
-      JSON.stringify({
-        pageId: page.id,
-        viewId: view.id,
-        version: data.database.version,
-        rowId: row.id,
-        rowVersion: row.version,
-        groupKey,
+  // A record dropped at `drop`: the same move (and group change) as the
+  // position dialog. `version` is the database's when the drag began.
+  function commitRowDrop(
+    row: Row,
+    from: string | undefined,
+    drop: RowDrop,
+    version = data.database.version,
+  ) {
+    if (drop.targetId === row.id) return;
+    const change =
+      drop.groupKey !== undefined && from !== undefined
+        ? groupChange(from, drop.groupKey)
+        : undefined;
+    if (
+      change &&
+      ((change.group.from !== change.group.to && !canGroupEdit) ||
+        (change.subgroup &&
+          change.subgroup.from !== change.subgroup.to &&
+          !canSubEdit))
+    ) {
+      onError(t("Diese Gruppierung kann nicht bearbeitet werden.", "This grouping cannot be edited."));
+      return;
+    }
+    return submitMove({
+      viewId: view.id,
+      version,
+      rowId: row.id,
+      rowVersion: row.version,
+      targetId: drop.targetId,
+      placement: drop.targetId ? drop.placement : "end",
+      ...(change && canGroupEdit ? change : {}),
+    });
+  }
+  // What is under the pointer while a record is dragged: another record
+  // (before or after it, by the half), a group's header or cell (after its
+  // last record), a database in the sidebar, or nothing.
+  function rowDropAt(
+    point: DragPoint,
+    row: Row,
+  ): RowDrop | { page: string } | null {
+    const el = point.target;
+    if (!el) return null;
+    const target = pageAt(point);
+    if (target) return { page: target };
+    const root = boardRef.current;
+    if (!root?.contains(el)) return null;
+    const at = (item: HTMLElement): RowDrop | null =>
+      item.dataset.rowId === row.id
+        ? null
+        : {
+            targetId: item.dataset.rowId,
+            groupKey: item.dataset.rowGroup,
+            placement: placementIn(item.getBoundingClientRect(), point.x, point.y),
+          };
+    const item = el.closest<HTMLElement>("[data-row-id]");
+    if (item && root.contains(item)) return at(item);
+    const zone = el.closest<HTMLElement>("[data-row-zone]");
+    const group = zone && rowZones.current.get(zone.dataset.rowZone!);
+    if (group) {
+      const last = group.rows.filter((r) => r.id !== row.id).at(-1);
+      return {
+        targetId: last?.id,
+        placement: last ? "after" : "end",
+        groupKey: group.key,
+        zone: group.key,
+      };
+    }
+    // In the gap between two cards or rows: the nearest one.
+    const items = [...root.querySelectorAll<HTMLElement>("[data-row-id]")];
+    const near = nearestIndex(
+      items.map((i) => i.getBoundingClientRect()),
+      point.x,
+      point.y,
+      24,
+    );
+    return near >= 0 ? at(items[near]) : null;
+  }
+  busyNow.current = { order: orderBusy, schema: schemaBusy };
+  const pageAt = (point: DragPoint) =>
+    point.target?.closest<HTMLElement>("[data-record-drop-page]")?.dataset.recordDropPage ?? null;
+  function dropOnPage(row: Row, targetPageId: string, copy: boolean) {
+    window.dispatchEvent(
+      new CustomEvent<RecordDropDetail>(RECORD_DROP_EVENT, {
+        detail: { pageId: page.id, rowId: row.id, targetPageId, copy },
       }),
     );
   }
-  function dragMove(
-    e: DragEvent,
-    target: Row | undefined,
-    groupKey?: string,
-    bottom = false,
-  ) {
-    if (
-      !editable ||
-      !viewEditable ||
-      orderBusy ||
-      !e.dataTransfer.types.includes(rowDragType)
-    )
-      return;
-    e.preventDefault();
-    e.stopPropagation();
-    try {
-      const source = JSON.parse(e.dataTransfer.getData(rowDragType));
-      if (
-        source.pageId !== page.id ||
-        source.viewId !== view.id ||
-        source.rowId === target?.id
-      ) {
-        setDropHint(null);
-        return;
-      }
-      const change =
-        groupKey !== undefined && source.groupKey !== undefined
-          ? groupChange(source.groupKey, groupKey)
-          : undefined;
-      if (
-        change &&
-        ((change.group.from !== change.group.to && !canGroupEdit) ||
-          (change.subgroup &&
-            change.subgroup.from !== change.subgroup.to &&
-            !canSubEdit))
-      ) {
-        onError(t("Diese Gruppierung kann nicht bearbeitet werden.", "This grouping cannot be edited."));
-        return;
-      }
-      const bounds = e.currentTarget.getBoundingClientRect();
-      const placement = bottom
-        ? "after"
-        : e.clientY < bounds.top + bounds.height / 2
-          ? "before"
-          : "after";
-      void submitMove({
-        viewId: view.id,
-        version: source.version,
-        rowId: source.rowId,
-        rowVersion: source.rowVersion,
-        targetId: target?.id,
-        placement: target ? placement : "end",
-        ...(groupKey !== undefined && canGroupEdit
-          ? groupChange(source.groupKey, groupKey)
-          : {}),
-      });
-    } catch {
-      setDropHint(null);
-    }
+  function recordOver(targetPageId: string | null) {
+    window.dispatchEvent(
+      new CustomEvent(RECORD_OVER_EVENT, { detail: { targetPageId } }),
+    );
   }
-  function dragOver(e: DragEvent, row: Row, groupKey?: string) {
-    if (
-      !editable ||
-      !viewEditable ||
-      orderBusy ||
-      !e.dataTransfer.types.includes(rowDragType)
-    )
-      return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-    const bounds = e.currentTarget.getBoundingClientRect();
-    setDropHint({
-      id: row.id,
-      groupKey,
-      placement:
-        e.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+  // Rows, list and feed entries and cards (except on a plain board, see
+  // beginCardDrag) by their handle or, with the mouse, the card itself.
+  function beginRowDrag(
+    e: React.PointerEvent<HTMLElement>,
+    row: Row,
+    groupKey: string | undefined,
+    touch: "hold" | "none",
+  ) {
+    if (!editable || !viewEditable) return;
+    const item = e.currentTarget.closest<HTMLElement>("[data-row-id]");
+    if (!item) return;
+    const version = data.database.version;
+    let over: string | null = null;
+    const clear = () => {
+      setDropHint(null);
+      setZoneHint(null);
+      if (over) recordOver((over = null));
+    };
+    startDrag(e, {
+      touch,
+      // A card's face, without the wrapper around it.
+      preview: item.querySelector<HTMLElement>(":scope > .record-card") || item,
+      source: item,
+      onStart: () => {
+        if (busyNow.current.order) return false;
+        setKeyLift(null);
+      },
+      onMove: (point) => {
+        const drop = rowDropAt(point, row);
+        const page = drop && "page" in drop ? drop.page : null;
+        if (page !== over) recordOver((over = page));
+        if (!drop || "page" in drop) {
+          setDropHint(null);
+          setZoneHint(null);
+          return;
+        }
+        setZoneHint(drop.zone ?? null);
+        setDropHint(
+          drop.targetId && drop.placement !== "end"
+            ? { id: drop.targetId, groupKey: drop.groupKey, placement: drop.placement }
+            : null,
+        );
+      },
+      onDrop: (point) => {
+        const drop = rowDropAt(point, row);
+        clear();
+        if (!drop) return;
+        if ("page" in drop) return dropOnPage(row, drop.page, point.altKey);
+        void commitRowDrop(row, groupKey, drop, version);
+      },
+      onCancel: clear,
     });
   }
   function dropClass(row: Row, groupKey?: string) {
-    return dropHint?.id === row.id && dropHint.groupKey === groupKey
-      ? `order-drop-${dropHint.placement}`
-      : "";
+    return `${
+      dropHint?.id === row.id && dropHint.groupKey === groupKey
+        ? `order-drop-${dropHint.placement}`
+        : ""
+    }${keyLift?.rowId === row.id && keyLift.groupKey === groupKey ? " row-lifted" : ""}`;
+  }
+  // Group headers and cells take a dropped record after their last one.
+  function rowZone(group: DatabaseGroup) {
+    rowZones.current.set(group.key, group);
+    return {
+      "data-row-zone": group.key,
+      "data-zone-hint": zoneHint === group.key ? "" : undefined,
+    };
   }
   // Records glide to their new places (FLIP) instead of jumping: after a
   // move, a sort or filter change, a move between columns and live changes
@@ -1391,38 +1467,30 @@ export default function DatabaseView({
     if (fresh.length <= 20) for (const el of fresh) appear(el);
     cardPositions.current = next;
   });
-  cardHoverRef.current = (x, y) => cardDrag.current?.move(x, y);
   const latestRows = useRef(data.rows);
   latestRows.current = data.rows;
-  // Starts watching a pointer on a board card; the drag begins once it has
-  // moved past the threshold, so clicks and taps keep working.
+  // A card on a plain board: the board opens a gap where it would land
+  // (board-card-drag.ts). With the mouse on the card, by touch on its handle
+  // (which does not scroll, so the finger moves it at once).
   function beginCardDrag(
     e: React.PointerEvent<HTMLElement>,
     row: Row,
     groupKey: string,
-    threshold: number,
   ) {
-    suppressClick.current = null;
-    if (!editable || !viewEditable || orderBusy || cardDrag.current) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (!editable || !viewEditable || cardDrag.current) return;
     const wrap = e.currentTarget.closest<HTMLElement>(".record-card-wrap"),
       board = e.currentTarget.closest<HTMLElement>(".board");
     if (!wrap || !board) return;
-    const pointer = e.pointerId,
-      x0 = e.clientX,
+    const x0 = e.clientX,
       y0 = e.clientY;
     let drag: BoardCardDrag | null = null;
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("pointercancel", end);
-      cardScroll.stop();
-      document.documentElement.classList.remove("card-grabbing");
-    };
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pointer) return;
-      if (!drag) {
-        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) <= threshold) return;
+    let over: string | null = null;
+    startDrag(e, {
+      touch: "move",
+      source: null,
+      onStart: () => {
+        if (busyNow.current.order || cardDrag.current) return false;
+        setKeyLift(null);
         drag = startBoardCardDrag({
           board,
           wrap,
@@ -1432,60 +1500,162 @@ export default function DatabaseView({
           y: y0,
           onHint: setDropHint,
         });
-        if (!drag) return stop();
+        if (!drag) return false;
         cardDrag.current = drag;
-        cardScroll.start(wrap);
-        document.documentElement.classList.add("card-grabbing");
-        window.getSelection()?.removeAllRanges();
-      }
-      ev.preventDefault();
-      drag.move(ev.clientX, ev.clientY);
-      cardScroll.move(ev.clientX, ev.clientY);
-    };
-    const end = (ev: PointerEvent) => {
-      if (ev.pointerId !== pointer) return;
-      stop();
-      if (!drag) return;
-      cardDrag.current = null;
-      // The browser may still send a click to the dragged card or handle.
-      suppressClick.current = row.id;
-      setTimeout(() => {
-        if (suppressClick.current === row.id) suppressClick.current = null;
-      }, 400);
-      setDropHint(null);
-      if (ev.type === "pointercancel") return drag.cancel();
-      const drop = drag.drop();
-      if (!drop) return;
-      const change = groupChange(groupKey, drop.groupKey);
-      if (change.group.from !== change.group.to && !canGroupEdit) {
-        onError(t("Diese Gruppierung kann nicht bearbeitet werden.", "This grouping cannot be edited."));
-        return drag.cancel();
-      }
-      const landed = drag;
-      cardLanding.current = { drag: landed, rows: latestRows.current };
-      void submitMove({
-        viewId: view.id,
-        version: data.database.version,
-        rowId: row.id,
-        rowVersion: row.version,
-        targetId: drop.targetId,
-        placement: drop.placement,
-        ...(canGroupEdit ? change : {}),
-      }).finally(() =>
-        // React commits the moved data shortly after the request resolves.
-        // Without such a re-render (error, or the sort question first) the
-        // card returns to its place.
-        setTimeout(() => {
-          if (cardLanding.current?.drag === landed) {
-            cardLanding.current = null;
-            landed.cancel();
-          }
-        }, 250),
+      },
+      onMove: (point) => {
+        drag?.move(point.x, point.y);
+        const page = pageAt(point);
+        if (page !== over) recordOver((over = page));
+      },
+      onCancel: () => {
+        cardDrag.current = null;
+        setDropHint(null);
+        if (over) recordOver((over = null));
+        drag?.cancel();
+      },
+      onDrop: (point) => {
+        cardDrag.current = null;
+        setDropHint(null);
+        if (over) recordOver((over = null));
+        if (!drag) return;
+        // Onto a database in the sidebar: the card goes back, the record
+        // moves there.
+        const target = pageAt(point);
+        if (target) {
+          drag.cancel();
+          return dropOnPage(row, target, point.altKey);
+        }
+        const drop = drag.drop();
+        if (!drop) return;
+        const change = groupChange(groupKey, drop.groupKey);
+        if (change.group.from !== change.group.to && !canGroupEdit) {
+          onError(t("Diese Gruppierung kann nicht bearbeitet werden.", "This grouping cannot be edited."));
+          return drag.cancel();
+        }
+        const landed = drag;
+        cardLanding.current = { drag: landed, rows: latestRows.current };
+        void submitMove({
+          viewId: view.id,
+          version: data.database.version,
+          rowId: row.id,
+          rowVersion: row.version,
+          targetId: drop.targetId,
+          placement: drop.placement,
+          ...(canGroupEdit ? change : {}),
+        }).finally(() =>
+          // React commits the moved data shortly after the request resolves.
+          // Without such a re-render (error, or the sort question first) the
+          // card returns to its place.
+          setTimeout(() => {
+            if (cardLanding.current?.drag === landed) {
+              cardLanding.current = null;
+              landed.cancel();
+            }
+          }, 250),
+        );
+      },
+    });
+  }
+  // Keyboard: Space on a handle lifts the record, the arrows move it (on a
+  // board left and right to the next column), Space or Enter drops it and
+  // Escape puts it back. Each step is announced.
+  function liftLists(row: Row, groupKey?: string): Pick<KeyLift, "lists" | "across"> {
+    if (plainBoard && groupKey !== undefined)
+      return {
+        lists: groups.map((g) => ({ key: g.key, label: g.label, ids: g.rows.map((r) => r.id) })),
+        across: true,
+      };
+    const siblings =
+      groupKey !== undefined
+        ? allGroups.find((g) => g.key === groupKey)?.rows || rowZones.current.get(groupKey)?.rows || []
+        : shown;
+    return { lists: [{ key: groupKey, ids: siblings.map((r) => r.id) }], across: false };
+  }
+  function liftSizes(lift: Pick<KeyLift, "lists" | "rowId">) {
+    return lift.lists.map((l) => l.ids.filter((id) => id !== lift.rowId).length + 1);
+  }
+  function liftSlot(lift: KeyLift, at = lift.at) {
+    const list = lift.lists[at.list];
+    const others = list.ids.filter((id) => id !== lift.rowId);
+    return { list, ...slotFor(others, at.index) };
+  }
+  function announceLift(lift: KeyLift, title: string) {
+    const size = liftSizes(lift)[lift.at.list],
+      label = lift.lists[lift.at.list].label,
+      position = lift.at.index + 1;
+    setOrderStatus(
+      label
+        ? t(`${title}: Position ${position} von ${size} in „${label}“.`, `${title}: position ${position} of ${size} in “${label}”.`)
+        : t(`${title}: Position ${position} von ${size}.`, `${title}: position ${position} of ${size}.`),
+    );
+  }
+  function handleKey(e: React.KeyboardEvent<HTMLElement>, row: Row, groupKey?: string) {
+    const title = cellText(row.cells[fields[0].id]) || t("Ohne Titel", "Untitled");
+    const lift = keyLift?.rowId === row.id && keyLift.groupKey === groupKey ? keyLift : null;
+    if (!lift) {
+      if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || !editable || orderBusy) return false;
+      e.preventDefault();
+      e.stopPropagation();
+      const { lists, across } = liftLists(row, groupKey);
+      const list = Math.max(0, lists.findIndex((l) => l.key === groupKey));
+      const index = Math.max(0, lists[list].ids.indexOf(row.id));
+      const next: KeyLift = { rowId: row.id, groupKey, lists, across, from: { list, index }, at: { list, index } };
+      setKeyLift(next);
+      setOrderStatus(
+        t(
+          `${title} angehoben. Position ${index + 1} von ${liftSizes(next)[list]}. Pfeiltasten verschieben, Leertaste oder Eingabe legt ab, Escape bricht ab.`,
+          `${title} lifted. Position ${index + 1} of ${liftSizes(next)[list]}. Arrow keys move, Space or Enter drops, Escape cancels.`,
+        ),
       );
-    };
-    window.addEventListener("pointermove", move, { passive: false });
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
+      return true;
+    }
+    if (e.key === "Tab") {
+      setKeyLift(null);
+      setDropHint(null);
+      return false;
+    }
+    const step = keyboardStep(lift.at, e.key, liftSizes(lift), lift.across);
+    if (step.command === "none") return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (step.command === "move") {
+      const next = { ...lift, at: step.position };
+      setKeyLift(next);
+      const same = next.at.list === next.from.list && next.at.index === next.from.index;
+      const slot = liftSlot(next);
+      setDropHint(
+        !same && slot.targetId
+          ? { id: slot.targetId, groupKey: slot.list.key, placement: slot.placement }
+          : null,
+      );
+      announceLift(next, title);
+      return true;
+    }
+    setKeyLift(null);
+    setDropHint(null);
+    if (step.command === "cancel" || (lift.at.list === lift.from.list && lift.at.index === lift.from.index)) {
+      setOrderStatus(
+        step.command === "cancel"
+          ? t(`Verschieben von ${title} abgebrochen.`, `Moving ${title} cancelled.`)
+          : t(`${title} bleibt an seiner Position.`, `${title} stays where it was.`),
+      );
+      return true;
+    }
+    const slot = liftSlot(lift);
+    void commitRowDrop(row, groupKey, {
+      targetId: slot.targetId,
+      placement: slot.placement,
+      groupKey: slot.list.key,
+    })?.then(() => {
+      // The handle was disabled while saving: the focus comes back to it.
+      setTimeout(() => {
+        boardRef.current
+          ?.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(row.id)}"] .row-order-handle`)
+          ?.focus();
+      });
+    });
+    return true;
   }
   function orderHandle(row: Row, groupKey?: string) {
     if (!viewEditable) return null;
@@ -1499,32 +1669,33 @@ export default function DatabaseView({
         type="button"
         className="row-order-handle"
         aria-label={t(`Eintrag verschieben: ${cellText(row.cells[fields[0].id]) || "Ohne Titel"}`, `Move record: ${cellText(row.cells[fields[0].id]) || "Untitled"}`)}
-        title={t("Ziehen oder Position wählen · Alt + Pfeil hoch/runter", "Drag or choose a position · Alt + arrow up/down")}
+        title={t("Ziehen (auf Touchscreens kurz halten) oder Position wählen · Leertaste hebt an, Pfeiltasten verschieben · Alt + Pfeil hoch/runter", "Drag (on touch screens hold briefly) or choose a position · Space lifts, arrow keys move · Alt + arrow up/down")}
+        aria-keyshortcuts="Space Alt+ArrowUp Alt+ArrowDown"
+        aria-pressed={keyLift?.rowId === row.id && keyLift.groupKey === groupKey ? true : undefined}
         disabled={orderBusy}
-        draggable={!orderBusy && !plainBoard}
-        onDragStart={(e) => {
+        // Held to lift it: the drawer's edge swipe leaves it alone.
+        data-no-edge-swipe=""
+        onPointerDown={(e) => {
           e.stopPropagation();
-          dragStart(e, row, groupKey);
+          if (plainBoard && groupKey !== undefined) beginCardDrag(e, row, groupKey);
+          else beginRowDrag(e, row, groupKey, "hold");
         }}
-        onDragEnd={() => setDropHint(null)}
-        {...(plainBoard && groupKey !== undefined
-          ? {
-              onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
-                e.stopPropagation();
-                beginCardDrag(e, row, groupKey, e.pointerType === "mouse" ? 4 : 8);
-              },
-            }
-          : {})}
         onClick={(e) => {
           e.stopPropagation();
-          // A finished touch drag is not a tap.
-          if (suppressClick.current === row.id) {
-            suppressClick.current = null;
-            return;
-          }
           openMove(row, groupKey);
         }}
+        onBlur={() => {
+          if (keyLift?.rowId === row.id) {
+            setKeyLift(null);
+            setDropHint(null);
+          }
+        }}
+        onKeyUp={(e) => {
+          // Space lifts; it does not also open the position dialog.
+          if (e.key === " ") e.preventDefault();
+        }}
         onKeyDown={(e) => {
+          if (handleKey(e, row, groupKey)) return;
           if (e.altKey && ["ArrowUp", "ArrowDown"].includes(e.key)) {
             e.preventDefault();
             e.stopPropagation();
@@ -1757,26 +1928,18 @@ export default function DatabaseView({
         key={r.id}
         className={`record-card-wrap ${dropClass(r, groupKey)}`}
         data-row-id={r.id}
-        onDragOver={(e) => dragOver(e, r, groupKey)}
-        onDrop={(e) => dragMove(e, r, groupKey)}
+        data-row-group={groupKey}
       >
         <button
           className="record-card"
-          draggable={editable && viewEditable && !orderBusy && !plainBoard}
-          onDragStart={(e) => dragStart(e, r, groupKey)}
-          onDragEnd={() => setDropHint(null)}
+          // The mouse drags the whole card; fingers scroll over it and use
+          // the handle.
           onPointerDown={(e) => {
-            if (plainBoard && groupKey !== undefined && e.pointerType === "mouse")
-              beginCardDrag(e, r, groupKey, 4);
+            if (e.pointerType === "touch") return;
+            if (plainBoard && groupKey !== undefined) beginCardDrag(e, r, groupKey);
+            else beginRowDrag(e, r, groupKey, "none");
           }}
-          onClick={(e) => {
-            // The end of a drag is not a click.
-            if (suppressClick.current === r.id) {
-              suppressClick.current = null;
-              return;
-            }
-            openRecordFrom(e.currentTarget, r.id);
-          }}
+          onClick={(e) => openRecordFrom(e.currentTarget, r.id)}
         >
           {galleryCovers && (
             <GalleryCover
@@ -2059,44 +2222,84 @@ export default function DatabaseView({
       </span>
     );
   }
+  // View tabs move sideways: before or after the tab under the pointer.
+  // Fingers keep scrolling the tabs; a long press opens the view menu with
+  // "Move left/right".
+  function beginViewDrag(e: React.PointerEvent<HTMLElement>, id: string) {
+    if (!viewEditable) return;
+    const tab = e.currentTarget;
+    const dropAt = (point: DragPoint) => {
+      const over = point.target?.closest<HTMLElement>(".database-tabs [data-view-id]");
+      const beside = over?.dataset.viewId;
+      if (!over || !beside || beside === id) return null;
+      return { id: beside, after: placementIn(over.getBoundingClientRect(), point.x, point.y, "x") === "after" };
+    };
+    startDrag(e, {
+      touch: "none",
+      preview: tab,
+      source: tab,
+      onStart: () => {
+        setDraggedView(id);
+      },
+      onMove: (point) => setViewDrop(dropAt(point)),
+      onDrop: (point) => {
+        const drop = dropAt(point);
+        setViewDrop(null);
+        setDraggedView(null);
+        if (drop) void reorderView(id, drop.id, drop.after);
+      },
+      onCancel: () => {
+        setViewDrop(null);
+        setDraggedView(null);
+      },
+    });
+  }
+  // Table columns: dropped on another column, before it (as before).
+  function beginFieldDrag(e: React.PointerEvent<HTMLElement>, id: string) {
+    if (!viewEditable) return;
+    const header = e.currentTarget;
+    const dropAt = (point: DragPoint) => {
+      const target = point.target?.closest<HTMLElement>("th[data-field-id]")?.dataset.fieldId;
+      return target && target !== id ? target : null;
+    };
+    startDrag(e, {
+      preview: header,
+      source: header,
+      onMove: (point) => setFieldDrop(dropAt(point)),
+      onDrop: (point) => {
+        const target = dropAt(point);
+        setFieldDrop(null);
+        if (target) void moveColumn(id, target);
+      },
+      onCancel: () => setFieldDrop(null),
+    });
+  }
   const columnAt = (x: number, y: number) =>
     document
       .elementFromPoint(x, y)
       ?.closest<HTMLElement>(".board-column[data-group-key]")?.dataset.groupKey;
-  function columnHover(x: number, y: number) {
-    const drag = columnDrag.current;
-    if (!drag) return;
-    const target = columnAt(x, y);
-    setGroupDrop(target && target !== drag.key ? target : null);
-  }
-  columnHoverRef.current = columnHover;
-  function dropGroup(e: DragEvent, target: DatabaseGroup) {
-    if (!viewEditable || !e.dataTransfer.types.includes(groupDragType)) return;
-    e.preventDefault();
-    setGroupDrop(null);
-    const source = e.dataTransfer.getData(groupDragType);
-    const index = groups.findIndex((g) => g.key === target.key);
-    if (source && index >= 0) void moveGroup(source, index);
-  }
-  function dropIntoGroup(e: DragEvent, group: DatabaseGroup) {
-    if (
-      !editable ||
-      !viewEditable ||
-      orderBusy ||
-      !e.dataTransfer.types.includes(rowDragType)
-    )
-      return;
-    try {
-      const source = JSON.parse(e.dataTransfer.getData(rowDragType)).rowId;
-      dragMove(
-        e,
-        group.rows.filter((r) => r.id !== source).at(-1),
-        group.key,
-        true,
-      );
-    } catch {
-      setDropHint(null);
-    }
+  // A board column by its header (mouse) or its handle (touch, which does
+  // not scroll); the board scrolls sideways at its edges.
+  function beginColumnDrag(e: React.PointerEvent<HTMLElement>, group: DatabaseGroup) {
+    if (!viewEditable) return;
+    const column = e.currentTarget.closest<HTMLElement>(".board-column");
+    startDrag(e, {
+      touch: e.currentTarget.classList.contains("group-drag") ? "move" : "none",
+      preview: column?.querySelector<HTMLElement>(":scope > header") || column,
+      source: column,
+      onStart: () => !busyNow.current.schema,
+      onMove: (point) => {
+        const target = columnAt(point.x, point.y);
+        setGroupDrop(target && target !== group.key ? target : null);
+      },
+      onDrop: (point) => {
+        setGroupDrop(null);
+        const target = columnAt(point.x, point.y),
+          index = groups.findIndex((x) => x.key === target);
+        if (target !== group.key && index >= 0) void moveGroup(group.key, index);
+      },
+      onCancel: () => setGroupDrop(null),
+    });
   }
   function summaries(rows: Row[]) {
     return visibleFields.map((f) => {
@@ -2302,15 +2505,7 @@ export default function DatabaseView({
         className="database-group-header database-subgroup-header"
         role="group"
         aria-label={t(`Untergruppe ${sub.label} in ${group.label}`, `Sub-group ${sub.label} in ${group.label}`)}
-        onDragOver={(e) => {
-          if (
-            editable &&
-            !orderBusy &&
-            e.dataTransfer.types.includes(rowDragType)
-          )
-            e.preventDefault();
-        }}
-        onDrop={(e) => dropIntoGroup(e, target)}
+        {...rowZone(target)}
       >
         <button
           className="group-toggle"
@@ -2353,15 +2548,7 @@ export default function DatabaseView({
     return (
       <div
         className="database-group-header"
-        onDragOver={(e) => {
-          if (
-            editable &&
-            !orderBusy &&
-            e.dataTransfer.types.includes(rowDragType)
-          )
-            e.preventDefault();
-        }}
-        onDrop={(e) => dropIntoGroup(e, group)}
+        {...rowZone(group)}
       >
         <button
           className="group-toggle"
@@ -2446,9 +2633,8 @@ export default function DatabaseView({
         tabIndex={-1}
         className={`${selection.has(r.id) ? "row-selected" : ""} ${dropClass(r, groupKey)}`}
         data-row-id={r.id}
+        data-row-group={groupKey}
         onKeyDown={(e) => rowKeyDown(e, r)}
-        onDragOver={(e) => dragOver(e, r, groupKey)}
-        onDrop={(e) => dragMove(e, r, groupKey)}
       >
         {editable && (
           <td role="gridcell" className="selection-cell sticky-col" style={{ left: 0 }}>
@@ -2576,8 +2762,7 @@ export default function DatabaseView({
         key={r.id}
         className={`record-list-item ${dropClass(r, groupKey)}`}
         data-row-id={r.id}
-        onDragOver={(e) => dragOver(e, r, groupKey)}
-        onDrop={(e) => dragMove(e, r, groupKey)}
+        data-row-group={groupKey}
       >
         {editable && orderHandle(r, groupKey)}
         <button onClick={() => setRowId(r.id)}>
@@ -2660,30 +2845,8 @@ export default function DatabaseView({
                 e.stopPropagation();
                 setViewMenu({ x: e.clientX, y: e.clientY, id: v.id });
               }}
-              draggable={viewEditable}
-              onDragStart={(e) => {
-                setDraggedView(v.id);
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("application/x-flowplan-view", v.id);
-              }}
-              onDragOver={(e) => {
-                if (!draggedView || draggedView === v.id) return;
-                e.preventDefault();
-                const box = e.currentTarget.getBoundingClientRect();
-                const after = e.clientX > box.left + box.width / 2;
-                if (viewDrop?.id !== v.id || viewDrop.after !== after) setViewDrop({ id: v.id, after });
-              }}
-              onDragLeave={() => setViewDrop((d) => (d?.id === v.id ? null : d))}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (draggedView && viewDrop) void reorderView(draggedView, viewDrop.id, viewDrop.after);
-                setViewDrop(null);
-                setDraggedView(null);
-              }}
-              onDragEnd={() => {
-                setDraggedView(null);
-                setViewDrop(null);
-              }}
+              data-view-id={v.id}
+              onPointerDown={(e) => beginViewDrag(e, v.id)}
             >
               <Icon size={17} />
               {v.name}
@@ -3001,30 +3164,8 @@ export default function DatabaseView({
                     data-field-id={f.id}
                     className={stickyCell(f, index).className || undefined}
                     style={stickyCell(f, index).style}
-                    draggable={viewEditable}
-                    onDragStart={(e) =>
-                      e.dataTransfer.setData(
-                        "application/x-flowplan-field",
-                        f.id,
-                      )
-                    }
-                    onDragOver={(e) => {
-                      if (
-                        viewEditable &&
-                        e.dataTransfer.types.includes(
-                          "application/x-flowplan-field",
-                        )
-                      )
-                        e.preventDefault();
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const source = e.dataTransfer.getData(
-                        "application/x-flowplan-field",
-                      );
-                      if (source && source !== f.id)
-                        void moveColumn(source, f.id);
-                    }}
+                    data-field-drop={fieldDrop === f.id ? "" : undefined}
+                    onPointerDown={(e) => beginFieldDrag(e, f.id)}
                   >
                     <button
                       disabled={!allowFieldChanges}
@@ -3353,15 +3494,7 @@ export default function DatabaseView({
                           role="group"
                           aria-label={`${g.label} · ${lane.label}`}
                           className={`board-cell${collapsed(g.key) ? " collapsed" : ""}`}
-                          onDragOver={(e) => {
-                            if (
-                              editable &&
-                              !orderBusy &&
-                              e.dataTransfer.types.includes(rowDragType)
-                            )
-                              e.preventDefault();
-                          }}
-                          onDrop={(e) => dropIntoGroup(e, target)}
+                          {...rowZone(target)}
                         >
                           {collapsed(g.key) ? (
                             <span className="muted">{cellRows.length}</span>
@@ -3413,55 +3546,14 @@ export default function DatabaseView({
               key={g.key}
               data-group-key={g.key}
               aria-label={t(`Gruppe ${g.label}`, `Group ${g.label}`)}
-              onDragOver={(e) => {
-                if (
-                  viewEditable &&
-                  !schemaBusy &&
-                  e.dataTransfer.types.includes(groupDragType)
-                ) {
-                  e.preventDefault();
-                  setGroupDrop(g.key);
-                  return;
-                }
-                if (
-                  editable &&
-                  !orderBusy &&
-                  e.dataTransfer.types.includes(rowDragType)
-                )
-                  e.preventDefault();
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-                  setGroupDrop((k) => (k === g.key ? null : k));
-              }}
-              onDrop={(e) => {
-                if (e.dataTransfer.types.includes(groupDragType)) {
-                  dropGroup(e, g);
-                  return;
-                }
-                let source: string | undefined;
-                try {
-                  source = JSON.parse(
-                    e.dataTransfer.getData(rowDragType),
-                  ).rowId;
-                } catch {
-                  return;
-                }
-                dragMove(
-                  e,
-                  g.rows.filter((r) => r.id !== source).at(-1),
-                  g.key,
-                  true,
-                );
-              }}
             >
               <header
-                draggable={viewEditable && !schemaBusy}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(groupDragType, g.key);
-                  e.dataTransfer.effectAllowed = "move";
+                className={viewEditable && !schemaBusy ? "column-draggable" : undefined}
+                onPointerDown={(e) => {
+                  // The mouse drags the column by its header; fingers use
+                  // the handle.
+                  if (e.pointerType !== "touch") beginColumnDrag(e, g);
                 }}
-                onDragEnd={() => setGroupDrop(null)}
               >
                 <button
                   className="icon-button group-toggle"
@@ -3488,32 +3580,10 @@ export default function DatabaseView({
                     className="group-drag"
                     aria-label={t(`Gruppe ${g.label} ziehen`, `Drag group ${g.label}`)}
                     disabled={schemaBusy}
+                    data-no-edge-swipe=""
                     onPointerDown={(e) => {
-                      e.preventDefault();
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                      columnDrag.current = { key: g.key, pointer: e.pointerId };
-                      columnScroll.start(e.currentTarget);
-                    }}
-                    onPointerMove={(e) => {
-                      if (columnDrag.current?.pointer !== e.pointerId) return;
-                      columnHover(e.clientX, e.clientY);
-                      columnScroll.move(e.clientX, e.clientY);
-                    }}
-                    onPointerUp={(e) => {
-                      const drag = columnDrag.current;
-                      columnDrag.current = null;
-                      columnScroll.stop();
-                      setGroupDrop(null);
-                      if (drag?.pointer !== e.pointerId) return;
-                      const target = columnAt(e.clientX, e.clientY),
-                        index = groups.findIndex((x) => x.key === target);
-                      if (target !== drag.key && index >= 0)
-                        void moveGroup(drag.key, index);
-                    }}
-                    onPointerCancel={() => {
-                      columnDrag.current = null;
-                      columnScroll.stop();
-                      setGroupDrop(null);
+                      e.stopPropagation();
+                      beginColumnDrag(e, g);
                     }}
                   >
                     <DotsSixVertical size={14} />
@@ -3624,11 +3694,7 @@ export default function DatabaseView({
           onOpen={setRowId}
           orderHandle={(r) => (editable ? orderHandle(r) : null)}
           query={query}
-          rowEvents={(r) => ({
-            className: dropClass(r),
-            onDragOver: (e) => dragOver(e, r),
-            onDrop: (e) => dragMove(e, r),
-          })}
+          rowEvents={(r) => ({ className: dropClass(r) })}
           editor={
             editable
               ? (r) => ({
