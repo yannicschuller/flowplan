@@ -1,0 +1,689 @@
+/* Rack planning on whiteboards (#90): device library, details panel, ports
+   and cables, NetBox import (components/whiteboard/rack-panels.tsx) and the
+   racks, devices and cables on the board. Panels follow the theme tokens;
+   the drawing keeps its own colours like every board item. */
+
+/* ---- on the board ---- */
+.wb-item.wb-device .wb-rack-port rect:first-child {
+  transition: stroke 0.12s;
+}
+.wb-item.wb-device .wb-rack-port:hover rect:first-child {
+  stroke: #ffd43b;
+  stroke-width: 1.4px;
+}
+.wb-item.wb-device.selected .wb-device-body {
+  stroke: #4dabf7;
+  stroke-opacity: 1;
+  stroke-width: 1.5px;
+}
+.wb-item.wb-rack.selected .wb-rack-body {
+  stroke: #4dabf7;
+  stroke-width: 2px;
+}
+.wb-item.wb-cable .wb-cable-line {
+  transition: stroke-width 0.12s;
+}
+/* Hovering or selecting a cable highlights both of its ends. */
+.wb-item.wb-cable:hover .wb-cable-line,
+.wb-item.wb-cable.selected .wb-cable-line {
+  stroke-width: 4px;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.9));
+}
+.wb-item.wb-cable .wb-cable-end,
+.wb-item.wb-cable .wb-cable-line,
+.wb-item.wb-cable .wb-cable-label-box {
+  pointer-events: none;
+}
+.wb-item.wb-cable .wb-cable-end {
+  stroke-width: 0;
+  transition: r 0.12s;
+}
+.wb-item.wb-cable:hover .wb-cable-end,
+.wb-item.wb-cable.selected .wb-cable-end {
+  r: 6px;
+  stroke: #ffd43b;
+  stroke-width: 2.5px;
+}
+.wb-cables-hidden .wb-item.wb-cable:not(.selected) {
+  display: none;
+}
+.wb-cable-label {
+  font-size: 9px;
+  pointer-events: none;
+}
+.wb-cable-label span {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1f2328;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.wb-rack-focus {
+  fill: none;
+  stroke: #fab005;
+  pointer-events: none;
+}
+
+/* ---- device library ---- */
+.wb-rack-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.wb-rack-presets button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  cursor: grab;
+}
+.wb-rack-presets button:hover,
+.wb-rack-presets button:focus-visible {
+  background: var(--hover);
+}
+.wb-rack-lib-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.wb-rack-lib-item {
+  position: relative;
+}
+.wb-rack-lib-device {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  align-content: start;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: grab;
+}
+.wb-rack-lib-device:hover,
+.wb-rack-lib-device:focus-visible {
+  background: var(--hover);
+  border-color: var(--border);
+}
+.wb-rack-lib-device:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.wb-rack-lib-device:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.wb-rack-preview {
+  width: 100%;
+  height: 26px;
+  border-radius: 3px;
+  background: #16191d;
+}
+.wb-rack-lib-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.wb-rack-lib-device small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.wb-rack-lib-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.wb-rack-lib-delete:hover {
+  color: var(--text);
+}
+.wb-rack-lib-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.wb-rack-lib-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 5px 9px;
+}
+
+/* ---- details ---- */
+.wb-rack-inspector {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  bottom: 12px;
+  width: 320px;
+  max-height: calc(100% - 76px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 0;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  z-index: 6;
+}
+.wb-rack-inspector.beside {
+  right: 324px;
+}
+.wb-rack-inspector .wb-rack-form {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 2px 12px;
+}
+.wb-rack-form fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.wb-rack-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+.wb-rack-field > span:first-child {
+  color: var(--muted);
+  font-weight: 500;
+}
+.wb-rack-form input[type="text"],
+.wb-rack-form input[type="number"],
+.wb-rack-form textarea,
+.wb-rack-ports input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.wb-rack-form textarea {
+  resize: vertical;
+}
+.wb-rack-form input:focus-visible,
+.wb-rack-form textarea:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -1px;
+}
+.wb-rack-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wb-rack-input small {
+  color: var(--muted);
+  flex: none;
+}
+.wb-rack-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.wb-rack-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.wb-rack-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.wb-rack-swatch.auto {
+  background: var(--surface);
+}
+.wb-rack-swatch.active {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.wb-rack-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--hover);
+  gap: 2px;
+}
+.wb-rack-toggle button {
+  flex: 1;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.wb-rack-toggle button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  font-weight: 600;
+}
+.wb-rack-totals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+.wb-rack-totals div {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.wb-rack-totals dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.wb-rack-totals dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.wb-rack-totals .over,
+.wb-rack-load.over,
+.wb-rack-port-link .over {
+  color: #c92a2a;
+}
+.wb-rack-totals .over {
+  border-color: #ffa8a8;
+  background: #fff5f5;
+}
+[data-theme="dark"] .wb-rack-totals .over {
+  background: rgba(250, 82, 82, 0.12);
+  border-color: rgba(250, 82, 82, 0.5);
+}
+[data-theme="dark"] .wb-rack-totals .over,
+[data-theme="dark"] .wb-rack-load.over,
+[data-theme="dark"] .wb-rack-port-link .over,
+[data-theme="dark"] .wb-rack-warnings p {
+  color: #ff8787;
+}
+.wb-rack-load {
+  margin: 0;
+  font-size: 12.5px;
+}
+.wb-rack-warnings p {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  color: #c92a2a;
+}
+.wb-rack-warnings svg {
+  flex: none;
+  margin-top: 2px;
+}
+.wb-rack-devices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.wb-rack-devices li + li {
+  border-top: 1px solid var(--border);
+}
+.wb-rack-devices button {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.wb-rack-devices button:hover {
+  background: var(--hover);
+}
+.wb-rack-devices .u {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.wb-rack-devices .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wb-rack-devices small {
+  color: var(--muted);
+}
+.wb-rack-devices .clash .name::after {
+  content: " !";
+  color: #e03131;
+  font-weight: 700;
+}
+.wb-rack-where {
+  margin: 0;
+  font-size: 12.5px;
+}
+.wb-rack-form .link {
+  padding: 0;
+  color: var(--blue);
+  font: inherit;
+  text-align: left;
+}
+.wb-rack-form .link:hover {
+  text-decoration: underline;
+}
+.wb-rack-ports {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+.wb-rack-port-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px;
+  border-radius: 6px;
+}
+.wb-rack-port-row + .wb-rack-port-row {
+  border-top: 1px solid var(--border);
+}
+.wb-rack-port-row.focused {
+  background: var(--blue-light);
+}
+.wb-rack-port-main {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 84px 74px auto;
+  gap: 4px;
+  align-items: center;
+}
+.wb-rack-port-main select,
+.wb-rack-connect select {
+  font-size: 12px;
+  min-width: 0;
+}
+.wb-rack-port-extra {
+  display: grid;
+  grid-template-columns: 1fr 70px;
+  gap: 4px;
+  padding-left: 14px;
+}
+.wb-rack-ports input {
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.wb-rack-port-link {
+  padding-left: 14px;
+  font-size: 12px;
+}
+.wb-rack-port-main .icon {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.wb-rack-port-main .icon:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.wb-rack-port-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: #343a40;
+  vertical-align: baseline;
+}
+.wb-rack-port-dot.fibre {
+  background: #15aabf;
+}
+.wb-rack-port-dot.power {
+  background: #f08c00;
+  border-radius: 50%;
+}
+.wb-rack-connect {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 4px;
+  padding-left: 14px;
+}
+.wb-rack-add-ports {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.wb-rack-add-ports summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.wb-rack-add-ports[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wb-rack-form .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.wb-rack-ends {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.wb-rack-ends div {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 6px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.wb-rack-ends dt {
+  font-weight: 700;
+  color: var(--muted);
+}
+.wb-rack-ends dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.wb-rack-flip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- ports and cables ---- */
+.wb-rack-table-dialog {
+  width: min(1040px, calc(100vw - 32px));
+}
+.wb-rack-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.wb-rack-tabs button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--secondary);
+  font-weight: 500;
+}
+.wb-rack-tabs button.active {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+.wb-rack-tabs small {
+  margin-left: 4px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.wb-rack-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.wb-rack-table-wrap {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.wb-rack-table-wrap > p {
+  margin: 0;
+  padding: 16px;
+}
+.wb-rack-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.wb-rack-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.wb-rack-table th button,
+.wb-rack-table th:not(:has(button)) {
+  padding: 7px 10px;
+}
+.wb-rack-table th button {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+}
+.wb-rack-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.wb-rack-table td small {
+  color: var(--muted);
+}
+.wb-rack-table tbody tr {
+  cursor: pointer;
+}
+.wb-rack-table tbody tr:hover,
+.wb-rack-table tbody tr:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.wb-rack-cable-chip {
+  display: inline-block;
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.wb-rack-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.wb-rack-table-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- NetBox ---- */
+.wb-rack-netbox {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wb-rack-netbox p {
+  margin: 0;
+}
+.wb-rack-netbox label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wb-rack-netbox .wb-rack-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- phones ---- */
+@media (max-width: 700px) {
+  .wb-rack-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .wb-rack-filters .wb-lib-search {
+    grid-column: 1 / -1;
+  }
+  .wb-rack-table {
+    font-size: 12px;
+  }
+  .wb-rack-table th button,
+  .wb-rack-table th:not(:has(button)),
+  .wb-rack-table td {
+    padding: 6px 7px;
+  }
+  .wb-rack-sheet .wb-rack-form fieldset {
+    gap: 12px;
+  }
+  .wb-rack-sheet .wb-rack-form input,
+  .wb-rack-sheet .wb-rack-form textarea {
+    font-size: 16px;
+  }
+  .wb-rack-port-main {
+    grid-template-columns: 10px minmax(0, 1fr) 76px 70px auto;
+  }
+}

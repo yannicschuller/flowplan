@@ -1,6 +1,7 @@
 // Geometry of whiteboard items, free of React: used by the board
 // (components/whiteboard/render.tsx) and by the server (lib/whiteboard-svg.ts).
 import { connectorPoint, type Point, type ShapeKind, type WhiteboardItem } from "./whiteboard-model";
+import { cableRoute } from "./whiteboard-rack";
 
 // Outline of a shape in a w×h box, as an SVG path.
 export function shapePath(kind: ShapeKind = "rectangle", w: number, h: number) {
@@ -49,7 +50,13 @@ export function connectorGeometry(
     b = connectorPoint(item.to, items, rawA);
   let d: string;
   let endDir: Point, startDir: Point;
-  if (item.route === "elbow") {
+  // Cables between racks run along the racks' cable channels (#90).
+  const routed = item.cable || item.from?.port || item.to?.port ? cableRoute(item, items, a, b) : null;
+  if (routed) {
+    d = routed;
+    endDir = { x: 1, y: 0 };
+    startDir = { x: -1, y: 0 };
+  } else if (item.route === "elbow" || ((item.cable || item.from?.port || item.to?.port) && !item.route)) {
     const mx = (a.x + b.x) / 2;
     d = `M ${a.x} ${a.y} H ${mx} V ${b.y} H ${b.x}`;
     endDir = { x: Math.sign(b.x - mx) || 1, y: 0 };

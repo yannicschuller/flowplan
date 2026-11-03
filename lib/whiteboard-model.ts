@@ -4,6 +4,8 @@
 // different people merge property by property.
 import { diagramText, type MarkerKind, type TimelineData } from "./whiteboard-diagram-model";
 import { plainText } from "./whiteboard-richtext";
+// Rack planning (#90): racks, devices and cables between their ports.
+import { portAnchor, rackItemText, type CableData, type DeviceData, type RackData } from "./whiteboard-rack";
 export const whiteboardItemTypes = [
   "sticky",
   "text",
@@ -19,6 +21,9 @@ export const whiteboardItemTypes = [
   "timeline",
   // Videos and pages of the embed allowlist, PDFs from the board's files.
   "embed",
+  // Rack planning: a rack with its units, a device mounted in it (#90).
+  "rack",
+  "device",
 ] as const;
 export type WhiteboardItemType = (typeof whiteboardItemTypes)[number];
 export const shapeKinds = [
@@ -35,7 +40,8 @@ export const shapeKinds = [
 ] as const;
 export type ShapeKind = (typeof shapeKinds)[number];
 export type Point = { x: number; y: number };
-export type ConnectorEnd = { id?: string; x: number; y: number };
+// port: the end sits on that port of a device (cables, #90).
+export type ConnectorEnd = { id?: string; x: number; y: number; port?: string };
 export type WhiteboardItem = {
   id: string;
   type: WhiteboardItemType;
@@ -114,6 +120,14 @@ export type WhiteboardItem = {
   page?: number;
   // Planning poker: the value taken over for this note (a label on it).
   estimate?: string;
+  // Rack planning (lib/whiteboard-rack.ts): a rack's units and limits, a
+  // device with its ports and the rack and lowest unit it is mounted at,
+  // the properties of a cable (a connector).
+  rack?: RackData;
+  device?: DeviceData;
+  rackId?: string;
+  u?: number;
+  cable?: CableData;
 };
 export type WhiteboardMessage = {
   id: string;
@@ -180,6 +194,7 @@ export function itemText(item: Partial<WhiteboardItem>) {
     ...(item.cells || []).flat(),
     ...(item.messages || []).map((m) => m.text),
     ...diagramText(item),
+    ...rackItemText(item),
   ]
     .filter(Boolean)
     .join(" ")
@@ -213,6 +228,11 @@ export function connectorPoint(
   if (!end) return { x: 0, y: 0 };
   const target = end.id ? items?.get(end.id) : undefined;
   if (!target || target.type === "connector") return { x: end.x, y: end.y };
+  // Ends on a port of a device sit on that port.
+  if (end.port && target.type === "device") {
+    const at = portAnchor(target, end.port, items);
+    if (at) return at;
+  }
   const cx = target.x + target.w / 2,
     cy = target.y + target.h / 2;
   if (!toward) return { x: cx, y: cy };

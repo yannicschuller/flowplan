@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 85) return;
+  if (globalDb.flowplanSchema === 86) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1111,7 +1111,13 @@ function migrate(d: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS collection_order(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,position REAL NOT NULL,PRIMARY KEY(user_id,collection_id));
     CREATE INDEX IF NOT EXISTS collection_order_collection ON collection_order(collection_id);`);
   migrateSavedSearches(d);
-  globalDb.flowplanSchema = 85;
+  // Schema 86 – rack planning on whiteboards (#90,
+  // lib/whiteboard-rack-server.ts): own devices of a workspace for the
+  // device library (the device as JSON, its colour). Racks, devices and
+  // cables themselves are elements of the board.
+  d.exec(`CREATE TABLE IF NOT EXISTS rack_device_templates(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,device TEXT NOT NULL,fill TEXT,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS rack_device_templates_workspace ON rack_device_templates(workspace_id);`);
+  globalDb.flowplanSchema = 86;
 }
 // Saved searches (before #86) → collections, keeping their id and order.
 export function migrateSavedSearches(d: DatabaseSync) {

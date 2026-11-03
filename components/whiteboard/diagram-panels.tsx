@@ -30,6 +30,7 @@ import type { BoardApi, DiagramPanel } from "./board-context";
 import { ShapeLibrary } from "./shape-library";
 import { PrototypeLinkSelect, PrototypePlayer } from "./prototype-player";
 import { TimelineEditor } from "./timeline-item";
+import { NetboxDialog, PortsAndCables, RackInspector, RackLibrary } from "./rack-panels";
 
 type T = (de: string, en: string) => string;
 export const DIAGRAM_FILE = /\.(mmd|mermaid|puml|plantuml|pu|iuml|wsd)$/i;
@@ -265,6 +266,12 @@ export function DiagramPanels({ board, panel }: { board: BoardApi; panel: Diagra
   if (panel.kind === "library") return <ShapeLibrary board={board} onClose={board.close} />;
   if (panel.kind === "import") return <ImportDialog key={panel.text || ""} board={board} panel={panel} onClose={board.close} />;
   if (panel.kind === "timeline") return <TimelineEditor id={panel.id} onClose={board.close} />;
+  // Rack planning (#90).
+  const title = board.pages.find((p) => p.id === board.pageId)?.title || "Whiteboard";
+  if (panel.kind === "racks") return <RackLibrary board={board} onClose={board.close} title={title} />;
+  if (panel.kind === "rack-ports") return <PortsAndCables board={board} onClose={board.close} title={title} tab={panel.tab} />;
+  if (panel.kind === "rack-netbox") return <NetboxDialog board={board} onClose={board.close} />;
+  if (panel.kind === "rack-details") return <RackInspector board={board} sheet onClose={board.close} />;
   return <PrototypePlayer items={board.items} pages={board.pages} start={panel.start ?? startFrame(board.items, board.selection)} onClose={board.close} />;
 }
 

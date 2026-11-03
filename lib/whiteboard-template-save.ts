@@ -22,7 +22,7 @@ export function templateDrafts(list: WhiteboardItem[], all: WhiteboardItem[] = l
     for (const end of ["from", "to"] as const) {
       const e = item[end];
       if (!e) continue;
-      if (e.id && ids.has(e.id)) draft[end] = { id: e.id, x: e.x + dx, y: e.y + dy };
+      if (e.id && ids.has(e.id)) draft[end] = { id: e.id, x: e.x + dx, y: e.y + dy, ...(e.port ? { port: e.port } : {}) };
       else {
         const p = connectorPoint(e, map);
         draft[end] = { x: Math.round(p.x + dx), y: Math.round(p.y + dy) };

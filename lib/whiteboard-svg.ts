@@ -16,6 +16,9 @@ import { timelineSvg } from "./whiteboard-timeline";
 import { hasRichText, richTextHtml } from "./whiteboard-richtext";
 import { boardEmbed, withValidExtras } from "./whiteboard-embeds";
 import { itemTags, tagColor } from "./whiteboard-tags";
+// Racks, devices and cables (#90).
+import { applyRackLayout, cableStyle, cleanRackFields, isCable } from "./whiteboard-rack";
+import { RACK_DEFS, deviceSvg, rackContext, rackSvg } from "./whiteboard-rack-svg";
 
 export type WhiteboardSvgContext = {
   // A file or image source as used in the export (relative path, https URL),
@@ -84,6 +87,8 @@ function estimateTag(item: WhiteboardItem) {
   return `<g transform="translate(${item.w - w - 6} 6)"><rect width="${w}" height="22" rx="11" fill="#1f2937"/><text x="${w / 2}" y="15.5" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#ffffff">${text(value)}</text></g>`;
 }
 function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: WhiteboardSvgContext): string {
+  if (item.type === "rack" && !item.covered) return `<g transform="translate(${item.x} ${item.y})">${rackSvg(item, rackContext(items), ctx.label)}</g>`;
+  if (item.type === "device" && !item.covered) return `<g transform="translate(${item.x} ${item.y})">${deviceSvg(item, items, rackContext(items), ctx.label)}</g>`;
   const transform = `translate(${item.x} ${item.y})${item.rotation ? ` rotate(${num(item.rotation)} ${item.w / 2} ${item.h / 2})` : ""}`;
   const g = (inner: string) => `<g transform="${transform}">${inner}</g>`;
   if (item.covered && !["frame", "connector", "comment"].includes(item.type))
@@ -119,6 +124,12 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
     }
     case "connector": {
       const { a, b, d, endDir, startDir } = connectorGeometry(item, items);
+      // Cables are coloured and drawn by their type (lib/whiteboard-rack.ts).
+      const cable = item.cable && isCable(item) ? cableStyle(item.cable) : null;
+      if (cable)
+        return `<g><path d="${d}" fill="none" stroke="${attr(color(cable.color, "#1f2937"))}" stroke-width="${cable.width}"${cable.dash ? ` stroke-dasharray="${cable.dash}"` : ""} stroke-linecap="round" stroke-linejoin="round"/><circle cx="${a.x}" cy="${a.y}" r="2.2" fill="${attr(color(cable.color, "#1f2937"))}"/><circle cx="${b.x}" cy="${b.y}" r="2.2" fill="${attr(color(cable.color, "#1f2937"))}"/>${
+          item.cable?.label ? html(120, 18, `<div class="wb-connector-label" style="font-size:10px"><span>${text(item.cable.label)}</span></div>`, (a.x + b.x) / 2 - 60, (a.y + b.y) / 2 - 9) : ""
+        }</g>`;
       const stroke = color(item.stroke, "#1f2937"),
         width = num(item.strokeWidth, 2);
       return `<g><path d="${d}" fill="none" stroke="${attr(stroke)}" stroke-width="${width}"${item.dashed ? ' stroke-dasharray="8 6"' : ""} stroke-linecap="round"/>${
@@ -200,7 +211,7 @@ function shape(item: WhiteboardItem, items: Map<string, WhiteboardItem>, ctx: Wh
 // is a finite number, every list a list of them.
 const end = (e: WhiteboardItem["from"]) => (e ? { ...e, x: num(e.x), y: num(e.y) } : e);
 function clean(raw: WhiteboardItem): WhiteboardItem {
-  const item = withValidExtras(raw);
+  const item = cleanRackFields(withValidExtras(raw));
   return cleanDiagramFields({
     ...item,
     x: num(item.x),
@@ -221,7 +232,7 @@ function clean(raw: WhiteboardItem): WhiteboardItem {
 
 // The SVG, or null for a board without anything to show.
 export function whiteboardSvg(raw: WhiteboardItem[], ctx: WhiteboardSvgContext, title = "") {
-  const all = raw.map(clean);
+  const all = applyRackLayout(raw.map(clean));
   const items = all.filter((item) => item.type !== "comment");
   const map = new Map(all.map((item) => [item.id, item]));
   const box = contentBounds(items, map);
@@ -237,7 +248,7 @@ export function whiteboardSvg(raw: WhiteboardItem[], ctx: WhiteboardSvgContext, 
     (title ? `<title>${text(title)}</title>\n` : "") +
     `<style>${STYLE}</style>\n` +
     `<defs><filter id="wb-shadow" x="-10%" y="-10%" width="130%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-opacity="0.16"/></filter>` +
-    `<pattern id="wb-cover-hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#3b3fd8"/><rect width="4" height="10" fill="#4a4ee6"/></pattern></defs>\n` +
+    `<pattern id="wb-cover-hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" fill="#3b3fd8"/><rect width="4" height="10" fill="#4a4ee6"/></pattern>${RACK_DEFS}</defs>\n` +
     // A white sheet, so the drawing stays readable in dark viewers.
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>\n` +
     [...frames, ...others].map((item) => shape(item, map, ctx)).filter(Boolean).join("\n") +

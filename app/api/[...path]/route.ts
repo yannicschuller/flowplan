@@ -116,6 +116,7 @@ import { clipArticle } from "@/lib/web-clip";
 import { downloadImage, searchImages } from "@/lib/image-search";
 import { GIF_MAX_BYTES, gifProvider, searchGifs } from "@/lib/gif-search";
 import { deleteBoardTemplate, listBoardTemplates, saveBoardTemplate } from "@/lib/whiteboard-user-templates";
+import { deleteRackTemplate, listRackTemplates, netboxImport, saveRackTemplate } from "@/lib/whiteboard-rack-server";
 import { whiteboardRowCards } from "@/lib/whiteboard-cards";
 import { transcribe } from "@/lib/transcribe";
 import { journalDate } from "@/lib/journal";
@@ -377,6 +378,9 @@ async function handleGET(
     // Own whiteboard templates of the board's workspace.
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "templates")
       return NextResponse.json({ templates: listBoardTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
+    // Own devices of the workspace for racks on boards (#90).
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "rack-templates")
+      return NextResponse.json({ templates: listRackTemplates(user, path[1]) }, { headers: { "Cache-Control": "no-store" } });
     // Live data of database records shown as cards on a whiteboard.
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cards") {
       requirePage(user, z.uuid().parse(path[1]));
@@ -1172,6 +1176,19 @@ async function handlePOST(
       return NextResponse.json(
         body.action === "save" ? saveBoardTemplate(user, path[1], body) : deleteBoardTemplate(user, path[1], body.templateId),
       );
+    }
+    // Own devices of the rack library: save or delete (#90).
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "rack-templates") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      const body = z.object({ action: z.enum(["save", "delete"]) }).passthrough().parse(await req.json());
+      return NextResponse.json(
+        body.action === "save" ? saveRackTemplate(user, path[1], body) : deleteRackTemplate(user, path[1], body.templateId),
+      );
+    }
+    // Racks from NetBox: address and token are used for this request only.
+    if (path.length === 3 && path[0] === "whiteboards" && path[2] === "netbox") {
+      if (user.apiScope) throw new HttpError(403, "Hier nicht verfügbar.");
+      return NextResponse.json(await netboxImport(user, path[1], await req.json()), { headers: { "Cache-Control": "no-store" } });
     }
     if (path.length === 3 && path[0] === "whiteboards" && path[2] === "cursor") {
       if (Number(req.headers.get("content-length") || 0) > 512)

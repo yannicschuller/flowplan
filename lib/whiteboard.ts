@@ -5,6 +5,7 @@ import { HttpError } from "./auth";
 import { requirePage } from "./permissions";
 import { escaped } from "./document-server";
 import { itemText, type WhiteboardItem } from "./whiteboard-model";
+import { applyRackLayout } from "./whiteboard-rack";
 import type { Identity, Page } from "./types";
 // Private mode: private writers' changes stay out of the shared board.
 import { assertNoPrivateGap, withoutPrivateChanges } from "./whiteboard-private-guard";
@@ -19,7 +20,8 @@ export function whiteboardItems(doc: Y.Doc): WhiteboardItem[] {
     if (value instanceof Y.Map)
       items.push({ ...(value.toJSON() as WhiteboardItem), id: key });
   });
-  return items.sort((a, b) => (a.z || 0) - (b.z || 0));
+  // Racks give devices their place (lib/whiteboard-rack.ts).
+  return applyRackLayout(items.sort((a, b) => (a.z || 0) - (b.z || 0)));
 }
 export function whiteboardSummary(items: WhiteboardItem[]) {
   return items

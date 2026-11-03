@@ -7,7 +7,9 @@ import { all, one } from "../db";
 import { publicHiddenFieldIds } from "../field-access";
 import { ct } from "../content-locale";
 import { ticketId } from "../ticket-ids";
-import type { Field } from "../types";
+import type { Field, Page } from "../types";
+import { whiteboardSnapshotItems } from "../whiteboard";
+import { racksText } from "../whiteboard-rack";
 import { chunkHtml, chunkPlain, chunkParagraphs } from "./chunks";
 import { htmlText } from "./content";
 
@@ -116,7 +118,11 @@ export function sourceText(pageId: string, rowId?: string | null, names = nameLo
         chunks: [`Datenbank „${page.title}“ mit ${count} Einträgen und den Eigenschaften: ${fields.map((f) => f.name).join(", ")}`],
       };
     }
-    if (page.kind === "whiteboard") return { pageId, rowId: null, title: page.title, kind: "whiteboard", chunks: [] };
+    // Whiteboards: their racks, devices, ports and cables (#90) as text.
+    if (page.kind === "whiteboard") {
+      const racks = racksText(whiteboardSnapshotItems({ id: page.id } as Page).filter((i) => !i.covered), ct);
+      return { pageId, rowId: null, title: page.title, kind: "whiteboard", chunks: racks ? chunkPlain(racks) : [] };
+    }
     // Notebooks: the text typed or recognised on their sheets.
     if (page.kind === "notebook") return { pageId, rowId: null, title: page.title, kind: "document", chunks: notebookText(page.id).map((text) => text.slice(0, 4000)) };
     const html = one<{ html: string | null }>("SELECT html FROM documents WHERE page_id=?", pageId)?.html || "";
