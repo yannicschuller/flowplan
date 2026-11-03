@@ -56,6 +56,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: { de: "profil name anzeigename passwort passkey zwei-faktor 2fa authenticator sitzungen geräte abmelden verschlüsselung e2ee grenzen speicher konto löschen", en: "profile name display name password passkey two-factor 2fa authenticator sessions devices sign out encryption e2ee limits storage delete account" },
     entries: [
       { title: { de: "Anzeigename", en: "Display name" }, keywords: { de: "profil name", en: "profile name" }, anchor: "profile" },
+      { title: { de: "Anmeldemethoden", en: "Sign-in methods" }, keywords: { de: "sso oidc verbinden trennen single sign-on passwort entfernen", en: "sso oidc connect disconnect link single sign-on remove password" }, anchor: "sign-in-methods" },
       { title: { de: "Passwort ändern", en: "Change password" }, anchor: "password" },
       { title: { de: "Passkeys", en: "Passkeys" }, anchor: "passkeys" },
       { title: { de: "Zwei-Faktor-Anmeldung", en: "Two-factor sign-in" }, keywords: { de: "2fa authenticator code wiederherstellungscodes", en: "2fa authenticator code recovery codes" }, anchor: "two-factor" },
@@ -307,6 +308,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       { title: { de: "Konto deaktivieren", en: "Disable account" }, keywords: { de: "sperren", en: "block lock" } },
       { title: { de: "Grenzen einer Person", en: "Limits of a person" }, keywords: { de: "speicher upload", en: "storage upload" } },
       { title: { de: "Link zum Zurücksetzen des Passworts", en: "Password reset link" } },
+      { title: { de: "Konten zusammenführen", en: "Merge accounts" }, keywords: { de: "doppelt duplikat sso verbinden", en: "duplicate sso link merge" } },
     ],
   },
   {

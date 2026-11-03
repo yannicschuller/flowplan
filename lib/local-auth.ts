@@ -269,6 +269,19 @@ export async function changePassword(userId: string, input: unknown, locale: Loc
   securityEvent("account.password", { actorId: userId });
 }
 
+// A new password without the old one: for an account whose password was
+// removed (SSO only, #101), after the route confirmed the step (lib/step-up.ts).
+export async function setNewPassword(userId: string, next: unknown, locale: Locale) {
+  const t = tr(locale);
+  const account = accountOf(userId);
+  if (!account) throw new HttpError(400, t("Dieses Konto meldet sich über SSO an.", "This account signs in with SSO."));
+  if (account.password_hash) throw new HttpError(409, t("Dieses Konto hat schon ein Passwort.", "This account already has a password."));
+  const password = passwordSchema(t).safeParse(next);
+  if (!password.success) throw new HttpError(400, password.error.issues[0].message);
+  run("UPDATE local_accounts SET password_hash=? WHERE user_id=?", await hashPassword(password.data), userId);
+  securityEvent("account.password", { actorId: userId });
+}
+
 // Name of a local account (SSO accounts take it from the provider).
 export function updateLocalProfile(userId: string, input: unknown, locale: Locale) {
   const t = tr(locale);
@@ -399,9 +412,9 @@ export function setLocalAdmin(userId: string, admin: boolean) {
 }
 export function localAccountInfo() {
   return Object.fromEntries(
-    all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number; totp: number }>(
-      "SELECT a.user_id,a.is_admin,a.email_verified,(SELECT COUNT(*) FROM passkeys p WHERE p.user_id=a.user_id) passkeys,EXISTS(SELECT 1 FROM user_totp t WHERE t.user_id=a.user_id AND t.enabled=1) totp FROM local_accounts a",
-    ).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys), totp: !!a.totp }]),
+    all<{ user_id: string; is_admin: number; email_verified: number; passkeys: number; totp: number; password: number }>(
+      "SELECT a.user_id,a.is_admin,a.email_verified,(SELECT COUNT(*) FROM passkeys p WHERE p.user_id=a.user_id) passkeys,EXISTS(SELECT 1 FROM user_totp t WHERE t.user_id=a.user_id AND t.enabled=1) totp,a.password_hash<>'' password FROM local_accounts a",
+    ).map((a) => [a.user_id, { admin: !!a.is_admin, verified: !!a.email_verified, passkeys: Number(a.passkeys), totp: !!a.totp, password: !!a.password }]),
   );
 }
 
@@ -411,13 +424,14 @@ const rp = () => {
   const url = new URL(appUrl());
   return { id: url.hostname, origin: url.origin };
 };
-function storeChallenge(challenge: string, kind: "register" | "login", userId: string | null) {
+type ChallengeKind = "register" | "login" | "confirm";
+function storeChallenge(challenge: string, kind: ChallengeKind, userId: string | null) {
   const token = randomBytes(32).toString("base64url");
   run("DELETE FROM auth_challenges WHERE expires<?", Date.now());
   run("INSERT INTO auth_challenges(id,challenge,user_id,kind,expires) VALUES(?,?,?,?,?)", hash(token), challenge, userId, kind, Date.now() + 5 * 60_000);
   return token;
 }
-function takeChallenge(token: string | undefined, kind: "register" | "login") {
+function takeChallenge(token: string | undefined, kind: ChallengeKind) {
   if (!token) return null;
   const row = one<{ challenge: string; user_id: string | null; expires: number }>(
     "SELECT challenge,user_id,expires FROM auth_challenges WHERE id=? AND kind=?",
@@ -483,25 +497,15 @@ export async function passkeyLoginOptions() {
   const options = await generateAuthenticationOptions({ rpID: rp().id, userVerification: "preferred" });
   return { options, token: storeChallenge(options.challenge, "login", null) };
 }
-export async function passkeyLogin(token: string | undefined, input: unknown, address: string, locale: Locale) {
-  const t = tr(locale);
-  const keys = addressKey("ip", address);
-  if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
-  const response = z.object({ id: z.string().max(1000) }).passthrough().parse(input) as unknown as AuthenticationResponseJSON;
-  const challenge = takeChallenge(token, "login");
-  const passkey = one<{ id: string; user_id: string; public_key: Uint8Array; counter: number; transports: string }>(
-    "SELECT * FROM passkeys WHERE id=?",
-    response.id,
-  );
-  const fail = () => {
-    failed(keys);
-    return new HttpError(401, t("Dieser Passkey ist hier nicht bekannt.", "This passkey is not known here."));
-  };
-  if (!challenge) throw new HttpError(400, t("Die Anfrage ist abgelaufen. Bitte erneut versuchen.", "The request has expired. Please try again."));
-  if (!passkey) throw fail();
+type StoredPasskey = { id: string; user_id: string; public_key: Uint8Array; counter: number; transports: string };
+// Checks a passkey's answer to a challenge; the passkey on success (its
+// counter and last use are updated), else null.
+async function verifyAssertion(challenge: string, response: AuthenticationResponseJSON) {
+  const passkey = one<StoredPasskey>("SELECT * FROM passkeys WHERE id=?", response.id);
+  if (!passkey) return null;
   const result = await verifyAuthenticationResponse({
     response,
-    expectedChallenge: challenge.challenge,
+    expectedChallenge: challenge,
     expectedOrigin: rp().origin,
     expectedRPID: rp().id,
     credential: {
@@ -512,11 +516,42 @@ export async function passkeyLogin(token: string | undefined, input: unknown, ad
     },
     requireUserVerification: false,
   }).catch(() => null);
-  if (!result?.verified) throw fail();
+  if (!result?.verified) return null;
+  run("UPDATE passkeys SET counter=?,last_used_at=? WHERE id=?", result.authenticationInfo.newCounter, Date.now(), passkey.id);
+  return passkey;
+}
+export async function passkeyLogin(token: string | undefined, input: unknown, address: string, locale: Locale) {
+  const t = tr(locale);
+  const keys = addressKey("ip", address);
+  if (limited(keys)) throw new HttpError(429, t("Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.", "Too many attempts. Please try again in 15 minutes."));
+  const response = z.object({ id: z.string().max(1000) }).passthrough().parse(input) as unknown as AuthenticationResponseJSON;
+  const challenge = takeChallenge(token, "login");
+  if (!challenge) throw new HttpError(400, t("Die Anfrage ist abgelaufen. Bitte erneut versuchen.", "The request has expired. Please try again."));
+  const passkey = await verifyAssertion(challenge.challenge, response);
+  if (!passkey) {
+    failed(keys);
+    throw new HttpError(401, t("Dieser Passkey ist hier nicht bekannt.", "This passkey is not known here."));
+  }
   const account = one<{ disabled: number }>("SELECT disabled FROM users WHERE id=?", passkey.user_id);
   if (!account || account.disabled) throw new HttpError(403, t("Dieses Konto ist deaktiviert.", "This account is disabled."));
-  run("UPDATE passkeys SET counter=?,last_used_at=? WHERE id=?", result.authenticationInfo.newCounter, Date.now(), passkey.id);
   return { userId: passkey.user_id, groups: localGroups(passkey.user_id) };
+}
+
+// Confirming a sensitive step with one of the account's own passkeys
+// (lib/step-up.ts): a challenge bound to the account, five minutes.
+export async function passkeyConfirmOptions(userId: string, locale: Locale) {
+  const passkeys = listPasskeys(userId);
+  if (!passkeys.length) throw new HttpError(400, tr(locale)("Für dieses Konto gibt es keinen Passkey.", "This account has no passkey."));
+  const options = await generateAuthenticationOptions({ rpID: rp().id, userVerification: "preferred", allowCredentials: passkeys.map((p) => ({ id: p.id })) });
+  return { options, token: storeChallenge(options.challenge, "confirm", userId) };
+}
+export async function passkeyConfirm(userId: string, token: string | undefined, input: unknown) {
+  const challenge = takeChallenge(token, "confirm");
+  if (!challenge || challenge.user_id !== userId) return false;
+  const parsed = z.object({ id: z.string().max(1000) }).passthrough().safeParse(input);
+  if (!parsed.success) return false;
+  const passkey = await verifyAssertion(challenge.challenge, parsed.data as unknown as AuthenticationResponseJSON);
+  return passkey?.user_id === userId;
 }
 
 // What the sign-in page offers on this instance.

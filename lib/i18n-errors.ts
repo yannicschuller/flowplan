@@ -22,6 +22,10 @@ const exact: Record<string, string> = {
   "Die Datei enthält keine Kontakte (vCard).": "The file contains no contacts (vCard).",
   "Administrator-Gruppe erforderlich.": "Administrator group required.",
   "Der Verzeichnisdienst (LDAP) ist gerade nicht erreichbar.": "The directory service (LDAP) cannot be reached right now.",
+  // Merging accounts (lib/account-merge.ts, #101).
+  "Bitte zwei verschiedene Konten wählen.": "Please choose two different accounts.",
+  "Das eigene Konto kann nur das Zielkonto sein.": "Your own account can only be the target account.",
+  "Demo-Konten lassen sich nicht zusammenführen.": "Demo accounts cannot be merged.",
   // Administration → Angriffe & Vorfälle (lib/security-admin.ts).
   "Diese Adresse ist nicht mehr bekannt.": "This address is no longer known.",
   "Ungültiger Vorfall.": "Invalid incident.",

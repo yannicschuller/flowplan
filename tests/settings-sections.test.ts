@@ -76,6 +76,7 @@ test("search targets of the personal and connection sections exist in their pane
   const sources = [
     "components/settings/user/account.tsx",
     "components/account-security.tsx",
+    "components/sign-in-methods.tsx",
     "components/two-factor.tsx",
     "components/my-sessions.tsx",
     "components/e2ee.tsx",

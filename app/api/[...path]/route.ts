@@ -994,6 +994,11 @@ async function handleGET(
         usage: workspaceUsage(),
         settings: instanceSettings(),
         localAccounts: localAccountInfo(),
+        // Connected SSO identities of every account (#101).
+        identities: all<{ user_id: string; id: string; issuer: string; email: string; created_at: number; last_used_at: number | null }>(
+          "SELECT user_id,id,issuer,email,created_at,last_used_at FROM user_identities ORDER BY created_at",
+        ),
+        ldapAccounts: all<{ user_id: string }>("SELECT user_id FROM ldap_accounts").map((r) => r.user_id),
         // Administrators of every kind of sign-in (SSO groups included).
         adminIds: adminUserIds(),
         localLogin: localLoginEnabled(),

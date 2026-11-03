@@ -21,6 +21,12 @@ export const securityKinds = {
   "account.messenger_added": { severity: "info", de: "Chat-App verbunden", en: "Chat app connected" },
   "account.messenger_removed": { severity: "info", de: "Chat-App getrennt", en: "Chat app disconnected" },
   "account.deleted": { severity: "warn", de: "Konto gelöscht", en: "Account deleted" },
+  // Sign-in identities (lib/identities.ts, #101).
+  "account.sso_linked": { severity: "warn", de: "SSO-Konto verbunden", en: "SSO identity connected" },
+  "account.sso_unlinked": { severity: "warn", de: "SSO-Konto getrennt", en: "SSO identity disconnected" },
+  "account.sso_link_refused": { severity: "warn", de: "SSO-Verbindung abgelehnt", en: "SSO connection refused" },
+  "account.password_removed": { severity: "warn", de: "Passwort entfernt (nur SSO)", en: "Password removed (SSO only)" },
+  "admin.merge": { severity: "critical", de: "Konten zusammengeführt", en: "Accounts merged" },
   "admin.granted": { severity: "critical", de: "Adminrechte vergeben", en: "Admin rights granted" },
   "admin.revoked": { severity: "warn", de: "Adminrechte entzogen", en: "Admin rights removed" },
   "admin.user": { severity: "warn", de: "Konto durch Admin geändert", en: "Account changed by an admin" },
