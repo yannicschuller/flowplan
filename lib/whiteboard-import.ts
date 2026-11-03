@@ -816,6 +816,15 @@ export function placeDrafts(
     if (item.to && !item.to.id) delete item.to.id;
     // Prototype links to frames placed along point to them.
     item = remapLink(item, ids);
+    // Devices go into their rack when it is placed along, else lie freely.
+    if (item.rackId) {
+      const rack = ids.get(item.rackId);
+      if (rack) item.rackId = rack;
+      else {
+        delete item.rackId;
+        delete item.u;
+      }
+    }
     if (options.image) [item] = resolveImages([item], options.image) as WhiteboardItem[];
     return item as WhiteboardItem & { id: string };
   });

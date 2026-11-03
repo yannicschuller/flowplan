@@ -12,7 +12,13 @@ export type DiagramPanel =
   | { kind: "library" }
   | { kind: "import"; text?: string; source?: DiagramSource; error?: string }
   | { kind: "player"; start?: string }
-  | { kind: "timeline"; id: string };
+  | { kind: "timeline"; id: string }
+  // Rack planning (components/whiteboard/rack-panels.tsx): the device
+  // library, ports and cables, the NetBox import, details on phones.
+  | { kind: "racks" }
+  | { kind: "rack-ports"; tab?: "ports" | "cables" }
+  | { kind: "rack-netbox" }
+  | { kind: "rack-details" };
 
 export type BoardApi = {
   pageId: string;
@@ -30,6 +36,9 @@ export type BoardApi = {
   // One undoable step (several calls within a moment merge).
   transact: (fn: () => void) => void;
   setProps: (id: string, props: Partial<WhiteboardItem>) => void;
+  // Adds one element (inside transact), returns its id; removes elements.
+  add: (item: Omit<WhiteboardItem, "id" | "z"> & { z?: number }) => string;
+  remove: (ids: string[]) => void;
   // Ends the current undo step, so the next change is a step of its own.
   stopCapturing: () => void;
   // Inserts drafts with local ids around a point (default: the view's middle).

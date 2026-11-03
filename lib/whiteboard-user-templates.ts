@@ -10,11 +10,12 @@ import { HttpError } from "./auth";
 import { isGuest, requireMember, requirePage } from "./permissions";
 import { safeImageSource, whiteboardItemTypes, shapeKinds, type WhiteboardItem } from "./whiteboard-model";
 import { boardEmbed, cropSchema, withValidExtras } from "./whiteboard-embeds";
+import { cleanRackFields, type CableData, type DeviceData, type RackData } from "./whiteboard-rack";
 import type { Identity } from "./types";
 
 export const MAX_TEMPLATE_ITEMS = 1000;
 const finite = z.number().finite().min(-1e7).max(1e7);
-const end = z.object({ id: z.string().max(64).optional(), x: finite, y: finite });
+const end = z.object({ id: z.string().max(64).optional(), x: finite, y: finite, port: z.string().max(64).optional() });
 // One element of a template, as the board stores it. Everything about
 // people (votes, stamps, comments, authors) stays on the board.
 export const templateDraftSchema = z
@@ -62,6 +63,12 @@ export const templateDraftSchema = z
     presentHidden: z.boolean().optional(),
     url: z.string().max(2000).optional(),
     page: z.number().optional(),
+    // Racks, devices and cables (#90), checked by cleanRackFields.
+    rack: z.custom<RackData>().optional(),
+    device: z.custom<DeviceData>().optional(),
+    cable: z.custom<CableData>().optional(),
+    rackId: z.string().max(64).optional(),
+    u: z.number().optional(),
   })
   .strip();
 export type TemplateDraft = z.infer<typeof templateDraftSchema>;
@@ -74,7 +81,7 @@ export function cleanTemplateItems(raw: unknown): TemplateDraft[] {
   for (const entry of list) {
     const parsed = templateDraftSchema.safeParse(entry);
     if (!parsed.success) continue;
-    const item = withValidExtras(parsed.data as Partial<WhiteboardItem>) as TemplateDraft;
+    const item = cleanRackFields(withValidExtras(parsed.data as Partial<WhiteboardItem>)) as TemplateDraft;
     if (item.type === "image" && !safeImageSource(item.src)) continue;
     if (item.type === "embed" && !boardEmbed(item as WhiteboardItem)) continue;
     out.push(item);

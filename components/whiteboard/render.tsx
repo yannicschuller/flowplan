@@ -17,6 +17,9 @@ import { cleanCrop } from "@/lib/whiteboard-embeds";
 import { LinkBadge, RichText, TagChips } from "./rich-text";
 import { EmbedShape } from "./embed-item";
 import { CardExcerpt } from "./card-preview";
+// Racks, devices and cables (#90): the same drawing as the exports.
+import { cableStyle, isCable } from "@/lib/whiteboard-rack";
+import { RACK_DEFS, deviceSvg, rackContext, rackSvg } from "@/lib/whiteboard-rack-svg";
 
 export type PageRef = {
   id: string;
@@ -137,6 +140,10 @@ function ShapeBody({
   if (item.covered && !["frame", "connector", "comment"].includes(item.type))
     return <CoveredShape item={item} transform={transform} />;
   switch (item.type) {
+    case "rack":
+      return <g transform={`translate(${item.x} ${item.y})`} dangerouslySetInnerHTML={{ __html: rackSvg(item, rackContext(items), t) }} />;
+    case "device":
+      return <g transform={`translate(${item.x} ${item.y})`} dangerouslySetInnerHTML={{ __html: deviceSvg(item, items, rackContext(items), t) }} />;
     case "sticky":
       return (
         <g transform={transform}>
@@ -232,6 +239,27 @@ function ShapeBody({
     }
     case "connector": {
       const { a, b, d, endDir, startDir } = connectorGeometry(item, items);
+      if (isCable(item) && item.cable) {
+        // A cable: coloured by its type, its ends marked (highlighted
+        // together while the cable is hovered or selected).
+        const style = cableStyle(item.cable);
+        return (
+          <g>
+            {/* A narrow hit area: cables lie on devices, whose ports stay clickable. */}
+            <path className="wb-cable-hit" d={d} fill="none" stroke="transparent" strokeWidth={5} />
+            <path className="wb-cable-line" d={d} fill="none" stroke={style.color} strokeWidth={style.width} strokeDasharray={style.dash} strokeLinecap="round" strokeLinejoin="round" />
+            <circle className="wb-cable-end" cx={a.x} cy={a.y} r={2.4} fill={style.color} stroke={style.color} />
+            <circle className="wb-cable-end" cx={b.x} cy={b.y} r={2.4} fill={style.color} stroke={style.color} />
+            {item.cable.label && (
+              <foreignObject x={(a.x + b.x) / 2 - 60} y={(a.y + b.y) / 2 - 9} width={120} height={18} className="wb-cable-label-box">
+                <div className="wb-connector-label wb-cable-label">
+                  <span>{item.cable.label}</span>
+                </div>
+              </foreignObject>
+            )}
+          </g>
+        );
+      }
       const color = item.stroke || "#1f2937",
         width = item.strokeWidth ?? 2;
       return (
@@ -482,6 +510,7 @@ export function WhiteboardDefs() {
       >
         <circle cx="1" cy="1" r="1" fill="#ced4da" />
       </pattern>
+      <g dangerouslySetInnerHTML={{ __html: RACK_DEFS }} />
       <pattern
         id="wb-cover-hatch"
         width="10"

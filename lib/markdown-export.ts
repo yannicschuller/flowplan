@@ -36,6 +36,7 @@ import { aliasList, pageAliases } from "./aliases";
 import { metaFrontmatter } from "./page-properties-server";
 import { whiteboardSnapshotItems } from "./whiteboard";
 import { whiteboardSvg } from "./whiteboard-svg";
+import { racksMarkdown } from "./whiteboard-rack";
 import type { Identity, Page, Row, Field, Space } from "./types";
 import { linkedBlockIds } from "./block-links";
 export type MarkdownExportOptions = {
@@ -619,6 +620,11 @@ function collect(user: Identity, options: MarkdownExportOptions) {
         : zip
           ? ct("*Dieses Whiteboard ist leer.*", "*This whiteboard is empty.*") + "\n"
           : markdownLink(ct("Whiteboard in Flowplan öffnen", "Open the whiteboard in Flowplan"), `${appUrl().replace(/\/$/, "")}/#page=${page.id}`) + "\n";
+      // Racks on the board (#90): devices, port assignments and the cable list.
+      if (!locked.has(page.id)) {
+        const racks = racksMarkdown(whiteboardSnapshotItems(page).filter((i) => !i.covered), ct, markdownText);
+        if (racks) markdown += `\n## ${markdownText(ct("Racks und Verkabelung", "Racks and cabling"))}\n\n${racks}`;
+      }
     } else if (page.kind === "notebook") {
       // A short stub: the notebook itself as a PDF next to it (ZIP), and the
       // text typed or recognised on its sheets.

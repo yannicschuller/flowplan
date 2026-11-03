@@ -74,6 +74,8 @@ import {
   Code,
   ClipboardText,
   PlayCircle,
+  HardDrives,
+  Plugs,
 } from "@phosphor-icons/react";
 import { Modal, api, sessionEnded } from "../ui";
 import { SHEET_HANDLE, useSheetDrag } from "../sheet-drag";
@@ -154,6 +156,9 @@ import { presentationSlides } from "@/lib/whiteboard-frames";
 // Workshop facilitation: private mode, planning poker, timer music, gathering.
 import { boardSignal, useFacilitation } from "./facilitation";
 import { sharedUpdate } from "@/lib/whiteboard-private-mode";
+// Rack planning: racks, devices, ports and cables (#90).
+import { applyRackLayout, cableTypeFor, deviceOf, isCable, portAt, rackOf, remapRack, snapDevice, RACK_HEADER, RACK_U, RACK_FOOTER, RACK_MAX_U } from "@/lib/whiteboard-rack";
+import { RACK_DRAG_TYPE, RackInspector, RackStyleControls, RackWorld, dropRackItem, rackItemClass, rackKey, setRackFocus } from "./rack-panels";
 
 const EmojiPicker = dynamic(() => loadView(() => import("../emoji-picker")), {
   ssr: false,
@@ -314,7 +319,8 @@ export default function Whiteboard({
       if (value instanceof Y.Map)
         list.push({ ...(value.toJSON() as WhiteboardItem), id: key });
     });
-    return list.sort((a, b) => (a.z || 0) - (b.z || 0));
+    // Racks give their devices their place (lib/whiteboard-rack.ts).
+    return applyRackLayout(list.sort((a, b) => (a.z || 0) - (b.z || 0)));
   }, [itemsMap]);
   const [items, setItems] = useState<WhiteboardItem[]>(read);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -373,6 +379,8 @@ export default function Whiteboard({
     [trails, setTrails] = useState<Map<string, Trail>>(new Map()),
     [guides, setGuides] = useState<Guide[]>([]),
     [snapGrid, setSnapGrid] = useState(() => stored("flowplan-board-snap", false)),
+    // Cables between ports shown on the board (#90), per person.
+    [showCables, setShowCables] = useState(() => stored("flowplan-board-cables", true)),
     [recognize, setRecognize] = useState(() => stored("flowplan-board-recognize", false)),
     [penColor, setPenColor] = useState(strokeColors[0]),
     // Pen-only drawing (lib/stylus.ts): fingers move and zoom, the pen draws.
@@ -1144,7 +1152,10 @@ export default function Whiteboard({
   const selected = items.filter((i) => selection.has(i.id));
   const removeSelected = () =>
     change(() => {
-      for (const id of selection) {
+      // A rack goes together with the devices in it.
+      const gone = new Set(selection);
+      for (const i of items) if (i.type === "device" && i.rackId && selection.has(i.rackId) && !i.locked) gone.add(i.id);
+      for (const id of gone) {
         if (byId.get(id)?.locked) continue;
         itemsMap.delete(id);
         // Connectors attached to removed items keep their last position.
@@ -1170,6 +1181,7 @@ export default function Whiteboard({
     const list = extras.remapForCopy(original);
     const ids = new Map(list.map((i) => [i.id, crypto.randomUUID()]));
     const created: string[] = [];
+    const copies: WhiteboardItem[] = [];
     change(() => {
       const top = Math.max(0, ...read().map((i) => i.z || 0));
       list.forEach((item, n) => {
@@ -1192,6 +1204,11 @@ export default function Whiteboard({
           }
         // Click links to frames copied along point to the copies.
         Object.assign(copy, remapLink(copy, ids));
+        // Devices: into the copied rack, else the next free place (#90).
+        if (item.type === "device") {
+          Object.assign(copy, remapRack({ ...copy, id: ids.get(item.id) }, ids, items, copies));
+          copies.push({ ...(copy as WhiteboardItem), id: ids.get(item.id)! });
+        }
         delete copy.id;
         for (const [key, value] of Object.entries(copy))
           if (value !== undefined) map.set(key, value);
@@ -1461,8 +1478,10 @@ export default function Whiteboard({
         });
       else if (kind === "connector") {
         const hit = hitItem(p);
+        // On a device the end sits on the port under the pointer (#90).
+        const port = hit?.type === "device" ? portAt(hit, p, byId, 4 / view.zoom) : null;
         const end: ConnectorEnd = hit
-          ? { id: hit.id, x: p.x, y: p.y }
+          ? { id: hit.id, x: p.x, y: p.y, ...(port ? { port } : {}) }
           : { x: p.x, y: p.y };
         id = addItem({
           type: "connector",
@@ -1562,6 +1581,11 @@ export default function Whiteboard({
     void e;
   }
   function onItemDown(e: ReactPointerEvent, item: WhiteboardItem) {
+    // A click on a port of a device shows that port in the details (#90).
+    if (item.type === "device" && tool === "select") {
+      const port = (e.target as Element).closest?.("[data-port]")?.getAttribute("data-port");
+      setRackFocus(port ? { device: item.id, port } : null);
+    }
     if (e.button === 1 || tool === "hand" || space || !editable) return;
     if (tool !== "select") return; // creation tools work on top of items
     e.stopPropagation();
@@ -1737,6 +1761,11 @@ export default function Whiteboard({
             if (o.from)
               setProps(id, { from: { x: o.from.x + dx, y: o.from.y + dy } });
             if (o.to) setProps(id, { to: { x: o.to.x + dx, y: o.to.y + dy } });
+          } else if (item?.type === "device") {
+            // Devices follow a rack that moves along; otherwise they snap
+            // to whole units of the rack under them (or lie freely).
+            if (item.rackId && g.origins.has(item.rackId)) continue;
+            setProps(id, snapDevice(items, item, Math.round(o.x + dx), Math.round(o.y + dy)));
           } else
             setProps(id, { x: Math.round(o.x + dx), y: Math.round(o.y + dy) });
         }
@@ -1757,6 +1786,31 @@ export default function Whiteboard({
         y = origin.y + dy;
       }
       const item = byId.get(g.id);
+      // Racks and devices change their height in whole units (#90).
+      if (item?.type === "rack" || item?.type === "device") {
+        const top = handle.includes("n");
+        if (item.type === "rack") {
+          const rack = rackOf(item)!;
+          const units = Math.max(1, Math.min(RACK_MAX_U, Math.round((h - RACK_HEADER - RACK_FOOTER) / RACK_U)));
+          const height = RACK_HEADER + units * RACK_U + RACK_FOOTER;
+          change(() => setProps(g.id, { rack: { ...rack, u: units }, ...(top ? { y: Math.round(origin.y + origin.h - height) } : {}) }));
+        } else {
+          const data = deviceOf(item)!;
+          const rack = item.rackId ? byId.get(item.rackId) : undefined;
+          const rackUnits = rack ? rackOf(rack)!.u : RACK_MAX_U;
+          if (rack) {
+            // The unit at the top edge and at the bottom edge when it started.
+            const topUnit = rackUnits - Math.round((origin.y - (rack.y + RACK_HEADER)) / RACK_U);
+            const bottomUnit = topUnit - Math.round(origin.h / RACK_U) + 1;
+            const height = Math.max(1, Math.min(top ? rackUnits - bottomUnit + 1 : topUnit, Math.round(h / RACK_U)));
+            change(() => setProps(g.id, { device: { ...data, height }, u: top ? bottomUnit : topUnit - height + 1 }));
+          } else {
+            const height = Math.max(1, Math.min(RACK_MAX_U, Math.round(h / RACK_U)));
+            change(() => setProps(g.id, { device: { ...data, height }, ...(top ? { y: Math.round(origin.y + origin.h - height * RACK_U) } : {}) }));
+          }
+        }
+        return;
+      }
       if (
         (e.shiftKey ||
           item?.type === "sticky" ||
@@ -1799,10 +1853,11 @@ export default function Whiteboard({
     } else if (g.kind === "connector") {
       const hit = hitItem(p, g.id);
       const end = (g as { end?: string }).end === "from" ? "from" : "to";
+      const port = hit?.type === "device" ? portAt(hit, p, byId, 4 / view.zoom) : null;
       change(() =>
         setProps(g.id, {
           [end]: hit
-            ? { id: hit.id, x: p.x, y: p.y }
+            ? { id: hit.id, x: p.x, y: p.y, ...(port ? { port } : {}) }
             : { x: Math.round(p.x), y: Math.round(p.y) },
         }),
       );
@@ -1947,6 +2002,16 @@ export default function Whiteboard({
         change(() =>
           setProps(g.id, { to: { x: item.from!.x + 160, y: item.from!.y } }),
         );
+      // A line that starts or ends on a port becomes a cable of a type that
+      // suits the ports (#90).
+      const drawn = itemsMap.get(g.id)?.toJSON() as WhiteboardItem | undefined;
+      if (drawn && (drawn.from?.port || drawn.to?.port) && !drawn.cable) {
+        const portType = (end?: ConnectorEnd) => {
+          const target = end?.id ? byId.get(end.id) : undefined;
+          return target ? deviceOf(target)?.ports.find((p) => p.id === end!.port)?.type : undefined;
+        };
+        change(() => setProps(g.id, { cable: { type: cableTypeFor(portType(drawn.from), portType(drawn.to)) }, endArrow: false, route: undefined, stroke: undefined }));
+      }
       setTool("select");
       setSelection(new Set([g.id]));
     }
@@ -1968,6 +2033,10 @@ export default function Whiteboard({
     if (item?.type === "card" && item.pageId) return onOpenPage(item.pageId);
     if (!editable) return;
     if (item?.type === "timeline" && !item.locked) return setDiagram({ kind: "timeline", id: item.id });
+    if (item && (item.type === "rack" || item.type === "device" || isCable(item))) {
+      setSelection(new Set([item.id]));
+      return openRackDetails();
+    }
     if (item?.type === "table" && !item.locked) {
       const cells = item.cells?.length ? item.cells : [[""]];
       const cols = Math.max(1, ...cells.map((r) => r.length));
@@ -2135,10 +2204,15 @@ export default function Whiteboard({
     }
     if (e.key === "Enter" && selection.size === 1 && editable) {
       e.preventDefault();
+      // Racks, devices and cables: their details instead of a text (#90).
+      const chosen = byId.get([...selection][0]);
+      if (chosen && (chosen.type === "rack" || chosen.type === "device" || isCable(chosen))) return openRackDetails();
       if (!byId.get([...selection][0])?.covered)
         setEditing([...selection][0]);
       return;
     }
+    // Devices in racks move by whole units (#90).
+    if (editable && rackKey(boardApi, e, selected)) return;
     if (e.key.startsWith("Arrow") && selection.size && editable) {
       e.preventDefault();
       const step = e.shiftKey ? 10 : 1;
@@ -2395,6 +2469,12 @@ export default function Whiteboard({
       onPointerDown={(e) => onHandleDown(e, item, name)}
     />
   );
+  // Details of a rack, device or cable: beside the board, on phones a sheet.
+  function openRackDetails() {
+    if (layout.dock) return setDiagram({ kind: "rack-details" });
+    window.dispatchEvent(new Event("flowplan-rack-details"));
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".wb-rack-inspector input, .wb-rack-inspector select")?.focus());
+  }
   const boardApi: BoardApi = {
     pageId,
     editable,
@@ -2410,6 +2490,8 @@ export default function Whiteboard({
     select: (ids) => setSelection(new Set(ids)),
     transact: change,
     setProps,
+    add: (item) => addItem(item),
+    remove: (ids) => change(() => ids.forEach((id) => itemsMap.delete(id))),
     stopCapturing: () => undo.stopCapturing(),
     insertDrafts: (drafts, at) => insertDrafts(drafts, at),
     fit: (list) => fitToContent(list),
@@ -2432,6 +2514,7 @@ export default function Whiteboard({
       const s = toScreen({ x: selectionBox.x, y: selectionBox.y - 30 });
       const types = new Set(selected.map((i) => i.type));
       const first = selected[0];
+      const cablesOnly = selected.every(isCable);
       const set = (props: Partial<WhiteboardItem>) =>
         change(() =>
           selected.forEach((i) => !i.locked && setProps(i.id, props)),
@@ -2465,7 +2548,7 @@ export default function Whiteboard({
               />
             ))}
           {(types.has("shape") ||
-            types.has("connector") ||
+            (types.has("connector") && !cablesOnly) ||
             types.has("pen")) && (
             <>
               <span className="wb-sep" />
@@ -2552,7 +2635,7 @@ export default function Whiteboard({
               ))}
             </Select>
           )}
-          {types.has("connector") && types.size === 1 && (
+          {types.has("connector") && types.size === 1 && !cablesOnly && (
             <>
               <Select
                 aria-label={t("Linienverlauf", "Line path")}
@@ -2653,7 +2736,8 @@ export default function Whiteboard({
                 </button>
               </>
             )}
-          <DiagramStyleControls board={boardApi} selected={selected} />
+          <DiagramStyleControls board={boardApi} selected={selected.filter((i) => !isCable(i))} />
+          <RackStyleControls board={boardApi} selected={selected} />
           {extras.styleButtons}
           {facilitation.selectionTools}
           <span className="wb-sep" />
@@ -2873,6 +2957,7 @@ export default function Whiteboard({
         { key: "card", label: t("Seite verknüpfen", "Link page"), title: t("Seite, Datenbank oder Whiteboard verknüpfen", "Link a page, database or whiteboard"), icon: <FileText size={18} />, run: () => setCardOpen(true) },
         { key: "library", label: t("Formenbibliothek", "Shape library"), title: t("Formenbibliothek: Flussdiagramm, BPMN, UML, ER, Organigramm, Netzwerk, Cloud, Wireframes", "Shape library: flowchart, BPMN, UML, ER, org chart, network, cloud, wireframes"), icon: <Books size={18} />, active: diagram?.kind === "library", run: () => setDiagram((d) => (d?.kind === "library" ? null : { kind: "library" })) },
         { key: "timeline", label: t("Zeitleiste", "Timeline"), title: t("Zeitleiste (Roadmap) einfügen", "Insert timeline (roadmap)"), icon: <ChartBarHorizontal size={18} />, run: () => void insertLibraryShape(boardApi, "timeline", t) },
+        { key: "racks", label: t("Racks", "Racks"), title: t("Racks und Geräte: Server-Racks planen und verkabeln", "Racks and devices: plan and cable server racks"), icon: <HardDrives size={18} />, active: diagram?.kind === "racks", run: () => setDiagram((d) => (d?.kind === "racks" ? null : { kind: "racks" })) },
         { key: "templates", label: t("Vorlagen", "Templates"), title: t("Vorlagen: Galerie und eigene Vorlagen", "Templates: gallery and own templates"), icon: <SquaresFour size={18} />, run: () => setTemplatesOpen(true) },
         ...(boardAi.entry ? [boardAi.entry] : []),
         ...extras.insertActions,
@@ -2927,6 +3012,35 @@ export default function Whiteboard({
             title: t("Folge mir: alle sehen deinen Ausschnitt", "Follow me: everyone sees your view"),
             icon: <UsersThree size={16} />,
             run: () => setMetaValue("presenter", { userId, name: userName || "Jemand", since: Date.now() }),
+          },
+        ]
+      : []),
+    // Racks (#90): the board's ports and cables, cables shown or hidden.
+    ...(items.some((i) => i.type === "device")
+      ? [
+          {
+            key: "rack-ports",
+            label: t("Ports und Kabel", "Ports & cables"),
+            title: t("Ports und Kabel: Portbelegung und Kabelliste (CSV, Etiketten)", "Ports & cables: port assignments and cable list (CSV, labels)"),
+            icon: <Plugs size={16} />,
+            run: () => setDiagram({ kind: "rack-ports" }),
+          },
+        ]
+      : []),
+    ...(items.some(isCable)
+      ? [
+          {
+            key: "cables",
+            label: t("Kabel zeigen", "Show cables"),
+            title: t("Kabel zwischen den Ports zeigen oder ausblenden", "Show or hide the cables between ports"),
+            icon: <Plugs size={16} />,
+            active: showCables,
+            pressed: showCables,
+            keepOpen: true,
+            run: () => {
+              setShowCables(!showCables);
+              store("flowplan-board-cables", !showCables);
+            },
           },
         ]
       : []),
@@ -3077,17 +3191,18 @@ export default function Whiteboard({
     <BoardContext.Provider value={boardApi}>
     <div
       ref={container}
-      className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}${layout.dock ? " wb-layout-dock" : ""}${layout.menu ? " wb-layout-menu" : ""}`}
+      className={`whiteboard${fullscreen ? " wb-fullscreen" : ""}${layout.dock ? " wb-layout-dock" : ""}${layout.menu ? " wb-layout-menu" : ""}${showCables ? "" : " wb-cables-hidden"}`}
       tabIndex={0}
       aria-label={t("Whiteboard", "Whiteboard")}
       onKeyDown={onKeyDown}
       onKeyUp={(e) => e.key === " " && setSpace(false)}
       onPaste={onPaste}
       onDragOver={(e) =>
-        editable && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(LIBRARY_DRAG_TYPE)) && e.preventDefault()
+        editable && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(LIBRARY_DRAG_TYPE) || e.dataTransfer.types.includes(RACK_DRAG_TYPE)) && e.preventDefault()
       }
       onDrop={(e) => {
         if (editable && dropLibraryShape(boardApi, e, toWorld(e.clientX, e.clientY), t)) return;
+        if (editable && dropRackItem(boardApi, e, toWorld(e.clientX, e.clientY), t)) return;
         const files = [...e.dataTransfer.files];
         const diagramFile = files.find((f) => DIAGRAM_FILE.test(f.name));
         if (editable && diagramFile) {
@@ -3160,7 +3275,7 @@ export default function Whiteboard({
               <g
                 key={item.id}
                 data-item={item.id}
-                className={`wb-item wb-${item.type}${selection.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${extras.itemClass(item)}`}
+                className={`wb-item wb-${item.type}${selection.has(item.id) ? " selected" : ""}${item.locked ? " locked" : ""}${extras.itemClass(item)}${rackItemClass(item)}`}
                 onPointerDown={(e) => onItemDown(e, item)}
               >
                 <WhiteboardShape
@@ -3174,6 +3289,7 @@ export default function Whiteboard({
             ))}
           <PrototypeBadges items={items} zoom={view.zoom} />
           {facilitation.world}
+          <RackWorld board={boardApi} />
           {selectionBox && (
             <rect
               data-ui
@@ -3193,6 +3309,14 @@ export default function Whiteboard({
             single.type !== "comment" &&
             !editing && (
               <g data-ui>
+                {single.type === "rack" || single.type === "device" ? (
+                  // Racks and devices: only their height changes (in units).
+                  <>
+                    {handle(single, "n", single.x + single.w / 2, single.y)}
+                    {handle(single, "s", single.x + single.w / 2, single.y + single.h)}
+                  </>
+                ) : (
+                <>
                 {handle(single, "nw", single.x, single.y)}
                 {handle(single, "ne", single.x + single.w, single.y)}
                 {handle(single, "sw", single.x, single.y + single.h)}
@@ -3217,7 +3341,9 @@ export default function Whiteboard({
                       )}
                     </>
                   )}
-                {single.type !== "frame" && (
+                </>
+                )}
+                {single.type !== "frame" && single.type !== "rack" && single.type !== "device" && (
                   <circle
                     className="wb-handle wb-rotate"
                     cx={single.x + single.w / 2}
@@ -4423,6 +4549,7 @@ export default function Whiteboard({
         )}
       </Modal>
       <DiagramPanels board={boardApi} panel={diagram} />
+      <RackInspector board={boardApi} beside={diagram?.kind === "library" || diagram?.kind === "racks"} />
     </div>
     </BoardContext.Provider>
   );

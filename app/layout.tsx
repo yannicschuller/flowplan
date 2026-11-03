@@ -4,6 +4,7 @@ import "./mobile-ux.css";
 import "./whiteboard-diagrams.css";
 import "./whiteboard-board.css";
 import "./whiteboard-facilitation.css";
+import "./whiteboard-racks.css";
 import "./contacts.css";
 import "./page-properties.css";
 import "./collections.css";
