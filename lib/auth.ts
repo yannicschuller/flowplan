@@ -7,6 +7,7 @@ import { needsTwoFactorSetup } from "./two-factor-policy";
 import { recordOpsEvent } from "./ops-events";
 import { blockedRequest, securityEvent } from "./security-events";
 import { noteActive } from "./metrics";
+import { readOnlyRefusal } from "./instance-read-only";
 export const cookieName = "flowplan_session";
 export const appUrl = () => process.env.APP_URL || "http://localhost:3000";
 export const hash = (value: string) =>
@@ -343,6 +344,16 @@ export function acceptInviteToken(user: User, token: string) {
   return inv.workspace_id;
 }
 export const inviteToken = () => randomBytes(24).toString("base64url");
+// Changes that do not pass checkOrigin (tokens in the address: webhooks,
+// inbound mail, Git, CalDAV) call this themselves.
+export function refuseWhileReadOnly(req: Request) {
+  let path = "";
+  try {
+    path = new URL(req.url).pathname;
+  } catch {}
+  const refusal = readOnlyRefusal(path);
+  if (refusal) throw new HttpError(423, refusal);
+}
 export class HttpError extends Error {
   constructor(
     public status: number,
@@ -354,6 +365,10 @@ export class HttpError extends Error {
   }
 }
 export function checkOrigin(req: Request) {
+  // Every change passes here: while the instance moves (lib/instance-move.ts)
+  // it is read-only, for API tokens as well. 423, not 503: a final answer
+  // the offline queue does not retry.
+  refuseWhileReadOnly(req);
   // Browsers never add a bearer token on their own, so such requests cannot
   // be forged by another site (the cookie is ignored for them).
   if (req.headers.get("authorization")?.startsWith("Bearer fp_")) return;

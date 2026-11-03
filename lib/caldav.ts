@@ -11,6 +11,7 @@ import { assertFieldsWritable } from "./field-access";
 import { createHash, randomBytes } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import { all, id, one, run, transaction } from "./db";
+import { readOnlyRefusal } from "./instance-read-only";
 import { HttpError } from "./auth";
 import { pageRole, requirePage } from "./permissions";
 import { visibleRows, assertRowAccess } from "./row-access";
@@ -245,6 +246,10 @@ export async function handleCalDav(request: Request): Promise<Response> {
       status: 401,
       headers: { "WWW-Authenticate": 'Basic realm="Flowplan CalDAV", charset="UTF-8"', DAV: "1, 2, calendar-access" },
     });
+  // Calendar apps write with PUT and DELETE; not while the instance moves
+  // (lib/instance-read-only.ts). 403: the app keeps its change and reports it.
+  const refusal = request.method === "PUT" || request.method === "DELETE" ? readOnlyRefusal(url.pathname) : null;
+  if (refusal) return new Response(refusal, { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   const parts = url.pathname.slice(BASE.length).split("/").filter(Boolean);
   const body = ["PROPFIND", "REPORT", "PUT"].includes(request.method) ? (await request.text()).slice(0, 2_000_000) : "";
   const depth = request.headers.get("depth") || "0";

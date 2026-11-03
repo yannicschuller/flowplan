@@ -76,6 +76,16 @@ function keys(create: boolean): Key[] {
   if (own) masters.push(own);
   return masters.map(derive);
 }
+// The ids (never the keys) of the keys for stored secrets, for the
+// pre-flight check of an instance move (lib/instance-move.ts): the one new
+// secrets are sealed with, the ones from the environment, and the one of
+// the generated secrets.key (which moves with the instance).
+export function secretKeyIds() {
+  const env = [...encryptionKeys().all.map((k) => k.secret), ...(envSecretsKey() ? [envSecretsKey()!] : [])].map(derive);
+  const own = fileKey(false);
+  const hex = (key: Key) => key.id.toString("hex");
+  return { current: keys(false)[0] ? hex(keys(false)[0]) : null, env: env.map(hex), file: own ? hex(derive(own)) : null };
+}
 // Where the key for new secrets comes from (shown to admins).
 export function secretsKeySource(): "encryption-key" | "secrets-key" | "file" {
   if (encryptionKeys().current) return "encryption-key";

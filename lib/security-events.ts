@@ -374,6 +374,9 @@ export function auditToSecurity(actor: string, action: string, resource: string,
   if (action === "admin.deleteUser") return ["admin.user", { actorId: actor, detail: `deleted ${resource}` }];
   if (action === "scim.user.deactivate" || action === "scim.user.delete" || action === "scim.user.activate")
     return ["admin.user", { actorId: actor || null, detail: `${action} ${resource}` }];
+  // Instance move (lib/instance-move.ts): token created or revoked, source
+  // read-only, move started, applied or called off.
+  if (action.startsWith("instance.move.")) return ["instance.move", { actorId: actor || null, detail: `${action.slice(14)}${detail ? ` ${detail}` : ""}` }];
   if (action === "share.create") return ["share.created", { actorId: actor, detail: `${resource} ${detail}`.trim() }];
   if (EXPORTS.test(action)) return ["data.export", { actorId: actor, detail: `${action} ${resource}`.trim() }];
   if (ADMIN_SETTINGS.test(action)) return ["admin.settings", { actorId: actor || null, detail: `${action}${detail ? ` ${detail}` : ""}` }];

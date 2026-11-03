@@ -585,6 +585,8 @@ SiteInfo = TypedDict("SiteInfo", {
     "signupOpen": Required[bool],
     "demo": Required[bool],
     "sso": Required[bool],
+    "movedTo": Optional[str],  # After an instance move: the new address (apps can point there)
+    "readOnly": bool,  # The instance is read-only during or after a move; changes are refused with 423
 }, total=False)
 
 # Depends on the action: `{ ok: true }` for most changes, `{ id }` for everything created.

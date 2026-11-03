@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { HttpError } from "@/lib/auth";
+import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import { transaction } from "@/lib/db";
 import { receiveSlackEvent } from "@/lib/slack-replies";
 
@@ -7,6 +7,8 @@ import { receiveSlackEvent } from "@/lib/slack-replies";
 // secret proves the sender); thread replies become record comments.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    // Not during an instance move (lib/instance-read-only.ts): the sender retries.
+    refuseWhileReadOnly(req);
     const { id } = await params;
     if (Number(req.headers.get("content-length") || 0) > 1_000_000) throw new HttpError(413, "Anfrage zu groß.");
     const body = await req.text();
