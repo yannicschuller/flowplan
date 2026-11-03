@@ -2022,7 +2022,7 @@ class FlowplanClient:
         return self._bytes("GET", "/api/export/epub", query=dict(query) if query else None, headers=headers)
 
     def markdown_export(self, body: "MarkdownExportOptions", headers: Optional[dict[str, str]] = None) -> bytes:
-        """Export a page, record or space as Markdown — Reads only, so read tokens may use it. `markdown` answers with one file, `zip` with an archive (files, sub-pages, history). Code blocks are fenced with their language id as in VS Code/Shiki (```typescript, ```python, ```terraform …); the Markdown import also understands older ids and aliases (js, ts, py, sh, yml). (POST /api/markdown-export)"""
+        """Export a page, record or space as Markdown — Reads only, so read tokens may use it. `markdown` answers with one file, `zip` with an archive (files, sub-pages, history). Code blocks are fenced with their language id as in VS Code/Shiki (```typescript, ```python, ```terraform …); the Markdown import also understands older ids and aliases (js, ts, py, sh, yml). A block's options follow the language: ```ts {3-5} showLineNumbers startLine=10, view=preview|split|code, collapsed, collapsedLines=15. (POST /api/markdown-export)"""
         return self._bytes("POST", "/api/markdown-export", json_body=body, headers=headers)
 
     def export_backup(self, query: "ExportBackupQuery", headers: Optional[dict[str, str]] = None) -> bytes:

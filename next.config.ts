@@ -56,6 +56,12 @@ const config: NextConfig = {
       "./node_modules/pdfjs-dist/cmaps/*",
       "./node_modules/pdfjs-dist/standard_fonts/*",
       "./node_modules/pdfjs-dist/wasm/*",
+      // Typst preview of code blocks (app/typst): WebAssembly and fonts.
+      "./node_modules/@myriaddreamin/typst-ts-web-compiler/pkg/*.wasm",
+      "./node_modules/@myriaddreamin/typst-ts-renderer/pkg/*.wasm",
+      "./node_modules/@typst-wasm/fonts/dist/files/LibertinusSerif-*.otf",
+      "./node_modules/@typst-wasm/fonts/dist/files/NewCMMath-Regular.otf",
+      "./node_modules/@typst-wasm/fonts/dist/files/DejaVuSansMono*.ttf",
     ],
   },
   // The documentation is its own site (github.com/yannicschuller/flowplan-docs).

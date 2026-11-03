@@ -1,12 +1,14 @@
 "use client";
 // Settings → Darstellung & Sprache: language (profile, all devices),
-// light or dark (this device), keyboard shortcuts and the introduction.
+// light or dark (this device), the editor's code blocks (this device),
+// keyboard shortcuts and the introduction.
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { CircleHalf, Keyboard, Moon, Sun } from "@phosphor-icons/react";
 import { LANGUAGES, LOCALES, isLocale } from "@/lib/i18n";
 import { clearLocale, setLocale, useT } from "../../i18n";
 import { Select } from "../../select";
-import { CONTROL, SaveState, SettingGroup, SettingRow, useSaveState } from "../../settings-ui";
+import { CONTROL, SaveState, SettingGroup, SettingRow, SwitchRow, useSaveState } from "../../settings-ui";
+import { setLineNumbersByDefault, useLineNumbersByDefault } from "@/lib/code-block-prefs";
 import { useUserSettings } from "../user-context";
 
 export default function AppearanceSection() {
@@ -14,6 +16,7 @@ export default function AppearanceSection() {
   const keyHints = useKeyboardHints();
   const { boot, mutate, theme, setTheme } = useUserSettings();
   const [status, run] = useSaveState();
+  const lineNumbers = useLineNumbersByDefault();
   return (
     <>
       <SettingGroup id="language" title={t("Sprache und Erscheinungsbild", "Language and appearance")}>
@@ -58,6 +61,17 @@ export default function AppearanceSection() {
             </label>
           </div>
         </SettingRow>
+      </SettingGroup>
+      <SettingGroup id="editor" title={t("Editor", "Editor")}>
+        <SwitchRow
+          label={t("Zeilennummern standardmäßig anzeigen", "Show line numbers by default")}
+          description={t(
+            "Für Codeblöcke ohne eigene Einstellung, beim Bearbeiten und Lesen. Nur auf diesem Gerät.",
+            "For code blocks without a setting of their own, when editing and reading. On this device only.",
+          )}
+          checked={lineNumbers}
+          onChange={setLineNumbersByDefault}
+        />
       </SettingGroup>
       <SettingGroup id="help" title={t("Hilfe", "Help")}>
         <SettingRow

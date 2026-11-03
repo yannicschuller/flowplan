@@ -6,7 +6,7 @@
 // blocks, expand macros toggles, task lists task lists.
 import { posix } from "node:path";
 import {
-  attr, byTag, children, esc, fileRef, find, findOne, hasClass, isElement, mergeLists, mimeOf, pageRef,
+  attr, byTag, children, codeBlockHtml, esc, fileRef, find, findOne, hasClass, isElement, mergeLists, mimeOf, pageRef,
   parseHtml, parseXml, renderNodes, taskItem, text, type ChildNode, type Element, type Rule,
 } from "./html";
 import { isoDate, warningList, type ImportFile, type ImportPage, type ImportTree } from "./types";
@@ -264,7 +264,7 @@ function parseConfluenceXml(entries: Map<string, Buffer>): ImportTree {
           const title = param("title");
           return `<aside data-callout="${CALLOUTS[macro]}">${title ? `<p><strong>${esc(title)}</strong></p>` : ""}${rich ? renderNodes(rich.children, { rule, inline: INLINE_AC }) : ""}</aside>`;
         }
-        if (macro === "code" || macro === "noformat") return `<pre><code>${esc(plain ? text(plain) : "")}</code></pre>`;
+        if (macro === "code" || macro === "noformat") return codeBlockHtml(plain ? text(plain) : "", macro === "code" ? param("language") : null);
         if (macro === "expand")
           return `<details><summary>${esc(param("title"))}</summary><div>${rich ? renderNodes(rich.children, { rule, inline: INLINE_AC }) || "<p></p>" : "<p></p>"}</div></details>`;
         if (rich) return renderNodes(rich.children, { rule, inline: INLINE_AC });

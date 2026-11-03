@@ -922,3 +922,36 @@ test("snapshot ZIP: a database row's document becomes its record's content (#82)
   assert.equal(JSON.parse(rec.cells).title, "Projekt Alpha");
   assert.match(rec.content, /Alpha im Detail/);
 });
+
+test("Mermaid code arrives as a code block that shows the diagram (#95)", async () => {
+  const code = (language: string, source: string) => ({ id: uid(), flavour: "affine:code", props: { text: text(source), language } });
+  const ws: Workspace = {
+    id: "ws-mermaid",
+    name: "Diagramme",
+    docs: [
+      {
+        id: "mermaidDoc1",
+        title: "Ablauf",
+        doc: page("mermaidDoc1", "Ablauf", [note([code("mermaid", "flowchart LR\n  A --> B"), code("python", "print(1)")])]),
+      },
+    ],
+  };
+  await importFromSource(owner, wid, space, { name: "Diagramme.affine", bytes: affineFileV2(ws) });
+  const stored = html(pageByTitle("Ablauf").id);
+  assert.match(stored, /<pre (?:data-block-id="[^"]+" )?data-code-view="preview"><code class="language-mermaid">flowchart LR\n {2}A --&gt; B<\/code><\/pre>/);
+  assert.match(stored, /<pre(?: data-block-id="[^"]+")?><code class="language-python">print\(1\)<\/code><\/pre>/);
+  assert.doesNotMatch(stored, /data-mermaid/);
+  // The snapshot ZIP the same way.
+  const block = (language: string, source: string) => ({
+    type: "block",
+    id: `c${language}`,
+    flavour: "affine:code",
+    props: { language, text: { "$blocksuite:internal:text$": true, delta: [{ insert: source }] } },
+    children: [],
+  });
+  const zip = await writeZip(
+    new Map([["Diagramm-mmd1.snapshot.json", Buffer.from(JSON.stringify(snapshotDoc("mmd1", "Sequenz", [block("mermaid", "sequenceDiagram\nA->>B: Hallo")])))]]),
+  );
+  await importFromSource(owner, wid, space, { name: "snapshot.zip", bytes: zip });
+  assert.match(html(pageByTitle("Sequenz").id), /<pre (?:data-block-id="[^"]+" )?data-code-view="preview"><code class="language-mermaid">sequenceDiagram\nA-&gt;&gt;B: Hallo<\/code><\/pre>/);
+});

@@ -6,8 +6,7 @@ import { WhiteboardEmbedView } from "./whiteboard/embed";
 import { revealSpoiler } from "./link-preview";
 import { mountDiagram } from "@/lib/mermaid-render";
 import { renderMath } from "@/lib/math-render";
-import { loadLanguage, renderCode } from "@/lib/code-highlight";
-import { languageLabel } from "@/lib/code-languages";
+import { enhanceCodeBlock } from "./code-block-static";
 import { citedWorks, parseItemAttribute, referenceText } from "@/lib/citations";
 import { tr } from "@/lib/locale-tag";
 import { emptyBibliography, renderReferences } from "./citation-views";
@@ -79,44 +78,9 @@ export function ReadOnlyDocument({
         for (const element of metrics) metricHandles.push(mountMetric(element, parseMetric(element.dataset.metric), { editable: false }));
       });
     for (const image of root.querySelectorAll("img")) image.loading = "lazy";
-    for (const code of root.querySelectorAll<HTMLElement>("pre > code")) {
-      const text = code.textContent || "";
-      const language =
-        Array.from(code.classList)
-          .find((c) => c.startsWith("language-"))
-          ?.slice(9) || null;
-      // Plain text until the language's grammar has loaded.
-      code.textContent = text;
-      void loadLanguage(language).then((highlighted) => {
-        if (highlighted && !unmounted && code.isConnected && code.textContent === text)
-          code.innerHTML = renderCode(text, language);
-      });
-      if (
-        code.parentElement?.parentElement?.classList.contains("code-block-view")
-      )
-        continue;
-      const pre = code.parentElement!,
-        wrapper = document.createElement("div"),
-        toolbar = document.createElement("div"),
-        label = document.createElement("span"),
-        copy = document.createElement("button");
-      wrapper.className = "code-block-view";
-      toolbar.className = "code-block-toolbar";
-      label.textContent = languageLabel(language);
-      copy.textContent = t("Kopieren", "Copy");
-      copy.type = "button";
-      copy.onclick = async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-          copy.textContent = t("Code kopiert", "Code copied");
-        } catch {
-          copy.textContent = t("Kopieren fehlgeschlagen", "Copying failed");
-        }
-      };
-      toolbar.append(label, copy);
-      pre.before(wrapper);
-      wrapper.append(toolbar, pre);
-    }
+    // Code blocks: highlighting, line numbers, preview and collapsing
+    // (components/code-block-static.ts).
+    const codeHandles = Array.from(root.querySelectorAll<HTMLElement>("pre > code")).map((code) => enhanceCodeBlock(code, () => unmounted));
     // Embedded database tables: search and sort by column in the browser.
     for (const embed of root.querySelectorAll<HTMLElement>(".public-embed")) {
       const table = embed.querySelector("table");
@@ -236,6 +200,7 @@ export function ReadOnlyDocument({
     );
     return () => {
       pluginHandles.forEach((handle) => handle.destroy());
+      codeHandles.forEach((stop) => stop());
       diagrams.forEach((cancel) => cancel());
       unmounted = true;
       metricHandles.forEach((handle) => handle.destroy());
