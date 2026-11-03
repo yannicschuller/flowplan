@@ -10,7 +10,10 @@
 import type { PromptLink } from "./links";
 import type { AiRunInput } from "./run";
 
-export type AiLocale = "de" | "en" | "fr";
+export type AiLocale = "de" | "en" | "fr" | "zh";
+// Languages the answers are written in (a superset of the interface's: any
+// WRITE_LANGUAGES entry may be the language of the text being worked on).
+export type TextLanguage = "de" | "en" | "fr" | "zh";
 
 // i18n-table: 2 4 – [id, German, English, German hint, English hint]
 export const WRITE_ACTIONS = [
@@ -71,12 +74,15 @@ const STOPWORDS: Record<"de" | "en" | "fr", Set<string>> = {
   en: new Set("the and is are not a an with for on i we you it to of in this that be will can or but as at by from have has was were if what which our your there".split(" ")),
   fr: new Set("le la les et est pas un une des du de avec pour sur je nous vous il elle ce cette qui que dans au aux sont être ou mais comme par plus se".split(" ")),
 };
-// "de", "en" or "fr" when the text clearly is in that language, else null
-// (too short, mixed or another language: the model then keeps the text's
+// "de", "en", "fr" or "zh" when the text clearly is in that language, else
+// null (too short, mixed or another language: the model then keeps the text's
 // language by itself).
-export function guessLanguage(text: string): "de" | "en" | "fr" | null {
+export function guessLanguage(text: string): TextLanguage | null {
   const words = text.toLowerCase().match(/[\p{L}']+/gu) || [];
   if (words.length < 3) return null;
+  const cjk = (text.match(/[㐀-鿿]/g) || []).length;
+  const letters = (text.match(/\p{L}/gu) || []).length;
+  if (cjk >= 10 && cjk / letters > 0.2) return "zh";
   const score = { de: 0, en: 0, fr: 0 };
   for (const word of words.slice(0, 600))
     for (const lang of ["de", "en", "fr"] as const) if (STOPWORDS[lang].has(word)) score[lang]++;
@@ -229,10 +235,11 @@ export function writePrompt(request: WriteRequest): AiRunInput {
 
 export type SummaryKind = "page" | "record" | "database" | "transcript";
 
-export const SUMMARY_HEADINGS: Record<"de" | "en" | "fr", { summary: string; points: string; tasks: string; none: string }> = {
+export const SUMMARY_HEADINGS: Record<TextLanguage, { summary: string; points: string; tasks: string; none: string }> = {
   de: { summary: "Zusammenfassung", points: "Kernpunkte", tasks: "Offene Aufgaben", none: "Keine" },
   en: { summary: "Summary", points: "Key points", tasks: "Open tasks", none: "None" },
   fr: { summary: "Résumé", points: "Points clés", tasks: "Tâches ouvertes", none: "Aucune" },
+  zh: { summary: "总结", points: "要点", tasks: "待办事项", none: "无" },
 };
 
 const KIND_TEXT: Record<SummaryKind, string> = {
@@ -251,7 +258,7 @@ const KIND_HINT: Record<SummaryKind, string> = {
 
 // The language of a summary: that of the content when clear, else the
 // interface's.
-export function summaryLanguage(content: string, locale: AiLocale): "de" | "en" | "fr" {
+export function summaryLanguage(content: string, locale: AiLocale): TextLanguage {
   return guessLanguage(content) || locale;
 }
 
@@ -265,7 +272,7 @@ export type SummaryRequest = {
   // The content consists of summaries of its parts (map-reduce).
   partial?: boolean;
   // Fixed output language (taken from the original content).
-  language?: "de" | "en" | "fr";
+  language?: TextLanguage;
   // Existing pages to link where they fit (voice notes).
   links?: PromptLink[] | null;
 };
@@ -305,7 +312,7 @@ export function summaryPrompt(request: SummaryRequest): AiRunInput {
 }
 
 // Map step: one part of a long text, keeping what the final summary needs.
-export function chunkSummaryPrompt(request: { kind: SummaryKind; content: string; part: number; parts: number; language: "de" | "en" | "fr"; title?: string }): AiRunInput {
+export function chunkSummaryPrompt(request: { kind: SummaryKind; content: string; part: number; parts: number; language: TextLanguage; title?: string }): AiRunInput {
   const system = [
     `You condense part ${request.part} of ${request.parts} of ${KIND_TEXT[request.kind]} for a later summary of the whole.`,
     KIND_HINT[request.kind],
@@ -324,7 +331,7 @@ export function chunkSummaryPrompt(request: { kind: SummaryKind; content: string
 }
 
 // Reduce step between levels: several part summaries into one.
-export function combineSummaryPrompt(request: { kind: SummaryKind; content: string; language: "de" | "en" | "fr" }): AiRunInput {
+export function combineSummaryPrompt(request: { kind: SummaryKind; content: string; language: TextLanguage }): AiRunInput {
   return {
     system: [
       `You merge summaries of consecutive parts of ${KIND_TEXT[request.kind]} into one condensed summary.`,

@@ -14,6 +14,7 @@ export const LANGUAGES = {
   de: { name: "Deutsch", tag: "de-DE", flag: "🇩🇪" },
   en: { name: "English", tag: "en-GB", flag: "🇬🇧" },
   fr: { name: "Français", tag: "fr-FR", flag: "🇫🇷" },
+  zh: { name: "简体中文", tag: "zh-CN", flag: "🇨🇳" },
 } as const;
 export type Locale = keyof typeof LANGUAGES;
 export const LOCALES = Object.keys(LANGUAGES) as Locale[];

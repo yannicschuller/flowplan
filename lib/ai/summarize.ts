@@ -11,7 +11,7 @@ import type { Identity } from "../types";
 import { aiDatabaseText, aiPageMarkdown } from "./content";
 import { encodeLinkTargets, findLinkCandidates } from "./link-candidates";
 import { LINKS_HEADER } from "./links";
-import { chunkSummaryPrompt, chunkText, cleanAnswer, combineSummaryPrompt, summaryLanguage, summaryPrompt, type SummaryKind } from "./prompts";
+import { chunkSummaryPrompt, chunkText, cleanAnswer, combineSummaryPrompt, summaryLanguage, summaryPrompt, type AiLocale, type SummaryKind } from "./prompts";
 
 // Also for the browser (on-device summaries, lib/ai/device.ts): in prompts.ts.
 export { chunkText };
@@ -53,7 +53,7 @@ export type SummaryPlan = {
   content: string;
   title?: string;
   note?: string;
-  locale: "de" | "en" | "fr";
+  locale: AiLocale;
 };
 
 // The final prompt's input: the content itself, or – when it is longer than

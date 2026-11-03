@@ -19,9 +19,12 @@
   --shadow: 0 12px 40px #1d1a1414;
   --radius: 10px;
   --font-ui: "Instrument Sans", ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", sans-serif;
-  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans SC", sans-serif;
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, "Songti SC",
+    "Noto Serif SC", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, "PingFang SC",
+    monospace;
   font-family: var(--font-ui);
   font-feature-settings: "ss01", "cv05";
   color-scheme: light;

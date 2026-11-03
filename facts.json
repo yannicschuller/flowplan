@@ -2,7 +2,7 @@
   "views": 10,
   "fieldTypes": 24,
   "questionTypes": 19,
-  "languages": 3,
+  "languages": 4,
   "calloutTypes": 5,
   "exportFormats": 2,
   "templates": 26,
@@ -70,7 +70,8 @@
     "languages": {
       "de": "Deutsch",
       "en": "English",
-      "fr": "Français"
+      "fr": "Français",
+      "zh": "简体中文"
     },
     "calloutTypes": [
       "note",

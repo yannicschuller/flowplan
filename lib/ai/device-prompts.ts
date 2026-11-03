@@ -28,7 +28,9 @@ export type DevicePrompt = { instructions: string; prompt: string; temperature: 
 export const deviceTokens = (text: string) => Math.ceil(text.length / DEVICE_LIMITS.charsPerToken);
 
 type Lang = "de" | "en" | "fr";
-const lang = (locale: AiLocale): Lang => (locale === "en" || locale === "fr" ? locale : "de");
+// The on-device instructions exist in German, English and French; Chinese
+// uses the English ones (the target language is named explicitly).
+const lang = (locale: AiLocale): Lang => (locale === "en" || locale === "fr" ? locale : locale === "zh" ? "en" : "de");
 
 // Language names in each interface language.
 const FRENCH_NAMES = new Map<string, string>([
@@ -191,7 +193,7 @@ export function deviceWriteFits(request: WriteRequest) {
 
 // The language of a summary: that of the content when clear, else the
 // interface's (as on the server).
-export const deviceSummaryLanguage = (content: string, locale: AiLocale): Lang => guessLanguage(content) || lang(locale);
+export const deviceSummaryLanguage = (content: string, locale: AiLocale): Lang => lang(guessLanguage(content) || locale);
 
 // Guided generation: summary, key points, open tasks.
 export function deviceSummaryPrompt(content: string, locale: AiLocale, title?: string): DevicePrompt {
