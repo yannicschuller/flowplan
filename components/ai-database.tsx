@@ -9,6 +9,7 @@ import { useLocale, useT } from "./i18n";
 import { api, Modal } from "./ui";
 import { Select } from "./select";
 import { aiProviderLabel, type AiStatus } from "@/lib/ai/client";
+import { contentReferenceFor, isContentReferenceName } from "@/lib/ai/content-references";
 import { localeTag } from "@/lib/i18n";
 import type { Field, FieldType } from "@/lib/types";
 
@@ -24,7 +25,7 @@ export function unknownReferences(prompt: string, fields: Field[], self: string)
     .map((m) => m[1].trim())
     .filter((name) => {
       const f = fields.find((x) => x.id === name || x.name.trim().toLowerCase() === name.toLowerCase());
-      if (!f) return !["inhalt", "content", "contenu"].includes(name.toLowerCase());
+      if (!f) return !isContentReferenceName(name);
       return f.id === self || !REFERENCE_TYPES.includes(f.type);
     });
 }
@@ -92,8 +93,8 @@ export function AiFieldEditor({
               {`{${f.name}}`}
             </button>
           ))}
-        {!fields.some((f) => ["inhalt", "content", "contenu"].includes(f.name.trim().toLowerCase())) && (
-          <button type="button" className="chip" disabled={disabled} onClick={() => insert(t("Inhalt", "Content"))} title={t("Der Seiteninhalt des Eintrags", "The record's page content")}>
+        {!fields.some((f) => isContentReferenceName(f.name)) && (
+          <button type="button" className="chip" disabled={disabled} onClick={() => insert(contentReferenceFor(t("Inhalt", "Content")))} title={t("Der Seiteninhalt des Eintrags", "The record's page content")}>
             {t("{Inhalt}", "{Content}")}
           </button>
         )}

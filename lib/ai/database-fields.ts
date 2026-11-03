@@ -18,6 +18,7 @@ import { aiFilter } from "./access";
 import { AI_REASON_TEXT } from "./features";
 import { resolveAi } from "./resolve";
 import { cellPlain, recordContent, recordTitle } from "./sources";
+import { isContentReferenceName } from "./content-references";
 
 export type AiFieldConfig = { prompt: string; auto?: boolean; autoBy?: string };
 export const AI_OUTPUT_TYPES = ["text", "select", "multiselect", "number"] as const satisfies readonly FieldType[];
@@ -47,8 +48,8 @@ export const AI_REFERENCE_TYPES: FieldType[] = [
 // value. They never count as input of an automatic property: the prompt
 // would differ after each computation and queue the record again and again.
 export const VOLATILE_REFERENCE_TYPES: FieldType[] = ["updated_at", "updated_by"];
-// {Inhalt} / {Content} / {Contenu}: the record's page content (unless a property has that name).
-export const CONTENT_REFERENCES = ["Inhalt", "Content", "Contenu"];
+// {Inhalt} / {Content} / {Contenu} / {内容}: the record's page content (unless a property has that name).
+export { CONTENT_REFERENCES } from "./content-references";
 export const AI_PROMPT_MAX = 2000;
 export const AI_TEXT_MAX = 4000;
 
@@ -65,7 +66,7 @@ export function referencedField(name: string, fields: Field[]): Field | undefine
   return fields.find((f) => f.id === name) || fields.find((f) => f.name.trim().toLowerCase() === wanted);
 }
 const isContentReference = (name: string, fields: Field[]) =>
-  !referencedField(name, fields) && CONTENT_REFERENCES.some((c) => c.toLowerCase() === name.trim().toLowerCase());
+  !referencedField(name, fields) && isContentReferenceName(name);
 
 const sameConfig = (a: Field, b: Field | undefined) =>
   !!b?.ai && a.type === b.type && a.ai?.prompt === b.ai.prompt && JSON.stringify(a.options || []) === JSON.stringify(b.options || []);

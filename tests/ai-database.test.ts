@@ -72,6 +72,27 @@ const work = () => processAiCellJobs(50, Math.max(Date.now(), clock));
 
 // ---- Templates and constraints ----
 
+test("prompt templates: the content reference in every UI language", async () => {
+  const { CONTENT_REFERENCES, contentReferenceFor, isContentReferenceName } = await import("../lib/ai/content-references");
+  // A Chinese prompt as the editor's chip writes it.
+  assert.deepEqual(promptReferences("用一句话总结{内容}和{ 标题 }"), ["内容", "标题"]);
+  assert.equal(isContentReferenceName("内容"), true);
+  assert.equal(renderAiPrompt("用一句话总结：{内容}", base, {}, { id: "r" }, context).text, "用一句话总结：Inhalt des Eintrags");
+  assert.equal(renderAiPrompt("{ CONTENU } {content}", base, {}, { id: "r" }, context).text, "Inhalt des Eintrags Inhalt des Eintrags");
+  // A property with that name wins over the page content.
+  const named: Field[] = [...base, { id: "nf", name: "内容", type: "text" }];
+  assert.equal(renderAiPrompt("{内容}", named, { nf: "属性" }, { id: "r" }, context).text, "属性");
+  // Every catalogue's word for "Content" is understood; an unknown one falls back.
+  const { readFileSync, readdirSync } = await import("node:fs");
+  for (const file of readdirSync(join(process.cwd(), "locales")).filter((f) => f.endsWith(".json"))) {
+    const word = (JSON.parse(readFileSync(join(process.cwd(), "locales", file), "utf8")) as Record<string, string>).Content;
+    if (!word) continue;
+    assert.ok(CONTENT_REFERENCES.includes(word), `${file}: "${word}" missing from CONTENT_REFERENCES`);
+    assert.equal(contentReferenceFor(word), word);
+  }
+  assert.equal(contentReferenceFor("Contenido"), "Content");
+});
+
 test("prompt templates: values by property name, content, emptiness", () => {
   const fields: Field[] = [...base, { id: "summary", name: "Kurz", type: "text", ai: { prompt: "x" } }];
   assert.deepEqual(promptReferences("Fasse {Beschreibung} und { Autor } zusammen"), ["Beschreibung", "Autor"]);
