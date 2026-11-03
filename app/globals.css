@@ -10519,6 +10519,12 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
 .wb-item {
   cursor: move;
 }
+/* Dragging the board (also with the middle mouse button): the closed hand
+   everywhere, over elements and handles too (#99). */
+.wb-canvas.wb-panning,
+.wb-canvas.wb-panning * {
+  cursor: grabbing !important;
+}
 .wb-item.locked {
   cursor: default;
 }

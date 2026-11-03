@@ -387,6 +387,9 @@ export default function Whiteboard({
     [penOnly, setPenOnlyState] = useState(() => penOnlySetting() === "on"),
     // Where a hovering pen is (Apple Pencil hover): a preview of the stroke.
     [hover, setHover] = useState<Point | null>(null),
+    // The board is being dragged (hand tool, space, middle mouse button,
+    // pen hand or palm): the cursor shows the closed hand (#99).
+    [panning, setPanning] = useState(false),
     [stamp, setStamp] = useState(stampChoices[0]),
     [following, setFollowing] = useState(true),
     [arrangeOpen, setArrangeOpen] = useState(false),
@@ -1332,6 +1335,7 @@ export default function Whiteboard({
   // ---- pointer handling ----
   function beginPan(e: ReactPointerEvent) {
     stopFollowing.current();
+    setPanning(true);
     gesture.current = {
       kind: "pan",
       client: { x: e.clientX, y: e.clientY },
@@ -1896,6 +1900,7 @@ export default function Whiteboard({
     if (pointers.current.size < 2) pinch.current = null;
     const g = gesture.current;
     gesture.current = null;
+    setPanning(false);
     setGuides([]);
     if (!g) return;
     if (g.kind === "pen") {
@@ -2448,11 +2453,10 @@ export default function Whiteboard({
   const single = selected.length === 1 ? selected[0] : null;
   const selectionBox = selected.length ? contentBounds(selected, byId) : null;
   const editingItem = editing ? byId.get(editing) : undefined;
-  const cursorStyle =
-    tool === "hand" || space
-      ? gesture.current?.kind === "pan"
-        ? "grabbing"
-        : "grab"
+  const cursorStyle = panning
+    ? "grabbing"
+    : tool === "hand" || space
+      ? "grab"
       : tool === "select"
         ? "default"
         : "crosshair";
@@ -3238,7 +3242,7 @@ export default function Whiteboard({
     >
       <svg
         ref={svg}
-        className="wb-canvas"
+        className={panning ? "wb-canvas wb-panning" : "wb-canvas"}
         style={{ cursor: cursorStyle }}
         onPointerDownCapture={onDownCapture}
         onPointerDown={onBackgroundDown}
