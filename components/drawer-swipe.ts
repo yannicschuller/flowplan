@@ -10,6 +10,7 @@
 // Where nothing claims the edge (the installed web app, the app on its start
 // page) it may start at the edge itself.
 import { useEffect, useRef } from "react";
+import { canScrollBack, sidewaysBoxes } from "@/lib/sideways-scroll";
 
 const PHONE = "(max-width: 767px)";
 // Where a swipe that opens may start, from the left edge; BACK_EDGE is left
@@ -92,6 +93,8 @@ export function useDrawerSwipe(
       } else {
         const from = backAtEdge() ? BACK_EDGE : 0;
         if (touch.clientX < from || touch.clientX > EDGE) return;
+        // A table (board, timeline …) scrolled to the right scrolls back.
+        if (canScrollBack(sidewaysBoxes(target))) return;
       }
       width = parts().sidebar?.getBoundingClientRect().width || 300;
       start = {

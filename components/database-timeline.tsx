@@ -41,6 +41,10 @@ import {
 } from "@/lib/database-timeline";
 import type { Field, Row, View } from "@/lib/types";
 import { glide, layoutPosition, motionAllowed, prefersReducedMotion, type Point } from "@/lib/motion";
+// Touch: how long a finger rests on a bar before it moves it, and how far
+// it may wander meanwhile (further, it is a swipe that scrolls).
+const TOUCH_HOLD_MS = 350;
+const TOUCH_SLOP = 8;
 type Drag = {
   row: Row;
   version: number;
@@ -104,7 +108,9 @@ export default function DatabaseTimeline({
   const barPositions = useRef<{ period: string; at: Map<string, Point> } | null>(null);
   const dragging = useRef<Drag | null>(null),
     suppressed = useRef(false),
-    pending = useRef(false);
+    pending = useRef(false),
+    // A finger on a bar, until it has been held long enough to move it.
+    held = useRef<{ pointer: number; x: number; y: number; timer: number } | null>(null);
   const config = view.timeline || defaultTimeline,
     scale = localScale || config.scale,
     weekends = localWeekends ?? config.showWeekends,
@@ -345,27 +351,67 @@ export default function DatabaseTimeline({
       }
     }
   }
+  // While a bar is dragged by touch, the finger does not scroll the page.
+  useEffect(() => {
+    const root = grid.current;
+    if (!root || !canEdit) return;
+    const hold = (event: TouchEvent) => {
+      if (dragging.current && event.cancelable) event.preventDefault();
+    };
+    root.addEventListener("touchmove", hold, { passive: false });
+    return () => root.removeEventListener("touchmove", hold);
+  }, [canEdit]);
+  useEffect(() => () => clearHold(), []);
+  function clearHold() {
+    if (held.current) window.clearTimeout(held.current.timer);
+    held.current = null;
+  }
   function begin(
     event: ReactPointerEvent<HTMLButtonElement>,
     row: Row,
     operation: Drag["operation"],
   ) {
     if (!canEdit || busy || event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    suppressed.current = false;
-    const next = {
-      row,
-      version,
-      operation,
-      x: event.clientX,
-      days: 0,
-      pointer: event.pointerId,
+    const target = event.currentTarget,
+      pointer = event.pointerId,
+      x = event.clientX;
+    const start = () => {
+      suppressed.current = false;
+      const next = { row, version, operation, x, days: 0, pointer };
+      dragging.current = next;
+      setDrag(next);
+      setError("");
     };
-    dragging.current = next;
-    setDrag(next);
-    setError("");
+    // By touch a bar moves once it has been held for a moment; a swipe
+    // before that scrolls the timeline (#98). Its edges move at once.
+    if (event.pointerType !== "mouse" && operation === "move") {
+      clearHold();
+      held.current = {
+        pointer,
+        x,
+        y: event.clientY,
+        timer: window.setTimeout(() => {
+          held.current = null;
+          try {
+            target.setPointerCapture(pointer);
+          } catch {
+            return; // The finger is gone.
+          }
+          start();
+        }, TOUCH_HOLD_MS),
+      };
+      return;
+    }
+    target.setPointerCapture(pointer);
+    start();
   }
   function pointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    const hold = held.current;
+    if (
+      hold?.pointer === event.pointerId &&
+      Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > TOUCH_SLOP
+    )
+      clearHold();
     const current = dragging.current;
     if (!current || current.pointer !== event.pointerId) return;
     const days = Math.round((event.clientX - current.x) / period.dayWidth);
@@ -377,6 +423,7 @@ export default function DatabaseTimeline({
     }
   }
   function finish(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (held.current?.pointer === event.pointerId) clearHold();
     const current = dragging.current;
     if (!current || current.pointer !== event.pointerId) return;
     dragging.current = null;
@@ -390,6 +437,7 @@ export default function DatabaseTimeline({
     }
   }
   function cancel() {
+    clearHold();
     dragging.current = null;
     setDrag(null);
     suppressed.current = true;
@@ -658,6 +706,11 @@ export default function DatabaseTimeline({
                 ? t("Balken verschieben, an den Rändern verlängern oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag; zusätzlich Umschalt ändert das Ende, Strg den Beginn.", "Move bars, stretch them at the edges or plan via the calendar icon. Alt + arrow key moves by one day; adding Shift changes the end, Ctrl the start.")
                 : t("Balken verschieben oder über das Kalendersymbol planen. Alt + Pfeiltaste verschiebt um einen Tag. Für längere Zeiträume in den Ansichtseinstellungen ein separates Enddatumsfeld auswählen.", "Move bars or plan via the calendar icon. Alt + arrow key moves by one day. For longer periods choose a separate end date field in the view settings.")
               : t("Einträge öffnen oder den angezeigten Zeitraum ändern.", "Open records or change the period shown.")}{" "}
+            {canEdit && (
+              <span className="timeline-touch-help">
+                {t("Auf Touchscreens einen Balken kurz halten, dann ziehen.", "On touch screens, hold a bar briefly, then drag it.")}{" "}
+              </span>
+            )}
             {t("Vorhandene Uhrzeiten bleiben erhalten.", "Existing times are kept.")}
           </p>
           {dragConflicts.length > 0 && (
@@ -869,7 +922,8 @@ export default function DatabaseTimeline({
                               `${name}: ${dayKey(range!.start)} to ${dayKey(range!.end)}`,
                             )}
                             aria-disabled={busy}
-                            style={{ touchAction: canEdit ? "none" : "auto" }}
+                            // Swipes scroll; a held finger moves the bar.
+                            style={{ touchAction: canEdit ? "pan-x pan-y" : "auto" }}
                             onPointerDown={(event) => begin(event, row, "move")}
                             {...handlers}
                             onClick={(event) => {
