@@ -90,7 +90,11 @@ import SavedTemplates from "./saved-templates";
 import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Toaster, showToast, showUndo, toastSerial, undoShownSince } from "./toast";
 import { commandOverlay } from "@/lib/optimistic-commands";
-import { dropSpace, moveSpaceBy, readCollapsedSpaces, writeCollapsedSpaces } from "@/lib/space-moves";
+import { dropSpace, moveSpaceBy } from "@/lib/space-moves";
+import { useSidebarFolds } from "./sidebar-folds-state";
+import { setLinkTargetPages } from "./page-link-icons";
+import { shownPageIcon } from "@/lib/page-link-icons";
+import { ancestorIds, journalFoldKey, journalFolds, spaceFoldChanges } from "@/lib/sidebar-folds";
 import type { UndoPlan } from "@/lib/undo";
 import { appCache, bootKey, clearAppCache, pageCachePolicy, pageKey } from "@/lib/swr-cache";
 import { configurePrefetch, installPrefetch, pendingPrefetch, prefetchPage, prefetchRecord, INTENT_DELAY } from "./prefetch";
@@ -178,6 +182,8 @@ import {
   CalendarCheck,
   CalendarDots,
   FolderSimple,
+  ArrowsInSimple,
+  ArrowsOutSimple,
 } from "@phosphor-icons/react";
 import type {
   Bootstrap,
@@ -335,7 +341,7 @@ type PageData = DatabaseData & {
   html: string;
   state: string | null;
   generation: string;
-  backlinks: { id: string; title: string; icon: string; rowId?: string; pageTitle?: string }[];
+  backlinks: { id: string; title: string; icon: string; kind?: string; rowId?: string; pageTitle?: string }[];
   snapshots: {
     id: string;
     title: string;
@@ -503,9 +509,6 @@ export default function WorkspaceApp({
     [e2eeDialog, setE2eeDialog] = useState<"setup" | "unlock" | null>(null),
     [spaceKeys, setSpaceKeys] = useState<string | null>(null),
     [epoch, setEpoch] = useState(0),
-    [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
-    // Year and month folders of journals opened or closed by hand (#49).
-    [journalFolders, setJournalFolders] = useState<{ open: Set<string>; closed: Set<string> }>(() => ({ open: new Set(), closed: new Set() })),
     // "Alle Tage …" in the tree: the journal to show at its list of days.
     [revealJournalDays, setRevealJournalDays] = useState<string | null>(null),
     // Quick filter above the page tree.
@@ -1701,6 +1704,9 @@ export default function WorkspaceApp({
     sourceOpen = !!data && data.page.kind === "document" && !data.locked && sourcePage === data.page.id,
     canCreate = boot.workspace.role !== "viewer" && !boot.workspace.guest,
     favorites = activePages.filter((p) => boot.favorites.includes(p.id));
+  // Links in documents show the icons of these pages (#96) and follow
+  // their changes like titles do (components/page-link-icons.tsx).
+  useEffect(() => setLinkTargetPages(activePages), [activePages]);
   // The order of the spaces (issue #48, lib/space-order.ts): workspace
   // owners drag a space by its header or use "Nach oben"/"Nach unten" in its
   // "…" menu. Only the spaces shown here are sent; the others keep their place.
@@ -1718,19 +1724,45 @@ export default function WorkspaceApp({
       t(`„${space.name}“ steht jetzt an Position ${at} von ${order.length}.`, `“${space.name}” is now at position ${at} of ${order.length}.`),
     );
   }
-  // Folded spaces, remembered per device (lib/space-moves.ts); read after
-  // the first render, so the server's HTML and the first client render match.
-  const [collapsedSpaces, setCollapsedSpaces] = useState<Set<string>>(new Set());
-  useEffect(() => setCollapsedSpaces(readCollapsedSpaces()), []);
-  const foldSpace = (id: string, fold: boolean) =>
-    setCollapsedSpaces((current) => {
-      if (current.has(id) === fold) return current;
-      const next = new Set(current);
-      if (fold) next.add(id);
-      else next.delete(id);
-      writeCollapsedSpaces(next);
-      return next;
-    });
+  // What is folded in the sidebar, stored in the account and the same on
+  // every device (#97, components/sidebar-folds-state.ts): pages start
+  // folded (p:<id> unfolds one), spaces and groups open (s:<id>, g:<name>
+  // fold them), journal folders follow lib/journal-nav.ts (jo:/jc:).
+  const folds = useSidebarFolds(boot.workspace.id, boot.sidebar);
+  const foldSpace = (id: string, fold: boolean) => folds.change({ [`s:${id}`]: fold });
+  const journalFolders = useMemo(() => journalFolds(folds.keys), [folds.keys]);
+  // The way to the open page unfolds, for this visit only (not stored):
+  // nothing else folds. Folding one of those pages by hand closes it.
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set());
+  const openPath = screen === "page" && pageId ? ancestorIds(boot.pages, pageId).join(",") : "";
+  // Updated while rendering (not in an effect): the tree never shows the
+  // open page folded away first.
+  const [revealedPath, setRevealedPath] = useState("");
+  if (revealedPath !== openPath) {
+    setRevealedPath(openPath);
+    const missing = openPath ? openPath.split(",").filter((id) => !revealed.has(id)) : [];
+    if (missing.length) setRevealed(new Set([...revealed, ...missing]));
+  }
+  const pageOpen = (id: string) => folds.has(`p:${id}`) || revealed.has(id);
+  const foldPage = (id: string, fold: boolean) => {
+    if (fold)
+      setRevealed((current) => {
+        if (!current.has(id)) return current;
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    folds.change({ [`p:${id}`]: !fold });
+  };
+  // "Alle aufklappen" / "Alle zuklappen" in a space's menu.
+  const foldAll = (spaceId: string, open: boolean) => {
+    if (!open) {
+      const inSpace = new Set(boot.pages.filter((p) => p.space_id === spaceId).map((p) => p.id));
+      setRevealed((current) => new Set([...current].filter((id) => !inSpace.has(id))));
+    }
+    folds.change(spaceFoldChanges(boot.pages, spaceId, open));
+    if (open) foldSpace(spaceId, false);
+  };
   // Opening a page unfolds its space.
   const openSpaceId = screen === "page" && pageId ? boot.pages.find((p) => p.id === pageId)?.space_id : undefined;
   useEffect(() => {
@@ -2028,17 +2060,7 @@ export default function WorkspaceApp({
     return found;
   };
   const toggleJournalFolder = (key: string, open: boolean) =>
-    setJournalFolders((f) => {
-      const next = { open: new Set(f.open), closed: new Set(f.closed) };
-      if (open) {
-        next.open.add(key);
-        next.closed.delete(key);
-      } else {
-        next.open.delete(key);
-        next.closed.add(key);
-      }
-      return next;
-    });
+    folds.change({ [journalFoldKey(key, open)]: true, [journalFoldKey(key, !open)]: false });
   // Each space's tree has one Tab stop: the item focused last, else the open
   // page, else the first page – as long as it is shown (parents unfolded).
   function treeStop(sid: string): string | null {
@@ -2046,7 +2068,7 @@ export default function WorkspaceApp({
     const shownPage = (page: Page | undefined): boolean => {
       if (!page || page.space_id !== sid || (filterMatches && !filterMatches.has(page.id))) return false;
       for (let child = page, parent = page.parent_id ? byId.get(page.parent_id) : undefined; parent; child = parent, parent = parent.parent_id ? byId.get(parent.parent_id) : undefined) {
-        if (!filterMatches && collapsed.has(parent.id)) return false;
+        if (!filterMatches && !pageOpen(parent.id)) return false;
         // A day of a journal: only while the journal shows it.
         if (!filterMatches && parent.kind === "journal" && child.journal_date && !journalTree(parent).shown.has(child.id)) return false;
       }
@@ -2056,7 +2078,7 @@ export default function WorkspaceApp({
       if (id && isFolderKey(id)) {
         // A virtual item of a journal (today, a folder, "Alle Tage").
         const journal = byId.get(id.split(":")[1]);
-        return !filterMatches && !!journal && shownPage(journal) && !collapsed.has(journal.id) && journalTree(journal).shown.has(id);
+        return !filterMatches && !!journal && shownPage(journal) && pageOpen(journal.id) && journalTree(journal).shown.has(id);
       }
       return shownPage(id ? byId.get(id) : undefined);
     };
@@ -2071,12 +2093,7 @@ export default function WorkspaceApp({
       children,
       closed,
       parentTree,
-      fold: (fold) =>
-        setCollapsed((s) => {
-          const n = new Set(s);
-          fold ? n.add(p.id) : n.delete(p.id);
-          return n;
-        }),
+      fold: (fold) => foldPage(p.id, fold),
       activate: () => void openPage(p.id),
     });
   }
@@ -2230,7 +2247,7 @@ export default function WorkspaceApp({
             ? journal.entries.length > 0 || journal.others.some((x) => x.space_id === sid)
             : (treeIndex.get(p.id) || []).some((x) => !filterMatches || filterMatches.has(x.id)),
           // While filtering, the way to every match stays open.
-          closed = !filterMatches && collapsed.has(p.id);
+          closed = !filterMatches && !pageOpen(p.id);
         return (
           <div key={p.id}>
             <div
@@ -2347,13 +2364,7 @@ export default function WorkspaceApp({
                   aria-label={
                     closed ? t("Unterseiten öffnen", "Expand sub-pages") : t("Unterseiten schließen", "Collapse sub-pages")
                   }
-                  onClick={() =>
-                    setCollapsed((s) => {
-                      const n = new Set(s);
-                      n.has(p.id) ? n.delete(p.id) : n.add(p.id);
-                      return n;
-                    })
-                  }
+                  onClick={() => foldPage(p.id, !closed)}
                 >
                   <CaretRight
                     size={12}
@@ -2400,10 +2411,7 @@ export default function WorkspaceApp({
                   void openPage(p.id);
                 }}
               >
-                <PageIcon
-                  name={p.kind === "database" ? "table" : p.icon}
-                  size={17}
-                />
+                <PageIcon name={shownPageIcon(p.icon, p.kind)} size={17} />
                 <span className="page-nav-label">{p.title}</span>
                 {place.today && <span className="nav-badge">{t("Heute", "Today")}</span>}
                 {p.locked === 1 && <Lock size={12} />}
@@ -2884,11 +2892,26 @@ export default function WorkspaceApp({
             <p className="sidebar-empty tree-filter-empty">{t("Keine Seite heißt so.", "No page has that name.")}</p>
           )}
           {!filterMatches && (favorites.length > 0 || !!boot.favoriteRows?.length) && (
-            <section className="nav-section">
+            <section
+              className={`nav-section favorites-section${folds.has("g:favorites") ? " space-collapsed" : ""}`}
+              aria-label={t("Favoriten", "Favourites")}
+            >
               <div className="nav-section-title">
-                {t("Favoriten", "Favourites")}
-                <Star size={13} />
+                <button
+                  type="button"
+                  className="space-toggle"
+                  aria-expanded={!folds.has("g:favorites")}
+                  aria-controls="favorites-list"
+                  onClick={() => folds.change({ "g:favorites": !folds.has("g:favorites") })}
+                >
+                  <CaretRight size={10} className="space-caret" aria-hidden="true" />
+                  <span className="space-name">{t("Favoriten", "Favourites")}</span>
+                  <Star size={13} aria-hidden="true" />
+                </button>
               </div>
+              <Collapse open={!folds.has("g:favorites")} className="space-tree">
+              {!folds.has("g:favorites") ? (
+              <div id="favorites-list">
               {favorites.map((p) => (
                 <button
                   className={`favorite-nav ${pageId === p.id && screen === "page" ? "selected" : ""}`}
@@ -2901,7 +2924,7 @@ export default function WorkspaceApp({
                   }}
                   {...pressMenu(p)}
                 >
-                  <PageIcon name={p.icon} />
+                  <PageIcon name={shownPageIcon(p.icon, p.kind)} />
                   <span>{p.title}</span>
                 </button>
               ))}
@@ -2918,6 +2941,9 @@ export default function WorkspaceApp({
                   <span>{f.title}</span>
                 </button>
               ))}
+              </div>
+              ) : null}
+              </Collapse>
             </section>
           )}
           {!filterMatches && (
@@ -2930,6 +2956,8 @@ export default function WorkspaceApp({
               onDuplicate={(c) => void duplicateCollection(c)}
               onDelete={(c) => void deleteCollection(c)}
               onReorder={(order) => reorderCollections(order)}
+              folded={folds.has("g:collections")}
+              onFold={(fold) => folds.change({ "g:collections": fold })}
             />
           )}
           {(selecting || selectedPages.length > 0) && (
@@ -2976,7 +3004,7 @@ export default function WorkspaceApp({
             )
             .map((space, spaceIndex, shownSpaces) => {
               // While filtering every space with a match stays open.
-              const spaceClosed = !filterMatches && collapsedSpaces.has(space.id),
+              const spaceClosed = !filterMatches && folds.has(`s:${space.id}`),
                 spaceOrder = boot.spaces.map((s) => s.id),
                 reorderable = canReorderSpaces && !filterMatches;
               return (
@@ -3024,7 +3052,7 @@ export default function WorkspaceApp({
                   aria-expanded={!spaceClosed}
                   aria-controls={`space-tree-${space.id}`}
                   title={spaceClosed ? t(`${space.name} aufklappen`, `Expand ${space.name}`) : t(`${space.name} zuklappen`, `Collapse ${space.name}`)}
-                  onClick={() => foldSpace(space.id, !collapsedSpaces.has(space.id))}
+                  onClick={() => foldSpace(space.id, !folds.has(`s:${space.id}`))}
                 >
                   <CaretRight size={10} className="space-caret" aria-hidden="true" />
                   <SpaceIcon icon={space.icon} color={space.icon_color} />
@@ -3039,8 +3067,6 @@ export default function WorkspaceApp({
                 </button>
                 {/* The tools wrap under a long name instead of squeezing it. */}
                 <span className="nav-section-tools">
-                  {(boot.workspace.role === "owner" ||
-                    (canCreate && space.owner_id === boot.user.id)) && (
                     <Dropdown.Root>
                       <Dropdown.Trigger
                         className="icon-button"
@@ -3050,9 +3076,23 @@ export default function WorkspaceApp({
                       </Dropdown.Trigger>
                       <Dropdown.Portal>
                         <Dropdown.Content collisionPadding={safeCollisionPadding()} className="dropdown" align="end">
-                          <Dropdown.Item className="dropdown-item" onSelect={() => setSpaceManager({ space })}>
-                            <GearSix />
-                            {t("Bereich bearbeiten …", "Edit space …")}
+                          {(boot.workspace.role === "owner" || (canCreate && space.owner_id === boot.user.id)) && (
+                            <>
+                              <Dropdown.Item className="dropdown-item" onSelect={() => setSpaceManager({ space })}>
+                                <GearSix />
+                                {t("Bereich bearbeiten …", "Edit space …")}
+                              </Dropdown.Item>
+                              <Dropdown.Separator className="dropdown-separator" />
+                            </>
+                          )}
+                          {/* Folding every page of the space (#97). */}
+                          <Dropdown.Item className="dropdown-item" onSelect={() => foldAll(space.id, true)}>
+                            <ArrowsOutSimple />
+                            {t("Alle aufklappen", "Expand all")}
+                          </Dropdown.Item>
+                          <Dropdown.Item className="dropdown-item" onSelect={() => foldAll(space.id, false)}>
+                            <ArrowsInSimple />
+                            {t("Alle zuklappen", "Collapse all")}
                           </Dropdown.Item>
                           {reorderable && (
                             <>
@@ -3078,7 +3118,6 @@ export default function WorkspaceApp({
                         </Dropdown.Content>
                       </Dropdown.Portal>
                     </Dropdown.Root>
-                  )}
                   {(space as { encrypted?: number }).encrypted ? (
                     <button
                       className="icon-button"
@@ -4078,7 +4117,7 @@ export default function WorkspaceApp({
                               else void openPage(p.id);
                             }}
                           >
-                            <PageIcon name={p.icon} />
+                            <PageIcon name={shownPageIcon(p.icon, p.kind || (p.rowId ? "record" : "document"))} />
                             {p.title}
                             {p.pageTitle && <small className="muted">{p.pageTitle}</small>}
                           </button>
@@ -4777,7 +4816,7 @@ export default function WorkspaceApp({
                   paletteItems[i],
                   i,
                   <>
-                    <PageIcon name={page.kind === "database" ? "table" : page.icon} />
+                    <PageIcon name={shownPageIcon(page.icon, page.kind)} />
                     <span>
                       {page.title || t("Ohne Titel", "Untitled")}
                       <small>{boot.spaces.find((s) => s.id === page.space_id)?.name}</small>
@@ -4794,7 +4833,7 @@ export default function WorkspaceApp({
                   paletteItems[recentPages.length + i],
                   recentPages.length + i,
                   <>
-                    <PageIcon name={p.icon} />
+                    <PageIcon name={shownPageIcon(p.icon, p.kind === "comment" || p.kind === "file" ? "document" : p.kind)} />
                     <span>
                       {p.kind === "comment" ? commentHitTitle(p.title, t) : p.title}
                       {p.alias && <span className="alias-hit"> · {p.alias}</span>}

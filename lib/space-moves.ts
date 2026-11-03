@@ -22,9 +22,10 @@ export function dropSpace(order: string[], source: string, target: string, place
   return next.every((id, i) => id === order[i]) ? null : next;
 }
 
-// The spaces folded in the sidebar, kept per device (localStorage). Storage
-// may be missing or refuse (private windows, blocked site data): then the
-// state lives only as long as the tab.
+// The spaces folded in the sidebar as kept per device (localStorage) before
+// #97 moved folding into the account (lib/sidebar-folds.ts): read once to
+// take it over. Storage may be missing or refuse (private windows, blocked
+// site data).
 export const COLLAPSED_SPACES_KEY = "flowplan-collapsed-spaces";
 export function readCollapsedSpaces(): Set<string> {
   try {

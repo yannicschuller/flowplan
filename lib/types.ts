@@ -297,6 +297,8 @@ export type Bootstrap = {
   weeklyDigest?: import("./weekly-digest").WeeklyDigestPrefs;
   // Own keyboard shortcuts, only those that differ from the defaults.
   shortcuts?: import("./keymap").KeymapOverrides;
+  // Folded and unfolded in the sidebar (#97, lib/sidebar-folds.ts); null: nothing yet.
+  sidebar?: { keys: string[]; updatedAt: number } | null;
   // The start page: layout, where it comes from, what "Reset" leads to.
   home?: import("./home-layout").HomeState;
   myLimits?: { storageMb: number; workspaces: number; uploadMb: number; usedBytes: number; ownedWorkspaces: number } | null;
