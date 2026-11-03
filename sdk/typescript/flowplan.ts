@@ -657,7 +657,7 @@ export type Webhook = {
   templates: Record<string, string>;
   /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
   config: {
-    language?: "de" | "en" | "fr";
+    language?: "de" | "en" | "fr" | "zh";
     digestTime?: string;
     timeZone?: string;
     matrixRoom?: string;
@@ -696,7 +696,7 @@ export type WebhookCreate = {
   templates?: Record<string, string>;
   /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
   config?: {
-    language?: "de" | "en" | "fr";
+    language?: "de" | "en" | "fr" | "zh";
     digestTime?: string;
     timeZone?: string;
     matrixRoom?: string;
@@ -724,7 +724,7 @@ export type WebhookUpdate = {
   templates?: Record<string, string>;
   /** language of chat messages; digestTime (HH:MM) and timeZone of the daily digest; matrixRoom for the Matrix client API; slackChannel (channel ID) for a Slack bot token */
   config?: {
-    language?: "de" | "en" | "fr";
+    language?: "de" | "en" | "fr" | "zh";
     digestTime?: string;
     timeZone?: string;
     matrixRoom?: string;
