@@ -2,6 +2,22 @@
 
 All releases of Flowplan, newest first. Generated from the commits by the release workflow.
 
+## v0.8.5 – 2026-11-03
+
+- Help docs: code block preview, line numbers and collapsing (#92–#95) ([28c0d6c](https://github.com/yannicschuller/flowplan/commit/28c0d6cef9640af573a67bcbe92282b45e717ef8))
+- Chinese catalogue: sorted like the other catalogues, new texts listed (falling back to English) ([f1fe30c](https://github.com/yannicschuller/flowplan/commit/f1fe30c65ed8722cf1904a1fda5e4d5621903f3e))
+- Code blocks: preview, line numbers, collapse; Mermaid imports show the diagram ([5aae059](https://github.com/yannicschuller/flowplan/commit/5aae059aac5f24a8b63d916eb49273fd487b3a53))
+- Sidebar state is schema 87 after merging the rack planning (86); help docs ([2c5e36d](https://github.com/yannicschuller/flowplan/commit/2c5e36d96c05296432ee311793e45bca762e1f07))
+- Help docs: code languages and rack planning (#90, #91) ([e502c50](https://github.com/yannicschuller/flowplan/commit/e502c502aa640fad4052c51d5caafa1f43dff352))
+- Remember folded and unfolded sidebar items per person (#97) ([04d422f](https://github.com/yannicschuller/flowplan/commit/04d422f3231ab3556a67a1ff13214fd2282b88c1))
+- Show the linked page's own icon in links and lists (#96) ([27eafbc](https://github.com/yannicschuller/flowplan/commit/27eafbc43c8d1b33b9c60220b9c6fddfdf3a45c0))
+- Whiteboards: rack planning with devices, ports and cables ([a3df91f](https://github.com/yannicschuller/flowplan/commit/a3df91f9e0ea7ac31a83870aa0ddde4f49b382bb))
+- Code blocks: Shiki highlighting for every VS Code language, searchable picker ([1cbc31c](https://github.com/yannicschuller/flowplan/commit/1cbc31c7ceddf84a644ad9e6e0d49f9162e06016))
+- SDK and help docs: Chinese as an interface language (#89) ([74706a4](https://github.com/yannicschuller/flowplan/commit/74706a4092923b2d2c9ab559931aff473f2dc8d7))
+- Chinese catalogue: last review fixes, drop the stray node_modules link ([6bc2e60](https://github.com/yannicschuller/flowplan/commit/6bc2e6012306ffdb41fb6dc2cc6ff48cdecf2e28))
+- Review fixes for the Chinese catalogue ([f8faab7](https://github.com/yannicschuller/flowplan/commit/f8faab78419c3022bdac0773563f80a0ff9333b8))
+- Add Simplified Chinese as an interface language ([391ce38](https://github.com/yannicschuller/flowplan/commit/391ce38f9fe23cd747a02cfbde8f770055a6ba57))
+
 ## v0.8.4 – 2026-11-02
 
 - Help docs: links to blocks (#88) ([2a63d2b](https://github.com/yannicschuller/flowplan/commit/2a63d2b2f97cadc3bb658e9735b47131903e8b03))
