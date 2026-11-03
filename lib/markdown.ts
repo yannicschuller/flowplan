@@ -8,6 +8,7 @@ import { ct } from "./content-locale";
 import { URL_PATTERN, footnoteText } from "./footnotes";
 import { ct as tr } from "./content-locale";
 import { captionText } from "./block-captions";
+import { fenceLanguage } from "./code-languages";
 // Captions (lib/block-captions.ts) in Markdown: an image's as its title,
 // ![Alt](<file.png> "Caption"); a table's as Pandoc writes it, a line
 // "Table: Caption" right below; a code block's likewise "Listing: Caption".
@@ -348,7 +349,7 @@ export function htmlToMarkdown(
       case "codeBlock":
         return inTable
           ? inlineCode(node.textContent, true)
-          : fencedCode(node.textContent, String(node.attrs.language || "")) + captionLine(node);
+          : fencedCode(node.textContent, fenceLanguage(String(node.attrs.language || ""))) + captionLine(node);
       case "mathBlock":
         return inTable
           ? inlineCode(String(node.attrs.expression || ""), true)

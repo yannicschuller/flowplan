@@ -1,14 +1,29 @@
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import CodeBlock from "@tiptap/extension-code-block";
 import { mergeAttributes } from "@tiptap/core";
 import type { DOMOutputSpec } from "@tiptap/pm/model";
-import { codeHighlighter } from "./code-highlight";
+import { fenceLanguage } from "./code-languages";
 import { captionAttribute, captionText } from "./block-captions";
+// The code block of documents (schema, server and editor). Highlighting is
+// added by the editor only (components/code-block.tsx with
+// lib/code-highlight-plugin.ts), so the schema carries no grammar.
 // A caption (lib/block-captions.ts) puts the code into a <figure> with
 // <figcaption> below it.
-export const FlowCodeBlock = CodeBlockLowlight.extend({
+export const FlowCodeBlock = CodeBlock.extend({
   addAttributes() {
+    const parent = this.parent?.() || {};
     return {
-      ...this.parent?.(),
+      ...parent,
+      language: {
+        ...parent.language,
+        // Older ids and aliases ("js", "py", "sh") become Shiki's ids when
+        // HTML is read (paste, import); unknown languages stay as written.
+        parseHTML: (element: HTMLElement) => {
+          const language = [...(element.firstElementChild?.classList || [])]
+            .find((name) => name.startsWith("language-"))
+            ?.slice("language-".length);
+          return language ? fenceLanguage(language) : null;
+        },
+      },
       wrap: {
         default: false,
         parseHTML: (el) => el.getAttribute("data-code-wrap") === "true",
@@ -37,7 +52,6 @@ export const FlowCodeBlock = CodeBlockLowlight.extend({
     return caption ? ["figure", { class: "block-figure" }, pre, ["figcaption", {}, caption]] : pre;
   },
 }).configure({
-  lowlight: codeHighlighter,
   defaultLanguage: "plaintext",
   enableTabIndentation: true,
   tabSize: 2,

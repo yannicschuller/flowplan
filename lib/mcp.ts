@@ -120,6 +120,10 @@ function readable(user: Identity, pageId: string) {
   requireUnlocked(user, page);
   return page;
 }
+// Code blocks highlight every language Shiki bundles (lib/code-languages.ts).
+const CODE_FENCES =
+  "Code blocks: fenced with a language id as in VS Code/Shiki (```python, ```typescript, ```terraform, ```svelte …; aliases such as js, ts, py, sh, yml are understood).";
+
 async function pageMarkdown(user: Identity, pageId: string) {
   const page = readable(user, pageId);
   const { bytes } = await exportMarkdown(user, {
@@ -560,7 +564,7 @@ const tools: Tool[] = [
       parentId: id("Parent page ID").optional(),
       title: z.string().trim().min(1).max(500),
       kind: z.enum(["document", "database", "whiteboard"]).optional().describe("Default: document"),
-      markdown: z.string().max(1_000_000).optional().describe("Initial content (documents only)"),
+      markdown: z.string().max(1_000_000).optional().describe(`Initial content (documents only). ${CODE_FENCES}`),
     }),
     write: true,
     run: createPage as Tool["run"],
@@ -569,7 +573,7 @@ const tools: Tool[] = [
     name: "append_to_page",
     title: "Append to a page",
     description:
-      "Appends Markdown (headings, lists, task lists, tables, code) to the end of a document. Earlier content stays untouched and a version is kept.",
+      "Appends Markdown (headings, lists, task lists, tables, code) to the end of a document. Earlier content stays untouched and a version is kept. " + CODE_FENCES,
     input: z.object({
       pageId: id("Page ID of a document"),
       markdown: z.string().min(1).max(1_000_000),

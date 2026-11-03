@@ -43,11 +43,11 @@ const STORED =
 test("captions are attributes of image, code block and table; HTML keeps them as figure and caption", () => {
   const [image, code, table] = nodes(STORED);
   assert.deepEqual([image.type, image.attrs!.caption, image.attrs!.alt], ["image", "Ablauf der Freigabe", "Ein Diagramm"], "alt text stays separate");
-  assert.deepEqual([code.type, code.attrs!.caption, code.attrs!.language], ["codeBlock", "Beispiel in TypeScript", "ts"]);
+  assert.deepEqual([code.type, code.attrs!.caption, code.attrs!.language], ["codeBlock", "Beispiel in TypeScript", "typescript"]);
   assert.deepEqual([table.type, table.attrs!.caption], ["table", "Kosten 2026"]);
   const html = roundTrip(STORED);
   assert.match(html, /<figure class="block-figure"><img src="\/api\/files\/a" alt="Ein Diagramm"><figcaption>Ablauf der Freigabe<\/figcaption><\/figure>/);
-  assert.match(html, /<figure class="block-figure"><pre><code class="language-ts">const a = 1;\n {2}return a;<\/code><\/pre><figcaption>Beispiel in TypeScript<\/figcaption><\/figure>/);
+  assert.match(html, /<figure class="block-figure"><pre><code class="language-typescript">const a = 1;\n {2}return a;<\/code><\/pre><figcaption>Beispiel in TypeScript<\/figcaption><\/figure>/);
   assert.match(html, /<table[^>]*><caption>Kosten 2026<\/caption><colgroup>/, "the caption is the table's first child");
   assert.equal(roundTrip(html), html, "stable");
   // No caption: the block as before (no figure).
@@ -115,7 +115,7 @@ test("numbering: per kind in document order, only blocks with a caption, in the 
 test("Markdown: image title, Table: and Listing: lines – and back", () => {
   const md = markdown(STORED);
   assert.match(md, /!\[Ein Diagramm\]\(<\/api\/files\/a> "Ablauf der Freigabe"\)/);
-  assert.match(md, /```ts\nconst a = 1;\n {2}return a;\n```\n\nListing: Beispiel in TypeScript/);
+  assert.match(md, /```typescript\nconst a = 1;\n {2}return a;\n```\n\nListing: Beispiel in TypeScript/);
   assert.match(md, /\| Posten \|\n\| --- \|\n\| Server \|\n\nTable: Kosten 2026/);
   const back = markdownToHtml(md, (href) => href);
   const [image, code, table] = nodes(back);
@@ -153,7 +153,7 @@ test("Markdown from elsewhere: Pandoc's table captions, image titles, and formul
     ["paragraph", null],
     ["blockquote", null],
   ]);
-  assert.match(html, /<blockquote><figure class="block-figure"><pre><code class="language-js">y\n<\/code><\/pre><figcaption>im Zitat<\/figcaption><\/figure>/);
+  assert.match(html, /<blockquote><figure class="block-figure"><pre><code class="language-javascript">y\n<\/code><\/pre><figcaption>im Zitat<\/figcaption><\/figure>/);
 });
 
 test("Markdown source view keeps captions through editing", () => {
@@ -167,7 +167,7 @@ test("XHTML (PDF, EPUB): figure, figcaption and table caption, numbered when the
   const context = { url: (url: string) => url, image: (raw: string) => raw };
   const plain = documentXhtml(STORED, context);
   assert.match(plain, /<figure><img src="\/api\/files\/a" alt="Ein Diagramm"\/><figcaption>Ablauf der Freigabe<\/figcaption><\/figure>/);
-  assert.match(plain, /<figure class="listing"><pre><code class="language-ts">[^<]*<\/code><\/pre><figcaption>Beispiel in TypeScript<\/figcaption><\/figure>/);
+  assert.match(plain, /<figure class="listing"><pre><code class="language-typescript">[^<]*<\/code><\/pre><figcaption>Beispiel in TypeScript<\/figcaption><\/figure>/);
   assert.match(plain, /<table><caption>Kosten 2026<\/caption><tr>/);
   const numbered = documentXhtml(STORED, { ...context, captionNumbers: true });
   assert.match(numbered, /<figcaption><span class="caption-label">Abbildung 1:<\/span> Ablauf der Freigabe<\/figcaption>/);

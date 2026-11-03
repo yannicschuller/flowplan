@@ -2835,7 +2835,7 @@ export class FlowplanClient {
     return this.request("GET", `/api/export/epub`, { query }, options);
   }
 
-  /** Export a page, record or space as Markdown — Reads only, so read tokens may use it. `markdown` answers with one file, `zip` with an archive (files, sub-pages, history). (POST /api/markdown-export) */
+  /** Export a page, record or space as Markdown — Reads only, so read tokens may use it. `markdown` answers with one file, `zip` with an archive (files, sub-pages, history). Code blocks are fenced with their language id as in VS Code/Shiki (```typescript, ```python, ```terraform …); the Markdown import also understands older ids and aliases (js, ts, py, sh, yml). (POST /api/markdown-export) */
   async markdownExport(body: MarkdownExportOptions, options?: RequestOptions): Promise<Response> {
     return this.request("POST", `/api/markdown-export`, { json: body }, options);
   }

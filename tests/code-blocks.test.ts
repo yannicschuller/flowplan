@@ -5,11 +5,27 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  codeLanguages,
-  highlightCode,
+  highlightTokens,
+  isLanguageReady,
+  loadLanguage,
   renderCode,
+  renderCodeAsync,
   MAX_HIGHLIGHT_LENGTH,
 } from "../lib/code-highlight";
+import {
+  canonicalLanguage,
+  codeLanguages,
+  fenceLanguage,
+  languageLabel,
+  searchLanguages,
+  SHIKI_LANGUAGE_IDS,
+} from "../lib/code-languages";
+import { detectLanguage } from "../lib/code-detect";
+import { markdownToHtml } from "../lib/markdown-import";
+import { htmlToMarkdown } from "../lib/markdown";
+import { EditorState } from "@tiptap/pm/state";
+import { documentSchema } from "../lib/document-schema";
+import { codeHighlightKey, codeHighlightPlugin } from "../lib/code-highlight-plugin";
 import {
   htmlState,
   stateHtml,
@@ -27,26 +43,78 @@ function roundtrip(html: string) {
   doc.destroy();
   return result;
 }
-test("syntax rendering handles registered languages and aliases, escapes executable text and falls back for unknown or long blocks", () => {
-  assert.equal(codeLanguages.length, 192);
-  for (const language of [
-    "javascript",
-    "js",
-    "typescript",
-    "python",
-    "rust",
-    "sql",
-    "xml",
-    "bash",
-  ]) {
-    const output = renderCode(source, language);
-    assert.doesNotMatch(output, /<script|<img/i);
-    assert.equal(output.replace(/<\/?span[^>]*>/g, ""), escaped(source));
+test("every bundled Shiki language is offered by its full name, including the ones of issue #91", () => {
+  const languages = codeLanguages();
+  assert.ok(languages.length > 240, String(languages.length));
+  assert.equal(languages[0].id, "plaintext");
+  const names = new Set(languages.map((l) => l.name));
+  for (const name of [
+    "ABAP", "Angular HTML", "Angular TypeScript", "Apex", "Astro", "Svelte", "Vue", "JSX", "TSX",
+    "Terraform", "TOML", "Typst", "Zig", "Prisma", "GDScript", "Mojo", "nushell", "Systemd Units",
+    "SSH Config", "Git Commit Message", "Git Rebase Message", "Log file", "CSV", "TSV", "dotEnv",
+    "MDX", "WGSL", "JavaScript", "C++", "C#", "Python",
+  ])
+    assert.ok(names.has(name), name);
+  assert.equal(languageLabel("cpp"), "C++");
+  assert.equal(languageLabel("angular-ts"), "Angular TypeScript");
+  assert.equal(languageLabel("js"), "JavaScript");
+  assert.equal(languageLabel(null), "Klartext");
+  assert.equal(languageLabel("text"), "Klartext");
+  assert.equal(languageLabel("custom"), "custom");
+});
+
+test("older highlight.js ids and aliases map to Shiki's ids; unknown languages stay", () => {
+  const cases: Record<string, string> = {
+    js: "javascript", ts: "typescript", py: "python", sh: "shellscript", bash: "shellscript",
+    yml: "yaml", cpp: "cpp", csharp: "csharp", cs: "csharp", plaintext: "plaintext", text: "plaintext",
+    txt: "plaintext", golang: "go", rs: "rust", tf: "terraform", dos: "bat", vbnet: "vb",
+    objectivec: "objective-c", xhtml: "html", svg: "xml", x86asm: "asm", delphi: "pascal",
+    django: "jinja", pgsql: "sql", JS: "javascript", " Python ": "python", fortran: "fortran-free-form",
+  };
+  for (const [legacy, id] of Object.entries(cases)) {
+    assert.equal(canonicalLanguage(legacy), id, legacy);
+    assert.ok(id === "plaintext" || SHIKI_LANGUAGE_IDS.has(id), id);
   }
-  assert.match(renderCode(source, "javascript"), /hljs-keyword/);
-  assert.deepEqual(highlightCode("unknown-language", source).children, [
-    { type: "text", value: source },
-  ]);
+  assert.equal(canonicalLanguage(""), "");
+  assert.equal(fenceLanguage("custom-lang"), "custom-lang");
+  assert.equal(fenceLanguage("Py"), "python");
+});
+
+test("the picker search matches names, ids, aliases and file extensions", () => {
+  const first = (query: string) => searchLanguages(query)[0]?.id;
+  assert.equal(first("ts"), "typescript");
+  assert.equal(first("py"), "python");
+  assert.equal(first("yml"), "yaml");
+  assert.equal(first("tf"), "terraform");
+  assert.equal(first(".rs"), "rust");
+  assert.equal(first("c++"), "cpp");
+  assert.equal(first("javascript"), "javascript");
+  assert.equal(first("Angular Type"), "angular-ts");
+  assert.equal(first("klartext"), "plaintext");
+  assert.equal(first("txt"), "plaintext");
+  assert.ok(searchLanguages("script").some((l) => l.id === "typescript"));
+  assert.deepEqual(searchLanguages("zzzz-nothing"), []);
+  assert.equal(searchLanguages("").length, codeLanguages().length);
+});
+
+test("syntax rendering loads grammars on demand, escapes executable text and falls back for unknown or long blocks", async () => {
+  assert.equal(isLanguageReady("javascript"), false);
+  // Not loaded yet: plain, escaped text and no ranges.
+  assert.equal(highlightTokens("javascript", source), null);
+  assert.equal(renderCode(source, "javascript"), escaped(source));
+  for (const language of ["javascript", "js", "typescript", "python", "rust", "sql", "xml", "bash", "terraform", "svelte", "vue", "tsx"]) {
+    const output = await renderCodeAsync(source, language);
+    assert.doesNotMatch(output, /<script|<img/i);
+    assert.equal(output.replace(/<\/?span[^>]*>/g, ""), escaped(source), language);
+  }
+  assert.equal(isLanguageReady("js"), true);
+  // Loaded: synchronous from now on.
+  assert.match(renderCode(source, "javascript"), /<span class="tok-keyword">const<\/span>/);
+  assert.match(renderCode(source, "javascript"), /class="tok-comment[^"]*"/);
+  assert.match(renderCode(source, "javascript"), /class="tok-string[^"]*"/);
+  assert.deepEqual(highlightTokens("unknown-language", source), []);
+  assert.equal(await renderCodeAsync(source, "unknown-language"), escaped(source));
+  assert.equal(await loadLanguage("plaintext"), false);
   const long = "x".repeat(MAX_HIGHLIGHT_LENGTH + 1);
   assert.equal(renderCode(long, "javascript"), long);
   assert.equal(
@@ -54,11 +122,64 @@ test("syntax rendering handles registered languages and aliases, escapes executa
     "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;",
   );
 });
+
+test("editor decorations: plain text while a grammar loads, highlighted after, never stored in the document", async () => {
+  const schema = documentSchema();
+  const code = (language: string, text: string) => schema.nodes.codeBlock.create({ language }, schema.text(text));
+  const doc = schema.nodes.doc.create(null, [code("go", "package main\nfunc main() {}\n"), schema.nodes.paragraph.create(null, schema.text("x"))]);
+  const plugin = codeHighlightPlugin();
+  let state = EditorState.create({ doc, plugins: [plugin] });
+  assert.equal(codeHighlightKey.getState(state)!.find().length, 0);
+  await loadLanguage("go");
+  state = state.apply(state.tr.setMeta(codeHighlightKey, "refresh"));
+  const found = codeHighlightKey.getState(state)!.find();
+  assert.ok(found.length > 0);
+  assert.equal(doc.textBetween(found[0].from, found[0].to), "package");
+  // Typing in the paragraph moves the decorations along; the document has no classes.
+  state = state.apply(state.tr.insertText("y", state.doc.content.size - 1));
+  assert.equal(state.doc.textBetween(codeHighlightKey.getState(state)!.find()[0].from, codeHighlightKey.getState(state)!.find()[0].to), "package");
+  assert.equal(JSON.stringify(state.doc.toJSON()).includes("tok-"), false);
+});
+
+test("pasted code gets a language suggestion only when it is clear", () => {
+  assert.equal(detectLanguage('def greet(name):\n    print(f"Hello {name}")\n\nif __name__ == "__main__":\n    greet("x")'), "python");
+  assert.equal(detectLanguage('{"name": "flowplan", "version": 1}'), "json");
+  assert.equal(detectLanguage("const x = 1;\nconsole.log(x);\nfunction f() { return x === 1; }"), "javascript");
+  assert.equal(detectLanguage("interface User { name: string; age: number }\nconst u: User = { name: 'a', age: 1 };\nconsole.log(u);"), "typescript");
+  assert.equal(detectLanguage("SELECT id, name FROM users WHERE age > 21 ORDER BY name;"), "sql");
+  assert.equal(detectLanguage("#!/bin/bash\nset -e\necho $HOME"), "shellscript");
+  assert.equal(detectLanguage('package main\n\nimport "fmt"\n\nfunc main() {\n  x := 1\n  fmt.Println(x)\n}'), "go");
+  assert.equal(detectLanguage("fn main() {\n    let mut v = vec![1, 2];\n    println!(\"{:?}\", v);\n}"), "rust");
+  assert.equal(detectLanguage("#include <iostream>\nint main() { std::cout << 1; }"), "cpp");
+  assert.equal(detectLanguage("<!DOCTYPE html>\n<html><body><p>Hi</p></body></html>"), "html");
+  assert.equal(detectLanguage("FROM node:22\nRUN npm ci\nCOPY . .\nCMD [\"node\", \"app.js\"]"), "dockerfile");
+  // Prose and very short text: no suggestion.
+  assert.equal(detectLanguage("Hello, this is just a sentence about our meeting tomorrow."), null);
+  assert.equal(detectLanguage("x = 1"), null);
+});
+
+test("Markdown round trip: fences with older ids import and export as Shiki ids, unknown ones unchanged", () => {
+  const context = { url: (url: string) => url, linked: () => null };
+  const imported = markdownToHtml("```js\nconst a = 1;\n```\n\n```py\nprint(1)\n```\n\n```tf\nresource \"x\" \"y\" {}\n```\n\n```custom\nraw\n```\n\n```\nplain\n```");
+  assert.match(imported, /class="language-javascript"/);
+  assert.match(imported, /class="language-python"/);
+  assert.match(imported, /class="language-terraform"/);
+  assert.match(imported, /class="language-custom"/);
+  const markdown = htmlToMarkdown(imported, context);
+  assert.match(markdown, /```javascript\nconst a = 1;\n```/);
+  assert.match(markdown, /```python\nprint\(1\)\n```/);
+  assert.match(markdown, /```terraform\n/);
+  assert.match(markdown, /```custom\nraw\n```/);
+  // Stored blocks with an older id export with Shiki's id.
+  assert.match(htmlToMarkdown('<pre><code class="language-sh">ls</code></pre>', context), /```shellscript\nls\n```/);
+  assert.equal(markdownToHtml(markdown), markdownToHtml(htmlToMarkdown(markdownToHtml(markdown), context)));
+});
+
 test("canonical code preserves whitespace, language and wrap without saving highlight spans or toolbar text", () => {
   const result = roundtrip(html);
   assert.equal(result, html);
   assert.equal(roundtrip(result), result);
-  assert.doesNotMatch(result, /hljs-|Kopieren|Code-Sprache/);
+  assert.doesNotMatch(result, /tok-|Kopieren|Code-Sprache/);
   assert.equal(
     roundtrip(
       '<pre><code class="language-custom">  raw\n\tcode\n</code></pre>',
@@ -81,7 +202,7 @@ test("Markdown fenced imports preserve language, tabs and literal fences, includ
   );
   assert.equal(
     markdownHtml("````js\n```\n````"),
-    '<pre><code class="language-js">```\n</code></pre>',
+    '<pre><code class="language-javascript">```\n</code></pre>',
   );
   assert.equal(
     markdownHtml("```rust\nlet x = 2;"),

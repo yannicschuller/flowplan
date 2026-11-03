@@ -204,7 +204,7 @@ test("a page tree becomes an EPUB 3 with a stored mimetype first, a nested navig
   assert.match(first, /<th colspan="2">/);
   assert.match(first, /<td rowspan="2">/);
   assert.match(first, /<aside class="callout callout-warning"><p class="callout-title">Warnung<\/p><p>Vorsicht &amp; Umsicht<\/p><\/aside>/);
-  assert.match(first, /<pre><code class="language-js">const x = 1 &lt; 2;<\/code><\/pre>/);
+  assert.match(first, /<pre><code class="language-javascript">const x = 1 &lt; 2;<\/code><\/pre>/);
   const data = parts.get("OEBPS/chapter-004.xhtml")!.toString();
   assert.match(data, /<th><p>Betrag<\/p><\/th>/);
   assert.match(data, /<td><p>42<\/p><\/td>/);

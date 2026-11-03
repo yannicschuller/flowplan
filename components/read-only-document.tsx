@@ -6,7 +6,8 @@ import { WhiteboardEmbedView } from "./whiteboard/embed";
 import { revealSpoiler } from "./link-preview";
 import { mountDiagram } from "@/lib/mermaid-render";
 import { renderMath } from "@/lib/math-render";
-import { renderCode, languageLabel } from "@/lib/code-highlight";
+import { loadLanguage, renderCode } from "@/lib/code-highlight";
+import { languageLabel } from "@/lib/code-languages";
 import { citedWorks, parseItemAttribute, referenceText } from "@/lib/citations";
 import { tr } from "@/lib/locale-tag";
 import { emptyBibliography, renderReferences } from "./citation-views";
@@ -84,7 +85,12 @@ export function ReadOnlyDocument({
         Array.from(code.classList)
           .find((c) => c.startsWith("language-"))
           ?.slice(9) || null;
-      code.innerHTML = renderCode(text, language);
+      // Plain text until the language's grammar has loaded.
+      code.textContent = text;
+      void loadLanguage(language).then((highlighted) => {
+        if (highlighted && !unmounted && code.isConnected && code.textContent === text)
+          code.innerHTML = renderCode(text, language);
+      });
       if (
         code.parentElement?.parentElement?.classList.contains("code-block-view")
       )

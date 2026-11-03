@@ -5,6 +5,7 @@ import * as Y from "yjs";
 import sanitize from "sanitize-html";
 import { documentExtensions, documentSchema } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
+import { fenceLanguage } from "./code-languages";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 export function cleanHtml(html: string, transform?: sanitize.Transformer) {
   return sanitize(html, {
@@ -170,7 +171,7 @@ export function markdownHtml(text: string) {
   const renderCode = () =>
     codeLanguage.toLowerCase() === "mermaid"
       ? `<div class="mermaid-block" data-mermaid="${escaped(code)}">${escaped(code)}</div>`
-      : `<pre><code${codeLanguage ? ` class="language-${escaped(codeLanguage)}"` : ""}>${escaped(code)}</code></pre>`;
+      : `<pre><code${codeLanguage ? ` class="language-${escaped(fenceLanguage(codeLanguage))}"` : ""}>${escaped(code)}</code></pre>`;
   for (const line of text.split("\n")) {
     const fence = /^(`{3,}|~{3,})([\w#+.-]*)\s*$/.exec(line);
     if (

@@ -7,6 +7,7 @@ import { Slice, type Fragment, type Node as ProseMirrorNode } from "@tiptap/pm/m
 import { Plugin, PluginKey, Selection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { markdownToRawHtml } from "../markdown-html";
+import { fenceLanguage } from "../code-languages";
 import { expandLinkHandles, pageLinkHref, type LinkTarget } from "./links";
 import { cleanAnswer } from "./prompts";
 
@@ -160,7 +161,7 @@ export function selectionText(doc: ProseMirrorNode, from: number, to: number) {
           : type === "taskItem"
             ? `- [${parent?.attrs.checked ? "x" : " "}] `
             : "";
-    lines.push(node.type.name === "codeBlock" ? "```\n" + text + "\n```" : prefix + text);
+    lines.push(node.type.name === "codeBlock" ? "```" + fenceLanguage(String(node.attrs.language || "")).replace(/^plaintext$/, "") + "\n" + text + "\n```" : prefix + text);
     return false;
   });
   return lines.join("\n").trim() || doc.textBetween(from, to, "\n", " ").trim();
