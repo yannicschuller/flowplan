@@ -1,4 +1,5 @@
 "use client";
+import { LinkTargetIcon } from "./page-link-icons";
 import { useKeyboardHints } from "@/lib/keyboard-hints";
 import { serverMessage } from "@/lib/i18n-errors";
 import { LOCALE_TAG } from "@/lib/locale-tag";
@@ -589,6 +590,8 @@ export function CommentBody({
         if (safeCommentLink(mark.attrs?.href))
           child = (
             <a href={mark.attrs.href} target="_blank" rel="noopener noreferrer">
+              {/* A page or record: its own icon (#96). */}
+              <LinkTargetIcon href={mark.attrs.href} />
               {child}
             </a>
           );

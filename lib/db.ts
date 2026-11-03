@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 86) return;
+  if (globalDb.flowplanSchema === 87) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1117,7 +1117,14 @@ function migrate(d: DatabaseSync) {
   // cables themselves are elements of the board.
   d.exec(`CREATE TABLE IF NOT EXISTS rack_device_templates(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,name TEXT NOT NULL,device TEXT NOT NULL,fill TEXT,created_by TEXT REFERENCES users(id) ON DELETE SET NULL,created_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS rack_device_templates_workspace ON rack_device_templates(workspace_id);`);
-  globalDb.flowplanSchema = 86;
+  // Schema 87 – what each person folded or unfolded in the sidebar, per
+  // workspace and the same on all their devices (#97, lib/sidebar-state.ts):
+  // a short list of keys (unfolded pages, folded spaces and groups, journal
+  // folders). Gone with the person or the workspace; deleted pages drop out
+  // whenever the list is read or saved.
+  d.exec(`CREATE TABLE IF NOT EXISTS sidebar_state(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,keys TEXT NOT NULL DEFAULT '[]',updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id));
+    CREATE INDEX IF NOT EXISTS sidebar_state_workspace ON sidebar_state(workspace_id);`);
+  globalDb.flowplanSchema = 87;
 }
 // Saved searches (before #86) → collections, keeping their id and order.
 export function migrateSavedSearches(d: DatabaseSync) {

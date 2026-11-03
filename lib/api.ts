@@ -39,6 +39,7 @@ import { journalDate, rollJournal, rollJournals } from "./journal";
 import { journalDayLink, pageCounts, removeEmptyJournalDays } from "./journal-days";
 import { recentVisits, recordPageEdit, setFollowing } from "./page-activity";
 import { propertiesCollapsed, setPropertiesCollapsed } from "./page-view-prefs";
+import { saveSidebarState, sidebarState } from "./sidebar-state";
 import { changeDocTask, dueTaskCount, indexPageTasks, reindexRowTasks, syncDocTasks } from "./doc-tasks";
 import { syncedUsage } from "./synced-blocks";
 import { linkMention, pageGraph, unlinkedMentions } from "./page-graph";
@@ -327,6 +328,9 @@ export function bootstrap(user: Identity, wid?: string) {
     weeklyDigest: weeklyDigestPrefs(user),
     // Own keyboard shortcuts (lib/keymap.ts), only those that differ.
     shortcuts: userShortcuts(user),
+    // What this person folded and unfolded in the sidebar (#97,
+    // lib/sidebar-state.ts); null: nothing yet.
+    sidebar: sidebarState(user, workspace.id),
     // The start page of this workspace (lib/home-layout.ts).
     home: homeLayout(user, workspace.id),
     instance: {
@@ -1364,6 +1368,10 @@ export function command(
         recordPageEdit(user, pid());
         break;
       }
+      // Folded and unfolded in the sidebar (#97).
+      case "sidebar.state":
+        result = saveSidebarState(user, b);
+        break;
       // The bar with tags and properties, collapsed or open (#83).
       case "page.collapseProperties":
         result = setPropertiesCollapsed(user, b);

@@ -3,6 +3,7 @@
 // hint "Ähnliche Einträge gibt es schon" while naming a new page or record
 // (GET /api/related?title=…). Both only show what the person may read
 // (lib/related-pages.ts).
+import { shownPageIcon } from "@/lib/page-link-icons";
 import { useEffect, useState } from "react";
 import { Sparkle, Warning } from "@phosphor-icons/react";
 import { useT } from "./i18n";
@@ -54,7 +55,7 @@ export function RelatedPages({ pageId, rowId, onOpen = go }: { pageId: string; r
         {data.items.map((item) => (
           <li key={`${item.pageId}/${item.rowId || ""}`}>
             <button type="button" className="related-page" onClick={() => onOpen(item.pageId, item.rowId)}>
-              <PageIcon name={item.icon || "file"} />
+              <PageIcon name={shownPageIcon(item.icon, item.kind)} />
               <span className="related-title">{item.title || t("Ohne Titel", "Untitled")}</span>
               {item.pageTitle && <small>{item.pageTitle}</small>}
               <small className="muted">{item.reasons.slice(0, 2).map(reason).join(" · ")}</small>

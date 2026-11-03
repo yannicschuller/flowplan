@@ -892,6 +892,18 @@ CommandPageCollapsePropertiesResult = TypedDict("CommandPageCollapsePropertiesRe
     "collapsed": Required[Optional[bool]],
 }, total=False)
 
+# Remember what you folded or unfolded in the sidebar of a workspace, for yourself on all devices. `changes` maps keys to true (set) or false (remove): `p:<pageId>` a page unfolded in the tree (pages start folded), `s:<spaceId>` a space folded, `g:favorites` / `g:collections` that group folded, `jo:<journalId>:<YYYY or YYYY-MM>` / `jc:…` a journal folder opened / closed by hand. Unknown keys are ignored; keys of deleted pages and spaces, and of pages without sub-pages, drop out. The answer is the stored list (the bootstrap sends it as `sidebar`).
+CommandSidebarState = TypedDict("CommandSidebarState", {
+    "action": Required[Literal["sidebar.state"]],
+    "workspaceId": Required[str],
+    "changes": Required[dict[str, bool]],  # At most 2000 changes
+}, total=False)
+
+CommandSidebarStateResult = TypedDict("CommandSidebarStateResult", {
+    "keys": Required[list[str]],
+    "updatedAt": Required[int],
+}, total=False)
+
 # Add a page to or remove it from the favourites
 CommandFavorite = TypedDict("CommandFavorite", {
     "action": Required[Literal["favorite"]],
@@ -1243,7 +1255,7 @@ CommandHomeSaveResult = TypedDict("CommandHomeSaveResult", {
 }, total=False)
 
 # One action of the interface, as sent by POST /api/command.
-Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
+Command = Union["CommandWorkspaceCreate", "CommandSpaceCreate", "CommandSpaceReorder", "CommandPageCreate", "CommandBlockIds", "CommandPageUpdate", "CommandE2eeAppend", "CommandPageOwner", "CommandPageReview", "CommandPageAliases", "CommandPageProperties", "CommandPagesTag", "CommandTagSave", "CommandCollectionCreate", "CommandCollectionUpdate", "CommandPropertySave", "CommandRowRepeat", "CommandDatabaseSettings", "CommandPageMove", "CommandPageDelete", "CommandPageRestore", "CommandPageDuplicate", "CommandPageFollow", "CommandPageCollapseProperties", "CommandSidebarState", "CommandFavorite", "CommandDatabaseUpdate", "CommandRowCreate", "CommandRowUpdate", "CommandRowDelete", "CommandWhiteboardToRecords", "CommandRowsImport", "CommandCommentCreate", "CommandCommentResolve", "CommandMemberInvite", "CommandCalendarFeed", "CommandCalendarFeedRevoke", "CommandDashboardSave", "CommandNotebookSheetAdd", "CommandWebhookDelete", "CommandInboundSave", "CommandInboundRotate", "CommandInboundDelete", "CommandIssueSyncConnect", "CommandIssueSyncDisconnect", "CommandIssueSyncMap", "CommandIssueSyncUnmap", "CommandCalendarSyncMap", "CommandCalendarSyncUnmap", "CommandCalendarSyncDisconnect", "CommandMeetingNote", "CommandNotificationWeekly", "CommandShortcutsSave", "CommandHomeSave", "CommandOther"]
 
 # ---- Parameters of the operations ----
 
@@ -1359,6 +1371,10 @@ BlockSearchQuery = TypedDict("BlockSearchQuery", {
     "workspace": Required[str],  # Workspace ID
     "q": Required[str],  # Search words
     "exclude": str,  # Leave out this page
+}, total=False)
+
+LinkTargetsQuery = TypedDict("LinkTargetsQuery", {
+    "ids": Required[str],  # Comma-separated `<pageId>` or `<pageId>:<rowId>`
 }, total=False)
 
 SnapshotChangesQuery = TypedDict("SnapshotChangesQuery", {
@@ -1856,6 +1872,10 @@ class FlowplanClient:
     def block_search(self, query: "BlockSearchQuery", headers: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
         """Headings and blocks of documents — For links to a block: headings and blocks of the documents a person may read whose text matches `q` (at least two characters). `Page › Heading` (or `Page#Heading`) lists the headings of the pages whose title matches the first part. A hit without `blockId` has no id yet; `block.ids` (POST /api/command with `pageId`, `index` and `text`) gives it one. Answered with `Cache-Control: no-store`. (GET /api/blocks)"""
         return self._json("GET", "/api/blocks", query=dict(query) if query else None, headers=headers)
+
+    def link_targets(self, query: "LinkTargetsQuery", headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
+        """Icons of linked pages and records — For links in documents: the icon (emoji, `icon:<name>:<colour>`, `/api/files/<id>` or empty for the default) and kind of each page (`<pageId>`) or record (`<pageId>:<rowId>`) the caller may read; others are left out. At most 100 IDs. Answered with `Cache-Control: no-store`. (GET /api/link-targets)"""
+        return self._json("GET", "/api/link-targets", query=dict(query) if query else None, headers=headers)
 
     def page_preview(self, page_id: str, headers: Optional[dict[str, str]] = None) -> dict[str, Any]:
         """Short preview of a page — Answered with `Cache-Control: no-store`. (GET /api/pages/{pageId}/preview)"""

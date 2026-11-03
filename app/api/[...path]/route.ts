@@ -1,3 +1,4 @@
+import { linkTargets } from "@/lib/link-targets";
 import { withRequestLocale } from "@/lib/content-locale";
 import { listPlugins, pluginsForPage, publicPlugin, queryPluginDatabase, registerPlugin } from "@/lib/plugins";
 import { domainAllowed, domainRobots, domainSettings, domainSitemap, verifyDomain } from "@/lib/custom-domains";
@@ -546,6 +547,12 @@ async function handleGET(
         headers: { "Cache-Control": "no-store" },
       });
     }
+    // The icons of link targets (#96): pages and records one may read.
+    if (path[0] === "link-targets" && !path[1])
+      return NextResponse.json(
+        { targets: linkTargets(user, (url.searchParams.get("ids") || "").split(",").filter(Boolean)) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     if (path[0] === "pages" && path[1] && path[2] === "preview")
       return NextResponse.json(pagePreview(user, z.uuid().parse(path[1])), {
         headers: { "Cache-Control": "no-store" },

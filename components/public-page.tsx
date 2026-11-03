@@ -15,7 +15,7 @@ import { SHARE_COOKIE, shareState, withShareCookie } from "@/lib/share-access";
 import { SharePasswordForm } from "./share-password-form";
 import { one } from "@/lib/db";
 import { database, publicRows as rows } from "@/lib/api";
-import { publicPage, publishedHtml, publicFile } from "@/lib/publication";
+import { publicPage, publishedHtml, publicFile, publishedLinkPages } from "@/lib/publication";
 import { renderedTheme } from "@/lib/custom-domains";
 import { publicPluginIds } from "@/lib/plugins";
 import { cleanHtml } from "@/lib/document-server";
@@ -108,6 +108,8 @@ async function renderPublishedPage({
     throw e;
   }
   const { page, root, pages } = context;
+  // Links between the published pages show their icons (#96).
+  const linkPages = publishedLinkPages(token, pages);
   const d = page.kind === "database" ? database(page.id) : null;
   const visible = d?.fields.filter(publicFieldsOf(d.fields));
   // Views are published with their filters, sorting and order when their
@@ -353,6 +355,7 @@ async function renderPublishedPage({
                 </p>
                 {body.trim() && (
                   <ReadOnlyDocument
+                    linkPages={linkPages}
                     html={withPublicEmbeds(publishedHtml(body, token, pages), body, token, pages)}
                   />
                 )}
@@ -499,6 +502,7 @@ async function renderPublishedPage({
             className={`font-${page.font}`}
             captionNumbers={!record && !!page.caption_numbers}
             shareToken={token}
+            linkPages={linkPages}
             title={page.title}
             html={(record ? (value: string) => value : (value: string) => withInkPictures(value, page))(
               shortLinks(
@@ -520,7 +524,7 @@ async function renderPublishedPage({
           <h2>{t("Unterseiten", "Sub-pages")}</h2>
           {children.map((p) => (
             <a key={p.id} href={href(p.id)}>
-              <PageIcon name={p.icon} /> {p.title}
+              <PageIcon name={linkPages.find((l) => l.id === p.id)?.icon || "file"} /> {p.title}
               <span>→</span>
             </a>
           ))}

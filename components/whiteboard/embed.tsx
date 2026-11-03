@@ -10,8 +10,10 @@ import { ArrowSquareOut, PresentationChart } from "@phosphor-icons/react";
 import { WhiteboardEmbed } from "@/lib/document-schema";
 import { WhiteboardStatic, type PageRef } from "./render";
 import type { WhiteboardItem } from "@/lib/whiteboard-model";
+import { PageIcon } from "../ui";
+import { shownPageIcon } from "@/lib/page-link-icons";
 
-type Board = { title: string; items: WhiteboardItem[] };
+type Board = { title: string; icon: string; items: WhiteboardItem[] };
 function decode(state: string): WhiteboardItem[] {
   const doc = new Y.Doc();
   try {
@@ -54,6 +56,7 @@ export function useBoard(pageId: string) {
         if (alive)
           setBoard({
             title: data.page.title,
+            icon: data.page.icon || "",
             items: decode(data.whiteboard.state),
           });
         setError("");
@@ -86,7 +89,8 @@ export function WhiteboardEmbedView({
   return (
     <div className="whiteboard-embed" data-embedded-board={pageId}>
       <div className="whiteboard-embed-head">
-        <PresentationChart size={16} />
+        {/* The board's own icon (#96). */}
+        {board ? <PageIcon name={shownPageIcon(board.icon, "whiteboard")} size={16} /> : <PresentationChart size={16} />}
         <strong>
           {board?.title || (error ? t("Whiteboard", "Whiteboard") : t("Whiteboard wird geladen …", "Loading whiteboard …"))}
         </strong>

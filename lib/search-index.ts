@@ -362,7 +362,8 @@ export function searchWorkspace(
       ...(rowId ? { rowId } : {}),
       ...(key ? { pageTitle: page.title } : {}),
       title: key ? title : page.title,
-      icon: page.icon,
+      // Records their own icon (#96); empty: the client's record symbol.
+      icon: type === "row" && rowId ? one<{ icon: string | null }>("SELECT icon FROM rows WHERE id=?", rowId)?.icon || "" : page.icon,
       space_id: page.space_id,
       kind: type,
       snippet,

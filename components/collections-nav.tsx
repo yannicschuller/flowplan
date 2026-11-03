@@ -2,15 +2,16 @@
 // "Sammlungen" in the sidebar (#86): the person's own collections (in their
 // order: drag them, or "Nach oben"/"Nach unten" in the menu) and, below
 // "Geteilt", those others shared with the workspace. Folding is remembered
-// on this device.
-import { useEffect, useState } from "react";
+// in the account (#97, lib/sidebar-folds.ts: g:collections).
+import { useState } from "react";
 import * as Dropdown from "@radix-ui/react-dropdown-menu";
 import { ArrowDown, ArrowUp, CaretRight, Copy, DotsThree, FunnelSimple, PencilSimple, Plus, ShareNetwork, Trash } from "@phosphor-icons/react";
 import { useT } from "./i18n";
 import { Collapse } from "./motion";
 import type { CollectionInfo } from "@/lib/collections";
 
-const FOLD_KEY = "flowplan:collections-folded";
+// Where this device kept the fold before #97 (taken over once).
+export const LEGACY_COLLECTIONS_FOLD_KEY = "flowplan:collections-folded";
 
 export function CollectionsNav({
   collections,
@@ -21,7 +22,11 @@ export function CollectionsNav({
   onDuplicate,
   onDelete,
   onReorder,
+  folded,
+  onFold,
 }: {
+  folded: boolean;
+  onFold: (folded: boolean) => void;
   collections: CollectionInfo[];
   current: string | null;
   onOpen: (id: string) => void;
@@ -32,19 +37,8 @@ export function CollectionsNav({
   onReorder: (order: string[], moved: CollectionInfo) => void;
 }) {
   const t = useT();
-  const [folded, setFolded] = useState(false),
-    [drag, setDrag] = useState<string | null>(null);
-  useEffect(() => {
-    try {
-      setFolded(localStorage.getItem(FOLD_KEY) === "1");
-    } catch {}
-  }, []);
-  const fold = (next: boolean) => {
-    setFolded(next);
-    try {
-      localStorage.setItem(FOLD_KEY, next ? "1" : "0");
-    } catch {}
-  };
+  const [drag, setDrag] = useState<string | null>(null);
+  const fold = onFold;
   const own = collections.filter((c) => c.mine),
     others = collections.filter((c) => !c.mine);
   const order = collections.map((c) => c.id);

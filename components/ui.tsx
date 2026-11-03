@@ -41,6 +41,7 @@ import {
   Article,
   ClipboardText,
   WarningCircle,
+  Rows,
 } from "@phosphor-icons/react";
 import {
   createContext,
@@ -68,6 +69,8 @@ const icons = {
   notebook: NotePencil,
   journal: Notebook,
   day: CalendarBlank,
+  // Records without an icon of their own (links to them, #96).
+  record: Rows,
 };
 export function PageIcon({
   name,

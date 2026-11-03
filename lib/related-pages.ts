@@ -198,7 +198,8 @@ export function relatedPages(user: Identity, pageId: string, rowId: string | nul
       pageId: entry.pageId,
       ...(entry.rowId ? { rowId: entry.rowId, pageTitle: target.title } : {}),
       title: entry.rowId ? recordTitle(fieldsOf(entry.pageId), cellsOf(entry.rowId)) : target.title,
-      icon: target.icon || "file",
+      // Records their own icon (#96); empty: the client's record symbol.
+      icon: entry.rowId ? one<{ icon: string | null }>("SELECT icon FROM rows WHERE id=?", entry.rowId)?.icon || "" : target.icon || "file",
       kind: entry.rowId ? "row" : target.kind,
       reasons: [...entry.reasons],
       score: Math.round(entry.score * 100) / 100,
