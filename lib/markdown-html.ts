@@ -6,6 +6,7 @@ import { Marked, Renderer, type Token, type Tokens, type TokenizerAndRendererExt
 import type { CalloutType } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { footnoteText } from "./footnotes";
+import { fenceLanguage } from "./code-languages";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -249,6 +250,8 @@ export function markdownToRawHtml(
         const language = (lang || "").trim().split(/\s+/)[0].toLowerCase();
         if (language === "math") return `<div data-math="${escaped(text)}">${escaped(text)}</div>`;
         if (language === "mermaid") return `<div class="mermaid-block" data-mermaid="${escaped(text)}">${escaped(text)}</div>`;
+        // Older ids and aliases ("js", "py") as Shiki's ids (lib/code-languages.ts).
+        if (language) token.lang = fenceLanguage(language);
         const caption = (token as Captioned).flowplanCaption;
         if (caption) return `<figure class="block-figure">${Renderer.prototype.code.call(this, token).trim()}<figcaption>${escaped(caption)}</figcaption></figure>`;
         return false;

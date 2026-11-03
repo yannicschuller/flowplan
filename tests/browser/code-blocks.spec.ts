@@ -1,4 +1,13 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+// The language picker (components/code-language-picker.tsx): a button with
+// the full name, a search in a list below it.
+const languageButton = (scope: Locator) => scope.getByRole("button", { name: /^Code-Sprache: / });
+async function pickLanguage(scope: Locator, query: string) {
+  await languageButton(scope).click();
+  const search = scope.page().getByRole("combobox", { name: "Sprache suchen", exact: true });
+  await search.fill(query);
+  await search.press("Enter");
+}
 async function fixture(page: Page, title: string, kind = "document") {
   const origin = process.env.TEST_BASE_URL || "http://127.0.0.1:3000";
   await page.request.post("/api/auth/demo", { headers: { origin } });
@@ -49,10 +58,13 @@ test("code blocks select languages, preserve literal input, indent, wrap and cop
   await page.evaluate((text) => navigator.clipboard.writeText(text), source);
   await page.keyboard.press("ControlOrMeta+V");
   await expect(code).toHaveText(source);
-  await block
-    .getByLabel("Code-Sprache", { exact: true })
-    .selectOption("javascript");
-  await expect(code.locator(".hljs-keyword").first()).toHaveText("const");
+  // Pasted code in a plain block: a suggestion, applied only on a click.
+  const suggestion = block.getByRole("button", { name: "Sieht aus wie JavaScript – übernehmen?", exact: true });
+  await expect(suggestion).toBeVisible();
+  await expect(languageButton(block)).toHaveAccessibleName("Code-Sprache: Klartext");
+  await suggestion.click();
+  await expect(suggestion).toHaveCount(0);
+  await expect(code.locator(".tok-keyword").first()).toHaveText("const");
   await code.click();
   await page.keyboard.press("End");
   await page.keyboard.type(" // /path @user");
@@ -74,22 +86,16 @@ test("code blocks select languages, preserve literal input, indent, wrap and cop
     .poll(async () => (await f.read()).html)
     .toContain("language-javascript");
   await expect.poll(async () => (await f.read()).html).toContain("/path @user");
-  expect((await f.read()).html).not.toContain("hljs-");
+  expect((await f.read()).html).not.toContain("tok-");
   expect((await f.read()).html).not.toContain("<script>");
   await page.reload();
   await expect(code).toHaveText(text!);
-  await expect(block.getByLabel("Code-Sprache", { exact: true })).toHaveValue(
-    "javascript",
-  );
+  await expect(languageButton(block)).toHaveAccessibleName("Code-Sprache: JavaScript");
   await expect(block.locator("pre")).toHaveAttribute("data-code-wrap", "true");
-  await block
-    .getByLabel("Code-Sprache", { exact: true })
-    .selectOption("plaintext");
-  await expect(code.locator('[class*="hljs-"]')).toHaveCount(0);
-  await block
-    .getByLabel("Code-Sprache", { exact: true })
-    .selectOption("typescript");
-  await expect(code.locator(".hljs-keyword").first()).toBeVisible();
+  await pickLanguage(block, "plaintext");
+  await expect(code.locator('[class*="tok-"]')).toHaveCount(0);
+  await pickLanguage(block, "typescript");
+  await expect(code.locator(".tok-keyword").first()).toBeVisible();
   await page.screenshot({
     path: `test-results/${info.project.name}-code-editor.png`,
     fullPage: true,
@@ -113,9 +119,7 @@ test("code blocks select languages, preserve literal input, indent, wrap and cop
     patch: { locked: true },
   });
   await page.reload();
-  await expect(
-    block.getByLabel("Code-Sprache", { exact: true }),
-  ).toBeDisabled();
+  await expect(languageButton(block)).toBeDisabled();
   await expect(
     block.getByRole("button", { name: "Zeilenumbruch", exact: true }),
   ).toBeDisabled();
@@ -167,14 +171,12 @@ test("record code appears highlighted in feeds and public pages and remains edit
     name: "Datenbank-Feed",
     exact: true,
   });
-  await expect(feed.locator(".hljs-keyword").first()).toHaveText("def");
+  await expect(feed.locator(".tok-keyword").first()).toHaveText("def");
   await expect(feed.locator(".code-block-view")).toHaveCount(1);
   await feed.getByRole("button", { name: "Code example", exact: true }).click();
   const entry = page.getByRole("dialog", { name: "Eintrag", exact: true });
-  await expect(entry.getByLabel("Code-Sprache", { exact: true })).toHaveValue(
-    "python",
-  );
-  await entry.getByLabel("Code-Sprache", { exact: true }).selectOption("ruby");
+  await expect(languageButton(entry)).toHaveAccessibleName("Code-Sprache: Python");
+  await pickLanguage(entry, "ruby");
   await entry.locator("pre code").fill("");
   await entry.locator("pre code").click();
   await page.keyboard.insertText("def greet(name)");
@@ -182,12 +184,12 @@ test("record code appears highlighted in feeds and public pages and remains edit
   await page.keyboard.insertText('  "Hello #{name}"');
   await page.keyboard.press("Enter");
   await page.keyboard.insertText("end");
-  await expect(entry.locator(".hljs-keyword").last()).toHaveText("end");
+  await expect(entry.locator(".tok-keyword").last()).toHaveText("end");
   await entry.getByRole("button", { name: "Schließen", exact: true }).click();
   await expect
     .poll(async () => (await readRow()).html)
     .toContain("language-ruby");
-  await expect(feed.locator(".hljs-keyword").last()).toHaveText("end", {
+  await expect(feed.locator(".tok-keyword").last()).toHaveText("end", {
     timeout: 12000,
   });
   const link = await f.command({
@@ -206,7 +208,7 @@ test("record code appears highlighted in feeds and public pages and remains edit
       `${f.origin}/share/${link.token}/${f.host.id}?row=${row.id}`,
     );
     // Public rows use their explicit record URL parameter.
-    await expect(guest.locator(".hljs-keyword").first()).toHaveText("def");
+    await expect(guest.locator(".tok-keyword").first()).toHaveText("def");
     await expect(guest.locator(".code-block-view")).toHaveCount(1);
     await guest
       .getByRole("button", { name: "Inhalt bearbeiten", exact: true })
@@ -214,24 +216,22 @@ test("record code appears highlighted in feeds and public pages and remains edit
     const editor = guest.getByLabel("Geteilten Inhalt bearbeiten", {
       exact: true,
     });
-    await editor
-      .getByLabel("Code-Sprache", { exact: true })
-      .selectOption("javascript");
+    await pickLanguage(editor, "javascript");
     await editor.locator("pre code").fill("");
     await editor.locator("pre code").click();
     await guest.keyboard.insertText(
       'const value = "<img src=x onerror=alert(1)>";',
     );
-    await expect(editor.locator(".hljs-keyword").first()).toHaveText("const");
+    await expect(editor.locator(".tok-keyword").first()).toHaveText("const");
     await guest
       .getByRole("button", { name: "Änderungen speichern", exact: true })
       .click();
     await expect(
       guest.getByText("Änderungen gespeichert", { exact: true }),
     ).toBeVisible();
-    await expect(guest.locator(".hljs-keyword").first()).toHaveText("const");
+    await expect(guest.locator(".tok-keyword").first()).toHaveText("const");
     await expect(guest.locator(".code-block-view img")).toHaveCount(0);
-    expect((await readRow()).html).not.toContain("hljs-");
+    expect((await readRow()).html).not.toContain("tok-");
     expect((await readRow()).html).toContain('data-code-wrap="true"');
   } finally {
     await visitor.close();
