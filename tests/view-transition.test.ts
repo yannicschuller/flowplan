@@ -50,7 +50,7 @@ class FakeElement {
 }
 Object.assign(globalThis, { HTMLElement: FakeElement, SVGElement: class {} });
 
-const { transitionView, withoutViewTransition, RAPID_MS, viewTransitionRunning } = await import("../lib/view-transition");
+const { transitionView, withoutViewTransition, holdViewTransitions, RAPID_MS, viewTransitionRunning } = await import("../lib/view-transition");
 const later = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // Each test starts after the rapid window of the previous one.
 beforeEach(async () => {
@@ -147,4 +147,30 @@ test("a tap or a key during a transition ends it", async () => {
   await later(0);
   assert.equal(viewTransitionRunning(), false);
   assert.equal(value, 1);
+});
+
+test("while the phone's drawer holds them, changes come without a transition", async () => {
+  supportTransitions();
+  let value = 0;
+  // A transition that runs when the drawer starts to open ends at once.
+  transitionView(() => value++, { kind: "page" });
+  runUpdate(transitions[0]);
+  const release = holdViewTransitions();
+  assert.equal(transitions[0].skipped, true);
+  await later(RAPID_MS + 20);
+  // Einstellungen in the open drawer: the screen changes at once.
+  transitionView(() => value++, { kind: "page" });
+  assert.equal(value, 2);
+  assert.equal(transitions.length, 1);
+  // Two holds (opened again while it still slid out): both must go.
+  const again = holdViewTransitions();
+  release();
+  release();
+  transitionView(() => value++, { kind: "page" });
+  assert.equal(transitions.length, 1, "a release counts once");
+  again();
+  await later(RAPID_MS + 20);
+  transitionView(() => value++, { kind: "page" });
+  assert.equal(transitions.length, 2, "transitions are back once the drawer has slid out");
+  assert.equal(value, 3);
 });

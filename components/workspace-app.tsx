@@ -15,7 +15,7 @@ import { localeTag, translate, type Locale } from "@/lib/i18n";
 import { BrandMark } from "./brand-mark";
 import { CoverFrame } from "./cover-frame";
 import { clearPlaceholders } from "./image-placeholder";
-import { transitionView, withoutViewTransition, type Morph } from "@/lib/view-transition";
+import { holdViewTransitions, transitionView, withoutViewTransition, type Morph } from "@/lib/view-transition";
 import { Select } from "./select";
 import { CommentHub } from "./comment-hub";
 import { WorkspaceIcon } from "./workspace-icon";
@@ -984,6 +984,17 @@ export default function WorkspaceApp({
   );
   // The navigation drawer on phones closes on back like a dialog.
   useEffect(() => (mobile ? addBackCloser(() => setMobile(false)) : undefined), [mobile]);
+  // While it is open, and until it has slid out (0.18 s, app/globals.css),
+  // screens and pages change without a view transition: on iOS one that
+  // captured the page while the drawer slid out of it (Einstellungen in the
+  // drawer) left WebKit with a stale picture of the drawer, and the next
+  // "Navigation" dimmed the page with the drawer still off screen. The
+  // drawer's own slide is the animation (lib/view-transition.ts).
+  useEffect(() => {
+    if (!mobile) return;
+    const release = holdViewTransitions();
+    return () => void window.setTimeout(release, 250);
+  }, [mobile]);
   // It exists only in the phone layout (≤ 767 px, app/globals.css): when the
   // window gets wider while it is open (a foldable such as iPhone Duo opens,
   // the phone turns, a window grows) the sidebar takes over, and the drawer

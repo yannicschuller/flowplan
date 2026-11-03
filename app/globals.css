@@ -5710,6 +5710,9 @@ input:is([type="date"], [type="datetime-local"], [type="time"])::-webkit-date-an
        drawer – the page stays dimmed with nothing beside it. */
     will-change: transform;
     backface-visibility: hidden;
+    /* Closed, nothing of it peeks in at the left edge (the profile row is a
+       few pixels wider than the drawer). */
+    overflow-x: clip;
   }
   .nav-open .sidebar {
     transform: translate3d(0, 0, 0);

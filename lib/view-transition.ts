@@ -63,6 +63,24 @@ export function withoutViewTransition<T>(fn: () => T): T {
   }
 }
 
+/** Keeps transitions off until the returned release is called (once; more
+ *  calls do nothing). On phones the navigation drawer holds them while it is
+ *  open and while it slides (components/workspace-app.tsx): WebKit (iOS, the
+ *  app's web view) loses track of the drawer's own sliding transform when a
+ *  view transition captures the page meanwhile – the next "Navigation"
+ *  showed the dimmed page with the drawer still painted off screen. A
+ *  transition that is running when the hold begins ends at once. */
+export function holdViewTransitions(): () => void {
+  state.off++;
+  state.active?.skipTransition();
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    state.off--;
+  };
+}
+
 /** Whether a transition is animating. */
 export function viewTransitionRunning() {
   return !!state.active;
