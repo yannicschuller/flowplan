@@ -1,0 +1,183 @@
+/* Instance move: Administration → Speicher & Sicherung → Instanz umziehen
+   (components/settings/admin/instance-move.tsx) and the banner of a
+   read-only or moved instance (components/move-banner.tsx). */
+.move-form,
+.move-step-up {
+  display: grid;
+  gap: 6px;
+}
+/* Labels sit right above their field (the global label adds a column
+   layout and a margin for the sign-in forms). */
+.move-form label,
+.move-step-up label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.move-form input + label {
+  margin-top: 6px;
+}
+.move-form input[type="url"],
+.move-form input[type="password"],
+.move-step-up input {
+  width: 100%;
+  max-width: 480px;
+  min-width: 0;
+}
+.move-form small {
+  color: var(--muted);
+}
+.move-form .move-confirm {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 400;
+}
+.move-form .move-confirm input {
+  margin-top: 2px;
+}
+.move-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.move-step-up .move-inline input {
+  flex: 1 1 200px;
+}
+.move-fresh {
+  display: grid;
+  gap: 8px;
+}
+.move-fresh small {
+  color: var(--muted);
+}
+.move-fresh small code,
+.move-facts code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.move-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.move-facts dt {
+  color: var(--muted);
+}
+.move-facts dd {
+  margin: 0;
+}
+.move-progress {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.move-progress-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+.move-progress-head span,
+.move-progress small {
+  color: var(--muted);
+}
+.move-progress .admin-usage-bar {
+  width: 100%;
+  height: 8px;
+}
+.move-summary {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.move-checks {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.move-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.move-check .status-badge {
+  flex: none;
+  min-width: 64px;
+  justify-content: center;
+}
+.move-check > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.move-check.error {
+  border-color: #e3b4b5;
+}
+.move-check.warn {
+  border-color: #ead7a8;
+}
+[data-theme="dark"] .move-check.error {
+  border-color: #6b3436;
+}
+[data-theme="dark"] .move-check.warn {
+  border-color: #5a4720;
+}
+/* The banner of a read-only or moved instance: not to be hidden. */
+.move-banner {
+  position: fixed;
+  z-index: 61;
+  top: calc(10px + var(--safe-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* left: 50% would leave it only half the width to wrap in. */
+  width: max-content;
+  max-width: min(680px, calc(100vw - 32px));
+  padding: 8px 14px;
+  border: 1px solid #ead7a8;
+  border-radius: var(--radius);
+  background: #fbf1dc;
+  color: #4d3f17;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.move-banner a {
+  color: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+[data-theme="dark"] .move-banner {
+  border-color: #5a4720;
+  background: #3a2c14;
+  color: #f2d9a8;
+}
+.move-banner ~ .maintenance-banner {
+  top: calc(64px + var(--safe-top, 0px));
+}
+@media (max-width: 640px) {
+  .move-check {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+@media print {
+  .move-banner {
+    display: none;
+  }
+}

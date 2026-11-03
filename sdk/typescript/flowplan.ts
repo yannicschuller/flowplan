@@ -839,6 +839,10 @@ export type SiteInfo = {
   signupOpen: boolean;
   demo: boolean;
   sso: boolean;
+  /** After an instance move: the new address (apps can point there) */
+  movedTo?: string | null;
+  /** The instance is read-only during or after a move; changes are refused with 423 */
+  readOnly?: boolean;
 };
 
 /** Depends on the action: `{ ok: true }` for most changes, `{ id }` for everything created. */
@@ -2728,6 +2732,12 @@ export class FlowplanClient {
       /** Unix time in ms */
       end?: number;
     } | null;
+    /** Instance move: read-only (changes are refused with 423) and, once moved, the new address */
+    move?: {
+      readOnly?: boolean;
+      movedTo?: string | null;
+      redirect?: boolean;
+    };
   }> {
     return this.json<{
     notice: {
@@ -2737,6 +2747,12 @@ export class FlowplanClient {
       /** Unix time in ms */
       end?: number;
     } | null;
+    /** Instance move: read-only (changes are refused with 423) and, once moved, the new address */
+    move?: {
+      readOnly?: boolean;
+      movedTo?: string | null;
+      redirect?: boolean;
+    };
   }>("GET", `/api/maintenance`, {}, options);
   }
 

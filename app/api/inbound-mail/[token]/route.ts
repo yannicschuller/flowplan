@@ -6,7 +6,7 @@
 // providers do not retry; 429/413 ask them to try again later.
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { HttpError } from "@/lib/auth";
+import { HttpError, refuseWhileReadOnly } from "@/lib/auth";
 import {
   INBOUND_REQUEST_BYTES,
   inboundAddressByToken,
@@ -40,6 +40,8 @@ async function limitedBody(req: Request) {
 
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
+    // Not during an instance move (lib/instance-read-only.ts): the sender retries.
+    refuseWhileReadOnly(req);
     const { token } = await params;
     const address = inboundAddressByToken(token);
     if (!address) throw new HttpError(404, "E-Mail-Eingang nicht gefunden.");

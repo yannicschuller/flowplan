@@ -5,6 +5,42 @@ import { PAGE_LOCALE } from "./locale-tag";
 import { securityRules } from "./security-kinds";
 
 const exact: Record<string, string> = {
+  // Instance move (lib/instance-move.ts, lib/instance-move-pull.ts, lib/instance-read-only.ts).
+  "Diese Instanz ist wegen eines Umzugs schreibgeschützt. Änderungen sind erst auf der neuen Instanz wieder möglich.": "This instance is read-only because it is moving. Changes are possible again on the new instance.",
+  "Ungültige Adresse der Quelle.": "Invalid address of the source.",
+  "Die Adresse der Quelle muss mit https:// oder http:// beginnen.": "The source's address must start with https:// or http://.",
+  "Die Adresse der Quelle muss mit https:// beginnen.": "The source's address must start with https://.",
+  "Zeitüberschreitung bei der Quelle.": "The source timed out.",
+  "Antwort der Quelle zu groß.": "The source's answer is too large.",
+  "Die Quelle antwortet nicht wie eine Flowplan-Instanz.": "The source does not answer like a Flowplan instance.",
+  "Die Datei hat sich an der Quelle geändert.": "The file has changed at the source.",
+  "Die Datei ist größer als angekündigt.": "The file is larger than announced.",
+  "Prüfsumme stimmt nicht – die Datei wird neu geladen.": "Checksum does not match – the file is downloaded again.",
+  "Die Quelle spricht ein anderes Umzugsformat – bitte beide Instanzen auf dieselbe Version bringen.": "The source speaks another move format – please bring both instances to the same version.",
+  "Die Quelle nennt eine ungültige Datei.": "The source lists an invalid file.",
+  "Die Datenbank der Quelle fehlt noch.": "The source's database is still missing.",
+  "Die übertragene Datenbank ist beschädigt.": "The transferred database is damaged.",
+  "Die übertragene Datenbank ist keine gültige Flowplan-Datenbank.": "The transferred database is not a valid Flowplan database.",
+  "Es gibt kein Umzugstoken.": "There is no move token.",
+  "Diese Instanz ist noch nicht umgezogen.": "This instance has not moved yet.",
+  "Zu viele ungültige Umzugsanfragen. Bitte in 15 Minuten erneut versuchen.": "Too many invalid move requests. Please try again in 15 minutes.",
+  "Zu viele Anfragen in kurzer Zeit. Bitte später erneut versuchen.": "Too many requests in a short time. Please try again later.",
+  "Ungültiges oder abgelaufenes Umzugstoken.": "Invalid or expired move token.",
+  "Ungültige Adresse der neuen Instanz.": "Invalid address of the new instance.",
+  "Nur Bereiche der Form bytes=<start>- sind möglich.": "Only ranges of the form bytes=<start>- are possible.",
+  "Interne Adressen sind nur mit FLOWPLAN_MOVE_ALLOW_PRIVATE=true erlaubt.": "Internal addresses are only allowed with FLOWPLAN_MOVE_ALLOW_PRIVATE=true.",
+  "Die Übertragung läuft bereits.": "The transfer is already running.",
+  "Das ist kein Umzugstoken (es beginnt mit fpmove_).": "This is not a move token (it starts with fpmove_).",
+  "Diese Instanz hat schon Inhalte. Bitte bestätige, dass alles ersetzt wird.": "This instance already has content. Please confirm that everything is replaced.",
+  "Diese Instanz ist selbst Quelle eines Umzugs.": "This instance is itself the source of a move.",
+  "Das ist das Umzugstoken dieser Instanz – es gehört auf die neue Instanz.": "This is the move token of this instance – it belongs on the new instance.",
+  "Es läuft kein Umzug.": "No move is in progress.",
+  "Zuerst muss die erste Kopie fertig sein.": "The first copy must be complete first.",
+  "Zuerst den letzten Stand holen (Quelle schreibschützen).": "Fetch the last state first (make the source read-only).",
+  "Im Demo-Modus nicht verfügbar.": "Not available in demo mode.",
+  "E-Mail-Adresse oder Passwort stimmt nicht.": "E-mail address or password is wrong.",
+  "Bitte melde dich ab und erneut an, um den Umzug vorzubereiten (Anmeldung höchstens 15 Minuten alt).": "Please sign out and in again to prepare the move (sign-in at most 15 minutes old).",
+  "Dieser Datenbankstand ist nicht mehr vorhanden – bitte die Übertragung neu starten.": "This database snapshot no longer exists – please restart the transfer.",
   // Contacts databases, LDAP import, vCard, CardDAV (lib/contacts*.ts, lib/carddav.ts).
   "Das ist keine Kontakte-Datenbank.": "This is not a contacts database.",
   "Diese Eigenschaft kommt aus dem LDAP-Verzeichnis und kann nur dort geändert werden.": "This property comes from the LDAP directory and can only be changed there.",
@@ -1034,6 +1070,10 @@ const exact: Record<string, string> = {
   "Seiten verschlüsselter Bereiche haben keine Tags und Eigenschaften.": "Pages of encrypted spaces have no tags or properties.",
 };
 const patterns: [RegExp, string][] = [
+  // Instance move (lib/instance-read-only.ts, lib/instance-move-pull.ts).
+  [/^Diese Instanz ist umgezogen nach (.+)\. Änderungen sind nur noch dort möglich\.$/, "This instance has moved to $1. Changes are only possible there."],
+  [/^Die Quelle ist nicht erreichbar: (.+)$/s, "The source cannot be reached: $1"],
+  [/^Die Quelle antwortet mit (\d+)\.$/, "The source answers with $1."],
   [/^(.+): Diese Eigenschaft wird automatisch gesetzt\.$/, "$1: this property is set automatically."],
   [/^(.+): Höchstens 2000 Zeichen\.$/, "$1: at most 2000 characters."],
   [/^(.+): Mitglied fehlt\.$/, "$1: member missing."],

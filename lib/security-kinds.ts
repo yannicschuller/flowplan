@@ -37,6 +37,8 @@ export const securityKinds = {
   "blocked.content": { severity: "warn", de: "Gefährlicher Inhalt abgewiesen", en: "Dangerous content refused" },
   "security.block": { severity: "warn", de: "Adresse gesperrt", en: "Address blocked" },
   "security.unblock": { severity: "info", de: "Sperre aufgehoben", en: "Block lifted" },
+  "instance.move": { severity: "critical", de: "Instanzumzug", en: "Instance move" },
+  "instance.move_refused": { severity: "warn", de: "Umzugstoken abgewiesen", en: "Move token refused" },
   "security.blocked_request": { severity: "warn", de: "Anfrage einer gesperrten Adresse", en: "Request from a blocked address" },
 } as const satisfies Record<string, Kind>;
 export type SecurityKind = keyof typeof securityKinds;
