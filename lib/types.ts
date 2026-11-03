@@ -268,6 +268,9 @@ export type PageCounts = {
 export type Bootstrap = {
   user: Identity;
   localAccount?: boolean;
+  // The local account still has a password; an SSO identity is connected (#101).
+  hasPassword?: boolean;
+  ssoLinked?: boolean;
   // Signs in with the LDAP password (two-factor settings apply).
   ldapAccount?: boolean;
   workspaces: Workspace[];

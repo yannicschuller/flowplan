@@ -11,6 +11,7 @@ import { markdownSource } from "./markdown";
 import { markdownToHtml } from "./markdown-import";
 import { legalLinks } from "./legal-links";
 import { deleteAccount, deleteOwnAccount, deletionPlan, ownDeletionPlan, setUserDisabled } from "./account-deletion";
+import { mergeAccounts, mergePreview } from "./account-merge";
 import { confirmAddress } from "./local-auth";
 import { assertMayCreateWorkspace, effectiveUserLimits, ownedWorkspaces, setUserLimits, userBytes, userStorageCheckpoint } from "./user-limits";
 import { fixedLanguage, setFixedLanguage } from "./user-locale";
@@ -293,6 +294,10 @@ export function bootstrap(user: Identity, wid?: string) {
     user,
     // Signs in with e-mail and password (and passkeys) rather than SSO.
     localAccount: isLocalAccount(user.id),
+    // Sign-in methods (#101): a local account may have removed its
+    // password; whether an SSO identity is connected.
+    hasPassword: !!one("SELECT 1 FROM local_accounts WHERE user_id=? AND password_hash<>''", user.id),
+    ssoLinked: !!one("SELECT 1 FROM user_identities WHERE user_id=?", user.id),
     ldapAccount: isLdapAccount(user.id),
     workspaces,
     workspace,
@@ -629,6 +634,7 @@ const GIT_EXPORT_ENDS = new Set([
   "member.guest",
   "account.delete",
   "admin.deleteUser",
+  "admin.mergeUsers",
 ]);
 export function command(
   user: Identity,
@@ -761,6 +767,19 @@ export function command(
         requireAdmin(user);
         result = deleteAccount(user, z.uuid().parse(b.userId));
         break;
+      // Two accounts of one person (#101, lib/account-merge.ts): the
+      // preview, then the merge in this transaction.
+      case "admin.mergePlan":
+        requireAdmin(user);
+        result = mergePreview(user, z.uuid().parse(b.sourceId), z.uuid().parse(b.targetId));
+        break;
+      case "admin.mergeUsers": {
+        requireAdmin(user);
+        const merged = mergeAccounts(user, z.uuid().parse(b.sourceId), z.uuid().parse(b.targetId));
+        afterCommit.push(...merged.publish);
+        result = merged.preview;
+        break;
+      }
       case "admin.confirmEmail":
         requireAdmin(user);
         confirmAddress(z.uuid().parse(b.userId));

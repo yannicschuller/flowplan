@@ -8,6 +8,7 @@ import { z } from "zod";
 import { all, audit, one, run } from "./db";
 import { HttpError } from "./auth";
 import { localLoginEnabled } from "./local-auth";
+import { ssoOnlyAccount } from "./identities";
 import { purgePages, purgeWorkspace } from "./workspace-lifecycle";
 import type { Identity, Page } from "./types";
 
@@ -82,6 +83,9 @@ const PERSONAL = [
   "scim_users",
   "scim_group_members",
   "ldap_accounts",
+  // SSO identities (#101): a shell left behind never signs in again.
+  "user_identities",
+  "oidc_pending_links",
 ];
 
 // Disabling an account (Administration → Users, SCIM "active": false, the
@@ -192,8 +196,10 @@ export function ownDeletionPlan(user: Identity): OwnPlan {
   };
 }
 
+// Only an account that still has a password (#101: it can be removed once
+// SSO is connected) and may use it (OIDC_LINKED_SSO_ONLY).
 export const confirmsWithPassword = (userId: string) =>
-  localLoginEnabled() && !!one("SELECT 1 FROM local_accounts WHERE user_id=?", userId);
+  localLoginEnabled() && !!one("SELECT 1 FROM local_accounts WHERE user_id=? AND password_hash<>''", userId) && !ssoOnlyAccount(userId);
 
 // The person deletes their own account (command "account.delete"). The
 // confirmation is the account's e-mail address (or name without one); the

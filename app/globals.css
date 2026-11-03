@@ -30803,3 +30803,158 @@ label.ws-search input {
   background: var(--hover);
   font-size: 13px;
 }
+/* ---------- Sign-in methods, connecting SSO, merging accounts (#101,
+   components/sign-in-methods.tsx, components/link-account.tsx,
+   components/settings/admin/users.tsx) ---------- */
+.sign-in-note {
+  margin: 0;
+}
+.identity-list li span {
+  overflow-wrap: anywhere;
+}
+.step-up-form {
+  padding: 0;
+  background: transparent;
+}
+.step-up-form > p {
+  margin: 0;
+}
+.step-up-confirm {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.step-up-confirm legend {
+  padding: 0 4px;
+  color: var(--secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.step-up-confirm p {
+  margin: 0;
+}
+.step-up-confirm .text-button {
+  justify-self: start;
+}
+.link-account {
+  display: grid;
+  gap: 12px;
+}
+.link-account h1 {
+  margin: 0;
+  line-height: 1.3;
+}
+.link-account p {
+  margin: 0;
+}
+.link-account-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+.link-account-other {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+.merge-accounts {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.merge-accounts > * {
+  min-width: 0;
+}
+.merge-accounts p {
+  margin: 0;
+}
+.merge-accounts .modal-actions {
+  flex-wrap: wrap;
+}
+.merge-accounts .admin-search {
+  width: 100%;
+}
+.merge-candidates {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.merge-candidate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: inherit;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+.merge-candidate:hover,
+.merge-candidate:focus-visible {
+  background: var(--hover);
+}
+.merge-candidate-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.merge-candidate small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.merge-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.merge-pair > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.merge-pair > div:first-child {
+  border-color: color-mix(in srgb, var(--signal) 45%, var(--border));
+}
+.merge-pair small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.merge-summary,
+.merge-notes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-inline-start: 20px;
+}
+.merge-notes {
+  color: var(--secondary);
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .merge-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .merge-pair .icon-button {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+}

@@ -27,6 +27,7 @@ import { all, audit, id, one, run, transaction } from "./db";
 import { appUrl } from "./auth";
 import { lastAdmin, setUserDisabled } from "./account-deletion";
 import { reapplySsoUser } from "./sso-mappings";
+import { identityOwner } from "./identities";
 import {
   ENTERPRISE_SCHEMA,
   GROUP_SCHEMA,
@@ -129,8 +130,10 @@ export type ScimOverview = ReturnType<typeof scimOverview>;
 // provider provisioned over SCIM (subject "scim:…") takes over the OIDC
 // subject when its externalId is the provider's "sub", or – with a verified
 // address – when its e-mail matches. Only an unambiguous match counts.
+// The claimed account also gets the identity (user_identities, #101).
 export function claimProvisionedAccount(subject: string, sub: string, email: string, emailVerified: boolean) {
-  if (one("SELECT 1 FROM users WHERE subject=?", subject)) return;
+  const issuer = subject.slice(0, subject.length - sub.length - 1);
+  if (identityOwner(issuer, sub)) return;
   const candidates = all<{ id: string }>(
     `SELECT u.id FROM scim_users s JOIN users u ON u.id=s.user_id WHERE u.subject LIKE 'scim:%'
        AND (s.external_id=? OR (?=1 AND u.email<>'' AND lower(u.email)=lower(?)))`,
@@ -138,7 +141,17 @@ export function claimProvisionedAccount(subject: string, sub: string, email: str
     emailVerified ? 1 : 0,
     email,
   );
-  if (candidates.length === 1) run("UPDATE users SET subject=? WHERE id=?", subject, candidates[0].id);
+  if (candidates.length !== 1) return;
+  run("UPDATE users SET subject=? WHERE id=?", subject, candidates[0].id);
+  run(
+    "INSERT OR IGNORE INTO user_identities(id,user_id,provider,issuer,subject,email,created_at) VALUES(?,?,'oidc',?,?,?,?)",
+    id(),
+    candidates[0].id,
+    issuer,
+    sub,
+    email,
+    Date.now(),
+  );
 }
 
 // ---- Resources ----

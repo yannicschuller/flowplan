@@ -29,7 +29,24 @@ import { command } from "@/lib/api";
 import { confirmsWithPassword, deleteOwnAccount } from "@/lib/account-deletion";
 import { sweepSpaceGitCopies } from "@/lib/space-git-export";
 import { directoryPasswordLogin } from "@/lib/ldap-auth";
-import { claimProvisionedAccount } from "@/lib/scim";
+import type { User } from "@/lib/types";
+import {
+  PENDING_LINK_SECONDS,
+  cancelPending,
+  completePendingLink,
+  linkFlowOwner,
+  linkFromSettings,
+  provePendingCode,
+  provePendingPasskey,
+  provePendingPassword,
+  requirePending,
+  resolveOidcSignIn,
+  separateFromPending,
+  startPendingLink,
+  type OidcProfile,
+} from "@/lib/oidc-link";
+import { refuseSsoOnly, removeIdentity, removePassword, signInOverview } from "@/lib/identities";
+import { confirmStep, sessionStartedAt, stepUpMethods } from "@/lib/step-up";
 export const runtime = "nodejs";
 import { oidcConfig as config, oidcFailure } from "@/lib/oidc";
 import {
@@ -50,6 +67,8 @@ import {
   localGroups,
   resendVerification,
   isLocalAccount,
+  passkeyConfirmOptions,
+  setNewPassword,
 } from "@/lib/local-auth";
 import {
   PENDING_MAX_AGE,
@@ -115,6 +134,30 @@ async function signIn(userId: string, groups: string[], remember = false) {
   // checked again after SESSION_GROUPS_HOURS.
   await issueSession(userId, groups, undefined, { remember, sso: !isLocalAccount(userId) });
 }
+// The end of every SSO sign-in (also after connecting an existing account).
+async function finishSsoSignIn(userId: string, sso: OidcProfile, remember: boolean) {
+  const local = isLocalAccount(userId);
+  const user = one<User & { email_verified: number }>("SELECT * FROM users WHERE id=?", userId);
+  if (!user || user.disabled) throw new HttpError(403, "Dieses Konto ist deaktiviert.");
+  // An account with e-mail and password keeps its picture and its own
+  // confirmation of the address.
+  if (!local) {
+    await syncAvatar(userId, sso.picture);
+    // Whether the provider vouches for the address: decides whether
+    // invitations and shared pages for it reach this account.
+    run("UPDATE users SET email_verified=? WHERE id=?", sso.emailVerified ? 1 : 0, userId);
+  }
+  acceptInvites(user, local ? !!user.email_verified : sso.emailVerified);
+  // Workspaces and groups mapped to the person's SSO groups, before a
+  // personal workspace would be created for someone without one.
+  syncSsoMemberships(userId, sso.groups);
+  ensureWorkspace(userId);
+  // A linked account with e-mail and password keeps its admin flag.
+  const groups = [...new Set([...sso.groups, ...localGroups(userId)])];
+  await issueSession(userId, groups, undefined, { remember, sso: true });
+}
+// A first SSO sign-in waiting to be connected to an existing account.
+const LINK_COOKIE = "flowplan_link";
 // "Stay signed in on this device" from the sign-in form.
 const wantsRemember = (input: unknown) => !!input && typeof input === "object" && (input as { remember?: unknown }).remember === true;
 import { clientAddress } from "@/lib/client-address";
@@ -228,6 +271,8 @@ async function handleGET(
         expires: number;
         return_to: string | null;
         remember: number;
+        link_user_id: string | null;
+        link_session: string | null;
       }>("SELECT * FROM oidc_flows WHERE id=?", hash(flow));
       run("DELETE FROM oidc_flows WHERE id=?", hash(flow));
       if (!f || f.expires < Date.now())
@@ -254,28 +299,46 @@ async function handleGET(
         profile = { ...profile, ...info };
       }
       const groups = extractGroups(profile);
+      const sso: OidcProfile = {
+        issuer: String(claims.iss),
+        subject: claims.sub,
+        email: String(profile.email || ""),
+        emailVerified: profile.email_verified === true,
+        name: String(profile.name || profile.preferred_username || "Mitglied"),
+        picture: profile.picture,
+        groups,
+      };
+      const locale = await requestLocale();
+      // "Connect SSO" from the account settings (#101): only for the account
+      // and the session that started it.
+      if (f.link_user_id) {
+        const back = (result: string) => NextResponse.redirect(new URL(`/?ssoLink=${encodeURIComponent(result)}#settings/account/sign-in-methods`, appUrl()));
+        const me = linkFlowOwner(f, jar.get(cookieName)?.value);
+        if (!me) return back(translate(locale)("Die Verbindung ist abgelaufen. Bitte noch einmal „SSO verbinden“ wählen.", "The connection has expired. Please choose “Connect SSO” again."));
+        // An identity that may not sign in here is not connected either.
+        if (process.env.OIDC_ALLOWED_GROUP && !groups.includes(process.env.OIDC_ALLOWED_GROUP)) return back("Zugriff für diese Gruppe nicht erlaubt.");
+        try {
+          linkFromSettings(me, sso, locale);
+        } catch (e) {
+          if (e instanceof HttpError) return back(e.message);
+          throw e;
+        }
+        return back("ok");
+      }
       if (
         process.env.OIDC_ALLOWED_GROUP &&
         !groups.includes(process.env.OIDC_ALLOWED_GROUP)
       )
         throw new HttpError(403, "Zugriff für diese Gruppe nicht erlaubt.");
-      // An account provisioned over SCIM before the first sign-in.
-      claimProvisionedAccount(`${claims.iss}|${claims.sub}`, claims.sub, String(profile.email || ""), profile.email_verified === true);
-      const user = upsertUser(
-        `${claims.iss}|${claims.sub}`,
-        String(profile.name || profile.preferred_username || "Mitglied"),
-        String(profile.email || ""),
-      );
-      await syncAvatar(user.id, profile.picture);
-      // Whether the provider vouches for the address: decides whether
-      // invitations and shared pages for it reach this account.
-      run("UPDATE users SET email_verified=? WHERE id=?", profile.email_verified === true ? 1 : 0, user.id);
-      acceptInvites(user, profile.email_verified === true);
-      // Workspaces and groups mapped to the person's SSO groups, before a
-      // personal workspace would be created for someone without one.
-      syncSsoMemberships(user.id, groups);
-      ensureWorkspace(user.id);
-      await issueSession(user.id, groups, undefined, { remember: !!f.remember, sso: true });
+      const found = resolveOidcSignIn(sso, locale);
+      // The address belongs to an existing account: it is connected only
+      // after the person proves it (app/link-account).
+      if (found.kind === "link") {
+        const token = startPendingLink(found.candidateId, sso, { remember: !!f.remember, returnTo });
+        jar.set(LINK_COOKIE, token, { httpOnly: true, secure: appUrl().startsWith("https:"), sameSite: "lax", path: "/", maxAge: PENDING_LINK_SECONDS });
+        return NextResponse.redirect(new URL("/link-account", appUrl()));
+      }
+      await finishSsoSignIn(found.userId, sso, !!f.remember);
       return NextResponse.redirect(new URL(returnTo, appUrl()));
     }
     return NextResponse.json({ error: "Nicht gefunden" }, { status: 404 });
@@ -411,6 +474,8 @@ async function handlePOST(
       const input = await body();
       // Accounts with e-mail and password, or the LDAP directory (LDAP_URL).
       const { userId, groups } = await directoryPasswordLogin(input, clientAddress(req.headers), locale);
+      // OIDC_LINKED_SSO_ONLY: an account connected to SSO signs in there.
+      refuseSsoOnly(userId, locale);
       // With an authenticator app, a code follows (action "totp-login").
       const next = afterPassword(userId, wantsRemember(input), locale);
       if ("pending" in next) {
@@ -424,6 +489,7 @@ async function handlePOST(
       const jar = await cookies();
       const result = completeSignIn(jar.get(PENDING_COOKIE)?.value, await body(), clientAddress(req.headers), locale);
       jar.delete(PENDING_COOKIE);
+      refuseSsoOnly(result.userId, locale);
       await signIn(result.userId, result.groups, result.remember);
       return NextResponse.json({ ok: true });
     }
@@ -444,6 +510,7 @@ async function handlePOST(
     if (action === "passkey") {
       const input = await body();
       const { userId, groups } = await passkeyLogin(await takeChallengeCookie(), input, clientAddress(req.headers), locale);
+      refuseSsoOnly(userId, locale);
       // A code from the app follows only if the person asked for it.
       const next = afterPasskey(userId, wantsRemember(input));
       if ("pending" in next) {
@@ -452,6 +519,105 @@ async function handlePOST(
       }
       await signIn(userId, groups, wantsRemember(input));
       return NextResponse.json({ ok: true });
+    }
+    // ---- A first SSO sign-in that waits to be connected (#101,
+    // app/link-account): the person proves the existing account ----
+    if (["link-password", "link-code", "link-passkey", "link-separate", "link-cancel"].includes(action)) {
+      const jar = await cookies();
+      const token = jar.get(LINK_COOKIE)?.value;
+      if (action === "link-cancel") {
+        cancelPending(token);
+        jar.delete(LINK_COOKIE);
+        return NextResponse.json({ ok: true });
+      }
+      const row = requirePending(token, locale);
+      const address = clientAddress(req.headers);
+      const done = async (provenUserId: string) => {
+        const linked = completePendingLink(row, provenUserId, locale);
+        jar.delete(LINK_COOKIE);
+        await finishSsoSignIn(linked.userId, linked.profile, linked.remember);
+        return NextResponse.json({ ok: true, returnTo: loginReturnPath(linked.returnTo) });
+      };
+      if (action === "link-separate") {
+        const separate = separateFromPending(row, locale);
+        jar.delete(LINK_COOKIE);
+        await finishSsoSignIn(separate.userId, separate.profile, separate.remember);
+        return NextResponse.json({ ok: true, returnTo: loginReturnPath(separate.returnTo) });
+      }
+      // The account's password (plus a code if its app is on) or its passkey.
+      const proof =
+        action === "link-code"
+          ? provePendingCode(row, await body(), address, locale)
+          : action === "link-password"
+            ? await provePendingPassword(row, await body(), address, locale)
+            : await provePendingPasskey(row, await takeChallengeCookie(), await body(), address, locale);
+      if ("twoFactor" in proof) return NextResponse.json({ ok: true, twoFactor: true });
+      return done(proof.userId);
+    }
+    // ---- Sign-in methods of the signed-in person (#101): SSO identities,
+    // removing or setting the password; sensitive steps are confirmed
+    // again (lib/step-up.ts) ----
+    if (["sign-in-methods", "confirm-passkey-options", "sso-link-start", "sso-unlink", "password-remove", "password-set"].includes(action)) {
+      const user = await currentUser();
+      if (!user || user.demo || user.twoFactorSetup) throw new HttpError(401, translate(locale)("Bitte melde dich an.", "Please sign in."));
+      if (user.apiScope) throw new HttpError(403, translate(locale)("Mit einem API-Token nicht möglich.", "Not possible with an API token."));
+      const jar = await cookies();
+      const sessionStart = sessionStartedAt(jar.get(cookieName)?.value);
+      const overview = () => ({ ...signInOverview(user.id), confirm: stepUpMethods(user.id, sessionStart) });
+      if (action === "sign-in-methods") return NextResponse.json(overview(), { headers: { "Cache-Control": "no-store" } });
+      if (action === "confirm-passkey-options") {
+        const { options, token } = await passkeyConfirmOptions(user.id, locale);
+        await rememberChallenge(token);
+        return NextResponse.json(options);
+      }
+      const input = await body();
+      const confirm = async () =>
+        confirmStep(user.id, input, { address: clientAddress(req.headers), locale, sessionStart, passkeyToken: (input as { confirm?: { passkey?: unknown } }).confirm?.passkey ? await takeChallengeCookie() : undefined });
+      if (action === "sso-link-start") {
+        const c = await config();
+        await confirm();
+        const verifier = oidc.randomPKCECodeVerifier(),
+          state = oidc.randomState(),
+          nonce = oidc.randomNonce(),
+          flow = randomBytes(32).toString("base64url");
+        run("DELETE FROM oidc_flows WHERE expires<?", Date.now());
+        // Bound to this account and this session: the callback checks both.
+        run(
+          "INSERT INTO oidc_flows(id,state,verifier,nonce,expires,return_to,remember,link_user_id,link_session) VALUES(?,?,?,?,?,?,0,?,?)",
+          hash(flow),
+          state,
+          verifier,
+          nonce,
+          Date.now() + 600000,
+          "/",
+          user.id,
+          hash(jar.get(cookieName)!.value),
+        );
+        jar.set("flowplan_oidc", flow, { httpOnly: true, secure: appUrl().startsWith("https:"), sameSite: "lax", path: "/", maxAge: 600 });
+        const url = oidc.buildAuthorizationUrl(c, {
+          redirect_uri: `${appUrl()}/api/auth/callback`,
+          scope: process.env.OIDC_SCOPES || "openid profile email groups",
+          code_challenge: await oidc.calculatePKCECodeChallenge(verifier),
+          code_challenge_method: "S256",
+          state,
+          nonce,
+          // The provider asks who signs in, rather than reusing its session.
+          prompt: "login",
+        });
+        return NextResponse.json({ ok: true, url: url.href });
+      }
+      if (action === "sso-unlink") {
+        const { identityId } = z.object({ identityId: z.string().max(80) }).passthrough().parse(input);
+        await confirm();
+        removeIdentity(user.id, identityId, locale);
+      } else if (action === "password-remove") {
+        await confirm();
+        removePassword(user.id, locale);
+      } else if (action === "password-set") {
+        await confirm();
+        await setNewPassword(user.id, (input as { next?: unknown }).next, locale);
+      }
+      return NextResponse.json({ ok: true, ...overview() });
     }
     // ---- The signed-in person's authenticator app (also while the
     // instance waits for it to be set up) ----

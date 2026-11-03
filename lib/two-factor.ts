@@ -169,6 +169,12 @@ function checkSecondFactor(userId: string, code: string, address: string, t: Tr,
     throw new HttpError(401, t("Der Code stimmt nicht oder wurde schon benutzt.", "The code is wrong or was used already."));
   }
 }
+// A code from the app (or a recovery code) to confirm a sensitive step
+// (lib/step-up.ts), with the same limits as at sign-in.
+export function confirmSecondFactor(userId: string, code: string, address: string, locale: Locale, now = Date.now()) {
+  checkSecondFactor(userId, code, address, tr(locale), now);
+  run("DELETE FROM login_failures WHERE key=?", `totp:${userId}`);
+}
 // Confirms a change with the current password or a code from the app.
 async function confirmWithPasswordOrCode(userId: string, input: unknown, address: string, t: Tr) {
   const { password, code } = z.object({ password: z.string().max(200).optional(), code: z.string().max(20).optional() }).parse(input);

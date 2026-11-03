@@ -14,7 +14,7 @@ const globalDb = globalThis as unknown as {
   flowplanRollback?: (() => void)[];
 };
 function migrate(d: DatabaseSync) {
-  if (globalDb.flowplanSchema === 87) return;
+  if (globalDb.flowplanSchema === 88) return;
   d.exec(`
     CREATE TABLE IF NOT EXISTS publications(page_id TEXT PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,include_children INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS publication_pages(root_id TEXT REFERENCES pages(id) ON DELETE CASCADE,page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,PRIMARY KEY(root_id,page_id));
@@ -1124,7 +1124,40 @@ function migrate(d: DatabaseSync) {
   // whenever the list is read or saved.
   d.exec(`CREATE TABLE IF NOT EXISTS sidebar_state(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,keys TEXT NOT NULL DEFAULT '[]',updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,workspace_id));
     CREATE INDEX IF NOT EXISTS sidebar_state_workspace ON sidebar_state(workspace_id);`);
-  globalDb.flowplanSchema = 87;
+  migrateIdentities(d);
+  globalDb.flowplanSchema = 88;
+}
+// Schema 88 – sign-in identities of an account (#101, lib/identities.ts):
+// every OpenID Connect identity (issuer and subject) an account signs in
+// with, so one account can have several and a local account can be linked
+// to SSO. users.subject stays the account's own stable key (local:…,
+// ldap:…, scim:…, or issuer|subject of the identity it was created with);
+// which account an SSO sign-in belongs to is decided here. The identities
+// of existing SSO accounts are copied from their subject once, when the
+// table is created. oidc_flows carry the account and session of a "Connect
+// SSO" flow; oidc_pending_links hold a first SSO sign-in that waits for the
+// person to prove the existing account with the same address.
+export function migrateIdentities(d: DatabaseSync) {
+  const fresh = !d.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_identities'").get();
+  d.exec(`CREATE TABLE IF NOT EXISTS user_identities(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,provider TEXT NOT NULL DEFAULT 'oidc',issuer TEXT NOT NULL,subject TEXT NOT NULL,email TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,last_used_at INTEGER,UNIQUE(issuer,subject));
+    CREATE INDEX IF NOT EXISTS user_identities_user ON user_identities(user_id);
+    CREATE TABLE IF NOT EXISTS oidc_pending_links(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,issuer TEXT NOT NULL,subject TEXT NOT NULL,email TEXT NOT NULL,name TEXT NOT NULL,picture TEXT,groups_json TEXT NOT NULL DEFAULT '[]',remember INTEGER NOT NULL DEFAULT 0,return_to TEXT,second_factor TEXT,expires INTEGER NOT NULL,created_at INTEGER NOT NULL);`);
+  const flows = (d.prepare("PRAGMA table_info(oidc_flows)").all() as { name: string }[]).map((c) => c.name);
+  if (!flows.includes("link_user_id")) d.exec("ALTER TABLE oidc_flows ADD COLUMN link_user_id TEXT REFERENCES users(id) ON DELETE CASCADE");
+  if (!flows.includes("link_session")) d.exec("ALTER TABLE oidc_flows ADD COLUMN link_session TEXT");
+  if (!fresh) return;
+  // "<issuer>|<subject>": the issuer is a URL without "|", the subject may
+  // contain one (e.g. "auth0|abc"), so the first "|" separates them.
+  const now = Date.now();
+  const insert = d.prepare("INSERT OR IGNORE INTO user_identities(id,user_id,provider,issuer,subject,email,created_at,last_used_at) VALUES(?,?,'oidc',?,?,?,?,?)");
+  for (const u of d
+    .prepare(
+      "SELECT id,subject,email,last_login_at FROM users WHERE instr(subject,'|')>1 AND subject NOT LIKE 'local:%' AND subject NOT LIKE 'ldap:%' AND subject NOT LIKE 'scim:%' AND subject NOT LIKE 'deleted:%'",
+    )
+    .all() as { id: string; subject: string; email: string; last_login_at: number | null }[]) {
+    const cut = u.subject.indexOf("|");
+    insert.run(randomUUID(), u.id, u.subject.slice(0, cut), u.subject.slice(cut + 1), u.email || "", now, u.last_login_at ?? null);
+  }
 }
 // Saved searches (before #86) → collections, keeping their id and order.
 export function migrateSavedSearches(d: DatabaseSync) {

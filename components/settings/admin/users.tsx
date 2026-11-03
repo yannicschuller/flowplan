@@ -4,7 +4,8 @@
 // several at once, and one account's limits, sessions and actions in a side
 // sheet (full screen on phones). Registration is set under Anmeldung & SSO.
 import { useEffect, useMemo, useState } from "react";
-import { MagnifyingGlass, UserCircleMinus, Users } from "@phosphor-icons/react";
+import { ArrowsMerge, ArrowsLeftRight, IdentificationCard, MagnifyingGlass, UserCircleMinus, Users } from "@phosphor-icons/react";
+import type { MergePreview } from "@/lib/account-merge";
 import type { User } from "@/lib/types";
 import type { InstanceSettings } from "@/lib/instance-settings";
 import { useT } from "../../i18n";
@@ -23,6 +24,7 @@ type Local = {
   verified: boolean;
   passkeys: number;
   totp?: boolean;
+  password?: boolean;
 };
 type Usage = NonNullable<AdminData["userUsage"]>[number];
 type Filter = "all" | "here" | "active" | "inactive" | "disabled" | "admins";
@@ -55,6 +57,9 @@ export default function UsersSection() {
     live.users.get(u.id) ?? { openAt: u.last_open_at ?? null, activeAt: u.last_active_at ?? null };
   const liveNow = live.now || now;
   const local = data.localAccounts || {};
+  const ssoCount = new Map<string, number>();
+  for (const i of data.identities || []) ssoCount.set(i.user_id, (ssoCount.get(i.user_id) || 0) + 1);
+  const ldapIds = new Set(data.ldapAccounts || []);
   const admins = new Set(data.adminIds || []);
   const isAdmin = (id: string) => admins.has(id) || !!local[id]?.admin;
   const states = new Map(data.users.map((u) => [u.id, stateOf(u, now)]));
@@ -239,6 +244,8 @@ export default function UsersSection() {
                   key={u.id}
                   user={u}
                   local={local[u.id]}
+                  sso={ssoCount.get(u.id) || 0}
+                  ldap={ldapIds.has(u.id)}
                   admin={isAdmin(u.id)}
                   usage={data.userUsage?.find((x) => x.id === u.id)}
                   state={states.get(u.id)!}
@@ -340,14 +347,26 @@ function StateBadge({ state }: { state: ReturnType<typeof stateOf> }) {
 
 // How the account signs in: e-mail and password (with passkeys and a second
 // factor), or through the identity provider / directory.
-function signIn(local: Local | undefined, t: (de: string, en: string) => string) {
-  if (!local) return t("SSO / Verzeichnis", "SSO / directory");
-  return [t("E-Mail", "E-mail"), local.passkeys ? (local.passkeys === 1 ? "Passkey" : `${local.passkeys} Passkeys`) : null, local.totp ? "2FA" : null].filter(Boolean).join(" · ");
+function signIn(local: Local | undefined, t: (de: string, en: string) => string, sso = 0, ldap = false) {
+  // SSO identities (#101): a local account may be connected to SSO too.
+  const ssoText = sso ? (sso === 1 ? "SSO" : `SSO × ${sso}`) : null;
+  if (!local) return [ssoText, ldap ? "LDAP" : null].filter(Boolean).join(" · ") || t("SSO / Verzeichnis", "SSO / directory");
+  return [
+    local.password === false ? null : t("E-Mail", "E-mail"),
+    ssoText,
+    ldap ? "LDAP" : null,
+    local.passkeys ? (local.passkeys === 1 ? "Passkey" : `${local.passkeys} Passkeys`) : null,
+    local.totp ? "2FA" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function UserRow({
   user: u,
   local,
+  sso,
+  ldap,
   admin,
   usage,
   state,
@@ -359,6 +378,8 @@ function UserRow({
 }: {
   user: User;
   local?: Local;
+  sso: number;
+  ldap: boolean;
   admin: boolean;
   usage?: Usage;
   state: ReturnType<typeof stateOf>;
@@ -386,7 +407,7 @@ function UserRow({
               <DeletionBadge due={u.deletion_due_at} />
             </strong>
             <small>{u.email}</small>
-            <small className="signin">{signIn(local, t)}</small>
+            <small className="signin">{signIn(local, t, sso, ldap)}</small>
           </span>
         </div>
       </td>
@@ -428,6 +449,9 @@ function UserSheet({
   const t = useT();
   const { act, load } = useAdminData();
   const local = data.localAccounts?.[u.id];
+  const identities = (data.identities || []).filter((i) => i.user_id === u.id);
+  const ldap = !!data.ldapAccounts?.includes(u.id);
+  const [merging, setMerging] = useState(false);
   const admin = !!local?.admin || !!data.adminIds?.includes(u.id);
   const usage = data.userUsage?.find((x) => x.id === u.id);
   const ai = data.aiPolicy?.enabled && data.aiPolicy.access === "selected" ? { allowed: data.aiPolicy.allowed.includes(u.id) } : null;
@@ -460,7 +484,7 @@ function UserSheet({
           </span>
           <Presence activity={activity} now={now} long />
           <small>
-            {signIn(local, t)} · {u.last_login_at ? t(`zuletzt angemeldet ${ago(u.last_login_at, t)}`, `last signed in ${ago(u.last_login_at, t)}`) : t("noch nie angemeldet", "never signed in")}
+            {signIn(local, t, identities.length, ldap)} · {u.last_login_at ? t(`zuletzt angemeldet ${ago(u.last_login_at, t)}`, `last signed in ${ago(u.last_login_at, t)}`) : t("noch nie angemeldet", "never signed in")}
           </small>
         </span>
       </div>
@@ -470,6 +494,40 @@ function UserSheet({
         </p>
       )}
       <Limits user={u} usage={usage} settings={data.settings} />
+      <SettingGroup
+        title={t("Anmeldemethoden", "Sign-in methods")}
+        description={t("Womit sich die Person anmeldet. Verbinden und trennen kann sie SSO-Konten selbst unter Einstellungen → Konto.", "How the person signs in. They connect and disconnect SSO identities themselves under Settings → Account.")}
+      >
+        <SettingRow label={t("E-Mail und Passwort", "E-mail and password")}>
+          <StatusBadge tone={local && local.password !== false ? "ok" : "off"}>{local ? (local.password === false ? t("Passwort entfernt", "Password removed") : t("Aktiv", "Active")) : t("Keins", "None")}</StatusBadge>
+        </SettingRow>
+        {ldap && (
+          <SettingRow label={t("Verzeichnis (LDAP)", "Directory (LDAP)")}>
+            <StatusBadge tone="ok">{t("Aktiv", "Active")}</StatusBadge>
+          </SettingRow>
+        )}
+        <SettingRow label={t("SSO-Konten", "SSO identities")}>
+          <StatusBadge tone={identities.length ? "ok" : "off"}>{identities.length ? String(identities.length) : t("Keine", "None")}</StatusBadge>
+        </SettingRow>
+        {identities.length > 0 && (
+          <div className="setting-row wide setting-sublist">
+            <ul className="passkey-list identity-list" aria-label={t(`SSO-Konten von ${u.name}`, `SSO identities of ${u.name}`)}>
+              {identities.map((i) => (
+                <li key={i.id}>
+                  <IdentificationCard size={18} aria-hidden />
+                  <span>
+                    {i.email || hostOf(i.issuer)}
+                    <small>
+                      {i.issuer} · {t("verbunden", "connected")} {ago(i.created_at, t)}
+                      {i.last_used_at ? ` · ${t("zuletzt benutzt", "last used")} ${ago(i.last_used_at, t)}` : ""}
+                    </small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </SettingGroup>
       <SettingGroup title={t("Zugang", "Access")}>
         {ai && (
           <SettingRow
@@ -570,6 +628,17 @@ function UserSheet({
       </SettingGroup>
       <DangerZone>
         <SettingRow
+          label={t("Konten zusammenführen", "Merge accounts")}
+          description={t(
+            "Zwei Konten derselben Person (etwa ein lokales Konto und ein SSO-Konto) werden eines. Vorher siehst du, was übernommen wird.",
+            "Two accounts of the same person (such as a local account and an SSO account) become one. You see first what is taken over.",
+          )}
+        >
+          <button type="button" className="button danger" onClick={() => setMerging(true)}>
+            <ArrowsMerge size={16} aria-hidden /> {t("Zusammenführen …", "Merge …")}
+          </button>
+        </SettingRow>
+        <SettingRow
           label={u.disabled ? t("Konto aktivieren", "Enable account") : t("Konto deaktivieren", "Disable account")}
           description={
             u.disabled
@@ -616,6 +685,7 @@ function UserSheet({
           )}
         </SettingRow>
       </DangerZone>
+      {merging && <MergeDialog user={u} users={data.users} onClose={() => setMerging(false)} onMerged={onClose} />}
       <Modal open={!!plan} onClose={() => !deleting && setPlan(null)} title={t(`${u.name} löschen?`, `Delete ${u.name}?`)}>
         {plan && (
           <div className="delete-account">
@@ -765,5 +835,160 @@ function Limits({ user: u, usage, settings }: { user: User; usage?: Usage; setti
         </div>
       </SettingGroup>
     </form>
+  );
+}
+
+const hostOf = (issuer: string) => {
+  try {
+    return new URL(issuer).host;
+  } catch {
+    return issuer;
+  }
+};
+
+// Merging two accounts of one person (#101, lib/account-merge.ts): pick the
+// other account and which one stays, see what moves, then merge.
+function MergeDialog({ user: u, users, onClose, onMerged }: { user: User; users: User[]; onClose: () => void; onMerged: () => void }) {
+  const t = useT();
+  const { act, mutate, onError } = useAdminData();
+  const [query, setQuery] = useState(""),
+    [other, setOther] = useState<User | null>(null),
+    // false: this account is merged into the other one (and deleted).
+    [keepThis, setKeepThis] = useState(false),
+    [preview, setPreview] = useState<MergePreview | null>(null),
+    [busy, setBusy] = useState(false);
+  const needle = query.trim().toLocaleLowerCase();
+  const candidates = users
+    .filter((x) => x.id !== u.id && (!needle || `${x.name} ${x.email}`.toLocaleLowerCase().includes(needle)))
+    // The same address first: the likely duplicates.
+    .sort((a, b) => Number(b.email.toLowerCase() === u.email.toLowerCase()) - Number(a.email.toLowerCase() === u.email.toLowerCase()))
+    .slice(0, 8);
+  const source = other && (keepThis ? other : u),
+    target = other && (keepThis ? u : other);
+  useEffect(() => {
+    setPreview(null);
+    if (!source || !target) return;
+    let stop = false;
+    mutate({ action: "admin.mergePlan", sourceId: source.id, targetId: target.id })
+      .then((p) => !stop && setPreview(p as MergePreview))
+      .catch((e) => !stop && onError((e as Error).message));
+    return () => {
+      stop = true;
+    };
+  }, [source?.id, target?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const s = preview?.summary;
+  const line = (n: number | undefined, one: string, many: (k: number) => string) => (n ? (n === 1 ? one : many(n)) : null);
+  const items = s
+    ? [
+        line(s.workspaces, t("1 Arbeitsbereich (die höhere Rolle bleibt)", "1 workspace (the higher role stays)"), (k) => t(`${k} Arbeitsbereiche (die höhere Rolle bleibt)`, `${k} workspaces (the higher role stays)`)),
+        line(s.ownedPages, t("1 eigene Seite", "1 own page"), (k) => t(`${k} eigene Seiten`, `${k} own pages`)),
+        line(s.ownedSpaces, t("1 eigener Bereich", "1 own space"), (k) => t(`${k} eigene Bereiche`, `${k} own spaces`)),
+        line(s.groups, t("1 Gruppe", "1 group"), (k) => t(`${k} Gruppen`, `${k} groups`)),
+        line(s.comments, t("1 Kommentar", "1 comment"), (k) => t(`${k} Kommentare`, `${k} comments`)),
+        line(s.records, t("1 Eintrag mit dieser Person (Personen-Eigenschaft)", "1 record naming this person (person property)"), (k) => t(`${k} Einträge mit dieser Person (Personen-Eigenschaft)`, `${k} records naming this person (person property)`)),
+        line(s.documents, t("1 Dokument mit Erwähnungen", "1 document with mentions"), (k) => t(`${k} Dokumente mit Erwähnungen`, `${k} documents with mentions`)),
+        line(s.favorites, t("1 Favorit", "1 favourite"), (k) => t(`${k} Favoriten`, `${k} favourites`)),
+        line(s.notifications, t("1 Benachrichtigung", "1 notification"), (k) => t(`${k} Benachrichtigungen`, `${k} notifications`)),
+        line(s.identities, t("1 SSO-Konto", "1 SSO identity"), (k) => t(`${k} SSO-Konten`, `${k} SSO identities`)),
+        line(s.passkeys, t("1 Passkey", "1 passkey"), (k) => t(`${k} Passkeys`, `${k} passkeys`)),
+      ].filter(Boolean)
+    : [];
+  return (
+    <Modal open onClose={() => !busy && onClose()} title={t(`${u.name} zusammenführen`, `Merge ${u.name}`)} className="merge-dialog" wide>
+      <div className="merge-accounts">
+        {!other ? (
+          <>
+            <p className="muted">{t("Mit welchem Konto derselben Person?", "With which account of the same person?")}</p>
+            <span className="admin-search">
+              <MagnifyingGlass size={16} aria-hidden />
+              <input type="search" autoFocus aria-label={t("Konto suchen", "Search account")} placeholder={t("Name oder E-Mail suchen …", "Search name or email …")} value={query} onChange={(e) => setQuery(e.target.value)} />
+            </span>
+            <ul className="merge-candidates">
+              {candidates.map((x) => (
+                <li key={x.id}>
+                  <button type="button" className="merge-candidate" onClick={() => setOther(x)}>
+                    <Avatar name={x.name} userId={x.id} />
+                    <span className="merge-candidate-text">
+                      <strong>{x.name}</strong>
+                      <small>{x.email}</small>
+                    </span>
+                    {x.email.toLowerCase() === u.email.toLowerCase() && <StatusBadge tone="info">{t("Gleiche E-Mail", "Same e-mail")}</StatusBadge>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <>
+            <div className="merge-pair">
+              <div>
+                <small>{t("Wird übernommen und gelöscht", "Taken over and deleted")}</small>
+                <strong>{source!.name}</strong>
+                <span className="muted">{source!.email}</span>
+              </div>
+              <button type="button" className="icon-button" aria-label={t("Richtung tauschen", "Swap direction")} title={t("Richtung tauschen", "Swap direction")} onClick={() => setKeepThis(!keepThis)}>
+                <ArrowsLeftRight size={18} />
+              </button>
+              <div>
+                <small>{t("Bleibt bestehen", "Stays")}</small>
+                <strong>{target!.name}</strong>
+                <span className="muted">{target!.email}</span>
+              </div>
+            </div>
+            {!preview ? (
+              <p className="muted">{t("Lädt …", "Loading …")}</p>
+            ) : (
+              <>
+                <p>{t(`Zu ${target!.name} wechselt:`, `Moving to ${target!.name}:`)}</p>
+                <ul className="merge-summary">
+                  {items.map((text) => (
+                    <li key={text}>{text}</li>
+                  ))}
+                  <li>{t("Alles Weitere: Zuweisungen, Journal, Sammlungen, Seitenleiste, Webhooks, Kalender, Kontakte, Zeiterfassung und Verlauf.", "Everything else: assignments, journal, collections, sidebar, webhooks, calendars, contacts, time tracking and history.")}</li>
+                </ul>
+                <ul className="merge-notes">
+                  <li>{t(`${source!.name} wird überall abgemeldet; das Konto wird danach gelöscht.`, `${source!.name} is signed out everywhere; the account is then deleted.`)}</li>
+                  {preview.notes.includes("tokens") && <li>{t(`Die ${s?.apiTokens} API-Tokens von ${source!.name} werden widerrufen – Skripte brauchen ein neues Token.`, `The ${s?.apiTokens} API tokens of ${source!.name} are revoked – scripts need a new token.`)}</li>}
+                  {preview.notes.includes("password") && <li>{t(`Das Passwort von ${target!.name} bleibt; das von ${source!.name} entfällt.`, `The password of ${target!.name} stays; the one of ${source!.name} goes.`)}</li>}
+                  {preview.notes.includes("totp-moved") && <li>{t("Die Authenticator-App wird übernommen; Wiederherstellungscodes bitte neu erzeugen.", "The authenticator app is taken over; please create new recovery codes.")}</li>}
+                  {preview.notes.includes("totp-dropped") && <li>{t(`Die Authenticator-App von ${source!.name} entfällt; die von ${target!.name} bleibt.`, `The authenticator app of ${source!.name} goes; the one of ${target!.name} stays.`)}</li>}
+                  {preview.notes.includes("e2ee") && <li>{t(`Beide haben Schlüssel für Ende-zu-Ende-Verschlüsselung: die von ${target!.name} bleiben; verschlüsselte Bereiche nur von ${source!.name} müssen neu freigegeben werden.`, `Both have end-to-end encryption keys: those of ${target!.name} stay; encrypted spaces only ${source!.name} had must be shared again.`)}</li>}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+        <div className="modal-actions">
+          {other && (
+            <button type="button" className="button" disabled={busy} onClick={() => setOther(null)}>
+              {t("Anderes Konto wählen", "Choose another account")}
+            </button>
+          )}
+          <button type="button" className="button" disabled={busy} onClick={onClose}>
+            {t("Abbrechen", "Cancel")}
+          </button>
+          {other && (
+            <button
+              type="button"
+              className="button danger-solid"
+              disabled={busy || !preview}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  if (await act({ action: "admin.mergeUsers", sourceId: source!.id, targetId: target!.id })) {
+                    onClose();
+                    onMerged();
+                  }
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? t("Führt zusammen …", "Merging …") : t("Endgültig zusammenführen", "Merge permanently")}
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
   );
 }

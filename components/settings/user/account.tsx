@@ -12,12 +12,15 @@ import { TwoFactorSettings } from "../../two-factor";
 import { DeleteOwnAccount } from "../../delete-own-account";
 import { MySessions } from "../../my-sessions";
 import { E2eeKeySettings, E2eeResetRow } from "../../e2ee";
+import { SignInMethods } from "../../sign-in-methods";
 import { useUserSettings } from "../user-context";
 
 export default function AccountSection() {
   const t = useT();
   const { boot, onRefresh, onError } = useUserSettings();
   const local = !!boot.localAccount;
+  // A local account whose password was removed (SSO only, #101) changes none.
+  const password = local && boot.hasPassword !== false;
   const demo = !!boot.user.demo;
   // LDAP accounts sign in with a password: the authenticator app applies to them too.
   const twoFactor = local || !!boot.ldapAccount;
@@ -30,7 +33,7 @@ export default function AccountSection() {
             <strong>{boot.user.name}</strong>
             <small>{boot.user.email}</small>
           </span>
-          <StatusBadge tone="info">{local ? t("E-Mail-Konto", "E-mail account") : boot.ldapAccount ? "LDAP" : "SSO"}</StatusBadge>
+          <StatusBadge tone="info">{local ? (boot.ssoLinked ? t("E-Mail-Konto · SSO", "E-mail account · SSO") : t("E-Mail-Konto", "E-mail account")) : boot.ldapAccount ? "LDAP" : "SSO"}</StatusBadge>
         </div>
         {local ? (
           <ProfileNameRow name={boot.user.name} onRenamed={onRefresh} />
@@ -41,9 +44,11 @@ export default function AccountSection() {
         )}
       </SettingGroup>
 
+      {!demo && <SignInMethods onChanged={onRefresh} />}
+
       {(local || twoFactor || !demo) && (
         <SettingGroup id="signin" title={t("Anmeldung & Sicherheit", "Sign-in & security")} description={t("Passwort, zweiter Faktor, Passkeys und die Geräte, auf denen du angemeldet bist.", "Password, second factor, passkeys and the devices you are signed in on.")}>
-          {local && <PasswordRow />}
+          {password && <PasswordRow />}
           {twoFactor && <TwoFactorSettings row />}
           {local && <PasskeysRow />}
           {!demo && <MySessions onError={onError} />}
