@@ -8,6 +8,7 @@ import { ct } from "./content-locale";
 import { URL_PATTERN, footnoteText } from "./footnotes";
 import { ct as tr } from "./content-locale";
 import { captionText } from "./block-captions";
+import { fenceMeta, type CodeBlockOptions } from "./code-block-options";
 import { fenceLanguage } from "./code-languages";
 // Captions (lib/block-captions.ts) in Markdown: an image's as its title,
 // ![Alt](<file.png> "Caption"); a table's as Pandoc writes it, a line
@@ -53,11 +54,19 @@ export function markdownUrl(url: string) {
 export function markdownLink(label: string, url: string) {
   return `[${markdownText(label)}](<${markdownUrl(url)}>)`;
 }
-export function fencedCode(source: string, language = "") {
+export function fencedCode(source: string, language = "", meta = "") {
   const runs = source.match(/`+/g) || [],
     fence = "`".repeat(Math.max(3, ...runs.map((run) => run.length + 1)));
   const lang = /^[\w#+.-]*$/.test(language) ? language : "";
-  return `${fence}${lang}\n${source}${source.endsWith("\n") ? "" : "\n"}${fence}`;
+  const info = meta && !/[`\n]/.test(meta) ? `${lang} ${meta}`.trimStart() : lang;
+  return `${fence}${info}\n${source}${source.endsWith("\n") ? "" : "\n"}${fence}`;
+}
+// A code block's options as fence meta ("{3-5} showLineNumbers startLine=10",
+// lib/code-block-options.ts). A mermaid code block always names its view,
+// so it does not come back as a Mermaid block from the source view.
+function codeMeta(node: Node, language: string) {
+  const attrs = node.attrs as Partial<CodeBlockOptions>;
+  return fenceMeta({ ...attrs, view: attrs.view ?? (language === "mermaid" ? "code" : null) });
 }
 function inlineCode(source: string, inTable = false) {
   if (inTable)
@@ -349,7 +358,8 @@ export function htmlToMarkdown(
       case "codeBlock":
         return inTable
           ? inlineCode(node.textContent, true)
-          : fencedCode(node.textContent, fenceLanguage(String(node.attrs.language || ""))) + captionLine(node);
+          : fencedCode(node.textContent, fenceLanguage(String(node.attrs.language || "")), codeMeta(node, fenceLanguage(String(node.attrs.language || "")))) +
+            captionLine(node);
       case "mathBlock":
         return inTable
           ? inlineCode(String(node.attrs.expression || ""), true)

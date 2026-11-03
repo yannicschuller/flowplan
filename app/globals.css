@@ -8081,6 +8081,291 @@ tr.order-drop-after > td {
   line-height: 1;
 }
 
+/* Code block extras (components/code-block.tsx, code-block-static.ts):
+   view switch and preview (#92), line numbers and highlighted lines (#93),
+   collapsing (#94). */
+.code-block-view {
+  container-type: inline-size;
+  --code-line-highlight: #fbefb4;
+}
+[data-theme="dark"] .code-block-view {
+  --code-line-highlight: #4a4120;
+}
+.code-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.code-view-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.code-block-toolbar .code-view-switch button {
+  border-radius: 0;
+  padding: 4px 9px;
+  color: var(--secondary);
+}
+.code-view-switch button + button {
+  border-left: 1px solid var(--border);
+}
+.code-block-toolbar .code-view-switch button[aria-pressed="true"] {
+  color: var(--blue);
+  background: var(--blue-light);
+}
+.code-block-toolbar .code-block-more {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+}
+.code-block-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.code-block-view[data-view="split"] .code-block-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.code-block-view[data-view="preview"] .code-block-code {
+  display: none;
+}
+.code-block-code {
+  position: relative;
+  min-width: 0;
+}
+.code-block-preview {
+  min-width: 0;
+  min-height: 48px;
+  padding: 14px 16px;
+  overflow: auto;
+  background: #fff;
+  color: #1d1c22;
+  font-family: var(--font-sans), sans-serif;
+}
+.code-block-view[data-view="split"] .code-block-preview {
+  border-left: 1px solid var(--border);
+}
+/* Markdown and formulas in the page's own colours. */
+.code-block-preview:is([data-preview-kind="markdown"], [data-preview-kind="latex"]),
+.code-block-preview:is([data-preview-state="error"], [data-preview-state="empty"], [data-preview-state="loading"]) {
+  background: var(--bg);
+  color: var(--text);
+}
+@container (max-width: 560px) {
+  .code-block-view[data-view="split"] .code-block-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .code-block-view[data-view="split"] .code-block-preview {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+.code-preview-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.code-preview-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+.code-block-preview[data-preview-kind="html"] {
+  padding: 0;
+}
+.code-preview-error,
+.code-preview-empty,
+.code-preview-loading {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.code-preview-error {
+  color: #b42318;
+  white-space: pre-wrap;
+  font-family: var(--font-mono), monospace;
+}
+[data-theme="dark"] .code-preview-error {
+  color: #ffa198;
+}
+.code-preview-formula + .code-preview-formula {
+  margin-top: 8px;
+}
+.code-preview-markdown > :first-child {
+  margin-top: 0;
+}
+.code-preview-markdown > :last-child {
+  margin-bottom: 0;
+}
+/* Line numbers: a marker at the start of each line, drawn in the padding
+   on the left; wrapped lines continue beside it. Not selectable, never
+   copied (CSS content). */
+.document-editor .code-block-view pre {
+  position: relative;
+  z-index: 0;
+}
+.document-editor pre[data-line-numbers="true"] {
+  padding-left: calc(15px + var(--code-gutter, 2ch) + 14px);
+}
+.code-line-number {
+  display: inline-block;
+  width: var(--code-gutter, 2ch);
+  margin-left: calc(-1 * (var(--code-gutter, 2ch) + 14px));
+  margin-right: 14px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+.code-line-number::before {
+  content: attr(data-line);
+}
+.code-line-number.is-mark {
+  width: 0;
+  margin: 0;
+}
+.code-line-number.is-mark::before {
+  content: "\200b";
+}
+.code-line-number.is-highlighted {
+  color: var(--text);
+  font-weight: 600;
+}
+/* Highlighted lines: a band across the block (one row), or with line wrap
+   the text itself marked. */
+.code-line-number.is-highlighted::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1lh;
+  background: var(--code-line-highlight);
+  z-index: -1;
+}
+.document-editor pre[data-code-wrap="true"] .code-line-number.is-highlighted::after {
+  display: none;
+}
+.document-editor pre[data-code-wrap="true"] .code-line-highlight {
+  background: var(--code-line-highlight);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* Collapsed: a few lines that scroll inside, a fade at the bottom. */
+.code-block-view[data-collapsed="true"] .code-block-code pre {
+  max-height: calc(var(--code-collapsed-lines, 10) * 1lh + 30px);
+  overflow: auto;
+}
+.code-block-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.75em;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+}
+.code-block-view .code-block-expand {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 7px 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--blue);
+  font: 500 12px var(--font-sans), sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+.code-block-view .code-block-expand:hover {
+  background: var(--hover);
+}
+.code-block-view .code-block-expand[hidden] {
+  display: none;
+}
+/* The options of a block (components/code-block-menu.tsx). */
+.code-block-options {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  gap: 10px;
+  width: min(280px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow:
+    0 10px 30px #14244426,
+    0 2px 6px #1424440f;
+  font-family: var(--font-sans), sans-serif;
+  font-size: 13px;
+  color: var(--text);
+}
+.code-block-options.up {
+  transform: translateY(-100%);
+}
+.code-block-options hr {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.code-option-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 400;
+}
+.code-option-check input[type="checkbox"] {
+  width: 16px;
+}
+.code-option-check:has(input:disabled) {
+  color: var(--muted);
+}
+.code-option-field {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-weight: 400;
+}
+.code-option-field span {
+  color: var(--secondary);
+  font-size: 12px;
+}
+.code-option-field :is(input, select) {
+  width: 100%;
+  padding: 6px 9px;
+  font-size: 13px;
+}
+/* Printed and exported: the whole code. */
+@media print {
+  .code-block-view[data-collapsed] .code-block-code pre {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .code-block-fade,
+  .code-block-expand,
+  .code-view-switch,
+  .code-block-more {
+    display: none !important;
+  }
+}
+.print-view .code-block-view[data-collapsed] .code-block-code pre {
+  max-height: none;
+  overflow: visible;
+}
+.print-view :is(.code-block-fade, .code-block-expand) {
+  display: none;
+}
+
 .mermaid-block,
 .mermaid-preview {
   border: 1px solid var(--border);

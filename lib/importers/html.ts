@@ -7,11 +7,35 @@
 import { parseDocument, DomUtils } from "htmlparser2";
 import type { ChildNode, Element } from "domhandler";
 import { calloutColor, calloutIcon } from "../callout-types";
+import { importedCodeAttributes } from "../code-block-options";
+import { fenceLanguage } from "../code-languages";
 
 export type { ChildNode, Element };
 
 export const esc = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// A code block with its language (a "language-…" or "lang-…" class, as
+// highlighters and Markdown renderers write it; Mermaid's own "mermaid"
+// class): preview-first languages show their preview (#95).
+export function codeBlockHtml(code: string, language?: string | null) {
+  const id = language && /^[\w+#.-]{1,40}$/.test(language) ? fenceLanguage(language.toLowerCase()) : "";
+  return `<pre${importedCodeAttributes(id)}><code${id ? ` class="language-${esc(id)}"` : ""}>${esc(code)}</code></pre>`;
+}
+export function classLanguage(...elements: (Element | null | undefined)[]) {
+  for (const el of elements) {
+    if (!el) continue;
+    const classes = (el.attribs.class || "").split(/\s+/);
+    const found = classes.find((c) => /^(?:language|lang)-[\w+#.-]+$/.test(c));
+    if (found) return found.replace(/^(?:language|lang)-/, "");
+    if (classes.includes("mermaid")) return "mermaid";
+    if (el.attribs["data-language"]) return el.attribs["data-language"];
+    // Confluence's HTML export: data-syntaxhighlighter-params="brush: java; …"
+    const brush = /(?:^|;)\s*brush:\s*([\w+#.-]+)/.exec(el.attribs["data-syntaxhighlighter-params"] || "");
+    if (brush) return brush[1];
+  }
+  return null;
+}
 
 // HTML (forgiving, entities decoded) or XML (CDATA kept as text).
 export function parseHtml(source: string) {
@@ -168,6 +192,8 @@ export function renderNodes(nodes: ChildNode[], options: RenderOptions = {}): st
   function element(el: Element, tag: string, inner: () => string): string {
     if (DROP.has(tag)) return "";
     const marks = { ...styleMarks(el.attribs.style || ""), ...(extraMarks?.(el) || {}) };
+    // A diagram as Mermaid's own pages write it: <div class="mermaid">.
+    if (tag === "div" && hasClass(el, "mermaid")) return codeBlockHtml(text(el).replace(/^\n+|\s+$/g, ""), "mermaid");
     if (CONTAINERS.has(tag)) {
       const allInline = el.children.every(isInlineNode);
       if (allInline && tag !== "body" && tag !== "html") {
@@ -195,7 +221,10 @@ export function renderNodes(nodes: ChildNode[], options: RenderOptions = {}): st
         if (el.parent && isElement(el.parent) && el.parent.name === "pre") return esc(text(el));
         return `<code>${esc(text(el))}</code>`;
       }
-      case "pre": return `<pre><code>${esc(text(el))}</code></pre>`;
+      case "pre": {
+        const code = el.children.filter(isElement).find((c) => c.name.toLowerCase() === "code");
+        return codeBlockHtml(text(el), classLanguage(code, el));
+      }
       case "mark": case "sub": case "sup": return `<${tag}>${inner()}</${tag}>`;
       case "br": return "<br>";
       case "hr": return "<hr>";

@@ -7,6 +7,7 @@ import type { CalloutType } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { footnoteText } from "./footnotes";
 import { fenceLanguage } from "./code-languages";
+import { importedCodeAttributes, splitInfo } from "./code-block-options";
 
 const escaped = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -152,7 +153,7 @@ function attachCaptions(tokens: Token[]) {
     const token = tokens[i];
     if (token.type === "blockquote") attachCaptions((token as Tokens.Blockquote).tokens);
     if (token.type === "list") for (const item of (token as Tokens.List).items) attachCaptions(item.tokens);
-    const language = token.type === "code" ? String((token as Tokens.Code).lang || "").trim().split(/\s+/)[0].toLowerCase() : "";
+    const language = token.type === "code" ? splitInfo((token as Tokens.Code).lang).language.toLowerCase() : "";
     const pattern = token.type === "table" ? TABLE_CAPTION : token.type === "code" && language !== "math" && language !== "mermaid" ? LISTING_CAPTION : null;
     if (!pattern) continue;
     let next = i + 1;
@@ -244,17 +245,24 @@ export function markdownToRawHtml(
       del({ tokens }: Tokens.Del) {
         return `<s>${this.parser.parseInline(tokens)}</s>`;
       },
-      // Formulas and diagrams from math and mermaid fences.
+      // Formulas from math fences. Mermaid fences become code blocks that
+      // show the diagram (#95) – in the source view a plain ```mermaid is
+      // the Mermaid block it was written from (lib/markdown.ts gives mermaid
+      // code blocks a view= in their meta).
       code(token: Tokens.Code) {
-        const { text, lang } = token;
-        const language = (lang || "").trim().split(/\s+/)[0].toLowerCase();
+        const { text } = token;
+        const { language: written, meta } = splitInfo(token.lang);
+        const language = written.toLowerCase();
         if (language === "math") return `<div data-math="${escaped(text)}">${escaped(text)}</div>`;
-        if (language === "mermaid") return `<div class="mermaid-block" data-mermaid="${escaped(text)}">${escaped(text)}</div>`;
+        if (language === "mermaid" && options.source && !meta)
+          return `<div class="mermaid-block" data-mermaid="${escaped(text)}">${escaped(text)}</div>`;
         // Older ids and aliases ("js", "py") as Shiki's ids (lib/code-languages.ts).
-        if (language) token.lang = fenceLanguage(language);
+        const code = Renderer.prototype.code
+          .call(this, { ...token, lang: language ? fenceLanguage(language) : "" })
+          .trim()
+          .replace(/^<pre>/, `<pre${importedCodeAttributes(language, meta)}>`);
         const caption = (token as Captioned).flowplanCaption;
-        if (caption) return `<figure class="block-figure">${Renderer.prototype.code.call(this, token).trim()}<figcaption>${escaped(caption)}</figcaption></figure>`;
-        return false;
+        return caption ? `<figure class="block-figure">${code}<figcaption>${escaped(caption)}</figcaption></figure>` : code + "\n";
       },
       // Raw HTML in Markdown is shown as text, never interpreted – except
       // the few tags Flowplan's own export writes.

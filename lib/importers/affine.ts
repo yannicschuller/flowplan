@@ -35,7 +35,7 @@
 import { randomUUID } from "node:crypto";
 import { ct } from "../content-locale";
 import { calloutIcon } from "../callout-types";
-import { esc, fileRef, mimeOf, pageRef, withBlockId } from "./html";
+import { codeBlockHtml, esc, fileRef, mimeOf, pageRef, withBlockId } from "./html";
 import { AText, propertyValue, type ABlock, type ADoc, type AFilter, type AWorkspace, type DeltaOp } from "./affine-read";
 import { affineBoard, edgelessExtras, noteDisplay } from "./affine-board";
 import { warningList, MAX_IMPORT_DEPTH, MAX_IMPORT_ROWS, maxImportPages, type ImportDatabase, type ImportFile, type ImportPage, type ImportTree } from "./types";
@@ -239,8 +239,9 @@ function renderBlock(block: ABlock, ctx: Ctx, depth: number): string {
       return `<details><summary>${esc(plainOf(p.text, ctx).slice(0, 500) || "…")}</summary><div>${inner || "<p></p>"}</div></details>`;
     }
     case "affine:code": {
-      const language = typeof p.language === "string" && /^[\w+#.-]{1,30}$/.test(p.language) ? ` class="language-${esc(p.language.toLowerCase())}"` : "";
-      const code = `<pre><code${language}>${esc(plainOf(p.text, ctx))}</code></pre>`;
+      // Mermaid shows its diagram, the code one click away (#95).
+      const language = typeof p.language === "string" && /^[\w+#.-]{1,30}$/.test(p.language) ? p.language : null;
+      const code = codeBlockHtml(plainOf(p.text, ctx), language);
       const caption = typeof p.caption === "string" ? p.caption.trim().slice(0, 500) : "";
       return caption ? `<figure class="block-figure">${code}<figcaption>${esc(caption)}</figcaption></figure>` : code;
     }

@@ -6,6 +6,7 @@ import sanitize from "sanitize-html";
 import { documentExtensions, documentSchema } from "./document-schema";
 import { calloutColor, calloutIcon } from "./callout-types";
 import { fenceLanguage } from "./code-languages";
+import { importedCodeAttributes } from "./code-block-options";
 const dir = { name: "dir", multiple: false, values: ["ltr", "rtl", "auto"] };
 export function cleanHtml(html: string, transform?: sanitize.Transformer) {
   return sanitize(html, {
@@ -55,6 +56,12 @@ export function cleanHtml(html: string, transform?: sanitize.Transformer) {
         "data-plugin-label",
         "data-plugin-data",
         "data-code-wrap",
+        "data-code-view",
+        "data-line-numbers",
+        "data-start-line",
+        "data-highlight-lines",
+        "data-collapsed",
+        "data-collapsed-lines",
         "data-linked-database",
         "data-whiteboard",
         "data-whiteboard-height",
@@ -167,17 +174,19 @@ export function markdownHtml(text: string) {
     inCode = false,
     code = "",
     codeLanguage = "",
+    codeMeta = "",
     marker = "";
+  // Mermaid fences become code blocks showing the diagram (#95); the fence
+  // meta keeps line numbers and the like (lib/code-block-options.ts).
   const renderCode = () =>
-    codeLanguage.toLowerCase() === "mermaid"
-      ? `<div class="mermaid-block" data-mermaid="${escaped(code)}">${escaped(code)}</div>`
-      : `<pre><code${codeLanguage ? ` class="language-${escaped(fenceLanguage(codeLanguage))}"` : ""}>${escaped(code)}</code></pre>`;
+    `<pre${importedCodeAttributes(codeLanguage, codeMeta)}><code${codeLanguage ? ` class="language-${escaped(fenceLanguage(codeLanguage))}"` : ""}>${escaped(code)}</code></pre>`;
   for (const line of text.split("\n")) {
-    const fence = /^(`{3,}|~{3,})([\w#+.-]*)\s*$/.exec(line);
+    const fence = /^(`{3,}|~{3,})([\w#+.-]*)(?:[ \t]+([^`\n]*?))?\s*$/.exec(line);
     if (
       fence &&
       (!inCode ||
         (!fence[2] &&
+          !fence[3] &&
           fence[1][0] === marker[0] &&
           fence[1].length >= marker.length))
     ) {
@@ -187,6 +196,7 @@ export function markdownHtml(text: string) {
       } else {
         marker = fence[1];
         codeLanguage = fence[2];
+        codeMeta = fence[3] || "";
       }
       inCode = !inCode;
       continue;

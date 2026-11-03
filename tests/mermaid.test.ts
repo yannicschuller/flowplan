@@ -51,8 +51,9 @@ test("Mermaid sources preserve syntax and reject resource/configuration injectio
 test("Mermaid nodes roundtrip through HTML/Yjs and Markdown without storing generated SVG", () => {
   assert.equal(canonical(html), html);
   assert.equal(canonical(canonical(html)), html);
+  // A mermaid fence becomes a code block showing the diagram (#95).
   const imported = canonical(markdownHtml("```mermaid\n" + source + "\n```"));
-  assert.match(imported, /data-mermaid=/);
+  assert.match(imported, /<pre data-code-view="preview"><code class="language-mermaid">/);
   assert.match(imported, /Prüfen &amp; abschließen/);
   assert.doesNotMatch(imported, /<svg|<img|<script/);
   const preview = documentPreview(html);

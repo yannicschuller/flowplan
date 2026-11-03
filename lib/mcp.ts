@@ -122,7 +122,7 @@ function readable(user: Identity, pageId: string) {
 }
 // Code blocks highlight every language Shiki bundles (lib/code-languages.ts).
 const CODE_FENCES =
-  "Code blocks: fenced with a language id as in VS Code/Shiki (```python, ```typescript, ```terraform, ```svelte …; aliases such as js, ts, py, sh, yml are understood).";
+  "Code blocks: fenced with a language id as in VS Code/Shiki (```python, ```typescript, ```terraform, ```svelte …; aliases such as js, ts, py, sh, yml are understood). After the language: {3-5} highlights lines, showLineNumbers and startLine=10 number them, view=preview|split shows the rendering of html, svg, markdown, mermaid, latex and typst blocks (```mermaid shows its diagram by default), collapsed folds a long block.";
 
 async function pageMarkdown(user: Identity, pageId: string) {
   const page = readable(user, pageId);

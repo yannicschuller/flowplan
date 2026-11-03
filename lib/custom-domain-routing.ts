@@ -22,7 +22,7 @@ export type HostRoute =
 
 const ID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 // Build output and public assets every page needs.
-const ASSET = /^\/(_next\/static\/|_next\/image$|fonts\/|icons\/|pdfjs\/)|^\/(fonts\.css|icon\.svg|favicon\.ico)$/;
+const ASSET = /^\/(_next\/static\/|_next\/image$|fonts\/|icons\/|pdfjs\/|typst\/)|^\/(fonts\.css|icon\.svg|favicon\.ico)$/;
 
 export function customHostRoute(state: HostState, pathname: string, method: string): HostRoute {
   if (state.status === "none") return { kind: "next" };

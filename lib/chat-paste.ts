@@ -14,6 +14,9 @@ const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 // Whether plain text is worth converting (otherwise it is pasted as usual).
 export function looksLikeChatText(text: string) {
   if (!text.includes("\n")) return /\\\(|\\\[|\$\$/.test(text);
+  // A fenced code block (```mermaid … ```) becomes a code block; a Mermaid
+  // diagram shows its picture (#95).
+  if (/^ {0,3}(`{3,}|~{3,})[^`\n]*\n[\s\S]*?\n {0,3}\1\s*$/m.test(text)) return true;
   return /\\\[|\\\(|\$\$|\\begin\{|^\s{0,3}#{1,6}\s|\*\*[^*\n]+\*\*|^\s*\|.+\|\s*$|^[^\t\n]+\t[^\n]+$|^\s*☐/m.test(text);
 }
 
