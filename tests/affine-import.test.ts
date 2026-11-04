@@ -23,7 +23,7 @@ const { englishMessage } = await import("../lib/i18n-errors");
 const { parseLinkedAttributes } = await import("../lib/linked-views");
 const { whiteboardItems } = await import("../lib/whiteboard");
 const { portableMeta } = await import("../lib/page-properties-server");
-const { affineFileV1, affineFileV2, note, page, para, sqlite, text, uid, PNG, PDF } = await import("./helpers/affine-fixture");
+const { affineFileV1, affineFileV2, list, note, page, para, sqlite, text, uid, PNG, PDF } = await import("./helpers/affine-fixture");
 import type { BlockSpec, Workspace } from "./helpers/affine-fixture";
 const { readAffineFile } = await import("../lib/importers/affine-read");
 const { importZip } = await import("../lib/zip-import");
@@ -811,7 +811,8 @@ test("documents made from database rows become the record's content (#82)", asyn
   assert.ok(tree.pages.find((p) => p.key === "doc:rdA")!.inRecord);
   assert.ok(!tree.pages.find((p) => p.key === "doc:rdDay")!.inRecord, "a journal day stays a journal day");
   assert.ok(!tree.pages.find((p) => p.key === "doc:rdHome")!.inRecord, "the document holding the database stays a page");
-  assert.equal(tree.pages.find((p) => p.key === "db:rdA:rdNested")!.parent, "folder:rdF", "the document's own database goes where the document was");
+  // Since #117 below the record's database (records have no subpages).
+  assert.equal(tree.pages.find((p) => p.key === "db:rdA:rdNested")!.parent, "db:rdHome:rdDb", "the document's own database goes below its record's database");
   assert.ok(tree.warnings.some((w) => /^1 Eigenschaften von Dokumenten in Datenbankeinträgen haben keine passende Spalte/.test(w)));
   assert.match(englishMessage(tree.warnings.find((w) => /Eigenschaften von Dokumenten in Datenbankeinträgen/.test(w))!), /^1 properties of documents in database records have no matching column/);
 
@@ -869,7 +870,7 @@ test("documents made from database rows become the record's content (#82)", asyn
   const folder = pageByTitle("Kunden");
   assert.equal(over.parent_id, folder.id);
   assert.match(html(folder.id), new RegExp(`/#page=${db.id}&amp;row=${a.id}`));
-  assert.equal(pageByTitle("Positionen").parent_id, folder.id);
+  assert.equal(pageByTitle("Positionen").parent_id, db.id);
   // The document's whiteboard shows the record on its card.
   const board = pageByTitle("Angebot ACME – Whiteboard");
   assert.equal(board.kind, "whiteboard");
@@ -954,4 +955,293 @@ test("Mermaid code arrives as a code block that shows the diagram (#95)", async 
   );
   await importFromSource(owner, wid, space, { name: "snapshot.zip", bytes: zip });
   assert.match(html(pageByTitle("Sequenz").id), /<pre (?:data-block-id="[^"]+" )?data-code-view="preview"><code class="language-mermaid">sequenceDiagram\nA-&gt;&gt;B: Hallo<\/code><\/pre>/);
+});
+
+/* ---------- #117: documents of database rows that stayed top-level pages ---------- */
+const zRef = (pageId: string) => ({ insert: " ", attributes: { reference: { type: "LinkedPage", pageId } } });
+const zRow = (id: string, delta: Parameters<typeof text>[0]): BlockSpec => ({ id, flavour: "affine:paragraph", props: { type: "text", text: text(delta) } });
+const zDatabase = (id: string, title: string, rows: BlockSpec[], cells: Record<string, unknown> = {}): BlockSpec => ({
+  id,
+  flavour: "affine:database",
+  props: { title: text(title), views: [{ id: `${id}v`, name: "Alle", mode: "table", columns: [] }], columns: [{ id: `${id}T`, type: "title", name: "Name", data: {} }], cells },
+  children: rows,
+});
+function linkedRowsWorkspace(): Workspace {
+  const doc = (id: string, title: string, blocks: BlockSpec[]) => ({ id, title, doc: page(id, title, [note(blocks)]) });
+  return {
+    id: "zWs",
+    name: "Zeilen und Unterseiten",
+    docs: [
+      {
+        id: "zHome",
+        title: "Vertrieb Z",
+        doc: page("zHome", "Vertrieb Z", [
+          note([
+            para("Kunden:"),
+            zDatabase(
+              "zDb",
+              "Kunden Z",
+              [
+                // (a) the row's id is the document's
+                zRow("zRowSame", "Gleich"),
+                // (a) an AFFiNE app link to the document as the title
+                zRow("zRowLink", [{ insert: "Verlinkt", attributes: { link: "https://app.affine.pro/workspace/zWs/zLinkDoc" } }]),
+                // (a) the reference in the title column's own cell
+                zRow("zRowCell", ""),
+                zRow("zRowA", [zRef("zA")]),
+              ],
+              { zRowCell: { zDbT: { columnId: "zDbT", value: text([zRef("zCell")]) } } },
+            ),
+          ]),
+          // (a) a database in a note shown only on the canvas
+          note([zDatabase("zCanvasDb", "Leinwand-Datenbank", [zRow("zRowCanvas", [zRef("zCanvasDoc")])])], { displayMode: "edgeless", index: "a1" }),
+        ]),
+      },
+      doc("zRowSame", "Gleiche ID", [para("Inhalt gleiche ID")]),
+      doc("zLinkDoc", "Per Link", [para("Inhalt per Link")]),
+      doc("zCell", "Aus der Titelzelle", [para("Inhalt Titelzelle")]),
+      // (b) a row's document linking to documents shown below it in AFFiNE
+      doc("zA", "Kunde A", [para("Inhalt von A"), para([{ insert: "Siehe " }, zRef("zChild"), { insert: ", " }, zRef("zShared"), { insert: " und " }, zRef("zHome")])]),
+      doc("zChild", "Unterseite", [para([{ insert: "Weiter zu " }, zRef("zGrand")])]),
+      doc("zGrand", "Enkel", [para("Ganz unten")]),
+      doc("zShared", "Geteilt", [para("Von zwei Seiten verlinkt")]),
+      // (a) a database in a document inside a folder, nested in a toggle;
+      // one row names a document another row already has.
+      doc("zOther", "Andere", [
+        para([{ insert: "Auch " }, zRef("zShared")]),
+        list("toggle", "Aufklappen", {}, [zDatabase("zDb2", "Zweite", [zRow("zRowDup", [zRef("zA")]), zRow("zRowNested", [zRef("zNested")])])]),
+      ]),
+      doc("zNested", "Im Ordner-Dokument", [para("Inhalt verschachtelt")]),
+      doc("zCanvasDoc", "Von der Leinwand", [para("Inhalt Leinwand")]),
+    ],
+    // (c) a row's document in two folders and a collection
+    folders: [
+      { id: "zF1", parentId: null, type: "folder", data: "Ordner Eins", index: "a0" },
+      { id: "zF1a", parentId: "zF1", type: "doc", data: "zA", index: "a0" },
+      { id: "zF2", parentId: null, type: "folder", data: "Ordner Zwei", index: "a1" },
+      { id: "zF2a", parentId: "zF2", type: "doc", data: "zA", index: "a0" },
+      { id: "zF2o", parentId: "zF2", type: "doc", data: "zOther", index: "a1" },
+    ],
+    collections: [{ id: "zColl", name: "Wichtige Kunden", rules: { filters: [] }, allowList: ["zA"] }],
+  };
+}
+
+test("documents of database rows: other ways AFFiNE names them, and what they link to (#117)", async () => {
+  const bytes = affineFileV2(linkedRowsWorkspace());
+  const tree = await parseImport("z.affine", bytes);
+  const at = (id: string) => tree.pages.find((p) => p.key === `doc:${id}`)!;
+  // (a) every row's document is found, also in a folder's document, in a
+  // toggle and on the canvas.
+  for (const id of ["zRowSame", "zLinkDoc", "zCell", "zA", "zNested", "zCanvasDoc"]) assert.ok(at(id).inRecord, `${id} is a record's content`);
+  const canvasDb = tree.pages.find((p) => p.key === "db:zHome:zCanvasDb")!;
+  assert.equal(canvasDb.parent, "doc:zHome", "a database only on the canvas is a page below its document");
+  const rows = tree.pages.find((p) => p.key === "db:zHome:zDb")!.database!.rows;
+  assert.deepEqual(rows.map((r) => r.key), ["doc:zRowSame", "doc:zLinkDoc", "doc:zCell", "doc:zA"]);
+  assert.equal(rows[2].cells.title, "Aus der Titelzelle", "a title only in the cell shows the document's title");
+  assert.match(rows[1].html, /Inhalt per Link/);
+  // The second row naming Kunde A links to the first.
+  const second = tree.pages.find((p) => p.key === "db:zOther:zDb2")!.database!.rows[0];
+  assert.equal(second.key, undefined);
+  assert.match(second.html, /fp-import:\/\/page\/doc%3AzA|fp-import:\/\/page\/doc:zA/);
+  // (b) linked only from a row's document: below the database; what that
+  // links to below it. Linked from elsewhere too: stays. The database's own
+  // document never goes below its database.
+  assert.equal(at("zChild").parent, "db:zHome:zDb");
+  assert.equal(at("zGrand").parent, "doc:zChild");
+  assert.equal(at("zShared").parent, "affine:root");
+  assert.equal(at("zHome").parent, "affine:root");
+  assert.equal(at("zOther").parent, "folder:zF2");
+  const warning = (re: RegExp) => tree.warnings.find((w) => re.test(w))!;
+  assert.equal(warning(/nur aus Dokumenten in Datenbankeinträgen verlinkt/), "2 Dokumente, die nur aus Dokumenten in Datenbankeinträgen verlinkt sind, liegen unter der Datenbank (Einträge haben keine Unterseiten).");
+  assert.equal(warning(/nur auf dem Whiteboard/), "1 Datenbanken stehen in AFFiNE nur auf dem Whiteboard; sie werden Datenbankseiten unter ihrem Dokument.");
+  assert.equal(warning(/schon Inhalt eines anderen Eintrags/), "1 Datenbankeinträge nennen ein Dokument, das schon Inhalt eines anderen Eintrags ist; sie verlinken auf diesen Eintrag.");
+  assert.equal(warning(/auch in Ordnern/), "1 Dokumente in Datenbankeinträgen liegen in AFFiNE auch in Ordnern; die Ordner verlinken auf den Eintrag.");
+  for (const w of tree.warnings.filter((w) => /Datenbank|Ordnern/.test(w))) assert.notEqual(englishMessage(w), w, `“${w}” has an English text`);
+  assert.equal(englishMessage(warning(/nur aus Dokumenten/)), "2 documents linked only from documents in database records sit below the database (records have no subpages).");
+
+  const preview = await importFromSource(owner, wid, space, { name: "z.affine", bytes }, { dryRun: true });
+  assert.equal(preview.rowDocuments, 6);
+  // Vertrieb Z, Unterseite, Enkel, Geteilt, Andere and the collection.
+  assert.equal(preview.pages, 6);
+
+  await importFromSource(owner, wid, space, { name: "z.affine", bytes });
+  for (const title of ["Gleiche ID", "Per Link", "Aus der Titelzelle", "Kunde A", "Im Ordner-Dokument", "Von der Leinwand"])
+    assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title=? AND kind='document' AND deleted_at IS NULL", wid, title).length, 0, `${title} is no page`);
+  const db = pageByTitle("Kunden Z");
+  assert.equal(db.parent_id, pageByTitle("Vertrieb Z").id);
+  assert.equal(pageByTitle("Unterseite").parent_id, db.id);
+  assert.equal(pageByTitle("Enkel").parent_id, pageByTitle("Unterseite").id);
+  assert.equal(pageByTitle("Leinwand-Datenbank").parent_id, pageByTitle("Vertrieb Z").id);
+  // (c) the record's document: content once, links from both folders and
+  // the collection, no second page.
+  const records = all<{ id: string; page_id: string; content: string }>("SELECT id,page_id,content FROM rows WHERE page_id IN (?,?) AND content LIKE '%Inhalt von A%'", db.id, pageByTitle("Zweite").id);
+  assert.equal(records.length, 1);
+  const recordLink = new RegExp(`/#page=${records[0].page_id}&amp;row=${records[0].id}`, "g");
+  assert.equal(html(pageByTitle("Ordner Eins").id).match(recordLink)?.length, 1);
+  assert.equal(html(pageByTitle("Ordner Zwei").id).match(recordLink)?.length, 1);
+  assert.equal(html(pageByTitle("Sammlung: Wichtige Kunden").id).match(recordLink)?.length, 1);
+  assert.match(html(pageByTitle("Unterseite").id), new RegExp(link(pageByTitle("Enkel").id)));
+});
+
+/* ---------- #116: AFFiNE templates ---------- */
+function templatesWorkspace(): Workspace {
+  const appLink = (docId: string) => `https://app.affine.pro/workspace/tWs/${docId}`;
+  return {
+    id: "tWs",
+    name: "Vorlagen",
+    docs: [
+      {
+        id: "tMeeting",
+        title: "Besprechung",
+        tags: ["tt1"],
+        doc: page("tMeeting", "Besprechung", [
+          note([para("Agenda", "h2"), list("todo", "Punkt"), { id: uid(), flavour: "affine:image", props: { sourceId: "tPng" } }, para([{ insert: "Protokoll in " }, zRef("tNormal")])]),
+        ]),
+      },
+      { id: "tDb", title: "Aufgabenliste", doc: page("tDb", "Aufgabenliste", [note([para(""), zDatabase("tDbBlock", "Aufgaben", [zRow("tR1", "Erste Aufgabe"), zRow("tR2", "Zweite")])])]) },
+      { id: "tMixed", title: "Projektstart", doc: page("tMixed", "Projektstart", [note([para("Ziele"), zDatabase("tMixedDb", "Risiken", [zRow("tR3", "Risiko")])])]) },
+      {
+        id: "tNormal",
+        title: "Protokolle",
+        doc: page("tNormal", "Protokolle", [
+          note([
+            para([{ insert: "Neu aus " }, zRef("tMeeting")]),
+            { id: uid(), flavour: "affine:embed-linked-doc", props: { pageId: "tMeeting" } },
+            para([{ insert: "Vorlage", attributes: { link: appLink("tDb") } }]),
+          ]),
+        ]),
+      },
+    ],
+    tags: [{ id: "tt1", value: "Team", color: "#ff0000" }],
+    docProperties: { tMeeting: { isTemplate: true }, tDb: { isTemplate: true }, tMixed: { isTemplate: true } },
+    icons: { "doc:tMeeting": { type: "emoji", unicode: "🗓️" } },
+    folders: [
+      { id: "tF", parentId: null, type: "folder", data: "Sitzungen", index: "a0" },
+      { id: "tFm", parentId: "tF", type: "doc", data: "tMeeting", index: "a0" },
+      { id: "tFn", parentId: "tF", type: "doc", data: "tNormal", index: "a1" },
+    ],
+    blobs: [{ key: "tPng", data: PNG, mime: "image/png" }],
+  };
+}
+
+test("AFFiNE templates become templates of the workspace, not pages (#116)", async () => {
+  const { listPageTemplates, applyPageTemplate } = await import("../lib/page-templates");
+  const { importTemplateVisibility } = await import("../lib/importers/write");
+  const bytes = affineFileV2(templatesWorkspace());
+  const tree = await parseImport("t.affine", bytes);
+  assert.deepEqual(tree.templates!.map((t) => [t.name, t.kind]), [["Besprechung", "document"], ["Aufgabenliste", "database"], ["Projektstart", "document"]]);
+  assert.ok(!tree.pages.some((p) => ["doc:tMeeting", "doc:tDb", "doc:tMixed"].includes(p.key) || p.key.startsWith("db:t")), "templates are no pages, nor their databases");
+  assert.ok(tree.warnings.includes("3 Links auf Vorlagen werden als Text übernommen."));
+  assert.ok(tree.warnings.includes("Datenbanken in Vorlagen werden nicht übernommen."));
+  assert.equal(englishMessage("3 Links auf Vorlagen werden als Text übernommen."), "3 links to templates are imported as text.");
+  assert.equal(englishMessage("Datenbanken in Vorlagen werden nicht übernommen."), "Databases in templates are not imported.");
+
+  const preview = await importFromSource(owner, wid, space, { name: "t.affine", bytes }, { dryRun: true });
+  assert.equal(preview.templates, 3);
+  assert.equal(preview.templateVisibility, "workspace");
+  assert.equal(preview.pages, 1, "only Protokolle is a page");
+  assert.equal(preview.files, 1, "the template's image");
+
+  // Who may not create templates for the workspace gets them for themselves.
+  const viewer = account("affine-template-viewer");
+  run("INSERT INTO members(workspace_id,user_id,role) VALUES(?,?,?)", wid, viewer.id, "viewer");
+  assert.equal(importTemplateVisibility(viewer, wid), "private");
+  assert.equal(importTemplateVisibility(owner, wid), "workspace");
+  assert.equal(importTemplateVisibility({ ...owner, apiScope: "read" } as Identity, wid), "private");
+  const fallback = "Die Vorlagen werden nur für dich gespeichert („Nur für mich“): Vorlagen für den Arbeitsbereich legt an, wer ihn bearbeiten darf.";
+  assert.equal(englishMessage(fallback), "The templates are saved for you only (“Only me”): templates for the workspace are created by whoever may edit it.");
+
+  await importFromSource(owner, wid, space, { name: "t.affine", bytes });
+  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title IN ('Besprechung','Aufgabenliste','Projektstart') AND deleted_at IS NULL", wid).length, 0);
+  type T = { id: string; name: string; kind: string; visibility: string; category: string; payload: string };
+  const saved = all<T>("SELECT id,name,kind,visibility,category,payload FROM templates WHERE workspace_id=? AND name IN ('Besprechung','Aufgabenliste','Projektstart') ORDER BY name", wid);
+  assert.deepEqual(saved.map((t) => [t.name, t.kind, t.visibility, t.category]), [
+    ["Aufgabenliste", "database", "workspace", "other"],
+    ["Besprechung", "document", "workspace", "other"],
+    ["Projektstart", "document", "workspace", "other"],
+  ]);
+  const meeting = saved.find((t) => t.name === "Besprechung")!;
+  const payload = JSON.parse(meeting.payload) as { html: string; icon: string; meta: { tags: { name: string; color?: string }[] } };
+  assert.equal(payload.icon, "🗓️");
+  assert.deepEqual(payload.meta.tags, [{ name: "Team", color: "#ff0000" }]);
+  assert.match(payload.html, /Agenda/);
+  assert.match(payload.html, new RegExp(link(pageByTitle("Protokolle").id)), "a link from the template to a page of the import");
+  const fileId = /\/api\/files\/([0-9a-f-]{36})/.exec(payload.html)![1];
+  assert.equal(one<{ n: number }>("SELECT COUNT(*) n FROM template_files WHERE template_id=? AND original_id=?", meeting.id, fileId)!.n, 1, "the image goes with the template");
+  assert.equal(one("SELECT 1 FROM files WHERE id=?", fileId), undefined, "and is no upload of a page");
+  const tasks = JSON.parse(saved.find((t) => t.name === "Aufgabenliste")!.payload) as { rows: { cells: { title: string } }[] };
+  assert.deepEqual(tasks.rows.map((r) => r.cells.title), ["Erste Aufgabe", "Zweite"]);
+  assert.match(JSON.parse(saved.find((t) => t.name === "Projektstart")!.payload).html, /Ziele/);
+  // Links to templates are text; the folder names the template as text.
+  const protocols = html(pageByTitle("Protokolle").id);
+  assert.match(protocols, /Neu aus Besprechung/);
+  assert.match(protocols, /<p[^>]*>Besprechung<\/p>/);
+  assert.match(protocols, /<p[^>]*>Vorlage<\/p>/);
+  assert.doesNotMatch(protocols, /affine\.pro/);
+  assert.match(html(pageByTitle("Sitzungen").id), /<li>Besprechung<\/li>/);
+  // Listed and used like any saved template: the icon comes along.
+  const listed = listPageTemplates(owner, wid).find((t) => t.id === meeting.id)!;
+  assert.equal((listed as { icon?: string }).icon, "🗓️");
+  const used = createPage(wid, space, owner.id, "Aus Vorlage", "document");
+  const { requirePage } = await import("../lib/permissions");
+  const tpl = one<Parameters<typeof applyPageTemplate>[2]>("SELECT * FROM templates WHERE id=?", meeting.id)!;
+  const { transaction } = await import("../lib/db");
+  transaction(() => applyPageTemplate(owner, requirePage(owner, used, true), tpl, false), owner);
+  assert.equal(one<{ icon: string }>("SELECT icon FROM pages WHERE id=?", used)!.icon, "🗓️");
+  assert.match(html(used), /Agenda/);
+  assert.match(html(used), /<img src="\/api\/files\/[0-9a-f-]{36}"/);
+  assert.deepEqual(tagsOf(used), ["Team"]);
+
+  // A snapshot does not say which documents are templates.
+  const zip = await writeZip(new Map([["Notiz-tsnap.snapshot.json", Buffer.from(JSON.stringify(snapshotDoc("tsnap", "Vorlage im Snapshot", [])))]]));
+  const snap = await importFromSource(owner, wid, space, { name: "s.zip", bytes: zip }, { dryRun: true });
+  const snapNote = "Ob ein Dokument eine Vorlage ist, steht nur in der Arbeitsbereichsdatei (.affine); aus einem Snapshot werden Vorlagen gewöhnliche Seiten.";
+  assert.ok(snap.warnings.includes(snapNote));
+  assert.equal(englishMessage(snapNote), "Only the workspace file (.affine) says whether a document is a template; from a snapshot, templates become ordinary pages.");
+  assert.equal(snap.templates, undefined);
+});
+
+// The reporter's case (#117): a row names a document that is only a
+// database – AFFiNE has no database without a document.
+test("a row's document that is only a database: that database goes below the record's database, embedded in the record (#117)", async () => {
+  const onlyDb = (id: string, title: string, db: BlockSpec) => ({ id, title, doc: page(id, title, [note([para(""), db])]) });
+  const ws: Workspace = {
+    id: "oWs",
+    name: "Nur Datenbanken",
+    docs: [
+      { id: "oHome", title: "Projekte O", doc: page("oHome", "Projekte O", [note([para("Übersicht"), zDatabase("oA", "Projektliste O", [zRow("oRowB", [zRef("oB")]), zRow("oRowPlain", "Ohne Dokument")])])]) },
+      // B: only database C.
+      onlyDb("oB", "Projekt B", zDatabase("oC", "Aufgaben B", [zRow("oRowC1", "Aufgabe 1"), zRow("oRowC2", "Aufgabe 2")])),
+      // Two such documents naming each other through their rows.
+      onlyDb("oX", "Kreis X", zDatabase("oDx", "Liste X", [zRow("oRowX", [zRef("oY")])])),
+      onlyDb("oY", "Kreis Y", zDatabase("oDy", "Liste Y", [zRow("oRowY", [zRef("oX")])])),
+    ],
+    folders: [
+      { id: "oF", parentId: null, type: "folder", data: "Ordner O", index: "a0" },
+      { id: "oFb", parentId: "oF", type: "doc", data: "oB", index: "a0" },
+    ],
+  };
+  const bytes = affineFileV2(ws);
+  const tree = await parseImport("o.affine", bytes);
+  const at = (key: string) => tree.pages.find((p) => p.key === key)!;
+  assert.ok(at("doc:oB").inRecord);
+  assert.equal(at("db:oB:oC").parent, "db:oHome:oA", "database C below database A, not at the top");
+  const record = at("db:oHome:oA").database!.rows[0];
+  assert.equal(record.key, "doc:oB");
+  assert.match(record.html, /data-linked-source="fp-import:\/\/page\/db%3AoB%3AoC"|data-linked-source="fp-import:\/\/page\/db:oB:oC"/, "the record shows C embedded");
+  // No cycle: one of the two lands below the other, that one where its document was.
+  const [x, y] = [at("db:oX:oDx"), at("db:oY:oDy")];
+  assert.ok((x.parent === "affine:root" && y.parent === x.key) || (y.parent === "affine:root" && x.parent === y.key), `${x.parent} / ${y.parent}`);
+
+  await importFromSource(owner, wid, space, { name: "o.affine", bytes });
+  assert.equal(all("SELECT id FROM pages WHERE workspace_id=? AND title='Projekt B' AND deleted_at IS NULL", wid).length, 0);
+  const a = pageByTitle("Projektliste O");
+  const c = pageByTitle("Aufgaben B");
+  assert.equal(c.kind, "database");
+  assert.equal(c.parent_id, a.id, "C is a subpage of database A");
+  assert.equal(all("SELECT id FROM rows WHERE page_id=?", c.id).length, 2);
+  const content = one<{ content: string }>("SELECT content FROM rows WHERE page_id=? AND position=0", a.id)!.content;
+  assert.match(content, new RegExp(`data-linked-source="${c.id}"`), "the record embeds C as a linked database");
+  // The folder that held B lists its record.
+  assert.match(html(pageByTitle("Ordner O").id), new RegExp(`/#page=${a.id}&amp;row=`));
 });

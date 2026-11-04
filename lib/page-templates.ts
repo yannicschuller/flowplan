@@ -1,7 +1,7 @@
 import { reconcileTagFields } from "./tag-fields";
 import { reindexRowTasks } from "./doc-tasks";
 import { hiddenRowIds } from "./row-access";
-import { appearanceSchema } from "./page-appearance";
+import { appearanceSchema, pageIconSchema } from "./page-appearance";
 import { templateCategoryIds } from "./template-categories";
 import { quotaCheckpoint } from "./instance-ops";
 import { applyAppearance } from "./page-covers";
@@ -56,6 +56,9 @@ export const savedDatabaseTemplateSchema = z.object({
   rowTemplates: z.array(savedRowTemplateSchema).max(500).optional(),
   formConfig: formConfigSchema.optional(),
 });
+// The icon a template may bring (imported templates, #116): an emoji or a
+// symbol, never an image of another page.
+const templateIconSchema = pageIconSchema.refine((value) => !!value && !value.startsWith("/"));
 export type PageTemplate = {
   id: string;
   workspace_id: string;
@@ -334,6 +337,9 @@ export function applyPageTemplate(
     .object({ appearance: appearanceSchema.optional() })
     .parse(JSON.parse(payload)).appearance;
   if (appearance) applyAppearance(page.id, appearance);
+  // An emoji the template brings (imported templates, #116).
+  const icon = z.object({ icon: templateIconSchema }).safeParse(JSON.parse(payload));
+  if (icon.success) run("UPDATE pages SET icon=? WHERE id=?", icon.data.icon, page.id);
   // Tags and property values of the template's page (lib/page-properties-server.ts).
   const meta = z.object({ meta: portableMetaSchema }).safeParse(JSON.parse(payload));
   if (meta.success) applyPortableMeta(user, page, meta.data.meta);
@@ -368,16 +374,17 @@ export function databaseTemplateExtras(pageId: string) {
 export function listPageTemplates(user: Identity, workspaceId: string) {
   const role = requireMember(user, workspaceId);
   const guest = isGuest(user, workspaceId);
-  return all<PageTemplate>(
-    `SELECT id,workspace_id,name,kind,visibility,category,created_by,version,deleted_at FROM templates
+  return all<PageTemplate & { icon?: unknown }>(
+    `SELECT id,workspace_id,name,kind,visibility,category,created_by,version,deleted_at,json_extract(payload,'$.icon') icon FROM templates
      WHERE (workspace_id=? AND (visibility IN (${guest ? "'instance','public'" : "'workspace','instance','public'"}) OR created_by=?))
         OR (workspace_id<>? AND visibility IN ('instance','public') AND deleted_at IS NULL)
      ORDER BY name`,
     workspaceId,
     user.id,
     workspaceId,
-  ).map(({ workspace_id, ...t }) => ({
+  ).map(({ workspace_id, icon, ...t }) => ({
     ...t,
+    ...(templateIconSchema.safeParse(icon).success ? { icon } : {}),
     // Instance templates from other workspaces are only used, not managed.
     shared: workspace_id !== workspaceId,
     can_manage:

@@ -22,7 +22,13 @@
 //   columns the order, width and visibility of AFFiNE's views (#82). A row
 //   turned into a document of its own brings that document as the record's
 //   content, with its icon, tags and properties; the document gets no page
-//   of its own and links to it lead to the record (attachRowDocs, #82).
+//   of its own and links to it lead to the record (attachRowDocs, #82). Its
+//   own databases (a document that is only a database) go below the
+//   record's database page, embedded in the record; documents linked only
+//   from such documents below that database too (placeLinkedDocs, #117).
+// - Templates (isTemplate in the document's properties): saved templates of
+//   the workspace (lib/importers/write.ts), not pages; links to them are
+//   text (#116).
 // - The edgeless canvas: when it holds more than the document's note (or
 //   the document opens as edgeless), a whiteboard "<Name> – Whiteboard"
 //   next to it, linked both ways (link in the document, card on the board).
@@ -38,7 +44,7 @@ import { calloutIcon } from "../callout-types";
 import { codeBlockHtml, esc, fileRef, mimeOf, pageRef, withBlockId } from "./html";
 import { AText, propertyValue, type ABlock, type ADoc, type AFilter, type AWorkspace, type DeltaOp } from "./affine-read";
 import { affineBoard, edgelessExtras, noteDisplay } from "./affine-board";
-import { warningList, MAX_IMPORT_DEPTH, MAX_IMPORT_ROWS, maxImportPages, type ImportDatabase, type ImportFile, type ImportPage, type ImportTree } from "./types";
+import { warningList, MAX_IMPORT_DEPTH, MAX_IMPORT_ROWS, maxImportPages, type ImportDatabase, type ImportFile, type ImportPage, type ImportTemplate, type ImportTree } from "./types";
 import type { FrontmatterValue } from "../frontmatter";
 import type { Field, View } from "../types";
 
@@ -56,14 +62,18 @@ const iso = (ms?: number) => (ms && ms > 0 && ms < 8.64e15 ? new Date(ms).toISOS
 // day is that day for every time zone between −12 and +12 hours.
 const dayOf = (ms: number) => new Date(Math.round(ms + 12 * 3600e3)).toISOString().slice(0, 10);
 
+// The document an AFFiNE app link ("https://…/workspace/<ws>/<doc>") names.
+const APP_LINK = /^https?:\/\/[^/]+\/workspace\/[^/?#]+\/([A-Za-z0-9_-]{3,100})(?:[/?#]|$)/i;
+export const affineAppDocId = (url: unknown) => (typeof url === "string" && url.length <= 4000 ? (APP_LINK.exec(url.trim())?.[1] ?? null) : null);
+
 // Only links a browser opens safely; AFFiNE app links to documents of the
 // import become links to their pages.
 export function safeHref(url: unknown, docLink?: (docId: string) => string | null): string | null {
   if (typeof url !== "string" || url.length > 4000) return null;
   const trimmed = url.trim();
-  const app = /^https?:\/\/[^/]+\/workspace\/[^/?#]+\/([A-Za-z0-9_-]{3,100})(?:[/?#]|$)/i.exec(trimmed);
+  const app = affineAppDocId(trimmed);
   if (app && docLink) {
-    const page = docLink(app[1]);
+    const page = docLink(app);
     if (page) return withAffineAnchor(page, affineUrlAnchor(trimmed));
   }
   try {
@@ -122,6 +132,10 @@ type Ctx = {
   ws: AWorkspace;
   warn: (message: string) => void;
   docLink: (docId: string) => string | null;
+  // A document of the import that is a page (not a template, #116), and
+  // one that is a template (links to it stay text).
+  isDoc: (docId: string) => boolean;
+  isTemplate: (docId: string) => boolean;
   title: (docId: string) => string;
   blob: (key: unknown, name?: string, mime?: string) => string | null;
   // The whiteboard of the document being converted, if it gets one.
@@ -158,8 +172,13 @@ function inlineOp(op: DeltaOp, ctx: Ctx) {
   const background = paletteColor(a.background, HIGHLIGHTS);
   if (background) html = `<mark style="background-color: ${background}">${html}</mark>`;
   if (a.link !== undefined) {
-    const href = safeHref(a.link, ctx.docLink);
-    if (href) html = `<a href="${esc(href)}">${html}</a>`;
+    // An app link to a template (#116) stays text, as references to it.
+    const target = affineAppDocId(a.link);
+    if (target && ctx.isTemplate(target)) ctx.docLink(target);
+    else {
+      const href = safeHref(a.link, ctx.docLink);
+      if (href) html = `<a href="${esc(href)}">${html}</a>`;
+    }
   }
   return html;
 }
@@ -339,16 +358,24 @@ function renderTable(block: ABlock, ctx: Ctx) {
 // "LinkedPage", pageId}. Also taken: a title with exactly one reference
 // beside other text, a row block that is itself a linked or synced doc
 // card, and a row whose only content is such a card ("card": that block,
-// not rendered again).
+// not rendered again). Since #117 also: an AFFiNE app link to the document
+// as the title's one reference (a pasted link), the same in the title
+// column's own cell (titleCell, older databases kept the title there), and
+// (convertDatabase) a row whose id is that of a document.
 export type RowDocRef = { pageId: string; card?: ABlock };
 const isDocCard = (b: ABlock) => (b.flavour === "affine:embed-linked-doc" || b.flavour === "affine:embed-synced-doc") && typeof b.props.pageId === "string";
 const isEmpty = (b: ABlock) => b.flavour === "affine:paragraph" && !b.children.length && !(b.props.text instanceof AText ? b.props.text.plain.trim() : String(b.props.text ?? "").trim());
-export function rowDocRef(row: ABlock): RowDocRef | null {
+const opDoc = (op: DeltaOp) => {
+  const pageId = (op.attributes?.reference as { pageId?: unknown } | undefined)?.pageId;
+  return typeof pageId === "string" ? pageId : affineAppDocId(op.attributes?.link);
+};
+export function rowDocRef(row: ABlock, titleCell?: unknown): RowDocRef | null {
   if (isDocCard(row)) return { pageId: row.props.pageId as string };
-  const delta = row.props.text instanceof AText ? row.props.text.delta : [];
-  const refs = delta.filter((op) => typeof (op.attributes?.reference as { pageId?: unknown } | undefined)?.pageId === "string");
-  if (refs.length === 1) return { pageId: (refs[0].attributes!.reference as { pageId: string }).pageId };
-  if (refs.length > 1) return null;
+  for (const text of [row.props.text, titleCell]) {
+    const refs = (text instanceof AText ? text.delta : []).map(opDoc).filter((id): id is string => !!id);
+    if (refs.length === 1) return { pageId: refs[0] };
+    if (refs.length > 1) return null;
+  }
   const content = row.children.filter((b) => !isEmpty(b));
   return content.length === 1 && isDocCard(content[0]) ? { pageId: content[0].props.pageId as string, card: content[0] } : null;
 }
@@ -450,7 +477,10 @@ function convertDatabase(block: ABlock, ctx: Ctx) {
   }
   const rowBlocks = block.children.slice(0, MAX_IMPORT_ROWS);
   if (block.children.length > MAX_IMPORT_ROWS) ctx.warn(`Maximal ${MAX_IMPORT_ROWS} Einträge je Tabelle.`);
-  const refs = rowBlocks.map(rowDocRef);
+  const refs = rowBlocks.map(
+    (row): RowDocRef | null =>
+      rowDocRef(row, titleColumn ? cells[row.id]?.[titleColumn.id]?.value : undefined) ?? (ctx.isDoc(row.id) ? { pageId: row.id } : null),
+  );
   const rows: ImportDatabase["rows"] = rowBlocks.map((row, i) => {
     const ref = refs[i];
     // A reference in the title reads as its document's title; a row whose
@@ -606,6 +636,24 @@ const sniff = (data: Buffer): string | null => {
 };
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf" };
 
+// AFFiNE's template flag: a boolean in db$docProperties; as text where a
+// value went through the legacy properties.
+const isTemplateFlag = (value: unknown) => value === true || value === "true";
+// The database blocks among blocks (also nested in lists, toggles …).
+function databasesIn(blocks: ABlock[], depth = 0): ABlock[] {
+  if (depth > 40) return [];
+  return blocks.flatMap((b) => (b.flavour === "affine:database" ? [b] : databasesIn(b.children, depth + 1)));
+}
+// The database a document consists of: its notes hold that one block and
+// nothing else but empty paragraphs.
+function onlyDatabase(root: ABlock): ABlock | null {
+  const content = root.children
+    .filter((b) => b.flavour === "affine:note" && noteDisplay(b) !== "edgeless")
+    .flatMap((n) => n.children)
+    .filter((b) => !isEmpty(b));
+  return content.length === 1 && content[0].flavour === "affine:database" ? content[0] : null;
+}
+
 // The properties of a document (AFFiNE's custom doc properties) by name.
 function docProperties(ws: AWorkspace, docId: string): Record<string, FrontmatterValue> | undefined {
   const values = ws.docProps.get(docId);
@@ -672,7 +720,12 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     return icon && icon !== "affine-icon" ? { icon } : {};
   };
   const journalOf = (id: string) => validDate(ws.docProps.get(id)?.journal);
-  const docLink = (id: string) => (byId.has(id) ? pageRef(docKey(id)) : null);
+  // Templates (#116): AFFiNE marks them in the document's properties
+  // (db$docProperties isTemplate, packages/frontend/core/src/modules/db/
+  // schema/schema.ts; DocRecord.isTemplate$). They become saved templates of
+  // the workspace, not pages; links to them stay text.
+  const templateIds = new Set(live.filter((d) => isTemplateFlag(ws.docProps.get(d.id)?.isTemplate)).map((d) => d.id));
+  const docLink = (id: string) => (byId.has(id) && !templateIds.has(id) ? pageRef(docKey(id)) : null);
   const files = new Map<string, ImportFile>();
   let missingFiles = 0;
   const blob = (key: unknown, name?: string, mime?: string) => {
@@ -741,27 +794,57 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
   // Database rows that name a document of their own (#82), in the order of
   // the import; settled once every document is converted.
   const claims: Claim[] = [];
+  // The documents each document links to (#117: AFFiNE's sidebar shows them
+  // below it), links to templates (text) and the templates themselves.
+  const linksFrom = new Map<string, Set<string>>();
+  let templateLinks = 0,
+    canvasDatabases = 0;
+  const templates: ImportTemplate[] = [];
   for (const doc of live) {
     // Read now, let go after the document is converted.
     const docRoot = doc.load();
+    const template = templateIds.has(doc.id);
     if (docRoot && (edgelessExtras(docRoot) > 0 || ws.docProps.get(doc.id)?.primaryMode === "edgeless")) boardFor.add(doc.id);
+    if (template && boardFor.delete(doc.id)) warnings.add("Whiteboards von Vorlagen werden nicht übernommen.");
     const key = docKey(doc.id);
     const title = titleOf(doc.id);
-    const journalDate = journalOf(doc.id);
+    const journalDate = template ? undefined : journalOf(doc.id);
     const properties = docProperties(ws, doc.id);
     const parent = journalDate ? null : placeOf.get(key) || ROOT;
     const subpages: ImportPage[] = [];
+    const links = new Set<string>();
+    if (!template) linksFrom.set(doc.id, links);
+    const ownLink = (id: string) => {
+      if (templateIds.has(id)) {
+        templateLinks++;
+        return null;
+      }
+      const href = docLink(id);
+      if (href && id !== doc.id) links.add(id);
+      return href;
+    };
+    // A template that is only a database becomes a database template; other
+    // databases in templates are left out (a template has no pages below it).
+    const databaseTemplate = template && docRoot ? onlyDatabase(docRoot) : null;
+    let templateDb: ReturnType<typeof convertDatabase> | null = null;
     const ctx: Ctx = {
       ws,
       warn: (m) => warnings.add(m),
-      docLink,
+      docLink: ownLink,
+      isDoc: (id) => byId.has(id) && !templateIds.has(id),
+      isTemplate: (id) => templateIds.has(id),
       title: titleOf,
       blob,
       board: boardFor.has(doc.id) ? pageRef(boardKey(doc.id)) : null,
       database: (block) => {
+        if (template) {
+          if (block === databaseTemplate) templateDb = convertDatabase(block, ctx);
+          else warnings.add("Datenbanken in Vorlagen werden nicht übernommen.");
+          return "";
+        }
         const db = convertDatabase(block, ctx);
         const dbKey = `db:${doc.id}:${block.id}`;
-        db.refs.forEach((ref, i) => ref && claims.push({ ref, row: db.rows[i], fields: db.fields, owner: doc.id }));
+        db.refs.forEach((ref, i) => ref && claims.push({ ref, row: db.rows[i], fields: db.fields, owner: doc.id, db: dbKey }));
         // Below its document; for a journal day (which may live in another
         // space) below the workspace page.
         subpages.push({ key: dbKey, parent: journalDate ? ROOT : key, title: db.title, html: "", kind: "database", database: { fields: db.fields, views: db.views, rows: db.rows } });
@@ -774,11 +857,34 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     if (docRoot) {
       const notes = docRoot.children.filter((b) => b.flavour === "affine:note" && noteDisplay(b) !== "edgeless");
       html = notes.map((note) => renderBlocks(note.children, ctx)).join("");
+      // Databases in notes only on the canvas (#117): the whiteboard shows
+      // their text; the database (and its rows' documents) becomes a page
+      // below the document as any other.
+      if (!template)
+        for (const note of docRoot.children)
+          if (note.flavour === "affine:note" && noteDisplay(note) === "edgeless")
+            for (const block of databasesIn(note.children)) {
+              ctx.database(block);
+              canvasDatabases++;
+            }
     } else warnings.add("Ein Dokument ohne Inhalt wurde nur mit seinem Titel übernommen.");
+    if (template) {
+      const db = templateDb as ReturnType<typeof convertDatabase> | null;
+      templates.push({
+        key,
+        name: title,
+        kind: db ? "database" : "document",
+        html: db ? "" : html,
+        ...(db ? { database: { fields: db.fields, views: db.views, rows: db.rows } } : {}),
+        tags: [...new Set(doc.tags.map((t) => ws.tags.get(t)?.name).filter((t): t is string => !!t))],
+        ...iconOf(`doc:${doc.id}`),
+      });
+      continue;
+    }
     if (boardFor.has(doc.id) && docRoot) {
       const board = affineBoard(doc.id, docRoot, {
         blobs: ws.blobs,
-        pageRef: docLink,
+        pageRef: ownLink,
         docTitle: titleOf,
         plainText: (blocks) => blocksPlain(blocks, { title: titleOf }),
       });
@@ -801,7 +907,12 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     });
     pages.push(...subpages);
   }
-  attachRowDocs(pages, claims, { byId, extraLinks, placeOf, titleOf, warn: (m) => warnings.add(m) });
+  const homes = attachRowDocs(pages, claims, { byId, extraLinks, placeOf, titleOf, warn: (m) => warnings.add(m) });
+  const below = placeLinkedDocs(pages, homes, linksFrom);
+  if (below)
+    warnings.add(`${below} Dokumente, die nur aus Dokumenten in Datenbankeinträgen verlinkt sind, liegen unter der Datenbank (Einträge haben keine Unterseiten).`);
+  if (canvasDatabases) warnings.add(`${canvasDatabases} Datenbanken stehen in AFFiNE nur auf dem Whiteboard; sie werden Datenbankseiten unter ihrem Dokument.`);
+  if (templateLinks) warnings.add(`${templateLinks} Links auf Vorlagen werden als Text übernommen.`);
   if (affineIcons) warnings.add(`${affineIcons} Symbole aus AFFiNEs Symbolbibliothek werden nicht übernommen (nur Emojis).`);
   if (dropped) warnings.add(`${dropped} Elemente auf Whiteboards konnten nicht übernommen werden.`);
   if (missingFiles) warnings.add(`${missingFiles} Bilder oder Anhänge fehlen in der Datei.`);
@@ -820,7 +931,9 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
       } else
         warnings.add("Regeln einer Sammlung konnten nicht vollständig ausgewertet werden; übernommen sind die fest hinzugefügten Dokumente.");
     }
-    const list = live.filter((d) => ids.has(d.id)).map((d) => `<li><a href="${esc(docLink(d.id)!)}">${esc(titleOf(d.id))}</a></li>`);
+    const list = live
+      .filter((d) => ids.has(d.id))
+      .map((d) => (templateIds.has(d.id) ? `<li>${esc(titleOf(d.id))}</li>` : `<li><a href="${esc(docLink(d.id)!)}">${esc(titleOf(d.id))}</a></li>`));
     let html = `<p>${esc(ct("Sammlung aus AFFiNE, Stand des Imports.", "Collection from AFFiNE, as of the import."))}</p>`;
     if (collection.filters.length) {
       html += `<h2>${esc(ct("Regeln", "Rules"))}</h2><ul>${collection.filters.map((f) => `<li>${esc(describeFilter(f, ws))}</li>`).join("")}</ul>`;
@@ -848,6 +961,7 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
     files,
     warnings: warnings.list(),
     collections: ws.collections.length,
+    ...(templates.length ? { templates } : {}),
     ...(wrap ? { wrapper: ROOT } : {}),
     ...(ws.close ? { close: ws.close } : {}),
     tagColors: Object.fromEntries([...ws.tags.values()].flatMap((t) => (t.color ? [[t.name, t.color]] : []))),
@@ -865,7 +979,8 @@ export function parseAffine(ws: AWorkspace, fallbackTitle: string): ImportTree {
 //   (which goes into the journal) or the document that holds the database;
 // - links to the document lead to the record (write.ts); a folder that held
 //   it lists a link to it; its own databases move to where it was.
-type Claim = { ref: RowDocRef; row: ImportDatabase["rows"][number]; fields: Field[]; owner: string };
+// The result: per attached document the key of its record's database page.
+type Claim = { ref: RowDocRef; row: ImportDatabase["rows"][number]; fields: Field[]; owner: string; db: string };
 const TAG_COLUMN = /^(tags?|schlagw(ö|oe)rter)$/i;
 function attachRowDocs(
   pages: ImportPage[],
@@ -874,17 +989,24 @@ function attachRowDocs(
 ) {
   const byKey = new Map(pages.map((p) => [p.key, p]));
   const attached = new Map<string, ImportPage>();
+  const homes = new Map<string, string>();
   let lostTags = 0,
-    lostProperties = 0;
-  for (const { ref, row, fields, owner } of claims) {
+    lostProperties = 0,
+    shared = 0,
+    linked = 0,
+    inFolders = 0;
+  for (const { ref, row, fields, owner, db } of claims) {
     const key = docKey(ref.pageId);
     const page = byKey.get(key);
-    if (!page || !ctx.byId.has(ref.pageId)) continue;
+    if (!page || !ctx.byId.has(ref.pageId) || page.kind) continue;
     if (attached.has(key) || page.journalDate || ref.pageId === owner) {
+      if (attached.has(key)) shared++;
+      else linked++;
       row.html = `<p><a href="${esc(pageRef(key))}">${esc(ctx.titleOf(ref.pageId))}</a></p>${row.html}`;
       continue;
     }
     attached.set(key, page);
+    homes.set(key, db);
     page.inRecord = true;
     row.key = key;
     row.html = page.html + row.html;
@@ -905,15 +1027,74 @@ function attachRowDocs(
     }
     // A folder that held the document lists it (its record).
     const place = ctx.placeOf.get(key);
-    if (place && place !== ROOT)
+    if (place && place !== ROOT) {
+      inFolders++;
       ctx.extraLinks.set(place, [...(ctx.extraLinks.get(place) || []), `<li><a href="${esc(pageRef(key))}">${esc(page.title)}</a></li>`]);
+    }
   }
-  // What hung below an attached document (its databases) goes where the
-  // document was; a document's place is a folder or the top, never another
-  // document.
-  for (const page of pages) if (page.parent && attached.has(page.parent)) page.parent = attached.get(page.parent)!.parent ?? ROOT;
+  // What hung below an attached document – its databases, its whiteboard –
+  // goes below the database page of its record (#117): records have no
+  // subpages, and the record's content shows those databases embedded, as
+  // the document did. A document that is only a database (AFFiNE has no
+  // database without a document) so lands in the database of the row that
+  // names it, not at the top. Where that would put a page below itself (rows
+  // naming each other's documents), it goes where the document was.
+  const ancestors = (key: string) => {
+    const seen = new Set<string>();
+    for (let at: string | null | undefined = key; at && !seen.has(at) && seen.size < 500; at = byKey.get(at)?.parent) seen.add(at);
+    return seen;
+  };
+  for (const page of pages) {
+    const owner = page.parent && attached.has(page.parent) ? page.parent : page.kind === "whiteboard" ? docKey(page.key.slice("board:".length)) : null;
+    if (!owner || !attached.has(owner)) continue;
+    const home = homes.get(owner)!;
+    page.parent = ancestors(home).has(page.key) ? attached.get(owner)!.parent ?? ROOT : home;
+  }
   if (lostTags) ctx.warn(`${lostTags} Dokumente in Datenbankeinträgen haben Tags, die Datenbank aber keine Spalte „Tags“; diese Tags werden nicht übernommen.`);
   if (lostProperties) ctx.warn(`${lostProperties} Eigenschaften von Dokumenten in Datenbankeinträgen haben keine passende Spalte und werden nicht übernommen.`);
+  // Where the unusual cases went (#117).
+  if (shared) ctx.warn(`${shared} Datenbankeinträge nennen ein Dokument, das schon Inhalt eines anderen Eintrags ist; sie verlinken auf diesen Eintrag.`);
+  if (linked) ctx.warn(`${linked} Datenbankeinträge nennen einen Journaltag oder das Dokument ihrer Datenbank; sie verlinken darauf.`);
+  if (inFolders) ctx.warn(`${inFolders} Dokumente in Datenbankeinträgen liegen in AFFiNE auch in Ordnern; die Ordner verlinken auf den Eintrag.`);
+  return homes;
+}
+
+// Documents linked from a document that became a record's content (#117):
+// AFFiNE's sidebar shows them below it. Records have no subpages, so such a
+// document goes below the record's database page – when it would otherwise
+// sit at the top (no folder, no journal day) and every document linking to
+// it is a record's document or one placed so; the documents those link to
+// follow below them the same way. A document also linked from elsewhere
+// stays where it was. Returns how many were placed.
+function placeLinkedDocs(pages: ImportPage[], homes: Map<string, string>, linksFrom: Map<string, Set<string>>) {
+  const byKey = new Map(pages.map((p) => [p.key, p]));
+  const linkers = new Map<string, string[]>();
+  for (const [from, targets] of linksFrom) for (const target of targets) linkers.set(target, [...(linkers.get(target) || []), from]);
+  // Per placed document: the page its linked documents go below.
+  const home = new Map(homes);
+  const below = (parent: string, key: string) => {
+    for (let at: string | null | undefined = parent, n = 0; at && n < 200; at = byKey.get(at)?.parent, n++) if (at === key) return true;
+    return false;
+  };
+  let placed = 0;
+  for (let changed = true, rounds = 0; changed && rounds < 100; rounds++) {
+    changed = false;
+    for (const [target, from] of linkers) {
+      const key = docKey(target);
+      const page = byKey.get(key);
+      if (!page || page.parent !== ROOT || page.inRecord || page.journalDate || page.kind || home.has(key)) continue;
+      if (!from.every((f) => home.has(docKey(f)))) continue;
+      const parent = home.get(docKey(from[0]))!;
+      if (below(parent, key)) continue;
+      page.parent = parent;
+      home.set(key, key);
+      const board = byKey.get(boardKey(target));
+      if (board && board.parent === ROOT) board.parent = parent;
+      placed++;
+      changed = true;
+    }
+  }
+  return placed;
 }
 
 // Whether the import keeps the page named after the workspace: only for the
