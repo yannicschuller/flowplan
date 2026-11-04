@@ -584,6 +584,11 @@ export function cableRoute(item: WhiteboardItem, items: Map<string, WhiteboardIt
   const ya = edge(da, a),
     yb = edge(db, b);
   if (ra.id === rb.id) {
+    // Ports facing each other across free space (stacked devices, or one
+    // device): the cable goes straight across instead of out to the side
+    // channel and back, where it would cross itself.
+    const across = directGap(da, db, a, b, ra.id, items, lane);
+    if (across !== null) return `M ${f(a.x)} ${f(a.y)} V ${f(across)} H ${f(b.x)} V ${f(b.y)}`;
     const x = channel(ra, (a.x + b.x) / 2 >= ra.x + ra.w / 2);
     return `M ${f(a.x)} ${f(a.y)} V ${f(ya)} H ${f(x)} V ${f(yb)} H ${f(b.x)} V ${f(b.y)}`;
   }
@@ -592,6 +597,34 @@ export function cableRoute(item: WhiteboardItem, items: Map<string, WhiteboardIt
     xb = channel(rb, !right);
   const top = Math.min(ra.y, rb.y) - 8 - lane * 4;
   return `M ${f(a.x)} ${f(a.y)} V ${f(ya)} H ${f(xa)} V ${f(top)} H ${f(xb)} V ${f(yb)} H ${f(b.x)} V ${f(b.y)}`;
+}
+
+// The height of a straight run between two ports of one rack, or null: both
+// ports lie on the edges of their devices that face each other (the lower
+// edge of the upper device, the upper edge of the lower one; on one device
+// the same edge), and no other device sits in between where the cable runs.
+function directGap(da: WhiteboardItem, db: WhiteboardItem, a: Point, b: Point, rackId: string, items: Map<string, WhiteboardItem>, lane: number): number | null {
+  const near = (d: WhiteboardItem, p: Point) => (p.y - d.y <= d.y + d.h - p.y ? "top" : "bottom");
+  const ea = near(da, a),
+    eb = near(db, b);
+  let from: number, to: number;
+  if (da.id === db.id) {
+    if (ea !== eb) return null;
+    from = to = ea === "top" ? da.y : da.y + da.h;
+  } else {
+    const [upper, lower, eu, el] = da.y <= db.y ? [da, db, ea, eb] : [db, da, eb, ea];
+    if (eu !== "bottom" || el !== "top" || upper.y + upper.h > lower.y + 0.5) return null;
+    from = upper.y + upper.h;
+    to = lower.y;
+  }
+  const left = Math.min(a.x, b.x),
+    right = Math.max(a.x, b.x);
+  for (const d of items.values()) {
+    if (d.type !== "device" || d.rackId !== rackId || d.id === da.id || d.id === db.id) continue;
+    if (d.y < to - 0.5 && d.y + d.h > from + 0.5 && d.x < right && d.x + d.w > left) return null;
+  }
+  // Along the gap, each cable in its own lane (from − 2 … + 2 px around the middle).
+  return (from + to) / 2 + (lane - 2) * 0.8;
 }
 
 // ---- power and weight ----

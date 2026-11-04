@@ -513,3 +513,54 @@ test("NetBox: the API address, token header, paging and errors", async () => {
   });
   assert.ok(hosts.every((h) => h === "nb.example"));
 });
+
+test("cables between stacked devices run straight across the gap (#111)", () => {
+  const sw = template("switch-24"),
+    pp = template("patch-24");
+  const base = applyRackLayout([rack("r", 15), device("sw", sw, { rackId: "r", u: 9 }), device("pp", pp, { rackId: "r", u: 8 })]);
+  const map = new Map(base.map((i) => [i.id, i]));
+  const s = map.get("sw")!,
+    p = map.get("pp")!;
+  // A switch port in its lower half and a patch port in its upper half.
+  const lower = sw.ports.find((q) => { const at = portAnchor(s, q.id, map); return at && q.face !== "rear" && at.y > s.y + s.h / 2; })!;
+  const upper = pp.ports.find((q) => { const at = portAnchor(p, q.id, map); return at && q.face !== "rear" && at.y < p.y + p.h / 2; })!;
+  assert.ok(lower && upper);
+  const route = (extra: WhiteboardItem[]) => {
+    const items = [...base, cable("c", ["sw", lower.id], ["pp", upper.id]), ...extra];
+    return connectorGeometry(items.find((i) => i.id === "c")!, new Map(items.map((i) => [i.id, i]))).d;
+  };
+  const d = route([]);
+  // Down to the gap, across, down to the port – never out to the side channel.
+  assert.match(d, /^M [\d.]+ [\d.]+ V [\d.]+ H [\d.]+ V [\d.]+$/);
+  const gap = Number(d.split(" ")[4]);
+  assert.ok(Math.abs(gap - (s.y + s.h)) <= 2, `runs along the gap (${gap})`);
+  const rackItemOf = map.get("r")!;
+  assert.ok(!d.split(" ").some((v, i, all) => all[i - 1] === "H" && Number(v) >= rackItemOf.x + rackItemOf.w - 18), "stays out of the side channel");
+  // Two ports on the same edge of one device: straight along that edge.
+  const lower2 = sw.ports.find((q) => { const at = portAnchor(s, q.id, map); return at && q.face !== "rear" && q.id !== lower.id && at.y > s.y + s.h / 2; })!;
+  const items = [...base, cable("c2", ["sw", lower.id], ["sw", lower2.id])];
+  assert.match(connectorGeometry(items.find((i) => i.id === "c2")!, new Map(items.map((i) => [i.id, i]))).d, /^M [\d.]+ [\d.]+ V [\d.]+ H [\d.]+ V [\d.]+$/);
+  // A port facing away (upper half of the switch to the patch panel) still uses the channel.
+  const top = sw.ports.find((q) => { const at = portAnchor(s, q.id, map); return at && q.face !== "rear" && at.y < s.y + s.h / 2; })!;
+  const away = [...base, cable("c3", ["sw", top.id], ["pp", upper.id])];
+  assert.match(connectorGeometry(away.find((i) => i.id === "c3")!, new Map(away.map((i) => [i.id, i]))).d, /^M( [\d.]+){2} V [\d.]+ H [\d.]+ V [\d.]+ H [\d.]+ V [\d.]+$/);
+});
+
+test("cables across free units go straight unless a device is in the way (#111)", () => {
+  const sw = template("switch-24"),
+    pp = template("patch-24"),
+    srv = template("server-1u");
+  const base = applyRackLayout([rack("r", 15), device("sw", sw, { rackId: "r", u: 12 }), device("pp", pp, { rackId: "r", u: 8 })]);
+  const map = new Map(base.map((i) => [i.id, i]));
+  const s = map.get("sw")!,
+    p = map.get("pp")!;
+  const lower = sw.ports.find((q) => { const at = portAnchor(s, q.id, map); return at && q.face !== "rear" && at.y > s.y + s.h / 2; })!;
+  const upper = pp.ports.find((q) => { const at = portAnchor(p, q.id, map); return at && q.face !== "rear" && at.y < p.y + p.h / 2; })!;
+  const d = (extra: WhiteboardItem[]) => {
+    const items = applyRackLayout([...base, ...extra, cable("c", ["sw", lower.id], ["pp", upper.id])]);
+    return connectorGeometry(items.find((i) => i.id === "c")!, new Map(items.map((i) => [i.id, i]))).d;
+  };
+  assert.match(d([]), /^M [\d.]+ [\d.]+ V [\d.]+ H [\d.]+ V [\d.]+$/);
+  // A server at U10 sits in the way: around through the side channel.
+  assert.match(d([device("srv", srv, { rackId: "r", u: 10 })]), /^M( [\d.]+){2} V [\d.]+ H [\d.]+ V [\d.]+ H [\d.]+ V [\d.]+$/);
+});
