@@ -434,7 +434,9 @@ Please report vulnerabilities privately – see [SECURITY.md](SECURITY.md) for h
 - Limits per workspace and per person (storage, own workspaces, upload size)
 - Continuous backup to S3 with Litestream, scheduled backups and Markdown exports to S3 or Git
 - Full-text search including OCR for scanned PDFs and Office files
-- Prometheus metrics, health endpoint, the running version and commit at a glance
+- Prometheus metrics and a health endpoint; **Settings → About Flowplan** shows the running version, commit and build date, and tells admins about a newer release
+- Move a whole instance to another server from **Administration → Storage & backup**: the new server pulls the database, files and keys directly from the old one, with a short read-only final sync
+- `FLOWPLAN_SOURCE_URL` points the source links to your modified code (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` hides the sponsor card on the About page
 - Docker image for `amd64` and `arm64`, a **Helm chart** for Kubernetes
 
 </details>
@@ -484,7 +486,7 @@ Back up the `/app/data` volume, or let Flowplan do it: scheduled backups and Mar
 <details>
 <summary><b>How do I move to another server?</b></summary>
 
-Copy the data volume to the new host and start the same image there, or – with S3 – start a new installation with the same `S3_*` variables and an empty volume; Litestream restores the database and the files follow. Stop the old instance first. See [Restore](https://docs.flowplan.org/en/storage-and-backups#restore). A dedicated guide to moving an instance is in the works.
+Start a fresh installation on the new server and use **Administration → Storage & backup → Move instance**: the old instance hands out a one-time move token, the new one pulls the database, uploads and key files server to server, and the downtime is only the final sync, usually minutes. Without that, copy the data volume to the new host and start the same image there, or – with S3 – start with the same `S3_*` variables and an empty volume; Litestream restores the database. See [Restore](https://docs.flowplan.org/en/storage-and-backups#restore).
 
 </details>
 

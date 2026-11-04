@@ -436,7 +436,9 @@ Sicherheitslücken bitte vertraulich melden – wie, was dazugehört und welche 
 - Grenzen pro Arbeitsbereich und pro Person (Speicher, eigene Arbeitsbereiche, Uploadgröße)
 - Laufende Sicherung nach S3 mit Litestream, geplante Sicherungen und Markdown-Exporte nach S3 oder Git
 - Volltextsuche inklusive Texterkennung für gescannte PDFs und Office-Dateien
-- Prometheus-Metriken, Health-Endpunkt, laufende Version und Commit auf einen Blick
+- Prometheus-Metriken und Health-Endpunkt; **Einstellungen → Über Flowplan** zeigt laufende Version, Commit und Build-Datum und meldet Admins eine neuere Version
+- Eine ganze Instanz auf einen anderen Server umziehen unter **Administration → Speicher & Sicherung**: Der neue Server holt Datenbank, Dateien und Schlüssel direkt vom alten, mit kurzer Schlusssynchronisierung im Nur-Lesen-Modus
+- `FLOWPLAN_SOURCE_URL` lässt die Quellcode-Links auf deinen geänderten Code zeigen (AGPL §13); `FLOWPLAN_HIDE_SPONSOR=true` blendet die Sponsoring-Karte auf der Seite „Über Flowplan“ aus
 - Docker-Image für `amd64` und `arm64`, ein **Helm-Chart** für Kubernetes
 
 </details>
@@ -486,7 +488,7 @@ Sichere das Volume `/app/data` – oder lass Flowplan das erledigen: geplante Si
 <details>
 <summary><b>Wie ziehe ich auf einen anderen Server um?</b></summary>
 
-Kopiere das Datenvolume auf den neuen Host und starte dort dasselbe Image – oder starte mit S3 eine neue Installation mit denselben `S3_*`-Variablen und leerem Volume; Litestream stellt die Datenbank wieder her, die Dateien folgen. Halte die alte Instanz vorher an. Siehe [Wiederherstellen](https://docs.flowplan.org/de/storage-and-backups#wiederherstellen). Eine eigene Anleitung zum Umzug einer Instanz ist in Arbeit.
+Starte auf dem neuen Server eine frische Installation und nutze **Administration → Speicher & Sicherung → Instanz umziehen**: Die alte Instanz gibt einen einmaligen Umzugs-Token aus, die neue holt Datenbank, Uploads und Schlüsseldateien direkt von Server zu Server; die Ausfallzeit ist nur die Schlusssynchronisierung, meist wenige Minuten. Alternativ kopierst du das Datenvolume auf den neuen Host und startest dort dasselbe Image – oder startest mit denselben `S3_*`-Variablen und leerem Volume; Litestream stellt die Datenbank wieder her. Siehe [Wiederherstellen](https://docs.flowplan.org/de/storage-and-backups#wiederherstellen).
 
 </details>
 
