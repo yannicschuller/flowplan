@@ -756,7 +756,7 @@ function route(req: ScimRequest): ScimResult {
           const created = createUser(parseBody(req.body));
           return { status: 201, body: created, headers: { Location: String((created.meta as Json).location) } };
         }
-        const users = all<UserRow>(`${USER_SELECT} ORDER BY s.created_at,s.id`).map(renderUser);
+        const users = all<UserRow>(`${USER_SELECT} ORDER BY s.created_at,s.rowid`).map(renderUser);
         return { status: 200, body: list(users, req.query) };
       }
       only("GET", "PUT", "PATCH", "DELETE");
@@ -780,7 +780,7 @@ function route(req: ScimRequest): ScimResult {
           return { status: 201, body: created, headers: { Location: String((created.meta as Json).location) } };
         }
         const withMembers = !/\bmembers\b/i.test(req.query.get("excludedAttributes") || "");
-        const groups = all<GroupRow>("SELECT * FROM scim_groups ORDER BY created_at,id").map((g) => renderGroup(g, withMembers));
+        const groups = all<GroupRow>("SELECT * FROM scim_groups ORDER BY created_at,rowid").map((g) => renderGroup(g, withMembers));
         return { status: 200, body: list(groups, req.query) };
       }
       only("GET", "PUT", "PATCH", "DELETE");

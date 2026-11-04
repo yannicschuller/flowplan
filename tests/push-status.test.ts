@@ -408,12 +408,15 @@ test("delivery counters: per hour, channel and result, written to metrics_push; 
 
 test("a relay failing since its last success turns the tile amber; the relay setup is the test notification's", async () => {
   metrics.clearMetrics();
-  metrics.notePushResult("relay", "ok", null, Date.now() - 60_000);
-  metrics.notePushResult("relay", "error", "unreachable");
+  // Explicit times: an earlier test may have noted a success in this same
+  // millisecond, and the last success outlives clearMetrics().
+  const t = Date.now() + 1000;
+  metrics.notePushResult("relay", "ok", null, t - 60_000);
+  metrics.notePushResult("relay", "error", "unreachable", t);
   const s = await pushStatus();
   assert.equal(s.relay.health?.ok, true);
   assert.equal(s.tone, "warn");
-  metrics.notePushResult("relay", "ok");
+  metrics.notePushResult("relay", "ok", null, t + 1000);
   assert.equal((await pushStatus()).tone, "ok");
   const setup = relaySetup();
   assert.deepEqual([setup.url, setup.instance, setup.wellKnown], [RELAY, INSTANCE, true]);
