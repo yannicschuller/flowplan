@@ -60,7 +60,8 @@ import { parseSearchTokens, tagToken } from "@/lib/page-properties";
 import { Tag as TagIcon } from "@phosphor-icons/react";
 import { openPageAliases, AliasIcon } from "./page-aliases";
 import { AiBlockToggle } from "./ai-settings";
-import { ASK_WIDTH_KEY, AskPanel, clampAsk, type AskRequest } from "./ai-ask";
+import { AskPanel, useMedia, type AskRequest } from "./ai-ask";
+import { ASK_OVERLAY_MEDIA, readAskPinned, readAskWidth, writeAskPinned, writeAskWidth } from "@/lib/ask-panel";
 import { AiDatabaseCreator, proposalPayload, type DatabaseProposal } from "./ai-database";
 import { AiProvider, useAiRoute } from "./ai-context";
 import { AiSummaryPanel, type AiSummaryTarget } from "./ai-summary";
@@ -558,21 +559,24 @@ export default function WorkspaceApp({
       else localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
     } catch {}
   }, [sidebarWidth]);
-  // The width of the "KI fragen" panel, the same way (dragged at its left edge).
+  // The width of the "KI fragen" panel, the same way (dragged at its left
+  // edge; the stylesheet keeps it within 320 px and 45 % of the window), and
+  // whether it is pinned beside the page on narrow windows – where it
+  // otherwise lies over the page (lib/ask-panel.ts).
   const [askWidth, setAskWidth] = useState<number | null>(null);
-  const askWidthRead = useRef(false);
+  const [askPinned, setAskPinned] = useState(false);
+  const askStoreRead = useRef(false);
   useEffect(() => {
-    try {
-      if (!askWidthRead.current) {
-        askWidthRead.current = true;
-        const stored = Number(localStorage.getItem(ASK_WIDTH_KEY));
-        if (stored) setAskWidth(clampAsk(stored));
-        return;
-      }
-      if (askWidth === null) localStorage.removeItem(ASK_WIDTH_KEY);
-      else localStorage.setItem(ASK_WIDTH_KEY, String(askWidth));
-    } catch {}
-  }, [askWidth]);
+    if (!askStoreRead.current) {
+      askStoreRead.current = true;
+      setAskWidth(readAskWidth());
+      setAskPinned(readAskPinned());
+      return;
+    }
+    writeAskWidth(askWidth);
+    writeAskPinned(askPinned);
+  }, [askWidth, askPinned]);
+  const askNarrowWindow = useMedia(ASK_OVERLAY_MEDIA);
   // Presentation mode of the open document (components/presentation.tsx).
   const [presenting, setPresenting] = useState<{ html: string; title: string } | null>(null);
   // Split view (components/split-pane.tsx): the page shown next to the open
@@ -1602,13 +1606,15 @@ export default function WorkspaceApp({
   useEffect(() => {
     if (comments) setAsk(null);
   }, [comments]);
-  // Narrow wide screens (an iPad, a small window): the sidebar makes room
-  // while the panel is open and comes back when it closes – unless the
+  // Narrow wide screens (an iPad, a small window): the panel lies over the
+  // page; pinned beside it, the sidebar makes room while the panel is open
+  // and comes back when it closes or lies over the page again – unless the
   // person changed it in between.
+  const askDockedNarrow = askOpen && askPinned && askNarrowWindow;
   const askCollapsed = useRef(false);
   useEffect(() => {
-    if (askOpen) {
-      if (!desktopCollapsed && matchMedia("(min-width: 768px) and (max-width: 1099px)").matches) {
+    if (askDockedNarrow) {
+      if (!desktopCollapsed) {
         askCollapsed.current = true;
         setDesktopCollapsed(true);
       }
@@ -1617,7 +1623,7 @@ export default function WorkspaceApp({
       setDesktopCollapsed(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [askOpen]);
+  }, [askDockedNarrow]);
   useEffect(() => {
     if (!desktopCollapsed) askCollapsed.current = false;
   }, [desktopCollapsed]);
@@ -2760,7 +2766,7 @@ export default function WorkspaceApp({
     <AiProvider status={boot.ai || null} workspaceId={boot.workspace.id}>
     <TagOptionsContext.Provider value={tagOptions}>
     <div
-      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? " ask-open" : ""}`}
+      className={`app-shell ${mobile ? "nav-open" : ""} ${desktopCollapsed ? "desktop-collapsed" : ""}${focusMode && screen === "page" ? " focus-mode" : ""}${keyboardOpen ? " keyboard-open" : ""}${ask && canAsk && !(focusMode && screen === "page") ? (askNarrowWindow && !askPinned ? " ask-overlay" : " ask-open") : ""}`}
       style={
         sidebarWidth || askWidth
           ? ({ ...(sidebarWidth ? { "--sidebar-width": `${sidebarWidth}px` } : {}), ...(askWidth ? { "--ask-width": `${askWidth}px` } : {}) } as React.CSSProperties)
@@ -4937,6 +4943,8 @@ export default function WorkspaceApp({
           onClose={() => setAsk(null)}
           width={askWidth}
           onWidth={setAskWidth}
+          pinned={askPinned}
+          onPinned={setAskPinned}
           workspaceId={boot.workspace.id}
           ai={boot.ai}
           spaces={boot.spaces}
