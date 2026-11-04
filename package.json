@@ -22,6 +22,7 @@
     "check:standalone": "node scripts/check-standalone.mjs",
     "check:offline": "node scripts/check-offline.mjs",
     "i18n": "node scripts/i18n.mjs",
+    "i18n:readme": "node scripts/i18n-readme.mjs",
     "facts": "node --import tsx scripts/facts.mjs",
     "sdk": "node --import tsx scripts/generate-sdk.mjs",
     "extension:zip": "node scripts/extension-zip.mjs",
