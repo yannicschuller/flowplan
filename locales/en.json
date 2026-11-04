@@ -6332,6 +6332,7 @@
   "Resource": "Resource",
   "Resource missing.": "Resource missing.",
   "Response": "Response",
+  "Response time (p95, 1 h)": "Response time (p95, 1 h)",
   "Responses": "Responses",
   "Restart": "Restart",
   "Restart (Home)": "Restart (Home)",

@@ -6,7 +6,7 @@ import type { MonitoringLive } from "@/lib/admin-monitoring";
 import { useT } from "../../i18n";
 import { LineChart } from "../../charts";
 import type { LiveState } from "./use-live";
-import { clock, compact, dateTime, num, percent, weekday } from "./monitoring-format";
+import { clock, compact, dateTime, ms, num, percent, weekday } from "./monitoring-format";
 
 export function LiveBadge({ state, label }: { state: LiveState; label?: string }) {
   const t = useT();
@@ -78,6 +78,8 @@ export function LiveKpis({ live }: { live: MonitoringLive }) {
       <Kpi label={t("Anfragen/Min.", "Requests/min")} value={live.collecting.enabled ? num(k.requestsPerMinute) : "–"} />
       <Kpi label={t("Fehlerquote (1 Std.)", "Error rate (1 h)")} value={live.collecting.enabled ? percent(k.errorRate) : "–"} />
       <Kpi label={t("Anmeldungen heute", "Sign-ins today")} value={num(k.signinsToday)} />
+      {/* How long the slowest 5 % of the last hour's requests took. */}
+      <Kpi label={t("Antwortzeit (p95, 1 Std.)", "Response time (p95, 1 h)")} value={live.collecting.enabled ? ms(k.p95) : "–"} />
     </div>
   );
 }

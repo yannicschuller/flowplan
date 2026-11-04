@@ -13272,7 +13272,7 @@ html[data-view-transition="page"] .split-primary > .main-scroll {
     border-bottom: 1px solid var(--border);
   }
   .live-strip .kpi-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (max-width: 860px) {

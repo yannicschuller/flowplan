@@ -6332,6 +6332,7 @@
   "Resource": "资源",
   "Resource missing.": "资源缺失。",
   "Response": "回复",
+  "Response time (p95, 1 h)": "响应时间（p95，1 小时）",
   "Responses": "回复",
   "Restart": "重启",
   "Restart (Home)": "从头开始（Home）",
